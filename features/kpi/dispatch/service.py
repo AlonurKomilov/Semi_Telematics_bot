@@ -9,7 +9,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from features.kpi.dispatch.grades import compute_dispatcher_kpis
-from features.kpi.service import DEFAULT_KPI_THRESHOLDS, get_kpi_thresholds
+from features.kpi.dispatch.thresholds import (
+    DEFAULT_KPI_THRESHOLDS,
+    get_kpi_thresholds,
+)
 from features.loads import service as loads_service
 from infra.platform import get_tenant_db
 

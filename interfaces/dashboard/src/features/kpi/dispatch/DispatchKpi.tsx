@@ -1,30 +1,35 @@
 /**
- * KPI — the account-wide performance analytics surface.
+ * Dispatch KPI — the dispatch section's grades page.
  *
- * One shared page (``can_kpi``, delegatable to any role).  Sections are
- * DOMAINS: Dispatchers first (computed live from the canonical loads);
- * Fleet / Safety / Drivers compose their features' aggregates in later
- * increments — each future section is one service function + one tab.
+ * One SECTION of the per-role KPI family (moved here from the old
+ * single /kpi page when the sections split into their own homes).
+ * ``can_kpi`` gates the read; the header's section switcher walks an
+ * owner/admin across sections, while each role's view lands here (or
+ * on its own section) via /kpi.
+ *
+ * Grades are shared analytics; payout amounts live behind the
+ * Incentives button (``can_kpi_incentives``).
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { useRoleView } from '../../context/RoleViewContext';
-import { Button } from '../../components/ui/button';
-import { BadgeDollarSign, Gauge } from 'lucide-react';
-import DataGrid from '../../components/datagrid';
+import { useRoleView } from '../../../context/RoleViewContext';
+import { Button } from '../../../components/ui/button';
+import { BadgeDollarSign, ChevronDown, Gauge } from 'lucide-react';
+import DataGrid from '../../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton, DateRangePresets,
-} from '../../components/shell';
-import { Tip } from '../../components/tooltip';
-import { toneClasses, type Tone } from '../../lib/status';
-import type { AnyColumn } from '../../types';
-import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
-import { getDispatcherKpis } from './api';
-import type { DispatcherKpisResponse } from './api';
-import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
+} from '../../../components/shell';
+import { ActionMenu } from '../../../components/ui/context-menu';
+import { toneClasses, type Tone } from '../../../lib/status';
+import type { AnyColumn } from '../../../types';
+import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
+import { ConfigMovedNotice } from '../../_lib/ConfigMovedNotice';
+import { getDispatcherKpis } from '../api';
+import type { DispatcherKpisResponse } from '../api';
+import { KPI_SECTIONS } from '../sections';
 
 const GRADE_TONE: Record<string, Tone> = {
   A: 'ok', B: 'info', C: 'warn', D: 'danger',
@@ -68,26 +73,40 @@ const COLUMNS: AnyColumn[] = [
 
 const WINDOWS = [7, 30, 90];
 
-// Domain sections — Dispatchers is live; the rest arrive as their service
-// functions land (each is one tab + one loader, no page rework).
-const SECTIONS = [
-  { key: 'dispatchers', label: 'Dispatchers', ready: true },
-  { key: 'fleet', label: 'Fleet', ready: false },
-  { key: 'safety', label: 'Safety', ready: false },
-  { key: 'drivers', label: 'Drivers', ready: false },
-];
+/** The section switcher — one control, every section page renders it in
+ *  the same header slot.  Not-yet-built sections stay visible but
+ *  disabled: the map of what KPI will grade is part of the product. */
+function SectionSwitcher({ current }: { current: string }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <ActionMenu
+      items={KPI_SECTIONS.map((s) => ({
+        key: s.key,
+        label: s.ready
+          ? s.label
+          : `${s.label} — ${t('kpi_page.coming', 'not built yet')}`,
+        disabled: !s.ready || s.key === current,
+        onSelect: () => navigate(s.path),
+      }))}
+    >
+      <Button variant="outline" size="sm">
+        {KPI_SECTIONS.find((s) => s.key === current)?.label ?? current}
+        <ChevronDown size={14} className="ml-1.5 text-muted-foreground" />
+      </Button>
+    </ActionMenu>
+  );
+}
 
-export default function Kpi() {
+export default function DispatchKpi() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { viewHas } = useRoleView();
   const [days, setDays] = useState(30);
-  const [section, setSection] = useState('dispatchers');
 
   const { data, isLoading, isFetching, error } = useQuery<DispatcherKpisResponse>({
     queryKey: ['kpi-dispatchers', days],
     queryFn: () => getDispatcherKpis(days),
-    enabled: section === 'dispatchers',
   });
 
   const rows = data?.dispatchers ?? [];
@@ -96,18 +115,14 @@ export default function Kpi() {
     <div>
       <PageHeader
         icon={Gauge}
-        title={t('nav.kpi', 'KPI')}
+        title={t('kpi_dispatch.title', 'Dispatch KPI')}
         description={t(
-          'kpi_page.description',
-          'Performance across the account — graded against your thresholds.',
+          'kpi_dispatch.description',
+          'Dispatcher performance across the account — graded against the dispatch thresholds.',
         )}
-        /* The one config entry point, in the same header slot as every
-           feature — now in PAGE mode: KPI's config outgrew the dialog
-           when the incentive editor arrived (model picker + tier table
-           + per-company targets).  Same cog, same slot, same self-gate
-           on can_manage_config_all; it navigates, as Scorecards' does. */
         actions={(
           <div className="flex items-center gap-2">
+            <SectionSwitcher current="dispatch" />
             {/* Compensation surface, its own permission — the button only
                 renders for holders, and the route re-checks. */}
             {viewHas('can_kpi_incentives') && (
@@ -126,30 +141,7 @@ export default function Kpi() {
 
       <ConfigMovedNotice what="Grading thresholds" />
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        {/* Domain sections */}
-        <div className="flex items-center gap-1.5">
-          {SECTIONS.map((s) => (
-            // Span wrapper: a disabled button swallows pointer events,
-            // so the "Coming soon" Tip anchors on the span around it.
-            <Tip key={s.key} label={s.ready ? undefined : 'Coming soon'}>
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  disabled={!s.ready}
-                  onClick={() => s.ready && setSection(s.key)}
-                  className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
-                    section === s.key
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-card text-foreground border-border hover:border-ring disabled:opacity-40'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              </span>
-            </Tip>
-          ))}
-        </div>
+      <div className="mb-3 flex justify-end">
         {/* Window picker — the SSOT selector in chip form. */}
         <DateRangePresets
           variant="segments"
@@ -176,9 +168,6 @@ export default function Kpi() {
       )}
       {!isLoading && error == null && rows.length > 0 && (
         <DataGrid
-          // Enables the 3-dot column menu — which is also the only
-          // entry point to the filter popover, so the ``filterable``
-          // column config below was unreachable without this.
           tableId="kpi-dispatchers"
           columns={COLUMNS}
           data={rows as unknown as Record<string, unknown>[]}

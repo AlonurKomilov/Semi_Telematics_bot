@@ -101,7 +101,8 @@ const CostPerMile      = lazyWithReload(() => import('./features/costs/CostPerMi
 const Maintenance      = lazyWithReload(() => import('./features/maintenance/Tasks'));
 const WorkOrders       = lazyWithReload(() => import('./features/work-orders/WorkOrders'));
 const Loads            = lazyWithReload(() => import('./features/loads/Loads'));
-const Kpi              = lazyWithReload(() => import('./features/kpi/Kpi'));
+const KpiEntry         = lazyWithReload(() => import('./features/kpi/KpiEntry'));
+const DispatchKpi      = lazyWithReload(() => import('./features/kpi/dispatch/DispatchKpi'));
 const KpiConfiguration = lazyWithReload(() => import('./features/kpi/config/KpiConfiguration'));
 const IncentiveRuns = lazyWithReload(() => import('./features/kpi/dispatch/IncentiveRuns'));
 const WorkOrderForm    = lazyWithReload(() => import('./features/work-orders/WorkOrderForm'));
@@ -259,7 +260,11 @@ export default function AppRouter() {
             tracks "what needs doing"; Work Orders is "what was done"
             (shop visits, costs, parts, attachments). */}
         <Route path="loads"               element={L(<P perm={['can_loads_all', 'can_loads_own']}><Loads /></P>)} />
-        <Route path="kpi"                 element={L(<P perm="can_kpi"><Kpi /></P>)} />
+        {/* /kpi follows the active role view to its section; each
+            section is its own page + backend package (per-role KPI
+            isolation — sections cannot affect each other). */}
+        <Route path="kpi"                 element={L(<P perm="can_kpi"><KpiEntry /></P>)} />
+        <Route path="kpi/dispatch"        element={L(<P perm="can_kpi"><DispatchKpi /></P>)} />
         <Route path="kpi/configuration"   element={L(<P perm="can_manage_config_all"><KpiConfiguration /></P>)} />
         <Route path="kpi/incentives"      element={L(<P perm="can_kpi_incentives"><IncentiveRuns /></P>)} />
         <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrders /></P>)} />
