@@ -61,7 +61,7 @@ import {
 import { rowMatchesSearch as matchesSearch, searchProvenance } from './search';
 import SavedTabDialog from './tabs/SavedTabDialog';
 import { TAB_ICONS } from './tabs/tabIcons';
-import { toneClasses, toneText, type Tone } from '../../lib/status';
+import { toneClasses, type Tone } from '../../lib/status';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
@@ -4329,19 +4329,23 @@ export default function DataGrid({
               {pivotHiddenCols.toLocaleString()} empty column{pivotHiddenCols === 1 ? '' : 's'} hidden
             </span>
           )}
-          {/* Louder than the line above, and deliberately so: that one
-              removes columns with nothing in them, this one withholds
-              columns that HAVE data.  Silent truncation on a matrix is
-              undetectable — there is no short scrollbar to notice and no
-              gap where the missing columns were — so it says the number,
-              the total, and what to do about it.  The row totals and the
-              grand total still cover EVERY row, which is why this is a
-              readability limit rather than a wrong answer. */}
+          {/* Silent truncation on a matrix is undetectable — no short
+              scrollbar to notice, no gap where the missing columns were
+              — so it has to be said.  But SHORT: the first version ran
+              three clauses and ended in advice ("drop a Columns field"),
+              which at 200-of-202 proposed removing hundreds of columns
+              to recover two, and read as a warning that something was
+              broken.  The owner asked what it meant, which is the only
+              test of this sentence that matters.
+              Now: the two numbers, and the one reassurance that stops it
+              being alarming — the arithmetic is whole.  With the cap at
+              1,000 this only ever appears beside a number large enough
+              to explain itself. */}
           {pivotCappedCols > 0 && (
-            <span className={cn('tabular-nums', toneText('warn'))}>
-              {MAX_COLUMN_BUCKETS.toLocaleString()} of{' '}
-              {(MAX_COLUMN_BUCKETS + pivotCappedCols).toLocaleString()} columns shown
-              {' '}— totals still cover all rows; drop a Columns field to see the rest
+            <span className="tabular-nums">
+              Showing {MAX_COLUMN_BUCKETS.toLocaleString()} of{' '}
+              {(MAX_COLUMN_BUCKETS + pivotCappedCols).toLocaleString()} columns
+              {' '}— totals cover all rows
             </span>
           )}
           {/* Asked for, nothing to do.  Silence here read as a broken

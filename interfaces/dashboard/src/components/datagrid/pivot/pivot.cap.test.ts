@@ -38,6 +38,23 @@ const rowsWithDrivers = (n: number) => Array.from({ length: n }, (_, i) => ({
 }));
 
 describe('column cap', () => {
+  // ── the number itself ──────────────────────────────────────────────
+  // Everything below scales with MAX_COLUMN_BUCKETS, which is right for
+  // the MECHANISM and blind to the one thing that actually went wrong:
+  // the constant shipped at 200, and a real Customers x Drivers pivot
+  // came to 202 columns and was truncated by two.  A cap that catches a
+  // report someone meant to build is not a safety net, it is a defect —
+  // so the SIZE is pinned separately from the behaviour.
+  it('is far above any report built on purpose', () => {
+    // The report that exposed the bad value.  Not a mistake, not
+    // pathological — customers by driver, one year.
+    expect(MAX_COLUMN_BUCKETS).toBeGreaterThan(202);
+    // With room to spare: every driver x every month over two years is
+    // still a report, not an explosion.
+    expect(MAX_COLUMN_BUCKETS).toBeGreaterThanOrEqual(1000);
+  });
+
+
   it('does nothing to a report that fits', () => {
     const r = pivot(rowsWithDrivers(10), MODEL, COLUMNS);
     expect(r.cappedColumns).toBe(0);

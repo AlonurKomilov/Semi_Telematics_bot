@@ -217,17 +217,21 @@ const GRAIN_RANK = { year: 0, quarter: 1, month: 2 } as const;
  *  over a few thousand rows generates hundreds to low thousands of
  *  columns, times one leaf per value field.  Nothing bounded it.
  *
- *  200 is not a performance guess — at ~100px a column that is already
- *  forty screens wide, so any report past it stopped being readable
- *  long before it became slow.  The cap is generous on purpose: it
- *  should only ever catch a pivot that was a mistake to build.
+ *  1,000 is deliberately far above any report anyone builds on purpose.
+ *  It shipped at 200 and was WRONG: a real Customers x Drivers pivot
+ *  came to 202 columns and got truncated by two, which is the exact
+ *  failure the number was chosen to avoid — the cap must only ever
+ *  catch a dimension EXPLOSION (an accidental cross-product running to
+ *  thousands), never a wide report someone meant to build.  Row
+ *  windowing already keeps the DOM near 30 rows, so the limit is about
+ *  what a browser can lay out at all, not about what is comfortable.
  *
  *  Truncation is NEVER silent (``cappedColumns`` is reported and said
  *  on screen), and it costs no accuracy in the figures that remain: the
  *  Total column and grand total are accumulated from every SOURCE ROW,
  *  independently of which buckets render, so they still describe the
  *  whole dataset. */
-export const MAX_COLUMN_BUCKETS = 200;
+export const MAX_COLUMN_BUCKETS = 1000;
 
 /** Is a coarser grain of the SAME date column present on this axis?
  *

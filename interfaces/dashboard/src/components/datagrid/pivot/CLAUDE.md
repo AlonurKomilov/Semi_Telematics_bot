@@ -384,14 +384,22 @@ it on that step or you will move one side of the seam.
 
 ## The column cap
 
-`MAX_COLUMN_BUCKETS = 200` bounds how many column buckets RENDER. Leaf
+`MAX_COLUMN_BUCKETS = 1000` bounds how many column buckets RENDER. Leaf
 count is the number of distinct COMBINATIONS of the column dimensions
 present in the data, so it multiplies — five dimensions over a few
 thousand rows generates hundreds to low thousands of columns, one leaf
 per value field on top. Nothing bounded it, and an unbounded matrix
-fails twice: it renders slowly, and it was never readable. At ~100px a
-column, 200 is already forty screens wide, so the cap should only ever
-catch a pivot that was a mistake to build.
+fails twice: it renders slowly, and it was never readable.
+
+⚠️ **It shipped at 200 and that was wrong.** A real Customers × Drivers
+pivot came to 202 columns and was truncated by two — the cap firing on a
+report someone meant to build, which is precisely what it must never do.
+The limit exists for a dimension EXPLOSION (an accidental cross-product
+running to thousands), not for a wide report. Row windowing already
+holds the DOM near 30 rows, so the number is about what a browser can
+lay out at all, not about what is comfortable to read. `pivot.cap.test.ts`
+pins the SIZE separately from the behaviour, because every other test
+scales with the constant and would have stayed green at 200.
 
 Two rules make truncation defensible rather than a wrong answer:
 
