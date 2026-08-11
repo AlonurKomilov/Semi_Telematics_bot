@@ -367,6 +367,21 @@ Three rules the tests pin:
 columns hidden") because a matrix quietly missing columns is worse than
 one showing empty ones.
 
+## The panel header and the grid toolbar are one band
+
+They sit side by side across the top of the card and share a top edge,
+so their heights must match or that edge visibly steps. Both are `p-3`
+over a 1px bottom border, which means the CONTROL STEP inside is the
+only thing that decides the height:
+
+    12 + <tallest control> + 12 + 1
+
+The panel shipped with `size="icon-sm"` (28px) against the toolbar's
+`size-8` (32px) — 53px beside 57px, a 4px step along a shared edge.
+Both are chrome at the same level, so both take `size-8` (design.md §7,
+"chrome/toolbar controls"). If you add a control to either header, put
+it on that step or you will move one side of the seam.
+
 ## The column cap
 
 `MAX_COLUMN_BUCKETS = 200` bounds how many column buckets RENDER. Leaf

@@ -587,7 +587,15 @@ export default function PivotPanel({
           >
             <Button
               variant={drillOn ? 'default' : 'ghost'}
-              size="icon-sm"
+              // ``icon`` (32px), not ``icon-sm`` (28) — this header and
+              // the grid's toolbar are two halves of ONE band across the
+              // top of the card, both ``p-3`` over a 1px border, so the
+              // control step inside is the only thing that decides their
+              // heights.  At 28 the panel came out 53px against the
+              // toolbar's 57 and the shared top edge stepped by 4px.
+              // Chrome controls are size-8 (design.md §7); this is
+              // chrome.
+              size="icon"
               disabled={!enabled}
               aria-pressed={drillOn}
               aria-label="Open the rows behind a figure"
@@ -597,7 +605,8 @@ export default function PivotPanel({
             </Button>
           </Tip>
         </h3>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close pivot panel">
+        {/* Same step as the toggle beside it and the toolbar opposite. */}
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close pivot panel">
           <X size={16} />
         </Button>
       </div>
