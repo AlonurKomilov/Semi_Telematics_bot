@@ -122,6 +122,9 @@ export default function IncentiveRuns() {
 
   const run = detailQ.data;
   const draft = run?.status === 'draft';
+  const zeroCount = run ? run.rows.filter((r) => Number(r.pct) === 0).length : 0;
+  const markedDays = run ? run.rows.reduce((a, r) => a + r.inactive_days, 0) : 0;
+  const runTotal = run ? run.rows.reduce((a, r) => a + r.confirmed_dollars, 0) : 0;
 
   const discard = useMutation({
     mutationFn: () => deleteIncentiveRun(selected as number),
@@ -304,25 +307,16 @@ export default function IncentiveRuns() {
       {/* ── Run detail: the sheet ───────────────────────────────── */}
       {selected != null && detailQ.isLoading && <TableSkeleton />}
       {run && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* Per-dispatcher payouts — the sheet's corner figure.
-                Flat tint = readout; the bordered card-chip shape is
-                reserved for the CLICKABLE run selectors above. */}
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(run.payouts).map(([name, total]) => (
-                <span key={name}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-sm">
-                  <span className="text-muted-foreground">{name}</span>
-                  <span className="font-medium tabular-nums">{usd(total)}</span>
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Sheet | Board — two reads of one run (house toggle
-                  pattern: pressed icon-buttons in a muted well). */}
-              {/* Labeled segmented switch — an unlabeled icon pair hid
-                  the sheet (and its explanations) behind guesswork. */}
+        <div>
+          {/* ── THE RUN PANEL — one enclosure for everything that
+              describes the selected run (selector strip stays above,
+              the row cards/grid below).  Six unenclosed bands failed
+              the audit's count test. ── */}
+          <section className="bg-card border border-border rounded-xl p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Reversible view switch LEFT, the commit pair RIGHT —
+                  the audit measured 9px between reversible and
+                  irreversible; now it's the whole row. */}
               <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md"
                 role="group" aria-label={t('kpi_runs.view_mode', 'View mode')}>
                 <button
@@ -348,32 +342,67 @@ export default function IncentiveRuns() {
                   {t('kpi_runs.view_board', 'Board')}
                 </button>
               </div>
-              {draft ? (
-                <>
-                  <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
-                    <Trash2 size={14} className="mr-1.5" />
-                    {t('kpi_runs.discard', 'Discard draft')}
-                  </Button>
-                  {/* The draft's intended next step — the one filled
-                      button on the surface. */}
-                  <Button onClick={() => setFinalizeOpen(true)}>
-                    <Lock size={14} className="mr-1.5" />
-                    {t('kpi_runs.finalize', 'Finalize run')}
-                  </Button>
-                </>
-              ) : (
-                <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
-                  <Lock size={12} />
-                  {t('kpi_runs.finalized', 'Finalized — the paid record')}
+              <div className="flex items-center gap-3">
+                {/* The figure Finalize commits, AT the button that
+                    commits it — it was 12px muted text 640px away. */}
+                <span className="text-base font-semibold tabular-nums">
+                  {usd(runTotal)}
+                </span>
+                {draft ? (
+                  <>
+                    <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
+                      <Trash2 size={14} className="mr-1.5" />
+                      {t('kpi_runs.discard', 'Discard draft')}
+                    </Button>
+                    <Button onClick={() => setFinalizeOpen(true)}>
+                      <Lock size={14} className="mr-1.5" />
+                      {t('kpi_runs.finalize', 'Finalize run')}
+                    </Button>
+                  </>
+                ) : (
+                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
+                    <Lock size={12} />
+                    {t('kpi_runs.finalized', 'Finalized — the paid record')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Run meta — kept in BOTH modes (the sheet used to lose it). */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span className={`px-1.5 py-0.5 rounded ${toneClasses(draft ? 'info' : 'ok')}`}>
+                {draft ? t('kpi_board.state_draft', 'draft') : t('kpi_board.state_final', 'finalized')}
+              </span>
+              <span>{t('kpi_board.n_dispatchers', '{{n}} dispatchers', { n: Object.keys(run.payouts).length })}</span>
+              <span>{t('kpi_board.n_trucks', '{{n}} trucks', { n: run.rows.length })}</span>
+              {zeroCount > 0 && (
+                <span className={`px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
+                  {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
                 </span>
               )}
+              <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
             </div>
-          </div>
 
-          {viewMode === 'board' ? (
-            <RunBoard run={run} draft={!!draft} onChanged={refresh} />
-          ) : (
-          <DataGrid
+            {/* Per-dispatcher payouts — read-only DATA on one flat
+                tinted strip, so nothing here borrows a control's pill
+                shape. */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-sm">
+              {Object.entries(run.payouts).map(([name, total]) => (
+                <span key={name} className="inline-flex items-baseline gap-1.5">
+                  <span className="text-muted-foreground">{name}</span>
+                  <span className="font-medium tabular-nums">{usd(total)}</span>
+                </span>
+              ))}
+            </div>
+          </section>
+
+          {/* ≥32px between the run panel and the row list — between-zone
+              air must beat the 12px card rhythm inside the list. */}
+          <div className="mt-8">
+            {viewMode === 'board' ? (
+              <RunBoard run={run} draft={!!draft} onChanged={refresh} />
+            ) : (
+            <DataGrid
             tableId="kpi-incentive-run-rows"
             columns={COLUMNS}
             // The manager's board view: one collapsible section per
@@ -409,7 +438,8 @@ export default function IncentiveRuns() {
               },
             ] : []}
           />
-          )}
+            )}
+          </div>
         </div>
       )}
 

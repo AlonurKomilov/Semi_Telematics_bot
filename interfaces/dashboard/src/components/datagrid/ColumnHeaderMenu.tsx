@@ -126,7 +126,8 @@ export default function ColumnHeaderMenu({
               e.stopPropagation();
               props.onClick?.(e);
             }}
-            className="p-0.5 text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100"
+            // p-1.5/-m-1: a 26px hit box (WCAG 2.5.8) in an 18px layout slot.
+            className="p-1.5 -m-1 text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100"
           >
             <MoreVertical size={14} />
           </button>

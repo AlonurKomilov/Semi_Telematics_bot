@@ -14,7 +14,7 @@
  * reports drift per row, surfaced as a banner — the board must never
  * silently disagree with the sheet.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Plus, TriangleAlert } from 'lucide-react';
@@ -64,6 +64,25 @@ export default function RunBoard({ run, draft, onChanged }: {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [busyRow, setBusyRow] = useState<number | null>(null);
+  // Eleven cards, ONE scroll position: every card's day scroller mirrors
+  // the one being dragged, so reading Sunday costs one scroll, not
+  // eleven.  Imperative (no state) — setting scrollLeft on siblings
+  // cannot re-render at scroll rate.
+  const scrollersRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [scrolled, setScrolled] = useState(false);
+  const registerScroller = (key: string) => (el: HTMLDivElement | null) => {
+    const m = scrollersRef.current;
+    if (el) m.set(key, el); else m.delete(key);
+  };
+  const onBoardScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const src = e.currentTarget;
+    setScrolled(src.scrollLeft > 0);
+    for (const el of scrollersRef.current.values()) {
+      if (el !== src && el.scrollLeft !== src.scrollLeft) {
+        el.scrollLeft = src.scrollLeft;
+      }
+    }
+  };
 
   const loadsQ = useQuery({
     queryKey: ['kpi-incentive-run-loads', run.id],
@@ -98,30 +117,8 @@ export default function RunBoard({ run, draft, onChanged }: {
     ? loadsQ.data.drift.length + (loadsQ.data.unmatched_loads > 0 ? 1 : 0)
     : 0;
 
-  const zeroCount = run.rows.filter((r) => Number(r.pct) === 0).length;
-  const markedDays = run.rows.reduce((a, r) => a + r.inactive_days, 0);
-  const runTotal = run.rows.reduce((a, r) => a + r.confirmed_dollars, 0);
-
   return (
     <div className="space-y-3">
-      {/* Where the run stands, before any scrolling: state, size, the
-          rows needing attention, what has been adjusted, the total. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className={`px-1.5 py-0.5 rounded ${toneClasses(draft ? 'info' : 'ok')}`}>
-          {draft ? t('kpi_board.state_draft', 'draft') : t('kpi_board.state_final', 'finalized')}
-        </span>
-        <span>{t('kpi_board.n_dispatchers', '{{n}} dispatchers', { n: byDispatcher.size })}</span>
-        <span>{t('kpi_board.n_trucks', '{{n}} trucks', { n: run.rows.length })}</span>
-        {zeroCount > 0 && (
-          <span className={`px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
-            {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
-          </span>
-        )}
-        <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
-        <span className="ml-auto font-medium text-foreground tabular-nums">
-          {t('kpi_board.total', 'total')} {usd(runTotal)}
-        </span>
-      </div>
       {draft && (
         /* The board's one non-obvious gesture, said once where the days
            are — a flat cell gives no affordance cue by itself. */
@@ -167,15 +164,19 @@ export default function RunBoard({ run, draft, onChanged }: {
             </button>
 
             {!isCollapsed && (
-              <div className="overflow-x-auto">
-                <div className="min-w-max">
+              <div
+                ref={registerScroller(name)}
+                onScroll={onBoardScroll}
+                className="overflow-x-auto snap-x scroll-pl-56"
+              >
+                <div className="w-max min-w-full">
                   {/* Day header row. */}
                   <div className="flex border-b border-border bg-muted/20">
-                    <div className="sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border">
+                    <div className={`sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
                       {t('kpi_board.unit', 'Unit')}
                     </div>
-                    {days.map((d) => (
-                      <div key={d} className="w-32 shrink-0 px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0">
+                    {days.map((d, i) => (
+                      <div key={d} className={`min-w-28 flex-1 shrink-0 snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0 ${i % 2 === 1 ? 'bg-muted/30' : ''}`}>
                         {dayLabel(d)}
                       </div>
                     ))}
@@ -187,6 +188,7 @@ export default function RunBoard({ run, draft, onChanged }: {
                       row={row}
                       days={days}
                       loads={loadsQ.data?.rows[String(row.id)] ?? []}
+                      scrolled={scrolled}
                       clickable={draft && busyRow !== row.id}
                       onMark={(day, reason) => markDay(row, day, reason)}
                     />
@@ -201,10 +203,12 @@ export default function RunBoard({ run, draft, onChanged }: {
   );
 }
 
-function BoardRow({ row, days, loads, clickable, onMark }: {
+function BoardRow({ row, days, loads, scrolled, clickable, onMark }: {
   row: RunRow;
   days: string[];
   loads: RunLoad[];
+  /** Any card is horizontally scrolled — draw the frozen-column seam. */
+  scrolled: boolean;
   clickable: boolean;
   onMark: (day: string, reason: string | null) => void;
 }) {
@@ -223,7 +227,7 @@ function BoardRow({ row, days, loads, clickable, onMark }: {
       {/* Truck identity + its sheet numbers, pinned while days scroll.
           Gross and the zero-reason live HERE so a $0.00 row explains
           itself without switching to the sheet. */}
-      <div className="sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-2 border-r border-border">
+      <div className={`sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-2 border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
         <div className="text-sm font-medium">
           {row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')}
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
@@ -244,16 +248,16 @@ function BoardRow({ row, days, loads, clickable, onMark }: {
         )}
       </div>
 
-      {days.map((d) => {
+      {days.map((d, i) => {
         const dayLoads = byDay.get(d) ?? [];
         const reason = marks.get(d);
         const inside = inWindow(d);
         const cell = (
           <div
-            className={`w-32 shrink-0 min-h-14 px-1.5 py-1.5 border-r border-border last:border-r-0 space-y-1 ${
+            className={`min-w-28 flex-1 shrink-0 snap-start min-h-14 px-1.5 py-1.5 border-r border-border last:border-r-0 space-y-1 ${
               !inside ? 'bg-muted/40'
                 : reason != null ? 'bg-warn-bg'
-                  : ''
+                  : i % 2 === 1 ? 'bg-muted/30' : ''
             } ${clickable && inside ? 'cursor-pointer hover:bg-muted/50' : ''}`}
           >
             {dayLoads.slice(0, 2).map((l, i) => (
@@ -275,9 +279,12 @@ function BoardRow({ row, days, loads, clickable, onMark }: {
               </div>
             )}
             {clickable && inside && dayLoads.length === 0 && reason == null && (
-              /* Persistent faint affordance: an empty clickable day is a
-                 control, not a blank table cell. */
-              <Plus size={12} className="text-muted-foreground/40" aria-hidden />
+              /* A persistent dashed WELL, not a 40%-opacity glyph — the
+                 hint names day-marking as the surface's main
+                 interaction, so its target carries real drawn area. */
+              <span className="flex h-6 items-center justify-center rounded border border-dashed border-border">
+                <Plus size={12} className="text-muted-foreground/60" aria-hidden />
+              </span>
             )}
           </div>
         );
