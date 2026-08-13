@@ -3,7 +3,7 @@ grades.
 
 DISPATCH-owned config, moved here from the KPI root when the per-role
 split landed: RPM, empty-% and gross-per-truck are dispatch metrics, so
-their thresholds belong to the dispatch section — a vehicles or safety
+their thresholds belong to the dispatch section — a fleet or safety
 section will carry its OWN keys, and changing one section's bars can
 never re-grade another's.
 

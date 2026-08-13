@@ -2,9 +2,10 @@
  * /kpi — the entry that follows the active role view.
  *
  * KPI is not one page: each role's KPI is its own section page
- * (/kpi/dispatch today; vehicles / safety / drivers as they land).
+ * (/kpi/dispatch today; fleet / safety / hr / drivers as they land).
  * This entry sends the viewer to THEIR section — a dispatcher lands on
- * Dispatch KPI, the Fleet view will land on Vehicles — the same
+ * Dispatch KPI, the Fleet view will land on Fleet KPI (grading the
+ * fleet-role employees, per the KPI-grades-people fundament) — the same
  * mechanism the role shells use.  Owners walk sections with the
  * switcher in each section's header.
  */

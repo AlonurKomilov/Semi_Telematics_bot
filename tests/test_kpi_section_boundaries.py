@@ -8,10 +8,14 @@ effect on another role's KPI.  The architecture that delivers it:
     The root MAY import sections (aggregating their routers and
     re-exporting section config for the root endpoints IS its job).
   * ``features/kpi/<section>/`` — one package per section (dispatch
-    today; vehicles / safety / drivers as they land), each owning its
+    today; fleet / safety / hr / drivers as they land — every section
+    grades EMPLOYEES of that role, never assets), each owning its
     engine, endpoints and config keys.
+  * A section's SUBJECT is that role's EMPLOYEES (owner fundament:
+    KPI grades people, never assets — a fleet manager's grade may be
+    computed THROUGH asset numbers, but the row is the person).
   * A section may import the ROOT's shared pieces and ITSELF —
-    **never a sibling section.**  The moment ``kpi/vehicles`` imports
+    **never a sibling section.**  The moment ``kpi/fleet`` imports
     ``kpi.dispatch.engine``, a dispatch refactor can break fleet
     grading; this test makes that a red build instead of a production
     surprise.
