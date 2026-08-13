@@ -424,39 +424,41 @@ async def test_shutdown_sweep_handles_no_records_cleanly(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reset_endpoint_returns_cleared_true_on_existing_record(monkeypatch):
-    from capabilities.integrations import router as integrations_module
+    # The endpoint moved to the Samsara router in the per-provider
+    # split; it is provider-fixed, so no provider argument.
+    from capabilities.integrations.samsara import router as samsara_module
 
     monkeypatch.setattr(
-        integrations_module, "reset_backfill_status",
+        samsara_module, "reset_backfill_status",
         AsyncMock(return_value=True),
     )
 
     async def fake_audit(*a, **kw):
         return None
 
-    monkeypatch.setattr(integrations_module, "_audit", fake_audit)
+    monkeypatch.setattr(samsara_module, "audit", fake_audit)
 
-    result = await integrations_module.backfill_history_reset(
-        "samsara", user={"account_id": 42, "id": 1},
+    result = await samsara_module.backfill_history_reset(
+        user={"account_id": 42, "id": 1},
     )
     assert result == {"cleared": True}
 
 
 @pytest.mark.asyncio
 async def test_reset_endpoint_returns_cleared_false_when_absent(monkeypatch):
-    from capabilities.integrations import router as integrations_module
+    from capabilities.integrations.samsara import router as samsara_module
 
     monkeypatch.setattr(
-        integrations_module, "reset_backfill_status",
+        samsara_module, "reset_backfill_status",
         AsyncMock(return_value=False),
     )
 
     async def fake_audit(*a, **kw):
         return None
 
-    monkeypatch.setattr(integrations_module, "_audit", fake_audit)
+    monkeypatch.setattr(samsara_module, "audit", fake_audit)
 
-    result = await integrations_module.backfill_history_reset(
-        "samsara", user={"account_id": 42, "id": 1},
+    result = await samsara_module.backfill_history_reset(
+        user={"account_id": 42, "id": 1},
     )
     assert result == {"cleared": False}

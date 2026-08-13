@@ -91,6 +91,11 @@ export interface BackfillStatus {
   days_done?: number;
   days_skipped_already_present?: number;
   days_total?: number;
+  /** Batch-level progress: one unit per stat-batch fetch (3/day).
+   *  Moves from the first minute, unlike days_done which only ticks
+   *  when a whole day completes. Absent on pre-upgrade payloads. */
+  batches_done?: number;
+  batches_total?: number;
   rows_inserted?: number;
   api_calls?: number;
   elapsed_sec?: number;
@@ -103,7 +108,14 @@ export interface BackfillStatus {
 
 export interface SnapshotCoverageDay {
   day_utc: string;
+  /** Mirrors minute_rows (original response shape). */
   row_count: number;
+  /** Raw capture rows — only meaningful inside minute retention (~7d). */
+  minute_rows: number;
+  /** Durable roll-up rows — what past backfills actually left behind. */
+  hour_rows: number;
+  /** Whether a backfill run would skip this day as already covered. */
+  covered: boolean;
 }
 
 export interface SnapshotCoverageResponse {

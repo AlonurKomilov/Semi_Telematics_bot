@@ -47,6 +47,7 @@ import SyncedDataTable from './SyncedDataTable';
 import CredentialsSection from './CredentialsSection';
 import SingleCredentialPanel from './SingleCredentialPanel';
 import {
+  backfillProgressLabel,
   capabilityLabel,
   formatCadence,
   formatSyncTimestamp as formatBackfillTimestamp,
@@ -520,7 +521,7 @@ export default function IntegrationCard({
             backfillPending={triggering || backfillRunning}
             backfillRunningLabel={
               backfillRunning && backfillStatus
-                ? `${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30}`
+                ? backfillProgressLabel(backfillStatus, 30)
                 : undefined
             }
             // When a previous backfill completed, the button label
@@ -592,7 +593,7 @@ export default function IntegrationCard({
                 disabled={triggering || backfillRunning}
                 title={
                   backfillRunning && backfillStatus
-                    ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? historyWindow} days`
+                    ? `Backfill in progress · ${backfillProgressLabel(backfillStatus, historyWindow)}`
                     : integration.last_backfill_at
                       ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at, tz)}. Click to re-run the last ${historyWindow} days for every company.`
                       : `Run a ${historyWindow}-day history backfill across every company`
@@ -606,7 +607,7 @@ export default function IntegrationCard({
                   <RefreshCw size={14} />
                 )}
                 {backfillRunning && backfillStatus
-                  ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? historyWindow}`
+                  ? `Running · ${backfillProgressLabel(backfillStatus, historyWindow)}`
                   : triggering ? 'Queuing…'
                   : integration.last_backfill_at ? 'Refresh history'
                   : `Run all (${historyWindow} days)`}

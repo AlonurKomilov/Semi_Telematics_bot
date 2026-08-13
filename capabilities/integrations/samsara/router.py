@@ -208,11 +208,19 @@ async def snapshot_coverage(
     days: int = 30,
     user: dict = Depends(_owner_only),
 ):
-    """Per-day row count for the snapshot table, recent window first.
+    """Per-day backfill coverage, newest first.
 
-    Used by the dashboard's backfill preview card to show which days
-    are populated and which are empty before the owner clicks "Run
-    backfill".
+    Shows which days a "Run backfill" would actually fetch vs skip —
+    judged the same way the backfill's own day cursor judges them
+    (``_day_is_covered``), NOT by the minute tier alone.  The minute
+    tier only retains ~7 days, so a minute-only view permanently
+    renders every older day as "missing" even when its history is
+    safe in the hour/day roll-ups — inviting pointless re-runs.
+
+    Each entry carries ``minute_rows`` (raw capture, inside minute
+    retention), ``hour_rows`` (the durable roll-up), and ``covered``.
+    ``row_count`` mirrors ``minute_rows`` for the original response
+    shape.
     """
     validate_provider(_PROVIDER_ID)
     account_id = int(user["account_id"])
@@ -221,9 +229,37 @@ async def snapshot_coverage(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    coverage = await tenant.vehicle_state_minute_day_summary(
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+    from capabilities.integrations.shared.history_backfill import (
+        _day_is_covered,
+    )
+
+    per_day = await tenant.vehicle_state_backfill_day_coverage(
         account_id, days_back=days,
     )
+    max_minute = max(
+        (c.get("minute_rows", 0) for c in per_day.values()), default=0,
+    )
+    max_hour = max(
+        (c.get("hour_rows", 0) for c in per_day.values()), default=0,
+    )
+    today = _dt.now(_tz.utc).date()
+    coverage = []
+    for offset in range(days):
+        d = (today - _td(days=offset)).isoformat()
+        c = per_day.get(d, {})
+        minute_rows = c.get("minute_rows", 0)
+        hour_rows = c.get("hour_rows", 0)
+        coverage.append({
+            "day_utc": d,
+            "row_count": minute_rows,
+            "minute_rows": minute_rows,
+            "hour_rows": hour_rows,
+            "covered": _day_is_covered(
+                minute_rows, hour_rows, max_minute, max_hour,
+            ),
+        })
     entry = PROVIDER_CATALOG[_PROVIDER_ID]
     return {
         "account_id": account_id,

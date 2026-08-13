@@ -85,6 +85,37 @@ export function formatSyncTimestamp(
 }
 
 /**
+ * Progress fragment for an in-flight history backfill.
+ *
+ * Days-only progress ("0/20") sits still for the whole first day —
+ * one day is 3 throttled, paginated Samsara fetches and can take
+ * minutes on a large fleet — which reads as a hang.  When the status
+ * carries batch counters (one unit per stat-batch fetch) the label
+ * adds a percentage that moves from the first minute:
+ * "3/20 days · 17%".  Falls back to days-only for older payloads.
+ */
+export function backfillProgressLabel(
+  s: {
+    days_done?: number;
+    days_total?: number;
+    days_requested?: number;
+    batches_done?: number;
+    batches_total?: number;
+  },
+  fallbackTotal?: number,
+): string {
+  const days =
+    `${s.days_done ?? 0}/${s.days_total ?? s.days_requested ?? fallbackTotal ?? 0} days`;
+  if (s.batches_total && s.batches_total > 0) {
+    const pct = Math.min(
+      100, Math.round(((s.batches_done ?? 0) / s.batches_total) * 100),
+    );
+    return `${days} · ${pct}%`;
+  }
+  return days;
+}
+
+/**
  * Format a feature toggle's cadence into a human string.
  * Returns empty string when no interval is configured (e.g. the
  * history_backfill capability which is one-shot, not periodic).

@@ -1473,6 +1473,53 @@ class VehiclesWarehouseMixin(_MixinBase):
         return row is not None
 
 
+    async def vehicle_state_backfill_day_coverage(
+        self, account_id: int, *, days_back: int = 30,
+    ) -> dict[str, dict[str, int]]:
+        """Per-day row counts across the minute AND hour tiers, for the
+        backfill day cursor's covered-or-not decision.
+
+        Two tiers because they answer different questions:
+          * ``minute_rows`` — is the day's raw capture healthy?  Only
+            meaningful inside the minute tier's retention window
+            (rows past it are pruned nightly, so 0 there means
+            "aged out", not "never fetched").
+          * ``hour_rows`` — does the day survive in the durable
+            roll-up?  This is what a past backfill actually left
+            behind once retention reclaimed its minute rows.
+
+        One GROUP BY per tier instead of a query per day — the old
+        per-day existence probe issued ``days`` round-trips.
+
+        Returns ``{"YYYY-MM-DD": {"minute_rows": N, "hour_rows": N}}``;
+        days with no rows in either tier are absent.
+        """
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        since = (_dt.now(_tz.utc) - _td(days=days_back)).date().isoformat()
+        out: dict[str, dict[str, int]] = {}
+        for table, ts_col, key in (
+            ("vehicle_state_minute", "captured_at", "minute_rows"),
+            ("vehicle_state_hour", "bucket_start", "hour_rows"),
+        ):
+            cur = await self._db.execute(
+                f"SELECT substr({ts_col}, 1, 10) AS day_utc, "
+                f"       COUNT(*) AS row_count "
+                f"  FROM {table} "
+                f" WHERE account_id = ? AND {ts_col} >= ? "
+                f" GROUP BY day_utc",
+                (account_id, since),
+            )
+            for row in await cur.fetchall():
+                d = dict(zip(("day_utc", "row_count"), row))
+                day = str(d.get("day_utc") or "")
+                if not day:
+                    continue
+                out.setdefault(
+                    day, {"minute_rows": 0, "hour_rows": 0},
+                )[key] = int(d.get("row_count") or 0)
+        return out
+
+
     async def vehicle_state_minute_day_summary(
         self, account_id: int, *, days_back: int = 30,
     ) -> list[dict[str, Any]]:

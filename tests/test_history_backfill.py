@@ -30,6 +30,7 @@ import pytest
 from adapters.storage.account_integrations import AccountIntegration
 from adapters.telematics.protocol import Capability
 from capabilities.integrations.shared.history_backfill import (
+    _day_is_covered,
     _floor_to_slot,
     _merge_batch,
     _resample_to_snapshot_rows,
@@ -334,6 +335,82 @@ async def test_snapshot_day_summary_reports_per_day_counts(seeded_db):
     assert by_day[(today - timedelta(days=4)).isoformat()] == 0
 
 
+# ── Day-cursor coverage rule ─────────────────────────────────────
+#
+# Born from the 2026-08-07..09 outage: the live capture wrote a
+# trickle of rows on three broken days, and the old any-row skip then
+# refused to ever re-fetch them.
+
+
+def test_partial_minute_day_is_not_covered():
+    # An outage day captured 2% of a healthy day — must re-fetch.
+    assert _day_is_covered(2_400, 500, 139_000, 2_300) is False
+
+
+def test_healthy_minute_day_is_covered():
+    assert _day_is_covered(139_000, 2_300, 139_000, 2_300) is True
+
+
+def test_quiet_weekend_day_stays_covered():
+    # ~60% of the best day is quiet, not broken.
+    assert _day_is_covered(84_000, 1_500, 139_000, 2_300) is True
+
+
+def test_aged_out_day_covered_by_hour_tier():
+    # Minute rows pruned by retention, but the durable roll-up holds
+    # the history — re-fetching would only feed the retention
+    # treadmill.
+    assert _day_is_covered(0, 2_200, 139_000, 2_300) is True
+
+
+def test_never_fetched_day_is_not_covered():
+    assert _day_is_covered(0, 0, 139_000, 2_300) is False
+
+
+def test_partial_hour_rollup_of_aged_day_refetches():
+    # A day that aged out while still broken (thin roll-up) is
+    # repairable from Samsara's 90-day history — fetch it.
+    assert _day_is_covered(0, 498, 139_000, 2_300) is False
+
+
+def test_fresh_account_fetches_everything():
+    assert _day_is_covered(0, 0, 0, 0) is False
+
+
+@pytest.mark.asyncio
+async def test_backfill_day_coverage_counts_both_tiers(seeded_db):
+    db = seeded_db["db"]
+    account = seeded_db["account"]
+
+    day = datetime.now(timezone.utc).date() - timedelta(days=2)
+    captured = datetime.combine(
+        day, datetime.min.time(), tzinfo=timezone.utc,
+    ).replace(hour=9, minute=15).isoformat()
+    await db.upsert_vehicle_state_minutes(account.id, [{
+        "vehicle_id": "vid-1",
+        "captured_at": captured,
+        "odometer_mi": 1000.0,
+    }])
+    hour_day = datetime.now(timezone.utc).date() - timedelta(days=5)
+    await db.upsert_vehicle_state_hour(account.id, [{
+        "vehicle_id": "vid-1",
+        "hour_utc": datetime.combine(
+            hour_day, datetime.min.time(), tzinfo=timezone.utc,
+        ).replace(hour=7).isoformat(),
+        "miles": 12.0,
+    }])
+
+    coverage = await db.vehicle_state_backfill_day_coverage(
+        account.id, days_back=7,
+    )
+    assert coverage[day.isoformat()]["minute_rows"] == 1
+    assert coverage[day.isoformat()]["hour_rows"] == 0
+    assert coverage[hour_day.isoformat()]["hour_rows"] == 1
+    assert coverage[hour_day.isoformat()]["minute_rows"] == 0
+    # Untouched days are simply absent.
+    assert (day - timedelta(days=1)).isoformat() not in coverage
+
+
 # ── End-to-end capability ────────────────────────────────────────
 
 
@@ -502,7 +579,7 @@ async def test_backfill_completes_and_inserts_rows(monkeypatch, _no_sleep):
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.vehicle_state_backfill_day_coverage = AsyncMock(return_value={})
     tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=3)
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_tenant_db",
@@ -510,6 +587,9 @@ async def test_backfill_completes_and_inserts_rows(monkeypatch, _no_sleep):
     )
 
     provider = MagicMock()
+    # Real dict, not an auto-MagicMock: the zero-companies preflight
+    # calls len() on it, and len(MagicMock) raises.
+    provider.client.clients = {"CO": object()}
     provider.get_stats_history = AsyncMock(
         return_value=_fake_provider_response(),
     )
@@ -537,15 +617,18 @@ async def test_backfill_skips_already_populated_days(monkeypatch, _no_sleep):
         lambda: db,
     )
 
-    # Even days already covered, odd days empty.
+    # Even days healthily covered in the minute tier, odd days empty.
     today = datetime.now(timezone.utc).date()
-
-    async def _has_day(account_id, day):
-        offset = (today - day).days
-        return offset % 2 == 0
+    coverage = {
+        (today - timedelta(days=offset)).isoformat():
+            {"minute_rows": 100_000, "hour_rows": 2_000}
+        for offset in range(10, 0, -1) if offset % 2 == 0
+    }
 
     tenant = MagicMock()
-    tenant.vehicle_state_minute_has_day = _has_day
+    tenant.vehicle_state_backfill_day_coverage = AsyncMock(
+        return_value=coverage,
+    )
     tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=3)
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_tenant_db",
@@ -553,6 +636,7 @@ async def test_backfill_skips_already_populated_days(monkeypatch, _no_sleep):
     )
 
     provider = MagicMock()
+    provider.client.clients = {"CO": object()}
     provider.get_stats_history = AsyncMock(
         return_value=_fake_provider_response(),
     )
@@ -583,7 +667,7 @@ async def test_backfill_continues_after_per_day_batch_failure(
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.vehicle_state_backfill_day_coverage = AsyncMock(return_value={})
     tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=2)
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_tenant_db",
@@ -601,6 +685,7 @@ async def test_backfill_continues_after_per_day_batch_failure(
         return fake_response
 
     provider = MagicMock()
+    provider.client.clients = {"CO": object()}
     provider.get_stats_history = _flaky
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_telematics_client",

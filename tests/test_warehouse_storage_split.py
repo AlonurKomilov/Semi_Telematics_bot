@@ -22,6 +22,7 @@ EXPECTED = {
     "get_snapshot_coverage", "get_feed_freshness",
     "get_telemetry_tier_freshness", "vehicle_state_minute_has_day",
     "vehicle_state_minute_day_summary", "query_vehicle_state_history",
+    "vehicle_state_backfill_day_coverage",
     "upsert_vehicle_state_day", "prune_vehicle_state_day",
     "upsert_vehicle_state_week", "prune_vehicle_state_week",
     "prune_vehicle_fault_log", "get_vehicle_state_day",

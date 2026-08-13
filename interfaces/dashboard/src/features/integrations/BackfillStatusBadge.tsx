@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { getBackfillStatus, resetBackfillStatus } from './api';
+import { backfillProgressLabel } from './labels';
 import type { BackfillStatus } from './types';
 
 export default function BackfillStatusBadge({
@@ -74,13 +75,11 @@ export default function BackfillStatusBadge({
   if (data.state === 'idle') return null;
 
   if (data.state === 'running') {
-    const total = data.days_total ?? data.days_requested ?? 0;
-    const done = data.days_done ?? 0;
     return (
       <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
         <Loader2 size={12} className="animate-spin" />
         <span>
-          Backfilling {done}/{total} days
+          Backfilling {backfillProgressLabel(data)}
           {data.rows_inserted ? ` · ${data.rows_inserted.toLocaleString()} rows` : ''}
         </span>
       </div>

@@ -262,13 +262,16 @@ async def test_m5_backfill_calls_aggregations_on_success(monkeypatch):
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.vehicle_state_backfill_day_coverage = AsyncMock(return_value={})
     tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=0)
     monkeypatch.setattr(
         history_backfill, "get_tenant_db", AsyncMock(return_value=tenant),
     )
 
     provider = MagicMock()
+    # Real dict, not an auto-MagicMock: the zero-companies preflight
+    # calls len() on it, and len(MagicMock) raises.
+    provider.client.clients = {"CO": object()}
     provider.get_stats_history = AsyncMock(return_value={})
     monkeypatch.setattr(
         history_backfill, "get_telematics_client",
@@ -324,13 +327,16 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.vehicle_state_backfill_day_coverage = AsyncMock(return_value={})
     tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=0)
     monkeypatch.setattr(
         history_backfill, "get_tenant_db", AsyncMock(return_value=tenant),
     )
 
     provider = MagicMock()
+    # Real dict, not an auto-MagicMock: the zero-companies preflight
+    # calls len() on it, and len(MagicMock) raises.
+    provider.client.clients = {"CO": object()}
     provider.get_stats_history = AsyncMock(return_value={})
     monkeypatch.setattr(
         history_backfill, "get_telematics_client",

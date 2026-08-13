@@ -633,6 +633,50 @@ def _merge_batch(
                 existing.extend(v)
 
 
+# A day counts as "already covered" when its row count reaches this
+# fraction of the window's best day (per tier).  Why a fraction and not
+# "any row exists": the live minute capture went down for most of three
+# days (2026-08-07..09 scheduler-lock outage) but still wrote a trickle
+# of rows, and the old any-row check then skipped those days on every
+# subsequent run — a backfill that can never repair a partial outage.
+# 0.5 keeps quiet-but-healthy days (weekends run ~60-70% of a weekday)
+# skipped while genuinely broken days (an outage day captured 2-47%)
+# re-fetch.  Re-fetching a borderline day is safe — row-level upsert
+# idempotency merges duplicates — it just spends a few API calls.
+_COVERED_FRACTION = 0.5
+
+
+def _day_is_covered(
+    minute_rows: int,
+    hour_rows: int,
+    max_minute: int,
+    max_hour: int,
+    *,
+    fraction: float = _COVERED_FRACTION,
+) -> bool:
+    """Decide whether the day cursor may skip a day.
+
+    Two tiers, asymmetric on purpose:
+      * A day with ANY minute rows is judged by the minute tier alone —
+        it is inside minute retention, so the count directly measures
+        capture health.  Partial (< fraction of the window's best
+        minute day) ⇒ not covered ⇒ re-fetch and repair.
+      * A day with ZERO minute rows is either aged out of minute
+        retention or never fetched.  The hour tier — the durable
+        roll-up a past backfill leaves behind — separates the two:
+        a healthy hour count means the history already exists and
+        re-fetching it would only feed the retention treadmill
+        (fetch → roll up → minute rows pruned → looks empty again).
+
+    ``max_*`` of 0 (empty tier across the whole window) makes that
+    tier unable to vouch for any day, so everything re-fetches —
+    correct for a freshly connected account.
+    """
+    if minute_rows > 0:
+        return max_minute > 0 and minute_rows >= fraction * max_minute
+    return max_hour > 0 and hour_rows >= fraction * max_hour
+
+
 # ── Main capability ──────────────────────────────────────────────
 
 async def backfill_vehicle_history(
@@ -802,36 +846,71 @@ async def backfill_vehicle_history(
                 await _publish_status(account_id, provider_id, asdict(result), company_code=company_code)
                 return result
 
-            # Day cursor — newest-first within the requested window,
-            # skipping days that already have any snapshot row.  The
-            # at-or-above-0-rows skip is intentional: partial days
-            # re-fetch cheaply because the row-level idempotency
-            # short-circuits duplicates.
+            # Day cursor — oldest-first within the requested window,
+            # skipping days already covered per ``_day_is_covered``:
+            # judged against the minute tier while a day is inside
+            # minute retention (so a partial-capture outage day
+            # re-fetches and gets repaired), and against the durable
+            # hour roll-up once minute retention has reclaimed it (so
+            # already-backfilled history isn't re-fetched forever).
             #
             # Per-company refresh bypasses the skip: the per-account
-            # ``vehicle_state_minute_has_day`` predicate can't tell
-            # WHICH company already has data, and the operator clicked
-            # Refresh on a specific company expecting that company's
-            # data to be fetched.  Skipping would leave them clicking
-            # a button that quietly does nothing.
+            # coverage counts can't tell WHICH company already has
+            # data, and the operator clicked Refresh on a specific
+            # company expecting that company's data to be fetched.
+            # Skipping would leave them clicking a button that
+            # quietly does nothing.
+            coverage: dict[str, dict[str, int]] = {}
+            if company_code is None:
+                try:
+                    coverage = await tenant.vehicle_state_backfill_day_coverage(
+                        account_id, days_back=days,
+                    )
+                except Exception as e:
+                    # No coverage info ⇒ treat every day as uncovered.
+                    # Wasteful but safe: the fetch is idempotent, and
+                    # skipping blind could strand a real gap.
+                    logger.warning(
+                        "backfill coverage read failed acct=%d: %s — "
+                        "re-fetching the full window", account_id, e,
+                    )
+                    coverage = {}
+            max_minute = max(
+                (c.get("minute_rows", 0) for c in coverage.values()),
+                default=0,
+            )
+            max_hour = max(
+                (c.get("hour_rows", 0) for c in coverage.values()),
+                default=0,
+            )
             today = datetime.now(timezone.utc).date()
             days_to_run: list[date] = []
             for offset in range(days, 0, -1):
                 d = today - timedelta(days=offset)
-                if (
-                    company_code is None
-                    and await tenant.vehicle_state_minute_has_day(account_id, d)
+                c = coverage.get(d.isoformat(), {})
+                if company_code is None and _day_is_covered(
+                    c.get("minute_rows", 0), c.get("hour_rows", 0),
+                    max_minute, max_hour,
                 ):
                     result.days_skipped_already_present += 1
                 else:
                     days_to_run.append(d)
 
             result.state = "running"
+            # Batch-level progress: one "unit" per stat-batch fetch
+            # (3 per day).  ``days_done`` only moves once a whole day
+            # completes, and the FIRST day of a large fleet takes
+            # minutes (throttled paginated fetches × companies) — so a
+            # days-only progress display sits at "0/20" long enough to
+            # read as a hang.  Batches move from the first minute.
+            batches_total = len(days_to_run) * len(STAT_BATCHES)
             await _publish_status(
                 account_id, provider_id,
                 {
                     **asdict(result),
                     "days_total": len(days_to_run),
+                    "batches_done": 0,
+                    "batches_total": batches_total,
                     "triggered_by": triggered_by,
                 },
                 company_code=company_code,
@@ -849,7 +928,7 @@ async def backfill_vehicle_history(
                 # Fetch each stat batch — per-batch errors get logged
                 # and skipped because partial-day data is still useful.
                 merged: dict[str, dict[str, Any]] = {}
-                for batch in STAT_BATCHES:
+                for batch_index, batch in enumerate(STAT_BATCHES):
                     try:
                         await samsara_backfill_throttle.acquire()
                         batch_result = await provider.get_stats_history(
@@ -876,6 +955,11 @@ async def backfill_vehicle_history(
                         {
                             **asdict(result),
                             "days_total": len(days_to_run),
+                            "batches_done": (
+                                day_index * len(STAT_BATCHES)
+                                + batch_index + 1
+                            ),
+                            "batches_total": batches_total,
                             "triggered_by": triggered_by,
                         },
                         company_code=company_code,
@@ -900,6 +984,8 @@ async def backfill_vehicle_history(
                     {
                         **asdict(result),
                         "days_total": len(days_to_run),
+                        "batches_done": (day_index + 1) * len(STAT_BATCHES),
+                        "batches_total": batches_total,
                         "triggered_by": triggered_by,
                     },
                     company_code=company_code,
