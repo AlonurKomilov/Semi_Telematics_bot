@@ -33,7 +33,10 @@ NULL — visible and explicable on the row, never a silently-invented bar.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
+import re
 from datetime import date
 
 from features.kpi.dispatch import engine
@@ -435,6 +438,113 @@ async def finalize_run(account_id: int, run_id: int,
     await _open_run(tenant, account_id, run_id)
     await tenant.finalize_kpi_run(account_id, run_id, finalized_by)
     return await get_run_detail(account_id, run_id)
+
+
+async def export_run_csv(account_id: int, run_id: int) -> tuple[str, str]:
+    """The settlement as a file — the sheet payroll actually receives.
+
+    Column set mirrors the run grid (which mirrors the customer's
+    Excel), one row per truck, then per-dispatcher totals.  A DRAFT
+    exports too (managers circulate drafts for review) but says so in
+    the filename and the header line.
+    """
+    detail = await get_run_detail(account_id, run_id)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Incentive run",
+                f"{detail['period_start']} - {detail['period_end']}",
+                detail["status"]])
+    w.writerow([])
+    w.writerow(["Dispatcher", "Company", "Unit", "Window start",
+                "Window end", "Days", "Inactive days", "Inactive reason",
+                "Gross", "Extras", "Extras note", "Miles", "RPM",
+                "Weekly target", "Adjusted target", "KPI %", "KPI $",
+                "Override %", "Override reason", "Confirmed $",
+                "Zero reason"])
+    for r in detail["rows"]:
+        w.writerow([
+            r["dispatcher_name"], r["company_code"], r["vehicle_unit"],
+            r["window_start"], r["window_end"], r["total_days"],
+            r["inactive_days"], r["inactive_reason"], r["kpi_gross"],
+            r["extras"], r["extras_note"], r["miles"], r["rpm"],
+            r["weekly_target"], r["adjusted_target"], r["pct"],
+            r["kpi_dollars"], r["override_pct"], r["override_reason"],
+            r["confirmed_dollars"], r["zero_reason"],
+        ])
+    w.writerow([])
+    w.writerow(["Dispatcher totals"])
+    for name, total in detail["payouts"].items():
+        w.writerow([name, total])
+    w.writerow(["TOTAL", engine.payout_total(list(detail["payouts"].values()))])
+    filename = (f"incentive-run-{detail['period_start']}"
+                f"-{detail['period_end']}-{detail['status']}.csv")
+    return filename, buf.getvalue()
+
+
+async def monthly_payouts(account_id: int, month: str) -> dict:
+    """Per-dispatcher totals across the FINALIZED runs of one month —
+    the weekly-calc → monthly-payout roll-up (owner decision: cadence
+    is weekly by default, but some dispatchers are paid monthly).
+
+    A run belongs to the month its PERIOD ENDS in, so a week straddling
+    a month boundary is counted exactly once, in the month the sheet
+    would have been settled.  Drafts are excluded — a payout total that
+    could still change is not a payout total.
+    """
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+        raise RunError("month must look like 2026-08")
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise RunError("tenant DB unavailable")
+    runs = [r for r in await tenant.list_kpi_runs(account_id)
+            if r["status"] == "finalized" and r["period_end"][:7] == month]
+    payouts: dict[str, float] = {}
+    for run in runs:
+        for row in await tenant.list_kpi_run_rows(account_id, run["id"]):
+            name = row["dispatcher_name"]
+            payouts[name] = engine.money(
+                payouts.get(name, 0.0) + float(row["confirmed_dollars"]))
+    return {
+        "month": month,
+        "runs": [{k: r[k] for k in ("id", "period_start", "period_end")}
+                 for r in runs],
+        "payouts": payouts,
+        "total": engine.payout_total(list(payouts.values())),
+    }
+
+
+async def my_payouts(account_id: int, user_id: int,
+                     *, limit_runs: int = 26) -> dict:
+    """A dispatcher's OWN payouts — finalized runs only, their rows
+    only.  Drafts never appear: showing someone unconfirmed money and
+    then paying less is how trust dies.  Matching is by
+    ``dispatcher_user_id`` (the team-integration link), so an unlinked
+    TMS dispatcher name yields an empty page rather than a guess."""
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise RunError("tenant DB unavailable")
+    finalized = [r for r in await tenant.list_kpi_runs(account_id)
+                 if r["status"] == "finalized"][:limit_runs]
+    out = []
+    for run in finalized:
+        rows = [
+            {k: r[k] for k in (
+                "company_code", "vehicle_unit", "window_start",
+                "window_end", "total_days", "inactive_days", "kpi_gross",
+                "miles", "rpm", "pct", "confirmed_dollars", "zero_reason")}
+            for r in await tenant.list_kpi_run_rows(account_id, run["id"])
+            if r.get("dispatcher_user_id") == user_id
+        ]
+        if rows:
+            out.append({
+                "run_id": run["id"],
+                "period_start": run["period_start"],
+                "period_end": run["period_end"],
+                "rows": rows,
+                "total": engine.payout_total(
+                    [float(r["confirmed_dollars"]) for r in rows]),
+            })
+    return {"runs": out}
 
 
 async def discard_run(account_id: int, run_id: int) -> None:

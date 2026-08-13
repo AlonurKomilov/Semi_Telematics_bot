@@ -37,7 +37,8 @@ import {
   Fuel, DollarSign, CreditCard,
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
   Plug, Store, Cog,
-  type LucideIcon, Boxes } from 'lucide-react';
+  type LucideIcon, Boxes, BadgeDollarSign,
+} from 'lucide-react';
 
 export type Module =
   | 'core'        // always on — universal features every account gets
@@ -133,6 +134,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // persona's own sidebar — it's management oversight, not a department tool;
   // dispatch/accounting surface it for department leads granted the flag.
   { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['account', 'dispatch', 'accounting'], tier: 'shared', permission: ['can_kpi'], navGroup: 'reports' },
+  // Self-scoped: the endpoint only ever returns the CALLER's own
+  // finalized payout rows, so no can_* flag gates it — can_kpi_incentives
+  // is for the people who SET payouts, not the people who receive them.
+  { id: 'kpi_my_payouts', labelKey: 'nav.my_payouts',     path: '/kpi/my-payouts', icon: BadgeDollarSign, modules: ['dispatch'], tier: 'shared', permission: null, navGroup: 'reports' },
   { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
   // Universal operational views — every working persona needs to find a
   // truck, so these live in core (always available) rather than a module.

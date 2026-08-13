@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from features.kpi.dispatch import service
 from interfaces.api.deps import (
-    get_user_company_codes, require_permission,
+    get_current_user, get_user_company_codes, require_permission,
 )
 
 router = APIRouter(prefix="/kpi", tags=["kpi"])
@@ -109,6 +109,43 @@ async def run_detail(run_id: int, user: dict = Depends(_incentives)):
             int(user["account_id"]), run_id)
     except runs_service.RunError as e:
         _run_error(e)
+
+
+@router.get("/dispatch/runs/{run_id}/export.csv")
+async def export_run(run_id: int, user: dict = Depends(_incentives)):
+    """The settlement sheet as CSV — what payroll receives."""
+    from fastapi.responses import Response
+
+    try:
+        filename, body = await runs_service.export_run_csv(
+            int(user["account_id"]), run_id)
+    except runs_service.RunError as e:
+        _run_error(e)
+    return Response(
+        content=body,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/dispatch/payouts")
+async def payouts_for_month(month: str, user: dict = Depends(_incentives)):
+    """Weekly-calc -> monthly-payout roll-up (finalized runs only)."""
+    try:
+        return await runs_service.monthly_payouts(
+            int(user["account_id"]), month)
+    except runs_service.RunError as e:
+        _run_error(e)
+
+
+@router.get("/dispatch/me")
+async def my_payouts(user: dict = Depends(get_current_user)):
+    """A dispatcher's OWN finalized payouts — self-scoped by design:
+    plain auth, no can_kpi_incentives (that flag is for people who SET
+    payouts; this endpoint only ever shows the caller their own rows,
+    matched by their user id)."""
+    uid = await resolve_user_id(user)
+    return await runs_service.my_payouts(int(user["account_id"]), uid)
 
 
 @router.get("/dispatch/runs/{run_id}/loads")

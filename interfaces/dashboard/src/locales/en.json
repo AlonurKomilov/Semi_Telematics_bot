@@ -214,7 +214,8 @@
     "knowledge_base": "Knowledge Base",
     "settings": "Settings",
     "vehicle_inventory": "Inventory",
-    "object_storage": "Object Storage"
+    "object_storage": "Object Storage",
+    "my_payouts": "My payouts"
   },
   "scorecards": {
     "page_title": "Scorecards",

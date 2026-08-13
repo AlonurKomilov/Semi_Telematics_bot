@@ -325,6 +325,87 @@ class TestLifecycle:
             assert r.json()["inactive_dates"] == []
             assert r.json()["inactive_days"] == 2
 
+    async def test_csv_export_carries_the_sheet_and_the_totals(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}/export.csv",
+                            headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            assert r.headers["content-type"].startswith("text/csv")
+            assert "draft" in r.headers["content-disposition"]
+            body = r.text
+            assert "Anna" in body and "225" in body
+            assert "TOTAL" in body and "170.0" in body
+
+    async def test_monthly_payouts_roll_up_finalized_runs_only(self, seeded):
+        """Weekly calc -> monthly payout: a run belongs to the month its
+        period ENDS in, and drafts never count toward a payout total."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+
+            r = await c.get("/api/kpi/dispatch/payouts?month=2026-07",
+                            headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            assert r.json()["payouts"] == {}          # still a draft
+
+            await c.post(f"/api/kpi/dispatch/runs/{run['id']}/finalize",
+                         headers=_h(seeded["owner"]))
+            r = await c.get("/api/kpi/dispatch/payouts?month=2026-07",
+                            headers=_h(seeded["owner"]))
+            body = r.json()
+            assert body["payouts"]["Anna"] == 170.00
+            assert body["total"] == 170.00
+            assert [x["id"] for x in body["runs"]] == [run["id"]]
+
+            r = await c.get("/api/kpi/dispatch/payouts?month=2026-13",
+                            headers=_h(seeded["owner"]))
+            assert r.status_code == 422
+
+    async def test_me_shows_only_my_rows_and_only_finalized(self, seeded):
+        """Self-scoped: plain auth, own rows, finalized runs only —
+        a dispatcher never sees a draft number that could still drop."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+
+            # Anna's loads carry dispatcher_user_id 11 — link the
+            # dispatcher login to that id via its user row.
+            disp_user = await seeded["db"].get_user_by_telegram_id(9702)
+            uid = disp_user.id
+            for l in LOADS:
+                if l["dispatcher_user_id"] == 11:
+                    l["dispatcher_user_id"] = uid
+            try:
+                # Draft: nothing visible yet.
+                r = await c.get("/api/kpi/dispatch/me",
+                                headers=_h(seeded["disp"]))
+                assert r.status_code == 200
+                assert r.json()["runs"] == []
+
+                await c.delete(f"/api/kpi/dispatch/runs/{run['id']}",
+                               headers=_h(seeded["owner"]))
+                run2 = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                     headers=_h(seeded["owner"]))).json()
+                await c.post(
+                    f"/api/kpi/dispatch/runs/{run2['id']}/finalize",
+                    headers=_h(seeded["owner"]))
+                r = await c.get("/api/kpi/dispatch/me",
+                                headers=_h(seeded["disp"]))
+                body = r.json()
+                assert len(body["runs"]) == 1
+                mine = body["runs"][0]
+                assert mine["total"] == 170.00
+                assert {x["vehicle_unit"] for x in mine["rows"]} == {"225"}
+            finally:
+                for l in LOADS:
+                    if l["dispatcher_user_id"] == uid:
+                        l["dispatcher_user_id"] = 11
+
     async def test_a_draft_can_be_discarded_a_paid_record_cannot(self, seeded):
         async with await _client(seeded["app"]) as c:
             await _configure(c, seeded)

@@ -2,7 +2,7 @@
  * KPI API client + shapes (backend: features/kpi/router.py).
  */
 
-import { apiJSON } from '../../api/client';
+import { apiFetch, apiJSON } from '../../api/client';
 
 export interface DispatcherKpi {
   dispatcher_user_id: number | null;
@@ -215,6 +215,46 @@ export async function patchIncentiveRow(
 
 export async function getIncentiveRunLoads(runId: number): Promise<RunLoadsResponse> {
   return apiJSON<RunLoadsResponse>(`/kpi/dispatch/runs/${runId}/loads`);
+}
+
+/** Download the settlement CSV — the sheet payroll receives (the house
+ *  blob-download pattern; the server names the file by period+status). */
+export async function downloadIncentiveRunCsv(runId: number): Promise<void> {
+  const res = await apiFetch(`/kpi/dispatch/runs/${runId}/export.csv`);
+  if (!res.ok) throw new Error('Export failed');
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'incentive-run.csv';
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export interface MonthlyPayouts {
+  month: string;
+  runs: { id: number; period_start: string; period_end: string }[];
+  payouts: Record<string, number>;
+  total: number;
+}
+
+export async function getMonthlyPayouts(month: string): Promise<MonthlyPayouts> {
+  return apiJSON<MonthlyPayouts>(`/kpi/dispatch/payouts?month=${month}`);
+}
+
+export interface MyPayoutRun {
+  run_id: number;
+  period_start: string;
+  period_end: string;
+  rows: Pick<RunRow, 'company_code' | 'vehicle_unit' | 'window_start'
+    | 'window_end' | 'total_days' | 'inactive_days' | 'kpi_gross' | 'miles'
+    | 'rpm' | 'pct' | 'confirmed_dollars' | 'zero_reason'>[];
+  total: number;
+}
+
+export async function getMyPayouts(): Promise<{ runs: MyPayoutRun[] }> {
+  return apiJSON<{ runs: MyPayoutRun[] }>('/kpi/dispatch/me');
 }
 
 export async function setIncentiveException(

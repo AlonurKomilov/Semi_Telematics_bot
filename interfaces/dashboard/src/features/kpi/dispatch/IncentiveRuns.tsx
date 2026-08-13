@@ -21,8 +21,8 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowRight, BadgeDollarSign, CalendarRange, Loader2, Lock, Pencil, Plus,
-  Scale, Table2, Trash2,
+  ArrowRight, BadgeDollarSign, CalendarRange, Download, Loader2, Lock,
+  Pencil, Plus, Scale, Table2, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DataGrid from '../../../components/datagrid';
@@ -38,7 +38,11 @@ import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
 import type { AnyColumn } from '../../../types';
 import {
-  createIncentiveRun, deleteIncentiveRun, finalizeIncentiveRun, getIncentiveRun,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../../../components/ui/select';
+import {
+  createIncentiveRun, deleteIncentiveRun, downloadIncentiveRunCsv,
+  finalizeIncentiveRun, getIncentiveRun, getMonthlyPayouts,
   listIncentiveRuns, patchIncentiveRow, setIncentiveException,
   type RunDetail, type RunRow, type RunSummary,
 } from '../api';
@@ -348,6 +352,12 @@ export default function IncentiveRuns() {
                 <span className="text-base font-semibold tabular-nums">
                   {usd(runTotal)}
                 </span>
+                <Button variant="outline" size="sm"
+                  onClick={() => downloadIncentiveRunCsv(run.id)
+                    .catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed'))}>
+                  <Download size={14} className="mr-1.5" />
+                  {t('kpi_runs.export', 'CSV')}
+                </Button>
                 {draft ? (
                   <>
                     <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
@@ -443,6 +453,8 @@ export default function IncentiveRuns() {
         </div>
       )}
 
+      <MonthlyPayoutsPanel />
+
       <NewRunDialog
         open={newOpen}
         existing={allRuns}
@@ -512,6 +524,89 @@ export default function IncentiveRuns() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ── Monthly payouts (weekly calc → monthly payout roll-up) ────────────
+
+/** The last 12 months, newest first, as YYYY-MM + a human label. */
+function monthOptions(): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = [];
+  const d = new Date();
+  for (let i = 0; i < 12; i += 1) {
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    out.push({
+      value,
+      label: d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+    });
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
+
+function MonthlyPayoutsPanel() {
+  const { t } = useTranslation();
+  const months = monthOptions();
+  const [month, setMonth] = useState(months[0].value);
+  const q = useQuery({
+    queryKey: ['kpi-monthly-payouts', month],
+    queryFn: () => getMonthlyPayouts(month),
+  });
+  const payouts = Object.entries(q.data?.payouts ?? {})
+    .sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section className="mt-8 bg-card border border-border rounded-xl p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">
+            {t('kpi_runs.monthly_title', 'Monthly payouts')}
+          </h2>
+          <p className="text-xs text-muted-foreground max-w-prose">
+            {t('kpi_runs.monthly_desc',
+              'Finalized runs only, summed per dispatcher — a run counts in the month its period ends. For dispatchers paid monthly, this is the number payroll uses.')}
+          </p>
+        </div>
+        <Select value={month} onValueChange={setMonth}
+          items={months.map((m) => ({ value: m.value, label: m.label }))}>
+          <SelectTrigger className="w-44" aria-label={t('kpi_runs.month', 'Month')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {months.map((m) => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {q.isLoading && <TableSkeleton />}
+      {!q.isLoading && payouts.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t('kpi_runs.monthly_empty',
+            'No finalized runs end in this month yet — drafts do not count toward a payout total.')}
+        </p>
+      )}
+      {payouts.length > 0 && q.data && (
+        <>
+          <ul className="divide-y divide-border border-t border-border">
+            {payouts.map(([name, total]) => (
+              <li key={name} className="flex items-center justify-between py-2 text-sm">
+                <span>{name}</span>
+                <span className="font-medium tabular-nums">{usd(total)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              {t('kpi_runs.monthly_runs', '{{n}} finalized runs', { n: q.data.runs.length })}
+              {': '}
+              {q.data.runs.map((r) => `${r.period_start} – ${r.period_end}`).join(', ')}
+            </span>
+            <span className="text-base font-semibold tabular-nums">{usd(q.data.total)}</span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

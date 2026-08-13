@@ -5,6 +5,7 @@ import {
   Link as LinkIcon, ClipboardList, CreditCard, GraduationCap,
   IdCard, Gauge, Boxes, Receipt, Store, Cog, ClipboardCheck, Package,
   UserPlus, Plug, Cloud,
+  BadgeDollarSign,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -139,6 +140,11 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     permission: ['can_kpi'],
     description: 'Account-wide performance analytics',
     keywords: ['kpi', 'metric', 'performance', 'analytics'] },
+  // Self-scoped page — no can_* flag; the endpoint returns only the
+  // caller's own finalized payout rows.
+  { label: 'My payouts', path: '/kpi/my-payouts', icon: BadgeDollarSign, group: 'Reports',
+    permission: null,
+    keywords: ['payout', 'incentive', 'my pay', 'bonus'] },
   { label: 'Driver Applications', path: '/workforce/applications', icon: UserPlus, group: 'Workforce',
     permission: ['can_manage_applications'],
     description: 'Recruiting intake — apply links and applicants',
