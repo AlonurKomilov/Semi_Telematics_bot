@@ -598,6 +598,112 @@ async def test_odometer_re_baseline_does_not_become_miles(tenant):
     assert float(row["odometer_eod"]) == pytest.approx(306_408)
 
 
+async def test_stale_echo_between_fresh_readings_is_not_catchup(tenant):
+    """A time-travel echo must not re-book miles already counted.
+
+    2026-08-09 incident: during a capture outage a live tick wrote the
+    gateway's last-known odometer (source_ts two days old) into a slot;
+    the history backfill then wrapped TRUE readings around it.  The
+    step out of that dip looked like a 40-hour catch-up and passed the
+    physics gate — +1,807 phantom miles on one truck, a fleet day
+    summed at 3x reality.  A row whose source time is older than one
+    the scan already passed carries no new observation and is dropped;
+    the neighbours' step spans the echo unchanged.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    from features.vehicles.warehouse import aggregator as agg
+
+    hour = _dt(2026, 8, 9, 5, tzinfo=_tz.utc)
+    await tenant.upsert_vehicle_state_minutes(62, [
+        # Fresh reading, truck cruising.
+        {"vehicle_id": "v_echo",
+         "captured_at": hour.replace(minute=2).isoformat(),
+         "odometer_mi": 398_899, "engine_state": "moving", "speed_mph": 76,
+         "source_ts": hour.replace(minute=2).isoformat()},
+        # The poisoned slot: last-known reading from two days earlier.
+        {"vehicle_id": "v_echo",
+         "captured_at": hour.replace(minute=3).isoformat(),
+         "odometer_mi": 397_092, "engine_state": "off", "speed_mph": 0,
+         "source_ts": "2026-08-07T12:19:13+00:00"},
+        # Fresh again — one minute of real driving after 05:02.
+        {"vehicle_id": "v_echo",
+         "captured_at": hour.replace(minute=4).isoformat(),
+         "odometer_mi": 398_901, "engine_state": "moving", "speed_mph": 76,
+         "source_ts": hour.replace(minute=4).isoformat()},
+    ])
+    await agg._aggregate_hour_window(tenant, 62, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT miles FROM vehicle_state_hour "
+        "WHERE account_id = ? AND bucket_start = ?",
+        (62, "2026-08-09T05:00:00"))
+    row = dict(await cur.fetchone())
+    assert float(row["miles"]) == pytest.approx(2.0), (
+        "only the 2 real miles count — the echo's ±1,807 must vanish"
+    )
+
+
+async def test_hour_leading_echo_is_convicted_by_lookback(tenant):
+    """An echo parked as an hour's FIRST row has no fresher predecessor
+    inside that hour — only the look-back window can convict it.  On
+    the incident day these hour-leading echoes alone kept the fleet at
+    2x reality after the in-hour filter landed."""
+    from datetime import datetime as _dt, timezone as _tz
+    from features.vehicles.warehouse import aggregator as agg
+
+    prev_hour = _dt(2026, 8, 9, 4, tzinfo=_tz.utc)
+    hour = _dt(2026, 8, 9, 5, tzinfo=_tz.utc)
+    await tenant.upsert_vehicle_state_minutes(63, [
+        # Fresh reading in the PREVIOUS hour.
+        {"vehicle_id": "v_lead",
+         "captured_at": prev_hour.replace(minute=59).isoformat(),
+         "odometer_mi": 398_899, "engine_state": "moving", "speed_mph": 76,
+         "source_ts": prev_hour.replace(minute=59).isoformat()},
+        # This hour OPENS with a days-old echo…
+        {"vehicle_id": "v_lead",
+         "captured_at": hour.replace(minute=0).isoformat(),
+         "odometer_mi": 397_092, "engine_state": "off", "speed_mph": 0,
+         "source_ts": "2026-08-07T12:19:13+00:00"},
+        # …then true readings resume.
+        {"vehicle_id": "v_lead",
+         "captured_at": hour.replace(minute=1).isoformat(),
+         "odometer_mi": 398_901, "engine_state": "moving", "speed_mph": 76,
+         "source_ts": hour.replace(minute=1).isoformat()},
+    ])
+    await agg._aggregate_hour_window(tenant, 63, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT miles FROM vehicle_state_hour "
+        "WHERE account_id = ? AND bucket_start = ?",
+        (63, "2026-08-09T05:00:00"))
+    row = dict(await cur.fetchone())
+    # 04:59 → 05:01 spans the convicted echo: 2 real miles, not +1,809.
+    assert float(row["miles"]) == pytest.approx(2.0)
+
+
+async def test_lookback_rows_alone_earn_no_hour_row(tenant):
+    """A vehicle whose only readings sit in the look-back window (it
+    reported nothing this hour) must not get an hour row — the
+    look-back exists for step context, not for presence."""
+    from datetime import datetime as _dt, timezone as _tz
+    from features.vehicles.warehouse import aggregator as agg
+
+    hour = _dt(2026, 8, 9, 5, tzinfo=_tz.utc)
+    await tenant.upsert_vehicle_state_minutes(64, [
+        {"vehicle_id": "v_gone",
+         "captured_at": (hour - timedelta(hours=2)).isoformat(),
+         "odometer_mi": 10_000, "engine_state": "moving", "speed_mph": 60,
+         "source_ts": (hour - timedelta(hours=2)).isoformat()},
+    ])
+    await agg._aggregate_hour_window(tenant, 64, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT count(*) FROM vehicle_state_hour "
+        "WHERE account_id = ? AND bucket_start = ?",
+        (64, "2026-08-09T05:00:00"))
+    assert list(dict(await cur.fetchone()).values())[0] == 0
+
+
 async def test_step_plausibility_is_physics_not_a_magic_number(tenant):
     """Two identical 900-mile odometer steps; only their TIME context
     differs.  Across one minute it is a re-baseline artefact (dropped

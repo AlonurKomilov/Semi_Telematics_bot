@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 # plausible only if step <= elapsed_hours * this + a 2-mile slack.
 MAX_PLAUSIBLE_MPH = 90.0
 
+# How far behind an hour the odometer scan reads for context.  Two jobs:
+# (1) the time-travel-echo filter needs the freshest source_ts already
+# seen so an echo parked at the very start of an hour is still convicted;
+# (2) the hour's first step (previous reading → first in-hour reading)
+# gets booked instead of silently dropped.  24h covers an overnight
+# silence; anything longer is genuine catch-up handled by the gap rule.
+ODOMETER_SCAN_LOOKBACK_H = 24
+
 # A sample's state persists until the NEXT sample — that gap is the
 # duty time it earns.  Capped, because a gap is only believable while
 # the feed is alive: when a truck goes silent mid-hour, its last known
@@ -214,39 +222,88 @@ async def _aggregate_hour_window(
     # old flat 10k ceiling let every sub-10k re-baseline through (179
     # impossible hour rows before this guard).  Negative steps are
     # resets and contribute nothing.
+    #
+    # TIME-TRAVEL ECHOES are excluded from the scan (the inner
+    # ``src >= prev_max_src`` filter): the live capture re-reports a
+    # silent gateway's last-known reading each tick, honestly stamped
+    # with its old source_ts.  In a pure live stream those echoes are
+    # contiguous (zero steps) and the reconnection step books the real
+    # catch-up once — load-bearing, keep them.  But when a history
+    # backfill wraps true readings AROUND an isolated echo, source
+    # time runs BACKWARD mid-sequence: the echo dips to a days-old
+    # odometer between two fresh readings, and the recovery step
+    # "catches up" miles that the surrounding rows prove were already
+    # counted (2026-08-09: one truck booked +1,807 phantom miles this
+    # way; the fleet day summed 3x reality).  A row whose source time
+    # is older than one the scan already passed carries no new
+    # observation — dropping it makes the neighbours' step span the
+    # echo, and a telescoping sum is unchanged by dropping a monotonic
+    # intermediate point.  Real catch-up survives: a reconnection's
+    # echo has no FRESHER predecessor in the scan.
+    #
+    # The scan reads a LOOK-BACK window behind the hour
+    # (ODOMETER_SCAN_LOOKBACK_H) so that baseline crosses hour
+    # boundaries — an echo parked as an hour's FIRST row would
+    # otherwise have no fresher predecessor to convict it, and on the
+    # incident day those hour-leading echoes alone kept the fleet at
+    # 2x reality.  Only steps whose successor row falls INSIDE the
+    # hour are booked (each step lands in exactly one hour, so hours
+    # still telescope), and a vehicle with no in-hour rows still gets
+    # no row (the HAVING clause).
     dist_cols = [
         "vehicle_id", "miles_in_window", "reset_steps", "jump_steps",
         "odometer_eoh", "engine_hours_eoh",
     ]
+    lookback_start = hour_start - timedelta(hours=ODOMETER_SCAN_LOOKBACK_H)
     cur = await tenant._db.execute(
         """
         SELECT vehicle_id,
-               SUM(CASE WHEN step > 0 AND step <= gap_h * ? + 2 THEN step ELSE 0 END)
-                                                   AS miles_in_window,
-               SUM(CASE WHEN step < 0 THEN 1 ELSE 0 END) AS reset_steps,
-               SUM(CASE WHEN step > gap_h * ? + 2 THEN 1 ELSE 0 END) AS jump_steps,
-               MAX(odometer_mi)                    AS odometer_eoh,
-               MAX(engine_hours)                   AS engine_hours_eoh
+               SUM(CASE WHEN in_hour = 1 AND step > 0 AND step <= gap_h * ? + 2
+                        THEN step ELSE 0 END)      AS miles_in_window,
+               SUM(CASE WHEN in_hour = 1 AND step < 0
+                        THEN 1 ELSE 0 END)         AS reset_steps,
+               SUM(CASE WHEN in_hour = 1 AND step > gap_h * ? + 2
+                        THEN 1 ELSE 0 END)         AS jump_steps,
+               MAX(CASE WHEN in_hour = 1 THEN odometer_mi END)
+                                                   AS odometer_eoh,
+               MAX(CASE WHEN in_hour = 1 THEN engine_hours END)
+                                                   AS engine_hours_eoh
           FROM (
               SELECT vehicle_id, odometer_mi, engine_hours,
+                     CASE WHEN captured_at >= ? THEN 1 ELSE 0 END AS in_hour,
                      odometer_mi - LAG(odometer_mi) OVER w AS step,
                      EXTRACT(EPOCH FROM (
-                         COALESCE(source_ts, captured_at)::timestamptz
-                         - LAG(COALESCE(source_ts, captured_at)::timestamptz) OVER w
+                         src - LAG(src) OVER w
                      )) / 3600.0 AS gap_h
-                FROM vehicle_state_minute
-               WHERE account_id = ?
-                 AND captured_at >= ?
-                 AND captured_at <  ?
-                 AND odometer_mi IS NOT NULL
+                FROM (
+                    SELECT vehicle_id, odometer_mi, engine_hours,
+                           captured_at,
+                           COALESCE(source_ts, captured_at)::timestamptz
+                               AS src,
+                           MAX(COALESCE(source_ts, captured_at)::timestamptz)
+                               OVER (PARTITION BY vehicle_id
+                                     ORDER BY captured_at
+                                     ROWS BETWEEN UNBOUNDED PRECEDING
+                                              AND 1 PRECEDING)
+                               AS prev_max_src
+                      FROM vehicle_state_minute
+                     WHERE account_id = ?
+                       AND captured_at >= ?
+                       AND captured_at <  ?
+                       AND odometer_mi IS NOT NULL
+                ) sourced
+               WHERE prev_max_src IS NULL OR src >= prev_max_src
               WINDOW w AS (PARTITION BY vehicle_id ORDER BY captured_at)
           ) ordered
          GROUP BY vehicle_id
+        HAVING SUM(in_hour) > 0
         """,
         # Placeholder order follows the SQL text: the speed ceiling twice
-        # in the select list, ahead of the derived table's own filters.
+        # in the select list, then the hour-start bound for the in_hour
+        # flag, then the derived table's account + look-back window.
         (MAX_PLAUSIBLE_MPH, MAX_PLAUSIBLE_MPH,
-         account_id, hour_start.isoformat(), hour_end.isoformat()),
+         hour_start.isoformat(),
+         account_id, lookback_start.isoformat(), hour_end.isoformat()),
     )
     dist_by_vid = {
         str(d["vehicle_id"]): d
