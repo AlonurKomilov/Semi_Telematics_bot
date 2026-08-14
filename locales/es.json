@@ -254,6 +254,11 @@
     "sysadmin_hint": "⚙️ <i>Administrador del sistema: /admin</i>",
     "account_disabled": "⚔️ Su cuenta ha sido desactivada."
   },
+  "front_door": {
+    "title": "👋 Tu empresa tiene su propio bot",
+    "body": "Todo lo de {account} — alertas, informes, ajustes — está en @{username}.\nEste bot solo gestiona el acceso y el registro.",
+    "open_button": "Abrir @{username}"
+  },
   "ai": {
     "menu_title": "ASISTENTE IA",
     "not_configured": "Las funciones de IA no están configuradas.",

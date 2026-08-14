@@ -283,6 +283,11 @@
     "sysadmin_hint": "⚙️ <i>System admin: /admin</i>",
     "account_disabled": "⚔️ Your account has been disabled."
   },
+  "front_door": {
+    "title": "👋 Your company has its own bot",
+    "body": "Everything for {account} — alerts, reports, settings — lives on @{username}.\nThis bot only handles sign-in and registration.",
+    "open_button": "Open @{username}"
+  },
   "ai": {
     "menu_title": "AI ASSISTANT",
     "not_configured": "AI features are not configured.",

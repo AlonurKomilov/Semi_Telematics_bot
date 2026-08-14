@@ -731,6 +731,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         return
 
+    # Front door: on the GLOBAL login bot, a user whose account runs
+    # its own bot gets pointed there instead of tenant controls.  This
+    # catches taps on STALE menus rendered before the front-door split
+    # (cmd_start no longer renders tenant menus here).  Registration
+    # flows (cmd_register_help / cmd_join_help) and sys_* were already
+    # dispatched above this point, so only tenant callbacks land here.
+    if bot_account_id is None:
+        from interfaces.bot.registration import _front_door_redirect
+        if await _front_door_redirect(update, context, user):
+            await query.answer()
+            return
+
     # Check if account is active
     account = await get_platform_db().get_account(user.account_id)
     if not account or not account.is_active:

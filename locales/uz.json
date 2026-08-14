@@ -254,6 +254,11 @@
     "sysadmin_hint": "⚙️ <i>Tizim admini: /admin</i>",
     "account_disabled": "⚔️ Sizning hisobingiz o'chirilgan."
   },
+  "front_door": {
+    "title": "👋 Kompaniyangizning o'z boti bor",
+    "body": "{account} uchun hamma narsa — ogohlantirishlar, hisobotlar, sozlamalar — @{username} botida.\nBu bot faqat kirish va ro'yxatdan o'tish uchun.",
+    "open_button": "@{username} ni ochish"
+  },
   "ai": {
     "menu_title": "AI YORDAMCHI",
     "not_configured": "AI xususiyatlari sozlanmagan.",

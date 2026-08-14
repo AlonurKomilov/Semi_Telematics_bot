@@ -133,6 +133,46 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show(update, context, ["\n".join(lines)], keyboard=kb)
 
 
+async def _front_door_redirect(update, context, user) -> bool:
+    """The GLOBAL login bot is a front door, not a control surface.
+
+    A registered user whose account runs its OWN bot gets a pointer
+    card to that bot instead of the tenant menu — one control surface
+    per account, on the account's bot.  Renders nothing (returns
+    False) on per-account bots, and for accounts with no bot of their
+    own the login bot keeps serving the full menu (the documented
+    fallback for customers who never connected one).
+
+    Deep-link flows (login_TOKEN, link_TOKEN, join_CODE) are handled
+    BEFORE this gate in cmd_start — logging in via the dashboard's
+    bot-login link must keep working here regardless.
+    """
+    if context.bot_data.get("account_id") is not None:
+        return False          # per-account bot — full surface is correct
+    try:
+        platform = get_platform_db()
+        account = await platform.get_account(user.account_id)
+    except Exception:
+        return False          # storage hiccup → keep legacy behavior
+    bot_username = str(getattr(account, "bot_username", "") or "")
+    if not bot_username:
+        return False          # no account bot — login bot IS their bot
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            t('front_door.open_button', username=bot_username),
+            url=f"https://t.me/{bot_username}",
+        ),
+    ]])
+    await _show(update, context, [
+        f"{t('front_door.title')}\n\n"
+        + t('front_door.body',
+            username=bot_username,
+            account=str(getattr(account, "name", "") or "")),
+    ], keyboard=kb)
+    return True
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Entry point — detect user type and route accordingly.
 
@@ -204,23 +244,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=system_owner_kb())
         return
 
-    # System owner who is ALSO a customer (both roles) — show customer menu
-    # but with admin hint
-    if sys_owner and user:
-        platform = get_platform_db()
-        account = await platform.get_account(user.account_id)
-        company_codes = await get_user_company_codes(user.account_id)
-        tenant = await get_tenant_db(user.account_id)
-        companies = await tenant.get_account_companies(user.account_id)
-        populate_company_display(companies)
-        text = format_help(company_codes, user=user, account=account)
-        text += f"\n\n  {t('start.sysadmin_hint')}"
-        kb = main_menu_kb(user.role, company_codes)
-        await _show(update, context, [text], keyboard=kb)
-        return
-
-    # ── 2. Existing registered user ────────────────────────────
+    # ── 1b/2. Existing registered user ─────────────────────────
+    # Front door first: on the GLOBAL login bot, a user whose account
+    # runs its own bot belongs there — the tenant menu never renders
+    # here (see _front_door_redirect).  NOTE the old sys-owner branch
+    # appended a "System admin: /admin" hint to the tenant menu; that
+    # was a leftover from the single-bot era — /admin is only handled
+    # by the SYSTEM bot daemon now, so the hint advertised a command
+    # that does nothing on this bot.  Operator tools live on the
+    # system bot; the tenant menu stays tenant-only.
     if user:
+        if await _front_door_redirect(update, context, user):
+            return
         platform = get_platform_db()
         account = await platform.get_account(user.account_id)
         company_codes = await get_user_company_codes(user.account_id)

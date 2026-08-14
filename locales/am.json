@@ -254,6 +254,11 @@
     "sysadmin_hint": "⚙️ <i>የስርዓት አድሚን: /admin</i>",
     "account_disabled": "⚔️ አካውንትዎ ታግዷል።"
   },
+  "front_door": {
+    "title": "👋 ኩባንያዎ የራሱ ቦት አለው",
+    "body": "ለ{account} ሁሉም ነገር — ማንቂያዎች፣ ሪፖርቶች፣ ቅንብሮች — በ@{username} ላይ ነው።\nይህ ቦት መግቢያና ምዝገባ ብቻ ያስተናግዳል።",
+    "open_button": "@{username} ክፈት"
+  },
   "ai": {
     "menu_title": "AI ረዳት",
     "not_configured": "AI ባህሪያት አልተዋቀሩም።",

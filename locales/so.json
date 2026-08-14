@@ -254,6 +254,11 @@
     "sysadmin_hint": "⚙️ <i>Maamulaha nidaamka: /admin</i>",
     "account_disabled": "⚔️ Akoonkaaga waa la damiyay."
   },
+  "front_door": {
+    "title": "👋 Shirkaddaadu waxay leedahay bot u gaar ah",
+    "body": "Wax walba oo {account} — digniinaha, warbixinnada, dejinta — waxay ku yaalaan @{username}.\nBot-kani wuxuu qabtaa kaliya gelitaanka iyo diiwaangelinta.",
+    "open_button": "Fur @{username}"
+  },
   "ai": {
     "menu_title": "CAAAWIYAHA AI",
     "not_configured": "Astaamaha AI lama dejinin.",
