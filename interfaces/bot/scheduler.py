@@ -288,6 +288,18 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         seconds=60, args=[app], id="storage_sync",
         max_instances=1, coalesce=True,
     )
+    # Daily bot-delivery health sweep: re-probes every account bot's
+    # real delivery surface (token alive, webhook hygiene, group
+    # membership, forum topics, sub bots), refreshes the Settings-card
+    # report, and notifies the account's admins on NEW breakage only.
+    # 13:35 UTC = US morning — a 2s "typing…" flicker from the topic
+    # probes lands when the groups are awake anyway.
+    from capabilities.notifications.bot_health import job_bot_health_daily
+    scheduler.add_job(
+        job_bot_health_daily, "cron",
+        hour=13, minute=35, args=[app], id="bot_health_daily",
+        max_instances=1, coalesce=True,
+    )
     # Nightly stale-alert cleanup — closes ``alert_acknowledgments`` rows
     # that have been sitting at ``status='active'`` for > 14 days (per
     # NIGHTLY_DEFAULT_DAYS) so the Alerts dashboard stays scannable.

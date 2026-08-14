@@ -109,11 +109,47 @@ async def update_bot_config(
     except Exception as e:
         logger.warning("Bot hot-reload failed for account %d: %s", user["account_id"], e)
 
+    # Health right after connect: the card renders per-surface results
+    # (webhook clean? avatar? bindings reachable?) without the owner
+    # pressing anything.  Fire-and-forget — the connect response must
+    # not wait on a dozen Telegram probes.
+    try:
+        from capabilities.notifications.bot_health import run_bot_health
+        asyncio.create_task(
+            run_bot_health(user["account_id"], platform_db=platform_db),
+            name=f"bot_health_{user['account_id']}",
+        )
+    except Exception:
+        logger.exception("post-connect bot health scheduling failed")
+
     return {
         "ok": True,
         "bot_username": bot_username,
         "bot_id": bot_info.get("id"),
     }
+
+
+@router.get("/bot-health")
+async def get_bot_health(
+    user: dict = Depends(require_permission("can_manage_account")),
+):
+    """Last stored bot-health report (Redis, 7-day TTL) — instant read
+    for the Settings card.  ``null`` report means never checked."""
+    from capabilities.notifications.bot_health import get_bot_health_report
+    return {"report": await get_bot_health_report(user["account_id"])}
+
+
+@router.post("/bot-health/check")
+async def run_bot_health_check(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Probe the account bot's real delivery surface NOW (token,
+    webhook hygiene, group membership, forum topics, sub bots) and
+    return the fresh report.  Bounded by per-call Telegram timeouts."""
+    from capabilities.notifications.bot_health import run_bot_health
+    report = await run_bot_health(user["account_id"], platform_db=platform_db)
+    return {"report": report}
 
 
 @router.delete("/bot-config")

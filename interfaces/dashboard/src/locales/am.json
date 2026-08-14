@@ -790,5 +790,32 @@
     "card_work_hours_desc": "የቡድንዎን ፈረቃዎች ያዘጋጁ።",
     "routing_required_hint": "ማንቂያዎች እዚያ ቡድን ሲታሰር ይመራሉ። ከታች ያለው Sub bot አማራጭ ነው — እስኪያያዙ ድረስ ዋናው ቦት ይልካል።",
     "manager_subtitle": "የሚናዎ የማንቂያ ቦት እና ማንቂያዎቹ የት እንደሚመሩ።"
+  },
+  "bot_health": {
+    "title": "የመላኪያ ጤና",
+    "check_now": "አሁን ፈትሽ",
+    "checking": "በመፈተሽ ላይ…",
+    "never_checked": "እስካሁን አልተፈተሸም",
+    "all_ok": "ሁሉም ፍተሻዎች ተሳክተዋል ({{count}})",
+    "summary_warn": "ይሰራል — ማስጠንቀቂያዎች አሉ",
+    "summary_fail": "የመላኪያ ችግሮች ተገኝተዋል",
+    "row_token": "የቦት ቶከን",
+    "row_webhook": "የዝማኔ ፍሰት",
+    "row_avatar": "የመገለጫ ፎቶ",
+    "row_menu": "የምናሌ አዝራር",
+    "row_branding": "የመገለጫ ጽሁፍ",
+    "row_bindings": "የማንቂያ ትስስሮች",
+    "row_group": "ቡድን፦ {{name}}",
+    "row_renamed": "ቡድኑ ወደ “{{name}}” ተቀይሯል",
+    "row_topic": "ርዕስ፦ {{topic}}",
+    "row_subbot": "የ{{persona}} Sub ቦት",
+    "fix_token": "ቶከኑ አይሰራም — ከ@BotFather አዲስ ቶከን ወስደው ቦቱን እንደገና ያገናኙ።",
+    "fix_webhook": "የዚህን ቦት መልዕክቶች ሌላ ነገር እየተቀበለ ነው። በ@BotFather ቶከኑን ቀይረው እንደገና ያገናኙ።",
+    "fix_avatar": "ለቦቱ ፎቶ ያድርጉ፦ @BotFather → /setuserpic።",
+    "fix_autoset": "ቦቱ በሚቀጥለው ዳግም ማስጀመር በራስ-ሰር ይዘጋጃል።",
+    "fix_member": "ቦቱን ወደ ቡድኑ መልሰው ያክሉ እና አስተዳዳሪ ያድርጉት።",
+    "fix_topic": "ይህ ርዕስ ተሰርዟል ወይም ተዘግቷል — የማንቂያ መስመርን ከፍተው እንደገና ይፍጠሩት።",
+    "fix_renamed": "ለመረጃ ብቻ — መላኪያ እየሰራ ነው።",
+    "fix_bindings": "የመስመር ቅንብሮችን ማንበብ አልተቻለም — እንደገና ይሞክሩ።"
   }
 }

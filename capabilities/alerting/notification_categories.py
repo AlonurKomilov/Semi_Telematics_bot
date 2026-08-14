@@ -115,6 +115,12 @@ def register_targeted_alert_notices() -> None:
         kind=TARGETED,
         audience=lambda role: str(role) in ("owner", "admin"),
     ))
+    register_category(NotificationCategory(
+        key="alert.bot_health",
+        label="Telegram bot delivery problems",
+        kind=TARGETED,
+        audience=lambda role: str(role) in ("owner", "admin"),
+    ))
 
 
 register_targeted_alert_notices()

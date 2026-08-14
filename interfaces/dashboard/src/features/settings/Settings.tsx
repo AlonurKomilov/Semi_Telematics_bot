@@ -20,6 +20,7 @@ import DeliveryModeSelector from './delivery/DeliveryModeSelector';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import SettingsConfigPanel from './config/SettingsConfigPanel';
 import SubBotRoster from './delivery/SubBotRoster';
+import BotHealthSection from './BotHealthSection';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -587,6 +588,11 @@ export default function Settings() {
                 {/* No "Status" row — the chip above already carries the
                     running state; saying it twice was audit finding D1. */}
               </div>
+
+              {/* Delivery health — does the bot ACTUALLY deliver
+                  (token, webhook hygiene, group membership, topics)?
+                  Probed daily + after connect; re-check on demand. */}
+              <BotHealthSection hasBot={botConfig.has_bot} />
 
               <div className="flex items-center gap-3 flex-wrap">
                 <a href={`https://t.me/${botConfig.bot_username}`} target="_blank" rel="noopener noreferrer"

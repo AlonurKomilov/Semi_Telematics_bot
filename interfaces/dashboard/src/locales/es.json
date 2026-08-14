@@ -1005,5 +1005,32 @@
     "card_work_hours_desc": "Define los turnos de tu equipo.",
     "routing_required_hint": "Las alertas se enrutan cuando vinculas un grupo allí. El Sub bot de abajo es opcional — el bot principal envía hasta que conectes uno.",
     "manager_subtitle": "El bot de alertas de tu rol y a dónde se enrutan."
+  },
+  "bot_health": {
+    "title": "Salud de entrega",
+    "check_now": "Comprobar ahora",
+    "checking": "Comprobando…",
+    "never_checked": "Aún sin comprobar",
+    "all_ok": "Todas las comprobaciones pasaron ({{count}})",
+    "summary_warn": "Funciona — con avisos",
+    "summary_fail": "Problemas de entrega detectados",
+    "row_token": "Token del bot",
+    "row_webhook": "Canal de actualizaciones",
+    "row_avatar": "Foto de perfil",
+    "row_menu": "Botón de menú",
+    "row_branding": "Texto de perfil",
+    "row_bindings": "Vínculos de alertas",
+    "row_group": "Grupo: {{name}}",
+    "row_renamed": "Grupo renombrado a «{{name}}»",
+    "row_topic": "Tema: {{topic}}",
+    "row_subbot": "Sub bot de {{persona}}",
+    "fix_token": "El token ya no funciona — reconecta el bot con un token nuevo de @BotFather.",
+    "fix_webhook": "Otra cosa está recibiendo los mensajes de este bot. Rota el token en @BotFather y reconecta.",
+    "fix_avatar": "Ponle foto al bot: @BotFather → /setuserpic. Con foto, el bot inspira confianza a tu equipo.",
+    "fix_autoset": "Se configurará automáticamente en el próximo reinicio del bot.",
+    "fix_member": "Vuelve a añadir el bot a este grupo y hazlo administrador.",
+    "fix_topic": "Este tema fue eliminado o cerrado — abre el enrutamiento de alertas para recrearlo.",
+    "fix_renamed": "Solo para que lo sepas — la entrega sigue funcionando.",
+    "fix_bindings": "No se pudo leer la configuración de enrutamiento — inténtalo de nuevo."
   }
 }

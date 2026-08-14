@@ -635,5 +635,32 @@
     "card_work_hours_desc": "Jamoangiz smenalarini sozlang.",
     "routing_required_hint": "Ogohlantirishlar u yerda guruh ulangach yo‘naltiriladi. Quyidagi Sub bot ixtiyoriy — ulanmaguncha asosiy bot yuboradi.",
     "manager_subtitle": "Rolingizning ogohlantirish boti va uning ogohlantirishlari qayerga boradi."
+  },
+  "bot_health": {
+    "title": "Yetkazish holati",
+    "check_now": "Tekshirish",
+    "checking": "Tekshirilmoqda…",
+    "never_checked": "Hali tekshirilmagan",
+    "all_ok": "Barcha tekshiruvlar o'tdi ({{count}})",
+    "summary_warn": "Ishlayapti — ogohlantirishlar bor",
+    "summary_fail": "Yetkazishda muammolar topildi",
+    "row_token": "Bot tokeni",
+    "row_webhook": "Yangilanishlar oqimi",
+    "row_avatar": "Profil rasmi",
+    "row_menu": "Menyu tugmasi",
+    "row_branding": "Profil matni",
+    "row_bindings": "Ogohlantirish bog'lamalari",
+    "row_group": "Guruh: {{name}}",
+    "row_renamed": "Guruh nomi “{{name}}” ga o'zgardi",
+    "row_topic": "Mavzu: {{topic}}",
+    "row_subbot": "{{persona}} roli Sub boti",
+    "fix_token": "Token ishlamayapti — @BotFather dan yangi token olib botni qayta ulang.",
+    "fix_webhook": "Bot xabarlarini boshqa narsa qabul qilyapti. @BotFather da tokenni almashtirib qayta ulang.",
+    "fix_avatar": "Botga rasm qo'ying: @BotFather → /setuserpic. Rasmli bot jamoaga ishonchli ko'rinadi.",
+    "fix_autoset": "Bot keyingi qayta ishga tushganda avtomatik o'rnatiladi.",
+    "fix_member": "Botni guruhga qayta qo'shing va admin qiling.",
+    "fix_topic": "Mavzu o'chirilgan yoki yopilgan — ogohlantirish marshrutini ochib qayta yarating.",
+    "fix_renamed": "Shunchaki ma'lumot — yetkazish ishlayapti.",
+    "fix_bindings": "Marshrut sozlamalarini o'qib bo'lmadi — qayta urinib ko'ring."
   }
 }

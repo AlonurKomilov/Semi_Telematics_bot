@@ -790,5 +790,32 @@
     "card_work_hours_desc": "Deji jadwalka shaqada kooxdaada.",
     "routing_required_hint": "Digniinuhu waxay marayaan marka aad koox halkaas ku xidho. Sub bot-ka hoose waa ikhtiyaari — ilaa aad xidho, bot-ka guud ayaa dira.",
     "manager_subtitle": "Bot-ka digniinta doorkaaga iyo meesha digniinuhu u maraan."
+  },
+  "bot_health": {
+    "title": "Caafimaadka gaarsiinta",
+    "check_now": "Hadda hubi",
+    "checking": "Waa la hubinayaa…",
+    "never_checked": "Weli lama hubin",
+    "all_ok": "Dhammaan hubinnadu way gudbeen ({{count}})",
+    "summary_warn": "Wuu shaqeynayaa — digniinno ayaa jira",
+    "summary_fail": "Dhibaatooyin gaarsiin ayaa la helay",
+    "row_token": "Tokenka bot-ka",
+    "row_webhook": "Qulqulka cusbooneysiinta",
+    "row_avatar": "Sawirka profile-ka",
+    "row_menu": "Badhanka menu-ga",
+    "row_branding": "Qoraalka profile-ka",
+    "row_bindings": "Xidhiidhada digniinaha",
+    "row_group": "Guruub: {{name}}",
+    "row_renamed": "Guruubka waxaa loo beddelay “{{name}}”",
+    "row_topic": "Mowduuc: {{topic}}",
+    "row_subbot": "Sub bot-ka {{persona}}",
+    "fix_token": "Tokenku ma shaqeynayo — @BotFather ka qaado token cusub oo bot-ka dib u xidh.",
+    "fix_webhook": "Wax kale ayaa helaya fariimaha bot-kan. Token-ka ku beddel @BotFather kadibna dib u xidh.",
+    "fix_avatar": "Bot-ka sawir u yeel: @BotFather → /setuserpic.",
+    "fix_autoset": "Si otomaatig ah ayaa loo dejin doonaa marka xigta ee bot-ka dib u bilaabmo.",
+    "fix_member": "Bot-ka ku celi guruubkan oo ka dhig admin.",
+    "fix_topic": "Mowduucan waa la tirtiray ama la xidhay — fur habaynta digniinaha si dib loogu abuuro.",
+    "fix_renamed": "Ogeysiis kaliya — gaarsiintu way shaqeynaysaa.",
+    "fix_bindings": "Ma suurtogelin in la akhriyo qaabaynta habaynta — mar kale isku day."
   }
 }

@@ -1296,5 +1296,32 @@
     "card_work_hours_desc": "Set the shift schedules for your team.",
     "routing_required_hint": "Alerts route once you bind a group there. A Sub bot below is optional — the main bot sends until you attach one.",
     "manager_subtitle": "Your role's alert bot and where its alerts route."
+  },
+  "bot_health": {
+    "title": "Delivery health",
+    "check_now": "Check now",
+    "checking": "Checking…",
+    "never_checked": "Not checked yet",
+    "all_ok": "All {{count}} checks passed",
+    "summary_warn": "Working — with warnings",
+    "summary_fail": "Delivery problems found",
+    "row_token": "Bot token",
+    "row_webhook": "Update feed",
+    "row_avatar": "Profile photo",
+    "row_menu": "Menu button",
+    "row_branding": "Profile text",
+    "row_bindings": "Alert bindings",
+    "row_group": "Group: {{name}}",
+    "row_renamed": "Group renamed to “{{name}}”",
+    "row_topic": "Topic: {{topic}}",
+    "row_subbot": "{{persona}} Sub bot",
+    "fix_token": "The token no longer works — reconnect the bot with a fresh token from @BotFather.",
+    "fix_webhook": "Something else is receiving this bot's messages. Rotate the token in @BotFather and reconnect.",
+    "fix_avatar": "Give the bot a photo: open @BotFather → /setuserpic. A photo makes the bot look trustworthy to your team.",
+    "fix_autoset": "Will be set automatically the next time the bot restarts.",
+    "fix_member": "Add the bot back to this group and make it an admin.",
+    "fix_topic": "This topic was deleted or closed — open alert routing to re-provision it.",
+    "fix_renamed": "Just so you know — delivery still works.",
+    "fix_bindings": "Couldn't read the routing configuration — try again."
   }
 }

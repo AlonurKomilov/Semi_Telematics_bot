@@ -26,6 +26,89 @@ from infra.crypto import decrypt
 
 logger = logging.getLogger(__name__)
 
+
+async def _apply_bot_setup(app: Application, account_id: int) -> None:
+    """Assert the self-configurable bot surface on every start.
+
+    A customer's "connect your bot" hands us a bare BotFather token:
+    no menu button, no group rights, no profile text.  Everything the
+    Bot API CAN set, the platform sets here, so the human's checklist
+    shrinks to the two things the API cannot touch (profile photo,
+    /setdomain).  Runs on every registry start — idempotent asserts,
+    so a bot replaced or manually fiddled with heals on the next boot.
+
+    Best-effort by design: a Telegram hiccup on any of these must not
+    stop the bot from starting — delivery beats decoration.
+    """
+    from telegram import ChatAdministratorRights, MenuButtonWebApp, WebAppInfo
+
+    from infra.config import WEBAPP_URL
+
+    # Mini-app menu button — the "Open 4truck" button in every private
+    # chat.  Previously set by hand in BotFather per bot (and silently
+    # missing on every newly connected one).
+    if WEBAPP_URL:
+        try:
+            await app.bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Open 4truck", web_app=WebAppInfo(url=WEBAPP_URL),
+                ),
+            )
+        except Exception as e:
+            logger.warning("bot setup: menu button failed acct=%d: %s",
+                           account_id, e)
+
+    # Default admin rights: when an admin adds the bot to a group,
+    # Telegram pre-checks these toggles in the "add as admin" sheet.
+    # manage_topics is the one delivery actually needs (forum-topic
+    # provisioning); pinning keeps critical alerts visible.
+    try:
+        await app.bot.set_my_default_administrator_rights(
+            rights=ChatAdministratorRights(
+                is_anonymous=False,
+                can_manage_chat=True,
+                can_delete_messages=False,
+                can_manage_video_chats=False,
+                can_restrict_members=False,
+                can_promote_members=False,
+                can_change_info=False,
+                can_invite_users=True,
+                can_pin_messages=True,
+                can_manage_topics=True,
+            ),
+        )
+    except Exception as e:
+        logger.warning("bot setup: admin rights failed acct=%d: %s",
+                       account_id, e)
+
+    # Profile text — seed ONLY when empty.  The owner may brand their
+    # bot themselves; an empty profile is the only state we improve.
+    try:
+        company = ""
+        try:
+            from infra.platform import get_platform_db
+            acct = await get_platform_db().get_account(account_id)
+            company = str(getattr(acct, "name", "") or "").strip()
+        except Exception:
+            pass
+        label = company or "our team"
+        short = (await app.bot.get_my_short_description()).short_description
+        if not short:
+            await app.bot.set_my_short_description(
+                short_description=f"Official {label} operations bot"[:120],
+            )
+        desc = (await app.bot.get_my_description()).description
+        if not desc:
+            await app.bot.set_my_description(
+                description=(
+                    f"Alerts, pre-trip inspections, paystubs and vehicle "
+                    f"lookups for {label} — powered by 4truck."
+                )[:512],
+            )
+    except Exception as e:
+        logger.warning("bot setup: profile text failed acct=%d: %s",
+                       account_id, e)
+
 # ── Cross-process liveness heartbeat ──────────────────────────────
 # The bot service writes ``bot:alive:<account_id>`` to Redis with a
 # short TTL while ``start_bot`` keeps a refresher task alive.  The
@@ -155,6 +238,10 @@ async def _build_bot_app(
         BotCommand("chatid",      "🆔 Show chat ID"),
         BotCommand("help",        "ℹ️ Help"),
     ])
+
+    # Menu button, group admin rights, profile text — everything else
+    # the Bot API lets a bot set about itself.
+    await _apply_bot_setup(app, account_id)
 
     # Start updater
     assert app.updater is not None, "Application built without updater"

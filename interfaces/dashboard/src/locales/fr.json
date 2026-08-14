@@ -1005,5 +1005,32 @@
     "card_work_hours_desc": "Définissez les horaires de votre équipe.",
     "routing_required_hint": "Les alertes sont routées dès que vous liez un groupe là-bas. Le Sub bot ci-dessous est optionnel — le bot principal envoie tant que vous n'en attachez pas.",
     "manager_subtitle": "Le bot d'alertes de votre rôle et où ses alertes sont routées."
+  },
+  "bot_health": {
+    "title": "État de la livraison",
+    "check_now": "Vérifier",
+    "checking": "Vérification…",
+    "never_checked": "Pas encore vérifié",
+    "all_ok": "Toutes les vérifications réussies ({{count}})",
+    "summary_warn": "Fonctionne — avec avertissements",
+    "summary_fail": "Problèmes de livraison détectés",
+    "row_token": "Jeton du bot",
+    "row_webhook": "Flux de mises à jour",
+    "row_avatar": "Photo de profil",
+    "row_menu": "Bouton de menu",
+    "row_branding": "Texte de profil",
+    "row_bindings": "Liaisons d'alertes",
+    "row_group": "Groupe : {{name}}",
+    "row_renamed": "Groupe renommé en « {{name}} »",
+    "row_topic": "Sujet : {{topic}}",
+    "row_subbot": "Sub bot {{persona}}",
+    "fix_token": "Le jeton ne fonctionne plus — reconnectez le bot avec un nouveau jeton de @BotFather.",
+    "fix_webhook": "Autre chose reçoit les messages de ce bot. Changez le jeton dans @BotFather et reconnectez.",
+    "fix_avatar": "Ajoutez une photo au bot : @BotFather → /setuserpic. Une photo inspire confiance à votre équipe.",
+    "fix_autoset": "Sera configuré automatiquement au prochain redémarrage du bot.",
+    "fix_member": "Rajoutez le bot à ce groupe et nommez-le administrateur.",
+    "fix_topic": "Ce sujet a été supprimé ou fermé — ouvrez le routage des alertes pour le recréer.",
+    "fix_renamed": "Pour information — la livraison fonctionne toujours.",
+    "fix_bindings": "Impossible de lire la configuration de routage — réessayez."
   }
 }
