@@ -17,7 +17,7 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Plus, TriangleAlert } from 'lucide-react';
+import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tip } from '../../../components/tooltip';
 import { ActionMenu } from '../../../components/ui/context-menu';
@@ -54,13 +54,34 @@ const dayLabel = (iso: string) => {
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 };
 
+/** The zero-reason, with the numbers that CAUSED it — a verdict without
+ *  its threshold is unarguable and unexplainable. */
+function zeroTip(row: RunRow, t: (k: string, d: string, o?: Record<string, unknown>) => string): string {
+  const g = `$${Math.round(row.kpi_gross).toLocaleString()}`;
+  const tgt = row.adjusted_target
+    ? `$${Math.round(row.adjusted_target).toLocaleString()}` : '';
+  if (row.zero_reason === 'no_target') {
+    return t('kpi_board.zt_no_target', 'This company has no weekly target configured — set one in KPI configuration.');
+  }
+  if (row.zero_reason === 'floor') {
+    return t('kpi_board.zt_floor', '{{g}} gross at RPM {{rpm}} is under BOTH removal floors.', { g, rpm: row.rpm ?? '—' });
+  }
+  if (row.zero_reason === 'no_active_days') {
+    return t('kpi_board.zt_days', 'Every day of the window is marked inactive.');
+  }
+  return t('kpi_board.zt_tier', '{{g}} gross vs {{tgt}} target at RPM {{rpm}} matches no tier.', { g, tgt, rpm: row.rpm ?? '—' });
+}
+
 /** "Woodland, CA 1425734" → "Woodland, CA" (best-effort tidy). */
 const place = (s: string) => s.replace(/\s+\d+$/, '').trim();
 
-export default function RunBoard({ run, draft, onChanged }: {
+export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   run: RunDetail;
   draft: boolean;
   onChanged: () => void;
+  /** Discard this draft and regenerate the same period from live loads
+   *  (the stale banner's remedy) — parent owns the mutation + confirm. */
+  onRecreate: () => void;
 }) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -129,11 +150,22 @@ export default function RunBoard({ run, draft, onChanged }: {
         </p>
       )}
       {drift > 0 && (
-        <p className={`inline-flex items-center gap-1.5 text-xs ${toneClasses('warn')} px-2 py-1 rounded`}>
-          <TriangleAlert size={12} />
-          {t('kpi_board.drift',
-            'Loads changed since this run was generated — the affected rows still pay from the run’s snapshot. Recreate the draft to re-read them.')}
-        </p>
+        /* Instruction + the control for it in one block: prose that
+           prescribes an action the reader cannot take is a dead end. */
+        <div className={`flex flex-wrap items-center gap-2 text-xs ${toneClasses('warn')} px-2 py-1.5 rounded`}>
+          <TriangleAlert size={12} className="shrink-0" />
+          <span>
+            {t('kpi_board.drift_n',
+              'Loads changed after this run was generated — {{n}} rows (marked “stale”) still pay from the run’s snapshot.',
+              { n: loadsQ.data?.drift.length ?? 0 })}
+          </span>
+          {draft && (
+            <button type="button" onClick={onRecreate}
+              className="rounded border border-warn-bd bg-card px-2 py-0.5 font-medium text-foreground hover:border-ring transition">
+              {t('kpi_board.recreate', 'Recreate draft')}
+            </button>
+          )}
+        </div>
       )}
 
       {[...byDispatcher.entries()].map(([name, rows]) => {
@@ -177,7 +209,7 @@ export default function RunBoard({ run, draft, onChanged }: {
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d, i) => (
-                      <div key={d} className={`min-w-28 flex-1 shrink-0 snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0 ${i % 2 === 1 ? 'bg-muted/30' : ''}`}>
+                      <div key={d} className={`basis-28 min-w-28 flex-1 shrink-0 snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0 ${i % 2 === 1 ? 'bg-muted/30' : ''}`}>
                         {dayLabel(d)}
                       </div>
                     ))}
@@ -190,6 +222,7 @@ export default function RunBoard({ run, draft, onChanged }: {
                       days={days}
                       loads={loadsQ.data?.rows[String(row.id)] ?? []}
                       suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
+                      stale={loadsQ.data?.drift.includes(row.id) ?? false}
                       scrolled={scrolled}
                       clickable={draft && busyRow !== row.id}
                       onMark={(day, reason) => markDay(row, day, reason)}
@@ -205,12 +238,14 @@ export default function RunBoard({ run, draft, onChanged }: {
   );
 }
 
-function BoardRow({ row, days, loads, suggestions, scrolled, clickable, onMark }: {
+function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, onMark }: {
   row: RunRow;
   days: string[];
   loads: RunLoad[];
   /** Maintenance-suggested inactive days (human confirms by click). */
   suggestions: DaySuggestion[];
+  /** Live loads no longer sum to this row's snapshot. */
+  stale: boolean;
   /** Any card is horizontally scrolled — draw the frozen-column seam. */
   scrolled: boolean;
   clickable: boolean;
@@ -241,15 +276,29 @@ function BoardRow({ row, days, loads, suggestions, scrolled, clickable, onMark }
           {row.total_days - row.inactive_days}/{row.total_days}
           {' '}{t('kpi_board.days', 'days')}
           {' · '}${Math.round(row.kpi_gross).toLocaleString()}
+          {row.weekly_target != null && (
+            <span className="text-muted-foreground/70">
+              /${Math.round(row.adjusted_target).toLocaleString()}
+            </span>
+          )}
           {' · '}{Number(row.pct)}% → {usd(row.confirmed_dollars)}
         </div>
         {Number(row.pct) === 0 && row.zero_reason && (
-          <span className={`mt-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
-            {row.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
-              : row.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
-                : row.zero_reason === 'no_target' ? t('kpi_runs.zr_target', 'no target')
-                  : t('kpi_runs.zr_tier', 'no tier met')}
-          </span>
+          <Tip label={zeroTip(row, t)}>
+            <span className={`mt-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+              {row.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
+                : row.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
+                  : row.zero_reason === 'no_target' ? t('kpi_runs.zr_target', 'no target')
+                    : t('kpi_runs.zr_tier', 'no tier met')}
+            </span>
+          </Tip>
+        )}
+        {stale && (
+          <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
+            <span className={`mt-1 ml-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+              {t('kpi_board.stale', 'stale')}
+            </span>
+          </Tip>
         )}
       </div>
 
@@ -257,9 +306,13 @@ function BoardRow({ row, days, loads, suggestions, scrolled, clickable, onMark }
         const dayLoads = byDay.get(d) ?? [];
         const reason = marks.get(d);
         const inside = inWindow(d);
+        // The INNER cell fills its wrapper; sizing lives on the wrapper
+        // below — the wrapper (or the ActionMenu trigger button) is the
+        // real flex item, so putting basis/grow here was dead code and
+        // let a wide chip widen ONE row's column off the header grid.
         const cell = (
           <div
-            className={`min-w-28 flex-1 shrink-0 snap-start min-h-14 px-1.5 py-1.5 border-r border-border last:border-r-0 space-y-1 ${
+            className={`h-full min-h-14 px-1.5 py-1.5 space-y-1 overflow-hidden ${
               !inside ? 'bg-muted/40'
                 : reason != null ? 'bg-warn-bg'
                   : i % 2 === 1 ? 'bg-muted/30' : ''
@@ -295,16 +348,18 @@ function BoardRow({ row, days, loads, suggestions, scrolled, clickable, onMark }
             )}
             {clickable && inside && dayLoads.length === 0 && reason == null
               && !suggested.has(d) && (
-              /* A persistent dashed WELL, not a 40%-opacity glyph — the
-                 hint names day-marking as the surface's main
-                 interaction, so its target carries real drawn area. */
-              <span className="flex h-6 items-center justify-center rounded border border-dashed border-border">
-                <Plus size={12} className="text-muted-foreground/60" aria-hidden />
-              </span>
+              /* A persistent dashed WELL with a calendar-off glyph — a
+                 "+" promised ADDING something; the gesture REMOVES a
+                 day from the target.  Tip names day and action. */
+              <Tip label={t('kpi_board.mark_tip', 'Mark {{day}} inactive', { day: dayLabel(d) })}>
+                <span className="flex h-6 items-center justify-center rounded border border-dashed border-border">
+                  <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
+                </span>
+              </Tip>
             )}
           </div>
         );
-        if (!clickable || !inside) return <div key={d}>{cell}</div>;
+        if (!clickable || !inside) return <div key={d} className="basis-28 min-w-28 flex-1 shrink-0 snap-start border-r border-border last:border-r-0">{cell}</div>;
         return (
           <ActionMenu
             key={d}
@@ -346,7 +401,7 @@ function BoardRow({ row, days, loads, suggestions, scrolled, clickable, onMark }
               },
             ]}
           >
-            <button type="button" className="text-left"
+            <button type="button" className="basis-28 min-w-28 flex-1 shrink-0 snap-start border-r border-border last:border-r-0 text-left"
               aria-label={t('kpi_board.day_aria', 'Mark {{day}} for unit {{unit}}',
                 { day: d, unit: row.vehicle_unit })}>
               {cell}

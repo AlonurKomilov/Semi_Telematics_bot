@@ -9017,3 +9017,27 @@ async def migrate_kpi_run_rows_inactive_dates(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 197: kpi_incentive_run_rows.inactive_dates")
+
+
+@_register("198_kpi_run_row_adjustment_attribution")
+async def migrate_kpi_run_row_adjustment_attribution(conn) -> None:
+    """Who adjusted a settlement row, and when.
+
+    The live-UI audit sensed the governance gap and verification proved
+    it: ``update_row`` RECEIVED the actor (resolve_user_id at the
+    router) and threw it away — a payroll adjustment nobody could
+    attribute.  Two columns close it: ``adjusted_by`` / ``adjusted_at``
+    stamp the LAST input edit (window, days, extras); exceptions were
+    already attributed via ``confirmed_by`` (whose timestamp also gets
+    fixed to a real value in the same change).
+    """
+    await conn.execute(
+        "ALTER TABLE kpi_incentive_run_rows "
+        "ADD COLUMN IF NOT EXISTS adjusted_by INTEGER"
+    )
+    await conn.execute(
+        "ALTER TABLE kpi_incentive_run_rows "
+        "ADD COLUMN IF NOT EXISTS adjusted_at TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.commit()
+    logger.info("Migration 198: kpi run-row adjustment attribution")

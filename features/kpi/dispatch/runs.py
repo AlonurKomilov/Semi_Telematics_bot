@@ -37,7 +37,7 @@ import csv
 import io
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 
 from features.kpi.dispatch import engine
 from features.loads import service as loads_service
@@ -288,6 +288,10 @@ async def update_row(
     row.update(_recompute(row, snapshot))
     await tenant.update_kpi_run_row(account_id, run_id, row_id, {
         **patch, "total_days": row["total_days"],
+        # WHO adjusted the payroll input, WHEN — the audit's governance
+        # gap: the actor arrived here and was discarded.
+        "adjusted_by": updated_by,
+        "adjusted_at": datetime.now(timezone.utc).isoformat(),
         "kpi_gross": row["kpi_gross"], "rpm": row["rpm"],
         "adjusted_target": row["adjusted_target"], "pct": row["pct"],
         "kpi_dollars": row["kpi_dollars"],
@@ -320,7 +324,7 @@ async def set_exception(
         patch = {"override_pct": None, "override_reason": "",
                  "confirmed_dollars": confirmed,
                  "confirmed_by": confirmed_by,
-                 "confirmed_at": ""}
+                 "confirmed_at": datetime.now(timezone.utc).isoformat()}
     else:
         if not reason.strip():
             raise RunError("an exception needs a reason")
@@ -334,7 +338,7 @@ async def set_exception(
                  "override_reason": reason.strip(),
                  "confirmed_dollars": confirmed,
                  "confirmed_by": confirmed_by,
-                 "confirmed_at": ""}
+                 "confirmed_at": datetime.now(timezone.utc).isoformat()}
     await tenant.update_kpi_run_row(account_id, run_id, row_id, patch)
     return _parse_inactive_dates(
         await tenant.get_kpi_run_row(account_id, run_id, row_id))
@@ -355,8 +359,23 @@ async def get_run_detail(account_id: int, run_id: int) -> dict:
         key = r["dispatcher_name"]
         payouts[key] = engine.money(
             payouts.get(key, 0.0) + float(r["confirmed_dollars"]))
+    # The UI explains zeros with the thresholds that CAUSED them, so the
+    # snapshot's policy knobs ride along (floors + cap — never the whole
+    # snapshot; tiers stay server-side).
+    try:
+        snap_cfg = json.loads(run.get("config_snapshot") or "{}").get(
+            "config", {})
+    except ValueError:
+        snap_cfg = {}
     run.pop("config_snapshot", None)
-    return {**run, "rows": rows, "payouts": payouts}
+    return {
+        **run, "rows": rows, "payouts": payouts,
+        "snapshot_config": {
+            "floor_weekly_gross": snap_cfg.get("floor_weekly_gross"),
+            "floor_rpm": snap_cfg.get("floor_rpm"),
+            "exception_cap_pct": snap_cfg.get("exception_cap_pct"),
+        },
+    }
 
 
 def _group_key(l: dict) -> tuple:

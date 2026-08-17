@@ -33,7 +33,7 @@ import {
 } from '../../../components/ui/dialog';
 import { Input } from '../../../components/ui/input';
 import { Tip } from '../../../components/tooltip';
-import { toneClasses } from '../../../lib/status';
+import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
 import type { AnyColumn } from '../../../types';
@@ -42,8 +42,9 @@ import {
 } from '../../../components/ui/select';
 import {
   createIncentiveRun, deleteIncentiveRun, downloadIncentiveRunCsv,
-  finalizeIncentiveRun, getIncentiveRun, getMonthlyPayouts,
-  listIncentiveRuns, patchIncentiveRow, setIncentiveException,
+  finalizeIncentiveRun, getIncentiveRun, getIncentiveRunLoads,
+  getMonthlyPayouts, listIncentiveRuns, patchIncentiveRow,
+  setIncentiveException,
   type RunDetail, type RunRow, type RunSummary,
 } from '../api';
 
@@ -111,6 +112,7 @@ export default function IncentiveRuns() {
   const [exceptRow, setExceptRow] = useState<RunRow | null>(null);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [recreateOpen, setRecreateOpen] = useState(false);
   const [showAllRuns, setShowAllRuns] = useState(false);
   // Sheet = the numeric settlement (DataGrid); Board = the same run laid
   // out per dispatcher × day.  A synced preference — a reading style.
@@ -157,6 +159,15 @@ export default function IncentiveRuns() {
   const zeroCount = run ? run.rows.filter((r) => Number(r.pct) === 0).length : 0;
   const markedDays = run ? run.rows.reduce((a, r) => a + r.inactive_days, 0) : 0;
   const runTotal = run ? run.rows.reduce((a, r) => a + r.confirmed_dollars, 0) : 0;
+  const runGross = run ? run.rows.reduce((a, r) => a + r.kpi_gross, 0) : 0;
+  // The board's loads query, shared by key — the parent reads drift to
+  // annotate Finalize while the run is stale.
+  const runLoadsQ = useQuery({
+    queryKey: ['kpi-incentive-run-loads', selected],
+    queryFn: () => getIncentiveRunLoads(selected as number),
+    enabled: selected != null,
+  });
+  const staleCount = runLoadsQ.data?.drift.length ?? 0;
 
   const discard = useMutation({
     mutationFn: () => deleteIncentiveRun(selected as number),
@@ -164,6 +175,22 @@ export default function IncentiveRuns() {
       setDiscardOpen(false);
       setSelected(null);
       qc.invalidateQueries({ queryKey: ['kpi-incentive-runs'] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+  });
+
+  const recreate = useMutation({
+    mutationFn: async () => {
+      const r = run as RunDetail;
+      await deleteIncentiveRun(r.id);
+      return createIncentiveRun(r.period_start, r.period_end);
+    },
+    onSuccess: (r) => {
+      setRecreateOpen(false);
+      setSelected(r.id);
+      qc.invalidateQueries({ queryKey: ['kpi-incentive-runs'] });
+      qc.invalidateQueries({ queryKey: ['kpi-incentive-run', r.id] });
+      qc.invalidateQueries({ queryKey: ['kpi-incentive-run-loads', r.id] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   });
@@ -177,7 +204,10 @@ export default function IncentiveRuns() {
   const COLUMNS: AnyColumn[] = [
     { key: 'dispatcher_name', label: 'Dispatcher', sortable: true, filterable: true },
     { key: 'company_code', label: 'Company', sortable: true, filterable: true },
-    { key: 'vehicle_unit', label: 'Unit', sortable: true },
+    { key: 'vehicle_unit', label: 'Unit', sortable: true,
+      render: (v) => v
+        ? <span>{String(v)}</span>
+        : <span className="text-muted-foreground">{t('kpi_runs.unassigned', 'Unassigned')}</span> },
     { key: 'window_start', label: 'Window', sortable: true,
       render: (_v, r) => (
         <span className="text-xs text-muted-foreground">
@@ -226,6 +256,20 @@ export default function IncentiveRuns() {
       render: (v, r) => r.weekly_target == null
         ? <span className={`text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>no target</span>
         : <span className="tabular-nums">{usd(v)}</span> },
+    { key: 'vs_target', label: 'vs Target', sortable: true,
+      sortKey: (r) => (r as unknown as RunRow).weekly_target == null
+        ? Number.NEGATIVE_INFINITY
+        : Number((r as unknown as RunRow).kpi_gross)
+          - Number((r as unknown as RunRow).adjusted_target),
+      render: (_v, r) => {
+        if (r.weekly_target == null) return <span className="text-muted-foreground">—</span>;
+        const d = Number(r.kpi_gross) - Number(r.adjusted_target);
+        return (
+          <span className={`tabular-nums ${d >= 0 ? toneText('ok') : toneText('danger')}`}>
+            {d >= 0 ? '+' : '−'}${Math.abs(Math.round(d)).toLocaleString()}
+          </span>
+        );
+      } },
     { key: 'pct', label: 'KPI %', sortable: true,
       // Every zero in a money column carries its reason — the first
       // question a dispatcher asks their manager is "why is this 0?".
@@ -308,6 +352,9 @@ export default function IncentiveRuns() {
               key={r.id}
               type="button"
               onClick={() => setSelected(r.id)}
+              aria-pressed={selected === r.id}
+              aria-label={t('kpi_runs.select_run', 'Select run {{a}} – {{b}} ({{status}})',
+                { a: r.period_start, b: r.period_end, status: r.status })}
               className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition ${
                 selected === r.id
                   ? 'border-primary bg-primary/5 text-foreground'
@@ -395,12 +442,19 @@ export default function IncentiveRuns() {
                     commits it — it was 12px muted text 640px away. */}
                 <span className="text-base font-semibold tabular-nums">
                   {usd(runTotal)}
+                  {runGross > 0 && (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      {t('kpi_runs.total_anchor', '{{pct}}% of {{gross}} gross',
+                        { pct: ((runTotal / runGross) * 100).toFixed(1),
+                          gross: `$${Math.round(runGross).toLocaleString()}` })}
+                    </span>
+                  )}
                 </span>
                 <Button variant="outline" size="sm"
                   onClick={() => downloadIncentiveRunCsv(run.id)
                     .catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed'))}>
                   <Download size={14} className="mr-1.5" />
-                  {t('kpi_runs.export', 'CSV')}
+                  {t('kpi_runs.export', 'Export run')}
                 </Button>
                 {draft ? (
                   <>
@@ -424,9 +478,6 @@ export default function IncentiveRuns() {
 
             {/* Run meta — kept in BOTH modes (the sheet used to lose it). */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className={`px-1.5 py-0.5 rounded ${toneClasses(draft ? 'info' : 'ok')}`}>
-                {draft ? t('kpi_board.state_draft', 'draft') : t('kpi_board.state_final', 'finalized')}
-              </span>
               <span>{t('kpi_board.n_dispatchers', '{{n}} dispatchers', { n: Object.keys(run.payouts).length })}</span>
               <span>{t('kpi_board.n_trucks', '{{n}} trucks', { n: run.rows.length })}</span>
               {zeroCount > 0 && (
@@ -454,7 +505,8 @@ export default function IncentiveRuns() {
               air must beat the 12px card rhythm inside the list. */}
           <div className="mt-8">
             {viewMode === 'board' ? (
-              <RunBoard run={run} draft={!!draft} onChanged={refresh} />
+              <RunBoard run={run} draft={!!draft} onChanged={refresh}
+                onRecreate={() => setRecreateOpen(true)} />
             ) : (
             <DataGrid
             tableId="kpi-incentive-run-rows"
@@ -497,7 +549,7 @@ export default function IncentiveRuns() {
         </div>
       )}
 
-      <MonthlyPayoutsPanel />
+      <MonthlyPayoutsPanel allRuns={allRuns} />
 
       <NewRunDialog
         open={newOpen}
@@ -547,15 +599,58 @@ export default function IncentiveRuns() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={recreateOpen} onOpenChange={setRecreateOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('kpi_runs.recreate_title', 'Recreate this draft from live loads?')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('kpi_runs.recreate_body',
+              'The current draft — including {{adjusted}} hand-adjusted rows — is discarded and the period is regenerated from today’s loads under the CURRENT rules. Adjustments do not carry over.',
+              {
+                adjusted: run?.rows.filter((r) =>
+                  r.inactive_days > 0 || Number(r.extras) !== 0
+                  || r.override_pct != null).length ?? 0,
+              })}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecreateOpen(false)}>
+              {t('common.cancel', 'Cancel')}
+            </Button>
+            <Button variant="destructive" onClick={() => recreate.mutate()} disabled={recreate.isPending}>
+              {recreate.isPending && <Loader2 size={16} className="animate-spin mr-1.5" />}
+              {t('kpi_runs.recreate_confirm', 'Discard & regenerate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t('kpi_runs.finalize_title', 'Finalize this run?')}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {t('kpi_runs.finalize_body',
-              'A finalized run is the paid record. Rows can no longer be adjusted or overridden, and the run is never re-priced — even if the incentive rules change later.')}
+            {t('kpi_runs.finalize_body2',
+              'Finalizing locks {{rows}} rows across {{dispatchers}} dispatchers — {{total}} — into the {{month}} payout. {{adjusted}} rows carry hand adjustments. Rows can no longer be edited and the run is never re-priced, even if the rules change later.',
+              {
+                rows: run?.rows.length ?? 0,
+                dispatchers: run ? Object.keys(run.payouts).length : 0,
+                total: usd(runTotal),
+                month: run ? new Date(`${run.period_end.slice(0, 10)}T00:00:00Z`)
+                  .toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '',
+                adjusted: run?.rows.filter((r) =>
+                  r.inactive_days > 0 || Number(r.extras) !== 0
+                  || r.override_pct != null).length ?? 0,
+              })}
           </p>
+          {staleCount > 0 && (
+            <p className={`text-xs ${toneClasses('warn')} px-2 py-1 rounded inline-block`}>
+              {t('kpi_runs.finalize_stale_warn',
+                '{{n}} rows are STALE — their loads changed after generation. Consider “Recreate draft” on the board first.',
+                { n: staleCount })}
+            </p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setFinalizeOpen(false)}>
               {t('common.cancel', 'Cancel')}
@@ -588,10 +683,14 @@ function monthOptions(): { value: string; label: string }[] {
   return out;
 }
 
-function MonthlyPayoutsPanel() {
+function MonthlyPayoutsPanel({ allRuns }: { allRuns: RunSummary[] }) {
   const { t } = useTranslation();
   const months = monthOptions();
   const [month, setMonth] = useState(months[0].value);
+  // Drafts whose period ends in the viewed month: the concrete money
+  // that finalizing would add — the honest version of "no data yet".
+  const pendingDrafts = allRuns.filter(
+    (r) => r.status === 'draft' && r.period_end.slice(0, 7) === month);
   const q = useQuery({
     queryKey: ['kpi-monthly-payouts', month],
     queryFn: () => getMonthlyPayouts(month),
@@ -628,6 +727,14 @@ function MonthlyPayoutsPanel() {
         <p className="text-sm text-muted-foreground">
           {t('kpi_runs.monthly_empty',
             'No finalized runs end in this month yet — drafts do not count toward a payout total.')}
+        </p>
+      )}
+      {pendingDrafts.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {pendingDrafts.map((d) => t('kpi_runs.monthly_pending',
+            'Finalizing the draft {{a}} – {{b}} would add {{total}} to this month.',
+            { a: d.period_start, b: d.period_end, total: usd(d.total) }),
+          ).join(' ')}
         </p>
       )}
       {payouts.length > 0 && q.data && (
@@ -709,6 +816,10 @@ function NewRunDialog({ open, onClose, onCreated, existing }: {
         <p className="text-sm text-muted-foreground">
           {t('kpi_runs.new_body',
             'Rows are generated from the period’s loads and computed under the CURRENT rules, which the run keeps as its snapshot.')}
+          {' '}
+          <Link to="/kpi/configuration" className="text-primary underline underline-offset-4 hover:no-underline">
+            {t('kpi_runs.view_rules', 'View current rules')}
+          </Link>
         </p>
         <div className="flex items-center gap-3">
           <label className="text-sm space-y-1">

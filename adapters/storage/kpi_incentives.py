@@ -162,6 +162,7 @@ class KpiIncentivesMixin(_MixinBase):
         "weekly_target", "kpi_gross", "rpm", "adjusted_target", "pct",
         "kpi_dollars", "override_pct", "override_reason", "zero_reason",
         "confirmed_dollars", "confirmed_by", "confirmed_at",
+        "adjusted_by", "adjusted_at",
     )
 
     async def create_kpi_run(
@@ -188,7 +189,7 @@ class KpiIncentivesMixin(_MixinBase):
     _ROW_TEXT_DEFAULTS = (
         "dispatcher_name", "company_code", "vehicle_unit", "window_start",
         "window_end", "inactive_reason", "extras_note", "override_reason",
-        "zero_reason", "confirmed_at",
+        "zero_reason", "confirmed_at", "adjusted_at",
     )
     _ROW_NUM_DEFAULTS = (
         "total_days", "inactive_days", "base_gross", "extras", "miles",

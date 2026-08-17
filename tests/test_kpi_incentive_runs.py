@@ -152,6 +152,9 @@ class TestLifecycle:
             assert t301["pct"] == 0.0
 
             assert run["payouts"] == {"Anna": 170.00, "Boris": 0.00}
+            # The snapshot's policy knobs ride along for the UI's
+            # threshold explanations.
+            assert run["snapshot_config"]["floor_rpm"] == 1.9
 
     async def test_inactive_days_lower_the_bar_and_recompute(self, seeded):
         async with await _client(seeded["app"]) as c:
@@ -170,6 +173,9 @@ class TestLifecycle:
             assert out["adjusted_target"] == 16_000.00
             assert out["pct"] == 1.5
             assert out["confirmed_dollars"] == 255.00
+            # The adjustment is ATTRIBUTED — the audit's governance gap.
+            assert out["adjusted_by"] is not None
+            assert out["adjusted_at"] != ""
 
     async def test_exception_needs_reason_and_respects_the_cap(self, seeded):
         async with await _client(seeded["app"]) as c:

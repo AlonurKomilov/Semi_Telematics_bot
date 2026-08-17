@@ -195,6 +195,13 @@ export interface RunRow {
 export interface RunDetail extends RunSummary {
   rows: RunRow[];
   payouts: Record<string, number>;
+  /** The snapshot's policy knobs — lets the UI explain zeros with the
+   *  thresholds that caused them (tiers stay server-side). */
+  snapshot_config: {
+    floor_weekly_gross: number | null;
+    floor_rpm: number | null;
+    exception_cap_pct: number | null;
+  };
 }
 
 export async function listIncentiveRuns(): Promise<{ runs: RunSummary[] }> {
