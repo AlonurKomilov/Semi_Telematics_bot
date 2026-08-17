@@ -279,6 +279,9 @@ class TestLifecycle:
             assert len(body["rows"][str(row225["id"])]) == 2   # cancelled 226 absent
             assert body["drift"] == []
             assert body["unmatched_loads"] == 0
+            # The retired grades view rides along: per-dispatcher A–D
+            # for THIS period's loads (analytics, never payout math).
+            assert body["dispatcher_grades"].get("Anna") in list("ABCD")
 
             LOADS.append({
                 "status": "delivered", "dispatcher_user_id": 11,

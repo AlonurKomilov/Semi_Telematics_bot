@@ -82,6 +82,21 @@ function Note({ text }: { text: string }) {
   );
 }
 
+const GRADE_TONE: Record<string, 'ok' | 'info' | 'warn' | 'danger'> = {
+  A: 'ok', B: 'info', C: 'warn', D: 'danger',
+};
+
+/** The retired grades page's pill, reborn beside each payout: the
+ *  dispatcher's A–D for THIS period (analytics; never payout math). */
+function GradePill({ value }: { value?: string }) {
+  if (!value) return null;
+  return (
+    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-semibold ${toneClasses(GRADE_TONE[value] ?? 'neutral')}`}>
+      {value}
+    </span>
+  );
+}
+
 // Archive columns — the run LIST as records (period, status, size, money).
 const ARCHIVE_COLUMNS: AnyColumn[] = [
   { key: 'period_start', label: 'Period', sortable: true,
@@ -121,6 +136,7 @@ export default function IncentiveRuns() {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recreateOpen, setRecreateOpen] = useState(false);
   const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
+  const [loadsRow, setLoadsRow] = useState<RunRow | null>(null);
   const [showAllRuns, setShowAllRuns] = useState(false);
   // Sheet = the numeric settlement (DataGrid); Board = the same run laid
   // out per dispatcher × day.  A synced preference — a reading style.
@@ -547,7 +563,8 @@ export default function IncentiveRuns() {
                 shape. */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-sm">
               {Object.entries(run.payouts).map(([name, total]) => (
-                <span key={name} className="inline-flex items-baseline gap-1.5">
+                <span key={name} className="inline-flex items-center gap-1.5">
+                  <GradePill value={runLoadsQ.data?.dispatcher_grades[name]} />
                   <span className="text-muted-foreground">{name}</span>
                   <span className="font-medium tabular-nums">{usd(total)}</span>
                 </span>
@@ -563,7 +580,7 @@ export default function IncentiveRuns() {
                 onRecreate={() => setRecreateOpen(true)} />
             ) : (
             <DataGrid
-            tableId="kpi-incentive-run-rows"
+            tableId="kpi-dispatch-settlement"
             columns={COLUMNS}
             // The manager's board view: one collapsible section per
             // dispatcher, group rows carrying summed gross / miles /
@@ -583,7 +600,14 @@ export default function IncentiveRuns() {
             data={run.rows as unknown as Record<string, unknown>[]}
             searchKey={['dispatcher_name', 'vehicle_unit', 'company_code']}
             searchPlaceholder={t('kpi_runs.search', 'Search unit, dispatcher…')}
-            rowActions={(row) => draft ? [
+            rowActions={(row) => [
+              {
+                key: 'loads',
+                label: t('kpi_runs.view_loads', 'View loads…'),
+                icon: <Table2 size={14} className="text-muted-foreground" />,
+                onSelect: () => setLoadsRow(row as unknown as RunRow),
+              },
+              ...(draft ? [
               {
                 key: 'edit',
                 label: t('kpi_runs.edit_row', 'Days & extras…'),
@@ -596,7 +620,8 @@ export default function IncentiveRuns() {
                 icon: <Scale size={14} className="text-muted-foreground" />,
                 onSelect: () => setExceptRow(row as unknown as RunRow),
               },
-            ] : []}
+              ] : []),
+            ]}
           />
             )}
           </div>
@@ -652,6 +677,42 @@ export default function IncentiveRuns() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {loadsRow && (
+        <Dialog open onOpenChange={(o) => { if (!o) setLoadsRow(null); }}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>
+                {t('kpi_runs.loads_title', 'Unit {{unit}} — {{n}} loads', {
+                  unit: loadsRow.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'),
+                  n: (runLoadsQ.data?.rows[String(loadsRow.id)] ?? []).length,
+                })}
+              </DialogTitle>
+            </DialogHeader>
+            <ul className="divide-y divide-border border-t border-border max-h-96 overflow-y-auto">
+              {(runLoadsQ.data?.rows[String(loadsRow.id)] ?? []).map((l, i) => (
+                <li key={i} className="py-2 text-sm flex items-center justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block truncate">
+                      {l.pickup_location || '—'} → {l.delivery_location || '—'}
+                    </span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {l.pickup_date} – {l.delivery_date}
+                      {l.load_number ? ` · #${l.load_number}` : ''}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-medium tabular-nums">{usd(l.total_rate)}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {Math.round(l.miles).toLocaleString()} mi
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {run && (
         <AdjustmentsDrawer

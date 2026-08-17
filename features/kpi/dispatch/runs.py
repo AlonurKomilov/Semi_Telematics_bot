@@ -36,12 +36,16 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import re
 from datetime import date, datetime, timezone
 
 from features.kpi.dispatch import engine
 from features.loads import service as loads_service
 from infra.platform import get_tenant_db
+
+
+logger = logging.getLogger(__name__)
 
 
 class RunError(Exception):
@@ -517,8 +521,25 @@ async def get_run_loads(account_id: int, run_id: int) -> dict:
                 suggestions[int(row["id"])] = sorted(
                     hits, key=lambda h: h["date"])
 
+    # The retired A–D grades view, folded in where it still earns its
+    # keep: each dispatcher's grade for THIS PERIOD, computed from the
+    # same loads by the same grading engine against the live thresholds
+    # (grades are analytics — they never touch the payout math).
+    dispatcher_grades: dict[str, str] = {}
+    try:
+        from features.kpi.dispatch.grades import compute_dispatcher_kpis
+        from features.kpi.dispatch.thresholds import get_kpi_thresholds
+
+        th = await get_kpi_thresholds(tenant, account_id)
+        for m in compute_dispatcher_kpis(loads, th):
+            dispatcher_grades[m["dispatcher_name"]] = m.get("grade", "")
+    except Exception:
+        logger.exception("run grades failed account=%s run=%s",
+                         account_id, run_id)
+
     return {"rows": out_rows, "drift": drift, "unmatched_loads": unmatched,
-            "suggestions": suggestions}
+            "suggestions": suggestions,
+            "dispatcher_grades": dispatcher_grades}
 
 
 async def finalize_run(account_id: int, run_id: int,

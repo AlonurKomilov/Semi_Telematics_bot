@@ -163,6 +163,8 @@ export interface RunLoadsResponse {
   unmatched_loads: number;
   /** row id → maintenance-suggested inactive days (human confirms). */
   suggestions: Record<string, DaySuggestion[]>;
+  /** dispatcher name → A–D grade for THIS period (analytics only). */
+  dispatcher_grades: Record<string, string>;
 }
 
 export interface RunRow {
