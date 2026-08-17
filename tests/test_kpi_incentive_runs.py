@@ -426,3 +426,74 @@ class TestLifecycle:
                                headers=_h(seeded["owner"]))
             assert r.status_code == 409
             assert "cannot be discarded" in r.json()["detail"]
+
+
+class TestAutoRuns:
+    """Phase 4a: the daily sweep creates the due DRAFT, never a
+    duplicate, never a finalize."""
+
+    def test_completed_period_math(self):
+        from datetime import date
+
+        from features.kpi.dispatch.auto_runs import completed_period
+
+        # Weekly: any day of the week yields the last full Mon–Sun.
+        assert completed_period("weekly", None, date(2026, 8, 12), None) == (
+            "2026-08-03", "2026-08-09")
+        # On a Monday, the week that ended YESTERDAY is due.
+        assert completed_period("weekly", None, date(2026, 8, 10), None) == (
+            "2026-08-03", "2026-08-09")
+        # Monthly: previous calendar month.
+        assert completed_period("monthly", None, date(2026, 8, 3), None) == (
+            "2026-07-01", "2026-07-31")
+        # Custom: anchored to the latest run; still-running -> None;
+        # no anchor -> None (the chain starts manually).
+        assert completed_period("custom", 10, date(2026, 8, 12),
+                                "2026-07-28") == ("2026-07-29", "2026-08-07")
+        assert completed_period("custom", 10, date(2026, 8, 5),
+                                "2026-07-28") is None
+        assert completed_period("custom", 10, date(2026, 8, 12), None) is None
+
+    async def test_sweep_creates_once_and_respects_manual_runs(self, seeded):
+        from datetime import date
+
+        from features.kpi.dispatch import auto_runs
+
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+        acct_id = seeded["acct"].id
+
+        # Cadence is weekly; today = Wed Jul 22 -> due period Jul 13–19
+        # (loads exist inside it).
+        today = date(2026, 7, 22)
+        run_id = await auto_runs.create_due_run(acct_id, today=today)
+        assert run_id is not None
+        db = seeded["db"]
+        run = await db.get_kpi_run(acct_id, run_id)
+        assert (run["period_start"], run["period_end"]) == (
+            "2026-07-13", "2026-07-19")
+        assert run["status"] == "draft"          # NEVER finalized
+        assert run["created_by"] == 0            # the system, visibly
+
+        # Second sweep, same day: the period is covered -> no duplicate.
+        assert await auto_runs.create_due_run(acct_id, today=today) is None
+
+        # A MANUAL run overlapping the next due period blocks the sweep.
+        async with await _client(seeded["app"]) as c:
+            manual = (await c.post(
+                "/api/kpi/dispatch/runs",
+                json={"period_start": "2026-07-18",
+                      "period_end": "2026-07-24"},
+                headers=_h(seeded["owner"]))).json()
+            assert manual["status"] == "draft"
+        assert await auto_runs.create_due_run(
+            acct_id, today=date(2026, 7, 29)) is None
+
+    async def test_sweep_skips_unconfigured_accounts(self, seeded):
+        from datetime import date
+
+        from features.kpi.dispatch import auto_runs
+
+        # No config saved at all -> silently not due.
+        assert await auto_runs.create_due_run(
+            seeded["acct"].id, today=date(2026, 7, 22)) is None

@@ -92,6 +92,7 @@ _JOB_META = {
     # ── Storage & data lifecycle ──
     "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
     "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
+    "kpi_incentive_auto_runs":        ("KPI", "Create the draft incentive run when a configured period completes"),
     "vehicle_departure_sweep":        ("Telematics", "Retire live-state rows for vehicles gone from the provider"),
     "ingest_watchdog":                ("Telematics", "Alert when a declared dataset goes silent or stale"),
     # ── Accounts & system ──
@@ -471,6 +472,16 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_run_retention, "cron",
         hour=2, minute=0, timezone="UTC", args=[app], id="data_retention",
+        max_instances=1, coalesce=True,
+    )
+    # Incentive auto-runs AFTER the day is complete everywhere in the US
+    # (12:00 UTC = 04:00 PT): creates the DRAFT for each account whose
+    # configured period just ended, never finalizes — review stays human.
+    from features.kpi.dispatch.auto_runs import job_create_due_runs
+    scheduler.add_job(
+        job_create_due_runs, "cron",
+        hour=12, minute=0, timezone="UTC", args=[app],
+        id="kpi_incentive_auto_runs",
         max_instances=1, coalesce=True,
     )
     # Departure sweep BEFORE retention (01:40): a badge silent past the
