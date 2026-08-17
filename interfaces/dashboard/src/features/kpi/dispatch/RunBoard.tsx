@@ -24,7 +24,8 @@ import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses } from '../../../lib/status';
 import {
   getIncentiveRunLoads, patchIncentiveRow,
-  type InactiveDate, type RunDetail, type RunLoad, type RunRow,
+  type DaySuggestion, type InactiveDate, type RunDetail, type RunLoad,
+  type RunRow,
 } from '../api';
 
 const REASONS = ['home time', 'repair', 'holiday'];
@@ -188,6 +189,7 @@ export default function RunBoard({ run, draft, onChanged }: {
                       row={row}
                       days={days}
                       loads={loadsQ.data?.rows[String(row.id)] ?? []}
+                      suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
                       scrolled={scrolled}
                       clickable={draft && busyRow !== row.id}
                       onMark={(day, reason) => markDay(row, day, reason)}
@@ -203,10 +205,12 @@ export default function RunBoard({ run, draft, onChanged }: {
   );
 }
 
-function BoardRow({ row, days, loads, scrolled, clickable, onMark }: {
+function BoardRow({ row, days, loads, suggestions, scrolled, clickable, onMark }: {
   row: RunRow;
   days: string[];
   loads: RunLoad[];
+  /** Maintenance-suggested inactive days (human confirms by click). */
+  suggestions: DaySuggestion[];
   /** Any card is horizontally scrolled — draw the frozen-column seam. */
   scrolled: boolean;
   clickable: boolean;
@@ -214,6 +218,7 @@ function BoardRow({ row, days, loads, scrolled, clickable, onMark }: {
 }) {
   const { t } = useTranslation();
   const marks = new Map((row.inactive_dates ?? []).map((m) => [m.date, m.reason]));
+  const suggested = new Map(suggestions.map((sug) => [sug.date, sug]));
   const byDay = new Map<string, RunLoad[]>();
   for (const l of loads) {
     const d = l.pickup_date;
@@ -278,7 +283,18 @@ function BoardRow({ row, days, loads, scrolled, clickable, onMark }: {
                 {reason || t('kpi_board.inactive', 'inactive')}
               </div>
             )}
-            {clickable && inside && dayLoads.length === 0 && reason == null && (
+            {clickable && inside && reason == null && suggested.has(d) && (
+              /* Phase 4b stepping stone: a work order on this truck's
+                 service day SUGGESTS the mark; the manager confirms via
+                 the menu.  Dashed = proposal, filled warn = decided. */
+              <Tip label={`${suggested.get(d)!.source} — ${t('kpi_board.suggest_tip', 'click to confirm as inactive')}`}>
+                <span className={`block rounded border border-dashed px-1.5 py-0.5 text-xs uppercase tracking-wide truncate ${toneClasses('warn')} bg-transparent`}>
+                  {suggested.get(d)!.reason}?
+                </span>
+              </Tip>
+            )}
+            {clickable && inside && dayLoads.length === 0 && reason == null
+              && !suggested.has(d) && (
               /* A persistent dashed WELL, not a 40%-opacity glyph — the
                  hint names day-marking as the surface's main
                  interaction, so its target carries real drawn area. */
@@ -299,6 +315,15 @@ function BoardRow({ row, days, loads, scrolled, clickable, onMark }: {
                 disabled: true,
                 onSelect: () => {},
               },
+              ...(reason == null && suggested.has(d) ? [{
+                key: 'confirm-suggest',
+                label: t('kpi_board.confirm_suggest',
+                  'Confirm {{reason}} — {{source}}',
+                  { reason: suggested.get(d)!.reason,
+                    source: suggested.get(d)!.source }),
+                separatorBefore: true,
+                onSelect: () => onMark(d, suggested.get(d)!.reason),
+              }] : []),
               ...(reason != null ? [{
                 key: 'clear',
                 label: t('kpi_board.clear', 'Active day (clear mark)'),

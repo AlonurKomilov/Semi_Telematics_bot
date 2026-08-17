@@ -237,14 +237,24 @@ class KpiIncentivesMixin(_MixinBase):
         ), tuple(r)))
 
     async def list_kpi_runs(self, account_id: int) -> list[dict]:
+        # total + row_count ride along for the runs ARCHIVE grid — one
+        # aggregate join instead of N per-run row queries.
         cur = await self._db.execute(
-            "SELECT id, period_start, period_end, status, created_at, "
-            "finalized_at FROM kpi_incentive_runs "
-            "WHERE account_id = ? ORDER BY period_start DESC, id DESC",
+            "SELECT r.id, r.period_start, r.period_end, r.status, "
+            "r.created_at, r.finalized_at, "
+            "COALESCE(SUM(w.confirmed_dollars), 0) AS total, "
+            "COUNT(w.id) AS row_count "
+            "FROM kpi_incentive_runs r "
+            "LEFT JOIN kpi_incentive_run_rows w ON w.run_id = r.id "
+            "WHERE r.account_id = ? "
+            "GROUP BY r.id, r.period_start, r.period_end, r.status, "
+            "r.created_at, r.finalized_at "
+            "ORDER BY r.period_start DESC, r.id DESC",
             (account_id,),
         )
         return [dict(zip(("id", "period_start", "period_end", "status",
-                          "created_at", "finalized_at"), tuple(r)))
+                          "created_at", "finalized_at", "total",
+                          "row_count"), tuple(r)))
                 for r in await cur.fetchall()]
 
     async def list_kpi_run_rows(self, account_id: int,

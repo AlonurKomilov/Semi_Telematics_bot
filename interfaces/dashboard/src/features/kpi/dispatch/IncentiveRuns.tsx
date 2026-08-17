@@ -74,6 +74,34 @@ function Note({ text }: { text: string }) {
   );
 }
 
+// Archive columns — the run LIST as records (period, status, size, money).
+const ARCHIVE_COLUMNS: AnyColumn[] = [
+  { key: 'period_start', label: 'Period', sortable: true,
+    render: (_v, r) => (
+      <span className="tabular-nums">{String(r.period_start)} – {String(r.period_end)}</span>
+    ) },
+  { key: 'status', label: 'Status', sortable: true, filterable: true,
+    render: (v) => (
+      <span className={`text-xs px-1.5 py-0.5 rounded ${
+        toneClasses(v === 'finalized' ? 'ok' : 'info')}`}>
+        {String(v)}
+      </span>
+    ) },
+  { key: 'row_count', label: 'Rows', sortable: true,
+    render: (v) => <span className="tabular-nums">{String(v ?? '—')}</span> },
+  { key: 'total', label: 'Total', sortable: true, aggregable: true,
+    aggFormat: (v) => usd(v),
+    render: (v) => <span className="tabular-nums font-medium">{usd(v)}</span> },
+  { key: 'created_at', label: 'Created', sortable: true, aggType: 'date',
+    render: (v) => (
+      <span className="text-xs text-muted-foreground tabular-nums">{String(v || '—').slice(0, 10)}</span>
+    ) },
+  { key: 'finalized_at', label: 'Finalized', sortable: true,
+    render: (v) => (
+      <span className="text-xs text-muted-foreground tabular-nums">{String(v || '—').slice(0, 10)}</span>
+    ) },
+];
+
 export default function IncentiveRuns() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -98,7 +126,7 @@ export default function IncentiveRuns() {
     (a, b) => b.period_start.localeCompare(a.period_start) || b.id - a.id,
   );
   // The selected run's chip stays visible even from the collapsed strip.
-  const visibleRuns = showAllRuns ? allRuns : (() => {
+  const visibleRuns = (() => {
     const head = allRuns.slice(0, RECENT_RUNS);
     const sel = allRuns.find((r) => r.id === selected);
     if (sel && !head.some((r) => r.id === sel.id)) head.push(sel);
@@ -298,13 +326,29 @@ export default function IncentiveRuns() {
             <button
               type="button"
               onClick={() => setShowAllRuns((v) => !v)}
+              aria-expanded={showAllRuns}
               className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:border-ring transition"
             >
               {showAllRuns
-                ? t('kpi_runs.show_recent', 'Show recent')
-                : t('kpi_runs.show_all', 'Show all ({{n}})', { n: allRuns.length })}
+                ? t('kpi_runs.hide_archive', 'Hide archive')
+                : t('kpi_runs.show_archive', 'All runs ({{n}})', { n: allRuns.length })}
             </button>
           )}
+        </div>
+      )}
+
+      {/* ── The runs ARCHIVE — a real table once the strip outgrows
+          itself (52 weekly runs/year).  Click a row to open that run. */}
+      {showAllRuns && allRuns.length > 0 && (
+        <div className="mb-4">
+          <DataGrid
+            tableId="kpi-incentive-runs-archive"
+            columns={ARCHIVE_COLUMNS}
+            data={allRuns as unknown as Record<string, unknown>[]}
+            onRowClick={(r) => setSelected(Number((r as { id: unknown }).id))}
+            searchKey={['period_start', 'period_end']}
+            searchPlaceholder={t('kpi_runs.archive_search', 'Search period…')}
+          />
         </div>
       )}
 

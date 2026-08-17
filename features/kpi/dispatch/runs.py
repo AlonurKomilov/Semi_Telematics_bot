@@ -385,7 +385,8 @@ async def get_run_loads(account_id: int, run_id: int) -> dict:
     run = await tenant.get_kpi_run(account_id, run_id)
     if run is None:
         raise RunError("run not found")
-    rows = await tenant.list_kpi_run_rows(account_id, run_id)
+    rows = [_parse_inactive_dates(r)
+            for r in await tenant.list_kpi_run_rows(account_id, run_id)]
 
     loads = await loads_service.get_loads(
         account_id, since=run["period_start"], until=run["period_end"],
@@ -427,7 +428,49 @@ async def get_run_loads(account_id: int, run_id: int) -> dict:
     # Loads whose group has NO row: added after generation.  Their
     # existence is itself drift the manager should see.
     unmatched = sum(len(v) for v in by_key.values())
-    return {"rows": out_rows, "drift": drift, "unmatched_loads": unmatched}
+
+    # Phase 4b stepping stone: maintenance work orders SUGGEST inactive
+    # days — a truck in the shop on its service date is plausibly not
+    # earning.  Suggestions only: the manager confirms with a click
+    # (owner decision: inactive days stay human-confirmed until the
+    # cross-role dashboard).  Days already marked are not re-suggested.
+    suggestions: dict[int, list[dict]] = {}
+    try:
+        wos = await tenant.list_work_orders(account_id)
+    except Exception:
+        wos = []
+    if wos:
+        for row in rows:
+            marked = {m.get("date") for m in (row.get("inactive_dates") or [])}
+            hits = []
+            for wo in wos:
+                day = str(wo.get("service_date") or "")[:10]
+                if not day or day in marked:
+                    continue
+                if wo.get("vehicle_name") != row.get("vehicle_unit"):
+                    continue
+                # A WO without a company code still matches its unit —
+                # units are reused across companies, so a code, when
+                # present, must agree.
+                if (wo.get("company_code")
+                        and wo["company_code"] != row.get("company_code")):
+                    continue
+                if not (row["window_start"][:10] <= day
+                        <= row["window_end"][:10]):
+                    continue
+                hits.append({
+                    "date": day,
+                    "reason": "repair",
+                    "source": (f"WO #{wo.get('id')}"
+                               + (f" · {wo['vendor_name']}"
+                                  if wo.get("vendor_name") else "")),
+                })
+            if hits:
+                suggestions[int(row["id"])] = sorted(
+                    hits, key=lambda h: h["date"])
+
+    return {"rows": out_rows, "drift": drift, "unmatched_loads": unmatched,
+            "suggestions": suggestions}
 
 
 async def finalize_run(account_id: int, run_id: int,

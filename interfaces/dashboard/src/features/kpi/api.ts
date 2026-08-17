@@ -125,6 +125,9 @@ export interface RunSummary {
   status: 'draft' | 'finalized';
   created_at: string;
   finalized_at: string;
+  /** Aggregates for the runs archive (one aggregate join server-side). */
+  total: number;
+  row_count: number;
 }
 
 export interface InactiveDate {
@@ -143,12 +146,21 @@ export interface RunLoad {
   miles: number;
 }
 
+export interface DaySuggestion {
+  date: string;
+  reason: string;
+  /** Where the suggestion came from, e.g. "WO #123 · Vendor". */
+  source: string;
+}
+
 export interface RunLoadsResponse {
   /** row id → its constituent loads (live data, may drift). */
   rows: Record<string, RunLoad[]>;
   /** row ids whose live loads no longer sum to the row's snapshot. */
   drift: number[];
   unmatched_loads: number;
+  /** row id → maintenance-suggested inactive days (human confirms). */
+  suggestions: Record<string, DaySuggestion[]>;
 }
 
 export interface RunRow {

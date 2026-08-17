@@ -497,3 +497,49 @@ class TestAutoRuns:
         # No config saved at all -> silently not due.
         assert await auto_runs.create_due_run(
             seeded["acct"].id, today=date(2026, 7, 22)) is None
+
+
+class TestDaySuggestions:
+    """Phase 4b stepping stone: a work order's service day SUGGESTS an
+    inactive mark; the human confirms — suggestions never write."""
+
+    async def test_wo_service_day_suggests_and_marked_days_do_not(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            row = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            db = seeded["db"]
+            # In-window shop day for 225 + one OUTSIDE the window + one
+            # for a different unit — only the first may surface.
+            await db.add_work_order(
+                seeded["acct"].id, "OSY", "225", "Big Shop",
+                service_date="2026-07-10")
+            await db.add_work_order(
+                seeded["acct"].id, "OSY", "225", "Late Shop",
+                service_date="2026-09-01")
+            await db.add_work_order(
+                seeded["acct"].id, "OSY", "999", "Other Truck Shop",
+                service_date="2026-07-10")
+
+            r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}/loads",
+                            headers=_h(seeded["owner"]))
+            sugg = r.json()["suggestions"]
+            assert [s["date"] for s in sugg[str(row["id"])]] == ["2026-07-10"]
+            assert sugg[str(row["id"])][0]["reason"] == "repair"
+            assert "Big Shop" in sugg[str(row["id"])][0]["source"]
+            # Nothing was WRITTEN — the row still has zero inactive days.
+            detail = (await c.get(f"/api/kpi/dispatch/runs/{run['id']}",
+                                  headers=_h(seeded["owner"]))).json()
+            fresh = next(x for x in detail["rows"] if x["id"] == row["id"])
+            assert fresh["inactive_days"] == 0
+
+            # Confirm the day -> it stops being suggested.
+            await c.patch(
+                f"/api/kpi/dispatch/runs/{run['id']}/rows/{row['id']}",
+                json={"inactive_dates": [
+                    {"date": "2026-07-10", "reason": "repair"}]},
+                headers=_h(seeded["owner"]))
+            r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}/loads",
+                            headers=_h(seeded["owner"]))
+            assert str(row["id"]) not in r.json()["suggestions"]
