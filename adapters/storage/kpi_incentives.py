@@ -225,7 +225,7 @@ class KpiIncentivesMixin(_MixinBase):
     async def get_kpi_run(self, account_id: int, run_id: int):
         cur = await self._db.execute(
             "SELECT id, period_start, period_end, status, config_snapshot, "
-            "created_by, created_at, finalized_by, finalized_at "
+            "created_by, created_at, finalized_by, finalized_at, note "
             "FROM kpi_incentive_runs WHERE account_id = ? AND id = ?",
             (account_id, run_id),
         )
@@ -235,7 +235,17 @@ class KpiIncentivesMixin(_MixinBase):
         return dict(zip((
             "id", "period_start", "period_end", "status", "config_snapshot",
             "created_by", "created_at", "finalized_by", "finalized_at",
+            "note",
         ), tuple(r)))
+
+    async def set_kpi_run_note(self, account_id: int, run_id: int,
+                               note: str) -> None:
+        await self._db.execute(
+            "UPDATE kpi_incentive_runs SET note = ? "
+            "WHERE account_id = ? AND id = ?",
+            (note, account_id, run_id),
+        )
+        await self._db.commit()
 
     async def list_kpi_runs(self, account_id: int) -> list[dict]:
         # total + row_count ride along for the runs ARCHIVE grid — one

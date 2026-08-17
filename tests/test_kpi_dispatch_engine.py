@@ -207,3 +207,58 @@ class TestOtherModels:
         ]
         assert resolve_pct(cfg, tiers, weekly_eq=9_000, rpm=2.3,
                            target_met=True) == expected
+
+
+from features.kpi.dispatch import engine  # noqa: E402
+
+
+class TestNextTierGap:
+    """The shortfall explanation: smallest ADDITIONAL gross that lifts a
+    ladder row to a higher percent — the number a 0% row argues with."""
+
+    LADDER = [
+        {"min_rpm": 2.0, "pct": 1.0},
+        {"requires_target": True, "min_rpm": 2.0, "pct": 1.0},
+        {"requires_target": True, "min_rpm": 2.2, "pct": 1.5},
+        {"requires_target": True, "min_rpm": 2.5, "pct": 2.0},
+    ]
+
+    def test_the_50_dollar_gap(self):
+        # $7,950 at RPM 2.81 vs an $8,000 7-day target: $50 to 1.5%.
+        g = engine.next_tier_gap(
+            {"model": "ladder"}, self.LADDER,
+            base_gross=7_950, extras=0, miles=2_826.39,
+            weekly_target=8_000, active_days=7, current_pct=1.0)
+        assert g == {"pct": 1.5, "gap": 50.0, "dollars_at": 120.0}
+
+    def test_rpm_condition_converts_to_gross(self):
+        # Target met but RPM 2.1 < 2.2: the binding condition is
+        # min_rpm x miles, not the target.
+        g = engine.next_tier_gap(
+            {"model": "ladder"}, self.LADDER,
+            base_gross=8_400, extras=0, miles=4_000,
+            weekly_target=8_000, active_days=7, current_pct=1.0)
+        assert g["pct"] == 1.5
+        assert g["gap"] == 2.2 * 4_000 - 8_400  # 400.0
+
+    def test_topped_out_and_non_ladder_return_none(self):
+        assert engine.next_tier_gap(
+            {"model": "ladder"}, self.LADDER,
+            base_gross=20_000, extras=0, miles=5_000,
+            weekly_target=8_000, active_days=7, current_pct=2.0) is None
+        assert engine.next_tier_gap(
+            {"model": "hybrid"}, self.LADDER,
+            base_gross=5_000, extras=0, miles=2_000,
+            weekly_target=8_000, active_days=7, current_pct=0.0) is None
+
+    def test_no_target_and_zero_miles_are_not_gaps(self):
+        assert engine.next_tier_gap(
+            {"model": "ladder"}, self.LADDER,
+            base_gross=5_000, extras=0, miles=2_000,
+            weekly_target=None, active_days=7, current_pct=0.0) is None
+        # zero miles: RPM tiers unreachable; target-only rows absent here.
+        g = engine.next_tier_gap(
+            {"model": "ladder"}, self.LADDER,
+            base_gross=200, extras=0, miles=0,
+            weekly_target=8_000, active_days=3, current_pct=0.0)
+        assert g is None

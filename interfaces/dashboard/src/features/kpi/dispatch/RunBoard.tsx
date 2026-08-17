@@ -293,6 +293,25 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             </span>
           </Tip>
         )}
+        {row.next_tier && (
+          /* Endowed progress: the row is already most of the way to the
+             next tier — a shortfall stated in dollars converts a dead
+             number into a target. */
+          <div className="mt-1 space-y-0.5">
+            <div className="text-xs text-muted-foreground">
+              {t('kpi_board.next_tier',
+                '{{gap}} short of the {{pct}}% tier ({{at}})',
+                { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
+                  pct: row.next_tier.pct,
+                  at: `$${row.next_tier.dollars_at.toFixed(2)}` })}
+            </div>
+            <div className="h-1 w-40 max-w-full rounded bg-muted overflow-hidden">
+              <div className="h-full rounded bg-primary/60"
+                style={{ width: `${Math.min(100, Math.round(
+                  (row.kpi_gross / (row.kpi_gross + row.next_tier.gap)) * 100))}%` }} />
+            </div>
+          </div>
+        )}
         {stale && (
           <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
             <span className={`mt-1 ml-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>

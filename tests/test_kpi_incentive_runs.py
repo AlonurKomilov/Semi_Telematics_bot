@@ -549,3 +549,62 @@ class TestDaySuggestions:
             r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}/loads",
                             headers=_h(seeded["owner"]))
             assert str(row["id"]) not in r.json()["suggestions"]
+
+
+class TestNotePreviewAndGaps:
+    async def test_note_round_trips_and_survives_finalize(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            r = await c.patch(f"/api/kpi/dispatch/runs/{run['id']}/note",
+                              json={"note": "226 in shop Thu-Fri"},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            await c.post(f"/api/kpi/dispatch/runs/{run['id']}/finalize",
+                         headers=_h(seeded["owner"]))
+            # A note is NOT money: still writable on the paid record.
+            r = await c.patch(f"/api/kpi/dispatch/runs/{run['id']}/note",
+                              json={"note": "confirmed vs Excel"},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            detail = (await c.get(f"/api/kpi/dispatch/runs/{run['id']}",
+                                  headers=_h(seeded["owner"]))).json()
+            assert detail["note"] == "confirmed vs Excel"
+
+    async def test_preview_counts_without_creating(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            r = await c.get(
+                "/api/kpi/dispatch/runs/preview"
+                f"?period_start={PERIOD['period_start']}"
+                f"&period_end={PERIOD['period_end']}",
+                headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            body = r.json()
+            # 4 loads, 1 cancelled -> 3; trucks 225+301; NO run created,
+            # and no config required for a preview.
+            assert body == {"loads": 3, "trucks": 2, "dispatchers": 2,
+                            "gross": 24_000.0}
+            r = await c.get("/api/kpi/dispatch/runs",
+                            headers=_h(seeded["owner"]))
+            assert r.json()["runs"] == []
+
+    async def test_draft_rows_carry_their_next_tier_gap(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            t225 = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            # 17,000 at 18 days vs 8000/wk: target 20,571.43 -> gap to
+            # the requires_target 1.5% tier.
+            assert t225["next_tier"]["pct"] == 1.5
+            assert t225["next_tier"]["gap"] == 3_571.43
+            # user_names map resolves attribution ids.
+            assert isinstance(run["user_names"], dict)
+
+            await c.post(f"/api/kpi/dispatch/runs/{run['id']}/finalize",
+                         headers=_h(seeded["owner"]))
+            fin = (await c.get(f"/api/kpi/dispatch/runs/{run['id']}",
+                               headers=_h(seeded["owner"]))).json()
+            # A finalized row has no next move — no gap is offered.
+            assert "next_tier" not in fin["rows"][0]

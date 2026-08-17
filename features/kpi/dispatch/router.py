@@ -102,6 +102,18 @@ async def list_runs(user: dict = Depends(_incentives)):
     return {"runs": await tenant.list_kpi_runs(int(user["account_id"]))}
 
 
+# LITERAL routes before the parametric one — /runs/preview registered
+# after /runs/{run_id} would be swallowed as run_id="preview" (the
+# mount-order rule).
+@router.get("/dispatch/runs/preview")
+async def preview(period_start: str, period_end: str,
+                  user: dict = Depends(_incentives)):
+    """Scope before commit: what a run for this period would contain."""
+    return await runs_service.preview_run(
+        int(user["account_id"]),
+        period_start=period_start, period_end=period_end)
+
+
 @router.get("/dispatch/runs/{run_id}")
 async def run_detail(run_id: int, user: dict = Depends(_incentives)):
     try:
@@ -109,6 +121,22 @@ async def run_detail(run_id: int, user: dict = Depends(_incentives)):
             int(user["account_id"]), run_id)
     except runs_service.RunError as e:
         _run_error(e)
+
+
+class RunNote(BaseModel):
+    note: str = Field("", max_length=300)
+
+
+@router.patch("/dispatch/runs/{run_id}/note")
+async def set_note(run_id: int, body: RunNote,
+                   user: dict = Depends(_incentives)):
+    """Annotate a run — allowed on any status (a note is not money)."""
+    try:
+        await runs_service.set_run_note(
+            int(user["account_id"]), run_id, body.note)
+    except runs_service.RunError as e:
+        _run_error(e)
+    return {"ok": True}
 
 
 @router.get("/dispatch/runs/{run_id}/export.csv")

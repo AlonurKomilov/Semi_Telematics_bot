@@ -21,8 +21,8 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowRight, BadgeDollarSign, CalendarRange, Download, Loader2, Lock,
-  Pencil, Plus, Scale, Table2, Trash2,
+  ArrowRight, BadgeDollarSign, CalendarRange, Check, Download, ListChecks,
+  Loader2, Lock, Pencil, Plus, Scale, StickyNote, Table2, Trash2, Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DataGrid from '../../../components/datagrid';
@@ -31,6 +31,9 @@ import { Button } from '../../../components/ui/button';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '../../../components/ui/dialog';
+import {
+  Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle,
+} from '../../../components/ui/sheet';
 import { Input } from '../../../components/ui/input';
 import { Tip } from '../../../components/tooltip';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -44,7 +47,7 @@ import {
   createIncentiveRun, deleteIncentiveRun, downloadIncentiveRunCsv,
   finalizeIncentiveRun, getIncentiveRun, getIncentiveRunLoads,
   getMonthlyPayouts, listIncentiveRuns, patchIncentiveRow,
-  setIncentiveException,
+  previewIncentiveRun, setIncentiveException, setIncentiveRunNote,
   type RunDetail, type RunRow, type RunSummary,
 } from '../api';
 
@@ -113,6 +116,7 @@ export default function IncentiveRuns() {
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recreateOpen, setRecreateOpen] = useState(false);
+  const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
   const [showAllRuns, setShowAllRuns] = useState(false);
   // Sheet = the numeric settlement (DataGrid); Board = the same run laid
   // out per dispatcher × day.  A synced preference — a reading style.
@@ -160,6 +164,10 @@ export default function IncentiveRuns() {
   const markedDays = run ? run.rows.reduce((a, r) => a + r.inactive_days, 0) : 0;
   const runTotal = run ? run.rows.reduce((a, r) => a + r.confirmed_dollars, 0) : 0;
   const runGross = run ? run.rows.reduce((a, r) => a + r.kpi_gross, 0) : 0;
+  const adjustedRows = run
+    ? run.rows.filter((r) => r.inactive_days > 0 || Number(r.extras) !== 0
+        || r.override_pct != null)
+    : [];
   // The board's loads query, shared by key — the parent reads drift to
   // annotate Finalize while the run is stale.
   const runLoadsQ = useQuery({
@@ -476,6 +484,32 @@ export default function IncentiveRuns() {
               </div>
             </div>
 
+            {/* The run's LIFECYCLE, with the finished steps already
+                ticked — a flat "draft" label showed no path. */}
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+              {[
+                { label: t('kpi_runs.step_generated', 'Generated'), done: true },
+                { label: t('kpi_runs.step_review', 'Review & adjust'),
+                  done: !draft || adjustedRows.length > 0, current: !!draft },
+                { label: t('kpi_runs.step_finalize', 'Finalized'), done: !draft },
+                { label: t('kpi_runs.step_paid', 'In {{m}} payout', {
+                    m: new Date(`${run.period_end.slice(0, 10)}T00:00:00Z`)
+                      .toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' }) }),
+                  done: !draft },
+              ].map((st, i, arr) => (
+                <span key={i} className="inline-flex items-center gap-1.5">
+                  <span className={`inline-flex items-center gap-1 ${
+                    st.done ? 'text-foreground'
+                      : st.current ? 'text-foreground font-medium'
+                        : 'text-muted-foreground'}`}>
+                    {st.done && <Check size={12} className="text-muted-foreground" />}
+                    {st.label}
+                  </span>
+                  {i < arr.length - 1 && <span className="text-muted-foreground/50">›</span>}
+                </span>
+              ))}
+            </div>
+
             {/* Run meta — kept in BOTH modes (the sheet used to lose it). */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>{t('kpi_board.n_dispatchers', '{{n}} dispatchers', { n: Object.keys(run.payouts).length })}</span>
@@ -486,7 +520,16 @@ export default function IncentiveRuns() {
                 </span>
               )}
               <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
+              {adjustedRows.length > 0 && (
+                <button type="button" onClick={() => setAdjustmentsOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-foreground hover:border-ring transition">
+                  <ListChecks size={12} />
+                  {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
+                </button>
+              )}
             </div>
+
+            <RunNoteLine run={run} onSaved={refresh} />
 
             {/* Per-dispatcher payouts — read-only DATA on one flat
                 tinted strip, so nothing here borrows a control's pill
@@ -599,6 +642,16 @@ export default function IncentiveRuns() {
         </DialogContent>
       </Dialog>
 
+      {run && (
+        <AdjustmentsDrawer
+          open={adjustmentsOpen}
+          run={run}
+          draft={!!draft}
+          onClose={() => setAdjustmentsOpen(false)}
+          onChanged={refresh}
+        />
+      )}
+
       <Dialog open={recreateOpen} onOpenChange={setRecreateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -663,6 +716,139 @@ export default function IncentiveRuns() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ── Run note — one line, the owner's own record ("226 in shop Thu–Fri").
+function RunNoteLine({ run, onSaved }: { run: RunDetail; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(run.note ?? '');
+  const save = async () => {
+    try {
+      await setIncentiveRunNote(run.id, text);
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save note');
+    }
+  };
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <Input value={text} autoFocus className="h-7 max-w-md text-sm"
+          placeholder={t('kpi_runs.note_ph', 'Week of 8/3 — 226 in shop Thu–Fri…')}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void save(); if (e.key === 'Escape') setEditing(false); }} />
+        <Button size="sm" variant="outline" onClick={save}>{t('common.save', 'Save')}</Button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={() => { setText(run.note ?? ''); setEditing(true); }}
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition">
+      <StickyNote size={12} />
+      {run.note
+        ? <span className="italic">{run.note}</span>
+        : t('kpi_runs.note_add', 'Add a note…')}
+    </button>
+  );
+}
+
+// ── Adjustments drawer — every hand-touched row, WHO and WHEN (the
+// attribution migration 198 stores), with one-click revert on drafts.
+function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
+  open: boolean; run: RunDetail; draft: boolean;
+  onClose: () => void; onChanged: () => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState<number | null>(null);
+  const rows = run.rows.filter((r) => r.inactive_days > 0
+    || Number(r.extras) !== 0 || r.override_pct != null);
+  const who = (id: number | null) =>
+    id == null ? t('kpi_runs.adj_unknown', '—') : (run.user_names[String(id)] ?? `user ${id}`);
+  const when = (iso: string) => iso ? iso.slice(0, 16).replace('T', ' ') : '';
+
+  const revert = async (r: RunRow) => {
+    setBusy(r.id);
+    try {
+      if (r.override_pct != null) await setIncentiveException(run.id, r.id, null, '');
+      await patchIncentiveRow(run.id, r.id, {
+        inactive_days: 0, inactive_reason: '', inactive_dates: [],
+        extras: 0, extras_note: '',
+      });
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not revert');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>{t('kpi_runs.adj_title', 'Adjustments — {{a}} – {{b}}',
+            { a: run.period_start, b: run.period_end })}</SheetTitle>
+        </SheetHeader>
+        <SheetBody label={t('kpi_runs.adj_title_short', 'Run adjustments')} className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground max-w-prose">
+            {t('kpi_runs.adj_desc',
+              'Every hand adjustment on this run, with who made it. Reverting returns a row to its computed values.')}
+          </p>
+          {rows.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              {t('kpi_runs.adj_empty', 'No adjustments — every row pays exactly what the engine computed.')}
+            </p>
+          )}
+          <ul className="divide-y divide-border border-t border-border">
+            {rows.map((r) => (
+              <li key={r.id} className="py-2.5 space-y-1 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{r.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned')}
+                    <span className="ml-1.5 text-xs text-muted-foreground">{r.company_code} · {r.dispatcher_name}</span>
+                  </span>
+                  {draft && (
+                    <Button size="sm" variant="ghost" disabled={busy === r.id}
+                      onClick={() => revert(r)}>
+                      {busy === r.id
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <Undo2 size={14} className="mr-1" />}
+                      {t('kpi_runs.adj_revert', 'Revert')}
+                    </Button>
+                  )}
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5">
+                  {r.inactive_days > 0 && (
+                    <li>
+                      {t('kpi_runs.adj_days', '{{n}} inactive days', { n: r.inactive_days })}
+                      {r.inactive_dates.length > 0 && (
+                        <> — {r.inactive_dates.map((m) => `${m.date.slice(5)}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}</>
+                      )}
+                      {r.inactive_reason && r.inactive_dates.length === 0 && <> — {r.inactive_reason}</>}
+                    </li>
+                  )}
+                  {Number(r.extras) !== 0 && (
+                    <li>{t('kpi_runs.adj_extras', 'Extras {{v}}', { v: usd(r.extras) })}{r.extras_note ? ` — ${r.extras_note}` : ''}</li>
+                  )}
+                  {r.override_pct != null && (
+                    <li>{t('kpi_runs.adj_override', 'Exception {{p}}% — {{reason}} (by {{who}})',
+                      { p: r.override_pct, reason: r.override_reason, who: who(r.confirmed_by) })}</li>
+                  )}
+                  {(r.adjusted_by != null || r.adjusted_at) && (
+                    <li className="text-muted-foreground/70">
+                      {t('kpi_runs.adj_by', 'last input edit: {{who}} · {{when}}',
+                        { who: who(r.adjusted_by), when: when(r.adjusted_at) })}
+                    </li>
+                  )}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -794,6 +980,11 @@ function NewRunDialog({ open, onClose, onCreated, existing }: {
   const overlap = !badOrder && from && to
     ? existing.find((r) => from <= r.period_end && to >= r.period_start)
     : undefined;
+  const previewQ = useQuery({
+    queryKey: ['kpi-run-preview', from, to],
+    queryFn: () => previewIncentiveRun(from, to),
+    enabled: open && !!from && !!to && !badOrder,
+  });
 
   const create = async () => {
     setBusy(true);
@@ -831,6 +1022,17 @@ function NewRunDialog({ open, onClose, onCreated, existing }: {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
         </div>
+        {previewQ.data && (
+          /* Scope BEFORE commit: a mis-typed range shows up as a wrong
+             truck count here, not as a generated wrong run. */
+          <p className="text-xs text-muted-foreground">
+            {t('kpi_runs.preview_line',
+              'This period holds {{loads}} loads · {{trucks}} trucks · {{dispatchers}} dispatchers · {{gross}} gross.',
+              { loads: previewQ.data.loads, trucks: previewQ.data.trucks,
+                dispatchers: previewQ.data.dispatchers,
+                gross: usd(previewQ.data.gross) })}
+          </p>
+        )}
         {/* A disabled Create must say WHY; an overlapping period must
             say so BEFORE the duplicate exists. */}
         {badOrder && (

@@ -125,6 +125,8 @@ export interface RunSummary {
   status: 'draft' | 'finalized';
   created_at: string;
   finalized_at: string;
+  /** Owner's one-line annotation; writable on any status (not money). */
+  note?: string;
   /** Aggregates for the runs archive (one aggregate join server-side). */
   total: number;
   row_count: number;
@@ -190,11 +192,21 @@ export interface RunRow {
   override_reason: string;
   zero_reason: '' | 'no_target' | 'floor' | 'no_tier' | 'no_active_days';
   confirmed_dollars: number;
+  /** Who last edited this row's inputs, and when (draft governance). */
+  adjusted_by: number | null;
+  adjusted_at: string;
+  confirmed_by: number | null;
+  confirmed_at: string;
+  /** DRAFT only, ladder only: the nearest higher tier and the extra
+   *  gross that reaches it — "$1,050 short of the 1.5% tier". */
+  next_tier?: { pct: number; gap: number; dollars_at: number } | null;
 }
 
 export interface RunDetail extends RunSummary {
   rows: RunRow[];
   payouts: Record<string, number>;
+  /** user id → display name, for the attribution fields. */
+  user_names: Record<string, string>;
   /** The snapshot's policy knobs — lets the UI explain zeros with the
    *  thresholds that caused them (tiers stay server-side). */
   snapshot_config: {
@@ -274,6 +286,26 @@ export interface MyPayoutRun {
 
 export async function getMyPayouts(): Promise<{ runs: MyPayoutRun[] }> {
   return apiJSON<{ runs: MyPayoutRun[] }>('/kpi/dispatch/me');
+}
+
+export async function setIncentiveRunNote(runId: number, note: string): Promise<void> {
+  await apiJSON(`/kpi/dispatch/runs/${runId}/note`, {
+    method: 'PATCH', body: { note },
+  });
+}
+
+export interface RunPreview {
+  loads: number;
+  trucks: number;
+  dispatchers: number;
+  gross: number;
+}
+
+export async function previewIncentiveRun(
+  period_start: string, period_end: string,
+): Promise<RunPreview> {
+  return apiJSON<RunPreview>(
+    `/kpi/dispatch/runs/preview?period_start=${period_start}&period_end=${period_end}`);
 }
 
 export async function setIncentiveException(

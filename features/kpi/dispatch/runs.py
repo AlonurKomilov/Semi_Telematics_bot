@@ -359,6 +359,34 @@ async def get_run_detail(account_id: int, run_id: int) -> dict:
         key = r["dispatcher_name"]
         payouts[key] = engine.money(
             payouts.get(key, 0.0) + float(r["confirmed_dollars"]))
+
+    # DRAFT rows carry their next-tier gap — "how far to the next
+    # percent", ephemeral (recomputed per read, never stored): a
+    # finalized row has no next move, so it carries none.
+    if run["status"] == "draft":
+        try:
+            snap = json.loads(run.get("config_snapshot") or "{}")
+            for r in rows:
+                active = max(0, int(r["total_days"]) - int(r["inactive_days"]))
+                r["next_tier"] = engine.next_tier_gap(
+                    snap.get("config", {}), snap.get("tiers", []),
+                    base_gross=float(r["base_gross"]),
+                    extras=float(r["extras"]),
+                    miles=float(r["miles"]),
+                    weekly_target=r.get("weekly_target"),
+                    active_days=active,
+                    current_pct=float(r["pct"]),
+                )
+        except ValueError:
+            pass
+    # Names for the attribution fields (adjusted_by / confirmed_by /
+    # created_by) — ids alone explain nothing in a drawer.
+    user_names: dict[str, str] = {}
+    try:
+        for u in await tenant.list_account_users(account_id):
+            user_names[str(u.id)] = (u.display_name or "").strip() or f"user {u.id}"
+    except Exception:
+        pass
     # The UI explains zeros with the thresholds that CAUSED them, so the
     # snapshot's policy knobs ride along (floors + cap — never the whole
     # snapshot; tiers stay server-side).
@@ -370,6 +398,7 @@ async def get_run_detail(account_id: int, run_id: int) -> dict:
     run.pop("config_snapshot", None)
     return {
         **run, "rows": rows, "payouts": payouts,
+        "user_names": user_names,
         "snapshot_config": {
             "floor_weekly_gross": snap_cfg.get("floor_weekly_gross"),
             "floor_rpm": snap_cfg.get("floor_rpm"),
@@ -607,6 +636,43 @@ async def my_payouts(account_id: int, user_id: int,
                     [float(r["confirmed_dollars"]) for r in rows]),
             })
     return {"runs": out}
+
+
+async def set_run_note(account_id: int, run_id: int, note: str) -> None:
+    """The owner's one-line annotation ("226 in shop Thu-Fri").  A note
+    is NOT money, so unlike every other write it is allowed on a
+    FINALIZED run — annotating the paid record is how it stays
+    explainable a month later."""
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise RunError("tenant DB unavailable")
+    if await tenant.get_kpi_run(account_id, run_id) is None:
+        raise RunError("run not found")
+    await tenant.set_kpi_run_note(account_id, run_id, note.strip()[:300])
+
+
+async def preview_run(account_id: int, *, period_start: str,
+                      period_end: str) -> dict:
+    """What a run for this period WOULD contain — scope before commit
+    (trucks, dispatchers, gross, loads).  Read-only: nothing is created,
+    no config needed (the preview is about the LOADS)."""
+    loads = await loads_service.get_loads(
+        account_id, since=period_start, until=period_end, limit=None,
+    )
+    keys = set()
+    dispatchers = set()
+    gross = 0.0
+    count = 0
+    for l in loads:
+        if l.get("status") == "canceled":
+            continue
+        count += 1
+        keys.add(_group_key(l))
+        dispatchers.add(
+            l.get("dispatcher_user_id") or f"name:{l.get('dispatcher_name')}")
+        gross += float(l.get("total_rate") or 0)
+    return {"loads": count, "trucks": len(keys),
+            "dispatchers": len(dispatchers), "gross": engine.money(gross)}
 
 
 async def discard_run(account_id: int, run_id: int) -> None:

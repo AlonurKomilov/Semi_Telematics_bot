@@ -158,6 +158,64 @@ def resolve_pct(
     return best_rpm + best_gross
 
 
+def next_tier_gap(
+    config: dict, tiers: list[dict], *,
+    base_gross: float, extras: float, miles: float,
+    weekly_target: Optional[float], active_days: int, current_pct: float,
+) -> Optional[dict]:
+    """The smallest ADDITIONAL kpi gross that lifts a LADDER row to a
+    higher percent, holding miles and days fixed — the number that turns
+    "no tier met" into a target ("$1,050 short of the 1.5% tier").
+
+    LADDER ONLY: hybrid ranges have gross CEILINGS (more gross can leave
+    a tier) and fixed's two ladders combine by rule, so a single
+    add-this-much number would lie there — those models return None and
+    the UI shows nothing rather than a wrong target.
+
+    The RPM condition converts to gross via ``min_rpm × miles`` (RPM
+    rises with gross on fixed miles).  Tier admission compares the
+    ROUNDED rpm, so this is conservative by at most half a cent-per-
+    mile — a gap that slightly overshoots never under-promises.
+    Returns {pct, gap, dollars_at} for the NEAREST higher tier by gap,
+    or None (non-ladder, no higher tier, unreachable, or no days).
+    """
+    if config.get("model", "ladder") != "ladder" or active_days <= 0:
+        return None
+    if weekly_target is None:
+        return None                    # no bar -> config problem, not a gap
+    kpi_gross = float(base_gross) + float(extras)
+    adj_target = adjusted_target(float(weekly_target), active_days)
+    best: Optional[tuple] = None
+    for t in tiers:
+        pct = float(t["pct"])
+        if pct <= current_pct:
+            continue
+        required = 0.0
+        if t.get("requires_target"):
+            required = max(required, adj_target)
+        mg = t.get("min_weekly_gross")
+        if mg is not None:
+            required = max(required, float(mg) * active_days / 7)
+        mr = t.get("min_rpm")
+        if mr is not None:
+            if miles <= 0:
+                continue               # RPM unreachable with zero miles
+            required = max(required, float(mr) * float(miles) + float(extras))
+        gap = required - kpi_gross
+        if gap <= 0:
+            continue                   # already satisfied -> not a target
+        if best is None or gap < best[0]:
+            best = (gap, pct, required)
+    if best is None:
+        return None
+    gap, pct, required = best
+    return {
+        "pct": pct,
+        "gap": money(gap),
+        "dollars_at": money(required * pct / 100),
+    }
+
+
 def compute_truck_row(
     config: dict, tiers: list[dict], *,
     base_gross: float, extras: float, miles: float,

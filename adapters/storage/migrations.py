@@ -9041,3 +9041,20 @@ async def migrate_kpi_run_row_adjustment_attribution(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 198: kpi run-row adjustment attribution")
+
+
+@_register("199_kpi_run_note")
+async def migrate_kpi_run_note(conn) -> None:
+    """A one-line owner annotation on a run ("226 in shop Thu-Fri").
+
+    Notes are NOT money: they stay writable after finalize — annotating
+    the paid record is how it stays explainable a month later — so the
+    column lives on the run row rather than inside the immutable
+    settlement fields.
+    """
+    await conn.execute(
+        "ALTER TABLE kpi_incentive_runs "
+        "ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.commit()
+    logger.info("Migration 199: kpi run note")
