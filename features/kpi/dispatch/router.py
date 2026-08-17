@@ -33,11 +33,12 @@ async def dispatcher_kpis(
     )
 
 
-# ── Incentive runs (COMPENSATION — its own permission) ───────────────
+# ── Incentive runs ───────────────────────────────────────────────────
 #
-# Deliberately NOT can_kpi: grades are shared analytics, payout amounts
-# are money.  can_kpi_incentives is seeded owner/admin and delegatable
-# via the matrix; the config that FEEDS these runs stays on
+# Gated by can_kpi — the owner's 2026-08-17 decision folded the
+# separate can_kpi_incentives flag away: the incentives surface IS the
+# Dispatch KPI page, so one flag carries it (granting can_kpi grants
+# payout visibility).  The config that FEEDS these runs stays on
 # can_manage_config_all at /kpi/config/incentives.
 
 from pydantic import BaseModel, Field  # noqa: E402
@@ -45,7 +46,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 from features.kpi.dispatch import runs as runs_service  # noqa: E402
 from interfaces.api.deps import resolve_user_id  # noqa: E402
 
-_incentives = require_permission("can_kpi_incentives")
+_incentives = require_permission("can_kpi")
 
 
 class RunCreate(BaseModel):
@@ -169,9 +170,9 @@ async def payouts_for_month(month: str, user: dict = Depends(_incentives)):
 @router.get("/dispatch/me")
 async def my_payouts(user: dict = Depends(get_current_user)):
     """A dispatcher's OWN finalized payouts — self-scoped by design:
-    plain auth, no can_kpi_incentives (that flag is for people who SET
-    payouts; this endpoint only ever shows the caller their own rows,
-    matched by their user id)."""
+    plain auth, no can_kpi (that flag is for the people who RUN the
+    settlement; this endpoint only ever shows the caller their own
+    rows, matched by their user id)."""
     uid = await resolve_user_id(user)
     return await runs_service.my_payouts(int(user["account_id"]), uid)
 

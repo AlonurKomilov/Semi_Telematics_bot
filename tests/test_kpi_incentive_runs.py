@@ -242,9 +242,10 @@ class TestLifecycle:
             assert r.json()["pct"] == 1.5      # snapshot, not the new 5%
 
     async def test_dispatchers_cannot_reach_runs(self, seeded):
-        """Payout amounts are compensation data — can_kpi (which a
-        dispatcher may hold) must not open this; can_kpi_incentives
-        does, and a dispatcher does not carry it by seed."""
+        """The whole dispatch section rides can_kpi (owner decision:
+        the incentives surface IS the Dispatch KPI page) — and a
+        DISPATCHER does not carry can_kpi by seed, so the people the
+        runs PAY still cannot open them."""
         async with await _client(seeded["app"]) as c:
             r = await c.get("/api/kpi/dispatch/runs",
                             headers=_h(seeded["disp"]))

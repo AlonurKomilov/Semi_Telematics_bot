@@ -171,7 +171,6 @@ class FeatureSet:
     can_risk_report_all: bool = False   # generate Stakeholder Risk Summary for any subject
     can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
     can_driver_pay_admin: bool = False     # configure rules / trigger runs / view all paystubs
-    can_kpi_incentives: bool = False       # dispatcher incentive runs & payouts — COMPENSATION data, deliberately not under can_kpi (grades are shared analytics; payout amounts are money)
     can_driver_pay_view_own: bool = False  # view own paystub history (driver self-service)
     can_coaching_admin: bool = False    # manage coaching rules + assign manually + view all
     can_coaching_view_own: bool = False # see + acknowledge own coaching assignments
@@ -286,7 +285,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_poi_layers=True,
         can_risk_report_all=True, can_risk_report_own=True,
         can_driver_pay_admin=True, can_driver_pay_view_own=True,
-        can_kpi_incentives=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
@@ -320,7 +318,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_poi_layers=True,
         can_risk_report_all=True, can_risk_report_own=True,
         can_driver_pay_admin=True, can_driver_pay_view_own=True,
-        can_kpi_incentives=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,

@@ -1,9 +1,11 @@
 /**
- * Incentive runs — the settlement sheet, as a screen.
+ * Dispatch KPI — the dispatch section's page: the settlement sheet.
  *
- * COMPENSATION surface: gated on ``can_kpi_incentives`` (route + API),
- * deliberately not ``can_kpi`` — grades are shared analytics, payout
- * amounts are money.
+ * Owner decision (2026-08-17): the incentives surface IS Dispatch KPI —
+ * one page, gated by ``can_kpi`` (the separate can_kpi_incentives flag
+ * was folded away; granting KPI grants payout visibility).  The A–D
+ * grades page retired with it; its backend endpoint + thresholds
+ * config remain for a future return.
  *
  * The run detail grid mirrors the customer's Excel column-for-column
  * (unit, window, days, extras, gross, miles, RPM, target, KPI-%, KPI-$,
@@ -39,6 +41,8 @@ import { Tip } from '../../../components/tooltip';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
+import { SectionSwitcher } from '../SectionSwitcher';
+import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
 import type { AnyColumn } from '../../../types';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -316,18 +320,25 @@ export default function IncentiveRuns() {
     <div>
       <PageHeader
         icon={BadgeDollarSign}
-        title={t('kpi_runs.title', 'Dispatcher Incentives')}
+        title={t('kpi_dispatch.title', 'Dispatch KPI')}
         description={t(
-          'kpi_runs.desc',
-          'Incentive runs: a period computed under the rules it was announced with. Finalized runs are the paid record.',
+          'kpi_runs.desc2',
+          'Dispatcher settlements: each period computed under the rules it was announced with. Finalized runs are the paid record.',
         )}
         actions={(
-          /* Demoted while a draft is open — the intended next step is
-             FINALIZING the run in front of you, not starting another. */
-          <Button variant={run && draft ? 'outline' : 'default'} onClick={() => setNewOpen(true)}>
-            <Plus size={16} className="mr-1.5" />
-            {t('kpi_runs.new', 'New run')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <SectionSwitcher current="dispatch" />
+            {/* Demoted while a draft is open — the intended next step is
+               FINALIZING the run in front of you, not starting another. */}
+            <Button variant={run && draft ? 'outline' : 'default'} size="sm" onClick={() => setNewOpen(true)}>
+              <Plus size={16} className="mr-1.5" />
+              {t('kpi_runs.new', 'New run')}
+            </Button>
+            <FeatureConfigGear
+              feature={t('nav.kpi', 'KPI')}
+              to="/kpi/configuration"
+            />
+          </div>
         )}
       />
 

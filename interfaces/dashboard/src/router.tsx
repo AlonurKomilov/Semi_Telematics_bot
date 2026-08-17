@@ -102,7 +102,6 @@ const Maintenance      = lazyWithReload(() => import('./features/maintenance/Tas
 const WorkOrders       = lazyWithReload(() => import('./features/work-orders/WorkOrders'));
 const Loads            = lazyWithReload(() => import('./features/loads/Loads'));
 const KpiEntry         = lazyWithReload(() => import('./features/kpi/KpiEntry'));
-const DispatchKpi      = lazyWithReload(() => import('./features/kpi/dispatch/DispatchKpi'));
 const MyPayouts        = lazyWithReload(() => import('./features/kpi/dispatch/MyPayouts'));
 const KpiConfiguration = lazyWithReload(() => import('./features/kpi/config/KpiConfiguration'));
 const IncentiveRuns = lazyWithReload(() => import('./features/kpi/dispatch/IncentiveRuns'));
@@ -265,9 +264,12 @@ export default function AppRouter() {
             section is its own page + backend package (per-role KPI
             isolation — sections cannot affect each other). */}
         <Route path="kpi"                 element={L(<P perm="can_kpi"><KpiEntry /></P>)} />
-        <Route path="kpi/dispatch"        element={L(<P perm="can_kpi"><DispatchKpi /></P>)} />
+        {/* The dispatch section's page IS the settlement surface (owner
+            decision: one page, one flag).  /kpi/incentives below stays
+            as an alias — bookmarks and auto-run notifications link it. */}
+        <Route path="kpi/dispatch"        element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
         <Route path="kpi/configuration"   element={L(<P perm="can_manage_config_all"><KpiConfiguration /></P>)} />
-        <Route path="kpi/incentives"      element={L(<P perm="can_kpi_incentives"><IncentiveRuns /></P>)} />
+        <Route path="kpi/incentives"      element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
         {/* Self-scoped (own rows only) — authenticated, no can_* flag. */}
         <Route path="kpi/my-payouts"      element={L(<MyPayouts />)} />
         <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrders /></P>)} />
