@@ -24,16 +24,21 @@ import { getKpiConfig, putKpiConfig } from '../api';
 
   'text-foreground focus:outline-none focus:border-ring';
 
-const FIELDS: { key: string; label: string }[] = [
-  { key: 'rpm_good', label: 'RPM — good at or above ($/mi)' },
-  { key: 'rpm_bad', label: 'RPM — bad below ($/mi)' },
-  { key: 'empty_pct_good', label: 'Empty miles — good at or below (%)' },
-  { key: 'empty_pct_bad', label: 'Empty miles — bad above (%)' },
-  { key: 'gross_per_truck_good', label: 'Gross per truck — good at or above ($)' },
-  { key: 'gross_per_truck_bad', label: 'Gross per truck — bad below ($)' },
+// Labels carry noun + polarity; the UNIT lives at the input (one
+// adornment convention page-wide).
+const FIELDS: { key: string; label: string; prefix?: string; suffix?: string }[] = [
+  { key: 'rpm_good', label: 'RPM — good at or above', suffix: '$/mi' },
+  { key: 'rpm_bad', label: 'RPM — bad below', suffix: '$/mi' },
+  { key: 'empty_pct_good', label: 'Empty miles — good at or below', suffix: '%' },
+  { key: 'empty_pct_bad', label: 'Empty miles — bad above', suffix: '%' },
+  { key: 'gross_per_truck_good', label: 'Gross per truck — good at or above', prefix: '$' },
+  { key: 'gross_per_truck_bad', label: 'Gross per truck — bad below', prefix: '$' },
 ];
 
-export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
+export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
+  onSaved: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,6 +49,7 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
   // the card to pristine.
   const [dirty, setDirty] = useState(false);
   const baseline = useRef<string>('{}');
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   // No `open` guard — the gear mounts this only while its dialog is open,
   // so mounting IS opening.
@@ -104,6 +110,11 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
         the next load. Values shown are the current thresholds, or the
         4truck defaults where none has been set. Grades are analytics only —
         they never change incentive pay, which comes from the rules below.
+        {' '}How the letter is made: between good and bad counts as neutral;
+        {' '}<span className="text-foreground">A</span> = every metric good ·{' '}
+        <span className="text-foreground">B</span> = mixed, none bad ·{' '}
+        <span className="text-foreground">C</span> = one metric bad ·{' '}
+        <span className="text-foreground">D</span> = two bad, or negative gross.
       </p>
       {loading ? (
         <div className="flex justify-center py-6">
@@ -116,6 +127,8 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
               <span className="text-muted-foreground">{f.label}</span>
               {/* One numeric width step (w-28) — a full-width field
                   holding "2.3" claims 4× the size its content needs. */}
+              <span className="flex items-center gap-1.5">
+              {f.prefix && <span className="text-muted-foreground">{f.prefix}</span>}
               <Input
                   type="number"
                   step="0.01"
@@ -127,6 +140,8 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
                     setDirty(JSON.stringify(next) !== baseline.current);
                   }}
                 />
+              {f.suffix && <span className="text-muted-foreground">{f.suffix}</span>}
+              </span>
             </label>
           ))}
         </div>

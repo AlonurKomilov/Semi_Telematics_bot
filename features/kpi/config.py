@@ -123,6 +123,24 @@ class IncentiveConfigUpdate(BaseModel):
     tiers: list[dict] = Field(default_factory=list)
 
 
+@router.post("/config/incentives/preview")
+async def preview_incentives(
+    body: IncentiveConfigUpdate,
+    user: dict = Depends(_config),
+):
+    """Dry-run a CANDIDATE rule set against the latest run — the effect
+    shown BEFORE the commit is asked for."""
+    from features.kpi.dispatch import runs as runs_service
+    try:
+        return await runs_service.preview_rules(
+            int(user["account_id"]),
+            body.model_dump(exclude={"tiers"}),
+            body.tiers,
+        )
+    except runs_service.RunError as e:
+        raise HTTPException(422, str(e))
+
+
 class CompanyTargetsUpdate(BaseModel):
     # {company_id: weekly_gross_target} — the whole set; a company left
     # out loses its bar, visibly (its trucks resolve 0% until re-set).
@@ -139,6 +157,49 @@ async def get_incentives_config(user: dict = Depends(_config)):
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     companies = await tenant.get_account_companies(account_id)
+
+    # Anchors for the targets editor: what each company's trucks ACTUALLY
+    # gross per week (last 4 full weeks) — a target set with no reference
+    # is a guess.  Truck-week = one unit's gross in one ISO week.
+    company_stats: dict[str, dict] = {}
+    try:
+        from datetime import date, timedelta
+
+        from features.loads import service as loads_service
+
+        until = date.today()
+        since = until - timedelta(days=28)
+        loads = await loads_service.get_loads(
+            account_id, since=since.isoformat(), until=until.isoformat(),
+            limit=None,
+        )
+        per: dict[str, dict] = {}
+        for l in loads:
+            if l.get("status") == "canceled":
+                continue
+            code = l.get("company_code") or ""
+            unit = l.get("vehicle_unit") or ""
+            if not code:
+                continue
+            d = str(l.get("pickup_date") or "")[:10]
+            try:
+                week = date.fromisoformat(d).isocalendar()[1]
+            except ValueError:
+                continue
+            slot = per.setdefault(code, {"units": set(), "weeks": {}})
+            slot["units"].add(unit)
+            key = (unit, week)
+            slot["weeks"][key] = slot["weeks"].get(key, 0.0) + float(
+                l.get("total_rate") or 0)
+        for code, slot in per.items():
+            sums = list(slot["weeks"].values())
+            company_stats[code] = {
+                "trucks": len(slot["units"]),
+                "avg_truck_week": round(sum(sums) / len(sums), 2) if sums else 0.0,
+            }
+    except Exception:
+        pass                     # anchors are optional; the editor works without
+
     return {
         "config": await tenant.get_kpi_incentive_config(account_id),
         "targets": await tenant.list_kpi_company_targets(account_id),
@@ -146,6 +207,7 @@ async def get_incentives_config(user: dict = Depends(_config)):
             {"id": c.id, "code": c.code, "name": c.display_name or c.code}
             for c in companies
         ],
+        "company_stats": company_stats,
     }
 
 

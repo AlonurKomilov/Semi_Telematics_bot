@@ -91,6 +91,8 @@ export interface IncentivesResponse {
   config: IncentiveConfig | null;
   targets: CompanyTarget[];
   companies: { id: number; code: string; name: string }[];
+  /** company code → last-4-weeks anchors for the targets editor. */
+  company_stats: Record<string, { trucks: number; avg_truck_week: number }>;
 }
 
 export async function getIncentivesConfig(): Promise<IncentivesResponse> {
@@ -104,6 +106,28 @@ export async function putIncentivesConfig(
   // record, which a named interface deliberately lacks.
   return apiJSON<IncentivesResponse>('/kpi/config/incentives', {
     method: 'PUT', body: { ...body },
+  });
+}
+
+export interface RulesPreview {
+  available: boolean;
+  period_start?: string;
+  period_end?: string;
+  status?: string;
+  rows?: number;
+  current_total?: number;
+  candidate_total?: number;
+  delta?: number;
+  moved_rows?: number;
+}
+
+/** Dry-run a candidate rule set against the latest run — nothing is
+ *  written; 422s carry the engine's own message. */
+export async function previewIncentiveRules(
+  body: IncentiveConfig,
+): Promise<RulesPreview> {
+  return apiJSON<RulesPreview>('/kpi/config/incentives/preview', {
+    method: 'POST', body: { ...body },
   });
 }
 

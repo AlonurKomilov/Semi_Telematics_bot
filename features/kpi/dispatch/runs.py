@@ -659,6 +659,63 @@ async def my_payouts(account_id: int, user_id: int,
     return {"runs": out}
 
 
+async def preview_rules(account_id: int, config: dict,
+                        tiers: list[dict]) -> dict:
+    """Re-price the LATEST run's rows under a CANDIDATE config — the
+    dry-run band the config page shows before Save commits anything.
+
+    Uses the stored row INPUTS (gross, extras, miles, targets, days)
+    and compares engine outputs: stored pct/dollars (what the snapshot
+    pays today) vs the candidate's.  Overrides are ignored on both
+    sides — the preview is about the RULES, not the exceptions.
+    Nothing is written."""
+    try:
+        engine.validate_config(config)
+        engine.validate_tiers(config.get("model", "ladder"), tiers)
+    except ValueError as e:
+        raise RunError(str(e))
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise RunError("tenant DB unavailable")
+    runs = await tenant.list_kpi_runs(account_id)
+    if not runs:
+        return {"available": False}
+    latest = runs[0]
+    rows = await tenant.list_kpi_run_rows(account_id, latest["id"])
+    current = 0.0
+    candidate = 0.0
+    moved = 0
+    for r in rows:
+        current = engine.money(current + float(r["kpi_dollars"]))
+        if r.get("weekly_target") is None:
+            cand_pct, cand_dollars = 0.0, 0.0
+        else:
+            active = max(0, int(r["total_days"]) - int(r["inactive_days"]))
+            out = engine.compute_truck_row(
+                config, tiers,
+                base_gross=float(r["base_gross"]),
+                extras=float(r["extras"]),
+                miles=float(r["miles"]),
+                weekly_target=float(r["weekly_target"]),
+                active_days=active,
+            )
+            cand_pct, cand_dollars = out["pct"], out["kpi_dollars"]
+        candidate = engine.money(candidate + cand_dollars)
+        if float(cand_pct) != float(r["pct"]):
+            moved += 1
+    return {
+        "available": True,
+        "period_start": latest["period_start"],
+        "period_end": latest["period_end"],
+        "status": latest["status"],
+        "rows": len(rows),
+        "current_total": current,
+        "candidate_total": candidate,
+        "delta": engine.money(candidate - current),
+        "moved_rows": moved,
+    }
+
+
 async def set_run_note(account_id: int, run_id: int, note: str) -> None:
     """The owner's one-line annotation ("226 in shop Thu-Fri").  A note
     is NOT money, so unlike every other write it is allowed on a

@@ -33,8 +33,9 @@ import {
 } from '../../../components/ui/dialog';
 import { toneClasses } from '../../../lib/status';
 import {
-  getIncentivesConfig, putIncentivesConfig, putIncentiveTargets,
-  type IncentiveConfig, type IncentiveTier,
+  getIncentivesConfig, previewIncentiveRules, putIncentivesConfig,
+  putIncentiveTargets,
+  type IncentiveConfig, type IncentiveTier, type RulesPreview,
 } from '../api';
 
 const EMPTY: IncentiveConfig = {
@@ -122,7 +123,11 @@ function fresh(model: IncentiveConfig['model']): IncentiveTier {
   return { pct: 1 };
 }
 
-export default function IncentiveEditor() {
+export default function IncentiveEditor({ onDirtyChange }: {
+  /** Reports (rulesDirty, targetsDirty) upward for the page's sticky
+   *  unsaved-sections bar. */
+  onDirtyChange?: (rules: boolean, targets: boolean) => void;
+}) {
   const { t } = useTranslation();
   const [cfg, setCfg] = useState<IncentiveConfig>(EMPTY);
   const [configured, setConfigured] = useState(false);
@@ -150,11 +155,12 @@ export default function IncentiveEditor() {
   const [emptySaveOpen, setEmptySaveOpen] = useState(false);
 
   useEffect(() => {
+    onDirtyChange?.(rulesDirty, targetsDirty);
     if (!rulesDirty && !targetsDirty) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [rulesDirty, targetsDirty]);
+  }, [rulesDirty, targetsDirty, onDirtyChange]);
 
   useEffect(() => {
     getIncentivesConfig()
@@ -168,6 +174,7 @@ export default function IncentiveEditor() {
           if (at) setLastSaved(String(at).slice(0, 10));
         }
         setCompanies(res.companies);
+        setStats(res.company_stats ?? {});
         const map: Record<number, string> = {};
         for (const tg of res.targets) map[tg.company_id] = String(tg.weekly_gross_target);
         setTargets(map);
@@ -179,6 +186,11 @@ export default function IncentiveEditor() {
 
   const hasAnyTarget = Object.values(targets).some((v) => v.trim() !== '');
   const [lastSaved, setLastSaved] = useState('');
+  const [stats, setStats] = useState<Record<string, { trucks: number; avg_truck_week: number }>>({});
+  // The dry-run band: candidate rules re-priced against the latest run.
+  // Cleared on ANY further edit — a stale preview is a wrong promise.
+  const [preview, setPreview] = useState<RulesPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   // Per-row dirty accent + linter inputs — parsed once per render
   // (tiny arrays; the baseline only changes on load/save).
@@ -236,6 +248,19 @@ export default function IncentiveEditor() {
   const setCfgDirty = (next: IncentiveConfig) => {
     setCfg(next);
     setRulesDirty(JSON.stringify(next) !== rulesBaseline.current);
+    setPreview(null);
+  };
+
+  const runPreview = async () => {
+    setPreviewing(true);
+    try {
+      setPreview(await previewIncentiveRules(cfg));
+    } catch (e) {
+      // The engine's own message (bad tier shape etc.) — verbatim.
+      toast.error(e instanceof Error ? e.message : 'Preview failed');
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const patchCfg = (patch: Partial<IncentiveConfig>) => {
@@ -384,7 +409,7 @@ export default function IncentiveEditor() {
           ONE card because they are ONE PUT — the save's enclosure is
           its scope, and a save floating between two cards belongs to
           neither.  Sub-sections carry caps labels. */}
-      <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+      <section id="cfg-rules" className="bg-card border border-border rounded-xl p-5 space-y-4">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-base font-semibold">
             {t('kpi_config.rules_title', 'Incentive rules')}
@@ -471,19 +496,29 @@ export default function IncentiveEditor() {
             width step (w-28) for all of them. */}
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm space-y-1 w-56">
-            <span className="block text-muted-foreground">{t('kpi_config.cap', 'Exception cap (%)')}</span>
+            <span className="block text-muted-foreground">{t('kpi_config.cap2', 'Exception cap')}</span>
             {/* Word placeholders, not example numbers: empty IS a real
                 state (no cap / no floor), and a grey "7000" reads as a
-                filled value at a glance. */}
-            <NumField value={cfg.exception_cap_pct} onChange={(v) => patchCfg({ exception_cap_pct: v })} placeholder={t('kpi_config.none', 'none')} />
+                filled value at a glance.  Units live AT the input —
+                one adornment convention page-wide. */}
+            <span className="inline-flex items-center gap-1.5">
+              <NumField value={cfg.exception_cap_pct} onChange={(v) => patchCfg({ exception_cap_pct: v })} placeholder={t('kpi_config.none', 'none')} />
+              <span className="text-muted-foreground">%</span>
+            </span>
           </label>
           <label className="text-sm space-y-1 w-56">
-            <span className="block text-muted-foreground">{t('kpi_config.floor_gross2', 'Removal floor — truck gross/wk ($)')}</span>
-            <NumField value={cfg.floor_weekly_gross} onChange={(v) => patchCfg({ floor_weekly_gross: v })} placeholder={t('kpi_config.none', 'none')} />
+            <span className="block text-muted-foreground">{t('kpi_config.floor_gross3', 'Removal floor — truck gross/wk')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-muted-foreground">$</span>
+              <NumField value={cfg.floor_weekly_gross} onChange={(v) => patchCfg({ floor_weekly_gross: v })} placeholder={t('kpi_config.none', 'none')} />
+            </span>
           </label>
           <label className="text-sm space-y-1 w-56">
-            <span className="block text-muted-foreground">{t('kpi_config.floor_rpm', 'Removal floor — RPM ($/mi)')}</span>
-            <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} />
+            <span className="block text-muted-foreground">{t('kpi_config.floor_rpm2', 'Removal floor — RPM')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} />
+              <span className="text-muted-foreground">$/mi</span>
+            </span>
           </label>
         </div>
         <p className="text-xs text-muted-foreground max-w-prose">
@@ -659,6 +694,37 @@ export default function IncentiveEditor() {
         )}
         </div>
 
+        {rulesDirty && (
+          /* The effect BEFORE the ask: candidate rules re-priced against
+             the latest run.  Nothing is written by a preview. */
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" variant="outline" onClick={runPreview} disabled={previewing}>
+              {previewing && <Loader2 size={14} className="animate-spin mr-1.5" />}
+              {t('kpi_config.preview_btn', 'Preview effect on the latest run')}
+            </Button>
+            {preview && !preview.available && (
+              <span className="text-xs text-muted-foreground">
+                {t('kpi_config.preview_none', 'No runs yet to preview against.')}
+              </span>
+            )}
+            {preview?.available && (
+              <span className="text-xs text-muted-foreground">
+                {t('kpi_config.preview_line',
+                  '{{a}} – {{b}} ({{status}}): ${{cur}} → ${{cand}} ({{sign}}${{delta}}) · {{moved}} of {{rows}} trucks change %',
+                  {
+                    a: preview.period_start, b: preview.period_end,
+                    status: preview.status,
+                    cur: (preview.current_total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                    cand: (preview.candidate_total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                    sign: (preview.delta ?? 0) >= 0 ? '+' : '−',
+                    delta: Math.abs(preview.delta ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                    moved: preview.moved_rows, rows: preview.rows,
+                  })}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* When an incentive change takes effect — the one timing fact
             this page never stated while a draft sat open next door. */}
         <p className="text-xs text-muted-foreground max-w-prose">
@@ -692,7 +758,7 @@ export default function IncentiveEditor() {
       </section>
 
       {/* ── Per-company weekly targets ──────────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 space-y-3">
+      <section id="cfg-targets" className="bg-card border border-border rounded-xl p-5 space-y-3">
         <h2 className="text-base font-semibold">{t('kpi_config.targets_title2', 'Company weekly targets')}</h2>
         <p className="text-xs text-muted-foreground max-w-prose">
           {t('kpi_config.targets_note',
@@ -714,6 +780,13 @@ export default function IncentiveEditor() {
           {companies.map((co) => (
             <li key={co.id} className="flex items-center justify-between gap-3 py-2 text-sm">
               <span className="text-foreground">{co.name} <span className="text-muted-foreground">({co.code})</span>
+                {stats[co.code] && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {t('kpi_config.co_stats', '{{n}} trucks · avg ${{avg}}/truck-wk',
+                      { n: stats[co.code].trucks,
+                        avg: Math.round(stats[co.code].avg_truck_week).toLocaleString() })}
+                  </span>
+                )}
                 {(targets[co.id] ?? '').trim() === '' && (
                   <span className={`ml-2 text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
                     {t('kpi_config.no_target_flag', 'no target — trucks resolve 0%')}

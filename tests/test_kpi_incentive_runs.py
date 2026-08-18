@@ -612,3 +612,36 @@ class TestNotePreviewAndGaps:
                                headers=_h(seeded["owner"]))).json()
             # A finalized row has no next move — no gap is offered.
             assert "next_tier" not in fin["rows"][0]
+
+
+class TestRulesPreview:
+    async def test_preview_reprices_latest_run_without_writing(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            r = await c.post("/api/kpi/config/incentives/preview",
+                             json=LADDER, headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            assert r.json() == {"available": False}   # no runs yet
+
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+
+            flat5 = {**LADDER, "tiers": [{"pct": 5.0}]}
+            r = await c.post("/api/kpi/config/incentives/preview",
+                             json=flat5, headers=_h(seeded["owner"]))
+            body = r.json()
+            assert body["available"] is True
+            assert body["current_total"] == 170.00      # stored 1% ladder
+            assert body["candidate_total"] == 850.00    # flat 5% of 17,000
+            assert body["delta"] == 680.00
+            assert body["moved_rows"] == 1              # 301 stays 0 (no target)
+
+            # NOTHING was written: the run still prices from its snapshot.
+            detail = (await c.get(f"/api/kpi/dispatch/runs/{run['id']}",
+                                  headers=_h(seeded["owner"]))).json()
+            assert detail["rows"][0]["pct"] in (0.0, 1.0)
+
+            r = await c.post("/api/kpi/config/incentives/preview",
+                             json={**LADDER, "tiers": [{"pct": 150}]},
+                             headers=_h(seeded["owner"]))
+            assert r.status_code == 422                 # engine message
