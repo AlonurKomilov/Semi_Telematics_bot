@@ -430,3 +430,114 @@ describe('DataGrid — bulk confirm gated on scope', () => {
     spy.mockRestore();
   });
 });
+
+
+describe('DataGrid — a slice gates the STATE, not just the act', () => {
+  /**
+   * The four `totalRows` gates all guarded the ACT: the ⋮ menu item was
+   * disabled, so you could not START grouping or aggregating on a slice.
+   * Nothing guarded a choice ALREADY MADE. Both prefs persist per-user
+   * across devices, so a grid configured while the account was small kept
+   * computing after the dataset outgrew one page — over the rows on
+   * screen — and said nothing.
+   *
+   * `defaultRowGroup` / `defaultAggregation` reach the component through
+   * the same `useTablePreference` the stored value uses (see the mock at
+   * the top of this file), so passing them here IS the persisted case.
+   */
+  const NUM_COLUMNS: AnyColumn[] = [
+    { key: 'name', label: 'Vehicle', sortable: true },
+    { key: 'type', label: 'Type', filterable: true, filterMode: 'select' },
+    { key: 'cost', label: 'Cost', aggregable: true },
+  ];
+  const NUM_ROWS = ROWS.map((r, i) => ({ ...r, cost: (i + 1) * 100 }));
+
+  it('does not group a slice, even when grouping was already chosen', () => {
+    render(
+      <DataGrid columns={NUM_COLUMNS} data={NUM_ROWS} tableId="g-partial"
+        totalRows={11200} defaultRowGroup="type" />,
+    );
+    // Grouping renders a "Grouped by" chip and collapses rows into group
+    // headers. Neither may happen while the grid holds 3 of 11,200 — the
+    // per-group tallies would describe the page, not the group.
+    expect(document.body.textContent).not.toContain('Grouped by');
+  });
+
+  it('DOES group the same config when the grid holds everything', () => {
+    // The preference is kept, not cleared — grouping returns by itself
+    // once the view is narrow enough to be honest.
+    render(
+      <DataGrid columns={NUM_COLUMNS} data={NUM_ROWS} tableId="g-whole"
+        defaultRowGroup="type" />,
+    );
+    expect(document.body.textContent).toContain('Grouped by');
+  });
+
+  it('renders no footer total on a slice, even when one was chosen', () => {
+    render(
+      <DataGrid columns={NUM_COLUMNS} data={NUM_ROWS} tableId="a-partial"
+        totalRows={11200} defaultAggregation={{ cost: 'sum' }} />,
+    );
+    // 600 is the sum of the loaded 3 rows — a confident whole-set claim
+    // over a fragment, and a cross-tab-like one: no rows sit beside a
+    // footer total to make the shortfall noticeable.
+    expect(document.querySelector('tfoot')).toBeNull();
+  });
+
+  it('DOES total the same config when the grid holds everything', () => {
+    render(
+      <DataGrid columns={NUM_COLUMNS} data={NUM_ROWS} tableId="a-whole"
+        defaultAggregation={{ cost: 'sum' }} />,
+    );
+    expect(document.querySelector('tfoot')).not.toBeNull();
+    expect(document.querySelector('tfoot')?.textContent).toContain('600');
+  });
+});
+
+
+describe('DataGrid — manualSorting means the server already ordered these', () => {
+  /**
+   * `manualSorting` existed as a prop and was read in exactly ONE place —
+   * the decision to leave sort ENABLED on a slice. It was never passed to
+   * tanstack, so the grid re-sorted the page it had just been told not to
+   * sort.
+   *
+   * That is not a no-op, it is a wrong answer: the server picks WHICH
+   * rows by its ordering, the grid reorders that page by its own, and so
+   * every page looks sorted while the table is not. It also breaks
+   * silently across pages — SQL's `LOWER(name)` puts "Truck 10" before
+   * "Truck 9"; tanstack's alphanumeric comparator does the reverse.
+   */
+  const UNSORTED = [
+    { id: 3, type: 'health', name: 'Truck 3' },
+    { id: 1, type: 'fault', name: 'Truck 1' },
+    { id: 2, type: 'fault', name: 'Truck 2' },
+  ];
+  const names = () => Array.from(document.querySelectorAll('tbody tr'))
+    .map((tr) => tr.querySelector('td')?.textContent?.trim())
+    .filter(Boolean);
+
+  it('renders the given order verbatim under manualSorting', () => {
+    render(
+      <DataGrid columns={COLUMNS} data={UNSORTED} tableId="ms-on"
+        sorting={[{ id: 'name', desc: false }]}
+        onSortingChange={() => {}}
+        manualSorting />,
+    );
+    // The sort state says "by name, ascending" and the rows arrived in
+    // 3-1-2. Under manualSorting that IS the answer: the order came from
+    // upstream, over the whole set.
+    expect(names()).toEqual(['Truck 3', 'Truck 1', 'Truck 2']);
+  });
+
+  it('sorts locally when the page has NOT claimed the order', () => {
+    // The control: same state, same rows, no manualSorting. This is the
+    // behaviour that was wrongly applied to server-ordered pages too.
+    render(
+      <DataGrid columns={COLUMNS} data={UNSORTED} tableId="ms-off"
+        sorting={[{ id: 'name', desc: false }]}
+        onSortingChange={() => {}} />,
+    );
+    expect(names()).toEqual(['Truck 1', 'Truck 2', 'Truck 3']);
+  });
+});

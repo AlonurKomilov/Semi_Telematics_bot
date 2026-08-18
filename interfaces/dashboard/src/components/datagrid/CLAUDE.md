@@ -443,9 +443,47 @@ grid stops answering for the whole from a part:
 | Group rows by | groups a fragment | disabled (ungroup always allowed) |
 | Export → all | writes a `-all` file of the loaded rows | "All loaded rows", both counts, `-loaded` suffix |
 | Pivot | summarises a fragment as a total | disabled with the reason |
+| **Footer aggregation** | sums a fragment and prints it as a total | disabled with the reason |
 
-Pivot is the worst of the four: a cross-tab shows no rows, so there's
-nothing to count and notice the shortfall by.
+Pivot and aggregation are the worst two: both show a number with **no
+rows beside it** to notice the shortfall by. Aggregation was the fifth
+such operation and was simply missed when the other four shipped — Loads
+could print a confident dollar sum over 5,000 of 8,412 loads two inches
+from a Pivot button disabled for that exact reason. Every function is
+gated, not just sum/avg: the MIN of a slice is not the account's minimum
+either, and `count` already lives in the pagination footer.
+
+### Gate the STATE, not only the ACT ⚠️
+
+Disabling the ⋮ menu item stops you STARTING an operation on a slice. It
+does nothing about one **already chosen** — and both row-grouping and
+aggregation persist per-user, across devices. A grid configured while an
+account was small kept computing after the dataset outgrew one page, over
+the rows on screen, saying nothing: Alerts rendered a per-group tally
+("Truck 12 (4) · 2 critical") from page 1 of 160, and the ⋮ then offered
+only "Ungroup", so the control that would have fixed it was the one thing
+missing.
+
+`rowGroupBy` and `aggregationModel` are therefore both suppressed while
+`holdsPartialData`, mirroring `pivotOn`. The PREFERENCE is kept, so the
+operation returns by itself once the view is narrow enough to be honest.
+When you add a sixth whole-set operation, gate both halves.
+
+### `manualSorting` must reach tanstack ⚠️
+
+It is passed to `useReactTable` alongside `manualPagination`. For a long
+time it was not — the prop existed and was read in exactly ONE place (the
+decision to leave sort enabled on a slice), so the grid re-sorted the
+page it had just been told not to sort.
+
+That is a wrong answer, not a no-op: the server picks WHICH rows by its
+ordering, the grid reorders that page by its own, so every page looks
+sorted while the table is not sorted at all. Two ways it bit — a column
+whose value is computed in the browser cannot be ordered by the server
+(which silently falls back to its default while the header still paints
+a sort arrow), and SQL's `LOWER(name)` puts unit "10" before "9" where
+tanstack's comparator does the reverse, so page 2 starts above where page
+1 ended.
 
 Disabled **with the reason**, never hidden — a control that vanishes
 teaches nothing, and "narrow the view first" is something an operator can

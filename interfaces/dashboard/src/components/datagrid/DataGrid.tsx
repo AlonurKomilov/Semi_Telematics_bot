@@ -1431,8 +1431,22 @@ export default function DataGrid({
     value: rowGroupPref,
     setValue: setRowGroupPref,
   } = useTablePreference(tableId, 'rowGroup', defaultRowGroup ?? null);
-  // Drop a stale pref if the column was removed from the config.
-  const rowGroupBy = rowGroupPref && columns.some(c => c.key === rowGroupPref)
+  // Drop a stale pref if the column was removed from the config — and
+  // suppress it entirely while the grid holds a SLICE.
+  //
+  // The gate on the ⋮ menu (``gateGroup``) only ever guarded the ACT of
+  // grouping.  A choice made while the account was small persists
+  // per-user across devices, so once the dataset outgrew one page the
+  // grid kept grouping — over the rows on screen — and rendered a
+  // confident per-group tally ("Truck 12 (4) · 2 critical") computed
+  // from page 1 of 160.  The ⋮ then offered only "Ungroup", so the
+  // control that could have fixed it was the one thing missing.
+  //
+  // Mirrors ``pivotOn`` exactly: the PREFERENCE is kept, so grouping
+  // returns by itself once the view is narrow enough to be honest.
+  const rowGroupBy = rowGroupPref
+    && columns.some(c => c.key === rowGroupPref)
+    && !holdsPartialData
     ? rowGroupPref
     : null;
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -1459,6 +1473,16 @@ export default function DataGrid({
   } = useTablePreference(tableId, 'aggregation', defaultAggregation ?? {});
   const aggregationModel = useMemo<Record<string, AggFn>>(() => {
     const out: Record<string, AggFn> = {};
+    // A footer total is a whole-set claim with no rows beside it to
+    // notice a shortfall by — the same property that makes pivot the
+    // worst of the four gated operations.  Summing 5,000 of 8,412 loads
+    // printed a confident dollar figure two inches from a Pivot button
+    // that was disabled for exactly that reason.
+    //
+    // Every function is gated, not just sum/avg: the MIN of a slice is
+    // not the account's minimum either, and "count" is already in the
+    // pagination footer.  The pref survives, like grouping's above.
+    if (holdsPartialData) return out;
     for (const [key, fn] of Object.entries(aggregationPref)) {
       const col = columns.find(c => c.key === key);
       // The pref is a raw JSON blob with no server-side schema check —
@@ -1469,7 +1493,7 @@ export default function DataGrid({
       if (col?.aggregable && offeredAggFns(col).includes(fn)) out[key] = fn;
     }
     return out;
-  }, [aggregationPref, columns]);
+  }, [aggregationPref, columns, holdsPartialData]);
   const setColumnAgg = useCallback((key: string, fn: AggFn | null) => {
     setAggregationPref(prev => {
       const next = { ...prev };
@@ -1824,6 +1848,21 @@ export default function DataGrid({
     // Under manualPagination the rows ARRIVED as one page, so slicing
     // them again would show the first N of an already-N-row page.
     manualPagination,
+    // Same contract for ORDER, and it was missing: the prop existed and
+    // was read in exactly one place (``gateClientSideOps``), so a page
+    // declaring ``manualSorting`` still had its rows re-sorted here.
+    //
+    // That is not a no-op, it is a wrong answer.  The server picks WHICH
+    // rows by its own ordering; the grid then reorders that page by its
+    // own comparator, so each page looks perfectly sorted while the
+    // TABLE is not sorted at all.  Two ways it bit:
+    //   * a column whose value is computed in the browser cannot be
+    //     ordered by the server, which silently falls back to its
+    //     default — the header still paints a sort arrow;
+    //   * SQL orders ``LOWER(name)`` (unit "10" before "9") where
+    //     tanstack's alphanumeric comparator orders numerically, so
+    //     page 2 starts below where page 1 ended.
+    manualSorting,
     ...(manualPagination && controlledPageCount !== undefined
       ? { pageCount: controlledPageCount } : {}),
     ...(enablePagination && !manualPagination
@@ -3907,6 +3946,7 @@ export default function DataGrid({
                       <ColumnHeaderCell
                         gateSort={gateClientSideOps}
                         gateGroup={holdsPartialData}
+                        gateAgg={holdsPartialData}
                         gateReason={gateReason}
                         key={header.id}
                         header={header}
@@ -4578,6 +4618,7 @@ interface ColumnHeaderCellProps {
   gateSort?: boolean;
   /** Row-grouping is always local, so a slice groups a fragment. */
   gateGroup?: boolean;
+  gateAgg?: boolean;
   /** Full reason + both remedies, for the gated items' tooltip. */
   gateReason?: string;
   /** Source column config — we look up ``filterMode``/``filterRange``
@@ -4638,7 +4679,7 @@ function ColumnHeaderCell({
   onOpenManage, onMeasureWidth, leadingContent,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
   rowGrouped, onRowGroup, aggCurrent, aggFns, onSetAgg,
-  fixedWidths, onAutosize, densityClass, gateSort, gateGroup, gateReason,
+  fixedWidths, onAutosize, densityClass, gateSort, gateGroup, gateAgg, gateReason,
 }: ColumnHeaderCellProps) {
   const canSort = header.column.getCanSort();
   const sortedRaw = header.column.getIsSorted();
@@ -4915,6 +4956,7 @@ function ColumnHeaderCell({
               canSort={canSort}
               gateSort={gateSort}
               gateGroup={gateGroup}
+              gateAgg={gateAgg}
               gateReason={gateReason}
               sorted={sortedRaw === 'asc' || sortedRaw === 'desc' ? sortedRaw : false}
               onSortAsc={() => header.column.toggleSorting(false)}

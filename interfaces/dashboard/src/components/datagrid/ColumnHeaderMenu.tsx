@@ -46,6 +46,11 @@ interface ColumnHeaderMenuProps {
   /** The grid holds only a SLICE.  Row-grouping is always local, so it
    *  groups a fragment however the rows were chosen. */
   gateGroup?: boolean;
+  /** Disable the Aggregate submenu — a footer total is a whole-set claim
+   *  and the grid holds a slice.  The fifth such operation; the four
+   *  above it were gated when ``totalRows`` shipped and this one was
+   *  simply missed. */
+  gateAgg?: boolean;
   onSortAsc: () => void;
   onSortDesc: () => void;
   onClearSort: () => void;
@@ -102,7 +107,7 @@ interface ColumnHeaderMenuProps {
 }
 
 export default function ColumnHeaderMenu({
-  sorted, canSort, gateSort = false, gateGroup = false, gateReason,
+  sorted, canSort, gateSort = false, gateGroup = false, gateAgg = false, gateReason,
   onSortAsc, onSortDesc, onClearSort, onHide, canHide, onManage,
   pinned, onPinLeft, onPinRight, onUnpin,
   canFilter, onFilter, filterActive,
@@ -337,7 +342,21 @@ export default function ColumnHeaderMenu({
             {/* Aggregate → submenu: pick a footer total function for
                 this column (only on columns that opted in via
                 ``aggregable``).  Mirrors the Sort submenu shape. */}
-            {aggregable && (
+            {/* Gated like Sort and Group when the grid holds a slice —
+                but as a DISABLED ROW rather than a dead submenu, so the
+                reason is reachable.  A submenu that opens onto disabled
+                items makes the operator click twice to learn nothing. */}
+            {aggregable && gateAgg && (
+              <MenuItem
+                icon={<Sigma size={14} />}
+                disabled
+                hint="needs every row"
+                hintTip={gateReason}
+                label="Aggregate"
+                onClick={() => {}}
+              />
+            )}
+            {aggregable && !gateAgg && (
               <MenuPrimitive.SubmenuRoot>
                 <MenuPrimitive.SubmenuTrigger
                   className={cn(
