@@ -16,7 +16,8 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Gauge } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Gauge } from 'lucide-react';
 import { PageHeader } from '../../../components/shell';
 import KpiConfigPanel from './KpiConfigPanel';
 import IncentiveEditor from './IncentiveEditor';
@@ -27,6 +28,14 @@ export default function KpiConfiguration() {
 
   return (
     <div>
+      {/* The way BACK — this page is reached via the run page's gear,
+          and a config page with no exit strands the person who came to
+          change one number. */}
+      <Link to="/kpi/dispatch"
+        className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition">
+        <ArrowLeft size={14} />
+        {t('kpi_config.back', 'Dispatch KPI')}
+      </Link>
       <PageHeader
         icon={Gauge}
         /* Named after the SECTION it configures — with per-role KPI
