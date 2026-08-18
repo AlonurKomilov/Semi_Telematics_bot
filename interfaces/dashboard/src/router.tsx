@@ -268,7 +268,10 @@ export default function AppRouter() {
             decision: one page, one flag).  /kpi/incentives below stays
             as an alias — bookmarks and auto-run notifications link it. */}
         <Route path="kpi/dispatch"        element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
-        <Route path="kpi/configuration"   element={L(<P perm="can_manage_config_all"><KpiConfiguration /></P>)} />
+        {/* Config lives UNDER its section (KPI configuration · Dispatch);
+            the old flat URL stays as a redirect for bookmarks. */}
+        <Route path="kpi/dispatch/configuration" element={L(<P perm="can_manage_config_all"><KpiConfiguration /></P>)} />
+        <Route path="kpi/configuration"   element={<Navigate to="/kpi/dispatch/configuration" replace />} />
         <Route path="kpi/incentives"      element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
         {/* Self-scoped (own rows only) — authenticated, no can_* flag. */}
         <Route path="kpi/my-payouts"      element={L(<MyPayouts />)} />

@@ -29,10 +29,14 @@ export default function KpiConfiguration() {
     <div>
       <PageHeader
         icon={Gauge}
-        title={t('kpi_config.page_title', 'KPI configuration')}
+        /* Named after the SECTION it configures — with per-role KPI
+           pages, a generic "KPI configuration" stops saying WHOSE bars
+           are being moved.  Every future section repeats the pattern
+           (KPI configuration · Fleet, · Safety, …). */
+        title={t('kpi_config.page_title2', 'KPI configuration · Dispatch')}
         description={t(
-          'kpi_config.page_desc',
-          'Account-wide: grading thresholds for the A–D view, and the dispatcher incentive rules. Changing either changes it for everyone.',
+          'kpi_config.page_desc2',
+          'The DISPATCH section only — grading thresholds for the A–D view and the dispatcher incentive rules. Account-wide: changing either changes it for every viewer. Other sections will carry their own configuration pages.',
         )}
       />
 

@@ -351,8 +351,8 @@ export default function IncentiveRuns() {
               {t('kpi_runs.new', 'New run')}
             </Button>
             <FeatureConfigGear
-              feature={t('nav.kpi', 'KPI')}
-              to="/kpi/configuration"
+              feature={t('kpi_runs.gear_feature', 'Dispatch KPI')}
+              to="/kpi/dispatch/configuration"
             />
           </div>
         )}
@@ -372,7 +372,7 @@ export default function IncentiveRuns() {
             'Configure the incentive model and company targets in KPI configuration, then create the first run for a period.',
           )}
           action={(
-            <Link to="/kpi/configuration"
+            <Link to="/kpi/dispatch/configuration"
               className="inline-flex items-center gap-1 py-1 -my-1 text-sm text-primary underline underline-offset-4 hover:no-underline">
               {t('kpi_runs.empty_cta', 'Open KPI configuration')}
               <ArrowRight size={14} />
@@ -1080,7 +1080,7 @@ function NewRunDialog({ open, onClose, onCreated, existing }: {
           {t('kpi_runs.new_body',
             'Rows are generated from the period’s loads and computed under the CURRENT rules, which the run keeps as its snapshot.')}
           {' '}
-          <Link to="/kpi/configuration" className="text-primary underline underline-offset-4 hover:no-underline">
+          <Link to="/kpi/dispatch/configuration" className="text-primary underline underline-offset-4 hover:no-underline">
             {t('kpi_runs.view_rules', 'View current rules')}
           </Link>
         </p>
