@@ -103,17 +103,32 @@ function lsWrite(layerId: string, key: string, features: PoiFeature[]): void {
 }
 
 /** Remove all POI cache entries older than 2 hours to keep storage bounded. */
+/** Hard ceiling on cached viewport entries.  Age alone doesn't bound
+ *  growth WITHIN the 2-hour window — a panning session mints one key
+ *  per viewport against the origin's shared quota, and a full quota
+ *  fails every preferences write too.  Oldest-first eviction. */
+const LS_MAX_ENTRIES = 40;
+
 function lsPrune(): void {
   const cutoff = Date.now() - LS_STALE_MS;
   try {
+    const live: { key: string; ts: number }[] = [];
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
       if (!k?.startsWith(LS_PREFIX)) continue;
       const raw = localStorage.getItem(k);
       if (!raw) { localStorage.removeItem(k); continue; }
       try {
-        if ((JSON.parse(raw) as LsEntry).ts < cutoff) localStorage.removeItem(k);
+        const ts = (JSON.parse(raw) as LsEntry).ts;
+        if (ts < cutoff) localStorage.removeItem(k);
+        else live.push({ key: k, ts });
       } catch { localStorage.removeItem(k); }
+    }
+    if (live.length > LS_MAX_ENTRIES) {
+      live.sort((a, b) => a.ts - b.ts);
+      for (const e of live.slice(0, live.length - LS_MAX_ENTRIES)) {
+        localStorage.removeItem(e.key);
+      }
     }
   } catch { /* ignore */ }
 }

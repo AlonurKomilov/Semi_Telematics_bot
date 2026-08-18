@@ -60,6 +60,13 @@
     --font-sans: 'Geist Variable', sans-serif;
     --font-heading: var(--font-sans);
   }
+
+  /* The macOS/iOS rubber-band otherwise flashes the body's always-dark
+     splash under a light-theme app; none also kills accidental
+     pull-to-refresh.  The splash contract (index.html) is untouched. */
+  html, body {
+    overscroll-behavior-y: none;
+  }
   :root {
 
     /* Live sidebar width (Sidebar.tsx keeps it in sync w-14/w-56) — the

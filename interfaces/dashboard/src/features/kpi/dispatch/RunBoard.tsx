@@ -209,7 +209,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d, i) => (
-                      <div key={d} className={`basis-28 min-w-28 flex-1 shrink-0 snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0 ${i % 2 === 1 ? 'bg-muted/30' : ''}`}>
+                      <div key={d} className={`w-28 flex-none snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0 ${i % 2 === 1 ? 'bg-muted/30' : ''}`}>
                         {dayLabel(d)}
                       </div>
                     ))}
@@ -378,7 +378,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             )}
           </div>
         );
-        if (!clickable || !inside) return <div key={d} className="basis-28 min-w-28 flex-1 shrink-0 snap-start border-r border-border last:border-r-0">{cell}</div>;
+        if (!clickable || !inside) return <div key={d} className="w-28 flex-none snap-start border-r border-border last:border-r-0">{cell}</div>;
         return (
           <ActionMenu
             key={d}
@@ -420,7 +420,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               },
             ]}
           >
-            <button type="button" className="basis-28 min-w-28 flex-1 shrink-0 snap-start border-r border-border last:border-r-0 text-left"
+            <button type="button" className="w-28 flex-none snap-start border-r border-border last:border-r-0 text-left"
               aria-label={t('kpi_board.day_aria', 'Mark {{day}} for unit {{unit}}',
                 { day: d, unit: row.vehicle_unit })}>
               {cell}

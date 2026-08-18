@@ -70,7 +70,7 @@ export default function KpiConfiguration() {
 
       {/* 32px between top-level cards — clearly above the 12–16px
           rhythms inside them. */}
-      <div className={`space-y-8 ${dirtyList.length > 0 ? 'pb-14' : ''}`}>
+      <div className="space-y-8">
         <section id="cfg-grading" className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="text-base font-semibold">
             {t('kpi_config.grades_title', 'Grading thresholds')}
@@ -88,22 +88,21 @@ export default function KpiConfiguration() {
           is the silent-discard trap — this stays visible until every
           section is saved or discarded. */}
       {dirtyList.length > 0 && (
-        <div className="sticky bottom-0 z-30 -mx-4 lg:-mx-6 mt-6 border-t border-border bg-card px-4 lg:px-6 py-2.5">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
-              {t('kpi_config.dirty_n', '{{n}} section(s) with unsaved changes', { n: dirtyList.length })}
-            </span>
-            {dirtyList.map((d) => (
-              <button key={d.id} type="button"
-                onClick={() => document.getElementById(d.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:border-ring transition">
-                {d.label}
-              </button>
-            ))}
-            <span className="text-xs text-muted-foreground">
-              {t('kpi_config.dirty_hint', 'Each section saves (or discards) on its own — jump to one to finish it.')}
-            </span>
-          </div>
+        /* A max-content pill anchored LEFT: every commit control on the
+           page is right-aligned, so this can never occlude one at any
+           scroll position — the full-width strip covered Save 100% in
+           a 65px scroll band no end-padding could fix. */
+        <div className="sticky bottom-2 z-30 mt-6 inline-flex max-w-fit flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-md">
+          <span className={`text-xs ${toneClasses('warn')} border px-2 py-0.5 rounded`}>
+            {t('kpi_config.dirty_n', '{{n}} unsaved', { n: dirtyList.length })}
+          </span>
+          {dirtyList.map((d) => (
+            <button key={d.id} type="button"
+              onClick={() => document.getElementById(d.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:border-ring transition">
+              {d.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

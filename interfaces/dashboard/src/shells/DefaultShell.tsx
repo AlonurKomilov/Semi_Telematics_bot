@@ -137,7 +137,7 @@ export default function DefaultShell() {
             the scrollbar on the inner div (which sits inside the
             rounded shell) keeps it visually inside the card. */}
         <main className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}>
-          <div className="h-full overflow-y-auto [scrollbar-gutter:stable] p-4 lg:p-6">
+          <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
             <Outlet />
           </div>
         </main>
