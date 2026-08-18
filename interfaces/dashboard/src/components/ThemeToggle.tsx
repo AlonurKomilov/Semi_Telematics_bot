@@ -85,7 +85,7 @@ export function ThemeToggle() {
         variant="ghost"
         size="icon"
         className="h-8 w-8 shrink-0"
-        title="Theme"
+        aria-label="Theme"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >

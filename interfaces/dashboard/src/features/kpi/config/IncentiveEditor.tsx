@@ -698,7 +698,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
                       });
                     }}
                     aria-label={t('kpi_config.remove_tier', 'Remove tier')}
-                    className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-muted"
+                    className="inline-flex size-7 items-center justify-center rounded text-muted-foreground hover:text-danger hover:bg-muted"
                   >
                     <X size={14} />
                   </button>

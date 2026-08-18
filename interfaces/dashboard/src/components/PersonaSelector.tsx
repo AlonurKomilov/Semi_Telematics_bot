@@ -1,3 +1,4 @@
+import { Tip } from './tooltip';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Eye } from 'lucide-react';
@@ -71,21 +72,22 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
     if (compact) {
       const initial = viewLabel.trim().charAt(0).toUpperCase() || '?';
       return (
-        <div
-          className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-muted/30 text-2xs font-semibold text-muted-foreground/80 select-none"
-          title={`Your role: ${viewLabel}`}
-        >
-          {initial}
-        </div>
+        <Tip label={`Your role: ${viewLabel}`}>
+          <div
+            className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-muted/30 text-2xs font-semibold text-muted-foreground/80 select-none"
+            aria-label={`Your role: ${viewLabel}`}
+          >
+            {initial}
+          </div>
+        </Tip>
       );
     }
     return (
-      <div
-        className="inline-flex items-center px-2 py-0.5 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md"
-        title={`Your role: ${viewLabel}`}
-      >
-        {viewLabel}
-      </div>
+      <Tip label={`Your role: ${viewLabel}`}>
+        <div className="inline-flex h-7 items-center px-2 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md">
+          {viewLabel}
+        </div>
+      </Tip>
     );
   }
 
@@ -126,38 +128,40 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
         // swaps to the previewed role's initial, since an unchanging Eye
         // glyph can't tell you WHICH role you're currently seeing, the
         // one thing the expanded label always shows.
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
-            isPreviewing
-              ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
-              : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
-          }`}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-label="View dashboard as…"
-          title={triggerTitle}
-        >
-          {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye size={16} />}
-        </button>
+        <Tip label={triggerTitle}>
+          <button
+            type="button"
+            onClick={() => setOpen(o => !o)}
+            className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
+              isPreviewing
+                ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
+                : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
+            }`}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-label="View dashboard as…"
+          >
+            {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye size={16} />}
+          </button>
+        </Tip>
       ) : (
+        <Tip label={triggerTitle}>
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className={`inline-flex items-center gap-1 px-2 py-0.5 text-2xs rounded-md border transition ${
+          className={`inline-flex h-7 items-center gap-1 px-2 text-2xs rounded-md border transition ${
             isPreviewing
               ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
               : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
           }`}
           aria-haspopup="listbox"
           aria-expanded={open}
-          title={triggerTitle}
         >
           {isPreviewing && <Eye size={12} className="opacity-80" />}
           <span>{viewLabel}{tierSuffix}</span>
           <ChevronDown size={12} className="opacity-60" />
         </button>
+        </Tip>
       )}
 
       {open && (
