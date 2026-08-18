@@ -24,16 +24,25 @@ import { getKpiConfig, putKpiConfig } from '../api';
 
   'text-foreground focus:outline-none focus:border-ring';
 
-// Labels carry noun + polarity; the UNIT lives at the input (one
-// adornment convention page-wide).
-const FIELDS: { key: string; label: string; prefix?: string; suffix?: string }[] = [
-  { key: 'rpm_good', label: 'RPM — good at or above', suffix: '$/mi' },
-  { key: 'rpm_bad', label: 'RPM — bad below', suffix: '$/mi' },
-  { key: 'empty_pct_good', label: 'Empty miles — good at or below', suffix: '%' },
-  { key: 'empty_pct_bad', label: 'Empty miles — bad above', suffix: '%' },
-  { key: 'gross_per_truck_good', label: 'Gross per truck — good at or above', prefix: '$' },
-  { key: 'gross_per_truck_bad', label: 'Gross per truck — bad below', prefix: '$' },
+// One ROW per metric: the good/bad pair sits ADJACENT (they are the
+// values being compared), the metric name renders once, the unit once
+// at the row's end.  The old 2-col grid put a pair 493px apart while
+// stacking different metrics 64px apart — geometry against meaning.
+const METRICS: {
+  label: string; unit: string; prefix?: boolean;
+  goodKey: string; goodLabel: string; badKey: string; badLabel: string;
+}[] = [
+  { label: 'RPM', unit: '$/mi',
+    goodKey: 'rpm_good', goodLabel: 'good ≥',
+    badKey: 'rpm_bad', badLabel: 'bad <' },
+  { label: 'Empty miles', unit: '%',
+    goodKey: 'empty_pct_good', goodLabel: 'good ≤',
+    badKey: 'empty_pct_bad', badLabel: 'bad >' },
+  { label: 'Gross per truck', unit: '$', prefix: true,
+    goodKey: 'gross_per_truck_good', goodLabel: 'good ≥',
+    badKey: 'gross_per_truck_bad', badLabel: 'bad <' },
 ];
+const FIELD_KEYS = METRICS.flatMap((m) => [m.goodKey, m.badKey]);
 
 export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
   onSaved: () => void;
@@ -65,10 +74,10 @@ export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
         // defaults are the honest expert answer, and they are what the
         // grades are computed against until someone overrides them.
         const v: Record<string, string> = {};
-        for (const f of FIELDS) {
-          const stored = res.thresholds?.[f.key];
-          const fallback = res.defaults?.[f.key];
-          v[f.key] = String(stored ?? fallback ?? '');
+        for (const key of FIELD_KEYS) {
+          const stored = res.thresholds?.[key];
+          const fallback = res.defaults?.[key];
+          v[key] = String(stored ?? fallback ?? '');
         }
         setValues(v);
         baseline.current = JSON.stringify(v);
@@ -103,7 +112,7 @@ export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
     // must exceed within-group air, or the intro sentence and the six
     // fields read as one flat run of seven things.
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground max-w-prose">
+      <p className="text-xs text-muted-foreground max-w-prose">
         What counts as good or bad for the A–D grades. Applies to the whole
         account —{' '}
         <span className="text-foreground">saving re-grades everyone</span> on
@@ -121,33 +130,40 @@ export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
           <Loader2 size={18} className="animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {FIELDS.map((f) => (
-            <label key={f.key} className="text-sm">
-              <span className="text-muted-foreground">{f.label}</span>
-              {/* One numeric width step (w-28) — a full-width field
-                  holding "2.3" claims 4× the size its content needs. */}
-              <span className="flex items-center gap-1.5">
-              {f.prefix && <span className="text-muted-foreground">{f.prefix}</span>}
-              <Input
-                  type="number"
-                  step="0.01"
-                  className="w-28"
-                  value={values[f.key] ?? ''}
-                  onChange={(e) => {
-                    const next = { ...values, [f.key]: e.target.value };
-                    setValues(next);
-                    setDirty(JSON.stringify(next) !== baseline.current);
-                  }}
-                />
-              {f.suffix && <span className="text-muted-foreground">{f.suffix}</span>}
-              </span>
-            </label>
+        <ul className="divide-y divide-border border-t border-border">
+          {METRICS.map((m) => (
+            <li key={m.goodKey} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+              <span className="w-32 text-foreground">{m.label}</span>
+              {([['good', m.goodKey, m.goodLabel], ['bad', m.badKey, m.badLabel]] as const).map(
+                ([side, key, sideLabel]) => (
+                  <label key={side} className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    {sideLabel}
+                    {/* Reserved affix slot — input x aligns whether or
+                        not the metric carries a $ prefix. */}
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-3 text-muted-foreground">{m.prefix ? '$' : ''}</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="w-28"
+                        aria-label={`${m.label} — ${sideLabel}`}
+                        value={values[key] ?? ''}
+                        onChange={(e) => {
+                          const next = { ...values, [key]: e.target.value };
+                          setValues(next);
+                          setDirty(JSON.stringify(next) !== baseline.current);
+                        }}
+                      />
+                    </span>
+                  </label>
+                ))}
+              <span className="ml-auto text-xs text-muted-foreground">{m.unit}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
         {dirty && (
           <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
             Unsaved changes

@@ -70,7 +70,7 @@ export default function KpiConfiguration() {
 
       {/* 32px between top-level cards — clearly above the 12–16px
           rhythms inside them. */}
-      <div className="space-y-8">
+      <div className={`space-y-8 ${dirtyList.length > 0 ? 'pb-14' : ''}`}>
         <section id="cfg-grading" className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="text-base font-semibold">
             {t('kpi_config.grades_title', 'Grading thresholds')}

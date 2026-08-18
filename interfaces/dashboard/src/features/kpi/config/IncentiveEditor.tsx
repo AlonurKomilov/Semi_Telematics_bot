@@ -218,6 +218,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
   // The rules LINTER (ladder only): a dead row and a target-requirement
   // inversion are silent policy bugs on a money config — say them
   // BEFORE save, never block (the engine allows both shapes).
+  const deadRows = new Set<number>();
   const lint: string[] = (() => {
     if (cfg.model !== 'ladder') return [];
     const out: string[] = [];
@@ -229,6 +230,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
         && (!tk.requires_target || !!tj.requires_target)
         && rpm(tk) <= rpm(tj) && gro(tk) <= gro(tj));
       if (dominator >= 0 && dominator < j) {
+        deadRows.add(j);
         out.push(t('kpi_config.lint_dead',
           'Row {{j}} never decides a payout — row {{k}} pays the same or more with easier conditions.',
           { j: j + 1, k: dominator + 1 }));
@@ -427,7 +429,9 @@ export default function IncentiveEditor({ onDirtyChange }: {
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('kpi_config.model_title', 'Model & policy')}
         </h3>
-        <div className="flex flex-wrap items-end gap-4">
+        {/* ONE column grid for both policy rows — per-field widths put
+            column 2 sixty-four pixels apart between stacked rows. */}
+        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[18rem_14rem_14rem]">
           <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_config.model', 'Tier model')}</span>
             <Select
@@ -491,32 +495,31 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </label>
           )}
         </div>
-        {/* Fixed w-56 cells: the three same-class numeric fields form a
-            column track independent of label length, and one input
-            width step (w-28) for all of them. */}
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="text-sm space-y-1 w-56">
+        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[18rem_14rem_14rem]">
+          <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_config.cap2', 'Exception cap')}</span>
             {/* Word placeholders, not example numbers: empty IS a real
                 state (no cap / no floor), and a grey "7000" reads as a
                 filled value at a glance.  Units live AT the input —
                 one adornment convention page-wide. */}
             <span className="inline-flex items-center gap-1.5">
+              <span className="w-3" aria-hidden />
               <NumField value={cfg.exception_cap_pct} onChange={(v) => patchCfg({ exception_cap_pct: v })} placeholder={t('kpi_config.none', 'none')} />
               <span className="text-muted-foreground">%</span>
             </span>
           </label>
-          <label className="text-sm space-y-1 w-56">
+          <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_config.floor_gross3', 'Removal floor — truck gross/wk')}</span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-muted-foreground">$</span>
+              <span className="w-3 text-muted-foreground">$</span>
               <NumField value={cfg.floor_weekly_gross} onChange={(v) => patchCfg({ floor_weekly_gross: v })} placeholder={t('kpi_config.none', 'none')} />
             </span>
           </label>
-          <label className="text-sm space-y-1 w-56">
+          <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_config.floor_rpm2', 'Removal floor — RPM')}</span>
             <span className="inline-flex items-center gap-1.5">
-              <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} />
+              <span className="w-3" aria-hidden />
+              <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} width="w-20" />
               <span className="text-muted-foreground">$/mi</span>
             </span>
           </label>
@@ -552,7 +555,14 @@ export default function IncentiveEditor({ onDirtyChange }: {
                 min_rpm: Math.round((topRpm + 0.25) * 100) / 100,
                 pct: Math.round((topPct + 0.25) * 100) / 100 };
             }
+            const at = cfg.tiers.length;
             setCfgDirty({ ...cfg, tiers: [...cfg.tiers, next] });
+            requestAnimationFrame(() => {
+              const el = document.querySelector<HTMLInputElement>(
+                `[data-tier-row="${at}"] input`);
+              el?.focus();
+              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
           }}>
             <Plus size={14} /> {t('kpi_config.add_tier', 'Add tier')}
           </Button>
@@ -586,32 +596,33 @@ export default function IncentiveEditor({ onDirtyChange }: {
           {lint.length > 0 && (
             <ul className="space-y-1">
               {lint.map((w, i) => (
-                <li key={i} className={`text-xs ${toneClasses('warn')} px-2 py-1 rounded`}>
+                <li key={i} className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded`}>
                   {w}
                 </li>
               ))}
             </ul>
           )}
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border border-t border-border">
             {cfg.tiers.map((tier, i) => (
-              <li key={i} className={`flex flex-wrap items-center gap-3 py-2 text-sm ${
-                tierDirty(i) ? 'border-l-2 border-warn-bd pl-2' : ''}`}>
+              <li key={i} data-tier-row={i}
+                className={`flex flex-wrap items-center gap-3 py-2 text-sm border-l-2 pl-2 ${
+                  tierDirty(i) ? 'border-warn-bd' : 'border-transparent'}`}>
                 <span className="w-5 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                 {cfg.model === 'ladder' && (
                   <>
-                    <label className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
                       <input
                         type="checkbox"
                         checked={!!tier.requires_target}
                         onChange={(e) => setTier(i, { requires_target: e.target.checked })}
-                        className="cursor-pointer accent-primary align-middle"
+                        className="size-4 cursor-pointer accent-primary align-middle"
                         aria-label={t('kpi_config.requires_target', 'Requires weekly target met')}
                       />
                       {t('kpi_config.target_met', 'weekly target met')}
                     </label>
                     <label className="inline-flex items-center gap-1.5 text-muted-foreground">
                       {t('kpi_config.min_gross2', 'truck gross/wk ≥')}
-                      <NumField value={tier.min_weekly_gross} onChange={(v) => setTier(i, { min_weekly_gross: v })} placeholder={t('kpi_config.any', 'any')} width="w-24" />
+                      <NumField value={tier.min_weekly_gross} onChange={(v) => setTier(i, { min_weekly_gross: v })} placeholder={t('kpi_config.any', 'any')} width="w-28" />
                     </label>
                     <label className="inline-flex items-center gap-1.5 text-muted-foreground">
                       {t('kpi_config.min_rpm', 'RPM ≥')}
@@ -658,6 +669,11 @@ export default function IncentiveEditor({ onDirtyChange }: {
                     unit — flex-wrap must never strand the % on its own
                     line away from the X. */}
                 <span className="ml-auto flex items-center gap-3">
+                  {deadRows.has(i) && (
+                    <span className={`text-xs ${toneClasses('warn')} border px-1.5 py-0.5 rounded`}>
+                      {t('kpi_config.never_applies', 'never applies')}
+                    </span>
+                  )}
                   <label className="inline-flex items-center gap-1.5 text-muted-foreground">
                     →
                     <NumField value={tier.pct} onChange={(v) => setTier(i, { pct: v ?? 0 })} width="w-20" />
@@ -694,11 +710,14 @@ export default function IncentiveEditor({ onDirtyChange }: {
         )}
         </div>
 
-        {rulesDirty && (
-          /* The effect BEFORE the ask: candidate rules re-priced against
-             the latest run.  Nothing is written by a preview. */
+        {/* The effect BEFORE the ask: candidate rules re-priced against
+            the latest run.  Nothing is written by a preview.  Rendered
+            ALWAYS (disabled while clean) so the first edit doesn't
+            insert a control into the flow. */}
+        {(
           <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" variant="outline" onClick={runPreview} disabled={previewing}>
+            <Button size="sm" variant="outline" onClick={runPreview}
+              disabled={previewing || !rulesDirty}>
               {previewing && <Loader2 size={14} className="animate-spin mr-1.5" />}
               {t('kpi_config.preview_btn', 'Preview effect on the latest run')}
             </Button>
@@ -735,8 +754,10 @@ export default function IncentiveEditor({ onDirtyChange }: {
         {/* One save for the whole card — model, policy and tiers are
             ONE PUT, so the button sits inside the one card that IS its
             scope and takes the CARD'S name: all three saves on the page
-            read "Save <card title>" (same grammar as Targets below). */}
-        <div className="flex items-center justify-end gap-3">
+            read "Save <card title>" (same grammar as Targets below).
+            border-t: the commit bar is the CARD's, not the last
+            sub-region's — bounded by a rule, not by 16px of air. */}
+        <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
           {rulesDirty && (
             <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
               {t('kpi_config.unsaved', 'Unsaved changes')}
@@ -746,7 +767,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
               the moment there is something to save. */}
           {rulesDirty && (
             <button type="button" onClick={discardRules}
-              className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              className="py-1 -my-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
               {t('kpi_config.discard', 'Discard changes')}
             </button>
           )}
@@ -766,7 +787,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
         </p>
         {/* border-t: the header+description band ends at a line, so the
             first company row cannot read as part of the header group. */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">{t('kpi_config.set_all', 'Set all to')}</span>
           <NumField value={null} onChange={(v) => {
             if (v == null) return;
@@ -776,6 +797,12 @@ export default function IncentiveEditor({ onDirtyChange }: {
             setTargetsDirty(normTargets(next) !== targetsBaseline.current);
           }} placeholder="8000" width="w-28" />
         </div>
+        {companies.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            {t('kpi_config.no_companies',
+              'No companies yet — companies arrive from your TMS integration, and each gets its target here.')}
+          </p>
+        )}
         <ul className="divide-y divide-border border-t border-border">
           {companies.map((co) => (
             <li key={co.id} className="flex items-center justify-between gap-3 py-2 text-sm">
@@ -808,7 +835,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </li>
           ))}
         </ul>
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
           {targetsDirty && (
             <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
               {t('kpi_config.unsaved', 'Unsaved changes')}
@@ -816,7 +843,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           )}
           {targetsDirty && (
             <button type="button" onClick={discardTargets}
-              className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              className="py-1 -my-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
               {t('kpi_config.discard', 'Discard changes')}
             </button>
           )}
@@ -866,7 +893,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             <Button variant="outline" onClick={() => setPendingModel(null)}>
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button onClick={() => {
+            <Button variant="destructive" onClick={() => {
               if (pendingModel) patchCfg({ model: pendingModel, tiers: [] });
               setPendingModel(null);
             }}>
