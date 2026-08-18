@@ -31,7 +31,7 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '../../../components/ui/dialog';
-import { toneClasses } from '../../../lib/status';
+import { toneClasses, toneText } from '../../../lib/status';
 import {
   getIncentivesConfig, previewIncentiveRules, putIncentivesConfig,
   putIncentiveTargets,
@@ -84,17 +84,19 @@ const COMMON_LADDER: Partial<IncentiveConfig> = {
 
 /** A number input that treats '' as null — unset is a real state for
  *  policy knobs (no floor, no cap), not zero. */
-function NumField({ value, onChange, placeholder, width = 'w-28' }: {
+function NumField({ value, onChange, placeholder, width = 'w-28', ariaLabel }: {
   value: number | null | undefined;
   onChange: (v: number | null) => void;
   placeholder?: string;
   width?: string;
+  ariaLabel?: string;
 }) {
   return (
     <Input
       type="number"
       step="0.01"
       className={width}
+      aria-label={ariaLabel}
       placeholder={placeholder}
       value={value ?? ''}
       onChange={(e) => {
@@ -171,7 +173,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           setConfigured(true);
           rulesBaseline.current = JSON.stringify(loaded);
           const at = (res.config as { updated_at?: string }).updated_at;
-          if (at) setLastSaved(String(at).slice(0, 10));
+          if (at) setLastSaved(String(at).slice(0, 16).replace('T', ' '));
         }
         setCompanies(res.companies);
         setStats(res.company_stats ?? {});
@@ -236,6 +238,10 @@ export default function IncentiveEditor({ onDirtyChange }: {
           { j: j + 1, k: dominator + 1 }));
       }
     });
+    if (!hasAnyTarget && cfg.tiers.some((x) => x.requires_target)) {
+      out.push(t('kpi_config.lint_no_targets',
+        'No company has a weekly target — every “target met” row is unearnable and runs pay 0% until targets are saved below.'));
+    }
     const maxNoTarget = Math.max(Number.NEGATIVE_INFINITY,
       ...cfg.tiers.filter((x) => !x.requires_target).map((x) => Number(x.pct)));
     const minWithTarget = Math.min(Number.POSITIVE_INFINITY,
@@ -470,7 +476,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </label>
           )}
           <label className="text-sm space-y-1">
-            <span className="block text-muted-foreground">{t('kpi_config.cadence', 'Calculated')}</span>
+            <span className="block text-muted-foreground">{t('kpi_config.cadence2', 'Payout period')}</span>
             <Select
               value={cfg.calc_cadence}
               onValueChange={(v) => patchCfg({ calc_cadence: v as IncentiveConfig['calc_cadence'] })}
@@ -497,7 +503,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
         </div>
         <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[18rem_14rem_14rem]">
           <label className="text-sm space-y-1">
-            <span className="block text-muted-foreground">{t('kpi_config.cap2', 'Exception cap')}</span>
+            <span className="block text-muted-foreground">{t('kpi_config.cap3', 'Manual exception cap')}</span>
             {/* Word placeholders, not example numbers: empty IS a real
                 state (no cap / no floor), and a grey "7000" reads as a
                 filled value at a glance.  Units live AT the input —
@@ -509,14 +515,14 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </span>
           </label>
           <label className="text-sm space-y-1">
-            <span className="block text-muted-foreground">{t('kpi_config.floor_gross3', 'Removal floor — truck gross/wk')}</span>
+            <span className="block text-muted-foreground">{t('kpi_config.floor_gross4', '0% floor — truck gross/wk')}</span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-3 text-muted-foreground">$</span>
               <NumField value={cfg.floor_weekly_gross} onChange={(v) => patchCfg({ floor_weekly_gross: v })} placeholder={t('kpi_config.none', 'none')} />
             </span>
           </label>
           <label className="text-sm space-y-1">
-            <span className="block text-muted-foreground">{t('kpi_config.floor_rpm2', 'Removal floor — RPM')}</span>
+            <span className="block text-muted-foreground">{t('kpi_config.floor_rpm3', '0% floor — RPM')}</span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-3" aria-hidden />
               <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} width="w-20" />
@@ -524,9 +530,15 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </span>
           </label>
         </div>
+        {((cfg.floor_weekly_gross == null) !== (cfg.floor_rpm == null)) && (
+          <p className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded inline-block`} role="status">
+            {t('kpi_config.one_floor',
+              'Only one floor is set — the 0% rule needs BOTH and is inactive until the other is filled.')}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground max-w-prose">
           {t('kpi_config.floor_note',
-            'A truck below BOTH floors pays 0% — the “removed from dispatcher” rule (the floor only applies when both values are set). Manual exceptions above the cap are refused, never clamped. Targets and floors are always per WEEK — longer periods prorate day by day.')}
+            'The 0% floors fire together: a truck below BOTH is removed from pay (one alone does nothing). The manual cap limits hand-entered run exceptions — refused above it, never clamped — and is unrelated to tier percentages. Targets and floors are always per WEEK; longer periods prorate day by day.')}
         </p>
         </div>
 
@@ -538,8 +550,14 @@ export default function IncentiveEditor({ onDirtyChange }: {
             {/* The resolution rule, stated where the rows are edited —
                 the engine pays the HIGHEST matching row, not the first. */}
             <p className="text-xs text-muted-foreground mt-1 max-w-prose">
-              {t('kpi_config.tiers_hint',
-                'A truck earns every row whose conditions it meets — the highest % pays; each dispatcher is paid the sum of their trucks. An empty condition means no requirement; “weekly target met” compares against the company target set below.')}
+              {t('kpi_config.tiers_hint2',
+                'A truck earns every row whose conditions it meets — the highest % pays; each dispatcher is paid the sum of their trucks. An empty condition means no requirement; “weekly target met” compares against the ')}
+              <button type="button"
+                onClick={() => document.getElementById('cfg-targets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="underline underline-offset-4 hover:text-foreground">
+                {t('kpi_config.tiers_hint_link', 'company weekly targets')}
+              </button>
+              {t('kpi_config.tiers_hint_tail', ' set below.')}
             </p>
           </div>
           {/* The only action that advances an unconfigured account —
@@ -549,11 +567,12 @@ export default function IncentiveEditor({ onDirtyChange }: {
             // that would pay every truck (the audit's verified footgun).
             let next = fresh(cfg.model);
             if (cfg.model === 'ladder' && cfg.tiers.length > 0) {
+              const top = cfg.tiers.reduce((a, b) =>
+                Number(b.pct) > Number(a.pct) ? b : a);
               const topRpm = Math.max(...cfg.tiers.map((x) => Number(x.min_rpm ?? 0)));
-              const topPct = Math.max(...cfg.tiers.map((x) => Number(x.pct)));
-              next = { requires_target: true,
+              next = { requires_target: !!top.requires_target,
                 min_rpm: Math.round((topRpm + 0.25) * 100) / 100,
-                pct: Math.round((topPct + 0.25) * 100) / 100 };
+                pct: Math.round((Number(top.pct) + 0.25) * 100) / 100 };
             }
             const at = cfg.tiers.length;
             setCfgDirty({ ...cfg, tiers: [...cfg.tiers, next] });
@@ -594,7 +613,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
         ) : (
           <>
           {lint.length > 0 && (
-            <ul className="space-y-1">
+            <ul className="space-y-1" role="status" aria-live="polite">
               {lint.map((w, i) => (
                 <li key={i} className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded`}>
                   {w}
@@ -602,11 +621,11 @@ export default function IncentiveEditor({ onDirtyChange }: {
               ))}
             </ul>
           )}
-          <ul className="divide-y divide-border border-t border-border">
+          <ul className="border-t border-border">
             {cfg.tiers.map((tier, i) => (
               <li key={i} data-tier-row={i}
-                className={`flex flex-wrap items-center gap-3 py-2 text-sm border-l-2 pl-2 ${
-                  tierDirty(i) ? 'border-warn-bd' : 'border-transparent'}`}>
+                className={`flex flex-wrap items-center gap-3 py-2 text-sm border-b border-b-border last:border-b-0 border-l-2 ${
+                  tierDirty(i) ? 'border-l-warn-bd' : 'border-l-transparent'}`}>
                 <span className="w-5 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                 {cfg.model === 'ladder' && (
                   <>
@@ -676,7 +695,8 @@ export default function IncentiveEditor({ onDirtyChange }: {
                   )}
                   <label className="inline-flex items-center gap-1.5 text-muted-foreground">
                     →
-                    <NumField value={tier.pct} onChange={(v) => setTier(i, { pct: v ?? 0 })} width="w-20" />
+                    <NumField value={tier.pct} onChange={(v) => setTier(i, { pct: v ?? 0 })} width="w-20"
+                      ariaLabel={t('kpi_config.pct_aria', 'Payout %')} />
                     %
                   </label>
                   <button
@@ -685,7 +705,9 @@ export default function IncentiveEditor({ onDirtyChange }: {
                       const removed = tier;
                       const at = i;
                       setCfgDirty({ ...cfg, tiers: cfg.tiers.filter((_, j) => j !== i) });
-                      toast(t('kpi_config.tier_removed', 'Tier removed'), {
+                      toast(t('kpi_config.tier_removed2',
+                        'Tier {{n}} removed ({{pct}}%)',
+                        { n: at + 1, pct: removed.pct }), {
                         action: {
                           label: t('common.undo', 'Undo'),
                           onClick: () => setCfgDirty({
@@ -717,9 +739,11 @@ export default function IncentiveEditor({ onDirtyChange }: {
         {(
           <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" variant="outline" onClick={runPreview}
-              disabled={previewing || !rulesDirty}>
+              disabled={previewing || !configured}>
               {previewing && <Loader2 size={14} className="animate-spin mr-1.5" />}
-              {t('kpi_config.preview_btn', 'Preview effect on the latest run')}
+              {rulesDirty
+                ? t('kpi_config.preview_btn2', 'Preview payout change')
+                : t('kpi_config.preview_btn3', 'Preview these rules on the latest run')}
             </Button>
             {preview && !preview.available && (
               <span className="text-xs text-muted-foreground">
@@ -727,18 +751,30 @@ export default function IncentiveEditor({ onDirtyChange }: {
               </span>
             )}
             {preview?.available && (
-              <span className="text-xs text-muted-foreground">
-                {t('kpi_config.preview_line',
-                  '{{a}} – {{b}} ({{status}}): ${{cur}} → ${{cand}} ({{sign}}${{delta}}) · {{moved}} of {{rows}} trucks change %',
+              /* The BASELINE is the run's current (snapshot) pricing —
+                 without naming it, a delta reads as "the effect of my
+                 last edit", which it is not when the saved rules
+                 already differ from the run's snapshot. */
+              <span className="text-sm tabular-nums" role="status" aria-live="polite">
+                {t('kpi_config.preview_line2',
+                  'Run {{a}} – {{b}} ({{status}}) currently pays ${{cur}} — under these rules ',
                   {
                     a: preview.period_start, b: preview.period_end,
                     status: preview.status,
                     cur: (preview.current_total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                    cand: (preview.candidate_total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                    sign: (preview.delta ?? 0) >= 0 ? '+' : '−',
-                    delta: Math.abs(preview.delta ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                    moved: preview.moved_rows, rows: preview.rows,
                   })}
+                <span className="font-medium">
+                  ${(preview.candidate_total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+                <span className={`ml-1 font-medium ${
+                  (preview.delta ?? 0) >= 0 ? toneText('ok') : toneText('danger')}`}>
+                  ({(preview.delta ?? 0) >= 0 ? '+' : '−'}$
+                  {Math.abs(preview.delta ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                </span>
+                <span className="ml-1 text-xs text-muted-foreground">
+                  {t('kpi_config.preview_moved', '· {{moved}} of {{rows}} trucks change %',
+                    { moved: preview.moved_rows, rows: preview.rows })}
+                </span>
               </span>
             )}
           </div>
@@ -886,7 +922,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             {t('kpi_config.switch_body',
-              'The {{count}} tier(s) you entered belong to the current model and cannot carry over — the models use different fields. Switching clears them.',
+              'The {{count}} tier(s) you entered belong to the current model and cannot carry over — the models use different fields. Switching clears them (Discard changes restores them until you save).',
               { count: cfg.tiers.length })}
           </p>
           <DialogFooter>
