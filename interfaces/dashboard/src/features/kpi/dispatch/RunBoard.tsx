@@ -192,7 +192,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3.5 w-8 rounded-r rounded-l-none bg-ok-bg/60 align-middle" aria-hidden />
+          <span className="inline-block h-3.5 w-8 rounded-r rounded-l-none bg-ok-bg align-middle" aria-hidden />
           {t('kpi_board.leg_transit2', 'load underway (in transit) — counts')}
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -506,7 +506,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                       once; repeating it per piece breaks the one-bar
                       reading.  h-6 = the chip's exact height, so the
                       bar runs level; AT still hears the story. */}
-                  <span className={`block h-6 bg-ok-bg/60 -ml-1.5 ${
+                  {/* Full-strength token: --ok-bg is ALREADY a 15%
+                      tint (color-mix), so an alpha modifier on top
+                      painted a ~9% wash — invisible on white.  Same
+                      fill as the chip = one unbroken bar. */}
+                  <span className={`block h-6 bg-ok-bg -ml-1.5 ${
                     continues ? 'rounded-none -mr-1.5' : 'rounded-r rounded-l-none'}`}>
                     <span className="sr-only">
                       {t('kpi_board.transit_sr', 'in transit — {{rate}} to {{place}}', {
