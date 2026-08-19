@@ -316,8 +316,23 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   // load's bar ("→ $5,800 · Wilmi… — day 2 of 3"), never an anonymous
   // arrow.
   const hiDay = row.window_end.slice(0, 10);
-  const daysDiff = (a: string, z: string) =>
-    Math.round((Date.parse(`${z}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+  const prevDay = (iso: string) =>
+    new Date(Date.parse(`${iso}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  const stripLoadAt = (day: string): RunLoad | null => {
+    const info = transitInfo.get(day);
+    if (!info) return null;
+    if ((byDay.get(day) ?? []).length > 0) return null;
+    if (marks.get(day) != null) return null;
+    if (suggested.has(day)) return null;
+    if (!inWindow(day)) return null;
+    return info.load;
+  };
+  /** Consecutive strip days ahead of a pickup — the chip's runway. */
+  const stripRun = (l: RunLoad, from: string): number => {
+    let c = 0;
+    for (let day = nextDay(from); stripLoadAt(day) === l; day = nextDay(day)) c += 1;
+    return c;
+  };
   const spanEnd = (l: RunLoad): string => {
     const a = (l.pickup_date || '').slice(0, 10);
     const bRaw = (l.delivery_date || '').slice(0, 10);
@@ -439,11 +454,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             } ${clickable && inside ? 'cursor-pointer hover:bg-muted/50' : ''}`}
           >
             {dayLoads.slice(0, 2).map((l, i) => {
-              const cont = spanEnd(l) > d;
-              // Text runway = this cell + every following covered cell
+              const runDays = i === 0 ? stripRun(l, d) : 0;
+              const cont = runDays > 0;
+              // Text runway = this cell + every following STRIP cell
               // (w-28 = 112px each), minus the 6px insets both ends.
-              const runway = cont
-                ? (daysDiff(d, spanEnd(l)) + 1) * 112 - 12 : undefined;
+              const runway = cont ? (runDays + 1) * 112 - 12 : undefined;
               return (
                 <Tip key={i}
                   label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
@@ -515,7 +530,13 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                  cap.  An anonymous "in transit" couldn't say WHICH
                  load the truck was rolling for. */
               const info = transitInfo.get(d)!;
-              const continues = d < info.last;
+              const continues = stripLoadAt(nextDay(d)) === info.load;
+              // Connected LEFT when yesterday rendered this load's
+              // head (its pickup) or its strip; an interrupted span
+              // (another chip in between) restarts with a left cap.
+              const leftConnected =
+                stripLoadAt(prevDay(d)) === info.load
+                || (byDay.get(prevDay(d)) ?? [])[0] === info.load;
               return (
                 <Tip label={t('kpi_board.transit_tip2',
                   '{{rate}} to {{place}} — in transit, day {{i}} of {{n}}; delivers {{del}}. A working day; it counts.', {
@@ -531,8 +552,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                       tint (color-mix), so an alpha modifier on top
                       painted a ~9% wash — invisible on white.  Same
                       fill as the chip = one unbroken bar. */}
-                  <span className={`block h-6 bg-ok-bg -ml-1.5 ${
-                    continues ? 'rounded-none -mr-1.5' : 'rounded-r rounded-l-none'}`}>
+                  <span className={`block h-6 bg-ok-bg ${
+                    leftConnected ? '-ml-1.5 rounded-l-none' : 'rounded-l'} ${
+                    continues ? 'rounded-r-none -mr-1.5' : 'rounded-r'}`}>
                     <span className="sr-only">
                       {t('kpi_board.transit_sr', 'in transit — {{rate}} to {{place}}', {
                         rate: `$${Math.round(info.load.total_rate).toLocaleString()}`,
@@ -560,10 +582,14 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             )}
           </div>
         );
-        // The bar erases the grid line it crosses: no right border on
-        // a cell whose NEXT day is covered by a rolling load (next day
-        // being a transit day implies the span includes this one).
-        const seamless = transitInfo.has(nextDay(d));
+        // The bar erases the grid line it crosses — only where it
+        // VISUALLY crosses: the next day renders load L's strip AND
+        // this day renders L's head or L's strip.  A span interrupted
+        // by another chip keeps its grid lines.
+        const nextStripLoad = stripLoadAt(nextDay(d));
+        const seamless = nextStripLoad != null
+          && (stripLoadAt(d) === nextStripLoad
+            || (dayLoads.length > 0 && dayLoads[0] === nextStripLoad));
         const wrapCls = `w-28 flex-none snap-start ${
           seamless ? '' : 'border-r'} border-border last:border-r-0`;
         if (!clickable || !inside) return <div key={d} className={wrapCls}>{cell}</div>;
