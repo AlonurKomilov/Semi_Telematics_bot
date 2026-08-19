@@ -82,8 +82,8 @@ export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }:
       </div>
       {loaded != null && (
         <div>{loaded === 1
-          ? t('kpi_runs.dt_loaded_one2', '• 1 day covered by a load (pickup → delivery)')
-          : t('kpi_runs.dt_loaded2', '• {{n}} days covered by loads (pickup → delivery)', { n: loaded })}</div>
+          ? t('kpi_runs.dt_covered_one', '• 1 day covered by a load (pickup → delivery, transit included)')
+          : t('kpi_runs.dt_covered', '• {{n}} days covered by loads (pickup → delivery, transit included)', { n: loaded })}</div>
       )}
       {draft && off > 0 && (
         /* The bubble is the INVERTED surface (bg-foreground /

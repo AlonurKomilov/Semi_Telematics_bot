@@ -42,7 +42,7 @@ import { ScrollRegion } from '../../../components/scrolling';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
-import { daysCell, isHandAdjusted, loadedDayCount, matchedTip } from './explain';
+import { daysCell, daysSummary, isHandAdjusted, loadedDayCount, matchedTip } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { SectionSwitcher } from '../SectionSwitcher';
 import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
@@ -291,8 +291,8 @@ export default function IncentiveRuns() {
           <span onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}>
-            <InfoTip label={t('kpi_runs.days_info3',
-              'Counted days of the period, and how many a load covered (pickup through delivery). Days marked inactive on the board (home time, repair, holiday) drop out, and the target is split across the counted days. A counted day with no load is on the dispatcher.')} />
+            <InfoTip label={t('kpi_runs.days_info4',
+              'Counted days of the period, and how many of those days were covered by a load (from pickup until delivery — in transit included). Days marked inactive on the board (home time, repair, holiday) drop out, and the target is split across the counted days. A counted day with no load is on the dispatcher.')} />
           </span>
         </span>
       ),
@@ -313,11 +313,19 @@ export default function IncentiveRuns() {
               loads={runLoadsQ.data ? (runLoadsQ.data.rows[String(r.id)] ?? []) : undefined}
               draft={draft} periodStart={run?.period_start ?? ''}
               periodEnd={run?.period_end ?? ''} t={t} />}>
-              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+              {/* A real control: keyboard/AT reach the breakdown via
+                  the name, and the click opens the row's loads — the
+                  hover Tip alone was mouse-only three audits running. */}
+              <button type="button"
+                onClick={() => setLoadsRow(r)}
+                aria-label={daysSummary(r, runLoadsQ.data
+                  ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? [],
+                      r.window_start, r.window_end) : null, t)}
+                className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 hover:text-foreground transition">
                 {daysCell(r, runLoadsQ.data
                   ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? [],
                       r.window_start, r.window_end) : null, t)}
-              </span>
+              </button>
             </Tip>
             {Number(r.inactive_days) > 0 && (
               <Note text={`(${cut != null
@@ -640,7 +648,9 @@ export default function IncentiveRuns() {
               {draft ? (
                 <button type="button" onClick={() => setViewMode('board')}
                   className="underline underline-offset-4 hover:text-foreground transition">
-                  {t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}
+                  {markedDays > 0
+                    ? t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })
+                    : t('kpi_board.none_marked', 'no inactive days — mark on the board')}
                 </button>
               ) : (
                 <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>

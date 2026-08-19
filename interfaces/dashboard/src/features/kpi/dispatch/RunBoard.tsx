@@ -181,7 +181,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span className={`inline-block rounded px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
-          {t('kpi_board.leg_loads2', 'delivered load (place · rate)')}
+          {t('kpi_board.leg_loads3', 'load (rate · delivery place)')}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className={`inline-block rounded px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn')}`}>{t('kpi_board.inactive', 'inactive')}</span>
@@ -329,13 +329,16 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               {daysCell(row, loadedDayCount(loads, row.window_start, row.window_end), t)}
             </span>
           </Tip>
-          {' · '}${Math.round(row.kpi_gross).toLocaleString()}
-          {row.weekly_target != null && (
-            <span className="text-muted-foreground/70">
-              {' '}{t('kpi_board.vs_target', 'vs {{tgt}}',
-                { tgt: `$${Math.round(row.adjusted_target).toLocaleString()}` })}
-            </span>
-          )}
+          {' · '}
+          <span className="whitespace-nowrap">
+            ${Math.round(row.kpi_gross).toLocaleString()}
+            {row.weekly_target != null && (
+              <span className="text-muted-foreground/70">
+                {' '}{t('kpi_board.vs_target', 'vs {{tgt}}',
+                  { tgt: `$${Math.round(row.adjusted_target).toLocaleString()}` })}
+              </span>
+            )}
+          </span>
           {' · '}
           {row.matched_rule ? (
             <Tip label={matchedTip(row.matched_rule, t)}>
@@ -406,7 +409,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               <Tip key={i}
                 label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
                 <div className={`rounded px-1.5 py-0.5 text-xs tabular-nums ${toneClasses('ok')} truncate`}>
-                  {place(l.delivery_location) || l.load_number} · ${Math.round(l.total_rate).toLocaleString()}
+                  ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
                 </div>
               </Tip>
             ))}
@@ -527,8 +530,19 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             ]}
           >
             <button type="button" className="w-28 flex-none snap-start border-r border-border last:border-r-0 text-left"
-              aria-label={t('kpi_board.day_aria', 'Mark {{day}} for unit {{unit}}',
-                { day: d, unit: row.vehicle_unit })}>
+              aria-label={(reason != null
+                ? t('kpi_board.day_aria_unmark',
+                    'Make {{day}} count again for unit {{unit}}{{stake}}',
+                    { day: dayLabel(d), unit: row.vehicle_unit,
+                      stake: row.weekly_target != null
+                        ? ` — ${t('kpi_board.aria_up', 'target +${{v}}',
+                            { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
+                : t('kpi_board.day_aria_mark',
+                    'Mark {{day}} inactive for unit {{unit}}{{stake}}',
+                    { day: dayLabel(d), unit: row.vehicle_unit,
+                      stake: row.weekly_target != null
+                        ? ` — ${t('kpi_board.aria_down', 'target −${{v}}',
+                            { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' }))}>
               {cell}
             </button>
           </ActionMenu>

@@ -94,8 +94,31 @@ export function daysCell(row: RunRow, loaded: number | null, t: TFunction): stri
   const head = t('kpi_runs.days_phrase', '{{a}} of {{p}} days', { a: active, p: total });
   if (loaded == null) return head;
   return `${head} · ${loaded === 1
-    ? t('kpi_runs.days_loaded_one', '1 loaded')
-    : t('kpi_runs.days_loaded_n', '{{n}} loaded', { n: loaded })}`;
+    ? t('kpi_runs.days_covered_one', '1 covered')
+    : t('kpi_runs.days_covered_n', '{{n}} covered', { n: loaded })}`;
+}
+
+/** The cell's breakdown as ONE plain sentence — the accessible name
+ *  for the Days control (the visual list rides the hover Tip). */
+export function daysSummary(row: RunRow, loaded: number | null, t: TFunction): string {
+  const total = Number(row.total_days);
+  const off = Number(row.inactive_days);
+  const active = Math.max(0, total - off);
+  const parts = [
+    t('kpi_runs.ds_total', '{{n}} period days', { n: total }),
+  ];
+  if (off > 0) {
+    parts.push(t('kpi_runs.ds_off', '{{n}} marked inactive', { n: off }));
+  }
+  parts.push(t('kpi_runs.ds_counted', '{{n}} counted', { n: active }));
+  if (row.weekly_target != null) {
+    parts.push(t('kpi_runs.ds_target', 'target ${{v}}',
+      { v: Math.round(row.adjusted_target).toLocaleString() }));
+  }
+  if (loaded != null) {
+    parts.push(t('kpi_runs.ds_covered', '{{n}} covered by loads', { n: loaded }));
+  }
+  return parts.join(', ');
 }
 
 
