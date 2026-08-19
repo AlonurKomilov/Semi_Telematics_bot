@@ -50,7 +50,7 @@ export function matchedTip(rule: NonNullable<RunRow['matched_rule']>, t: TFuncti
     { p: rule.pct, r: rule.rpm_pct, g: rule.gross_pct, how });
 }
 
-const nextDay = (iso: string) =>
+export const nextDay = (iso: string) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 /** Days COVERED by a load — pickup through delivery, clamped to the

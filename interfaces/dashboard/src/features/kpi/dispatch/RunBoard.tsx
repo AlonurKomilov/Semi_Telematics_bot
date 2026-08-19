@@ -21,7 +21,7 @@ import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-re
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
-import { coveredDays, daysCell, loadedDayCount, matchedTip } from './explain';
+import { daysCell, loadedDayCount, matchedTip, nextDay } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -192,8 +192,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block rounded bg-muted/60 px-1.5 text-xs text-muted-foreground">{t('kpi_board.transit', '→ in transit')}</span>
-          {t('kpi_board.leg_transit', 'load underway — counts')}
+          <span className="inline-block rounded-r rounded-l-none bg-ok-bg/60 px-1.5 text-xs tabular-nums text-ok">→ $950</span>
+          {t('kpi_board.leg_transit2', 'load underway (in transit) — counts')}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex size-5 items-center justify-center rounded border border-dashed border-border">
@@ -306,8 +306,34 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
     byDay.set(d, [...(byDay.get(d) ?? []), l]);
   }
   // Days a load COVERS without starting there — the truck is rolling
-  // (picked up earlier, delivering later), not idle.
-  const transit = coveredDays(loads ?? [], row.window_start, row.window_end);
+  // (picked up earlier, delivering later), not idle.  Each transit day
+  // keeps its load + position so the strip reads as a PIECE of that
+  // load's bar ("→ $5,800 · Wilmi… — day 2 of 3"), never an anonymous
+  // arrow.
+  const hiDay = row.window_end.slice(0, 10);
+  const spanEnd = (l: RunLoad): string => {
+    const a = (l.pickup_date || '').slice(0, 10);
+    const bRaw = (l.delivery_date || '').slice(0, 10);
+    const end = bRaw && bRaw > a ? bRaw : a;
+    return end > hiDay ? hiDay : end;
+  };
+  const transitInfo = new Map<string, {
+    load: RunLoad; dayNo: number; total: number; last: string;
+  }>();
+  for (const l of loads ?? []) {
+    const a = (l.pickup_date || '').slice(0, 10);
+    if (!a) continue;
+    const end = spanEnd(l);
+    if (end <= a) continue;
+    let total = 1;
+    for (let d = a; d < end; d = nextDay(d)) total += 1;
+    let dayNo = 2;
+    for (let d = nextDay(a); d <= end; d = nextDay(d), dayNo += 1) {
+      if (!transitInfo.has(d)) {
+        transitInfo.set(d, { load: l, dayNo, total, last: end });
+      }
+    }
+  }
   const inWindow = (d: string) =>
     d >= row.window_start.slice(0, 10) && d <= row.window_end.slice(0, 10);
 
@@ -408,7 +434,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             {dayLoads.slice(0, 2).map((l, i) => (
               <Tip key={i}
                 label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
-                <div className={`rounded px-1.5 py-0.5 text-xs tabular-nums ${toneClasses('ok')} truncate`}>
+                <div className={`rounded py-0.5 text-xs tabular-nums ${toneClasses('ok')} truncate ${
+                  spanEnd(l) > d
+                    ? 'rounded-r-none -mr-1.5 pl-1.5 pr-2' : 'px-1.5'}`}>
                   ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
                 </div>
               </Tip>
@@ -459,19 +487,30 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               </span>
             )}
             {inside && dayLoads.length === 0 && reason == null
-              && !suggested.has(d) && transit.has(d) && (
-              /* Covered by a load picked up earlier — a rolling day,
-                 not an idle one; without this shade the transit days
-                 of a Friday long-haul read as dispatcher idle. */
-              <Tip label={t('kpi_board.transit_tip',
-                'Covered by a load in transit (picked up earlier) — a working day; it counts.')}>
-                <span className="block rounded bg-muted/60 px-1.5 py-0.5 text-xs text-muted-foreground truncate">
-                  {t('kpi_board.transit', '→ in transit')}
-                </span>
-              </Tip>
-            )}
+              && !suggested.has(d) && transitInfo.has(d) && (() => {
+              /* A rolling day is a PIECE of its load's bar — same tone
+                 as the pickup chip, lighter fill, connected through
+                 the cell edges; the delivery day carries the right
+                 cap.  An anonymous "in transit" couldn't say WHICH
+                 load the truck was rolling for. */
+              const info = transitInfo.get(d)!;
+              const continues = d < info.last;
+              return (
+                <Tip label={t('kpi_board.transit_tip2',
+                  '{{rate}} to {{place}} — in transit, day {{i}} of {{n}}; delivers {{del}}. A working day; it counts.', {
+                    rate: `$${Math.round(info.load.total_rate).toLocaleString()}`,
+                    place: place(info.load.delivery_location) || info.load.load_number,
+                    i: info.dayNo, n: info.total, del: dayLabel(info.last),
+                  })}>
+                  <span className={`block bg-ok-bg/60 py-0.5 text-xs tabular-nums text-ok truncate -ml-1.5 pl-2 ${
+                    continues ? 'rounded-none -mr-1.5 pr-2' : 'rounded-r rounded-l-none pr-1.5'}`}>
+                    → ${Math.round(info.load.total_rate).toLocaleString()} · {place(info.load.delivery_location) || info.load.load_number}
+                  </span>
+                </Tip>
+              );
+            })()}
             {clickable && inside && dayLoads.length === 0 && reason == null
-              && !suggested.has(d) && !transit.has(d) && (
+              && !suggested.has(d) && !transitInfo.has(d) && (
               /* A persistent dashed WELL with a calendar-off glyph — a
                  "+" promised ADDING something; the gesture REMOVES a
                  day from the target.  Tip names day and action. */
