@@ -88,8 +88,8 @@ class AccountsMixin:
         return [self._row_to_account(r) for r in rows]
 
     async def update_account(self, account_id: int, **kwargs) -> bool:
-        """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret, payroll_enabled, coaching_enabled, timezone, alert_routing_mode, disabled_modules, public_display_name."""
-        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone", "alert_routing_mode", "disabled_modules", "public_display_name"}
+        """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret, payroll_enabled, coaching_enabled, timezone, alert_routing_mode, disabled_modules, public_display_name, is_test."""
+        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone", "alert_routing_mode", "disabled_modules", "public_display_name", "is_test"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False

@@ -80,6 +80,11 @@ class Account:
     # not set → those surfaces use neutral wording rather than falling
     # back to the registered name.
     public_display_name: str = ""
+    # Operator classification: 1 = internal test/dev account (excluded
+    # from real-customer reasoning in the operator console).  Distinct
+    # from is_active on purpose — a test account stays fully functional
+    # for testing; deactivating it would defeat its purpose.
+    is_test: bool = False
 
 @dataclass
 class Company:

@@ -363,6 +363,12 @@ async def list_accounts(
     status: str = Query(default="", description="Filter by subscription status"),
     tier:   str = Query(default="", description="Filter by tier"),
     is_comped: str = Query(default="", description="'yes' | 'no' | '' for all"),
+    account_type: str = Query(
+        default="", alias="type",
+        description="Account TYPE — 'real' | 'test' | '' for all.  A "
+                    "classification axis, deliberately separate from "
+                    "subscription status and is_active lifecycle.",
+    ),
     limit:  int = Query(default=100, ge=1, le=500),
     _user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
@@ -379,6 +385,10 @@ async def list_accounts(
         accounts = [a for a in accounts if needle in a.name.lower()]
     if tier:
         accounts = [a for a in accounts if a.tier == tier]
+    if account_type == "test":
+        accounts = [a for a in accounts if a.is_test]
+    elif account_type == "real":
+        accounts = [a for a in accounts if not a.is_test]
 
     items: list[dict] = []
     for acc in accounts[:limit]:
@@ -396,6 +406,7 @@ async def list_accounts(
             "slug":           acc.slug,
             "tier":           acc.tier,
             "is_active":      acc.is_active,
+            "type":           "test" if acc.is_test else "real",
             "created_at":     acc.created_at,
             # Subscription fields are shallow — full detail is on the
             # account-detail page; the list view stays cheap.
@@ -430,6 +441,7 @@ async def get_account_detail(
             "slug":         acc.slug,
             "tier":         acc.tier,
             "is_active":    acc.is_active,
+            "type":         "test" if acc.is_test else "real",
             "created_at":   acc.created_at,
             "timezone":     acc.timezone,
             "bot_username": acc.bot_username,
@@ -960,6 +972,39 @@ async def force_refresh_vehicles(
 
 class BillingEmailOverride(BaseModel):
     email: str = Field(..., min_length=3, max_length=320)
+
+
+class AccountTypeBody(BaseModel):
+    type: str = Field(..., pattern="^(real|test)$")
+
+
+@router.patch("/accounts/{account_id}/type")
+async def operator_set_account_type(
+    account_id: int,
+    body: AccountTypeBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Set the account TYPE — 'test' (internal dev artifact) or 'real'.
+
+    Classification only — nothing about the account's function
+    changes.  Deliberately NOT an ``is_active`` write: deactivating a
+    test account would defeat its purpose, and lifecycle states
+    (suspend/delete) keep their own guarded flows.  Stored as the
+    ``accounts.is_test`` boolean; 'real' is the absence of the flag,
+    so no third value can ever creep in.
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await platform_db.update_account(
+        account_id, is_test=1 if body.type == "test" else 0,
+    )
+    logger.info(
+        "system: account type acct=%s -> %s operator_tg=%s",
+        account_id, body.type, user.get("sub"),
+    )
+    return {"id": account_id, "type": body.type}
 
 
 @router.patch("/accounts/{account_id}/billing-email")

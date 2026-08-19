@@ -300,6 +300,7 @@ class _DatabaseCore:
                 if "public_display_name" in row.keys() and row["public_display_name"]
                 else ""
             ),
+            is_test=bool(row["is_test"]) if "is_test" in row.keys() else False,
         )
 
     def _row_to_company(self, row) -> Company:

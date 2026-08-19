@@ -20,6 +20,8 @@ export interface AccountListItem {
   slug: string;
   tier: string;
   is_active: boolean;
+  /** Account TYPE — operator classification, separate from status. */
+  type: 'real' | 'test';
   created_at: string;
   subscription: SubscriptionSummary;
 }
@@ -96,6 +98,8 @@ export interface AccountDetail {
     slug: string;
     tier: string;
     is_active: boolean;
+    /** Account TYPE — operator classification, separate from status. */
+    type: 'real' | 'test';
     created_at: string;
     timezone: string;
     bot_username: string;

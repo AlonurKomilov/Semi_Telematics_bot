@@ -216,6 +216,29 @@ async def run_all(conn) -> None:
     # Recruiting notices moved onto the notification capability — seed the
     # connections its existing audience already had reach through.
     await migrate_seed_application_notification_channels(conn)
+    await migrate_account_test_flag(conn)
+
+
+async def migrate_account_test_flag(conn) -> None:
+    """accounts.is_test — operator classification of internal test/dev
+    accounts, shown + filterable in the system console.  Deliberately
+    NOT an is_active state: a test account must stay fully usable for
+    testing.  Default 0 (real); the operator flips it per account.
+    No index — the accounts table is tiny and the flag is a console
+    filter, not a hot path (and see the platform_schema index-on-
+    upgrade boot crash this repo already learned from)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE accounts ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Platform migration: accounts.is_test added")
+    except Exception as e:
+        logger.info("accounts.is_test likely exists — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_platform_settings_and_part_rollups(conn) -> None:

@@ -25,6 +25,9 @@ async def create_tables(conn) -> None:
             -- points AND may view market ranges.  Default OFF —
             -- explicit opt-in only.
             share_market_data   INTEGER NOT NULL DEFAULT 0,
+            -- Operator classification: internal test/dev account.
+            -- Independent of is_active (a test account stays usable).
+            is_test             INTEGER NOT NULL DEFAULT 0,
             is_active           INTEGER NOT NULL DEFAULT 1,
             bot_token_encrypted TEXT,
             bot_username        TEXT    NOT NULL DEFAULT '',

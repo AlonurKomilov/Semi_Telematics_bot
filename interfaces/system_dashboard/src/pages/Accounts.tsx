@@ -30,6 +30,7 @@ export default function Accounts() {
   const [statusFilter, setStatusFilter] = useState('');
   const [tierFilter, setTierFilter] = useState('');
   const [compFilter, setCompFilter] = useState<'' | 'yes' | 'no'>('');
+  const [kindFilter, setKindFilter] = useState<'' | 'real' | 'test'>('');
   const [showNewModal, setShowNewModal] = useState(false);
   const navigate = useNavigate();
 
@@ -41,6 +42,7 @@ export default function Accounts() {
     if (statusFilter) qs.set('status', statusFilter);
     if (tierFilter)   qs.set('tier',   tierFilter);
     if (compFilter)   qs.set('is_comped', compFilter);
+    if (kindFilter)   qs.set('type', kindFilter);
     Promise.all([
       apiJSON<{ items: AccountListItem[]; count: number }>(`/system/accounts?${qs.toString()}`),
       apiJSON<SystemStats>('/system/stats'),
@@ -111,6 +113,12 @@ export default function Accounts() {
           <option value="yes">Comped</option>
           <option value="no">Not comped</option>
         </select>
+        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as '' | 'real' | 'test')}
+                className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm">
+          <option value="">Any kind</option>
+          <option value="real">Real</option>
+          <option value="test">Test</option>
+        </select>
         <button onClick={load}
                 className="bg-accent text-white text-xs px-3 py-1.5 rounded hover:bg-accent/90">
           Apply
@@ -145,6 +153,7 @@ export default function Accounts() {
               <th className="text-left px-4 py-2">ID</th>
               <th className="text-left px-4 py-2">Name</th>
               <th className="text-left px-4 py-2">Tier</th>
+              <th className="text-left px-4 py-2">Type</th>
               <th className="text-left px-4 py-2">Status</th>
               <th className="text-right px-4 py-2">Vehicles</th>
               <th className="text-left px-4 py-2">Provider</th>
@@ -154,10 +163,10 @@ export default function Accounts() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={8} className="text-center text-slate-500 py-8">Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center text-slate-500 py-8">Loading…</td></tr>
             )}
             {!loading && accounts.length === 0 && (
-              <tr><td colSpan={8} className="text-center text-slate-500 py-8">No accounts match.</td></tr>
+              <tr><td colSpan={9} className="text-center text-slate-500 py-8">No accounts match.</td></tr>
             )}
             {accounts.map((a) => (
               <tr key={a.id} className="border-b border-slate-800/50 hover:bg-slate-800/50">
@@ -169,6 +178,13 @@ export default function Accounts() {
                   <div className="text-xs text-slate-500">{a.slug}</div>
                 </td>
                 <td className="px-4 py-2 capitalize text-slate-300">{a.tier}</td>
+                <td className="px-4 py-2">
+                  {a.type === 'test' ? (
+                    <span className="text-xs px-2 py-0.5 rounded border bg-warn/15 text-warn border-warn/40">test</span>
+                  ) : (
+                    <span className="text-xs text-slate-400">real</span>
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded border ${statusColor(a.subscription.status)}`}>
                     {a.subscription.status.replace('_', ' ')}

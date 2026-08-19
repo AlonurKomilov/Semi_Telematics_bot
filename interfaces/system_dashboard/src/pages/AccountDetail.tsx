@@ -61,13 +61,37 @@ export default function AccountDetailPage() {
       <Link to="/accounts" className="text-accent text-sm hover:underline">← Accounts</Link>
 
       <header className="mt-3 mb-6">
-        <h1 className="text-xl font-semibold text-slate-100">{data.account.name}</h1>
-        <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-4 gap-y-1">
+        <h1 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
+          {data.account.name}
+          {data.account.type === 'test' && (
+            <span className="text-xs font-medium text-warn border border-warn/40 bg-warn/10 rounded px-1.5 py-0.5">test</span>
+          )}
+        </h1>
+        <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-4 gap-y-1 items-center">
           <span>id: {data.account.id}</span>
           <span>slug: {data.account.slug}</span>
           <span>tz: {data.account.timezone}</span>
           {data.account.bot_username && <span>bot: @{data.account.bot_username}</span>}
           <span>{data.user_count} users</span>
+          <span>type: {data.account.type}</span>
+          {/* TYPE is classification, not lifecycle: flipping it changes
+              nothing about the account's function — it only marks the
+              row in lists and filters.  Suspend/delete keep their own
+              guarded card. */}
+          <button
+            onClick={async () => {
+              try {
+                await apiJSON(`/system/accounts/${data.account.id}/type`, {
+                  method: 'PATCH',
+                  body: { type: data.account.type === 'test' ? 'real' : 'test' },
+                });
+                load();
+              } catch { /* transient — row keeps its current type */ }
+            }}
+            className="text-accent hover:underline"
+          >
+            {data.account.type === 'test' ? 'mark as real' : 'mark as test'}
+          </button>
         </div>
       </header>
 
