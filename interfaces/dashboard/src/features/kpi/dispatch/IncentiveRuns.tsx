@@ -12,9 +12,10 @@
  * confirmed, reason) so the output is a document their managers already
  * know how to read.  Per-row editing goes through the grid's own
  * ``rowActions`` (the house pattern), opening small dialogs:
- * "Days & extras" edits inputs and recomputes; "Exception" overrides the
- * percent with a mandatory reason, validated server-side against the
- * run's snapshot cap.
+ * "Extras" edits TONU/bonus and recomputes (days are edited per-day on
+ * the BOARD — one editor per fact); "Exception" overrides the percent
+ * with a mandatory reason, validated server-side against the run's
+ * snapshot cap.
  *
  * A finalized run renders read-only: the paid record, never re-priced.
  */
@@ -317,10 +318,18 @@ export default function IncentiveRuns() {
                   the name, and the click opens the row's loads — the
                   hover Tip alone was mouse-only three audits running. */}
               <button type="button"
-                onClick={() => setLoadsRow(r)}
-                aria-label={daysSummary(r, runLoadsQ.data
-                  ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? [],
-                      r.window_start, r.window_end) : null, t)}
+                onClick={(e) => {
+                  // The row's own click opens the edit dialog — without
+                  // this, one click stacked BOTH dialogs.
+                  e.stopPropagation();
+                  setLoadsRow(r);
+                }}
+                aria-label={t('kpi_runs.days_btn_aria',
+                  'Open unit {{unit}} loads — {{sum}}',
+                  { unit: r.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'),
+                    sum: daysSummary(r, runLoadsQ.data
+                      ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? [],
+                          r.window_start, r.window_end) : null, t) })}
                 className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 hover:text-foreground transition">
                 {daysCell(r, runLoadsQ.data
                   ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? [],
@@ -648,9 +657,11 @@ export default function IncentiveRuns() {
               {draft ? (
                 <button type="button" onClick={() => setViewMode('board')}
                   className="underline underline-offset-4 hover:text-foreground transition">
-                  {markedDays > 0
-                    ? t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })
-                    : t('kpi_board.none_marked', 'no inactive days — mark on the board')}
+                  {markedDays === 1
+                    ? t('kpi_board.one_marked', '1 day marked inactive')
+                    : markedDays > 0
+                      ? t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })
+                      : t('kpi_board.none_marked', 'no inactive days — mark on the board')}
                 </button>
               ) : (
                 <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
@@ -723,7 +734,7 @@ export default function IncentiveRuns() {
               ...(draft ? [
               {
                 key: 'edit',
-                label: t('kpi_runs.edit_row', 'Days & extras…'),
+                label: t('kpi_runs.edit_row2', 'Extras…'),
                 icon: <Pencil size={14} className="text-muted-foreground" />,
                 onSelect: () => setEditRow(row as unknown as RunRow),
               },
@@ -758,6 +769,7 @@ export default function IncentiveRuns() {
           runId={selected} row={editRow}
           onClose={() => setEditRow(null)}
           onSaved={() => { setEditRow(null); refresh(); }}
+          onGoBoard={() => { setEditRow(null); setViewMode('board'); }}
         />
       )}
       {exceptRow && selected != null && (
@@ -798,12 +810,28 @@ export default function IncentiveRuns() {
           <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>
-                {t('kpi_runs.loads_title', 'Unit {{unit}} — {{n}} loads', {
-                  unit: loadsRow.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'),
-                  n: (runLoadsQ.data?.rows[String(loadsRow.id)] ?? []).length,
-                })}
+                {!runLoadsQ.data
+                  ? t('kpi_runs.loads_title_bare', 'Unit {{unit}} — loads', {
+                      unit: loadsRow.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned') })
+                  : (runLoadsQ.data.rows[String(loadsRow.id)] ?? []).length === 1
+                    ? t('kpi_runs.loads_title_one', 'Unit {{unit}} — 1 load', {
+                        unit: loadsRow.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned') })
+                    : t('kpi_runs.loads_title', 'Unit {{unit}} — {{n}} loads', {
+                        unit: loadsRow.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'),
+                        n: (runLoadsQ.data.rows[String(loadsRow.id)] ?? []).length,
+                      })}
               </DialogTitle>
             </DialogHeader>
+            {runLoadsQ.isError && (
+              <p className="text-sm text-danger">
+                {t('kpi_runs.loads_err', 'Could not load this row’s loads — close and retry.')}
+              </p>
+            )}
+            {!runLoadsQ.data && !runLoadsQ.isError && (
+              <p className="text-sm text-muted-foreground">
+                {t('common.loading', 'Loading…')}
+              </p>
+            )}
             <ScrollRegion className="max-h-96"
               label={t('kpi_runs.loads_region', 'Loads in this row')}>
             <ul className="divide-y divide-border border-t border-border">
@@ -1013,7 +1041,9 @@ function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
                 <ul className="text-xs text-muted-foreground space-y-0.5">
                   {r.inactive_days > 0 && (
                     <li>
-                      {t('kpi_runs.adj_days', '{{n}} inactive days', { n: r.inactive_days })}
+                      {r.inactive_days === 1
+                        ? t('kpi_runs.adj_days_one', '1 inactive day')
+                        : t('kpi_runs.adj_days', '{{n}} inactive days', { n: r.inactive_days })}
                       {r.inactive_dates.length > 0 && (
                         <> — {r.inactive_dates.map((m) => `${m.date.slice(5)}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}</>
                       )}
@@ -1262,29 +1292,28 @@ function NewRunDialog({ open, onClose, onCreated, existing }: {
   );
 }
 
-// ── Days & extras ─────────────────────────────────────────────────────
+// ── Extras (days are the board's) ─────────────────────────────────────
 
-function EditRowDialog({ runId, row, onClose, onSaved }: {
+function EditRowDialog({ runId, row, onClose, onSaved, onGoBoard }: {
   runId: number; row: RunRow;
   onClose: () => void; onSaved: () => void;
+  /** Close + switch to the board — the ONLY day editor. */
+  onGoBoard: () => void;
 }) {
   const { t } = useTranslation();
-  const [inactive, setInactive] = useState(String(row.inactive_days));
-  const [reason, setReason] = useState(row.inactive_reason);
   const [extras, setExtras] = useState(String(row.extras));
   const [note, setNote] = useState(row.extras_note);
   const [busy, setBusy] = useState(false);
+  const extrasChanged = Number(extras || 0) !== Number(row.extras);
 
   const save = async () => {
     setBusy(true);
     try {
-      // Only CHANGED fields travel: an echoed inactive_days would hit
-      // the server's coarse-number branch and wipe the per-day marks
-      // (including the auto edge excuses) on an extras-only edit.
+      // Extras only — days are edited per-day on the board, the one
+      // editor for that fact (a typed count here couldn't say WHICH
+      // days, and its free-text reason diverged from the board's set).
       const patch: Parameters<typeof patchIncentiveRow>[2] = {};
-      if (Number(inactive) !== Number(row.inactive_days)) patch.inactive_days = Number(inactive) || 0;
-      if (reason !== row.inactive_reason) patch.inactive_reason = reason;
-      if (Number(extras) !== Number(row.extras)) patch.extras = Number(extras) || 0;
+      if (extrasChanged) patch.extras = Number(extras) || 0;
       if (note !== row.extras_note) patch.extras_note = note;
       if (Object.keys(patch).length > 0) await patchIncentiveRow(runId, row.id, patch);
       onSaved();
@@ -1300,26 +1329,14 @@ function EditRowDialog({ runId, row, onClose, onSaved }: {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {t('kpi_runs.edit_title', 'Unit {{unit}} — days & extras', { unit: row.vehicle_unit })}
+            {t('kpi_runs.edit_title2', 'Unit {{unit}} — extras', { unit: row.vehicle_unit })}
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          {t('kpi_runs.edit_body',
-            'Inactive days (repair, home time) lower the gross target — the dispatcher is not responsible for them. Extras (TONU, bonus) adjust the gross the % applies to. The row recomputes on save.')}
+          {t('kpi_runs.edit_body2',
+            'Extras (TONU, bonus) adjust the gross revenue the % applies to; the row recomputes on save.')}
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm space-y-1">
-            <span className="block text-muted-foreground">
-              {t('kpi_runs.inactive', 'Inactive days (of {{total}})', { total: row.total_days })}
-            </span>
-            <Input type="number" min={0} max={row.total_days} value={inactive}
-              onChange={(e) => setInactive(e.target.value)} />
-          </label>
-          <label className="text-sm space-y-1">
-            <span className="block text-muted-foreground">{t('kpi_runs.reason', 'Reason')}</span>
-            <Input value={reason} placeholder={t('kpi_runs.reason_ph', 'repair, home time…')}
-              onChange={(e) => setReason(e.target.value)} />
-          </label>
           <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_runs.extras', 'Extras ($)')}</span>
             <Input type="number" step="0.01" value={extras}
@@ -1327,10 +1344,43 @@ function EditRowDialog({ runId, row, onClose, onSaved }: {
           </label>
           <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_runs.extras_note', 'Extras note')}</span>
-            <Input value={note} placeholder="TONU, Bonus…"
+            <Input value={note} placeholder={t('kpi_runs.extras_note_ph', 'TONU, bonus…')}
               onChange={(e) => setNote(e.target.value)} />
           </label>
         </div>
+        {/* The live result — this dialog changes pay, so it says what
+            the number becomes BEFORE the commit.  The % itself is the
+            server's (snapshot pricing), so the sentence promises only
+            what the client truly knows. */}
+        {extrasChanged && (
+          <p className="text-sm tabular-nums">
+            {t('kpi_runs.extras_becomes',
+              'Gross the % applies to becomes {{v}} (loads {{base}} + extras {{x}}). The % re-applies on save.', {
+                v: usd(Number(row.base_gross) + (Number(extras) || 0)),
+                base: usd(row.base_gross),
+                x: usd(Number(extras) || 0),
+              })}
+          </p>
+        )}
+        {/* Days live on the BOARD — one editor per fact. */}
+        <p className="text-sm text-muted-foreground">
+          {row.inactive_days === 1
+            ? t('kpi_runs.edit_days_ro1', '1 inactive day ({{why}}) — edited per-day on the board.',
+                { why: row.inactive_reason || t('kpi_board.inactive', 'inactive') })
+            : row.inactive_days > 0
+            ? t('kpi_runs.edit_days_ro', '{{n}} inactive days ({{why}}) — edited per-day on the board.',
+                { n: row.inactive_days, why: row.inactive_reason || t('kpi_board.inactive', 'inactive') })
+            : t('kpi_runs.edit_days_ro0', 'No inactive days — mark repair / home time / holiday per-day on the board.')}
+          {' '}
+          <button type="button" onClick={onGoBoard}
+            className="underline underline-offset-4 hover:text-foreground transition">
+            {t('kpi_runs.open_board', 'Open the board')}
+          </button>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t('kpi_runs.edit_tracked',
+            'Saved as an adjustment on this run, attributed to you — revertible from Adjustments.')}
+        </p>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button onClick={save} disabled={busy}>

@@ -15,7 +15,7 @@
  * silently disagree with the sheet.
  */
 import { useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -89,6 +89,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [busyRow, setBusyRow] = useState<number | null>(null);
+  const qc = useQueryClient();
   // Eleven cards, ONE scroll position: every card's day scroller mirrors
   // the one being dragged, so reading Sunday costs one scroll, not
   // eleven.  Imperative (no state) — setting scrollLeft on siblings
@@ -129,7 +130,15 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
       : [...existing.filter((m) => m.date !== day), { date: day, reason }];
     setBusyRow(row.id);
     try {
-      await patchIncentiveRow(run.id, row.id, { inactive_dates: marks });
+      const fresh = await patchIncentiveRow(run.id, row.id, { inactive_dates: marks });
+      // The board is the ONLY day editor and it PATCHes the WHOLE
+      // list, so the cache must carry this response before the row
+      // unlocks — a second mark built from the stale prop would
+      // silently erase the one just saved.
+      qc.setQueryData(['kpi-incentive-run', run.id],
+        (old: RunDetail | undefined) => old
+          ? { ...old, rows: old.rows.map((x) => x.id === fresh.id ? { ...x, ...fresh } : x) }
+          : old);
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save');
