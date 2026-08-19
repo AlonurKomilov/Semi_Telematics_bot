@@ -38,7 +38,7 @@ import io
 import json
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from features.kpi.dispatch import engine
 from features.loads import service as loads_service
@@ -202,15 +202,32 @@ async def create_run(
 
     for g in groups.values():
         dates = sorted(g.pop("_dates"))
-        w_start = max(period_start[:10], dates[0]) if dates else period_start[:10]
-        w_end = min(period_end[:10], dates[-1]) if dates else period_end[:10]
+        # The row's window is the WHOLE period — the denominator the
+        # owner reads ("3/7", never "3/3").  Days outside the truck's
+        # load span are AUTO-EXCUSED as ordinary day marks ("no loads"),
+        # so the untouched math equals the old first-to-last-load
+        # window, but the excused days are VISIBLE and one unmark turns
+        # an excuse into a counted day (truck was available — the empty
+        # day is on the dispatcher).  Owner decision 2026-08-19.
+        w_start = period_start[:10]
+        w_end = period_end[:10]
+        auto: list[dict] = []
+        if dates:
+            cur = date.fromisoformat(w_start)
+            last = date.fromisoformat(w_end)
+            while cur <= last:
+                i = cur.isoformat()
+                if i < dates[0] or i > dates[-1]:
+                    auto.append({"date": i, "reason": "no loads"})
+                cur += timedelta(days=1)
         row = {
             **g,
             "window_start": w_start,
             "window_end": w_end,
             "total_days": _days_inclusive(w_start, w_end),
-            "inactive_days": 0,
-            "inactive_reason": "",
+            "inactive_days": len(auto),
+            "inactive_reason": "no loads" if auto else "",
+            "inactive_dates": json.dumps(auto),
             "extras": 0.0,
             "extras_note": "",
             "weekly_target": snapshot["targets"].get(g["company_code"]),

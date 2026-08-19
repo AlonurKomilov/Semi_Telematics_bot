@@ -41,7 +41,7 @@ import { Tip } from '../../../components/tooltip';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
-import { matchedTip } from './explain';
+import { daysTip, matchedTip } from './explain';
 import { SectionSwitcher } from '../SectionSwitcher';
 import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
 import type { AnyColumn } from '../../../types';
@@ -259,7 +259,11 @@ export default function IncentiveRuns() {
         const total = Number(r.total_days); const inactive = Number(r.inactive_days);
         return (
           <span className="tabular-nums">
-            {total - inactive}/{total}
+            <Tip label={daysTip(r, runLoadsQ.data?.rows[String(r.id)], t)}>
+              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                {total - inactive}/{total}
+              </span>
+            </Tip>
             {inactive > 0 && (
               <Note text={`(${inactive} off${r.inactive_reason ? `: ${r.inactive_reason}` : ''})`} />
             )}

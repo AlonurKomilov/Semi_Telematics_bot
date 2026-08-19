@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tip } from '../../../components/tooltip';
-import { matchedTip } from './explain';
+import { daysTip, matchedTip } from './explain';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses } from '../../../lib/status';
 import {
@@ -287,7 +287,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
         </div>
         <div className="text-xs text-muted-foreground tabular-nums">
-          {row.total_days - row.inactive_days}/{row.total_days}
+          <Tip label={daysTip(row, loads, t)}>
+            <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-2 cursor-help">
+              {row.total_days - row.inactive_days}/{row.total_days}
+            </span>
+          </Tip>
           {' '}{t('kpi_board.days', 'days')}
           {' · '}${Math.round(row.kpi_gross).toLocaleString()}
           {row.weekly_target != null && (

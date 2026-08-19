@@ -8,7 +8,7 @@
  * the paid ones — this file only puts words on it.
  */
 import type { TFunction } from 'i18next';
-import type { RunRow } from '../api';
+import type { RunLoad, RunRow } from '../api';
 
 const usd0 = (v: number) => `$${Math.round(v).toLocaleString()}`;
 
@@ -48,4 +48,37 @@ export function matchedTip(rule: NonNullable<RunRow['matched_rule']>, t: TFuncti
   return t('kpi_runs.mr_fixed',
     'Pays {{p}}% — RPM ladder {{r}}% and gross ladder {{g}}%, {{how}}.',
     { p: rule.pct, r: rule.rpm_pct, g: rule.gross_pct, how });
+}
+
+/** The Days breakdown — period days, excused, counted, loaded — the
+ *  answer to "why 3/7 and not 7/7".  ``loads`` may be undefined while
+ *  the loads query is in flight; the sentence simply omits that part. */
+export function daysTip(row: RunRow, loads: RunLoad[] | undefined, t: TFunction): string {
+  const total = Number(row.total_days);
+  const off = Number(row.inactive_days);
+  const active = Math.max(0, total - off);
+  const parts = [
+    t('kpi_runs.days_total', '{{n}} period days', { n: total }),
+  ];
+  if (off > 0) {
+    parts.push(t('kpi_runs.days_off', '{{n}} excused ({{why}})',
+      { n: off, why: row.inactive_reason || t('kpi_board.inactive', 'inactive') }));
+  }
+  parts.push(t('kpi_runs.days_counted', '{{n}} counted', { n: active }));
+  if (loads && loads.length > 0) {
+    const loaded = new Set(loads.map((l) => l.pickup_date.slice(0, 10))).size;
+    parts.push(t('kpi_runs.days_loaded', '{{n}} with loads', { n: loaded }));
+  }
+  let out = parts.join(' · ') + '.';
+  if (row.weekly_target != null) {
+    out += ' ' + t('kpi_runs.days_target',
+      'Target prorates to the counted days: {{tgt}} ({{a}}/7 of {{wk}}).',
+      { tgt: `$${Math.round(row.adjusted_target).toLocaleString()}`,
+        a: active, wk: `$${Math.round(row.weekly_target).toLocaleString()}` });
+  }
+  if (off > 0) {
+    out += ' ' + t('kpi_runs.days_unmark',
+      'Unmark an excused day on the board if the truck was available — it will count.');
+  }
+  return out;
 }
