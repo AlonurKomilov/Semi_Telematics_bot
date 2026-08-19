@@ -1326,10 +1326,18 @@ export default function DataGrid({
     value: columnOrder,
     setValue: setColumnOrder,
   } = useTablePreference(tableId, 'order');
+  // Default pinning = column-level ``defaultPinned`` (identity columns
+  // a table ships frozen).  It is only the FALLBACK: a stored pinning
+  // map — written the first time the operator touches pinning — wins
+  // wholly, and Reset-to-defaults clears back to this.
+  const defaultPinning = useMemo<ColumnPinningState>(() => ({
+    left: columns.filter(c => c.defaultPinned === 'left').map(c => c.key),
+    right: columns.filter(c => c.defaultPinned === 'right').map(c => c.key),
+  }), [columns]);
   const {
     value: columnPinning,
     setValue: setColumnPinning,
-  } = useTablePreference(tableId, 'pinning', { left: [], right: [] });
+  } = useTablePreference(tableId, 'pinning', defaultPinning);
   // ColumnSizing is populated by a per-header ResizeObserver below
   // (see ColumnHeaderCell).  tanstack uses these values inside
   // ``column.getStart('left') / getAfter('right')`` to compute the

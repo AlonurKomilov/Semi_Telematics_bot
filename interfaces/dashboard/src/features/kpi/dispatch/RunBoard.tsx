@@ -344,7 +344,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         // let a wide chip widen ONE row's column off the header grid.
         const cell = (
           <div
-            className={`h-full min-h-14 px-1.5 py-1.5 space-y-1 overflow-hidden ${
+            className={`group relative h-full min-h-14 px-1.5 py-1.5 space-y-1 overflow-hidden ${
               !inside ? 'bg-muted/40'
                 : reason != null ? 'bg-warn-bg'
                   : i % 2 === 1 ? 'bg-muted/30' : ''
@@ -377,6 +377,15 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                   {suggested.get(d)!.reason}?
                 </span>
               </Tip>
+            )}
+            {clickable && inside && dayLoads.length > 0 && reason == null && (
+              /* Loaded cells hide their gesture behind a bare cursor
+                 change — on hover a corner glyph names the action
+                 without reflowing the cell (overlay, not in-flow). */
+              <span className="absolute bottom-1 right-1 hidden group-hover:inline-flex items-center justify-center size-5 rounded border border-dashed border-border bg-card"
+                aria-hidden>
+                <CalendarOff size={12} className="text-muted-foreground" />
+              </span>
             )}
             {clickable && inside && dayLoads.length === 0 && reason == null
               && !suggested.has(d) && (

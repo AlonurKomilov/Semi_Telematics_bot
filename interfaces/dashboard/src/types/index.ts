@@ -567,6 +567,13 @@ export interface Column<T = Record<string, unknown>> {
    *  should exist as filter surfaces without cluttering the default
    *  view.  Reset-to-defaults returns to hidden. */
   defaultHidden?: boolean;
+  /** The side this column starts PINNED to.  For IDENTITY columns
+   *  (who/which row is this) on wide grids: identity is pinned by
+   *  default, not merely pinnable — an unpinned Unit column scrolls
+   *  away exactly when the reader is deep in the numbers that need
+   *  it.  The operator's own pinning, once touched, wins wholly;
+   *  Reset-to-defaults returns to this. */
+  defaultPinned?: 'left' | 'right';
   /** Floor for this column's width, in px.  The grid's global floor is
    *  60px — enough for an ellipsized label plus the ⋮ menu, but not for
    *  content with a KNOWN minimum shape: a date needs ~96px or it

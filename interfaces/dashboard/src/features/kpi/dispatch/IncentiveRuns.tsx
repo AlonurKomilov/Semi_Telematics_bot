@@ -238,9 +238,10 @@ export default function IncentiveRuns() {
   });
 
   const COLUMNS: AnyColumn[] = [
-    { key: 'dispatcher_name', label: 'Dispatcher', sortable: true, filterable: true },
+    { key: 'dispatcher_name', label: 'Dispatcher', sortable: true, filterable: true,
+      defaultPinned: 'left' },
     { key: 'company_code', label: 'Company', sortable: true, filterable: true },
-    { key: 'vehicle_unit', label: 'Unit', sortable: true,
+    { key: 'vehicle_unit', label: 'Unit', sortable: true, defaultPinned: 'left',
       render: (v) => v
         ? <span>{String(v)}</span>
         : <span className="text-muted-foreground">{t('kpi_runs.unassigned', 'Unassigned')}</span> },
@@ -504,7 +505,9 @@ export default function IncentiveRuns() {
                 </Button>
                 {draft ? (
                   <>
-                    <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
+                    <Button variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setDiscardOpen(true)}>
                       <Trash2 size={14} className="mr-1.5" />
                       {t('kpi_runs.discard', 'Discard draft')}
                     </Button>
@@ -570,13 +573,12 @@ export default function IncentiveRuns() {
               ) : (
                 <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
               )}
-              {adjustedRows.length > 0 && (
-                <button type="button" onClick={() => setAdjustmentsOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-foreground hover:border-ring transition">
-                  <ListChecks size={12} />
-                  {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
-                </button>
-              )}
+              <button type="button" onClick={() => setAdjustmentsOpen(true)}
+                className={`inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 hover:border-ring transition ${
+                  adjustedRows.length > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                <ListChecks size={12} />
+                {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
+              </button>
             </div>
 
             <RunNoteLine run={run} onSaved={refresh} />
@@ -770,6 +772,11 @@ export default function IncentiveRuns() {
                   r.inactive_days > 0 || Number(r.extras) !== 0
                   || r.override_pct != null).length ?? 0,
               })}
+            {run?.note && (
+              <> {t('kpi_runs.recreate_note',
+                'The run note (“{{note}}”) does not carry over either.',
+                { note: run.note.length > 60 ? `${run.note.slice(0, 60)}…` : run.note })}</>
+            )}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRecreateOpen(false)}>
