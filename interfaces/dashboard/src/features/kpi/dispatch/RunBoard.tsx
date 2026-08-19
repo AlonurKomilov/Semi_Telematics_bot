@@ -138,6 +138,12 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   const drift = loadsQ.data
     ? loadsQ.data.drift.length + (loadsQ.data.unmatched_loads > 0 ? 1 : 0)
     : 0;
+  // The dashed "REPAIR?" chips whisper per-cell; a reviewer scanning a
+  // 30-row board needs the COUNT said once, up top, or unconfirmed
+  // suggestions scroll past unseen.
+  const suggestionCount = loadsQ.data
+    ? Object.values(loadsQ.data.suggestions).reduce((a, s) => a + s.length, 0)
+    : 0;
 
   return (
     <div className="space-y-3">
@@ -166,6 +172,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             </button>
           )}
         </div>
+      )}
+      {draft && suggestionCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t('kpi_board.suggest_count',
+            '{{n}} suggested repair days on this board (dashed chips) — click each to confirm as inactive, or ignore to leave the day counted.',
+            { n: suggestionCount })}
+        </p>
       )}
 
       {[...byDispatcher.entries()].map(([name, rows]) => {

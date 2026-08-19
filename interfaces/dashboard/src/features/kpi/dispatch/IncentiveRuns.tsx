@@ -64,6 +64,14 @@ function usd(v: unknown): string {
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
+/** Days a DRAFT has sat past its period end — money payroll cannot see
+ *  yet.  0 for finalized or still-running periods. */
+function draftOverdueDays(r: RunSummary): number {
+  if (r.status !== 'draft') return 0;
+  const end = new Date(`${r.period_end.slice(0, 10)}T00:00:00Z`).getTime();
+  return Math.max(0, Math.floor((Date.now() - end) / 86_400_000) - 1);
+}
+
 // The strip shows the WORKING SET; the archive collapses.  At weekly
 // cadence a year mints 52 runs — an unbounded chip row would push the
 // settlement grid below the fold and keep growing.
@@ -266,7 +274,7 @@ export default function IncentiveRuns() {
           )}
         </span>
       ) },
-    { key: 'miles', label: 'Miles', sortable: true,
+    { key: 'miles', label: 'Miles', sortable: true, defaultHidden: true,
       aggregable: true,
       aggFormat: (v) => Math.round(v).toLocaleString(),
       render: (v) => <span className="tabular-nums">{Number(v).toLocaleString()}</span> },
@@ -319,7 +327,7 @@ export default function IncentiveRuns() {
           )}
         </span>
       ) },
-    { key: 'kpi_dollars', label: 'KPI $', sortable: true,
+    { key: 'kpi_dollars', label: 'KPI $', sortable: true, defaultHidden: true,
       aggregable: true, aggFormat: (v) => usd(v),
       render: (v) => <span className="tabular-nums">{usd(v)}</span> },
     { key: 'confirmed_dollars', label: 'Confirmed', sortable: true, aggregable: true,
@@ -398,9 +406,12 @@ export default function IncentiveRuns() {
             >
               <span className="tabular-nums">{r.period_start} – {r.period_end}</span>
               <span className={`text-xs px-1.5 py-0.5 rounded ${
-                toneClasses(r.status === 'finalized' ? 'ok' : 'info')
+                toneClasses(r.status === 'finalized' ? 'ok'
+                  : draftOverdueDays(r) > 1 ? 'warn' : 'info')
               }`}>
-                {r.status}
+                {r.status === 'draft' && draftOverdueDays(r) > 1
+                  ? t('kpi_runs.draft_overdue', 'draft · {{d}}d', { d: draftOverdueDays(r) })
+                  : r.status}
               </span>
             </button>
           ))}
@@ -541,12 +552,24 @@ export default function IncentiveRuns() {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>{t('kpi_board.n_dispatchers', '{{n}} dispatchers', { n: Object.keys(run.payouts).length })}</span>
               <span>{t('kpi_board.n_trucks', '{{n}} trucks', { n: run.rows.length })}</span>
-              {zeroCount > 0 && (
-                <span className={`px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
-                  {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
-                </span>
+              {zeroCount > 0 && run && (
+                <Tip label={t('kpi_runs.zero_units_tip', 'Units at 0%: {{list}}',
+                  { list: run.rows.filter((r) => Number(r.pct) === 0)
+                      .map((r) => r.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'))
+                      .join(', ') })}>
+                  <span className={`px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
+                    {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
+                  </span>
+                </Tip>
               )}
-              <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
+              {draft ? (
+                <button type="button" onClick={() => setViewMode('board')}
+                  className="underline underline-offset-4 hover:text-foreground transition">
+                  {t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}
+                </button>
+              ) : (
+                <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
+              )}
               {adjustedRows.length > 0 && (
                 <button type="button" onClick={() => setAdjustmentsOpen(true)}
                   className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-foreground hover:border-ring transition">
@@ -564,8 +587,14 @@ export default function IncentiveRuns() {
             <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-sm">
               {Object.entries(run.payouts).map(([name, total]) => (
                 <span key={name} className="inline-flex items-center gap-1.5">
-                  <GradePill value={runLoadsQ.data?.dispatcher_grades[name]} />
                   <span className="text-muted-foreground">{name}</span>
+                  {runLoadsQ.data?.dispatcher_grades[name] && (
+                    <Tip label={t('kpi_runs.grade_tip',
+                      'Grade {{g}} — period analytics against the grading thresholds. Grades never change incentive pay.',
+                      { g: runLoadsQ.data.dispatcher_grades[name] })}>
+                      <GradePill value={runLoadsQ.data.dispatcher_grades[name]} />
+                    </Tip>
+                  )}
                   <span className="font-medium tabular-nums">{usd(total)}</span>
                 </span>
               ))}
@@ -628,7 +657,11 @@ export default function IncentiveRuns() {
         </div>
       )}
 
-      <MonthlyPayoutsPanel allRuns={allRuns} />
+      <MonthlyPayoutsPanel allRuns={allRuns}
+        onSelectRun={(id) => {
+          setSelected(id);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }} />
 
       <NewRunDialog
         open={newOpen}
@@ -941,7 +974,10 @@ function monthOptions(): { value: string; label: string }[] {
   return out;
 }
 
-function MonthlyPayoutsPanel({ allRuns }: { allRuns: RunSummary[] }) {
+function MonthlyPayoutsPanel({ allRuns, onSelectRun }: {
+  allRuns: RunSummary[];
+  onSelectRun: (id: number) => void;
+}) {
   const { t } = useTranslation();
   const months = monthOptions();
   const [month, setMonth] = useState(months[0].value);
@@ -988,12 +1024,19 @@ function MonthlyPayoutsPanel({ allRuns }: { allRuns: RunSummary[] }) {
         </p>
       )}
       {pendingDrafts.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {pendingDrafts.map((d) => t('kpi_runs.monthly_pending',
-            'Finalizing the draft {{a}} – {{b}} would add {{total}} to this month.',
-            { a: d.period_start, b: d.period_end, total: usd(d.total) }),
-          ).join(' ')}
-        </p>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          {pendingDrafts.map((d) => (
+            <p key={d.id}>
+              {t('kpi_runs.monthly_pending2', 'Finalizing the draft ')}
+              <button type="button" onClick={() => onSelectRun(d.id)}
+                className="tabular-nums underline underline-offset-4 hover:text-foreground transition">
+                {d.period_start} – {d.period_end}
+              </button>
+              {t('kpi_runs.monthly_pending3', ' would add {{total}} to this month.',
+                { total: usd(d.total) })}
+            </p>
+          ))}
+        </div>
       )}
       {payouts.length > 0 && q.data && (
         <>

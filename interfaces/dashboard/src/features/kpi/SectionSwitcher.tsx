@@ -5,7 +5,7 @@
  */
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { ActionMenu } from '../../components/ui/context-menu';
 import { KPI_SECTIONS } from './sections';
@@ -20,8 +20,12 @@ export function SectionSwitcher({ current }: { current: string }) {
         label: s.ready
           ? s.label
           : `${s.label} — ${t('kpi_page.coming', 'not built yet')}`,
-        disabled: !s.ready || s.key === current,
-        onSelect: () => navigate(s.path),
+        // The ACTIVE item must not dress like the disabled ones — a
+        // check names it; selecting it again is a harmless no-op.
+        icon: s.key === current
+          ? <Check size={14} className="text-foreground" /> : undefined,
+        disabled: !s.ready,
+        onSelect: () => { if (s.key !== current) navigate(s.path); },
       }))}
     >
       <Button variant="outline" size="sm">

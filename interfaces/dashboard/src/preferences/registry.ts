@@ -413,7 +413,9 @@ export const DEFS = {
   // synced: which way a manager reads a settlement is a working style,
   // not a device trait — it should follow them to the office machine.
   'kpi.incentiveRunView': def<'sheet' | 'board'>({
-    default: 'sheet',
+    // board: the stepper's "Review & adjust" happens THERE (marking
+    // days, tier-gap bars); the sheet is the verification read.
+    default: 'board',
     scope: 'synced',
     sanitize: oneOf(['sheet', 'board'] as const),
     note: 'Incentive run detail opens as the settlement sheet or the dispatcher board.',
