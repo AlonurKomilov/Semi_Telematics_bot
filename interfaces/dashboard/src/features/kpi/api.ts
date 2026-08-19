@@ -226,6 +226,17 @@ export interface RunRow {
   /** DRAFT only, ladder only: the nearest higher tier and the extra
    *  gross that reaches it — "$1,050 short of the 1.5% tier". */
   next_tier?: { pct: number; gap: number; dollars_at: number } | null;
+  /** Paid rows only: the snapshot rule that produced this percent —
+   *  the paid-row mirror of zero_reason.  Omitted for overrides,
+   *  zeros, and rows whose stored pct an engine change can no longer
+   *  reproduce (server-side drift guard). */
+  matched_rule?:
+    | { model: 'ladder'; pct: number; min_weekly_gross: number | null;
+        min_rpm: number | null; requires_target: boolean }
+    | { model: 'hybrid'; pct: number; gross_min: number; gross_max: number;
+        rpm_min: number; rpm_max: number }
+    | { model: 'fixed'; pct: number; combine_rule: 'lower' | 'higher' | 'add';
+        rpm_pct: number; gross_pct: number };
 }
 
 export interface RunDetail extends RunSummary {

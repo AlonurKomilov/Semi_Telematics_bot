@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tip } from '../../../components/tooltip';
+import { matchedTip } from './explain';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses } from '../../../lib/status';
 import {
@@ -294,7 +295,17 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               /${Math.round(row.adjusted_target).toLocaleString()}
             </span>
           )}
-          {' · '}{Number(row.pct)}% → {usd(row.confirmed_dollars)}
+          {' · '}
+          {row.matched_rule ? (
+            <Tip label={matchedTip(row.matched_rule, t)}>
+              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-2 cursor-help">
+                {Number(row.pct)}%
+              </span>
+            </Tip>
+          ) : (
+            <>{Number(row.pct)}%</>
+          )}
+          {' → '}{usd(row.confirmed_dollars)}
         </div>
         {Number(row.pct) === 0 && row.zero_reason && (
           <Tip label={zeroTip(row, t)}>

@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from features.kpi.dispatch.engine import (  # noqa: E402
     adjusted_target, compute_rpm, compute_truck_row, confirmed_dollars,
-    money, payout_total, resolve_pct, validate_exception,
+    matched_rule, money, payout_total, resolve_pct, validate_exception,
 )
 
 # The customer's ladder, as config rows.  Reconstructed from their tier
@@ -262,3 +262,50 @@ class TestNextTierGap:
             base_gross=200, extras=0, miles=0,
             weekly_target=8_000, active_days=3, current_pct=0.0)
         assert g is None
+
+
+class TestMatchedRule:
+    """matched_rule shares resolve_pct's resolver, so the explanation
+    can never disagree with the price — these pin the contract."""
+
+    def test_names_the_winning_ladder_tier(self):
+        # OSY 200's inputs: bar met, RPM 2.03 → the 1.5% tier wins.
+        rule = matched_rule(
+            CONFIG, TIERS, weekly_eq=8_353.95, rpm=2.03, target_met=True)
+        assert rule == {
+            "model": "ladder", "pct": 1.5,
+            "min_weekly_gross": None, "min_rpm": 2.0,
+            "requires_target": True,
+        }
+
+    def test_zero_rows_return_none(self):
+        # CFT 569640: floored (both under) → None; the zero path owns it.
+        assert matched_rule(
+            CONFIG, TIERS, weekly_eq=5_500.0, rpm=1.85, target_met=False,
+        ) is None
+
+    def test_agrees_with_resolve_pct_on_every_golden_row(self):
+        for unit, base, extras, miles, target, days, *_ in SHEET:
+            row = compute_truck_row(
+                CONFIG, TIERS, base_gross=base, extras=extras, miles=miles,
+                weekly_target=target, active_days=days)
+            rule = matched_rule(
+                CONFIG, TIERS, weekly_eq=row["weekly_equivalent"],
+                rpm=row["rpm"], target_met=row["target_met"])
+            if row["pct"] > 0:
+                assert rule is not None and rule["pct"] == row["pct"], unit
+            else:
+                assert rule is None, unit
+
+    def test_fixed_model_describes_the_combination(self):
+        cfg = {"model": "fixed", "combine_rule": "lower"}
+        tiers = [
+            {"axis": "rpm", "min": 2.0, "pct": 1.5},
+            {"axis": "gross", "min": 8_000.0, "pct": 1.0},
+        ]
+        rule = matched_rule(
+            cfg, tiers, weekly_eq=9_000.0, rpm=2.1, target_met=True)
+        assert rule == {
+            "model": "fixed", "pct": 1.0, "combine_rule": "lower",
+            "rpm_pct": 1.5, "gross_pct": 1.0,
+        }

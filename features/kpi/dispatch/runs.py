@@ -383,6 +383,36 @@ async def get_run_detail(account_id: int, run_id: int) -> dict:
                 )
         except ValueError:
             pass
+    # EVERY paid row carries the rule that priced it — the zero rows
+    # explain themselves via zero_reason; this is the same courtesy for
+    # the paid ones.  Ephemeral, recomputed from the frozen snapshot
+    # (drafts AND finalized — the snapshot never re-prices, so the
+    # recompute is deterministic).  Guard: attach only when the
+    # recomputed percent equals the stored one, so an engine change can
+    # never explain an old run with today's logic.  Overrides are the
+    # human's rule, told by override_reason.
+    try:
+        snap = json.loads(run.get("config_snapshot") or "{}")
+        for r in rows:
+            if r.get("override_pct") is not None or float(r["pct"]) <= 0:
+                continue
+            active = max(0, int(r["total_days"]) - int(r["inactive_days"]))
+            if active <= 0:
+                continue
+            kpi_gross = engine.money(
+                float(r["base_gross"]) + float(r["extras"]))
+            weekly_eq = engine.weekly_equivalent(kpi_gross, active)
+            rpm = engine.compute_rpm(float(r["base_gross"]), float(r["miles"]))
+            wt = r.get("weekly_target")
+            target_met = wt is not None and kpi_gross >= engine.adjusted_target(
+                float(wt), active)
+            rule = engine.matched_rule(
+                snap.get("config", {}), snap.get("tiers", []),
+                weekly_eq=weekly_eq, rpm=rpm, target_met=target_met)
+            if rule is not None and float(rule["pct"]) == float(r["pct"]):
+                r["matched_rule"] = rule
+    except ValueError:
+        pass
     # Names for the attribution fields (adjusted_by / confirmed_by /
     # created_by) — ids alone explain nothing in a drawer.
     user_names: dict[str, str] = {}

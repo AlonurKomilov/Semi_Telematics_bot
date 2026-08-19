@@ -41,6 +41,7 @@ import { Tip } from '../../../components/tooltip';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
+import { matchedTip } from './explain';
 import { SectionSwitcher } from '../SectionSwitcher';
 import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
 import type { AnyColumn } from '../../../types';
@@ -313,7 +314,15 @@ export default function IncentiveRuns() {
       // no_target is annotated on the Target column already.
       render: (v, r) => (
         <span className="tabular-nums">
-          {Number(v)}%
+          {r.matched_rule ? (
+            <Tip label={matchedTip(r.matched_rule, t)}>
+              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                {Number(v)}%
+              </span>
+            </Tip>
+          ) : (
+            <>{Number(v)}%</>
+          )}
           {Number(v) === 0 && r.zero_reason && r.zero_reason !== 'no_target' && (
             <span className={`ml-1 text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
               {r.zero_reason === 'floor' ? 'below floor'

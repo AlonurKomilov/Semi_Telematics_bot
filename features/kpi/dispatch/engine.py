@@ -106,15 +106,50 @@ def resolve_pct(
     weekly_eq: float, rpm: Optional[float], target_met: bool,
 ) -> float:
     """The tier lookup.  Returns a percent number (1.5 means 1.5%)."""
+    return _resolve(
+        config, tiers, weekly_eq=weekly_eq, rpm=rpm, target_met=target_met,
+    )[0]
+
+
+def matched_rule(
+    config: dict, tiers: list[dict], *,
+    weekly_eq: float, rpm: Optional[float], target_met: bool,
+) -> Optional[dict]:
+    """WHICH rule produced a paid row's percent — display metadata.
+
+    The zeroed rows already explain themselves (``zero_reason`` + the
+    snapshot floors); this is the same courtesy for the PAID rows: "unit
+    237 pays 2.75% because it cleared ≥$X weekly at ≥Y RPM".  Shares one
+    resolver with ``resolve_pct`` so the explanation can never disagree
+    with the price.  Returns None when nothing matched (pct 0) — the
+    zero path owns that story.
+    """
+    pct, rule = _resolve(
+        config, tiers, weekly_eq=weekly_eq, rpm=rpm, target_met=target_met,
+    )
+    return rule if pct > 0 else None
+
+
+def _resolve(
+    config: dict, tiers: list[dict], *,
+    weekly_eq: float, rpm: Optional[float], target_met: bool,
+) -> tuple[float, Optional[dict]]:
+    """One tier walk, two answers: (pct, the winning rule described).
+
+    The description carries the winning tier's CONDITIONS (not the whole
+    tier object) so the UI can print "≥ $9,000 weekly · ≥ $2.00 RPM ·
+    target required" without knowing the model's storage shape.
+    """
     model = config.get("model", "ladder")
     if model not in MODELS:
         raise ValueError(f"unknown incentive model {model!r}")
     if _floored(config, weekly_eq, rpm):
-        return 0.0
+        return 0.0, None
     r = rpm if rpm is not None else 0.0
 
     if model == "ladder":
         best = 0.0
+        won: Optional[dict] = None
         for t in tiers:
             if t.get("requires_target") and not target_met:
                 continue
@@ -124,18 +159,38 @@ def resolve_pct(
             mr = t.get("min_rpm")
             if mr is not None and r < float(mr):
                 continue
-            best = max(best, float(t["pct"]))
-        return best
+            if float(t["pct"]) > best:
+                best = float(t["pct"])
+                won = t
+        if won is None:
+            return best, None
+        return best, {
+            "model": "ladder", "pct": best,
+            "min_weekly_gross": won.get("min_weekly_gross"),
+            "min_rpm": won.get("min_rpm"),
+            "requires_target": bool(won.get("requires_target")),
+        }
 
     if model == "hybrid":
         best = 0.0
+        won = None
         for t in tiers:
             if not (float(t["gross_min"]) <= weekly_eq <= float(t["gross_max"])):
                 continue
             if not (float(t["rpm_min"]) <= r <= float(t["rpm_max"])):
                 continue
-            best = max(best, float(t["pct"]))
-        return best
+            if float(t["pct"]) > best:
+                best = float(t["pct"])
+                won = t
+        if won is None:
+            return best, None
+        return best, {
+            "model": "hybrid", "pct": best,
+            "gross_min": float(won["gross_min"]),
+            "gross_max": float(won["gross_max"]),
+            "rpm_min": float(won["rpm_min"]),
+            "rpm_max": float(won["rpm_max"]),
+        }
 
     # fixed: best of each axis, combined by rule.
     rule = config.get("combine_rule", "lower")
@@ -152,10 +207,17 @@ def resolve_pct(
         default=0.0,
     )
     if rule == "lower":
-        return min(best_rpm, best_gross)
-    if rule == "higher":
-        return max(best_rpm, best_gross)
-    return best_rpm + best_gross
+        combined = min(best_rpm, best_gross)
+    elif rule == "higher":
+        combined = max(best_rpm, best_gross)
+    else:
+        combined = best_rpm + best_gross
+    if combined <= 0:
+        return combined, None
+    return combined, {
+        "model": "fixed", "pct": combined, "combine_rule": rule,
+        "rpm_pct": best_rpm, "gross_pct": best_gross,
+    }
 
 
 def next_tier_gap(
