@@ -201,10 +201,6 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3.5 w-8 rounded-r rounded-l-none bg-ok-bg align-middle" aria-hidden />
-          {t('kpi_board.leg_transit2', 'load underway (in transit) — counts')}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex size-5 items-center justify-center rounded border border-dashed border-border">
             <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
           </span>
@@ -320,6 +316,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   // load's bar ("→ $5,800 · Wilmi… — day 2 of 3"), never an anonymous
   // arrow.
   const hiDay = row.window_end.slice(0, 10);
+  const daysDiff = (a: string, z: string) =>
+    Math.round((Date.parse(`${z}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
   const spanEnd = (l: RunLoad): string => {
     const a = (l.pickup_date || '').slice(0, 10);
     const bRaw = (l.delivery_date || '').slice(0, 10);
@@ -434,22 +432,36 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         // let a wide chip widen ONE row's column off the header grid.
         const cell = (
           <div
-            className={`group relative h-full min-h-14 px-1.5 py-1.5 space-y-1 overflow-hidden ${
+            className={`group relative h-full min-h-14 px-1.5 py-1.5 space-y-1 ${
               !inside ? 'bg-muted/40'
                 : reason != null ? 'bg-warn-bg'
                   : i % 2 === 1 ? 'bg-muted/30' : ''
             } ${clickable && inside ? 'cursor-pointer hover:bg-muted/50' : ''}`}
           >
-            {dayLoads.slice(0, 2).map((l, i) => (
-              <Tip key={i}
-                label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
-                <div className={`rounded py-0.5 text-xs tabular-nums ${toneClasses('ok')} truncate ${
-                  spanEnd(l) > d
-                    ? 'rounded-r-none -mr-1.5 pl-1.5 pr-2' : 'px-1.5'}`}>
-                  ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
-                </div>
-              </Tip>
-            ))}
+            {dayLoads.slice(0, 2).map((l, i) => {
+              const cont = spanEnd(l) > d;
+              // Text runway = this cell + every following covered cell
+              // (w-28 = 112px each), minus the 6px insets both ends.
+              const runway = cont
+                ? (daysDiff(d, spanEnd(l)) + 1) * 112 - 12 : undefined;
+              return (
+                <Tip key={i}
+                  label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
+                  <div
+                    /* h-6 + leading-6 (not flex): truncate's ellipsis
+                       needs a block formatting context — text inside a
+                       flex container clips without the "…". */
+                    className={`block h-6 leading-6 rounded text-xs tabular-nums ${toneClasses('ok')} ${
+                      cont
+                        ? 'rounded-r-none relative z-10 w-max max-w-none overflow-hidden whitespace-nowrap pl-1.5 pr-2'
+                        : 'px-1.5 truncate'}`}
+                    style={cont ? { maxWidth: runway } : undefined}
+                  >
+                    ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
+                  </div>
+                </Tip>
+              );
+            })}
             {dayLoads.length > 2 && (
               <div className="px-1.5 text-xs text-muted-foreground">
                 +{dayLoads.length - 2} {t('kpi_board.more', 'more')}
@@ -548,7 +560,13 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             )}
           </div>
         );
-        if (!clickable || !inside) return <div key={d} className="w-28 flex-none snap-start border-r border-border last:border-r-0">{cell}</div>;
+        // The bar erases the grid line it crosses: no right border on
+        // a cell whose NEXT day is covered by a rolling load (next day
+        // being a transit day implies the span includes this one).
+        const seamless = transitInfo.has(nextDay(d));
+        const wrapCls = `w-28 flex-none snap-start ${
+          seamless ? '' : 'border-r'} border-border last:border-r-0`;
+        if (!clickable || !inside) return <div key={d} className={wrapCls}>{cell}</div>;
         return (
           <ActionMenu
             key={d}
@@ -590,7 +608,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               },
             ]}
           >
-            <button type="button" className="w-28 flex-none snap-start border-r border-border last:border-r-0 text-left"
+            <button type="button" className={`${wrapCls} text-left`}
               aria-label={(reason != null
                 ? t('kpi_board.day_aria_unmark',
                     'Make {{day}} count again for unit {{unit}}{{stake}}',
