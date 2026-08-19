@@ -172,14 +172,28 @@ export default function IncentiveRuns() {
 
   // The detail region never renders BLANK while runs exist: with nothing
   // chosen (first load, after a discard) the newest run selects itself.
+  // The same effect is the GHOST GUARD: a selected id missing from the
+  // fetched list (discarded here, or by another session) deselects —
+  // without it the panel kept rendering a deleted run from cache and
+  // refetching its 404 forever.
   const newestId = allRuns[0]?.id;
+  const runsLoaded = runsQ.data != null;
   useEffect(() => {
+    if (!runsLoaded) return;
+    if (selected != null && !allRuns.some((r) => r.id === selected)) {
+      setSelected(newestId ?? null);
+      return;
+    }
     if (selected == null && newestId != null) setSelected(newestId);
-  }, [selected, newestId]);
+    // allRuns is rebuilt per render; runsQ.data is the stable dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runsLoaded, runsQ.data, selected, newestId]);
   const detailQ = useQuery<RunDetail>({
     queryKey: ['kpi-incentive-run', selected],
     queryFn: () => getIncentiveRun(selected as number),
     enabled: selected != null,
+    retry: (n, err) =>
+      !(err instanceof Error && /not found/i.test(err.message)) && n < 2,
   });
 
   const refresh = () => {
@@ -202,14 +216,26 @@ export default function IncentiveRuns() {
     queryKey: ['kpi-incentive-run-loads', selected],
     queryFn: () => getIncentiveRunLoads(selected as number),
     enabled: selected != null,
+    retry: (n, err) =>
+      !(err instanceof Error && /not found/i.test(err.message)) && n < 2,
   });
   const staleCount = runLoadsQ.data?.drift.length ?? 0;
 
   const discard = useMutation({
     mutationFn: () => deleteIncentiveRun(selected as number),
     onSuccess: () => {
+      const dead = selected;
       setDiscardOpen(false);
       setSelected(null);
+      // Filter the cached list NOW — the auto-select effect runs before
+      // the refetch lands, and a stale list would hand it the run that
+      // was just deleted.
+      qc.setQueryData(['kpi-incentive-runs'],
+        (old: { runs: RunSummary[] } | undefined) => old
+          ? { ...old, runs: old.runs.filter((r) => r.id !== dead) }
+          : old);
+      qc.removeQueries({ queryKey: ['kpi-incentive-run', dead] });
+      qc.removeQueries({ queryKey: ['kpi-incentive-run-loads', dead] });
       qc.invalidateQueries({ queryKey: ['kpi-incentive-runs'] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
@@ -222,8 +248,11 @@ export default function IncentiveRuns() {
       return createIncentiveRun(r.period_start, r.period_end);
     },
     onSuccess: (r) => {
+      const dead = selected;
       setRecreateOpen(false);
       setSelected(r.id);
+      qc.removeQueries({ queryKey: ['kpi-incentive-run', dead] });
+      qc.removeQueries({ queryKey: ['kpi-incentive-run-loads', dead] });
       qc.invalidateQueries({ queryKey: ['kpi-incentive-runs'] });
       qc.invalidateQueries({ queryKey: ['kpi-incentive-run', r.id] });
       qc.invalidateQueries({ queryKey: ['kpi-incentive-run-loads', r.id] });
