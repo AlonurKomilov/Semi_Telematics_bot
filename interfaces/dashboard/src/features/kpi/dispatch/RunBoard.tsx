@@ -192,7 +192,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block rounded-r rounded-l-none bg-ok-bg/60 px-1.5 text-xs tabular-nums text-ok">→ $950</span>
+          <span className="inline-block h-3.5 w-8 rounded-r rounded-l-none bg-ok-bg/60 align-middle" aria-hidden />
           {t('kpi_board.leg_transit2', 'load underway (in transit) — counts')}
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -502,9 +502,18 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                     place: place(info.load.delivery_location) || info.load.load_number,
                     i: info.dayNo, n: info.total, del: dayLabel(info.last),
                   })}>
-                  <span className={`block bg-ok-bg/60 py-0.5 text-xs tabular-nums text-ok truncate -ml-1.5 pl-2 ${
-                    continues ? 'rounded-none -mr-1.5 pr-2' : 'rounded-r rounded-l-none pr-1.5'}`}>
-                    → ${Math.round(info.load.total_rate).toLocaleString()} · {place(info.load.delivery_location) || info.load.load_number}
+                  {/* FLAT — the pickup chip already carries the text
+                      once; repeating it per piece breaks the one-bar
+                      reading.  h-6 = the chip's exact height, so the
+                      bar runs level; AT still hears the story. */}
+                  <span className={`block h-6 bg-ok-bg/60 -ml-1.5 ${
+                    continues ? 'rounded-none -mr-1.5' : 'rounded-r rounded-l-none'}`}>
+                    <span className="sr-only">
+                      {t('kpi_board.transit_sr', 'in transit — {{rate}} to {{place}}', {
+                        rate: `$${Math.round(info.load.total_rate).toLocaleString()}`,
+                        place: place(info.load.delivery_location) || info.load.load_number,
+                      })}
+                    </span>
                   </span>
                 </Tip>
               );
