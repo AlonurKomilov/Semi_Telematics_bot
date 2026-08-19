@@ -262,8 +262,8 @@ export default function IncentiveRuns() {
           <span onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}>
-            <InfoTip label={t('kpi_runs.days_info',
-              'Three numbers per row: period days / counted days / days with loads. Marked-inactive days (home, shop, before the first load) drop out of the count, and the gross target prorates to the counted days.')} />
+            <InfoTip label={t('kpi_runs.days_info2',
+              'Counted days of the period, and how many had loads. Days marked inactive (home time, repair, holiday — or automatically, when outside the truck’s loads) drop out, and the target is split across the counted days.')} />
           </span>
         </span>
       ),
@@ -271,35 +271,28 @@ export default function IncentiveRuns() {
       // context — these numbers move the target, so they must be
       // readable and self-explaining.
       render: (_v, r) => {
-        const active = Number(r.total_days) - Number(r.inactive_days);
         // The already-computed cost of the inactive days: the bar this
         // truck ISN'T being held to (weekly rate × inactive days ÷ 7).
         const cut = r.weekly_target != null && Number(r.inactive_days) > 0
           ? (Number(r.weekly_target) / 7) * Number(r.inactive_days) : null;
         return (
-          // period/counted/loaded — the owner's P/A/L trio; the tip is
-          // the cell's legend, one list row per number.  AT hears the
-          // expansion (sr-only), never three bare digits.
+          // Words label the numbers inline — no notation to decode, so
+          // AT reads the cell as-is.  The note leads with the DECISION
+          // number (what excusing cost); reasons live in the tooltip.
           <span className="tabular-nums">
             <Tip label={<DaysTipContent row={r}
               loads={runLoadsQ.data ? (runLoadsQ.data.rows[String(r.id)] ?? []) : undefined}
               draft={draft} periodStart={run?.period_start ?? ''}
               periodEnd={run?.period_end ?? ''} t={t} />}>
               <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-                <span aria-hidden>
-                  {daysCell(r, runLoadsQ.data
-                    ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? []) : null)}
-                </span>
-                <span className="sr-only">
-                  {t('kpi_runs.days_sr',
-                    '{{p}} period days, {{a}} counted, {{off}} marked inactive',
-                    { p: r.total_days, a: active, off: r.inactive_days })}
-                </span>
+                {daysCell(r, runLoadsQ.data
+                  ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? []) : null, t)}
               </span>
             </Tip>
             {Number(r.inactive_days) > 0 && (
-              <Note text={`(${r.inactive_days} inactive${r.inactive_reason ? `: ${r.inactive_reason}` : ''}${
-                cut != null ? ` · ${t('kpi_runs.days_cut', 'target −{{d}}', { d: usd(cut) })}` : ''})`} />
+              <Note text={`(${cut != null
+                ? `−$${Math.round(cut).toLocaleString()} · ` : ''}${
+                t('kpi_runs.n_inactive', '{{n}} inactive', { n: r.inactive_days })})`} />
             )}
           </span>
         );
@@ -333,17 +326,7 @@ export default function IncentiveRuns() {
       // target reads as an error.
       render: (v, r) => r.weekly_target == null
         ? <span className={`text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>{t('kpi_runs.no_target', 'no target')}</span>
-        : (
-          <span className="tabular-nums">
-            {usd(v)}
-            {Number(r.inactive_days) > 0 && (
-              <span className="ml-1 text-xs text-muted-foreground">
-                {t('kpi_runs.target_days', '· {{a}} of {{p}} days',
-                  { a: Number(r.total_days) - Number(r.inactive_days), p: r.total_days })}
-              </span>
-            )}
-          </span>
-        ) },
+        : <span className="tabular-nums">{usd(v)}</span> },
     { key: 'vs_target', label: 'vs Target', sortable: true,
       sortKey: (r) => (r as unknown as RunRow).weekly_target == null
         ? Number.NEGATIVE_INFINITY

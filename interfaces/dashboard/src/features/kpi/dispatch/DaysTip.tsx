@@ -1,13 +1,13 @@
 /**
- * The Days cell's legend — the P/A/L breakdown (period / counted /
- * loaded) as a LIST, one row per number in the same order the cell
- * prints them.  Sheet and board both render this, so the two views
- * can never tell different day stories.  Sibling helpers (the cell
- * string, the loaded-day count): [explain.ts](explain.ts).
+ * The Days cell's hover breakdown — period days, inactive, counted,
+ * loaded — as a LIST that reads as the calculation.  Sheet and board
+ * both render this, so the two views can never tell different day
+ * stories.  Sibling helpers (the cell phrase, the loaded-day count):
+ * [explain.ts](explain.ts).
  *
- * Vocabulary is the BOARD's ("marked inactive", "clear the mark") —
- * a tooltip that says "excused" while every other surface says
- * "inactive" would teach a second name for one concept.
+ * One vocabulary everywhere: noun "inactive", verb pair "mark
+ * inactive" ↔ "make it count" — a second name for one state on one
+ * screen is a comprehension tax.
  */
 import type { ReactNode } from 'react';
 import type { TFunction } from 'i18next';
@@ -23,7 +23,7 @@ const usd2 = (v: number) => `$${Number(v).toLocaleString(undefined, {
 export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }: {
   row: RunRow;
   loads: RunLoad[] | undefined;
-  /** The clear-mark coaching line only makes sense while marking is open. */
+  /** The make-it-count coaching line only makes sense while marking is open. */
   draft: boolean;
   /** The RUN's period — old rows (and API-edited ones) can carry a
    *  window SHORTER than the period, and calling those days "period
@@ -53,7 +53,7 @@ export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }:
       </div>
       {off > 0 && (
         <div>
-          {t('kpi_runs.dt_off3', '− {{n}} marked inactive — {{why}}', {
+          {t('kpi_runs.dt_off4', '− {{n}} inactive · {{why}}', {
             n: off,
             why: row.inactive_reason || t('kpi_board.inactive', 'inactive'),
           })}
@@ -67,14 +67,14 @@ export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }:
           : t('kpi_runs.dt_counted2', '{{n}} counted', { n: active })}
         {row.weekly_target != null && (
           active !== 7 ? (
-            <> {t('kpi_runs.dt_target2', '→ target {{tgt}} (weekly {{wk}} ÷ 7 × {{a}})', {
+            /* Natural phrasing, valid for 2, 7 and 14 counted days —
+               "÷ 7 ×" read as arithmetic homework. */
+            <> {t('kpi_runs.dt_target4', '→ target {{tgt}} ({{a}} days at the {{wk}}/week rate)', {
               tgt: usd2(row.adjusted_target), a: active,
               wk: usd2(row.weekly_target),
             })}</>
           ) : (
-            /* 7 counted → target IS the weekly number; the formula
-               would be "(÷ 7 × 7)" noise.  (A 14-day run with zero
-               marks still shows "÷ 7 × 14" — that one informs.) */
+            /* 7 counted → the target IS the weekly number. */
             <> {t('kpi_runs.dt_target3', '→ target {{tgt}}', {
               tgt: usd2(row.adjusted_target) })}</>
           )
@@ -91,11 +91,11 @@ export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }:
            alpha — text-muted-foreground would sink into the fill. */
         <div className="pt-0.5 text-background/70">
           {row.weekly_target != null
-            ? t('kpi_runs.dt_unmark3',
-              'Click a marked day on the board and clear the mark if the truck was available — the day counts again (target +{{d}} per day).',
-              { d: usd2(row.weekly_target / 7) })
-            : t('kpi_runs.dt_unmark2',
-              'Click a marked day on the board and clear the mark if the truck was available — the day counts again.')}
+            ? t('kpi_runs.dt_unmark4',
+              'If the truck was available, click its inactive day on the board to make it count again (target +{{d}} per day).',
+              { d: `$${Math.round(row.weekly_target / 7).toLocaleString()}` })
+            : t('kpi_runs.dt_unmark5',
+              'If the truck was available, click its inactive day on the board to make it count again.')}
         </div>
       )}
     </div>

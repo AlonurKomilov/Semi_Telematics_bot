@@ -57,13 +57,18 @@ export function loadedDayCount(loads: RunLoad[] | undefined): number | null {
   return new Set(loads.map((l) => l.pickup_date.slice(0, 10))).size;
 }
 
-/** The Days cell's three numbers: period / counted / loaded. */
-export function daysCell(row: RunRow, loaded: number | null): string {
+/** The Days cell phrase — words label the numbers inline ("2 of 7
+ *  days · 1 loaded"), because the slash triple pattern-matched as a
+ *  DATE on a grid full of them, and even a careful reader misread the
+ *  third number with the legend on screen. */
+export function daysCell(row: RunRow, loaded: number | null, t: TFunction): string {
   const total = Number(row.total_days);
   const active = Math.max(0, total - Number(row.inactive_days));
-  return loaded == null
-    ? `${total}/${active}`
-    : `${total}/${active}/${loaded}`;
+  const head = t('kpi_runs.days_phrase', '{{a}} of {{p}} days', { a: active, p: total });
+  if (loaded == null) return head;
+  return `${head} · ${loaded === 1
+    ? t('kpi_runs.days_loaded_one', '1 loaded')
+    : t('kpi_runs.days_loaded_n', '{{n}} loaded', { n: loaded })}`;
 }
 
 /** Generation's auto-excuse reasons (runs.py stamps them; edge days

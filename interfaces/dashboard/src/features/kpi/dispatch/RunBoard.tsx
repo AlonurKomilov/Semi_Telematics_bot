@@ -154,8 +154,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         /* The board's one non-obvious gesture, said once where the days
            are — a flat cell gives no affordance cue by itself. */
         <p className="text-xs text-muted-foreground">
-          {t('kpi_board.hint2',
-            'Click a day to mark it inactive (home time, repair, holiday) — the truck’s target lowers with each marked day. Click a marked day to clear it — the day counts again and the target rises back.')}
+          {t('kpi_board.hint3',
+            'Click a day to mark it inactive (home time, repair, holiday) — the truck’s target lowers with each inactive day. Click an inactive day to make it count again — the target rises back.')}
         </p>
       )}
       {drift > 0 && (
@@ -180,22 +180,22 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           without decoding chips by trial. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded px-1.5 ${toneClasses('ok')}`}>$</span>
-          {t('kpi_board.leg_loads', 'has loads')}
+          <span className={`inline-block rounded px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
+          {t('kpi_board.leg_loads2', 'delivered load (place · rate)')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded px-1.5 font-medium ${toneClasses('warn')}`}>{t('kpi_board.leg_inactive_chip', 'inactive')}</span>
-          {t('kpi_board.leg_inactive', 'marked inactive — not counted')}
+          <span className={`inline-block rounded px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn')}`}>{t('kpi_board.inactive', 'inactive')}</span>
+          {t('kpi_board.leg_inactive2', 'not counted')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded border border-dashed border-warn-bd px-1.5 ${toneText('warn')}`}>?</span>
+          <span className={`inline-block rounded border border-dashed border-warn-bd px-1.5 text-xs uppercase tracking-wide ${toneText('warn')}`}>{t('kpi_board.leg_repair', 'repair?')}</span>
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex size-5 items-center justify-center rounded border border-dashed border-border">
             <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
           </span>
-          {t('kpi_board.leg_empty', 'empty — still counts')}
+          {t('kpi_board.leg_empty2', 'no loads, counting — click to mark inactive')}
         </span>
       </div>
       {draft && suggestionCount > 0 && (
@@ -319,10 +319,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             draft={clickable} periodStart={periodStart}
             periodEnd={periodEnd} t={t} />}>
             <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-              {daysCell(row, loadedDayCount(loads))}
+              {daysCell(row, loadedDayCount(loads), t)}
             </span>
           </Tip>
-          {' '}{t('kpi_board.days', 'days')}
           {' · '}${Math.round(row.kpi_gross).toLocaleString()}
           {row.weekly_target != null && (
             <span className="text-muted-foreground/70">
@@ -411,12 +410,12 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             )}
             {reason != null && (
               clickable ? (
-                <Tip label={t('kpi_board.unmark_tip',
-                  '{{why}} ({{who}}) — click to clear the mark: {{day}} counts again{{stake}}.', {
+                <Tip label={t('kpi_board.unmark_tip2',
+                  '{{why}} ({{who}}) — click to make {{day}} count again{{stake}}.', {
                     why: reason || t('kpi_board.inactive', 'inactive'),
                     who: AUTO_EXCUSE_REASONS.includes(reason ?? '')
                       ? t('kpi_board.by_auto', 'auto')
-                      : t('kpi_board.by_hand', 'marked by hand'),
+                      : t('kpi_board.by_hand2', 'by hand'),
                     day: dayLabel(d),
                     stake: row.weekly_target != null
                       ? t('kpi_board.stake_up', ', target +{{v}}',
@@ -424,12 +423,12 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                       : '',
                   })}>
                   <div className={`rounded px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
-                    {reason || t('kpi_board.inactive', 'inactive')}
+                    {t('kpi_board.inactive', 'inactive')}{reason ? ` · ${reason}` : ''}
                   </div>
                 </Tip>
               ) : (
                 <div className={`rounded px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
-                  {reason || t('kpi_board.inactive', 'inactive')}
+                  {t('kpi_board.inactive', 'inactive')}{reason ? ` · ${reason}` : ''}
                 </div>
               )
             )}
