@@ -746,31 +746,42 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
 
     user = await db.get_user_by_telegram_id(body.id)
 
-    # Per-account bot wins (tenants with their own branded bot signed
-    # the widget callback with it); otherwise we fall back to the
-    # customer-facing LOGIN bot, never the system bot — this endpoint
-    # is for customer dashboards only.  The operator console at
-    # system.4truck.us hits ``/auth/system-telegram-login`` instead.
-    bot_token = TELEGRAM_LOGIN_BOT_TOKEN or ""
+    # The widget payload is signed by whichever bot RENDERED it.  The
+    # login page renders the platform LOGIN bot (see ``auth_config``);
+    # a page cached from the account-branded era is signed by the
+    # user's account bot.  Accept either — never the system bot; this
+    # endpoint is for customer dashboards only.  The operator console
+    # at system.4truck.us hits ``/auth/system-telegram-login`` instead.
+    candidate_tokens = [t for t in (TELEGRAM_LOGIN_BOT_TOKEN or "",) if t]
     if user:
         account = await db.get_account(user.account_id)
         if account and account.bot_token_encrypted:
-            bot_token = decrypt(account.bot_token_encrypted)
+            try:
+                candidate_tokens.append(decrypt(account.bot_token_encrypted))
+            except Exception as e:
+                logging.getLogger("api.auth").debug(
+                    "Could not decrypt account bot token: %s", e)
 
-    try:
-        # model_dump() includes all fields (even empty defaults like
-        # last_name="", photo_url="").  Telegram only signs the fields
-        # that were actually present in the widget callback, so we must
-        # exclude keys whose value is an empty string.
-        # ``remember_me`` is OUR field (not signed by Telegram), drop
-        # it before hashing or the signature check fails.
-        raw = {
-            k: v for k, v in body.model_dump().items()
-            if v != "" and k != "remember_me"
-        }
-        validate_telegram_login_widget(raw, bot_token)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    # model_dump() includes all fields (even empty defaults like
+    # last_name="", photo_url="").  Telegram only signs the fields
+    # that were actually present in the widget callback, so we must
+    # exclude keys whose value is an empty string.
+    # ``remember_me`` is OUR field (not signed by Telegram), drop
+    # it before hashing or the signature check fails.
+    raw = {
+        k: v for k, v in body.model_dump().items()
+        if v != "" and k != "remember_me"
+    }
+    last_error: ValueError | None = ValueError("no bot token configured")
+    for bot_token in candidate_tokens:
+        try:
+            validate_telegram_login_widget(raw, bot_token)
+            last_error = None
+            break
+        except ValueError as e:
+            last_error = e
+    if last_error is not None:
+        raise HTTPException(status_code=401, detail=str(last_error))
 
     if not user:
         raise HTTPException(
@@ -826,9 +837,19 @@ async def auth_config(request: Request):
     """Return public auth config (bot username for Telegram Login Widget
     + signup_base_url for the URL-channel invite clipboard).
 
-    If the request carries a valid JWT, returns the per-account bot_username.
-    Otherwise returns the first configured account bot (for the login widget),
-    falling back to the global system bot.
+    The widget bot is ALWAYS the platform's LOGIN bot.  It used to be
+    "the first configured account bot", which put a TENANT's bot on the
+    platform's public login page — meaning login for everyone depended
+    on that account owner running /setdomain on their own bot in
+    BotFather (owner's ruling 2026-08-19: a tenant bot is the tenant's
+    to manage; the platform must not require anything of it).  Deep
+    links (invites, bot-login) still use branded account bots — those
+    are t.me links and never need a domain; only this web widget does.
+    Never the SYSTEM bot here — that one is for platform operators.
+
+    Login verification accepts a widget payload signed by EITHER the
+    login bot or the user's account bot (see ``auth_telegram_login``),
+    so pages cached from before this change keep working.
 
     ``signup_base_url`` is the apex origin where /signup/<code> works —
     used by the dashboard's invite "Copy URL" / "URL link channel"
@@ -838,65 +859,11 @@ async def auth_config(request: Request):
     from interfaces.bot.config import bot_username as global_bot_username
     signup_base = _signup_base_url()
 
-    # Try to extract account-specific bot_username from JWT
-    auth_header = request.headers.get("authorization", "")
-    if auth_header.startswith("Bearer "):
-        try:
-            payload = decode_jwt(auth_header[7:])
-            account_id = payload.get("account_id")
-            if account_id:
-                from infra.platform import get_platform_db
-                db = get_platform_db()
-                from infra.crypto import decrypt
-                account = await db.get_account(account_id)
-                if account and account.bot_username:
-                    acct_bot_id = ""
-                    if account.bot_token_encrypted:
-                        try:
-                            tok = decrypt(account.bot_token_encrypted)
-                            if ":" in tok:
-                                acct_bot_id = tok.split(":", 1)[0]
-                        except Exception as e:
-                            logging.getLogger("api.auth").debug("Could not decrypt bot token: %s", e)
-                    return {
-                        "bot_username": account.bot_username,
-                        "bot_id": acct_bot_id,
-                        "signup_base_url": signup_base,
-                        "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
-                    }
-        except Exception as e:
-            logging.getLogger("api.auth").debug("JWT account lookup failed, falling through: %s", e)
-    # (account bots handle user auth; system bot is for platform admin only)
-    try:
-        from infra.platform import get_platform_db
-        db = get_platform_db()
-        from infra.crypto import decrypt
-        accounts = await db.list_accounts()
-        for acct in accounts:
-            if acct.bot_token_encrypted and acct.bot_username:
-                acct_bot_id = ""
-                try:
-                    tok = decrypt(acct.bot_token_encrypted)
-                    if ":" in tok:
-                        acct_bot_id = tok.split(":", 1)[0]
-                except Exception as e:
-                    logging.getLogger("api.auth").debug("Could not decrypt bot token: %s", e)
-                return {
-                    "bot_username": acct.bot_username,
-                    "bot_id": acct_bot_id,
-                    "signup_base_url": signup_base,
-                    "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
-                }
-    except Exception as e:
-        logging.getLogger("api.auth").debug("Could not look up fallback account bot: %s", e)
-    # Last-resort fallback for the customer-side Login Widget — show
-    # the LOGIN bot so an unregistered visitor lands on the right
-    # front-door bot.  Never returns the SYSTEM bot here.  We resolve
-    # the username via getMe on TELEGRAM_LOGIN_BOT_TOKEN (cached) rather
-    # than reading the shared ``bot.config.bot_username`` global —
-    # that global collapses to the system bot when LOGIN_BOT_TOKEN is
-    # unset, which used to silently bypass this "never return SYSTEM"
-    # promise.
+    # Resolve the username via getMe on TELEGRAM_LOGIN_BOT_TOKEN
+    # (cached) rather than reading the shared ``bot.config.bot_username``
+    # global — that global collapses to the system bot when
+    # LOGIN_BOT_TOKEN is unset, which used to silently bypass the
+    # "never return SYSTEM" promise.
     _bot_id = ""
     if TELEGRAM_LOGIN_BOT_TOKEN and ":" in TELEGRAM_LOGIN_BOT_TOKEN:
         _bot_id = TELEGRAM_LOGIN_BOT_TOKEN.split(":", 1)[0]

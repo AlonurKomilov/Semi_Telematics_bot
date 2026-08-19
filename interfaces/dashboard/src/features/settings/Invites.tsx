@@ -297,10 +297,13 @@ export function InvitesPanel() {
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    // /auth/bot-info doesn't exist — call /auth/config, which returns
-    // the per-account bot when the request carries an admin JWT (so
-    // invite links land on the account's branded bot rather than the
-    // global login bot — the right semantic for "join my company").
+    // Branded bot for invite deep links: the ACCOUNT bot when one is
+    // connected ("join my company" lands on the company's own bot),
+    // else the global login bot.  Read from /admin/bot-config —
+    // /auth/config no longer knows about account bots: it serves the
+    // login page's WEB WIDGET, which is always the platform login bot
+    // (a tenant bot must never be required to /setdomain for the
+    // platform).  Deep links are t.me links — no domain involved.
     // signup_base_url is the apex origin where /signup/<code> works
     // (env-driven; defaults to 4truck.us).  We need it because URL-
     // channel invites issued from dash.4truck.us must point at the
@@ -310,9 +313,18 @@ export function InvitesPanel() {
       bot_username: string;
       signup_base_url?: string;
     }>('/auth/config')
-      .then(d => {
-        if (d.bot_username) setBotUsername(d.bot_username);
+      .then(async (d) => {
         if (d.signup_base_url) setSignupBase(d.signup_base_url);
+        try {
+          const b = await apiJSON<{ has_bot: boolean; bot_username: string }>(
+            '/admin/bot-config',
+          );
+          if (b.has_bot && b.bot_username) {
+            setBotUsername(b.bot_username);
+            return;
+          }
+        } catch { /* no read access or no bot — login bot below */ }
+        if (d.bot_username) setBotUsername(d.bot_username);
       })
       .catch(() => {});
   }, []);
