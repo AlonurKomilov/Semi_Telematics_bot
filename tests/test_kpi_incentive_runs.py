@@ -133,28 +133,20 @@ class TestLifecycle:
             assert set(rows) == {"225", "301"}
 
             t225 = rows["225"]
-            # The window is the WHOLE period; days outside the truck's
-            # load span (07-03..07-20) arrive auto-excused as "no loads"
-            # marks — visible, and unmarking one makes it count.
+            # Owner rule: the window is the WHOLE period and EVERY day
+            # counts unless a human marks it inactive — a day without
+            # loads is the dispatcher's empty day, never auto-excused.
             assert (t225["window_start"], t225["window_end"]) == (
                 "2026-07-01", "2026-07-28")
             assert t225["total_days"] == 28
-            assert t225["inactive_days"] == 10          # 2 lead + 8 tail
-            assert t225["inactive_reason"] == (
-                "before first load, after last load")
-            marks = t225["inactive_dates"]
-            assert marks[0] == {"date": "2026-07-01",
-                                "reason": "before first load"}
-            assert marks[1]["date"] == "2026-07-02"
-            assert marks[-1] == {"date": "2026-07-28",
-                                 "reason": "after last load"}
-            # ACTIVE days (28 − 10 = 18) equal the old load-span window,
-            # so the money below is unchanged by the resharpening.
-            # 17,000 gross / 8,100 mi -> rpm 2.10; target 8000/7*18 =
-            # 20,571.43 -> NOT met; ladder row 1 (rpm>=2, no target) -> 1%.
+            assert t225["inactive_days"] == 0
+            assert t225["inactive_reason"] == ""
+            assert t225["inactive_dates"] == []
+            # 17,000 gross / 8,100 mi -> rpm 2.10; target 8000/7*28 =
+            # 32,000 -> NOT met; ladder row 1 (rpm>=2, no target) -> 1%.
             assert t225["base_gross"] == 17_000
             assert t225["rpm"] == 2.10
-            assert t225["adjusted_target"] == 20_571.43
+            assert t225["adjusted_target"] == 32_000.00
             assert t225["pct"] == 1.0
             assert t225["kpi_dollars"] == 170.00
             assert t225["confirmed_dollars"] == 170.00
@@ -362,17 +354,24 @@ class TestLifecycle:
             row = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
             url = f"/api/kpi/dispatch/runs/{run['id']}/rows/{row['id']}"
 
-            r = await c.patch(url, json={"inactive_days": 10, "extras": 250},
+            marks = [{"date": f"2026-07-{d:02d}", "reason": "repair"}
+                     for d in (5, 6, 7)]
+            r = await c.patch(url, json={"inactive_dates": marks},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200, r.text
+            # The dialog's echo (count agrees with the list) + a real
+            # extras edit: the day marks must survive.
+            r = await c.patch(url, json={"inactive_days": 3, "extras": 250},
                               headers=_h(seeded["owner"]))
             assert r.status_code == 200, r.text
             out = r.json()
-            assert out["inactive_days"] == 10
-            assert len(out["inactive_dates"]) == 10     # marks survived
+            assert out["inactive_days"] == 3
+            assert len(out["inactive_dates"]) == 3      # marks survived
 
-            r = await c.patch(url, json={"inactive_days": 3},
+            r = await c.patch(url, json={"inactive_days": 1},
                               headers=_h(seeded["owner"]))
             assert r.status_code == 200
-            assert r.json()["inactive_days"] == 3
+            assert r.json()["inactive_days"] == 1
             assert r.json()["inactive_dates"] == []     # decision: cleared
 
     async def test_csv_export_carries_the_sheet_and_the_totals(self, seeded):
@@ -578,14 +577,13 @@ class TestDaySuggestions:
             assert [s["date"] for s in sugg[str(row["id"])]] == ["2026-07-10"]
             assert sugg[str(row["id"])][0]["reason"] == "repair"
             assert "Big Shop" in sugg[str(row["id"])][0]["source"]
-            # Nothing was WRITTEN — the row still holds exactly its 10
-            # auto "no loads" marks from generation, none for 07-10.
+            # Nothing was WRITTEN — generation marks nothing, and a
+            # suggestion is only a proposal.
             detail = (await c.get(f"/api/kpi/dispatch/runs/{run['id']}",
                                   headers=_h(seeded["owner"]))).json()
             fresh = next(x for x in detail["rows"] if x["id"] == row["id"])
-            assert fresh["inactive_days"] == 10
-            assert all(m["reason"] in ("before first load", "after last load")
-                       for m in fresh["inactive_dates"])
+            assert fresh["inactive_days"] == 0
+            assert fresh["inactive_dates"] == []
 
             # Confirm the day -> it stops being suggested.
             await c.patch(
@@ -645,7 +643,7 @@ class TestNotePreviewAndGaps:
             # 17,000 at 18 days vs 8000/wk: target 20,571.43 -> gap to
             # the requires_target 1.5% tier.
             assert t225["next_tier"]["pct"] == 1.5
-            assert t225["next_tier"]["gap"] == 3_571.43
+            assert t225["next_tier"]["gap"] == 15_000.00   # 32,000 target − 17,000
             # user_names map resolves attribution ids.
             assert isinstance(run["user_names"], dict)
 

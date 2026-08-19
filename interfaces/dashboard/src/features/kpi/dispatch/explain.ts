@@ -50,11 +50,38 @@ export function matchedTip(rule: NonNullable<RunRow['matched_rule']>, t: TFuncti
     { p: rule.pct, r: rule.rpm_pct, g: rule.gross_pct, how });
 }
 
-/** Distinct pickup days — the "loads getted days" of the P/A/L trio.
- *  null while the loads query is still in flight (unknown ≠ zero). */
-export function loadedDayCount(loads: RunLoad[] | undefined): number | null {
+const nextDay = (iso: string) =>
+  new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/** Days COVERED by a load — pickup through delivery, clamped to the
+ *  window.  Counting only pickup days made a Friday long-haul's
+ *  weekend transit look like dispatcher idle ("1 loaded" on a truck
+ *  that rolled all week).  null while the loads query is in flight
+ *  (unknown ≠ zero). */
+export function loadedDayCount(
+  loads: RunLoad[] | undefined, winStart: string, winEnd: string,
+): number | null {
   if (loads === undefined) return null;
-  return new Set(loads.map((l) => l.pickup_date.slice(0, 10))).size;
+  return coveredDays(loads, winStart, winEnd).size;
+}
+
+/** The set version — the board shades covered-but-no-pickup days as
+ *  "in transit" so nobody marks a rolling day inactive. */
+export function coveredDays(
+  loads: RunLoad[], winStart: string, winEnd: string,
+): Set<string> {
+  const lo = winStart.slice(0, 10);
+  const hi = winEnd.slice(0, 10);
+  const days = new Set<string>();
+  for (const l of loads) {
+    const a = (l.pickup_date || '').slice(0, 10);
+    if (!a) continue;
+    const b = (l.delivery_date || '').slice(0, 10);
+    const stopRaw = b && b > a ? b : a;
+    const stop = stopRaw > hi ? hi : stopRaw;
+    for (let d = a < lo ? lo : a; d <= stop; d = nextDay(d)) days.add(d);
+  }
+  return days;
 }
 
 /** The Days cell phrase — words label the numbers inline ("2 of 7
@@ -71,22 +98,6 @@ export function daysCell(row: RunRow, loaded: number | null, t: TFunction): stri
     : t('kpi_runs.days_loaded_n', '{{n}} loaded', { n: loaded })}`;
 }
 
-/** Generation's auto-excuse reasons (runs.py stamps them; edge days
- *  outside the truck's load span).  Everything else is a HUMAN mark. */
-export const AUTO_EXCUSE_REASONS: readonly string[] = [
-  'before first load', 'after last load',
-];
-
-/** Days a PERSON marked inactive — the auto edge-excuses don't count
- *  as someone's decision.  Legacy rows (typed number, no day list)
- *  count only when a human fingerprint (adjusted_by) exists. */
-export function handMarkedDays(r: RunRow): number {
-  if (r.inactive_dates.length > 0) {
-    return r.inactive_dates.filter(
-      (m) => !AUTO_EXCUSE_REASONS.includes(m.reason)).length;
-  }
-  return r.adjusted_by != null ? r.inactive_days : 0;
-}
 
 /** A row a person actually touched — generation leaves no fingerprint
  *  (adjusted_by NULL), so auto-excused rows are NOT adjustments. */

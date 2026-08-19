@@ -42,7 +42,7 @@ import { ScrollRegion } from '../../../components/scrolling';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
-import { AUTO_EXCUSE_REASONS, daysCell, handMarkedDays, isHandAdjusted, loadedDayCount, matchedTip } from './explain';
+import { daysCell, isHandAdjusted, loadedDayCount, matchedTip } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { SectionSwitcher } from '../SectionSwitcher';
 import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
@@ -192,7 +192,7 @@ export default function IncentiveRuns() {
   const run = detailQ.data;
   const draft = run?.status === 'draft';
   const zeroCount = run ? run.rows.filter((r) => Number(r.pct) === 0).length : 0;
-  const markedDays = run ? run.rows.reduce((a, r) => a + handMarkedDays(r), 0) : 0;
+  const markedDays = run ? run.rows.reduce((a, r) => a + r.inactive_days, 0) : 0;
   const runTotal = run ? run.rows.reduce((a, r) => a + r.confirmed_dollars, 0) : 0;
   const runGross = run ? run.rows.reduce((a, r) => a + r.kpi_gross, 0) : 0;
   const adjustedRows = run ? run.rows.filter(isHandAdjusted) : [];
@@ -262,8 +262,8 @@ export default function IncentiveRuns() {
           <span onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}>
-            <InfoTip label={t('kpi_runs.days_info2',
-              'Counted days of the period, and how many had loads. Days marked inactive (home time, repair, holiday — or automatically, when outside the truck’s loads) drop out, and the target is split across the counted days.')} />
+            <InfoTip label={t('kpi_runs.days_info3',
+              'Counted days of the period, and how many a load covered (pickup through delivery). Days marked inactive on the board (home time, repair, holiday) drop out, and the target is split across the counted days. A counted day with no load is on the dispatcher.')} />
           </span>
         </span>
       ),
@@ -286,7 +286,8 @@ export default function IncentiveRuns() {
               periodEnd={run?.period_end ?? ''} t={t} />}>
               <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
                 {daysCell(r, runLoadsQ.data
-                  ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? []) : null, t)}
+                  ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? [],
+                      r.window_start, r.window_end) : null, t)}
               </span>
             </Tip>
             {Number(r.inactive_days) > 0 && (
@@ -924,11 +925,9 @@ function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
     try {
       if (r.override_pct != null) await setIncentiveException(run.id, r.id, null, '');
       await patchIncentiveRow(run.id, r.id, {
-        // "Computed values" = the GENERATED state: the auto edge
-        // excuses stay, only the human's marks fall away.
-        inactive_dates: r.inactive_dates.filter(
-          (m) => AUTO_EXCUSE_REASONS.includes(m.reason)),
-        extras: 0, extras_note: '',
+        // Generation marks nothing — reverting means every day counts
+        // again and the extras zero out.
+        inactive_dates: [], extras: 0, extras_note: '',
       });
       onChanged();
     } catch (e) {
@@ -973,13 +972,11 @@ function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
                   )}
                 </div>
                 <ul className="text-xs text-muted-foreground space-y-0.5">
-                  {handMarkedDays(r) > 0 && (
+                  {r.inactive_days > 0 && (
                     <li>
-                      {t('kpi_runs.adj_days', '{{n}} inactive days', { n: handMarkedDays(r) })}
+                      {t('kpi_runs.adj_days', '{{n}} inactive days', { n: r.inactive_days })}
                       {r.inactive_dates.length > 0 && (
-                        <> — {r.inactive_dates
-                          .filter((m) => !AUTO_EXCUSE_REASONS.includes(m.reason))
-                          .map((m) => `${m.date.slice(5)}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}</>
+                        <> — {r.inactive_dates.map((m) => `${m.date.slice(5)}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}</>
                       )}
                       {r.inactive_reason && r.inactive_dates.length === 0 && <> — {r.inactive_reason}</>}
                     </li>

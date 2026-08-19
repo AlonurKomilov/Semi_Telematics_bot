@@ -35,7 +35,7 @@ export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }:
   const total = Number(row.total_days);
   const off = Number(row.inactive_days);
   const active = Math.max(0, total - off);
-  const loaded = loadedDayCount(loads);
+  const loaded = loadedDayCount(loads, row.window_start, row.window_end);
   const isFullPeriod = row.window_start.slice(0, 10) === periodStart.slice(0, 10)
     && row.window_end.slice(0, 10) === periodEnd.slice(0, 10);
   return (
@@ -82,8 +82,8 @@ export function DaysTipContent({ row, loads, draft, periodStart, periodEnd, t }:
       </div>
       {loaded != null && (
         <div>{loaded === 1
-          ? t('kpi_runs.dt_loaded_one', '• 1 day with loads')
-          : t('kpi_runs.dt_loaded', '• {{n}} days with loads', { n: loaded })}</div>
+          ? t('kpi_runs.dt_loaded_one2', '• 1 day covered by a load (pickup → delivery)')
+          : t('kpi_runs.dt_loaded2', '• {{n}} days covered by loads (pickup → delivery)', { n: loaded })}</div>
       )}
       {draft && off > 0 && (
         /* The bubble is the INVERTED surface (bg-foreground /

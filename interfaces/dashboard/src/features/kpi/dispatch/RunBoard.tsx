@@ -21,7 +21,7 @@ import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-re
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
-import { AUTO_EXCUSE_REASONS, daysCell, loadedDayCount, matchedTip } from './explain';
+import { coveredDays, daysCell, loadedDayCount, matchedTip } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -192,6 +192,10 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block rounded bg-muted/60 px-1.5 text-xs text-muted-foreground">{t('kpi_board.transit', '→ in transit')}</span>
+          {t('kpi_board.leg_transit', 'load underway — counts')}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex size-5 items-center justify-center rounded border border-dashed border-border">
             <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
           </span>
@@ -301,6 +305,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
     const d = l.pickup_date;
     byDay.set(d, [...(byDay.get(d) ?? []), l]);
   }
+  // Days a load COVERS without starting there — the truck is rolling
+  // (picked up earlier, delivering later), not idle.
+  const transit = coveredDays(loads ?? [], row.window_start, row.window_end);
   const inWindow = (d: string) =>
     d >= row.window_start.slice(0, 10) && d <= row.window_end.slice(0, 10);
 
@@ -319,7 +326,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             draft={clickable} periodStart={periodStart}
             periodEnd={periodEnd} t={t} />}>
             <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-              {daysCell(row, loadedDayCount(loads), t)}
+              {daysCell(row, loadedDayCount(loads, row.window_start, row.window_end), t)}
             </span>
           </Tip>
           {' · '}${Math.round(row.kpi_gross).toLocaleString()}
@@ -410,12 +417,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             )}
             {reason != null && (
               clickable ? (
-                <Tip label={t('kpi_board.unmark_tip2',
-                  '{{why}} ({{who}}) — click to make {{day}} count again{{stake}}.', {
+                <Tip label={t('kpi_board.unmark_tip3',
+                  '{{why}} — click to make {{day}} count again{{stake}}.', {
                     why: reason || t('kpi_board.inactive', 'inactive'),
-                    who: AUTO_EXCUSE_REASONS.includes(reason ?? '')
-                      ? t('kpi_board.by_auto', 'auto')
-                      : t('kpi_board.by_hand2', 'by hand'),
                     day: dayLabel(d),
                     stake: row.weekly_target != null
                       ? t('kpi_board.stake_up', ', target +{{v}}',
@@ -451,8 +455,20 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                 <CalendarOff size={12} className="text-muted-foreground" />
               </span>
             )}
+            {inside && dayLoads.length === 0 && reason == null
+              && !suggested.has(d) && transit.has(d) && (
+              /* Covered by a load picked up earlier — a rolling day,
+                 not an idle one; without this shade the transit days
+                 of a Friday long-haul read as dispatcher idle. */
+              <Tip label={t('kpi_board.transit_tip',
+                'Covered by a load in transit (picked up earlier) — a working day; it counts.')}>
+                <span className="block rounded bg-muted/60 px-1.5 py-0.5 text-xs text-muted-foreground truncate">
+                  {t('kpi_board.transit', '→ in transit')}
+                </span>
+              </Tip>
+            )}
             {clickable && inside && dayLoads.length === 0 && reason == null
-              && !suggested.has(d) && (
+              && !suggested.has(d) && !transit.has(d) && (
               /* A persistent dashed WELL with a calendar-off glyph — a
                  "+" promised ADDING something; the gesture REMOVES a
                  day from the target.  Tip names day and action. */
