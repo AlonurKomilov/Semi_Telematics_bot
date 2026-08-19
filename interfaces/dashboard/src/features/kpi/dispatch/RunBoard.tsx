@@ -21,7 +21,7 @@ import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-re
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
-import { daysCell, loadedDayCount, matchedTip } from './explain';
+import { AUTO_EXCUSE_REASONS, daysCell, loadedDayCount, matchedTip } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -154,8 +154,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         /* The board's one non-obvious gesture, said once where the days
            are — a flat cell gives no affordance cue by itself. */
         <p className="text-xs text-muted-foreground">
-          {t('kpi_board.hint',
-            'Click a day to mark it inactive (home time, repair, holiday) — the truck’s target lowers with each marked day.')}
+          {t('kpi_board.hint2',
+            'Click a day to mark it inactive (home time, repair, holiday) — the truck’s target lowers with each marked day. Click a marked day to clear it — the day counts again and the target rises back.')}
         </p>
       )}
       {drift > 0 && (
@@ -175,6 +175,29 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           )}
         </div>
       )}
+      {/* The board's four day states, named once — a reviewer must be
+          able to tell WHY Wednesday is amber and Saturday is not
+          without decoding chips by trial. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`inline-block rounded px-1.5 ${toneClasses('ok')}`}>$</span>
+          {t('kpi_board.leg_loads', 'has loads')}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`inline-block rounded px-1.5 font-medium ${toneClasses('warn')}`}>{t('kpi_board.leg_inactive_chip', 'inactive')}</span>
+          {t('kpi_board.leg_inactive', 'marked inactive — not counted')}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`inline-block rounded border border-dashed border-warn-bd px-1.5 ${toneText('warn')}`}>?</span>
+          {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex size-5 items-center justify-center rounded border border-dashed border-border">
+            <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
+          </span>
+          {t('kpi_board.leg_empty', 'empty — still counts')}
+        </span>
+      </div>
       {draft && suggestionCount > 0 && (
         <p className="text-xs text-muted-foreground">
           {t('kpi_board.suggest_count',
@@ -303,7 +326,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           {' · '}${Math.round(row.kpi_gross).toLocaleString()}
           {row.weekly_target != null && (
             <span className="text-muted-foreground/70">
-              /${Math.round(row.adjusted_target).toLocaleString()}
+              {' '}{t('kpi_board.vs_target', 'vs {{tgt}}',
+                { tgt: `$${Math.round(row.adjusted_target).toLocaleString()}` })}
             </span>
           )}
           {' · '}
@@ -386,9 +410,28 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               </div>
             )}
             {reason != null && (
-              <div className={`rounded px-1.5 py-0.5 text-xs ${toneClasses('warn')} uppercase tracking-wide truncate`}>
-                {reason || t('kpi_board.inactive', 'inactive')}
-              </div>
+              clickable ? (
+                <Tip label={t('kpi_board.unmark_tip',
+                  '{{why}} ({{who}}) — click to clear the mark: {{day}} counts again{{stake}}.', {
+                    why: reason || t('kpi_board.inactive', 'inactive'),
+                    who: AUTO_EXCUSE_REASONS.includes(reason ?? '')
+                      ? t('kpi_board.by_auto', 'auto')
+                      : t('kpi_board.by_hand', 'marked by hand'),
+                    day: dayLabel(d),
+                    stake: row.weekly_target != null
+                      ? t('kpi_board.stake_up', ', target +{{v}}',
+                          { v: `$${Math.round(row.weekly_target / 7).toLocaleString()}` })
+                      : '',
+                  })}>
+                  <div className={`rounded px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
+                    {reason || t('kpi_board.inactive', 'inactive')}
+                  </div>
+                </Tip>
+              ) : (
+                <div className={`rounded px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
+                  {reason || t('kpi_board.inactive', 'inactive')}
+                </div>
+              )
             )}
             {clickable && inside && reason == null && suggested.has(d) && (
               /* Phase 4b stepping stone: a work order on this truck's
@@ -414,7 +457,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               /* A persistent dashed WELL with a calendar-off glyph — a
                  "+" promised ADDING something; the gesture REMOVES a
                  day from the target.  Tip names day and action. */
-              <Tip label={t('kpi_board.mark_tip', 'Mark {{day}} inactive', { day: dayLabel(d) })}>
+              <Tip label={row.weekly_target != null
+                ? t('kpi_board.mark_tip2', 'Mark {{day}} inactive → target −{{v}}',
+                    { day: dayLabel(d),
+                      v: `$${Math.round(row.weekly_target / 7).toLocaleString()}` })
+                : t('kpi_board.mark_tip', 'Mark {{day}} inactive', { day: dayLabel(d) })}>
                 <span className="flex h-6 items-center justify-center rounded border border-dashed border-border">
                   <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
                 </span>

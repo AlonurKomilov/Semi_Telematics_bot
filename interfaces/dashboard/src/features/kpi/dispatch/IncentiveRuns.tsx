@@ -252,6 +252,10 @@ export default function IncentiveRuns() {
         </span>
       ) },
     { key: 'total_days', label: 'Days', sortable: true,
+      // Period length never varies within one run — counted days is
+      // the only orderable fact in the trio.
+      sortKey: (r) => Number((r as unknown as RunRow).total_days)
+        - Number((r as unknown as RunRow).inactive_days),
       headerRender: () => (
         <span className="inline-flex items-center gap-1">
           {t('kpi_runs.days_col', 'Days')}
@@ -266,24 +270,40 @@ export default function IncentiveRuns() {
       // period/counted/loaded, with the inactive reason as visible
       // context — these numbers move the target, so they must be
       // readable and self-explaining.
-      render: (_v, r) => (
-        // period/counted/loaded — the owner's P/A/L trio; the tip is
-        // the cell's legend, one list row per number.
-        <span className="tabular-nums">
-          <Tip label={<DaysTipContent row={r}
-            loads={runLoadsQ.data ? (runLoadsQ.data.rows[String(r.id)] ?? []) : undefined}
-            draft={draft} periodStart={run?.period_start ?? ''}
-            periodEnd={run?.period_end ?? ''} t={t} />}>
-            <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-              {daysCell(r, runLoadsQ.data
-                ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? []) : null)}
-            </span>
-          </Tip>
-          {Number(r.inactive_days) > 0 && (
-            <Note text={`(${r.inactive_days} off${r.inactive_reason ? `: ${r.inactive_reason}` : ''})`} />
-          )}
-        </span>
-      ) },
+      render: (_v, r) => {
+        const active = Number(r.total_days) - Number(r.inactive_days);
+        // The already-computed cost of the inactive days: the bar this
+        // truck ISN'T being held to (weekly rate × inactive days ÷ 7).
+        const cut = r.weekly_target != null && Number(r.inactive_days) > 0
+          ? (Number(r.weekly_target) / 7) * Number(r.inactive_days) : null;
+        return (
+          // period/counted/loaded — the owner's P/A/L trio; the tip is
+          // the cell's legend, one list row per number.  AT hears the
+          // expansion (sr-only), never three bare digits.
+          <span className="tabular-nums">
+            <Tip label={<DaysTipContent row={r}
+              loads={runLoadsQ.data ? (runLoadsQ.data.rows[String(r.id)] ?? []) : undefined}
+              draft={draft} periodStart={run?.period_start ?? ''}
+              periodEnd={run?.period_end ?? ''} t={t} />}>
+              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                <span aria-hidden>
+                  {daysCell(r, runLoadsQ.data
+                    ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? []) : null)}
+                </span>
+                <span className="sr-only">
+                  {t('kpi_runs.days_sr',
+                    '{{p}} period days, {{a}} counted, {{off}} marked inactive',
+                    { p: r.total_days, a: active, off: r.inactive_days })}
+                </span>
+              </span>
+            </Tip>
+            {Number(r.inactive_days) > 0 && (
+              <Note text={`(${r.inactive_days} inactive${r.inactive_reason ? `: ${r.inactive_reason}` : ''}${
+                cut != null ? ` · ${t('kpi_runs.days_cut', 'target −{{d}}', { d: usd(cut) })}` : ''})`} />
+            )}
+          </span>
+        );
+      } },
     { key: 'kpi_gross', label: 'Gross', sortable: true,
       aggregable: true, aggFormat: (v) => usd(v),
       render: (v, r) => (
@@ -308,10 +328,22 @@ export default function IncentiveRuns() {
       render: (v) => <span className="tabular-nums">{v == null ? '—' : Number(v).toFixed(2)}</span> },
     { key: 'adjusted_target', label: 'Target', sortable: true,
       // NULL weekly_target = this company has no bar configured — say
-      // so, never render an invented number.
+      // so, never render an invented number.  A prorated bar names its
+      // cause inline: "$2,285.71 · 2 of 7 days" — an unanchored low
+      // target reads as an error.
       render: (v, r) => r.weekly_target == null
-        ? <span className={`text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>no target</span>
-        : <span className="tabular-nums">{usd(v)}</span> },
+        ? <span className={`text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>{t('kpi_runs.no_target', 'no target')}</span>
+        : (
+          <span className="tabular-nums">
+            {usd(v)}
+            {Number(r.inactive_days) > 0 && (
+              <span className="ml-1 text-xs text-muted-foreground">
+                {t('kpi_runs.target_days', '· {{a}} of {{p}} days',
+                  { a: Number(r.total_days) - Number(r.inactive_days), p: r.total_days })}
+              </span>
+            )}
+          </span>
+        ) },
     { key: 'vs_target', label: 'vs Target', sortable: true,
       sortKey: (r) => (r as unknown as RunRow).weekly_target == null
         ? Number.NEGATIVE_INFINITY
