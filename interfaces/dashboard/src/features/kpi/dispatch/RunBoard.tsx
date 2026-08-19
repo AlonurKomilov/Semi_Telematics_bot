@@ -456,21 +456,45 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             {dayLoads.slice(0, 2).map((l, i) => {
               const runDays = i === 0 ? stripRun(l, d) : 0;
               const cont = runDays > 0;
-              // Text runway = this cell + every following STRIP cell
+              // Label runway = this cell + every following STRIP cell
               // (w-28 = 112px each), minus the 6px insets both ends.
               const runway = cont ? (runDays + 1) * 112 - 12 : undefined;
-              return (
+              const loadAria = t('kpi_board.load_aria',
+                'Load {{rate}} — {{from}} to {{to}}, {{mi}} mi, delivers {{del}}', {
+                  rate: usd(l.total_rate),
+                  from: place(l.pickup_location) || '—',
+                  to: place(l.delivery_location) || l.load_number,
+                  mi: Math.round(l.miles).toLocaleString(),
+                  del: dayLabel(spanEnd(l)),
+                });
+              return cont ? (
+                /* DAY-ALIGNED fill + floating label.  The fill ends at
+                   the cell edge (uniform bg-ok-bg, single alpha layer,
+                   day-aligned like the strips and the hover regions);
+                   the label floats above the whole bar,
+                   pointer-events-none so hovering day 2 hits day 2's
+                   transit tip, and names the delivery day on the
+                   surface. */
+                <div key={i} className="relative">
+                  <Tip label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
+                    <div className="block h-6 rounded-l rounded-r-none -mr-1.5 bg-ok-bg"
+                      role="img" aria-label={loadAria} />
+                  </Tip>
+                  <span
+                    className="pointer-events-none absolute left-1.5 top-0 z-10 block h-6 leading-6 overflow-hidden whitespace-nowrap text-xs tabular-nums text-ok"
+                    style={{ maxWidth: runway }} aria-hidden>
+                    ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
+                    {' → '}{dayLabel(spanEnd(l))}
+                  </span>
+                </div>
+              ) : (
                 <Tip key={i}
                   label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
                   <div
                     /* h-6 + leading-6 (not flex): truncate's ellipsis
-                       needs a block formatting context — text inside a
-                       flex container clips without the "…". */
-                    className={`block h-6 leading-6 rounded text-xs tabular-nums ${toneClasses('ok')} ${
-                      cont
-                        ? 'rounded-r-none relative z-10 w-max max-w-none overflow-hidden whitespace-nowrap pl-1.5 pr-2'
-                        : 'px-1.5 truncate'}`}
-                    style={cont ? { maxWidth: runway } : undefined}
+                       needs a block formatting context. */
+                    className={`block h-6 leading-6 rounded text-xs tabular-nums px-1.5 truncate ${toneClasses('ok')}`}
+                    role="img" aria-label={loadAria}
                   >
                     ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
                   </div>
@@ -517,7 +541,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               /* Loaded cells hide their gesture behind a bare cursor
                  change — on hover a corner glyph names the action
                  without reflowing the cell (overlay, not in-flow). */
-              <span className="absolute bottom-1 right-1 hidden group-hover:inline-flex items-center justify-center size-5 rounded border border-dashed border-border bg-card"
+              <span className="absolute bottom-1 right-1 hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center size-5 rounded border border-dashed border-border bg-card"
                 aria-hidden>
                 <CalendarOff size={12} className="text-muted-foreground" />
               </span>

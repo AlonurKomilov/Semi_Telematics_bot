@@ -564,6 +564,11 @@ class TestDaySuggestions:
             await db.add_work_order(
                 seeded["acct"].id, "OSY", "225", "Big Shop",
                 service_date="2026-07-10")
+            # COVERED day (load 07-03 → 07-06 spans it): a repair on a
+            # working day didn't stop the work — never suggested.
+            await db.add_work_order(
+                seeded["acct"].id, "OSY", "225", "Working-Day Shop",
+                service_date="2026-07-04")
             await db.add_work_order(
                 seeded["acct"].id, "OSY", "225", "Late Shop",
                 service_date="2026-09-01")

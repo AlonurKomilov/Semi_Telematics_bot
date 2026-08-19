@@ -38,7 +38,7 @@ import io
 import json
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from features.kpi.dispatch import engine
 from features.loads import service as loads_service
@@ -46,6 +46,8 @@ from infra.platform import get_tenant_db
 
 
 logger = logging.getLogger(__name__)
+
+_one_day = timedelta(days=1)
 
 
 class RunError(Exception):
@@ -547,10 +549,25 @@ async def get_run_loads(account_id: int, run_id: int) -> dict:
     if wos:
         for row in rows:
             marked = {m.get("date") for m in (row.get("inactive_dates") or [])}
+            # Days the row's loads COVER (pickup through delivery) —
+            # suggesting to excuse a day that earned money proposes
+            # zeroing revenue out of the count; a shop visit on a
+            # working day didn't stop the work.
+            covered: set[str] = set()
+            for l in out_rows.get(int(row["id"]), []):
+                a = l["pickup_date"]
+                if not a:
+                    continue
+                b = l["delivery_date"] or a
+                cur = date.fromisoformat(a)
+                stop = date.fromisoformat(b if b >= a else a)
+                while cur <= stop:
+                    covered.add(cur.isoformat())
+                    cur += _one_day
             hits = []
             for wo in wos:
                 day = str(wo.get("service_date") or "")[:10]
-                if not day or day in marked:
+                if not day or day in marked or day in covered:
                     continue
                 if wo.get("vehicle_name") != row.get("vehicle_unit"):
                     continue
