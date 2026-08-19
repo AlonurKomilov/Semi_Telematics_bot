@@ -195,6 +195,14 @@ async def create_run(
             if d:
                 g["_dates"].append(str(d)[:10])
 
+    # Validate the period BEFORE the run row exists — a 422 must never
+    # leave an orphan empty run behind.
+    try:
+        date.fromisoformat(period_start[:10])
+        date.fromisoformat(period_end[:10])
+    except ValueError:
+        raise RunError("period dates are not valid dates")
+
     run_id = await tenant.create_kpi_run(
         account_id, period_start=period_start, period_end=period_end,
         config_snapshot=json.dumps(snapshot), created_by=created_by,
@@ -211,22 +219,32 @@ async def create_run(
         # day is on the dispatcher).  Owner decision 2026-08-19.
         w_start = period_start[:10]
         w_end = period_end[:10]
+        cur = date.fromisoformat(w_start)
+        last = date.fromisoformat(w_end)
+        # Reasons name the EDGE, not "no loads" — a no-load gap day
+        # BETWEEN loads is deliberately counted (it is on the
+        # dispatcher), so a reason implying all no-load days are
+        # excused would teach a false rule.
         auto: list[dict] = []
         if dates:
-            cur = date.fromisoformat(w_start)
-            last = date.fromisoformat(w_end)
             while cur <= last:
                 i = cur.isoformat()
-                if i < dates[0] or i > dates[-1]:
-                    auto.append({"date": i, "reason": "no loads"})
+                if i < dates[0]:
+                    auto.append({"date": i, "reason": "before first load"})
+                elif i > dates[-1]:
+                    auto.append({"date": i, "reason": "after last load"})
                 cur += timedelta(days=1)
+        auto_reasons: list[str] = []
+        for m in auto:
+            if m["reason"] not in auto_reasons:
+                auto_reasons.append(m["reason"])
         row = {
             **g,
             "window_start": w_start,
             "window_end": w_end,
             "total_days": _days_inclusive(w_start, w_end),
             "inactive_days": len(auto),
-            "inactive_reason": "no loads" if auto else "",
+            "inactive_reason": ", ".join(auto_reasons),
             "inactive_dates": json.dumps(auto),
             "extras": 0.0,
             "extras_note": "",
@@ -293,10 +311,18 @@ async def update_row(
                  "inactive_days": row["inactive_days"],
                  "inactive_reason": row["inactive_reason"]}
     elif "inactive_days" in patch:
-        # The dialog's typed number is the coarse tool — it wins by
-        # clearing the day list rather than silently disagreeing with it.
-        row["inactive_dates"] = "[]"
-        patch = {**patch, "inactive_dates": "[]"}
+        # The typed number is the coarse tool — it wins by clearing the
+        # day list, but ONLY when it actually disagrees with it.  The
+        # dialog echoes the current count on every save (an extras-only
+        # edit included), and an echo must not destroy the per-day
+        # marks (the auto-excused days ride that list).
+        try:
+            existing = json.loads(row.get("inactive_dates") or "[]")
+        except ValueError:
+            existing = []
+        if int(patch["inactive_days"]) != len(existing):
+            row["inactive_dates"] = "[]"
+            patch = {**patch, "inactive_dates": "[]"}
 
     if int(row["inactive_days"]) < 0:
         raise RunError("inactive_days cannot be negative")

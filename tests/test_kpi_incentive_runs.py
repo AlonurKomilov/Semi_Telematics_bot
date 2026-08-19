@@ -140,11 +140,14 @@ class TestLifecycle:
                 "2026-07-01", "2026-07-28")
             assert t225["total_days"] == 28
             assert t225["inactive_days"] == 10          # 2 lead + 8 tail
-            assert t225["inactive_reason"] == "no loads"
+            assert t225["inactive_reason"] == (
+                "before first load, after last load")
             marks = t225["inactive_dates"]
-            assert [m["date"] for m in marks][:2] == [
-                "2026-07-01", "2026-07-02"]
-            assert marks[-1] == {"date": "2026-07-28", "reason": "no loads"}
+            assert marks[0] == {"date": "2026-07-01",
+                                "reason": "before first load"}
+            assert marks[1]["date"] == "2026-07-02"
+            assert marks[-1] == {"date": "2026-07-28",
+                                 "reason": "after last load"}
             # ACTIVE days (28 − 10 = 18) equal the old load-span window,
             # so the money below is unchanged by the resharpening.
             # 17,000 gross / 8,100 mi -> rpm 2.10; target 8000/7*18 =
@@ -347,6 +350,30 @@ class TestLifecycle:
             assert r.status_code == 200
             assert r.json()["inactive_dates"] == []
             assert r.json()["inactive_days"] == 2
+
+    async def test_an_echoed_count_never_wipes_the_day_marks(self, seeded):
+        """The dialog echoes inactive_days on every save.  An echo that
+        AGREES with the day list keeps it (extras-only edit); a number
+        that DISAGREES is a decision and clears it (coarse tool wins)."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            row = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            url = f"/api/kpi/dispatch/runs/{run['id']}/rows/{row['id']}"
+
+            r = await c.patch(url, json={"inactive_days": 10, "extras": 250},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200, r.text
+            out = r.json()
+            assert out["inactive_days"] == 10
+            assert len(out["inactive_dates"]) == 10     # marks survived
+
+            r = await c.patch(url, json={"inactive_days": 3},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            assert r.json()["inactive_days"] == 3
+            assert r.json()["inactive_dates"] == []     # decision: cleared
 
     async def test_csv_export_carries_the_sheet_and_the_totals(self, seeded):
         async with await _client(seeded["app"]) as c:
@@ -557,7 +584,7 @@ class TestDaySuggestions:
                                   headers=_h(seeded["owner"]))).json()
             fresh = next(x for x in detail["rows"] if x["id"] == row["id"])
             assert fresh["inactive_days"] == 10
-            assert all(m["reason"] == "no loads"
+            assert all(m["reason"] in ("before first load", "after last load")
                        for m in fresh["inactive_dates"])
 
             # Confirm the day -> it stops being suggested.

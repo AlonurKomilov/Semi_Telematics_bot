@@ -37,11 +37,13 @@ import {
   Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle,
 } from '../../../components/ui/sheet';
 import { Input } from '../../../components/ui/input';
-import { Tip } from '../../../components/tooltip';
+import { InfoTip, Tip } from '../../../components/tooltip';
+import { ScrollRegion } from '../../../components/scrolling';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
-import { daysTip, matchedTip } from './explain';
+import { AUTO_EXCUSE_REASONS, daysCell, handMarkedDays, isHandAdjusted, loadedDayCount, matchedTip } from './explain';
+import { DaysTipContent } from './DaysTip';
 import { SectionSwitcher } from '../SectionSwitcher';
 import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
 import type { AnyColumn } from '../../../types';
@@ -114,7 +116,7 @@ const ARCHIVE_COLUMNS: AnyColumn[] = [
     ) },
   { key: 'status', label: 'Status', sortable: true, filterable: true,
     render: (v) => (
-      <span className={`text-xs px-1.5 py-0.5 rounded ${
+      <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${
         toneClasses(v === 'finalized' ? 'ok' : 'info')}`}>
         {String(v)}
       </span>
@@ -190,13 +192,10 @@ export default function IncentiveRuns() {
   const run = detailQ.data;
   const draft = run?.status === 'draft';
   const zeroCount = run ? run.rows.filter((r) => Number(r.pct) === 0).length : 0;
-  const markedDays = run ? run.rows.reduce((a, r) => a + r.inactive_days, 0) : 0;
+  const markedDays = run ? run.rows.reduce((a, r) => a + handMarkedDays(r), 0) : 0;
   const runTotal = run ? run.rows.reduce((a, r) => a + r.confirmed_dollars, 0) : 0;
   const runGross = run ? run.rows.reduce((a, r) => a + r.kpi_gross, 0) : 0;
-  const adjustedRows = run
-    ? run.rows.filter((r) => r.inactive_days > 0 || Number(r.extras) !== 0
-        || r.override_pct != null)
-    : [];
+  const adjustedRows = run ? run.rows.filter(isHandAdjusted) : [];
   // The board's loads query, shared by key — the parent reads drift to
   // annotate Finalize while the run is stale.
   const runLoadsQ = useQuery({
@@ -253,23 +252,38 @@ export default function IncentiveRuns() {
         </span>
       ) },
     { key: 'total_days', label: 'Days', sortable: true,
-      // active/total, with the inactive reason as visible context —
-      // these two numbers move the target, so they must be readable.
-      render: (_v, r) => {
-        const total = Number(r.total_days); const inactive = Number(r.inactive_days);
-        return (
-          <span className="tabular-nums">
-            <Tip label={daysTip(r, runLoadsQ.data?.rows[String(r.id)], t)}>
-              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-                {total - inactive}/{total}
-              </span>
-            </Tip>
-            {inactive > 0 && (
-              <Note text={`(${inactive} off${r.inactive_reason ? `: ${r.inactive_reason}` : ''})`} />
-            )}
+      headerRender: () => (
+        <span className="inline-flex items-center gap-1">
+          {t('kpi_runs.days_col', 'Days')}
+          <span onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}>
+            <InfoTip label={t('kpi_runs.days_info',
+              'Three numbers per row: period days / counted days / days with loads. Marked-inactive days (home, shop, before the first load) drop out of the count, and the gross target prorates to the counted days.')} />
           </span>
-        );
-      } },
+        </span>
+      ),
+      // period/counted/loaded, with the inactive reason as visible
+      // context — these numbers move the target, so they must be
+      // readable and self-explaining.
+      render: (_v, r) => (
+        // period/counted/loaded — the owner's P/A/L trio; the tip is
+        // the cell's legend, one list row per number.
+        <span className="tabular-nums">
+          <Tip label={<DaysTipContent row={r}
+            loads={runLoadsQ.data ? (runLoadsQ.data.rows[String(r.id)] ?? []) : undefined}
+            draft={draft} periodStart={run?.period_start ?? ''}
+            periodEnd={run?.period_end ?? ''} t={t} />}>
+            <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+              {daysCell(r, runLoadsQ.data
+                ? loadedDayCount(runLoadsQ.data.rows[String(r.id)] ?? []) : null)}
+            </span>
+          </Tip>
+          {Number(r.inactive_days) > 0 && (
+            <Note text={`(${r.inactive_days} off${r.inactive_reason ? `: ${r.inactive_reason}` : ''})`} />
+          )}
+        </span>
+      ) },
     { key: 'kpi_gross', label: 'Gross', sortable: true,
       aggregable: true, aggFormat: (v) => usd(v),
       render: (v, r) => (
@@ -328,14 +342,14 @@ export default function IncentiveRuns() {
             <>{Number(v)}%</>
           )}
           {Number(v) === 0 && r.zero_reason && r.zero_reason !== 'no_target' && (
-            <span className={`ml-1 text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
-              {r.zero_reason === 'floor' ? 'below floor'
-                : r.zero_reason === 'no_active_days' ? 'no active days'
-                  : 'no tier met'}
+            <span className={`ml-1 text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
+              {r.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
+                : r.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
+                  : t('kpi_runs.zr_tier', 'no tier met')}
             </span>
           )}
           {r.override_pct != null && (
-            <span className={`ml-1 text-xs ${toneClasses('info')} px-1.5 py-0.5 rounded`}>
+            <span className={`ml-1 text-xs font-medium ${toneClasses('info')} px-2 py-0.5 rounded-md`}>
               → {Number(r.override_pct)}%
             </span>
           )}
@@ -419,7 +433,7 @@ export default function IncentiveRuns() {
               }`}
             >
               <span className="tabular-nums">{r.period_start} – {r.period_end}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded ${
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${
                 toneClasses(r.status === 'finalized' ? 'ok'
                   : draftOverdueDays(r) > 1 ? 'warn' : 'info')
               }`}>
@@ -573,7 +587,7 @@ export default function IncentiveRuns() {
                   { list: run.rows.filter((r) => Number(r.pct) === 0)
                       .map((r) => r.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'))
                       .join(', ') })}>
-                  <span className={`px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
+                  <span className={`font-medium px-2 py-0.5 rounded-md ${toneClasses('warn')}`}>
                     {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
                   </span>
                 </Tip>
@@ -587,7 +601,7 @@ export default function IncentiveRuns() {
                 <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
               )}
               <button type="button" onClick={() => setAdjustmentsOpen(true)}
-                className={`inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 hover:border-ring transition ${
+                className={`inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 hover:border-ring transition ${
                   adjustedRows.length > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
                 <ListChecks size={12} />
                 {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
@@ -709,9 +723,7 @@ export default function IncentiveRuns() {
               'This deletes the draft’s {{rows}} rows, including {{adjusted}} with hand-entered adjustments. A new run for the same period can be created at any time; finalized runs can never be discarded.',
               {
                 rows: run?.rows.length ?? 0,
-                adjusted: run?.rows.filter((r) =>
-                  r.inactive_days > 0 || Number(r.extras) !== 0
-                  || r.override_pct != null).length ?? 0,
+                adjusted: run?.rows.filter(isHandAdjusted).length ?? 0,
               })}
           </p>
           <DialogFooter>
@@ -737,7 +749,9 @@ export default function IncentiveRuns() {
                 })}
               </DialogTitle>
             </DialogHeader>
-            <ul className="divide-y divide-border border-t border-border max-h-96 overflow-y-auto">
+            <ScrollRegion className="max-h-96"
+              label={t('kpi_runs.loads_region', 'Loads in this row')}>
+            <ul className="divide-y divide-border border-t border-border">
               {(runLoadsQ.data?.rows[String(loadsRow.id)] ?? []).map((l, i) => (
                 <li key={i} className="py-2 text-sm flex items-center justify-between gap-3">
                   <span className="min-w-0">
@@ -758,6 +772,7 @@ export default function IncentiveRuns() {
                 </li>
               ))}
             </ul>
+            </ScrollRegion>
           </DialogContent>
         </Dialog>
       )}
@@ -781,9 +796,7 @@ export default function IncentiveRuns() {
             {t('kpi_runs.recreate_body',
               'The current draft — including {{adjusted}} hand-adjusted rows — is discarded and the period is regenerated from today’s loads under the CURRENT rules. Adjustments do not carry over.',
               {
-                adjusted: run?.rows.filter((r) =>
-                  r.inactive_days > 0 || Number(r.extras) !== 0
-                  || r.override_pct != null).length ?? 0,
+                adjusted: run?.rows.filter(isHandAdjusted).length ?? 0,
               })}
             {run?.note && (
               <> {t('kpi_runs.recreate_note',
@@ -817,9 +830,7 @@ export default function IncentiveRuns() {
                 total: usd(runTotal),
                 month: run ? new Date(`${run.period_end.slice(0, 10)}T00:00:00Z`)
                   .toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '',
-                adjusted: run?.rows.filter((r) =>
-                  r.inactive_days > 0 || Number(r.extras) !== 0
-                  || r.override_pct != null).length ?? 0,
+                adjusted: run?.rows.filter(isHandAdjusted).length ?? 0,
               })}
           </p>
           {staleCount > 0 && (
@@ -888,8 +899,7 @@ function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState<number | null>(null);
-  const rows = run.rows.filter((r) => r.inactive_days > 0
-    || Number(r.extras) !== 0 || r.override_pct != null);
+  const rows = run.rows.filter(isHandAdjusted);
   const who = (id: number | null) =>
     id == null ? t('kpi_runs.adj_unknown', '—') : (run.user_names[String(id)] ?? `user ${id}`);
   const when = (iso: string) => iso ? iso.slice(0, 16).replace('T', ' ') : '';
@@ -899,7 +909,10 @@ function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
     try {
       if (r.override_pct != null) await setIncentiveException(run.id, r.id, null, '');
       await patchIncentiveRow(run.id, r.id, {
-        inactive_days: 0, inactive_reason: '', inactive_dates: [],
+        // "Computed values" = the GENERATED state: the auto edge
+        // excuses stay, only the human's marks fall away.
+        inactive_dates: r.inactive_dates.filter(
+          (m) => AUTO_EXCUSE_REASONS.includes(m.reason)),
         extras: 0, extras_note: '',
       });
       onChanged();
@@ -945,11 +958,13 @@ function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
                   )}
                 </div>
                 <ul className="text-xs text-muted-foreground space-y-0.5">
-                  {r.inactive_days > 0 && (
+                  {handMarkedDays(r) > 0 && (
                     <li>
-                      {t('kpi_runs.adj_days', '{{n}} inactive days', { n: r.inactive_days })}
+                      {t('kpi_runs.adj_days', '{{n}} inactive days', { n: handMarkedDays(r) })}
                       {r.inactive_dates.length > 0 && (
-                        <> — {r.inactive_dates.map((m) => `${m.date.slice(5)}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}</>
+                        <> — {r.inactive_dates
+                          .filter((m) => !AUTO_EXCUSE_REASONS.includes(m.reason))
+                          .map((m) => `${m.date.slice(5)}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}</>
                       )}
                       {r.inactive_reason && r.inactive_dates.length === 0 && <> — {r.inactive_reason}</>}
                     </li>
@@ -1072,7 +1087,9 @@ function MonthlyPayoutsPanel({ allRuns, onSelectRun }: {
             <span className="text-muted-foreground">
               {t('kpi_runs.monthly_runs', '{{n}} finalized runs', { n: q.data.runs.length })}
               {': '}
-              {q.data.runs.map((r) => `${r.period_start} – ${r.period_end}`).join(', ')}
+              <span className="tabular-nums">
+                {q.data.runs.map((r) => `${r.period_start} – ${r.period_end}`).join(', ')}
+              </span>
             </span>
             <span className="text-base font-semibold tabular-nums">{usd(q.data.total)}</span>
           </div>
@@ -1210,12 +1227,15 @@ function EditRowDialog({ runId, row, onClose, onSaved }: {
   const save = async () => {
     setBusy(true);
     try {
-      await patchIncentiveRow(runId, row.id, {
-        inactive_days: Number(inactive) || 0,
-        inactive_reason: reason,
-        extras: Number(extras) || 0,
-        extras_note: note,
-      });
+      // Only CHANGED fields travel: an echoed inactive_days would hit
+      // the server's coarse-number branch and wipe the per-day marks
+      // (including the auto edge excuses) on an extras-only edit.
+      const patch: Parameters<typeof patchIncentiveRow>[2] = {};
+      if (Number(inactive) !== Number(row.inactive_days)) patch.inactive_days = Number(inactive) || 0;
+      if (reason !== row.inactive_reason) patch.inactive_reason = reason;
+      if (Number(extras) !== Number(row.extras)) patch.extras = Number(extras) || 0;
+      if (note !== row.extras_note) patch.extras_note = note;
+      if (Object.keys(patch).length > 0) await patchIncentiveRow(runId, row.id, patch);
       onSaved();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save');

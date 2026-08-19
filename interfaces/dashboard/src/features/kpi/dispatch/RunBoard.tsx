@@ -19,10 +19,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
-import { daysTip, matchedTip } from './explain';
+import { daysCell, loadedDayCount, matchedTip } from './explain';
+import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
-import { toneClasses } from '../../../lib/status';
+import { toneClasses, toneText } from '../../../lib/status';
 import {
   getIncentiveRunLoads, patchIncentiveRow,
   type DaySuggestion, type InactiveDate, type RunDetail, type RunLoad,
@@ -167,10 +169,9 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               { n: loadsQ.data?.drift.length ?? 0 })}
           </span>
           {draft && (
-            <button type="button" onClick={onRecreate}
-              className="rounded border border-warn-bd bg-card px-2 py-0.5 font-medium text-foreground hover:border-ring transition">
+            <Button size="sm" variant="outline" onClick={onRecreate}>
               {t('kpi_board.recreate', 'Recreate draft')}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -201,7 +202,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                 ? <ChevronRight size={16} className="text-muted-foreground shrink-0" />
                 : <ChevronDown size={16} className="text-muted-foreground shrink-0" />}
               <span className="text-sm font-semibold">{name}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground tabular-nums">
                 {t('kpi_board.trucks', '{{n}} trucks', { n: rows.length })}
                 {' · '}{Math.round(miles).toLocaleString()} mi
                 {' · '}RPM {miles > 0 ? (baseGross / miles).toFixed(2) : '—'}
@@ -234,7 +235,9 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                       key={row.id}
                       row={row}
                       days={days}
-                      loads={loadsQ.data?.rows[String(row.id)] ?? []}
+                      loads={loadsQ.data ? (loadsQ.data.rows[String(row.id)] ?? []) : undefined}
+                      periodStart={run.period_start}
+                      periodEnd={run.period_end}
                       suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
                       stale={loadsQ.data?.drift.includes(row.id) ?? false}
                       scrolled={scrolled}
@@ -252,10 +255,12 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   );
 }
 
-function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, onMark }: {
+function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, onMark, periodStart, periodEnd }: {
   row: RunRow;
   days: string[];
-  loads: RunLoad[];
+  loads: RunLoad[] | undefined;
+  periodStart: string;
+  periodEnd: string;
   /** Maintenance-suggested inactive days (human confirms by click). */
   suggestions: DaySuggestion[];
   /** Live loads no longer sum to this row's snapshot. */
@@ -269,7 +274,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   const marks = new Map((row.inactive_dates ?? []).map((m) => [m.date, m.reason]));
   const suggested = new Map(suggestions.map((sug) => [sug.date, sug]));
   const byDay = new Map<string, RunLoad[]>();
-  for (const l of loads) {
+  for (const l of loads ?? []) {
     const d = l.pickup_date;
     byDay.set(d, [...(byDay.get(d) ?? []), l]);
   }
@@ -287,9 +292,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
         </div>
         <div className="text-xs text-muted-foreground tabular-nums">
-          <Tip label={daysTip(row, loads, t)}>
-            <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-2 cursor-help">
-              {row.total_days - row.inactive_days}/{row.total_days}
+          <Tip label={<DaysTipContent row={row} loads={loads}
+            draft={clickable} periodStart={periodStart}
+            periodEnd={periodEnd} t={t} />}>
+            <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+              {daysCell(row, loadedDayCount(loads))}
             </span>
           </Tip>
           {' '}{t('kpi_board.days', 'days')}
@@ -302,7 +309,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           {' · '}
           {row.matched_rule ? (
             <Tip label={matchedTip(row.matched_rule, t)}>
-              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-2 cursor-help">
+              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
                 {Number(row.pct)}%
               </span>
             </Tip>
@@ -313,7 +320,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         </div>
         {Number(row.pct) === 0 && row.zero_reason && (
           <Tip label={zeroTip(row, t)}>
-            <span className={`mt-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+            <span className={`mt-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {row.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
                 : row.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
                   : row.zero_reason === 'no_target' ? t('kpi_runs.zr_target', 'no target')
@@ -326,7 +333,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
              next tier — a shortfall stated in dollars converts a dead
              number into a target. */
           <div className="mt-1 space-y-0.5">
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground tabular-nums">
               {t('kpi_board.next_tier',
                 '{{gap}} short of the {{pct}}% tier ({{at}})',
                 { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
@@ -342,7 +349,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         )}
         {stale && (
           <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
-            <span className={`mt-1 ml-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+            <span className={`mt-1 ml-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {t('kpi_board.stale', 'stale')}
             </span>
           </Tip>
@@ -368,7 +375,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             {dayLoads.slice(0, 2).map((l, i) => (
               <Tip key={i}
                 label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
-                <div className={`rounded px-1.5 py-0.5 text-xs ${toneClasses('ok')} truncate`}>
+                <div className={`rounded px-1.5 py-0.5 text-xs tabular-nums ${toneClasses('ok')} truncate`}>
                   {place(l.delivery_location) || l.load_number} · ${Math.round(l.total_rate).toLocaleString()}
                 </div>
               </Tip>
@@ -388,7 +395,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                  service day SUGGESTS the mark; the manager confirms via
                  the menu.  Dashed = proposal, filled warn = decided. */
               <Tip label={`${suggested.get(d)!.source} — ${t('kpi_board.suggest_tip', 'click to confirm as inactive')}`}>
-                <span className={`block rounded border border-dashed px-1.5 py-0.5 text-xs uppercase tracking-wide truncate ${toneClasses('warn')} bg-transparent`}>
+                <span className={`block rounded border border-dashed border-warn-bd px-1.5 py-0.5 text-xs uppercase tracking-wide truncate bg-transparent ${toneText('warn')}`}>
                   {suggested.get(d)!.reason}?
                 </span>
               </Tip>
