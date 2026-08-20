@@ -364,18 +364,18 @@
     "system": "Sistema",
     "color_light": "Claro",
     "group_color": "Color",
-    "group_density": "Densidad",
     "group_corners": "Esquinas",
     "dark_blue": "Azul oscuro",
     "dark_purple": "Morado oscuro",
     "dark_green": "Verde oscuro",
-    "density_compact": "Compacta",
-    "density_default": "Normal",
-    "density_roomy": "Amplia",
     "corners_sharp": "Rectas",
     "corners_rounded": "Redondeadas",
     "corners_pill": "Píldora",
-    "picker": "Tema"
+    "picker": "Tema",
+    "group_size": "Tamaño",
+    "size_label": "Tamaño de la interfaz",
+    "size_reset": "Restablecer",
+    "size_by_region": "Tamaño por zona…"
   },
   "forms": {
     "create": "Crear",

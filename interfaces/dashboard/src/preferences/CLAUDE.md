@@ -10,6 +10,8 @@ local.ts       localStorage adapter — canonical `4truck.pref.` + legacy migrat
 remote.ts      the account backend (bulk read, per-key debounced writes)
 usePreference  React hook (useSyncExternalStore)
 usage.ts       how many bytes the user's preferences occupy
+appearance.ts  the device-value / synced-default seam (theme + size)
+SizeCard.tsx   the /profile Size panel and the cross-device switch
 PreferencesSync.tsx      mounts inside AuthProvider; attaches/detaches sync
 StoredPreferencesCard.tsx  the /profile card: size · Cloud|Local · Reset all
 registry.test.ts         FROZEN-KEY guard (see below)
@@ -93,14 +95,17 @@ loses nothing.
 
 ## The one sanctioned reader outside this service
 
-`index.html`'s inline `theme-boot` script reads `4truck.pref.theme` (and
-the legacy `dashboard-theme`) straight from `localStorage`. That is not a
+`index.html`'s inline `theme-boot` script reads `4truck.pref.theme`,
+`4truck.pref.size` (and the legacy `dashboard-theme`) straight from
+`localStorage`. That is not a
 violation of the rule above — it is the one place the rule *cannot* apply:
 it runs before any module exists, to stamp the theme onto `<html>` before
 the first paint. It is **read-only**, so `local.ts` remains the single
 writer and keeps sole ownership of the copy-forward.
 `src/test/themeBoot.test.ts` pins both halves — that the script agrees with
-`applyTheme` on every valid value, and that it never writes. Anything else
+`applyTheme` AND `applySize` on every valid value (including the size clamp,
+which is written twice and would otherwise drift silently), and that it
+never writes. Anything else
 that wants pre-hydration state must clear the same bar; the default answer
 is still `usePreference`.
 

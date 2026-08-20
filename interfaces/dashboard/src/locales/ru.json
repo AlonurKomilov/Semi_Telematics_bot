@@ -364,18 +364,18 @@
     "dark": "Тёмная",
     "system": "Системная",
     "group_color": "Цвет",
-    "group_density": "Плотность",
     "group_corners": "Углы",
     "dark_blue": "Тёмно-синий",
     "dark_purple": "Тёмно-фиолетовый",
     "dark_green": "Тёмно-зелёный",
-    "density_compact": "Компактная",
-    "density_default": "Обычная",
-    "density_roomy": "Просторная",
     "corners_sharp": "Острые",
     "corners_rounded": "Скруглённые",
     "corners_pill": "Капсула",
-    "color_light": "Светлая"
+    "color_light": "Светлая",
+    "group_size": "Размер",
+    "size_label": "Размер интерфейса",
+    "size_reset": "Сбросить",
+    "size_by_region": "Размер по областям…"
   },
   "forms": {
     "create": "Создать",

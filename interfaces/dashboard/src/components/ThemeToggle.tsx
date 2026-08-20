@@ -1,8 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Palette } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Palette, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { Button } from './ui/button';
-import { useTheme, type ColorTheme, type Density, type RadiusVariant } from '../context/ThemeContext';
+import { Slider } from './ui/slider';
+import { Tip } from './tooltip';
+import { useTheme, applySize, type ColorTheme, type RadiusVariant } from '../context/ThemeContext';
+import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 
 // ── Option rows ──────────────────────────────────────────────
@@ -23,12 +27,6 @@ const COLOR_OPTIONS: { value: ColorTheme; key: string; label: string; dot: strin
   // every partially-translated locale.  A key of its own makes the whole
   // row fall back together.
   { value: 'light',       key: 'theme.color_light', label: 'Light',       dot: 'var(--swatch-light)' },
-];
-
-const DENSITY_OPTIONS: { value: Density; key: string; label: string }[] = [
-  { value: 'compact',     key: 'theme.density_compact', label: 'Compact' },
-  { value: 'default',     key: 'theme.density_default', label: 'Default' },
-  { value: 'comfortable', key: 'theme.density_roomy',   label: 'Roomy' },
 ];
 
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
@@ -80,9 +78,16 @@ function Chip<T extends string>({
 
 export function ThemeToggle() {
   const { t } = useTranslation();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, size, setSize } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // What the slider shows while a drag is in flight.  The stored value is
+  // only written on release — see the note in ui/slider.tsx — so during a
+  // drag the preference and the screen disagree by design, and this holds
+  // the screen's value.  `null` means "not dragging, read the preference".
+  const [dragging, setDragging] = useState<number | null>(null);
+  const shown = dragging ?? size.global;
 
   // Close on click outside
   useEffect(() => {
@@ -136,17 +141,54 @@ export function ThemeToggle() {
 
           <div className="border-t border-border" />
 
-          {/* Density */}
+          {/* Size — replaces the Density chips, which changed nothing.
+              The scale runs 100% → 150%, not around a midpoint: the lower
+              half stays unavailable until the 24px hit-target floor is
+              repaired (design.md §5.1). So the handle rests at its own
+              minimum by default, and the live percentage beside the label
+              is what tells the user the control is working — it is the
+              only readout, which is why it sits in the label row rather
+              than under the track. */}
           <div>
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              {t('theme.group_density', 'Density')}
-            </p>
-            <div className="flex gap-1">
-              {DENSITY_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.density} label={t(o.key, o.label)}
-                  onClick={(v) => setTheme({ density: v })} />
-              ))}
+            {/* Label, current value and reset share one row. The range ends
+                were spelled out under the track at first, which put a
+                second "100%" directly below the current value whenever the
+                slider sat at its minimum — which is the default, so most
+                users would have met the confusing state first. */}
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('theme.group_size', 'Size')}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-2xs tabular-nums text-muted-foreground">
+                  {Math.round(shown * 100)}%
+                </span>
+                <Tip label={t('theme.size_reset', 'Reset')}>
+                  <button
+                    type="button"
+                    onClick={() => { setDragging(null); setSize({ global: 1 }); }}
+                    disabled={size.global === 1 && dragging === null}
+                    aria-label={t('theme.size_reset', 'Reset')}
+                    className="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
+                </Tip>
+              </div>
             </div>
+            <Slider
+              value={shown}
+              min={SIZE_MIN}
+              max={SIZE_MAX}
+              step={0.05}
+              aria-label={t('theme.size_label', 'Interface size')}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              // Live: paint straight to the DOM so the drag is smooth and
+              // React is not re-rendered 60 times for one gesture.
+              onValueChange={(v) => { setDragging(v); applySize({ ...size, global: v }); }}
+              // Committed: now it becomes the stored preference.
+              onValueCommitted={(v) => { setDragging(null); setSize({ global: v }); }}
+            />
           </div>
 
           <div className="border-t border-border" />
@@ -163,6 +205,20 @@ export function ThemeToggle() {
               ))}
             </div>
           </div>
+
+          {/* Per-region sizing and the cross-device switch do not fit a
+              w-56 popover, and they are settings rather than a quick
+              toggle — design.md §7 forbids inventing an in-between
+              width, so they live on the profile page instead. */}
+          <div className="border-t border-border" />
+          <Link
+            to="/profile#appearance"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground"
+          >
+            <SlidersHorizontal size={12} />
+            {t('theme.size_by_region', 'Size by region…')}
+          </Link>
 
         </div>
       )}

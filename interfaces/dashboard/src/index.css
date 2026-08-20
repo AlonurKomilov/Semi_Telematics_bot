@@ -365,9 +365,29 @@
     --chart-1: oklch(0.65 0.19 142);
   }
 
-  /* ── Density tokens ─────────────────────────────────────── */
-  [data-density="compact"]     { --spacing-card: 0.75rem; --spacing-row: 0.375rem; }
-  [data-density="comfortable"] { --spacing-card: 1.5rem;  --spacing-row: 0.75rem; }
+  /* ── Size axes ──────────────────────────────────────────────
+     The four multipliers every length in tailwind.config.js rides.
+     1 means "as designed"; the Size control writes other values onto
+     <html> and any component can override one for its own subtree,
+     because these inherit like any other custom property.
+
+     Declared here even though every `calc()` already carries a
+     `, 1` fallback: an inspectable :root value is how the next person
+     discovers the system exists, and it is what a per-region override
+     inherits FROM.
+
+     They replace the Density tokens that used to sit here.
+     `--spacing-card` and `--spacing-row` were declared for two of the
+     three density values, had no `:root` fallback, and — measured
+     across the whole repo and the shipped bundle — were read by
+     nothing at all, which is why the Density picker moved zero pixels
+     for as long as it existed. */
+  :root {
+    --size-text: 1;
+    --size-control: 1;
+    --size-layout: 1;
+    --size-panel: 1;
+  }
 
   /* ── Border radius presets ──────────────────────────────── */
   [data-radius="sharp"] { --radius: 0.25rem; }

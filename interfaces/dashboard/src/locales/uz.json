@@ -328,18 +328,18 @@
     "dark": "Qorongʻi",
     "system": "Tizim",
     "group_color": "Rang",
-    "group_density": "Zichlik",
     "group_corners": "Burchaklar",
     "dark_blue": "Toʻq koʻk",
     "dark_purple": "Toʻq binafsha",
     "dark_green": "Toʻq yashil",
-    "density_compact": "Ixcham",
-    "density_default": "Odatiy",
-    "density_roomy": "Keng",
     "corners_sharp": "Oʻtkir",
     "corners_rounded": "Yumaloq",
     "corners_pill": "Tabletka",
-    "color_light": "Yorugʻ"
+    "color_light": "Yorugʻ",
+    "group_size": "Oʻlcham",
+    "size_label": "Interfeys oʻlchami",
+    "size_reset": "Tiklash",
+    "size_by_region": "Hudud boʻyicha oʻlcham…"
   },
   "tier": {
     "platinum": "Platina",

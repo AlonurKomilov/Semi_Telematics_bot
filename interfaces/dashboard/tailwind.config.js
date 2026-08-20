@@ -1,5 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 
+// The `.js` extension is required: this file is ESM and Node's resolver
+// does not add it for a package subpath.
+import defaultTheme from 'tailwindcss/defaultTheme.js';
+
 /**
  * CSS-var token colour that supports Tailwind's `/<alpha>` opacity
  * modifier.
@@ -24,6 +28,97 @@ const tokenColor = (cssVar) => ({ opacityValue }) =>
   (opacityValue === undefined || String(opacityValue).startsWith('var('))
     ? `var(${cssVar})`
     : `color-mix(in oklab, var(${cssVar}) calc(${opacityValue} * 100%), transparent)`;
+
+/* ────────────────────────────────────────────────────────────────────
+   THE SIZE ENGINE
+
+   Every length Tailwind emits is multiplied by one of four CSS
+   variables, so the user's Size control reshapes the whole app without
+   a single class name changing.  `var(--size-x, 1)` means the default
+   is "unscaled" — with nothing set, `calc(1rem * 1)` computes to
+   exactly what it computed before, so this is a no-op until someone
+   drags the slider.
+
+     --size-text      type size and its line box
+     --size-control   things a finger or cursor aims at (≤3rem)
+     --size-layout    breathing room, and fixed content columns (3–6rem)
+     --size-panel     surfaces that hold content (>6rem)
+
+   WHY FOUR AND NOT ONE.  A user asking for "bigger" usually means
+   bigger TEXT; a user on a cab tablet wants bigger TARGETS; neither
+   wants their menus to grow into the viewport.  Splitting the axes is
+   what lets one move without the others.  The UI ships one slider that
+   drives all four together — the axes are wired now so exposing them
+   individually later is a UI change, not an engine change.
+
+   THE ONE RULE: never extend `spacing`.  It is the shared source every
+   dimension key DEFAULTS from, so extending it moves padding, gap,
+   margin, width, height and size at once and collapses the four axes
+   back into one.  Extend the derived keys instead — verified: extending
+   `padding` moves `p-*` alone and leaves `gap-3`/`w-3`/`h-3` untouched.
+
+   WHY GENERATED, NOT HAND-WRITTEN.  These are 17 scales of ~35 steps.
+   Hand-maintaining ~600 formulas is how a step silently keeps its old
+   literal and stops following the control — so the tables are derived
+   from Tailwind's own defaults and the axis rule is stated once, below.
+   ──────────────────────────────────────────────────────────────────── */
+
+/** A length in rem, or undefined for anything with no length to scale
+ *  (`auto`, `100%`, `min-content`, `1px` hairlines, `0`). */
+const remValue = (v) => {
+  const m = typeof v === 'string' && /^(\d*\.?\d+)rem$/.exec(v.trim());
+  const n = m ? parseFloat(m[1]) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
+
+const scaled = (value, axis) => `calc(${value} * var(--size-${axis}, 1))`;
+
+/** Breathing room, offsets and gaps — one axis, no size test needed. */
+const layoutScale = (source) => Object.fromEntries(
+  Object.entries(source)
+    .filter(([, v]) => remValue(v) !== undefined)
+    .map(([k, v]) => [k, scaled(v, 'layout')]),
+);
+
+/**
+ * Box dimensions, split BY SIZE because one Tailwind key serves two
+ * different design ladders.  `w-8` is an icon button; `w-56` is a menu.
+ * Tailwind resolves both from `width`, so the split has to happen
+ * per-step — which it can, and that is why this costs no call-site
+ * edits.  Boundaries:
+ *   ≤3rem   a control or an icon box        -> --size-control
+ *   3–6rem  a fixed content column          -> --size-layout
+ *   >6rem   a panel, menu, drawer or dialog -> --size-panel
+ * The middle band is the genuinely ambiguous one (`w-20` at 80px is
+ * neither a button nor a panel); it rides layout because it behaves
+ * like structure rather than like a target.
+ */
+const dimensionScale = (source) => Object.fromEntries(
+  Object.entries(source).flatMap(([k, v]) => {
+    const rem = remValue(v);
+    if (rem === undefined) return [];
+    const axis = rem <= 3 ? 'control' : rem <= 6 ? 'layout' : 'panel';
+    return [[k, scaled(v, axis)]];
+  }),
+);
+
+/** Type. Tailwind's steps are `[size, { lineHeight }]` tuples; both
+ *  halves must scale or the line box stops matching the glyphs.  The
+ *  house `2xs`/`3xs` steps are deliberately size-only (see the note on
+ *  `fontSize` below) and stay that way. */
+const textScale = (source) => Object.fromEntries(
+  Object.entries(source).flatMap(([k, v]) => {
+    if (Array.isArray(v)) {
+      const [size, opts] = v;
+      if (remValue(size) === undefined) return [];
+      const lh = opts && opts.lineHeight;
+      return [[k, [scaled(size, 'text'), remValue(lh) !== undefined
+        ? { ...opts, lineHeight: scaled(lh, 'text') }
+        : opts]]];
+    }
+    return remValue(v) !== undefined ? [[k, scaled(v, 'text')]] : [];
+  }),
+);
 
 export default {
   darkMode: 'class',
@@ -109,16 +204,63 @@ export default {
         '2xl': 'calc(var(--radius) + 8px)',
         '3xl': 'calc(var(--radius) + 16px)',
       },
-      // Dense-data micro sizes BELOW Tailwind's `text-xs` (12px) floor.
-      // This UI needs sub-12px label text (table meta, chips, axis hints)
-      // and ~226 spots were hardcoding it as `text-[10px]` / `text-[11px]`
-      // / `text-[9px]` — the same value re-typed inconsistently.  These two
-      // named steps absorb all of them.  Defined size-only (no forced
-      // line-height) so they're a 1:1 swap for the arbitrary values they
-      // replace — no vertical-rhythm shift.  See design.md §4.
+      // ── The Size axes ───────────────────────────────────────────────
+      // Every scale below is Tailwind's own, re-emitted as
+      // `calc(step × var(--size-axis, 1))`.  See the axis rules at the
+      // top of this file.  `spacing` is absent on purpose and must stay
+      // absent — it is the shared default every dimension key derives
+      // from, so touching it fuses the axes.
+
+      // Breathing room and offsets.
+      padding: layoutScale(defaultTheme.spacing),
+      margin: layoutScale(defaultTheme.spacing),
+      gap: layoutScale(defaultTheme.spacing),
+      space: layoutScale(defaultTheme.spacing),
+      inset: layoutScale(defaultTheme.spacing),
+      translate: layoutScale(defaultTheme.spacing),
+      scrollPadding: layoutScale(defaultTheme.spacing),
+      scrollMargin: layoutScale(defaultTheme.spacing),
+
+      // Box dimensions — split per step between control / layout / panel.
+      // `size` needs its own entry even though it looks like w+h: it is a
+      // SEPARATE Tailwind key, and leaving it out freezes every `size-N`
+      // element while its `w-N h-N` siblings grow — which turns a round
+      // icon button into an oval.
+      width: dimensionScale(defaultTheme.spacing),
+      height: dimensionScale(defaultTheme.spacing),
+      size: dimensionScale(defaultTheme.spacing),
+      minWidth: dimensionScale(defaultTheme.spacing),
+      minHeight: dimensionScale(defaultTheme.spacing),
+      maxHeight: dimensionScale(defaultTheme.spacing),
+      // maxWidth is TWO ladders in one key: the named dialog steps
+      // (`max-w-lg`) and the whole spacing scale (`max-w-40`). Tailwind's
+      // default is a function that merges `theme('spacing')` in, so
+      // stubbing `theme` — as this did at first — silently returns only
+      // the 17 named steps and leaves all 35 numeric ones at their
+      // literals. That is the exact failure the header warns about, and
+      // it was the worst possible one to have: `max-w-40 truncate` is a
+      // frozen box around growing text, so raising Size showed the user
+      // LESS of a filename, not more.
+      // `screen-*` and `prose` fall out via remValue() — not rem lengths.
+      maxWidth: dimensionScale({
+        ...defaultTheme.spacing,
+        ...defaultTheme.maxWidth({ theme: () => ({}), breakpoints: () => ({}) }),
+      }),
+
+      // Type. Both halves of each tuple scale, or the line box stops
+      // matching the glyphs sitting in it.
+      lineHeight: textScale(defaultTheme.lineHeight),
       fontSize: {
-        '2xs': '0.6875rem', // 11px
-        '3xs': '0.625rem',  // 10px (also absorbs the rare 8–9px)
+        ...textScale(defaultTheme.fontSize),
+        // Dense-data micro sizes BELOW Tailwind's `text-xs` (12px) floor.
+        // This UI needs sub-12px label text (table meta, chips, axis hints)
+        // and ~226 spots were hardcoding it as `text-[10px]` / `text-[11px]`
+        // / `text-[9px]` — the same value re-typed inconsistently.  These two
+        // named steps absorb all of them.  Defined size-only (no forced
+        // line-height) so they're a 1:1 swap for the arbitrary values they
+        // replace — no vertical-rhythm shift.  See design.md §4.
+        '2xs': scaled('0.6875rem', 'text'), // 11px
+        '3xs': scaled('0.625rem', 'text'),  // 10px (also absorbs the rare 8–9px)
       },
     },
   },

@@ -42,11 +42,18 @@ interface Props {
 
 /** How many of the grid's own columns the dialog shows. */
 const MAX_COLS = 6;
-/** The sticky header's height, for the scrollport padding.  A constant
- *  rather than a measurement: this header is one line of ``py-1.5``
- *  text at a fixed size, so measuring it would buy nothing and cost a
- *  ResizeObserver on every drill. */
-const STICKY_HEAD_PX = 30;
+/** The sticky header's height, for the scrollport padding.
+ *
+ *  Expressed as CSS rather than a pixel constant, because the header is
+ *  no longer a fixed height: its ``py-1.5`` rides ``--size-layout`` and
+ *  its one line of text rides ``--size-text``.  A constant 30 was right
+ *  while both were fixed; under the Size control it would under-reserve,
+ *  and scroll-into-view would park a tabbed-to row BEHIND the sticky
+ *  header — a WCAG 2.4.11 failure, not a cosmetic one.
+ *
+ *  Still no measurement and still no ResizeObserver: the same two tokens
+ *  that size the header size this reservation, so it follows for free. */
+const STICKY_HEAD = 'calc(0.75rem * var(--size-layout, 1) + 1.25rem * var(--size-text, 1))';
 
 const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
   { rows, model, columns }, ref,
@@ -119,7 +126,7 @@ const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
           <ScrollRegion
             axis="both"
             label="Rows behind this figure"
-            stickyTop={STICKY_HEAD_PX}
+            stickyTop={STICKY_HEAD}
             className="max-h-[60vh]"
           >
             <table className="min-w-max w-full text-xs border-collapse">

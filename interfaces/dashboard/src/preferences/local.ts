@@ -87,6 +87,28 @@ export function readPref(key: string): unknown {
   return d.default;
 }
 
+/**
+ * Has this browser ever stored a value for the key — as opposed to
+ * merely having a default for it?
+ *
+ * ``readPref`` deliberately cannot answer this: it returns the registry
+ * default when nothing is stored, so its result is identical whether the
+ * user chose that value or never touched the setting. The distinction
+ * matters wherever "this screen has an opinion" must beat "here is what
+ * you use elsewhere" — see appearance.ts, where getting it wrong would
+ * let every sign-in overwrite a screen the user had deliberately set.
+ *
+ * Legacy keys count: a value mid-migration is still a stored opinion.
+ */
+export function hasStored(key: string): boolean {
+  if (safeGet(lsKey(key)) != null) return true;
+  const d = defFor(key);
+  return (d?.legacyKeys ?? []).some((k) => {
+    const raw = safeGet(k);
+    return raw != null && raw !== '';
+  });
+}
+
 export function writePref(key: string, value: unknown): void {
   safeSet(lsKey(key), JSON.stringify(value));
 }

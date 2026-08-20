@@ -28,32 +28,53 @@
         // The DEFAULT IS DARK, so this must run even when storage is
         // unavailable — returning early there would hand every private-
         // mode user the light theme.
-        var t = {};
-        try {
-          var read = function (key) {
+        var read = function (key) {
+          try {
             var raw = localStorage.getItem(key);
             if (!raw) return null;
             var v = JSON.parse(raw);
             return (v && typeof v === 'object') ? v : null;
-          };
-          // Canonical key first, then the pre-service one. Never written
-          // back — local.ts owns the copy-forward.
-          t = read('4truck.pref.theme') || read('dashboard-theme') || {};
-        } catch (e) { t = {}; }
+          } catch (e) { return null; }
+        };
+
+        // Canonical key first, then the pre-service one. Never written
+        // back — local.ts owns the copy-forward.
+        var t = read('4truck.pref.theme') || read('dashboard-theme') || {};
+        var s = read('4truck.pref.size') || {};
 
         var pick = function (v, allowed, fallback) {
           return allowed.indexOf(v) === -1 ? fallback : v;
         };
-        var color   = pick(t.color,   ['dark-blue', 'dark-purple', 'dark-green', 'light'], 'dark-blue');
-        var density = pick(t.density, ['compact', 'default', 'comfortable'], 'default');
-        var radius  = pick(t.radius,  ['sharp', 'rounded', 'pill'], 'rounded');
+        var color  = pick(t.color,  ['dark-blue', 'dark-purple', 'dark-green', 'light'], 'dark-blue');
+        var radius = pick(t.radius, ['sharp', 'rounded', 'pill'], 'rounded');
 
         var root = document.documentElement;
         if (color === 'light') root.classList.remove('dark');
         else root.classList.add('dark');
         root.dataset.theme = color;
-        root.dataset.density = density;
         root.dataset.radius = radius;
+
+        // Size. The clamp MUST match clampSize() in preferences/registry.ts
+        // — themeBoot.test.ts asserts that it does. 1 is "as designed";
+        // the lower bound is 1 because 78 interactive targets already sit
+        // exactly on the 24px WCAG minimum, so shrinking breaks them.
+        var clamp = function (v) {
+          var n = typeof v === 'number' ? v : Number(v);
+          if (!isFinite(n)) return 1;
+          return Math.min(1.5, Math.max(1, n));
+        };
+        var g = clamp(s.global);
+        var axes = ['text', 'control', 'layout', 'panel'];
+        for (var i = 0; i < axes.length; i++) {
+          root.style.setProperty('--size-' + axes[i], String(clamp(s[axes[i]]) * g));
+        }
+        var regions = ['text', 'tables', 'controls', 'overlays', 'navigation', 'assistant'];
+        var sr = (s.regions && typeof s.regions === 'object') ? s.regions : {};
+        for (var j = 0; j < regions.length; j++) {
+          if (sr[regions[j]] !== undefined) {
+            root.style.setProperty('--size-region-' + regions[j], String(clamp(sr[regions[j]])));
+          }
+        }
       })();
     </script>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />

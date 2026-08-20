@@ -1,28 +1,33 @@
 /**
- * The pre-paint theme script in index.html has ONE job: put <html> into
- * exactly the state ThemeProvider would put it in, but before the first
- * paint.  It cannot import anything — it runs before any module — so it
- * re-states the registry's enums and defaults as literals.
+ * The pre-paint script in index.html has ONE job: put <html> into exactly
+ * the state ThemeProvider would put it in, but before the first paint.
+ * It cannot import anything — it runs before any module — so it re-states
+ * the registry's enums, defaults and clamp as literals.
  *
  * That duplication is the whole risk.  Nothing about a drifted copy is
  * loud: the app renders correctly after hydration and wrong before it,
  * for one frame, on a machine that isn't the author's.  So this suite
  * runs the REAL script (read out of index.html, not a copy) against the
- * REAL applyTheme and asserts they agree on every valid input, on
- * garbage, on nothing at all, and on the legacy key — plus the two
+ * REAL applyTheme/applySize and asserts they agree on every valid input,
+ * on garbage, on nothing at all, and on the legacy key — plus the two
  * invariants the script must never break: it writes nothing, and it
  * stands down on the public apply host.
+ *
+ * The size half matters especially. Before it existed the guard read only
+ * `dataset`, so a size stamp was entirely invisible to it: the two clamp
+ * implementations could drift apart while the suite stayed green.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { applyTheme } from '../context/ThemeContext';
+import { applyTheme, applySize } from '../context/ThemeContext';
 import {
-  THEME_DEFAULT, THEME_COLORS, THEME_DENSITIES, THEME_RADII,
+  THEME_DEFAULT, THEME_COLORS, THEME_RADII,
+  SIZE_DEFAULT, SIZE_REGIONS, SIZE_MIN, SIZE_MAX, clampSize,
 } from '../preferences/registry';
 import { LS_PREFIX } from '../preferences/local';
-import type { ThemeSetting } from '../preferences/registry';
+import type { ThemeSetting, SizeSetting } from '../preferences/registry';
 
 /** Locate index.html without `import.meta.url`: resolving against it here
  *  throws "The URL must be of scheme file" in this runner, so the path is
@@ -46,45 +51,69 @@ function bootScriptSource(): string {
     throw new Error(
       'No <script id="theme-boot"> in index.html — the pre-paint theme '
       + 'stamp is gone, or it was renamed. Both are breaking changes: '
-      + 'without it the first painted frame is the default theme.',
+      + 'without it the first painted frame is the default theme at the '
+      + 'default size.',
     );
   }
   return m[1];
 }
 
-/** Run it the way the browser would, then report what <html> looks like. */
-function runBoot(): { dark: boolean; theme?: string; density?: string; radius?: string } {
+interface Stamp {
+  dark: boolean;
+  theme?: string;
+  radius?: string;
+  vars: Record<string, string>;
+}
+
+/** Everything the two implementations are allowed to touch. Read as one
+ *  object so a value one of them sets and the other does not shows up as
+ *  a difference rather than going unnoticed. */
+function stamp(): Stamp {
+  const root = document.documentElement;
+  const vars: Record<string, string> = {};
+  for (const a of ['text', 'control', 'layout', 'panel']) {
+    vars[`--size-${a}`] = root.style.getPropertyValue(`--size-${a}`);
+  }
+  for (const r of SIZE_REGIONS) {
+    vars[`--size-region-${r}`] = root.style.getPropertyValue(`--size-region-${r}`);
+  }
+  return {
+    dark: root.classList.contains('dark'),
+    theme: root.dataset.theme,
+    radius: root.dataset.radius,
+    vars,
+  };
+}
+
+/** Run it the way the browser would. */
+function runBoot(): Stamp {
   // `new Function` on purpose: the point is to execute the SHIPPED
   // source, not a hand-copied approximation that can agree with the
   // test while disagreeing with the browser.
   new Function(bootScriptSource())();
-  const root = document.documentElement;
-  return {
-    dark: root.classList.contains('dark'),
-    theme: root.dataset.theme,
-    density: root.dataset.density,
-    radius: root.dataset.radius,
-  };
+  return stamp();
+}
+
+/** Same, with `location` shadowed — jsdom cannot navigate to another
+ *  host, and the script only ever reads `.hostname` and `.search`. */
+function runBootOnHost(hostname: string, search = ''): Stamp {
+  new Function('location', bootScriptSource())({ hostname, search });
+  return stamp();
 }
 
 /** What ThemeProvider produces for the same input. */
-function runApply(theme: ThemeSetting) {
+function runApply(theme: ThemeSetting, size: SizeSetting = SIZE_DEFAULT): Stamp {
   applyTheme(theme);
-  const root = document.documentElement;
-  return {
-    dark: root.classList.contains('dark'),
-    theme: root.dataset.theme,
-    density: root.dataset.density,
-    radius: root.dataset.radius,
-  };
+  applySize(size);
+  return stamp();
 }
 
 function resetRoot() {
   const root = document.documentElement;
   root.classList.remove('dark');
   delete root.dataset.theme;
-  delete root.dataset.density;
   delete root.dataset.radius;
+  root.removeAttribute('style');
 }
 
 let originalHref: string;
@@ -101,23 +130,25 @@ afterEach(() => {
   window.history.replaceState({}, '', originalHref);
 });
 
-describe('theme-boot script ↔ applyTheme', () => {
-  it('agrees with applyTheme on every valid stored theme', () => {
+const storeTheme = (t: Partial<ThemeSetting>) =>
+  localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(t));
+const storeSize = (s: Partial<SizeSetting>) =>
+  localStorage.setItem(`${LS_PREFIX}size`, JSON.stringify(s));
+
+describe('theme-boot ↔ applyTheme', () => {
+  it('agrees on every valid stored theme', () => {
     for (const color of THEME_COLORS) {
-      for (const density of THEME_DENSITIES) {
-        for (const radius of THEME_RADII) {
-          const theme: ThemeSetting = { color, density, radius };
+      for (const radius of THEME_RADII) {
+        const theme: ThemeSetting = { color, radius };
 
-          resetRoot();
-          localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(theme));
-          const booted = runBoot();
+        resetRoot();
+        storeTheme(theme);
+        const booted = runBoot();
 
-          resetRoot();
-          const applied = runApply(theme);
+        resetRoot();
+        const applied = runApply(theme);
 
-          expect(booted, `boot script disagrees for ${JSON.stringify(theme)}`)
-            .toEqual(applied);
-        }
+        expect(booted, `boot disagrees for ${JSON.stringify(theme)}`).toEqual(applied);
       }
     }
   });
@@ -136,7 +167,8 @@ describe('theme-boot script ↔ applyTheme', () => {
     ['a JSON scalar', '"light"'],
     ['null', 'null'],
     ['an empty object', '{}'],
-    ['values outside the enums', JSON.stringify({ color: 'chartreuse', density: 9, radius: null })],
+    ['values outside the enums', JSON.stringify({ color: 'chartreuse', radius: null })],
+    ['a retired field only', JSON.stringify({ density: 'compact' })],
   ])('falls back to the registry default for %s', (_label, raw) => {
     localStorage.setItem(`${LS_PREFIX}theme`, raw);
     const booted = runBoot();
@@ -145,14 +177,14 @@ describe('theme-boot script ↔ applyTheme', () => {
   });
 
   it('completes a partially stored theme field by field, like the sanitizer', () => {
-    localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color: 'light' }));
+    storeTheme({ color: 'light' });
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({ ...THEME_DEFAULT, color: 'light' }));
   });
 
   it('reads the pre-service key when the canonical one is absent', () => {
-    const legacy: ThemeSetting = { color: 'light', density: 'compact', radius: 'sharp' };
+    const legacy: ThemeSetting = { color: 'light', radius: 'sharp' };
     localStorage.setItem('dashboard-theme', JSON.stringify(legacy));
     const booted = runBoot();
     resetRoot();
@@ -160,43 +192,105 @@ describe('theme-boot script ↔ applyTheme', () => {
   });
 
   it('prefers the canonical key over the legacy one', () => {
-    localStorage.setItem('dashboard-theme', JSON.stringify(
-      { color: 'light', density: 'compact', radius: 'sharp' },
-    ));
-    const canonical: ThemeSetting = { color: 'dark-green', density: 'comfortable', radius: 'pill' };
-    localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(canonical));
+    localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
+    const canonical: ThemeSetting = { color: 'dark-green', radius: 'pill' };
+    storeTheme(canonical);
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply(canonical));
   });
+});
 
+describe('theme-boot ↔ applySize', () => {
+  it.each([
+    ['all axes at 1', { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {} }],
+    ['a global enlarge', { global: 1.25, text: 1, control: 1, layout: 1, panel: 1, regions: {} }],
+    ['one axis apart', { global: 1, text: 1.5, control: 1, layout: 1.2, panel: 1, regions: {} }],
+    ['global × axis', { global: 1.2, text: 1.25, control: 1, layout: 1, panel: 1.1, regions: {} }],
+    ['a region set', { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: { tables: 1.3 } }],
+    ['at the ceiling', { global: SIZE_MAX, text: SIZE_MAX, control: 1, layout: 1, panel: 1, regions: {} }],
+  ])('agrees for %s', (_label, size) => {
+    resetRoot();
+    storeSize(size as SizeSetting);
+    const booted = runBoot();
+
+    resetRoot();
+    const applied = runApply(THEME_DEFAULT, size as SizeSetting);
+
+    expect(booted).toEqual(applied);
+  });
+
+  it('stamps the registry default when no size is stored', () => {
+    const booted = runBoot();
+    resetRoot();
+    expect(booted).toEqual(runApply(THEME_DEFAULT, SIZE_DEFAULT));
+    expect(booted.vars['--size-layout']).toBe('1');
+  });
+
+  // THE reason this describe block exists. The clamp is written twice —
+  // once in registry.ts, once as a literal in the boot script — and a
+  // disagreement is invisible in the running app.
+  it.each([
+    ['below the floor', 0.5],
+    ['far below', -3],
+    ['just under', 0.999],
+    ['at the floor', SIZE_MIN],
+    ['mid range', 1.25],
+    ['at the ceiling', SIZE_MAX],
+    ['above the ceiling', 99],
+    ['zero', 0],
+  ])('clamps %s identically in both implementations', (_label, raw) => {
+    resetRoot();
+    storeSize({ global: raw } as unknown as SizeSetting);
+    const booted = runBoot();
+
+    resetRoot();
+    const applied = runApply(THEME_DEFAULT, { ...SIZE_DEFAULT, global: clampSize(raw) });
+
+    expect(booted).toEqual(applied);
+  });
+
+  it.each([
+    ['a string', '"1.3"'],
+    ['NaN-ish', '{"global":"abc"}'],
+    ['an array', '[1,2]'],
+    ['not json', 'nope'],
+  ])('falls back to unscaled for %s', (_label, raw) => {
+    localStorage.setItem(`${LS_PREFIX}size`, raw);
+    const booted = runBoot();
+    resetRoot();
+    expect(booted).toEqual(runApply(THEME_DEFAULT, SIZE_DEFAULT));
+  });
+
+  it('leaves an unset region unstamped rather than writing 1', () => {
+    storeSize({ ...SIZE_DEFAULT, regions: { tables: 1.2 } });
+    const booted = runBoot();
+    expect(booted.vars['--size-region-tables']).toBe('1.2');
+    expect(booted.vars['--size-region-navigation']).toBe('');
+  });
+});
+
+describe('theme-boot invariants', () => {
   it('writes nothing — local.ts owns the copy-forward', () => {
-    localStorage.setItem('dashboard-theme', JSON.stringify(
-      { color: 'light', density: 'compact', radius: 'sharp' },
-    ));
+    localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
     const before = { ...localStorage };
     runBoot();
     expect({ ...localStorage }).toEqual(before);
-    // Specifically: it must NOT copy the legacy value forward itself.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
   });
 
   it('stands down on the ?apply preview query', () => {
     window.history.replaceState({}, '', '/?apply');
-    localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(
-      { color: 'dark-green', density: 'compact', radius: 'pill' },
-    ));
+    storeTheme({ color: 'dark-green', radius: 'pill' });
+    storeSize({ ...SIZE_DEFAULT, global: 1.4 });
     const booted = runBoot();
     // Untouched: applyPublicFormTheme owns that document.
-    expect(booted).toEqual({
-      dark: false, theme: undefined, density: undefined, radius: undefined,
-    });
+    expect(booted.dark).toBe(false);
+    expect(booted.theme).toBeUndefined();
+    expect(booted.radius).toBeUndefined();
+    expect(booted.vars['--size-layout']).toBe('');
   });
 
-  // The other half of the predicate. jsdom cannot navigate to another
-  // host, so the script's `location` is shadowed by a parameter of the
-  // same name — legal because the script only ever reads `.hostname` and
-  // `.search`, and the injection happens OUTSIDE its IIFE.
   it.each([
     ['apply.4truck.us', true],
     ['apply.localhost', true],
@@ -206,21 +300,18 @@ describe('theme-boot script ↔ applyTheme', () => {
     ['not-apply.4truck.us', false],
     ['4truck.us', false],
   ])('hostname %s → stands down: %s', (hostname, shouldSkip) => {
-    localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(
-      { color: 'dark-green', density: 'compact', radius: 'pill' },
-    ));
-    new Function('location', bootScriptSource())({ hostname, search: '' });
-    const root = document.documentElement;
-    expect(root.dataset.theme, `hostname ${hostname}`)
+    storeTheme({ color: 'dark-green', radius: 'pill' });
+    const booted = runBootOnHost(hostname);
+    expect(booted.theme, `hostname ${hostname}`)
       .toBe(shouldSkip ? undefined : 'dark-green');
   });
 });
 
-describe('theme-boot script source', () => {
+describe('theme-boot source', () => {
   const source = bootScriptSource();
 
   it('states every enum value the registry accepts', () => {
-    for (const v of [...THEME_COLORS, ...THEME_DENSITIES, ...THEME_RADII]) {
+    for (const v of [...THEME_COLORS, ...THEME_RADII]) {
       expect(source, `boot script is missing the '${v}' branch`).toContain(`'${v}'`);
     }
   });
@@ -231,11 +322,28 @@ describe('theme-boot script source', () => {
     }
   });
 
-  it('reads the canonical storage key the adapter writes', () => {
+  it('states the same clamp bounds as the registry', () => {
+    expect(source, 'boot script clamp floor drifted from SIZE_MIN').toContain(String(SIZE_MIN));
+    expect(source, 'boot script clamp ceiling drifted from SIZE_MAX').toContain(String(SIZE_MAX));
+  });
+
+  it('names every region the registry knows about', () => {
+    for (const r of SIZE_REGIONS) {
+      expect(source, `boot script is missing the '${r}' region`).toContain(`'${r}'`);
+    }
+  });
+
+  it('reads both canonical storage keys the adapter writes', () => {
     expect(source).toContain(`'${LS_PREFIX}theme'`);
+    expect(source).toContain(`'${LS_PREFIX}size'`);
   });
 
   it('never calls a storage writer', () => {
     expect(source).not.toMatch(/\bsetItem\b|\bremoveItem\b|\blocalStorage\.clear\b/);
+  });
+
+  it('no longer stamps the retired density attribute', () => {
+    expect(source).not.toContain('data-density');
+    expect(source).not.toContain('dataset.density');
   });
 });

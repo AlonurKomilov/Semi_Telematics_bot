@@ -656,7 +656,13 @@ export default function LiveMap() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    // h-full, not a viewport calc. The old `calc(100vh-8rem)` guessed
+    // the shell frame (header + padding) and guessed WRONG — the real
+    // budget is 6.5rem at lg, so the map sat 24px short of the space
+    // it had. A guess is also unfixable under the Size control, which
+    // moves that padding. The shell content area has a definite
+    // height, so h-full is correct today AND at any multiplier.
+    <div className="flex h-full gap-4">
       {/* Map — relative so the POI panel can be absolutely positioned inside it */}
       <div className="flex-1 relative rounded-xl overflow-hidden border border-border z-0">
         <div ref={mapRef} className="absolute inset-0" />

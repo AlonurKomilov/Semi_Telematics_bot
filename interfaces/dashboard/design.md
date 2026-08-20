@@ -23,9 +23,9 @@ operator console (`system_dashboard`) and the Telegram `miniapp` are
    palette (`text-green-500`) for meaning. Reach for a token or a helper.
 2. **Compose, don't reinvent.** A new screen is existing primitives
    (`ui/*`) and sections arranged — not new buttons/cards from scratch.
-3. **Theme-driven.** Colour, radius, and density all flow from CSS
+3. **Theme-driven.** Colour, radius, and every LENGTH flow from CSS
    variables the user can re-skin from the theme picker. Hardcoding any
-   of them breaks that switch silently.
+   of them breaks that switch silently — see §5.1 for how size works.
 4. **Dense and quiet.** `text-xs`/`text-sm` are the body sizes here;
    colour is reserved for *signal* (status), not decoration.
 
@@ -83,7 +83,8 @@ near-white label (4.56:1), dark's is light enough to need a near-black one
 
 `index.html` opens with an inline `<script id="theme-boot">`. It reads the
 stored theme and stamps `<html>` — the `dark` class plus `data-theme` /
-`data-density` / `data-radius` — **before the first paint**. Everything else
+`data-radius` and the `--size-*` multipliers — **before the first paint**.
+Everything else
 about theming depends on it, so it is worth knowing why it exists and what it
 may not do.
 
@@ -264,8 +265,60 @@ frequency: **gap** `1 / 1.5 / 2 / 3`; **padding-x** `2 / 2.5 / 3 / 4`;
 - **No arbitrary spacing** (`p-[13px]`, `h-[42px]`) for layout. If a
   value isn't on the scale, it's almost always wrong. (Exceptions:
   pixel-exact needs like map overlays, fixed media dimensions.)
-- Density is theme-driven: prefer `--spacing-card` / `--spacing-row`
-  over fixed paddings on re-skinnable surfaces.
+- **Keep writing `p-4`.** Every step on this scale is already multiplied
+  by the user's Size setting — see §5.1. (This bullet used to point at
+  `--spacing-card` / `--spacing-row`; those tokens were read by nothing,
+  which is why the old Density picker moved zero pixels. They are gone.)
+
+### 5.1 Size — the four multipliers ⭐
+
+Every length Tailwind emits is `calc(step × var(--size-axis, 1))`. The
+user's Size control writes those variables; nothing else changes. **You
+keep writing `p-4`, `h-8`, `text-sm` exactly as before** — the class name
+is the pointer, the multiplier is applied for you.
+
+| Axis | Rides on | What it moves |
+|---|---|---|
+| `--size-text` | `fontSize`, `lineHeight` | type and its line box |
+| `--size-control` | `w`/`h`/`size`/`min`/`max` ≤ 3rem | things a finger or cursor aims at |
+| `--size-layout` | `padding`, `margin`, `gap`, `space`, `inset`, `translate`, `scroll*`, and dimensions 3–6rem | breathing room, and fixed content columns |
+| `--size-panel` | dimensions > 6rem, `max-w-*` | menus, drawers, dialogs, panels |
+
+The assignment tables are generated in
+[`tailwind.config.js`](tailwind.config.js) from Tailwind's own defaults —
+the axis rule is written once there, not as ~600 hand-maintained
+formulas.
+
+**Rules:**
+
+- ❌ **Never extend `spacing`.** It is the shared default every dimension
+  key derives from, so extending it moves padding, gap, margin, width,
+  height and size at once and collapses the four axes into one. Extend
+  the derived keys instead. (Verified: extending `padding` moves `p-*`
+  alone and leaves `gap-3` / `w-3` / `h-3` untouched.)
+- ❌ **No arbitrary lengths** (`h-[220px]`, `p-[3px]`). They are the one
+  thing the multipliers cannot reach — an arbitrary value is a promise
+  that the element will never follow the user's setting.
+- ⚠️ **Never subtract the shell frame in a `calc(100vh − Nrem)`.** That
+  figure encodes today's padding, so it is wrong the moment Size moves —
+  and two of the three that existed were already wrong at 1×. Use
+  `h-full`, or `flex-1 min-h-0` inside a flex column.
+- ⚠️ **A pixel constant standing in for a rendered height is now a bug.**
+  `DrillDialog`'s sticky-header reservation is the worked example: it was
+  `30`, justified by "one line of text at a fixed size", and that
+  justification no longer holds. It is CSS now, riding the same two axes
+  as the header it reserves for.
+- **Per-component sizing is free.** `--size-*` inherits, so setting one
+  on any wrapper scales everything inside it — no context, no props.
+  Regions **multiply**: use `calc(a × var(--global) × var(--region))`,
+  never `var(--region, var(--global))`, which silently *replaces* the
+  global the moment a region is set.
+- **The floor is 1.0, and that is not arbitrary.** 78 interactive targets
+  currently measure exactly 24.0 px — the WCAG 2.5.8 minimum — so any
+  multiplier below 1 puts them under it. The control is enlarge-only
+  (1 → 1.5) until those targets gain a height floor. The clamp is
+  written twice, in `preferences/registry.ts` and in the pre-paint script;
+  `themeBoot.test.ts` asserts the two agree.
 
 ---
 

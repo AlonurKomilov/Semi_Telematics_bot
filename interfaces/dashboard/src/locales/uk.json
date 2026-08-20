@@ -327,18 +327,18 @@
     "system": "Системна",
     "color_light": "Світла",
     "group_color": "Колір",
-    "group_density": "Щільність",
     "group_corners": "Кути",
     "dark_blue": "Темно-синій",
     "dark_purple": "Темно-фіолетовий",
     "dark_green": "Темно-зелений",
-    "density_compact": "Компактна",
-    "density_default": "Звичайна",
-    "density_roomy": "Просторa",
     "corners_sharp": "Гострі",
     "corners_rounded": "Заокруглені",
     "corners_pill": "Капсула",
-    "picker": "Тема"
+    "picker": "Тема",
+    "group_size": "Розмір",
+    "size_label": "Розмір інтерфейсу",
+    "size_reset": "Скинути",
+    "size_by_region": "Розмір за областями…"
   },
   "tier": {
     "platinum": "Платина",

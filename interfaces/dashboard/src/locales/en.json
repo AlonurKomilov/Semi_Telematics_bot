@@ -491,18 +491,18 @@
     "dark": "Dark",
     "system": "System",
     "group_color": "Color",
-    "group_density": "Density",
     "group_corners": "Corners",
     "dark_blue": "Dark Blue",
     "dark_purple": "Dark Purple",
     "dark_green": "Dark Green",
-    "density_compact": "Compact",
-    "density_default": "Default",
-    "density_roomy": "Roomy",
     "corners_sharp": "Sharp",
     "corners_rounded": "Rounded",
     "corners_pill": "Pill",
-    "color_light": "Light"
+    "color_light": "Light",
+    "group_size": "Size",
+    "size_label": "Interface size",
+    "size_reset": "Reset",
+    "size_by_region": "Size by region…"
   },
   "forms": {
     "create": "Create",

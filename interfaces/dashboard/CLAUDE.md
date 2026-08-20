@@ -25,6 +25,18 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   tones are `ok / warn / danger / info` (+ `neutral`).
 - **Spacing = 4px scale.** Use `gap-2`, `px-3`, `py-1.5`, etc. No
   arbitrary values (`p-[13px]`, `h-[42px]`) for layout.
+- **Size = four multipliers, and you get them for free.** Every length
+  Tailwind emits is `calc(step × var(--size-axis, 1))`, so keep writing
+  `p-4` / `h-8` / `text-sm` — the user's Size control scales them. Three
+  things break that: an **arbitrary length** (unreachable by any
+  multiplier), a **`calc(100vh − Nrem)`** that subtracts the shell frame
+  (wrong the moment padding moves — use `h-full` or `flex-1 min-h-0`),
+  and a **pixel constant standing in for a rendered height**. Never
+  extend Tailwind's `spacing` key: it fuses the four axes into one. Per
+  component sizing is free — `--size-*` inherits, so setting one on a
+  wrapper scales its subtree; regions MULTIPLY the global, never replace
+  it. Axis table, the enlarge-only floor and why:
+  [design.md §5.1](design.md).
 - **Radius = `--radius`.** Use `rounded`, `rounded-md`, `rounded-lg`.
   Never `rounded-[10px]` or `rounded-4xl` (ignores the theme picker).
   This includes **JS-drawn geometry** (SVG paths, canvas arcs): a

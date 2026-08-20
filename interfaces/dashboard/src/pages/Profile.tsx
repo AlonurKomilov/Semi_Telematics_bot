@@ -41,6 +41,7 @@ import {
 import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';
 import StoredPreferencesCard from '../preferences/StoredPreferencesCard';
+import SizeCard from '../preferences/SizeCard';
 import { toneClasses } from '../lib/status';
 import type { User } from '../types';
 import { LANGUAGE_OPTIONS } from '../utils/languages';
@@ -83,6 +84,20 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Bring a #hash section into view. The browser cannot do this itself
+  // here: the page mounts empty and fills in after /user/me resolves, so
+  // by the time the target exists the navigation is long over — and the
+  // scrollport is the shell's own div, not the document. `scroll-mt-*` on
+  // the target handles the sticky header offset.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     apiJSON<User & {
@@ -320,6 +335,7 @@ export default function Profile() {
         </button>
       </section>
 
+      <SizeCard />
       <StoredPreferencesCard />
       <SignInMethods />
       <RecentActivity />

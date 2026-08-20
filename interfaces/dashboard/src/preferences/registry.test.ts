@@ -21,6 +21,11 @@ import * as store from './store';
 const FROZEN_KEYS: readonly string[] = [
   'prefs.syncEnabled',
   'theme',
+  // Size replaced the theme's `density` FIELD. `theme` itself is
+  // untouched — removing a field is safe where removing a key is not.
+  'size',
+  'appearance.followMe',
+  'appearance.default',
   'loads.rangeDays',
   'sidebar.collapsed',
   'notif.bannerLevel',
@@ -110,11 +115,13 @@ describe('legacy migration', () => {
   });
 
   it('adopts a legacy JSON value and copies it forward', () => {
+    // A stored `density` is a retired field: the sanitizer rebuilds the
+    // object field by field, so it is dropped rather than carried forward.
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    expect(readPref('theme')).toEqual({ color: 'light', density: 'compact', radius: 'sharp' });
+    expect(readPref('theme')).toEqual({ color: 'light', radius: 'sharp' });
     // Copied forward under the canonical key, so the next read is direct.
     expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}theme`)!)).toEqual(
-      { color: 'light', density: 'compact', radius: 'sharp' });
+      { color: 'light', radius: 'sharp' });
     // Legacy entry deliberately left in place (roll-back safety).
     expect(localStorage.getItem('dashboard-theme')).not.toBeNull();
   });
@@ -136,8 +143,8 @@ describe('legacy migration', () => {
 
   it('prefers the canonical value over a stale legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    writePref('theme', { color: 'dark-green', density: 'default', radius: 'pill' });
-    expect(readPref('theme')).toEqual({ color: 'dark-green', density: 'default', radius: 'pill' });
+    writePref('theme', { color: 'dark-green', radius: 'pill' });
+    expect(readPref('theme')).toEqual({ color: 'dark-green', radius: 'pill' });
   });
 });
 
@@ -154,7 +161,7 @@ describe('store semantics', () => {
     const offA = store.subscribe('theme', () => { themeHits += 1; });
     const offB = store.subscribe('sidebar.collapsed', () => { sidebarHits += 1; });
 
-    store.set('theme', { color: 'light', density: 'default', radius: 'rounded' });
+    store.set('theme', { color: 'light', radius: 'rounded' });
     expect(themeHits).toBe(1);
     expect(sidebarHits).toBe(0);
 
@@ -204,7 +211,7 @@ describe('store semantics', () => {
   it('completes a partial stored theme from the default', () => {
     // Written before a field existed / hand-edited.
     localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color: 'light' }));
-    expect(readPref('theme')).toEqual({ color: 'light', density: 'default', radius: 'rounded' });
+    expect(readPref('theme')).toEqual({ color: 'light', radius: 'rounded' });
   });
 
   it('adoptRaw() rejects an invalid cross-tab value', () => {
@@ -215,8 +222,8 @@ describe('store semantics', () => {
 
   it('adoptRaw() updates a known key without echoing to storage', () => {
     localStorage.clear();
-    store.adoptRaw('theme', JSON.stringify({ color: 'light', density: 'default', radius: 'rounded' }));
-    expect(store.get('theme')).toEqual({ color: 'light', density: 'default', radius: 'rounded' });
+    store.adoptRaw('theme', JSON.stringify({ color: 'light', radius: 'rounded' }));
+    expect(store.get('theme')).toEqual({ color: 'light', radius: 'rounded' });
     // Came from another tab / the server — must not be written back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
   });

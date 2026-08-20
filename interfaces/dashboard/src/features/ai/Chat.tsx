@@ -1381,7 +1381,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   );
 
   return (
-    <div className={`flex flex-col ${variant === 'panel' ? 'h-full' : 'h-[calc(100vh-6rem)]'}`}>
+    // Both variants are h-full now: the page branch used to subtract a
+    // hardcoded 6rem for the shell frame, which was 0.5rem SHORT at lg
+    // and would drift further the moment Size scales that padding.
+    <div className="flex flex-col h-full">
       {/* ── Header ──────────────────────────────────────────────
           Panel mode: the New-chat / History controls PORTAL into the panel's
           chrome header (beside ✕, below) so the chat area keeps the full

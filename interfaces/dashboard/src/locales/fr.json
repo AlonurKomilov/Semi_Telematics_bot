@@ -364,18 +364,18 @@
     "system": "Système",
     "color_light": "Clair",
     "group_color": "Couleur",
-    "group_density": "Densité",
     "group_corners": "Coins",
     "dark_blue": "Bleu foncé",
     "dark_purple": "Violet foncé",
     "dark_green": "Vert foncé",
-    "density_compact": "Compacte",
-    "density_default": "Normale",
-    "density_roomy": "Spacieuse",
     "corners_sharp": "Droits",
     "corners_rounded": "Arrondis",
     "corners_pill": "Pilule",
-    "picker": "Thème"
+    "picker": "Thème",
+    "group_size": "Taille",
+    "size_label": "Taille de l'interface",
+    "size_reset": "Réinitialiser",
+    "size_by_region": "Taille par zone…"
   },
   "forms": {
     "create": "Créer",

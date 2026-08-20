@@ -118,7 +118,9 @@ export default function Routes() {
   const vehicleItems = vehicles.map((v) => ({ value: v.name, label: v.name }));
 
   return (
-    <div>
+    // A flex column filling the shell content area, so the map below can
+    // claim the remaining height instead of guessing at it.
+    <div className="flex flex-col h-full">
       <PageHeader
         icon={RouteIcon}
         title={t('pages.routes_title')}
@@ -189,7 +191,20 @@ export default function Routes() {
       </div>
 
       {/* Map */}
-      <div className="relative h-[calc(100vh-22rem)] rounded-xl border border-border overflow-hidden z-0">
+      {/* flex-1 with a FLOOR, not `calc(100vh-22rem)`.
+
+          The calc encoded the height of everything above the map, so it
+          broke whenever any of that changed. But `flex-1 min-h-0` alone
+          was worse: the map then absorbs all the growth of the header,
+          controls, summary cards and legend — every one of which rides
+          the Size axes — and because the column exactly fills the
+          scrollport there is no overflow to scroll. Measured at 1.5x on
+          a 1024x600 cab tablet: 82px of map, unscrollable.
+
+          `min-h-96` makes the column OVERFLOW instead, handing the excess
+          to the shell's existing scroller. It rides --size-panel, so the
+          floor grows with everything else. */}
+      <div className="relative flex-1 min-h-96 rounded-xl border border-border overflow-hidden z-0">
         <div ref={mapRef} className="absolute inset-0" />
         <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
       </div>

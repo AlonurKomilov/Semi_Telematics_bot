@@ -98,16 +98,53 @@ const oneOf = <T extends string>(allowed: readonly T[]) =>
 // components) so the registry is the SSOT for the stored SHAPE and has no
 // runtime dependency on any feature. ────────────────────────────────────
 
-/** Colour/density/radius triple written by the theme picker.  Stored as
- *  ONE object under a single key, exactly as before. */
+/** Colour/radius pair written by the theme picker.  Stored as ONE
+ *  object under a single key.
+ *
+ *  The third field used to be `density` (compact/default/comfortable).
+ *  It is gone: its only output was a `data-density` attribute selecting
+ *  two custom properties that nothing in the app ever read, so the
+ *  picker's three chips moved zero pixels. Size replaced it.  Removing a
+ *  FIELD is safe where removing a KEY would not be — `theme` stays
+ *  frozen, and `sanitize` below rebuilds the object field by field, so a
+ *  stored `density` is simply dropped on the next read. */
 export type ThemeColor = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
-export type ThemeDensity = 'compact' | 'default' | 'comfortable';
 export type ThemeRadius = 'sharp' | 'rounded' | 'pill';
 export interface ThemeSetting {
   color: ThemeColor;
-  density: ThemeDensity;
   radius: ThemeRadius;
 }
+
+/**
+ * The Size multipliers — how much bigger or smaller than designed.
+ *
+ * `global` is the one control the picker exposes; the four axes ride it
+ * and can later be dragged apart without touching the engine (they are
+ * already wired end to end in tailwind.config.js).  `regions` scopes a
+ * multiplier to one named area of the app; a region MULTIPLIES the
+ * global rather than replacing it.
+ *
+ * Every number is clamped on the way in — see SIZE_MIN / SIZE_MAX.  The
+ * clamp is not tidiness: 78 interactive targets currently measure
+ * exactly 24.0 px, the WCAG 2.5.8 minimum, so any multiplier below 1
+ * puts them under it.  Until that floor is repaired the control is
+ * enlarge-only, and the floor lives HERE and in the pre-paint script in
+ * index.html — `themeBoot.test.ts` asserts the two agree.
+ */
+export type SizeRegion =
+  | 'text' | 'tables' | 'controls' | 'overlays' | 'navigation' | 'assistant';
+export interface SizeSetting {
+  global: number;
+  text: number;
+  control: number;
+  layout: number;
+  panel: number;
+  regions: Partial<Record<SizeRegion, number>>;
+}
+
+/** Enlarge-only until the 24 px floor is repaired; see SizeSetting. */
+export const SIZE_MIN = 1;
+export const SIZE_MAX = 1.5;
 
 export type NotifPosition = 'top-right' | 'bottom-right' | 'bottom-center';
 export type BannerLevel = 'all' | 'critical' | 'off';
@@ -120,12 +157,25 @@ export type TableDensity = 'compact' | 'default' | 'roomy';
 // re-states these literals (it runs before any module loads, so it cannot
 // import them), and the test asserts the two copies still agree.  Nothing
 // else should read them — call sites get the guard via ``sanitize``.
-export const THEME_DEFAULT: ThemeSetting = {
-  color: 'dark-blue', density: 'default', radius: 'rounded',
-};
+export const THEME_DEFAULT: ThemeSetting = { color: 'dark-blue', radius: 'rounded' };
 export const THEME_COLORS: ThemeColor[] = ['dark-blue', 'dark-purple', 'dark-green', 'light'];
-export const THEME_DENSITIES: ThemeDensity[] = ['compact', 'default', 'comfortable'];
 export const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
+
+export const SIZE_REGIONS: SizeRegion[] = [
+  'text', 'tables', 'controls', 'overlays', 'navigation', 'assistant',
+];
+export const SIZE_DEFAULT: SizeSetting = {
+  global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {},
+};
+
+/** Clamp one multiplier. Anything unparseable falls back to 1 rather
+ *  than to a bound — a corrupt value should render the app as designed,
+ *  not at either extreme. */
+export const clampSize = (v: unknown): number => {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(SIZE_MAX, Math.max(SIZE_MIN, n));
+};
 
 /** Assistant panel width bounds — must match ``clampPanelW`` in
  *  features/ai/AssistantContext.tsx (that clamp handles the live drag;
@@ -160,11 +210,63 @@ export const DEFS = {
       const o = v as Partial<ThemeSetting>;
       return {
         color: THEME_COLORS.includes(o.color as ThemeColor) ? o.color as ThemeColor : THEME_DEFAULT.color,
-        density: THEME_DENSITIES.includes(o.density as ThemeDensity) ? o.density as ThemeDensity : THEME_DEFAULT.density,
         radius: THEME_RADII.includes(o.radius as ThemeRadius) ? o.radius as ThemeRadius : THEME_DEFAULT.radius,
       };
     },
-    note: 'Colour scheme, density and corner radius.',
+    note: 'Colour scheme and corner radius.',
+  }),
+
+  // How much bigger than designed. `device`, and necessarily so: a
+  // `synced` value is adopted only after /user/me resolves AND the bulk
+  // preference read returns — two round trips AFTER the first paint — so
+  // a synced size would paint every page at 1 and then visibly jump.
+  // `appearance.default` below is the synced half; it holds a DEFAULT for
+  // a new browser, never the applied value.
+  'size': def<SizeSetting>({
+    default: SIZE_DEFAULT,
+    scope: 'device',
+    sanitize: (v) => {
+      if (typeof v !== 'object' || v === null) return undefined;
+      const o = v as Partial<SizeSetting>;
+      const regions: Partial<Record<SizeRegion, number>> = {};
+      const raw = (o.regions ?? {}) as Record<string, unknown>;
+      for (const r of SIZE_REGIONS) {
+        if (raw[r] !== undefined) regions[r] = clampSize(raw[r]);
+      }
+      return {
+        global: clampSize(o.global ?? 1),
+        text: clampSize(o.text ?? 1),
+        control: clampSize(o.control ?? 1),
+        layout: clampSize(o.layout ?? 1),
+        panel: clampSize(o.panel ?? 1),
+        regions,
+      };
+    },
+    note: 'How much bigger the interface renders on this screen.',
+  }),
+
+  // Whether appearance follows the PERSON as well as living on this
+  // screen. Necessarily `device` for the same reason as
+  // prefs.syncEnabled: a machine must not be able to have its syncing
+  // switched off through the sync channel.
+  'appearance.followMe': def<boolean>({
+    default: true,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Apply your colour, corners and size on other browsers you sign in from.',
+  }),
+
+  // The synced half. Adopted ONLY by a browser that has nothing stored
+  // locally, so an established screen never jumps mid-session. Reset
+  // clears this too, otherwise the next new browser would resurrect a
+  // setting the user just discarded.
+  'appearance.default': def<{ theme?: ThemeSetting; size?: SizeSetting } | null>({
+    default: null,
+    scope: 'synced',
+    sanitize: (v) => (v === null || (typeof v === 'object' && !Array.isArray(v))
+      ? v as { theme?: ThemeSetting; size?: SizeSetting } | null
+      : undefined),
+    note: 'Your appearance settings, remembered for browsers you have not used yet.',
   }),
   // Dismissal of the one-release "config moved to the gear" pointer.
   // SYNCED, not device: the user learned where config went — they should

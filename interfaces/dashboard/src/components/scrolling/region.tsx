@@ -55,7 +55,11 @@ export interface ScrollRegionOptions {
   axis?: 'y' | 'x' | 'both' | { y?: Overflow; x?: Overflow };
   /** Height of sticky chrome overlaying the TOP of the scrollport (a
    *  sticky header). */
-  stickyTop?: number;
+  /** A number is taken as px (React appends the unit); a STRING is passed
+   *  through as CSS, which is how a caller expresses a height that scales
+   *  — e.g. a header whose padding and type ride the Size multipliers and
+   *  therefore has no single pixel value. */
+  stickyTop?: number | string;
   /** Width of frozen content at the left / right edges (pinned columns). */
   pinnedLeft?: number;
   pinnedRight?: number;

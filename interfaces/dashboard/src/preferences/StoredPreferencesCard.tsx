@@ -7,6 +7,7 @@ import { Switch } from '../components/ui/switch';
 import { InfoTip } from '../components/tooltip';
 import { usePreference } from './usePreference';
 import { resetAll } from './store';
+import { resetAppearanceDefault } from './appearance';
 import { measureUsage, formatBytes } from './usage';
 
 /**
@@ -31,6 +32,11 @@ export default function StoredPreferencesCard() {
 
   const handleReset = () => {
     resetAll();
+    // resetAll() sweeps this device. The personal appearance default is
+    // a SYNCED key holding what an unused browser should start from — if
+    // it survived, signing in somewhere new would restore exactly the
+    // settings just discarded.
+    resetAppearanceDefault();
     refresh();
     toast.success('Preferences reset to defaults');
   };
