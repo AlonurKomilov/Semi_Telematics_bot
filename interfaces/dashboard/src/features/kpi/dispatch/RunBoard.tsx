@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
 import { daysCell, daysSummary, loadedDayCount, matchedTip, nextDay, zeroTip } from './explain';
+import { boardGeometry, dayRange, prevDay } from './board/geometry';
 import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -41,18 +42,6 @@ function usd(v: number): string {
   return `$${v.toLocaleString(undefined, {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   })}`;
-}
-
-/** Inclusive ISO day range — pure calendar strings, no timezone. */
-function dayRange(start: string, end: string): string[] {
-  const out: string[] = [];
-  const d = new Date(`${start.slice(0, 10)}T00:00:00Z`);
-  const stop = new Date(`${end.slice(0, 10)}T00:00:00Z`);
-  while (d <= stop && out.length < 120) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setUTCDate(d.getUTCDate() + 1);
-  }
-  return out;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -379,68 +368,14 @@ const BoardRow = memo(function BoardRow({ part, row, days, loads, suggestions, s
   const { t } = useTranslation();
   const marks = new Map((row.inactive_dates ?? []).map((m) => [m.date, m.reason]));
   const suggested = new Map(suggestions.map((sug) => [sug.date, sug]));
-  const byDay = new Map<string, RunLoad[]>();
-  for (const l of loads ?? []) {
-    const d = l.pickup_date;
-    byDay.set(d, [...(byDay.get(d) ?? []), l]);
-  }
-  // Days a load COVERS without starting there — the truck is rolling
-  // (picked up earlier, delivering later), not idle.  Each transit day
-  // keeps its load + position so the strip reads as a PIECE of that
-  // load's bar ("→ $5,800 · Wilmi… — day 2 of 3"), never an anonymous
-  // arrow.
-  const hiDay = row.window_end.slice(0, 10);
-  const prevDay = (iso: string) =>
-    new Date(Date.parse(`${iso}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
-  const stripLoadAt = (day: string): RunLoad | null => {
-    const info = transitInfo.get(day);
-    if (!info) return null;
-    if ((byDay.get(day) ?? []).length > 0) return null;
-    if (marks.get(day) != null) return null;
-    if (suggested.has(day)) return null;
-    if (!inWindow(day)) return null;
-    return info.load;
-  };
-  /** Consecutive strip days ahead of a pickup — the chip's runway. */
-  const stripRun = (l: RunLoad, from: string): number => {
-    let c = 0;
-    for (let day = nextDay(from); stripLoadAt(day) === l; day = nextDay(day)) c += 1;
-    return c;
-  };
-  // The REAL delivery day — for words (labels, aria, tooltips).
-  const deliveryEnd = (l: RunLoad): string => {
-    const a = (l.pickup_date || '').slice(0, 10);
-    const bRaw = (l.delivery_date || '').slice(0, 10);
-    return bRaw && bRaw > a ? bRaw : a;
-  };
-  // The span's last VISIBLE day — for geometry only.  Never print it:
-  // a load rolling past the period would read "delivers <period end>",
-  // a clamp masquerading as a date.
-  const spanEnd = (l: RunLoad): string => {
-    const end = deliveryEnd(l);
-    return end > hiDay ? hiDay : end;
-  };
-  const transitInfo = new Map<string, {
-    load: RunLoad; dayNo: number; total: number; last: string;
-  }>();
-  for (const l of loads ?? []) {
-    const a = (l.pickup_date || '').slice(0, 10);
-    if (!a) continue;
-    const end = spanEnd(l);
-    if (end <= a) continue;
-    // "day N of TOTAL" counts the REAL trip, not the visible slice.
-    const real = deliveryEnd(l);
-    let total = 1;
-    for (let d = a; d < real; d = nextDay(d)) total += 1;
-    let dayNo = 2;
-    for (let d = nextDay(a); d <= end; d = nextDay(d), dayNo += 1) {
-      if (!transitInfo.has(d)) {
-        transitInfo.set(d, { load: l, dayNo, total, last: end });
-      }
-    }
-  }
-  const inWindow = (d: string) =>
-    d >= row.window_start.slice(0, 10) && d <= row.window_end.slice(0, 10);
+  // Which day renders which piece of which load's bar — the rules live
+  // in board/geometry.ts, where a test can argue with them.
+  const {
+    byDay, transitInfo, inWindow, stripLoadAt, stripRun, deliveryEnd, laneOf,
+  } = boardGeometry({
+    loads, windowStart: row.window_start, windowEnd: row.window_end,
+    marks, suggested,
+  });
   const loadedDays = loadedDayCount(loads, row.window_start, row.window_end);
 
   // The row meter — a glance-scale answer to "how is this truck doing"
@@ -665,7 +600,7 @@ const BoardRow = memo(function BoardRow({ part, row, days, loads, suggestions, s
 
   return (
     <div className="flex h-36 border-b border-border last:border-b-0" style={CV_ROW}>
-      {days.map((d, i) => {
+      {days.map((d) => {
         const dayLoads = byDay.get(d) ?? [];
         const reason = marks.get(d);
         const inside = inWindow(d);
@@ -795,8 +730,7 @@ const BoardRow = memo(function BoardRow({ part, row, days, loads, suggestions, s
               // The strip lives on ITS load's lane (the chip's index
               // on the pickup day); lanes beyond the rendered two get
               // no strip.
-              const pickupDay = (info.load.pickup_date || '').slice(0, 10);
-              const lane = (byDay.get(pickupDay) ?? []).indexOf(info.load);
+              const lane = laneOf(info.load);
               if (lane < 0 || lane > 1) return null;
               // Connected LEFT when yesterday rendered this load's
               // head (its pickup) or its strip; an interrupted span
