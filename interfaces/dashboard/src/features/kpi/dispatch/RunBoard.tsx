@@ -189,8 +189,11 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           without decoding chips by trial. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
-          {t('kpi_board.leg_loads3', 'load (rate · delivery place)')}
+          <span className="inline-flex items-center" aria-hidden>
+            <span className={`rounded-l rounded-r-none px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
+            <span className="h-5 w-6 rounded-r bg-ok-bg" />
+          </span>
+          {t('kpi_board.leg_loads4', 'load (rate · place → delivers) — the bar spans its days')}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className={`inline-block rounded px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn')}`}>{t('kpi_board.inactive', 'inactive')}</span>
@@ -333,10 +336,17 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
     for (let day = nextDay(from); stripLoadAt(day) === l; day = nextDay(day)) c += 1;
     return c;
   };
-  const spanEnd = (l: RunLoad): string => {
+  // The REAL delivery day — for words (labels, aria, tooltips).
+  const deliveryEnd = (l: RunLoad): string => {
     const a = (l.pickup_date || '').slice(0, 10);
     const bRaw = (l.delivery_date || '').slice(0, 10);
-    const end = bRaw && bRaw > a ? bRaw : a;
+    return bRaw && bRaw > a ? bRaw : a;
+  };
+  // The span's last VISIBLE day — for geometry only.  Never print it:
+  // a load rolling past the period would read "delivers <period end>",
+  // a clamp masquerading as a date.
+  const spanEnd = (l: RunLoad): string => {
+    const end = deliveryEnd(l);
     return end > hiDay ? hiDay : end;
   };
   const transitInfo = new Map<string, {
@@ -347,8 +357,10 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
     if (!a) continue;
     const end = spanEnd(l);
     if (end <= a) continue;
+    // "day N of TOTAL" counts the REAL trip, not the visible slice.
+    const real = deliveryEnd(l);
     let total = 1;
-    for (let d = a; d < end; d = nextDay(d)) total += 1;
+    for (let d = a; d < real; d = nextDay(d)) total += 1;
     let dayNo = 2;
     for (let d = nextDay(a); d <= end; d = nextDay(d), dayNo += 1) {
       if (!transitInfo.has(d)) {
@@ -454,7 +466,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             } ${clickable && inside ? 'cursor-pointer hover:bg-muted/50' : ''}`}
           >
             {dayLoads.slice(0, 2).map((l, i) => {
-              const runDays = i === 0 ? stripRun(l, d) : 0;
+              const runDays = i <= 1 ? stripRun(l, d) : 0;
               const cont = runDays > 0;
               // Label runway = this cell + every following STRIP cell
               // (w-28 = 112px each), minus the 6px insets both ends.
@@ -465,7 +477,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                   from: place(l.pickup_location) || '—',
                   to: place(l.delivery_location) || l.load_number,
                   mi: Math.round(l.miles).toLocaleString(),
-                  del: dayLabel(spanEnd(l)),
+                  del: dayLabel(deliveryEnd(l)),
                 });
               return cont ? (
                 /* DAY-ALIGNED fill + floating label.  The fill ends at
@@ -481,10 +493,16 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                       role="img" aria-label={loadAria} />
                   </Tip>
                   <span
-                    className="pointer-events-none absolute left-1.5 top-0 z-10 block h-6 leading-6 overflow-hidden whitespace-nowrap text-xs tabular-nums text-ok"
+                    className="pointer-events-none absolute left-1.5 top-0 z-10 flex h-6 leading-6 text-xs tabular-nums text-ok"
                     style={{ maxWidth: runway }} aria-hidden>
-                    ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
-                    {' → '}{dayLabel(spanEnd(l))}
+                    {/* The date must SURVIVE truncation — "→ Thu 8/"
+                        is misinformation; the city gives way first. */}
+                    <span className="min-w-0 truncate">
+                      ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
+                    </span>
+                    <span className="shrink-0 whitespace-pre">
+                      {' → '}{dayLabel(deliveryEnd(l))}
+                    </span>
                   </span>
                 </div>
               ) : (
@@ -555,6 +573,12 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                  load the truck was rolling for. */
               const info = transitInfo.get(d)!;
               const continues = stripLoadAt(nextDay(d)) === info.load;
+              // The strip lives on ITS load's lane (the chip's index
+              // on the pickup day); lanes beyond the rendered two get
+              // no strip.
+              const pickupDay = (info.load.pickup_date || '').slice(0, 10);
+              const lane = (byDay.get(pickupDay) ?? []).indexOf(info.load);
+              if (lane < 0 || lane > 1) return null;
               // Connected LEFT when yesterday rendered this load's
               // head (its pickup) or its strip; an interrupted span
               // (another chip in between) restarts with a left cap.
@@ -566,7 +590,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                   '{{rate}} to {{place}} — in transit, day {{i}} of {{n}}; delivers {{del}}. A working day; it counts.', {
                     rate: `$${Math.round(info.load.total_rate).toLocaleString()}`,
                     place: place(info.load.delivery_location) || info.load.load_number,
-                    i: info.dayNo, n: info.total, del: dayLabel(info.last),
+                    i: info.dayNo, n: info.total,
+                    del: dayLabel(deliveryEnd(info.load)),
                   })}>
                   {/* FLAT — the pickup chip already carries the text
                       once; repeating it per piece breaks the one-bar
@@ -577,6 +602,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                       painted a ~9% wash — invisible on white.  Same
                       fill as the chip = one unbroken bar. */}
                   <span className={`block h-6 bg-ok-bg ${
+                    lane === 1 ? 'mt-7' : ''} ${
                     leftConnected ? '-ml-1.5 rounded-l-none' : 'rounded-l'} ${
                     continues ? 'rounded-r-none -mr-1.5' : 'rounded-r'}`}>
                     <span className="sr-only">
