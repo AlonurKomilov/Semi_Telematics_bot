@@ -371,6 +371,38 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   const inWindow = (d: string) =>
     d >= row.window_start.slice(0, 10) && d <= row.window_end.slice(0, 10);
 
+  // The row meter — a glance-scale answer to "how is this truck doing"
+  // that the numbers alone can't give across twenty rows.  Scale: $0 →
+  // the next milestone (the next tier's gross when one is coming, else
+  // the larger of target and gross).  Fill tone = earning state (ok
+  // pays, warn pays 0% — the same tone the "no tier met" chip wears);
+  // the tick marks the target.  The text above carries the exact
+  // numbers, so the bar is aria-hidden decoration with a hover
+  // explanation.
+  const meterGross = Number(row.kpi_gross);
+  const meterTarget = Number(row.adjusted_target);
+  const meterEnd = row.next_tier
+    ? meterGross + Number(row.next_tier.gap)
+    : Math.max(meterTarget, meterGross);
+  const meter = row.weekly_target != null && meterTarget > 0 && meterEnd > 0
+    ? {
+        fill: Math.min(100, Math.round((meterGross / meterEnd) * 100)),
+        tick: meterTarget < meterEnd
+          ? Math.round((meterTarget / meterEnd) * 100) : null,
+        earning: Number(row.pct) > 0,
+      }
+    : null;
+  const money0 = (v: number) => `$${Math.round(v).toLocaleString()}`;
+  const meterTip = !meter ? '' : row.next_tier && meter.tick != null
+    ? t('kpi_board.meter_tip',
+      'Gross {{g}} — the tick is the {{tgt}} target; the bar ends at the next tier ({{end}} gross).',
+      { g: money0(meterGross), tgt: money0(meterTarget), end: money0(meterEnd) })
+    : meter.tick != null
+      ? t('kpi_board.meter_tip2', 'Gross {{g}} — past the {{tgt}} target (the tick).',
+        { g: money0(meterGross), tgt: money0(meterTarget) })
+      : t('kpi_board.meter_tip3', 'Gross {{g}} of the {{tgt}} target.',
+        { g: money0(meterGross), tgt: money0(meterTarget) });
+
   return (
     <div className="flex border-b border-border last:border-b-0">
       {/* Truck identity + its sheet numbers, pinned while days scroll.
@@ -425,20 +457,29 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           /* Endowed progress: the row is already most of the way to the
              next tier — a shortfall stated in dollars converts a dead
              number into a target. */
-          <div className="mt-1 space-y-0.5">
-            <div className="text-xs text-muted-foreground tabular-nums">
-              {t('kpi_board.next_tier',
-                '{{gap}} short of the {{pct}}% tier ({{at}})',
-                { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
-                  pct: row.next_tier.pct,
-                  at: `$${row.next_tier.dollars_at.toFixed(2)}` })}
-            </div>
-            <div className="h-1 w-40 max-w-full rounded bg-muted overflow-hidden">
-              <div className="h-full rounded bg-primary/60"
-                style={{ width: `${Math.min(100, Math.round(
-                  (row.kpi_gross / (row.kpi_gross + row.next_tier.gap)) * 100))}%` }} />
-            </div>
+          <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+            {t('kpi_board.next_tier',
+              '{{gap}} short of the {{pct}}% tier ({{at}})',
+              { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
+                pct: row.next_tier.pct,
+                at: `$${row.next_tier.dollars_at.toFixed(2)}` })}
           </div>
+        )}
+        {meter && (
+          <Tip label={meterTip}>
+            {/* py-1 -my-1 grows the hover area without moving layout —
+                a bare 4px strip is unhoverable. */}
+            <div className="mt-1 py-1 -my-1 cursor-help">
+              <div className="relative h-1 w-40 max-w-full rounded bg-muted" aria-hidden="true">
+                <div className={`h-full rounded ${meter.earning ? 'bg-ok' : 'bg-warn'}`}
+                  style={{ width: `${meter.fill}%` }} />
+                {meter.tick != null && (
+                  <div className="absolute -top-0.5 -bottom-0.5 w-px bg-muted-foreground"
+                    style={{ left: `${meter.tick}%` }} />
+                )}
+              </div>
+            </div>
+          </Tip>
         )}
         {stale && (
           <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
