@@ -425,24 +425,32 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
   // At $0.00 the gain IS the total — "(+$80.00)" next to "pays $80.00"
   // restates it, so the delta only shows when there is a now to beat.
   const showTierDelta = tierDelta > 0 && Number(row.confirmed_dollars) > 0;
-  const tierTip = !row.next_tier ? '' : [
-    showTierDelta
-      ? t('kpi_board.tier_pay2',
-        'At the {{pct}}% tier this row pays {{at}} — {{d}} more than now.',
-        { pct: row.next_tier.pct, at: usd(row.next_tier.dollars_at),
-          d: usd(tierDelta) })
-      : t('kpi_board.tier_pay',
-        'At the {{pct}}% tier this row pays {{at}}.',
-        { pct: row.next_tier.pct, at: usd(row.next_tier.dollars_at) }),
+  const tierChain = !row.next_tier ? '' : [
     row.next_tier.min_rpm != null
-      ? t('kpi_board.tier_rpm',
-        'The tier needs RPM ≥ {{rpm}}, so the {{gap}} gap holds at your current miles: more revenue on the SAME miles lifts RPM — an extra cheap load adds miles and can move the tier further away.',
-        { rpm: row.next_tier.min_rpm.toFixed(2),
-          gap: money0(row.next_tier.gap) })
-      : t('kpi_board.tier_any',
-        '{{gap}} more gross reaches it at any miles — this tier has no RPM condition.',
+      ? t('kpi_board.next_gap2', '{{gap}} more (same miles)',
+        { gap: money0(row.next_tier.gap) })
+      : t('kpi_board.next_gap', '{{gap}} more gross',
         { gap: money0(row.next_tier.gap) }),
+    t('kpi_board.next_goal2', '→ {{pct}}%', { pct: row.next_tier.pct }),
+    showTierDelta
+      ? t('kpi_board.next_pays4', '→ {{at}} (+{{d}})',
+        { at: usd(row.next_tier.dollars_at), d: usd(tierDelta) })
+      : t('kpi_board.next_pays3', '→ {{at}}',
+        { at: usd(row.next_tier.dollars_at) }),
   ].join(' ');
+  const tierHint = !row.next_tier ? null : (
+    <div className="space-y-0.5 text-left tabular-nums">
+      <div>{tierChain}</div>
+      <div>{row.next_tier.min_rpm != null
+        ? t('kpi_board.tier_rpm',
+          'The tier needs RPM ≥ {{rpm}}, so the {{gap}} gap holds at your current miles: more revenue on the SAME miles lifts RPM — an extra cheap load adds miles and can move the tier further away.',
+          { rpm: row.next_tier.min_rpm.toFixed(2),
+            gap: money0(row.next_tier.gap) })
+        : t('kpi_board.tier_any',
+          '{{gap}} more gross reaches it at any miles — this tier has no RPM condition.',
+          { gap: money0(row.next_tier.gap) })}</div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-32 border-b border-border last:border-b-0">
@@ -528,8 +536,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
             reader compares trucks by running one line down the column.
             The WHOLE result is the answer, so the whole line carries
             the weight, not just the dollars. */}
-        <div className="mt-0.5 flex items-baseline text-sm font-semibold text-foreground tabular-nums">
-          <span className="w-16 shrink-0 whitespace-nowrap">
+        <div className="mt-0.5 text-sm font-semibold text-foreground tabular-nums">
+          <span className="whitespace-nowrap">
             {row.matched_rule ? (
               <Tip label={matchedTip(row.matched_rule, t)}>
                 <span tabIndex={0} aria-label={matchedTip(row.matched_rule, t)}
@@ -540,21 +548,25 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
             ) : (
               <>{Number(row.pct)}%</>
             )}
-            {' →'}
-          </span>
-          {/* Right-aligned amount slot: the one number every row exists
-              to produce lines up down the column instead of drifting
-              with the tier's string width. */}
-          <span className="flex-1 text-right">
-            {usd(row.confirmed_dollars)}
+            {' → '}
+            {tierHint ? (
+              /* Hover/focus the AMOUNT for the what's-next chain —
+                 "$224 more (same miles) → 3.25% → $278.66 (+$49.03)".
+                 On the surface there is exactly ONE money line, so the
+                 current pay can never be mistaken for the hypothetical
+                 (owner decision 2026-08-20). */
+              <Tip label={tierHint}>
+                <span tabIndex={0}
+                  className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                  {usd(row.confirmed_dollars)}
+                </span>
+              </Tip>
+            ) : (
+              usd(row.confirmed_dollars)
+            )}
           </span>
         </div>
-        {/* The no_tier chip only earns its space when the next-tier line
-            is absent (finalized runs) — beside it, "no tier met" ·
-            "0% → $0.00" · "$X more → 1% tier" said one fact three times
-            in a four-line card. */}
-        {Number(row.pct) === 0 && row.zero_reason
-          && !(row.zero_reason === 'no_tier' && row.next_tier) && (
+        {Number(row.pct) === 0 && row.zero_reason && (
           <Tip label={zeroTip(row, t)}>
             <span tabIndex={0} className={`mt-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {row.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
@@ -564,46 +576,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
             </span>
           </Tip>
         )}
-        {row.next_tier && (
-          /* Endowed progress: the row is already most of the way to the
-             next tier — a shortfall converted into a target.  This line
-             is a HYPOTHETICAL among facts, so it wears the info tone
-             (the grey lines above are what happened; this is what could
-             happen).  Grammar rule for the card: "·" joins peers, "→"
-             means leads-to — so the goal is one arrow chain, gross →
-             percent → pay, the same "% → $" shape as the payout line
-             above it. */
-          <div className={`mt-2 text-xs tabular-nums ${toneText('info')}`}>
-            <Tip label={tierTip}>
-              {/* Complete phrases joined by SPACES — a wrap can only
-                  land between them; a continuation line then STARTS
-                  with "→", which reads as a chain, never a bullet. */}
-              <span tabIndex={0} aria-label={tierTip}
-                className="block truncate underline decoration-dotted underline-offset-4 cursor-help">
-                <span className="whitespace-nowrap">
-                  {row.next_tier.min_rpm != null
-                    ? t('kpi_board.next_gap2', '{{gap}} more (same miles)',
-                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}` })
-                    : t('kpi_board.next_gap', '{{gap}} more gross',
-                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}` })}
-                </span>
-                {' '}
-                <span className="whitespace-nowrap">
-                  {t('kpi_board.next_goal2', '→ {{pct}}%',
-                    { pct: row.next_tier.pct })}
-                </span>
-                {' '}
-                <span className="whitespace-nowrap">
-                  {showTierDelta
-                    ? t('kpi_board.next_pays4', '→ {{at}} (+{{d}})',
-                      { at: usd(row.next_tier.dollars_at), d: usd(tierDelta) })
-                    : t('kpi_board.next_pays3', '→ {{at}}',
-                      { at: usd(row.next_tier.dollars_at) })}
-                </span>
-              </span>
-            </Tip>
-          </div>
-        )}
+
         {meter && (
           <Tip label={meterTip}>
             {/* py-1 -my-1 grows the hover/focus area without moving
