@@ -14,16 +14,17 @@
  * reports drift per row, surfaced as a banner — the board must never
  * silently disagree with the sheet.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CalendarOff, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { toneClasses, toneText } from '../../../lib/status';
 import { AnchoredMenu } from '../../../components/ui/context-menu';
 import { dayRange } from './board/geometry';
 import { dayMenuItems } from './board/menu';
+import { BoardGlyphDefs, CalendarOffGlyph } from './board/glyphs';
 import { DayCells } from './board/DayCells';
 import { UnitCard } from './board/UnitCard';
 import { dayLabel, usd } from './board/shared';
@@ -47,6 +48,14 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
 }) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // STAGGERED MOUNT (perf audit F1): building all 12 sections in one
+  // commit was a single ~300ms task at the exact moment of the click
+  // (Sheet→Board, Expand all).  Bodies now mount in small batches —
+  // the first paint carries the first two, the rest follow one frame
+  // apart, so no task crosses ~80ms and the click answers instantly.
+  // Headers always render (name, counts, total), so the page reads
+  // complete while bodies fill in top-down.
+  const [mountedBodies, setMountedBodies] = useState(2);
   const [busyRow, setBusyRow] = useState<number | null>(null);
   // The board's ONE day menu — cells are plain buttons that anchor it
   // here (board/menu.ts builds the items on open).  A menu component
@@ -93,6 +102,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
     list.push(row);
     byDispatcher.set(row.dispatcher_name, list);
   }
+  const sectionCount = byDispatcher.size;
+  useEffect(() => {
+    if (mountedBodies >= sectionCount) return;
+    const id = requestAnimationFrame(() => setMountedBodies((n) => n + 2));
+    return () => cancelAnimationFrame(id);
+  }, [mountedBodies, sectionCount]);
+
   // A truck whose loads split between dispatchers gets a ROW PER
   // DISPATCHER (KPI grades people; each row counts only that person's
   // loads).  Unexplained, the second row reads as a duplicate-data bug
@@ -152,6 +168,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
 
   return (
     <div className="space-y-8">
+      <BoardGlyphDefs />
       <div className="space-y-3">
       {draft && (
         /* The board's one non-obvious gesture, said once where the days
@@ -200,7 +217,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex h-6 w-10 items-center justify-center rounded border border-dashed border-border">
-            <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
+            <CalendarOffGlyph className="text-muted-foreground/60" />
           </span>
           {t('kpi_board.leg_empty2', 'no loads, counting — click to mark inactive')}
         </span>
@@ -237,6 +254,9 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             const names = [...byDispatcher.keys()];
             const allCollapsed = names.every((n) => collapsed[n]);
             setCollapsed(Object.fromEntries(names.map((n) => [n, !allCollapsed])));
+            // Expanding all remounts every body — re-stagger so the
+            // click stays a short task instead of one big commit.
+            if (allCollapsed) setMountedBodies(2);
           }}>
           {[...byDispatcher.keys()].every((n) => collapsed[n]) ? (
             <>
@@ -251,7 +271,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           )}
         </Button>
       </div>
-      {[...byDispatcher.entries()].map(([name, rows]) => {
+      {[...byDispatcher.entries()].map(([name, rows], sectionIdx) => {
         const gross = rows.reduce((a, r) => a + r.kpi_gross, 0);
         const miles = rows.reduce((a, r) => a + r.miles, 0);
         const baseGross = rows.reduce((a, r) => a + r.base_gross, 0);
@@ -281,7 +301,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               <span className="ml-auto text-sm font-medium tabular-nums">{usd(confirmed)}</span>
             </button>
 
-            {!isCollapsed && (
+            {!isCollapsed && sectionIdx < mountedBodies && (
               <div className="flex">
                 {/* Unit pane — OUTSIDE the scroller: this info never
                     moves, so the scrollbar must not run under it.

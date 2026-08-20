@@ -11,12 +11,12 @@
  */
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CalendarOff } from 'lucide-react';
 import { Tip } from '../../../../components/tooltip';
 import { toneClasses, toneText } from '../../../../lib/status';
 import type { DaySuggestion, RunLoad, RunRow } from '../../api';
 import { nextDay } from '../explain';
 import { boardGeometry, prevDay } from './geometry';
+import { CalendarOffGlyph } from './glyphs';
 import { ROW_CONTAIN, dayLabel, place, usd } from './shared';
 
 export const DayCells = memo(function DayCells({ row, days, loads, suggestions, clickable, onOpenMenu }: {
@@ -158,7 +158,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                  without reflowing the cell (overlay, not in-flow). */
               <span className="absolute bottom-1 right-1 hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center size-5 rounded border border-dashed border-border bg-card"
                 aria-hidden>
-                <CalendarOff size={12} className="text-muted-foreground" />
+                <CalendarOffGlyph className="text-muted-foreground" />
               </span>
             )}
             {inside && dayLoads.length === 0 && reason == null
@@ -222,7 +222,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                       v: `$${Math.round(row.weekly_target / 7).toLocaleString()}` })
                 : t('kpi_board.mark_tip', 'Mark {{day}} inactive', { day: dayLabel(d) })}>
                 <span className="flex h-6 items-center justify-center rounded border border-dashed border-border">
-                  <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
+                  <CalendarOffGlyph className="text-muted-foreground/60" />
                 </span>
               </Tip>
             )}
