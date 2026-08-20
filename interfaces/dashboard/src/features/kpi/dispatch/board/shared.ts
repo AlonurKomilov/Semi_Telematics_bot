@@ -30,3 +30,14 @@ export const place = (s: string) => s.replace(/\s+\d+$/, '').trim();
 /** The row-height CONTRACT: both panes render every row at this
  *  height, so the two columns stay in step down a 69-row board. */
 export const ROW_H = 'h-36';
+
+// Isolation walls, not lazy rendering: layout+paint containment tells
+// the browser nothing inside a row affects anything outside it, so a
+// hover flip or repaint while scrolling costs one row, never the
+// whole section (a 10-truck section is thousands of nodes — without
+// walls it was one giant invalidation zone, and big sections
+// stuttered where small ones felt fine).  Unlike the removed
+// content-visibility, rows still render up front — page scrolling
+// stays plain compositing.  Safe because rows are fixed-height and
+// nothing visual escapes them (tooltips and menus portal to <body>).
+export const ROW_CONTAIN = { contain: 'layout paint' } as React.CSSProperties;
