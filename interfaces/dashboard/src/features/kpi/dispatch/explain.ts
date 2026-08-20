@@ -50,6 +50,25 @@ export function matchedTip(rule: NonNullable<RunRow['matched_rule']>, t: TFuncti
     { p: rule.pct, r: rule.rpm_pct, g: rule.gross_pct, how });
 }
 
+/** The zero-reason, with the numbers that CAUSED it — a verdict without
+ *  its threshold is unarguable and unexplainable.  Shared so the sheet's
+ *  chip and the board's chip can never explain a $0.00 differently. */
+export function zeroTip(row: RunRow, t: TFunction): string {
+  const g = `$${Math.round(row.kpi_gross).toLocaleString()}`;
+  const tgt = row.adjusted_target
+    ? `$${Math.round(row.adjusted_target).toLocaleString()}` : '';
+  if (row.zero_reason === 'no_target') {
+    return t('kpi_board.zt_no_target', 'This company has no weekly target configured — set one in KPI configuration.');
+  }
+  if (row.zero_reason === 'floor') {
+    return t('kpi_board.zt_floor', '{{g}} gross at RPM {{rpm}} is under BOTH removal floors.', { g, rpm: row.rpm ?? '—' });
+  }
+  if (row.zero_reason === 'no_active_days') {
+    return t('kpi_board.zt_days', 'Every day of the window is marked inactive.');
+  }
+  return t('kpi_board.zt_tier', '{{g}} gross vs {{tgt}} target at RPM {{rpm}} matches no tier.', { g, tgt, rpm: row.rpm ?? '—' });
+}
+
 export const nextDay = (iso: string) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 

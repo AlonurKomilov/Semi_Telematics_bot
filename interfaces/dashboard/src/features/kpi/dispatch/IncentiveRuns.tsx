@@ -43,7 +43,7 @@ import { ScrollRegion } from '../../../components/scrolling';
 import { toneClasses, toneText } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
 import RunBoard from './RunBoard';
-import { daysCell, daysSummary, isHandAdjusted, loadedDayCount, matchedTip } from './explain';
+import { daysCell, daysSummary, isHandAdjusted, loadedDayCount, matchedTip, zeroTip } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { SectionSwitcher } from '../SectionSwitcher';
 import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
@@ -404,11 +404,13 @@ export default function IncentiveRuns() {
             <>{Number(v)}%</>
           )}
           {Number(v) === 0 && r.zero_reason && r.zero_reason !== 'no_target' && (
-            <span className={`ml-1 text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
-              {r.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
-                : r.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
-                  : t('kpi_runs.zr_tier', 'no tier met')}
-            </span>
+            <Tip label={zeroTip(r, t)}>
+              <span tabIndex={0} className={`ml-1 text-xs font-medium cursor-help ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
+                {r.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
+                  : r.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
+                    : t('kpi_runs.zr_tier', 'no tier met')}
+              </span>
+            </Tip>
           )}
           {r.override_pct != null && (
             <span className={`ml-1 text-xs font-medium ${toneClasses('info')} px-2 py-0.5 rounded-md`}>
@@ -500,7 +502,7 @@ export default function IncentiveRuns() {
                   : draftOverdueDays(r) > 1 ? 'warn' : 'info')
               }`}>
                 {r.status === 'draft' && draftOverdueDays(r) > 1
-                  ? t('kpi_runs.draft_overdue', 'draft · {{d}}d', { d: draftOverdueDays(r) })
+                  ? t('kpi_runs.draft_overdue2', 'draft · {{d}}d old', { d: draftOverdueDays(r) })
                   : r.status}
               </span>
             </button>
@@ -576,6 +578,20 @@ export default function IncentiveRuns() {
               <div className="flex items-center gap-3">
                 {/* The figure Finalize commits, AT the button that
                     commits it — it was 12px muted text 640px away. */}
+                {draft && (
+                  /* Destructive action FIRST and fenced off by a divider
+                     — it sat at equal weight directly beside Finalize,
+                     where one 32px slip discards instead of commits. */
+                  <>
+                    <Button variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setDiscardOpen(true)}>
+                      <Trash2 size={14} className="mr-1.5" />
+                      {t('kpi_runs.discard', 'Discard draft')}
+                    </Button>
+                    <span className="h-5 w-px bg-border" aria-hidden />
+                  </>
+                )}
                 <span className="text-base font-semibold tabular-nums">
                   {usd(runTotal)}
                   {runGross > 0 && (
@@ -593,18 +609,10 @@ export default function IncentiveRuns() {
                   {t('kpi_runs.export', 'Export run')}
                 </Button>
                 {draft ? (
-                  <>
-                    <Button variant="ghost"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => setDiscardOpen(true)}>
-                      <Trash2 size={14} className="mr-1.5" />
-                      {t('kpi_runs.discard', 'Discard draft')}
-                    </Button>
-                    <Button onClick={() => setFinalizeOpen(true)}>
-                      <Lock size={14} className="mr-1.5" />
-                      {t('kpi_runs.finalize', 'Finalize run')}
-                    </Button>
-                  </>
+                  <Button onClick={() => setFinalizeOpen(true)}>
+                    <Lock size={14} className="mr-1.5" />
+                    {t('kpi_runs.finalize', 'Finalize run')}
+                  </Button>
                 ) : (
                   <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
                     <Lock size={12} />
@@ -649,12 +657,15 @@ export default function IncentiveRuns() {
                   { list: run.rows.filter((r) => Number(r.pct) === 0)
                       .map((r) => r.vehicle_unit || t('kpi_runs.unassigned', 'Unassigned'))
                       .join(', ') })}>
-                  <span className={`font-medium px-2 py-0.5 rounded-md ${toneClasses('warn')}`}>
-                    {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
+                  <span tabIndex={0} className="cursor-help underline decoration-dotted decoration-muted-foreground/60 underline-offset-4">
+                    <span className={`font-medium ${toneText('warn')}`}>
+                      {t('kpi_board.n_zero2', '{{n}} of {{total}} trucks at 0%',
+                        { n: zeroCount, total: run.rows.length })}
+                    </span>
                   </span>
                 </Tip>
               )}
-              {draft ? (
+              {draft && viewMode !== 'board' ? (
                 <button type="button" onClick={() => setViewMode('board')}
                   className="underline underline-offset-4 hover:text-foreground transition">
                   {markedDays === 1
@@ -663,6 +674,14 @@ export default function IncentiveRuns() {
                       ? t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })
                       : t('kpi_board.none_marked', 'no inactive days — mark on the board')}
                 </button>
+              ) : draft ? (
+                <span>
+                  {markedDays === 1
+                    ? t('kpi_board.one_marked', '1 day marked inactive')
+                    : markedDays > 0
+                      ? t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })
+                      : t('kpi_board.none_marked2', 'no inactive days — click a day below to mark one')}
+                </span>
               ) : (
                 <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
               )}
@@ -680,7 +699,7 @@ export default function IncentiveRuns() {
                 tinted strip, so nothing here borrows a control's pill
                 shape. */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-sm">
-              {Object.entries(run.payouts).map(([name, total]) => (
+              {Object.entries(run.payouts).sort((a, b) => b[1] - a[1]).map(([name, total]) => (
                 <span key={name} className="inline-flex items-center gap-1.5">
                   <span className="text-muted-foreground">{name}</span>
                   {runLoadsQ.data?.dispatcher_grades[name] && (

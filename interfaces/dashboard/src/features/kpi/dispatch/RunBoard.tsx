@@ -21,7 +21,7 @@ import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-re
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
-import { daysCell, daysSummary, loadedDayCount, matchedTip, nextDay } from './explain';
+import { daysCell, daysSummary, loadedDayCount, matchedTip, nextDay, zeroTip } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -56,24 +56,6 @@ const dayLabel = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 };
-
-/** The zero-reason, with the numbers that CAUSED it — a verdict without
- *  its threshold is unarguable and unexplainable. */
-function zeroTip(row: RunRow, t: (k: string, d: string, o?: Record<string, unknown>) => string): string {
-  const g = `$${Math.round(row.kpi_gross).toLocaleString()}`;
-  const tgt = row.adjusted_target
-    ? `$${Math.round(row.adjusted_target).toLocaleString()}` : '';
-  if (row.zero_reason === 'no_target') {
-    return t('kpi_board.zt_no_target', 'This company has no weekly target configured — set one in KPI configuration.');
-  }
-  if (row.zero_reason === 'floor') {
-    return t('kpi_board.zt_floor', '{{g}} gross at RPM {{rpm}} is under BOTH removal floors.', { g, rpm: row.rpm ?? '—' });
-  }
-  if (row.zero_reason === 'no_active_days') {
-    return t('kpi_board.zt_days', 'Every day of the window is marked inactive.');
-  }
-  return t('kpi_board.zt_tier', '{{g}} gross vs {{tgt}} target at RPM {{rpm}} matches no tier.', { g, tgt, rpm: row.rpm ?? '—' });
-}
 
 /** "Woodland, CA 1425734" → "Woodland, CA" (best-effort tidy). */
 const place = (s: string) => s.replace(/\s+\d+$/, '').trim();
@@ -122,6 +104,17 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
     list.push(row);
     byDispatcher.set(row.dispatcher_name, list);
   }
+  // A truck whose loads split between dispatchers gets a ROW PER
+  // DISPATCHER (KPI grades people; each row counts only that person's
+  // loads).  Unexplained, the second row reads as a duplicate-data bug
+  // — so each such card names its siblings.
+  const unitDispatchers = new Map<string, string[]>();
+  for (const row of run.rows) {
+    if (!row.vehicle_unit) continue;
+    const list = unitDispatchers.get(row.vehicle_unit) ?? [];
+    list.push(row.dispatcher_name);
+    unitDispatchers.set(row.vehicle_unit, list);
+  }
 
   const markDay = async (row: RunRow, day: string, reason: string | null) => {
     const existing = row.inactive_dates ?? [];
@@ -163,8 +156,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         /* The board's one non-obvious gesture, said once where the days
            are — a flat cell gives no affordance cue by itself. */
         <p className="text-xs text-muted-foreground">
-          {t('kpi_board.hint3',
-            'Click a day to mark it inactive (home time, repair, holiday) — the truck’s target lowers with each inactive day. Click an inactive day to make it count again — the target rises back.')}
+          {t('kpi_board.hint4',
+            'Click a day and pick a reason (home time, repair, holiday) to mark it inactive — the truck’s target lowers with each inactive day. Click an inactive day to make it count again — the target rises back.')}
         </p>
       )}
       {drift > 0 && (
@@ -216,6 +209,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           </span>
           {t('kpi_board.leg_meter', 'row meter — gross fills toward the next tier; the tick is the target; amber pays 0%')}
         </span>
+        {/* "stale" was defined only in the drift banner — which is gone
+            once scrolled past, leaving an amber pill with no definition
+            anywhere on screen. */}
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`inline-block rounded px-1.5 text-xs font-medium ${toneClasses('warn')}`}>{t('kpi_board.stale', 'stale')}</span>
+          {t('kpi_board.leg_stale', 'loads changed after generation — still pays from the snapshot')}
+        </span>
       </div>
       {draft && suggestionCount > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -245,7 +245,9 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                 : <ChevronDown size={16} className="text-muted-foreground shrink-0" />}
               <span className="text-sm font-semibold">{name}</span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {t('kpi_board.trucks', '{{n}} trucks', { n: rows.length })}
+                {rows.length === 1
+                  ? t('kpi_board.truck_one', '1 truck')
+                  : t('kpi_board.trucks', '{{n}} trucks', { n: rows.length })}
                 {' · '}{Math.round(miles).toLocaleString()} mi
                 {' · '}RPM {miles > 0 ? (baseGross / miles).toFixed(2) : '—'}
                 {' · '}{usd(gross)}
@@ -257,14 +259,14 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               <div
                 ref={registerScroller(name)}
                 onScroll={onBoardScroll}
-                className="overflow-x-auto snap-x scroll-pl-56"
+                className="overflow-x-auto snap-x scroll-pl-72"
               >
                 <div className="w-max min-w-full">
                   {/* Day header row. */}
                   <div className="flex border-b border-border bg-muted/20">
                     {/* w-72: the card's content wants ~290px — at w-56
                         every money line wrapped at the column edge. */}
-                    <div className={`sticky left-0 z-10 w-72 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
+                    <div className={`sticky left-0 z-20 w-72 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d, i) => (
@@ -286,6 +288,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                       stale={loadsQ.data?.drift.includes(row.id) ?? false}
                       scrolled={scrolled}
                       clickable={draft && busyRow !== row.id}
+                      alsoUnder={(unitDispatchers.get(row.vehicle_unit) ?? [])
+                        .filter((n) => n !== name)}
                       onMark={(day, reason) => markDay(row, day, reason)}
                     />
                   ))}
@@ -299,7 +303,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   );
 }
 
-function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, onMark, periodStart, periodEnd }: {
+function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, alsoUnder, onMark, periodStart, periodEnd }: {
   row: RunRow;
   days: string[];
   loads: RunLoad[] | undefined;
@@ -312,6 +316,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   /** Any card is horizontally scrolled — draw the frozen-column seam. */
   scrolled: boolean;
   clickable: boolean;
+  /** OTHER dispatchers this unit also has a row under in this run —
+   *  each row counts only its own dispatcher's loads. */
+  alsoUnder: string[];
   onMark: (day: string, reason: string | null) => void;
 }) {
   const { t } = useTranslation();
@@ -447,10 +454,26 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
       {/* Truck identity + its sheet numbers, pinned while days scroll.
           Gross and the zero-reason live HERE so a $0.00 row explains
           itself without switching to the sheet. */}
-      <div className={`sticky left-0 z-10 w-72 shrink-0 bg-card px-3 py-2 border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
+      <div className={`sticky left-0 z-20 w-72 shrink-0 bg-card px-3 py-2 border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
         <div className="text-sm font-medium">
-          {row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')}
+          {row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')}
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
+          {alsoUnder.length > 0 && (
+            /* The same truck under two dispatchers is BY DESIGN (each
+               row counts only its own dispatcher's loads) — but
+               unexplained it reads as duplicate data. */
+            <Tip label={t('kpi_board.also_under_tip',
+              'Unit {{unit}} also has a row under {{names}} in this run — each dispatcher’s row counts only the loads they dispatched on it.',
+              { unit: row.vehicle_unit, names: alsoUnder.join(', ') })}>
+              <span tabIndex={0}
+                className="ml-1.5 text-xs font-normal text-muted-foreground underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help whitespace-nowrap">
+                {t('kpi_board.also_under', 'also under {{name}}', {
+                  name: alsoUnder.length === 1
+                    ? alsoUnder[0].split(' ')[0]
+                    : t('kpi_board.n_others', '{{n}} others', { n: alsoUnder.length }) })}
+              </span>
+            </Tip>
+          )}
         </div>
         {/* One fact family per line — days, then money.  The old single
             run wrapped wherever the column edge fell, splitting facts
@@ -802,10 +825,27 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             items={[
               {
                 key: 'heading',
-                label: `${row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')} · ${dayLabel(d)}`,
+                label: `${row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')} · ${dayLabel(d)}`,
                 disabled: true,
                 onSelect: () => {},
               },
+              // The consequence AT the moment of choosing — it already
+              // lived in the cell's accessible name, invisible to the
+              // sighted user with the menu open.
+              ...(row.weekly_target != null ? [{
+                key: 'consequence',
+                label: reason == null
+                  ? t('kpi_board.menu_target_down', 'target {{a}} → {{b}}', {
+                      a: `$${Math.round(row.adjusted_target).toLocaleString()}`,
+                      b: `$${Math.round(Math.max(0, row.adjusted_target - row.weekly_target / 7)).toLocaleString()}`,
+                    })
+                  : t('kpi_board.menu_target_up', 'count it again: target {{a}} → {{b}}', {
+                      a: `$${Math.round(row.adjusted_target).toLocaleString()}`,
+                      b: `$${Math.round(row.adjusted_target + row.weekly_target / 7).toLocaleString()}`,
+                    }),
+                disabled: true,
+                onSelect: () => {},
+              }] : []),
               ...(reason == null && suggested.has(d) ? [{
                 key: 'confirm-suggest',
                 label: t('kpi_board.confirm_suggest',
@@ -845,7 +885,18 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                       stake: row.weekly_target != null
                         ? ` — ${t('kpi_board.aria_up', 'target +${{v}}',
                             { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
-                : t('kpi_board.day_aria_mark',
+                : suggested.has(d)
+                  /* The suggestion state must reach the screen reader —
+                     without this prefix a REPAIR? cell announced exactly
+                     like a plain empty day. */
+                  ? t('kpi_board.day_aria_suggest',
+                      '{{reason}} suggested — confirm {{day}} inactive for unit {{unit}}{{stake}}',
+                      { reason: suggested.get(d)!.reason,
+                        day: dayLabel(d), unit: row.vehicle_unit,
+                        stake: row.weekly_target != null
+                          ? ` — ${t('kpi_board.aria_down', 'target −${{v}}',
+                              { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
+                  : t('kpi_board.day_aria_mark',
                     'Mark {{day}} inactive for unit {{unit}}{{stake}}',
                     { day: dayLabel(d), unit: row.vehicle_unit,
                       stake: row.weekly_target != null
