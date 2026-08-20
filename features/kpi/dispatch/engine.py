@@ -238,8 +238,12 @@ def next_tier_gap(
     rises with gross on fixed miles).  Tier admission compares the
     ROUNDED rpm, so this is conservative by at most half a cent-per-
     mile — a gap that slightly overshoots never under-promises.
-    Returns {pct, gap, dollars_at} for the NEAREST higher tier by gap,
-    or None (non-ladder, no higher tier, unreachable, or no days).
+    Returns {pct, gap, dollars_at, min_rpm} for the NEAREST higher tier
+    by gap, or None (non-ladder, no higher tier, unreachable, or no
+    days).  ``min_rpm`` is the tier's own RPM condition (None when it
+    has none) — the UI needs it to say the gap honestly: a gap on an
+    RPM tier only closes with revenue on the SAME miles, and a cheap
+    extra load can move the tier further away.
     """
     if config.get("model", "ladder") != "ladder" or active_days <= 0:
         return None
@@ -267,14 +271,15 @@ def next_tier_gap(
         if gap <= 0:
             continue                   # already satisfied -> not a target
         if best is None or gap < best[0]:
-            best = (gap, pct, required)
+            best = (gap, pct, required, mr)
     if best is None:
         return None
-    gap, pct, required = best
+    gap, pct, required, mr = best
     return {
         "pct": pct,
         "gap": money(gap),
         "dollars_at": money(required * pct / 100),
+        "min_rpm": float(mr) if mr is not None else None,
     }
 
 

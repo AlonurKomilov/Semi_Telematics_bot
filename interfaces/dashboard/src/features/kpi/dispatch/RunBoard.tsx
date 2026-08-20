@@ -21,7 +21,7 @@ import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-re
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Tip } from '../../../components/tooltip';
-import { daysCell, loadedDayCount, matchedTip, nextDay } from './explain';
+import { daysCell, daysSummary, loadedDayCount, matchedTip, nextDay } from './explain';
 import { DaysTipContent } from './DaysTip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../lib/status';
@@ -209,6 +209,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           </span>
           {t('kpi_board.leg_empty2', 'no loads, counting — click to mark inactive')}
         </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="relative inline-block h-1 w-10 rounded bg-muted" aria-hidden>
+            <span className="absolute inset-y-0 left-0 rounded bg-ok" style={{ width: '78%' }} />
+            <span className="absolute -top-0.5 -bottom-0.5 w-px bg-muted-foreground" style={{ left: '62%' }} />
+          </span>
+          {t('kpi_board.leg_meter', 'row meter — gross fills toward the next tier; the tick is the target; amber pays 0%')}
+        </span>
       </div>
       {draft && suggestionCount > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -370,6 +377,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   }
   const inWindow = (d: string) =>
     d >= row.window_start.slice(0, 10) && d <= row.window_end.slice(0, 10);
+  const loadedDays = loadedDayCount(loads, row.window_start, row.window_end);
 
   // The row meter — a glance-scale answer to "how is this truck doing"
   // that the numbers alone can't give across twenty rows.  Scale: $0 →
@@ -403,6 +411,32 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
       : t('kpi_board.meter_tip3', 'Gross {{g}} of the {{tgt}} target.',
         { g: money0(meterGross), tgt: money0(meterTarget) });
 
+  // The next-tier line's honesty kit.  The gap is GROSS dollars but the
+  // payout is PAY dollars — two currencies in one sentence — and on an
+  // RPM tier the gap only closes with revenue at CURRENT miles: a cheap
+  // extra load adds miles and moves the tier AWAY.  The surface says
+  // both briefly; this tip says them properly.
+  const tierDelta = row.next_tier
+    ? row.next_tier.dollars_at - row.confirmed_dollars : 0;
+  const tierTip = !row.next_tier ? '' : [
+    tierDelta > 0
+      ? t('kpi_board.tier_pay2',
+        'At the {{pct}}% tier this row pays {{at}} — {{d}} more than now.',
+        { pct: row.next_tier.pct, at: usd(row.next_tier.dollars_at),
+          d: usd(tierDelta) })
+      : t('kpi_board.tier_pay',
+        'At the {{pct}}% tier this row pays {{at}}.',
+        { pct: row.next_tier.pct, at: usd(row.next_tier.dollars_at) }),
+    row.next_tier.min_rpm != null
+      ? t('kpi_board.tier_rpm',
+        'The tier needs RPM ≥ {{rpm}}, so the {{gap}} gap holds at your current miles: more revenue on the SAME miles lifts RPM — an extra cheap load adds miles and can move the tier further away.',
+        { rpm: row.next_tier.min_rpm.toFixed(2),
+          gap: money0(row.next_tier.gap) })
+      : t('kpi_board.tier_any',
+        '{{gap}} more gross reaches it at any miles — this tier has no RPM condition.',
+        { gap: money0(row.next_tier.gap) }),
+  ].join(' ');
+
   return (
     <div className="flex border-b border-border last:border-b-0">
       {/* Truck identity + its sheet numbers, pinned while days scroll.
@@ -422,8 +456,14 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           <Tip label={<DaysTipContent row={row} loads={loads}
             draft={clickable} periodStart={periodStart}
             periodEnd={periodEnd} t={t} />}>
-            <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-              {daysCell(row, loadedDayCount(loads, row.window_start, row.window_end), t)}
+            {/* tabIndex: every Tip on this card opens on keyboard focus
+                too — the card must not be mouse-only.  The aria-label is
+                the breakdown as one sentence (the visual Tip is JSX a
+                reader can't see). */}
+            <span tabIndex={0}
+              aria-label={daysSummary(row, loadedDays, t)}
+              className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+              {daysCell(row, loadedDays, t)}
             </span>
           </Tip>
         </div>
@@ -437,25 +477,46 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               </span>
             )}
           </span>
-          {' · '}
-          {row.matched_rule ? (
-            <Tip label={matchedTip(row.matched_rule, t)}>
-              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
-                {Number(row.pct)}%
+          {row.rpm != null && (
+            /* RPM is what most tiers actually test — without it, two
+               adjacent rows where MORE gross pays LESS look broken. */
+            <>
+              {' · '}
+              <span className="whitespace-nowrap">
+                {t('kpi_board.rpm', 'RPM {{r}}',
+                  { r: Number(row.rpm).toFixed(2) })}
               </span>
-            </Tip>
-          ) : (
-            <>{Number(row.pct)}%</>
+            </>
           )}
-          {' → '}
-          {/* The row's ANSWER — the one number the reader came for. */}
-          <span className="font-medium text-foreground whitespace-nowrap">
-            {usd(row.confirmed_dollars)}
+          {' · '}
+          {/* % → payout is ONE fact — never let a wrap sever the arrow
+              from its result. */}
+          <span className="whitespace-nowrap">
+            {row.matched_rule ? (
+              <Tip label={matchedTip(row.matched_rule, t)}>
+                <span tabIndex={0} aria-label={matchedTip(row.matched_rule, t)}
+                  className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                  {Number(row.pct)}%
+                </span>
+              </Tip>
+            ) : (
+              <>{Number(row.pct)}%</>
+            )}
+            {' → '}
+            {/* The row's ANSWER — the one number the reader came for. */}
+            <span className="font-medium text-foreground">
+              {usd(row.confirmed_dollars)}
+            </span>
           </span>
         </div>
-        {Number(row.pct) === 0 && row.zero_reason && (
+        {/* The no_tier chip only earns its space when the next-tier line
+            is absent (finalized runs) — beside it, "no tier met" ·
+            "0% → $0.00" · "$X more → 1% tier" said one fact three times
+            in a four-line card. */}
+        {Number(row.pct) === 0 && row.zero_reason
+          && !(row.zero_reason === 'no_tier' && row.next_tier) && (
           <Tip label={zeroTip(row, t)}>
-            <span className={`mt-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
+            <span tabIndex={0} className={`mt-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {row.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
                 : row.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
                   : row.zero_reason === 'no_target' ? t('kpi_runs.zr_target', 'no target')
@@ -465,22 +526,47 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         )}
         {row.next_tier && (
           /* Endowed progress: the row is already most of the way to the
-             next tier — a shortfall stated in dollars converts a dead
-             number into a target. */
+             next tier — a shortfall converted into a target.  Two
+             nowrap segments (goal · pay) so the narrow card breaks
+             BETWEEN them, never inside; "same miles" surfaces the RPM
+             tiers' real condition — the gap grows if cheap miles come
+             with the revenue (the Tip says why). */
           <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-            {t('kpi_board.next_tier',
-              '{{gap}} short of the {{pct}}% tier ({{at}})',
-              { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
-                pct: row.next_tier.pct,
-                at: `$${row.next_tier.dollars_at.toFixed(2)}` })}
+            <Tip label={tierTip}>
+              <span tabIndex={0} aria-label={tierTip}
+                className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                <span className="whitespace-nowrap">
+                  {row.next_tier.min_rpm != null
+                    ? t('kpi_board.next_tier3',
+                      '{{gap}} more (same miles) → {{pct}}% tier',
+                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
+                        pct: row.next_tier.pct })
+                    : t('kpi_board.next_tier4',
+                      '{{gap}} more gross → {{pct}}% tier',
+                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
+                        pct: row.next_tier.pct })}
+                </span>
+                {' · '}
+                <span className="whitespace-nowrap">
+                  {tierDelta > 0
+                    ? t('kpi_board.next_pays2', 'pays {{at}} (+{{d}})',
+                      { at: usd(row.next_tier.dollars_at), d: usd(tierDelta) })
+                    : t('kpi_board.next_pays', 'pays {{at}}',
+                      { at: usd(row.next_tier.dollars_at) })}
+                </span>
+              </span>
+            </Tip>
           </div>
         )}
         {meter && (
           <Tip label={meterTip}>
-            {/* py-1 -my-1 grows the hover area without moving layout —
-                a bare 4px strip is unhoverable. */}
-            <div className="mt-1 py-1 -my-1 cursor-help">
-              <div className="relative h-1 w-40 max-w-full rounded bg-muted" aria-hidden="true">
+            {/* py-1 -my-1 grows the hover/focus area without moving
+                layout — a bare 4px strip is unhoverable.  role="img" +
+                the tip text as its name: the meter carries three values
+                and must exist in the accessibility tree. */}
+            <div tabIndex={0} role="img" aria-label={meterTip}
+              className="mt-1 py-1 -my-1 cursor-help">
+              <div className="relative h-1 w-40 max-w-full rounded bg-muted">
                 <div className={`h-full rounded ${meter.earning ? 'bg-ok' : 'bg-warn'}`}
                   style={{ width: `${meter.fill}%` }} />
                 {meter.tick != null && (
@@ -493,7 +579,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         )}
         {stale && (
           <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
-            <span className={`mt-1 ml-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
+            <span tabIndex={0} className={`mt-1 ml-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {t('kpi_board.stale', 'stale')}
             </span>
           </Tip>

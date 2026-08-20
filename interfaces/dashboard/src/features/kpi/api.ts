@@ -225,7 +225,13 @@ export interface RunRow {
   confirmed_at: string;
   /** DRAFT only, ladder only: the nearest higher tier and the extra
    *  gross that reaches it — "$1,050 short of the 1.5% tier". */
-  next_tier?: { pct: number; gap: number; dollars_at: number } | null;
+  next_tier?: {
+    pct: number; gap: number; dollars_at: number;
+    /** The tier's own RPM condition — when set, the gap only closes
+     *  with revenue at CURRENT miles (a cheap extra load adds miles
+     *  and can move the tier away). */
+    min_rpm?: number | null;
+  } | null;
   /** Paid rows only: the snapshot rule that produced this percent —
    *  the paid-row mirror of zero_reason.  Omitted for overrides,
    *  zeros, and rows whose stored pct an engine change can no longer

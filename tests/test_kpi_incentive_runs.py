@@ -649,6 +649,9 @@ class TestNotePreviewAndGaps:
             # the requires_target 1.5% tier.
             assert t225["next_tier"]["pct"] == 1.5
             assert t225["next_tier"]["gap"] == 15_000.00   # 32,000 target − 17,000
+            # The tier's own RPM condition rides along — the UI phrases
+            # the gap "at current miles" only when one exists.
+            assert t225["next_tier"]["min_rpm"] == 2.0
             # user_names map resolves attribution ids.
             assert isinstance(run["user_names"], dict)
 

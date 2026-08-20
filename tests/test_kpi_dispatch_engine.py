@@ -229,7 +229,18 @@ class TestNextTierGap:
             {"model": "ladder"}, self.LADDER,
             base_gross=7_950, extras=0, miles=2_826.39,
             weekly_target=8_000, active_days=7, current_pct=1.0)
-        assert g == {"pct": 1.5, "gap": 50.0, "dollars_at": 120.0}
+        assert g == {"pct": 1.5, "gap": 50.0, "dollars_at": 120.0,
+                     "min_rpm": 2.2}
+
+    def test_no_rpm_tier_reports_null_condition(self):
+        # A target-only tier: the gap is pure gross, valid at any miles
+        # — min_rpm None tells the UI to skip the miles caveat.
+        g = engine.next_tier_gap(
+            {"model": "ladder"}, [{"requires_target": True, "pct": 1.0}],
+            base_gross=5_000, extras=0, miles=2_000,
+            weekly_target=8_000, active_days=7, current_pct=0.0)
+        assert g == {"pct": 1.0, "gap": 3_000.0, "dollars_at": 80.0,
+                     "min_rpm": None}
 
     def test_rpm_condition_converts_to_gross(self):
         # Target met but RPM 2.1 < 2.2: the binding condition is
