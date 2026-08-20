@@ -24,11 +24,12 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowRight, BadgeDollarSign, CalendarRange, Check, Download, ListChecks,
+  ArrowRight, BadgeDollarSign, CalendarRange, Check, Download, History, ListChecks,
   Loader2, Lock, Pencil, Plus, Scale, StickyNote, Table2, Trash2, Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DataGrid from '../../../components/datagrid';
+import { ActivityTrailDialog } from '../../../components/activity-trail/ActivityTrailDialog';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../../components/shell';
 import { Button } from '../../../components/ui/button';
 import {
@@ -148,6 +149,7 @@ export default function IncentiveRuns() {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recreateOpen, setRecreateOpen] = useState(false);
   const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
+  const [trailOpen, setTrailOpen] = useState(false);
   const [loadsRow, setLoadsRow] = useState<RunRow | null>(null);
   const [showAllRuns, setShowAllRuns] = useState(false);
   // Sheet = the numeric settlement (DataGrid); Board = the same run laid
@@ -691,6 +693,14 @@ export default function IncentiveRuns() {
                 <ListChecks size={12} />
                 {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
               </button>
+              {/* The run's who-did-what record — every payout-moving
+                  edit (day marks, extras, overrides, finalize) with
+                  its author and old → new values. */}
+              <button type="button" onClick={() => setTrailOpen(true)}
+                className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 text-muted-foreground hover:border-ring transition">
+                <History size={12} />
+                {t('kpi_runs.activity', 'Activity')}
+              </button>
             </div>
 
             <RunNoteLine run={run} onSaved={refresh} />
@@ -798,6 +808,14 @@ export default function IncentiveRuns() {
           onSaved={() => { setExceptRow(null); refresh(); }}
         />
       )}
+
+      <ActivityTrailDialog
+        entityType="kpi_run"
+        entityId={run?.id ?? null}
+        title={t('kpi_runs.activity_title', 'Run activity — who changed what')}
+        open={trailOpen}
+        onOpenChange={setTrailOpen}
+      />
 
       <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
         <DialogContent className="max-w-lg">

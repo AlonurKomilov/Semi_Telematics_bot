@@ -662,6 +662,41 @@ class TestNotePreviewAndGaps:
             # A finalized row has no next move — no gap is offered.
             assert "next_tier" not in fin["rows"][0]
 
+    async def test_run_edits_write_the_activity_trail(self, seeded):
+        """Every payout-moving mutation leaves an attributed trail
+        event on the run: created, row inputs edited (with old → new
+        values), finalized.  Day marks change money — an unrecorded
+        mark would be a payout moved with no audit trail."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            row = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            r = await c.patch(
+                f"/api/kpi/dispatch/runs/{run['id']}/rows/{row['id']}",
+                json={"inactive_dates": [
+                    {"date": "2026-07-02", "reason": "repair"}]},
+                headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            await c.post(f"/api/kpi/dispatch/runs/{run['id']}/finalize",
+                         headers=_h(seeded["owner"]))
+
+            events = await seeded["db"].list_activity_events(
+                seeded["acct"].id,
+                entity_type="kpi_run", entity_id=str(run["id"]))
+            actions = [e["action"] for e in events]
+            assert "create" in actions
+            assert "finalize" in actions
+            edit = next(e for e in events if e["action"] == "row_update")
+            assert edit["actor_user_id"] is not None
+            assert edit["context"]["unit"] == "225"
+            ch = edit["changes"]
+            assert ch["inactive_dates"]["to"] == [
+                {"date": "2026-07-02", "reason": "repair"}]
+            assert ch["inactive_days"] == {"from": 0, "to": 1}
+            # The mark moved the target — the trail carries the money.
+            assert "adjusted_target" in ch
+
 
 class TestRulesPreview:
     async def test_preview_reprices_latest_run_without_writing(self, seeded):

@@ -237,6 +237,16 @@ async def create_run(
         row.update(_recompute(row, snapshot))
         await tenant.insert_kpi_run_row(run_id, account_id, row)
 
+    from capabilities.activity_trail import record_simple
+    # created_by=0 is the auto-run scheduler — the trail is people-only,
+    # so a system creation records with no actor (renders as "system").
+    await record_simple(
+        tenant, account_id, created_by or None, "create", "kpi_run", run_id,
+        changes={"period": {"from": None,
+                            "to": f"{period_start[:10]} – {period_end[:10]}"},
+                 "rows": {"from": None, "to": len(groups)}},
+        context=None if created_by else {"system": "kpi auto-run scheduler"},
+    )
     return run_id
 
 
@@ -265,6 +275,7 @@ async def update_row(
     row = await tenant.get_kpi_run_row(account_id, run_id, row_id)
     if row is None:
         raise RunError("row not found")
+    before = dict(_parse_inactive_dates(dict(row)))
 
     editable = {"window_start", "window_end", "inactive_days",
                 "inactive_reason", "inactive_dates", "extras", "extras_note"}
@@ -327,8 +338,23 @@ async def update_row(
         "zero_reason": row.get("zero_reason", ""),
         "confirmed_dollars": row["confirmed_dollars"],
     })
-    return _parse_inactive_dates(
+    fresh = _parse_inactive_dates(
         await tenant.get_kpi_run_row(account_id, run_id, row_id))
+    from capabilities.activity_trail import diff_rows, record_simple
+    changes = diff_rows(before, fresh, fields=[
+        "window_start", "window_end", "inactive_days", "inactive_reason",
+        "inactive_dates", "extras", "extras_note",
+        "adjusted_target", "pct", "confirmed_dollars",
+    ])
+    if changes:
+        await record_simple(
+            tenant, account_id, updated_by, "row_update", "kpi_run", run_id,
+            changes=changes,
+            context={"row_id": row_id,
+                     "unit": row.get("vehicle_unit") or "",
+                     "dispatcher": row.get("dispatcher_name") or ""},
+        )
+    return fresh
 
 
 async def set_exception(
@@ -346,6 +372,7 @@ async def set_exception(
     row = await tenant.get_kpi_run_row(account_id, run_id, row_id)
     if row is None:
         raise RunError("row not found")
+    before = dict(row)
     snapshot = json.loads(run["config_snapshot"])
 
     if override_pct is None:
@@ -369,8 +396,21 @@ async def set_exception(
                  "confirmed_by": confirmed_by,
                  "confirmed_at": datetime.now(timezone.utc).isoformat()}
     await tenant.update_kpi_run_row(account_id, run_id, row_id, patch)
-    return _parse_inactive_dates(
+    fresh = _parse_inactive_dates(
         await tenant.get_kpi_run_row(account_id, run_id, row_id))
+    from capabilities.activity_trail import diff_rows, record_simple
+    changes = diff_rows(before, fresh, fields=[
+        "override_pct", "override_reason", "confirmed_dollars",
+    ])
+    if changes:
+        await record_simple(
+            tenant, account_id, confirmed_by, "row_override", "kpi_run",
+            run_id, changes=changes,
+            context={"row_id": row_id,
+                     "unit": row.get("vehicle_unit") or "",
+                     "dispatcher": row.get("dispatcher_name") or ""},
+        )
+    return fresh
 
 
 async def get_run_detail(account_id: int, run_id: int) -> dict:
@@ -619,7 +659,17 @@ async def finalize_run(account_id: int, run_id: int,
         raise RunError("tenant DB unavailable")
     await _open_run(tenant, account_id, run_id)
     await tenant.finalize_kpi_run(account_id, run_id, finalized_by)
-    return await get_run_detail(account_id, run_id)
+    detail = await get_run_detail(account_id, run_id)
+    from capabilities.activity_trail import record_simple
+    total = round(sum(
+        float(r["confirmed_dollars"]) for r in detail["rows"]), 2)
+    await record_simple(
+        tenant, account_id, finalized_by, "finalize", "kpi_run", run_id,
+        changes={"status": {"from": "draft", "to": "finalized"},
+                 "total": {"from": None, "to": total},
+                 "rows": {"from": None, "to": len(detail["rows"])}},
+    )
+    return detail
 
 
 async def export_run_csv(account_id: int, run_id: int) -> tuple[str, str]:
@@ -823,7 +873,8 @@ async def preview_run(account_id: int, *, period_start: str,
             "dispatchers": len(dispatchers), "gross": engine.money(gross)}
 
 
-async def discard_run(account_id: int, run_id: int) -> None:
+async def discard_run(account_id: int, run_id: int,
+                      *, discarded_by: int | None = None) -> None:
     """Discard a DRAFT run — the mistake-recovery path.  A draft is
     regenerable from the same period at any time, so discarding one loses
     only hand-entered adjustments; a FINALIZED run is the paid record and
@@ -839,3 +890,12 @@ async def discard_run(account_id: int, run_id: int) -> None:
             "this run is finalized — the paid record cannot be discarded")
     if not await tenant.delete_kpi_run(account_id, run_id):
         raise RunError("run not found")
+    from capabilities.activity_trail import record_simple
+    await record_simple(
+        tenant, account_id, discarded_by, "delete", "kpi_run", run_id,
+        context=None if discarded_by else {"system": "unattributed discard"},
+        changes={"period": {
+            "from": f"{str(run['period_start'])[:10]} – {str(run['period_end'])[:10]}",
+            "to": None,
+        }, "status": {"from": "draft", "to": None}},
+    )

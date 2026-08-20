@@ -232,6 +232,9 @@ async def finalize(run_id: int, user: dict = Depends(_incentives)):
 async def discard_run(run_id: int, user: dict = Depends(_incentives)):
     """Discard a DRAFT run.  Finalized runs 409 — the paid record."""
     try:
-        await runs_service.discard_run(int(user["account_id"]), run_id)
+        await runs_service.discard_run(
+            int(user["account_id"]), run_id,
+            discarded_by=await resolve_user_id(user),
+        )
     except runs_service.RunError as e:
         _run_error(e)

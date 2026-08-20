@@ -45,6 +45,9 @@ export interface ActivityEvent {
 /** Action → sentence fragment. Unknown actions fall through readable. */
 export const ACTION_LABEL: Record<string, string> = {
   create: 'Created',
+  row_update: 'Row edited',
+  row_override: 'Override set',
+  finalize: 'Finalized',
   update: 'Edited',
   delete: 'Deleted',
   complete: 'Completed',
@@ -85,6 +88,7 @@ export function actionLabel(action: string): string {
 
 /** Entity type → feature word for the account-wide feed. */
 export const ENTITY_LABEL: Record<string, string> = {
+  kpi_run: 'KPI run',
   maintenance_task: 'Maintenance task',
   maintenance_template: 'Maintenance template',
   maintenance: 'Maintenance task',       // frozen-log rows
