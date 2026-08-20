@@ -488,9 +488,12 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               </span>
             </>
           )}
-          {' · '}
-          {/* % → payout is ONE fact — never let a wrap sever the arrow
-              from its result. */}
+        </div>
+        {/* The payout gets its OWN line on every row — with RPM on the
+            line above, one shared line wrapped at the column edge and
+            stranded a trailing "·" again.  A constant two-line shape
+            breaks nothing and scans the same on every card. */}
+        <div className="text-xs text-muted-foreground tabular-nums">
           <span className="whitespace-nowrap">
             {row.matched_rule ? (
               <Tip label={matchedTip(row.matched_rule, t)}>
@@ -533,20 +536,25 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
              with the revenue (the Tip says why). */
           <div className="mt-1 text-xs text-muted-foreground tabular-nums">
             <Tip label={tierTip}>
+              {/* Three complete phrases joined by SPACES — a wrap can
+                  only land between them, so no separator dot ever
+                  dangles at a line edge, and mid-line it still reads
+                  as one sentence ("… tier pays $257.33"). */}
               <span tabIndex={0} aria-label={tierTip}
                 className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
                 <span className="whitespace-nowrap">
                   {row.next_tier.min_rpm != null
-                    ? t('kpi_board.next_tier3',
-                      '{{gap}} more (same miles) → {{pct}}% tier',
-                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
-                        pct: row.next_tier.pct })
-                    : t('kpi_board.next_tier4',
-                      '{{gap}} more gross → {{pct}}% tier',
-                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}`,
-                        pct: row.next_tier.pct })}
+                    ? t('kpi_board.next_gap2', '{{gap}} more (same miles)',
+                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}` })
+                    : t('kpi_board.next_gap', '{{gap}} more gross',
+                      { gap: `$${Math.round(row.next_tier.gap).toLocaleString()}` })}
                 </span>
-                {' · '}
+                {' '}
+                <span className="whitespace-nowrap">
+                  {t('kpi_board.next_goal', '→ {{pct}}% tier',
+                    { pct: row.next_tier.pct })}
+                </span>
+                {' '}
                 <span className="whitespace-nowrap">
                   {tierDelta > 0
                     ? t('kpi_board.next_pays2', 'pays {{at}} (+{{d}})',
