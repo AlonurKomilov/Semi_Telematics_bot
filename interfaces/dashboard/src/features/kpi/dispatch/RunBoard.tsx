@@ -14,7 +14,7 @@
  * reports drift per row, surfaced as a banner — the board must never
  * silently disagree with the sheet.
  */
-import { useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
@@ -32,6 +32,10 @@ import {
 } from '../api';
 
 const REASONS = ['home time', 'repair', 'holiday'];
+// Frozen empties: `?? []` allocates a NEW array every render, which
+// makes every memoized row look changed.
+const EMPTY_NAMES: string[] = [];
+const EMPTY_SUGGESTIONS: DaySuggestion[] = [];
 
 function usd(v: number): string {
   return `$${v.toLocaleString(undefined, {
@@ -57,6 +61,12 @@ const dayLabel = (iso: string) => {
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 };
 
+// Rows outside the viewport skip layout and paint; the intrinsic size
+// is the row's exact rendered height, so scrolling never shifts.
+const CV_ROW = {
+  contentVisibility: 'auto', containIntrinsicSize: 'auto 9rem',
+} as React.CSSProperties;
+
 /** "Woodland, CA 1425734" → "Woodland, CA" (best-effort tidy). */
 const place = (s: string) => s.replace(/\s+\d+$/, '').trim();
 
@@ -75,20 +85,32 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   // Each dispatcher's card scrolls ALONE (owner decision 2026-08-20):
   // a manager reviews one person at a time and their loads differ, so
   // the cards never mirror each other.  Do not reintroduce a shared
-  // scroll position.  The state only flips at the 0-boundary, so this
-  // never re-renders at scroll rate.
-  const [scrolledMap, setScrolledMap] = useState<Record<string, boolean>>({});
-  const onBoardScroll = (key: string) => (e: React.UIEvent<HTMLDivElement>) => {
-    const on = e.currentTarget.scrollLeft > 0;
-    setScrolledMap((m) => (!!m[key] === on ? m : { ...m, [key]: on }));
-  };
+  // scroll position.
+  //
+  // The seam shadow is toggled IMPERATIVELY on the unit pane's node —
+  // never through state.  A setState at the 0-boundary re-rendered
+  // every section, row and day cell at the exact moment the user
+  // started scrolling, which read as a freeze.
+  const unitPanesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const registerUnitPane = useCallback(
+    (key: string) => (el: HTMLDivElement | null) => {
+      const m = unitPanesRef.current;
+      if (el) m.set(key, el); else m.delete(key);
+    }, []);
+  const onBoardScroll = useCallback(
+    (key: string) => (e: React.UIEvent<HTMLDivElement>) => {
+      const pane = unitPanesRef.current.get(key);
+      if (pane) pane.classList.toggle('shadow-md', e.currentTarget.scrollLeft > 0);
+    }, []);
 
   const loadsQ = useQuery({
     queryKey: ['kpi-incentive-run-loads', run.id],
     queryFn: () => getIncentiveRunLoads(run.id),
   });
 
-  const days = dayRange(run.period_start, run.period_end);
+  const days = useMemo(
+    () => dayRange(run.period_start, run.period_end),
+    [run.period_start, run.period_end]);
   const byDispatcher = new Map<string, RunRow[]>();
   for (const row of run.rows) {
     const list = byDispatcher.get(row.dispatcher_name) ?? [];
@@ -99,15 +121,26 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   // DISPATCHER (KPI grades people; each row counts only that person's
   // loads).  Unexplained, the second row reads as a duplicate-data bug
   // — so each such card names its siblings.
-  const unitDispatchers = new Map<string, string[]>();
-  for (const row of run.rows) {
-    if (!row.vehicle_unit) continue;
-    const list = unitDispatchers.get(row.vehicle_unit) ?? [];
-    list.push(row.dispatcher_name);
-    unitDispatchers.set(row.vehicle_unit, list);
-  }
+  const alsoUnderByRow = useMemo(() => {
+    const byUnit = new Map<string, string[]>();
+    for (const row of run.rows) {
+      if (!row.vehicle_unit) continue;
+      const list = byUnit.get(row.vehicle_unit) ?? [];
+      list.push(row.dispatcher_name);
+      byUnit.set(row.vehicle_unit, list);
+    }
+    // One STABLE array per row id — a fresh .filter() per render would
+    // defeat memo on every card.
+    const out = new Map<number, string[]>();
+    for (const row of run.rows) {
+      const others = (byUnit.get(row.vehicle_unit) ?? [])
+        .filter((n) => n !== row.dispatcher_name);
+      out.set(row.id, others.length ? others : EMPTY_NAMES);
+    }
+    return out;
+  }, [run.rows]);
 
-  const markDay = async (row: RunRow, day: string, reason: string | null) => {
+  const markDay = useCallback(async (row: RunRow, day: string, reason: string | null) => {
     const existing = row.inactive_dates ?? [];
     const marks: InactiveDate[] = reason == null
       ? existing.filter((m) => m.date !== day)
@@ -129,7 +162,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
     } finally {
       setBusyRow(null);
     }
-  };
+  }, [qc, run.id, onChanged]);
 
   const drift = loadsQ.data
     ? loadsQ.data.drift.length + (loadsQ.data.unmatched_loads > 0 ? 1 : 0)
@@ -255,7 +288,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                 {/* Unit pane — OUTSIDE the scroller: this info never
                     moves, so the scrollbar must not run under it.
                     w-72: the card's content wants ~290px. */}
-                <div className={`w-72 shrink-0 border-r border-border ${scrolledMap[name] ? 'shadow-md' : ''}`}>
+                <div ref={registerUnitPane(name)}
+                  className="w-72 shrink-0 border-r border-border">
                   <div className="flex h-8 items-center bg-muted px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground border-b border-border">
                     {t('kpi_board.unit', 'Unit')}
                   </div>
@@ -268,12 +302,11 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                       loads={loadsQ.data ? (loadsQ.data.rows[String(row.id)] ?? []) : undefined}
                       periodStart={run.period_start}
                       periodEnd={run.period_end}
-                      suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
+                      suggestions={loadsQ.data?.suggestions[String(row.id)] ?? EMPTY_SUGGESTIONS}
                       stale={loadsQ.data?.drift.includes(row.id) ?? false}
                       clickable={draft && busyRow !== row.id}
-                      alsoUnder={(unitDispatchers.get(row.vehicle_unit) ?? [])
-                        .filter((n) => n !== name)}
-                      onMark={(day, reason) => markDay(row, day, reason)}
+                      alsoUnder={alsoUnderByRow.get(row.id) ?? EMPTY_NAMES}
+                      onMark={markDay}
                     />
                   ))}
                 </div>
@@ -281,7 +314,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                     scrollbar starts where the calendar starts. */}
                 <div
                   onScroll={onBoardScroll(name)}
-                  className="min-w-0 flex-1 overflow-x-auto snap-x"
+                  className="min-w-0 flex-1 overflow-x-auto"
                 >
                   {/* minWidth is the scroll floor: below 112px/day the
                       pane scrolls; above it the columns grow equally,
@@ -289,7 +322,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                   <div className="min-w-full" style={{ minWidth: days.length * 112 }}>
                     <div className="flex h-8 border-b border-border bg-muted">
                       {days.map((d) => (
-                        <div key={d} className="flex flex-1 snap-start items-center px-2 text-xs text-muted-foreground border-r border-border last:border-r-0">
+                        <div key={d} className="flex flex-1 items-center px-2 text-xs text-muted-foreground border-r border-border last:border-r-0">
                           {dayLabel(d)}
                         </div>
                       ))}
@@ -303,11 +336,11 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                         loads={loadsQ.data ? (loadsQ.data.rows[String(row.id)] ?? []) : undefined}
                         periodStart={run.period_start}
                         periodEnd={run.period_end}
-                        suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
+                        suggestions={loadsQ.data?.suggestions[String(row.id)] ?? EMPTY_SUGGESTIONS}
                         stale={loadsQ.data?.drift.includes(row.id) ?? false}
                         clickable={draft && busyRow !== row.id}
-                        alsoUnder={[]}
-                        onMark={(day, reason) => markDay(row, day, reason)}
+                        alsoUnder={EMPTY_NAMES}
+                        onMark={markDay}
                       />
                     ))}
                   </div>
@@ -322,7 +355,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   );
 }
 
-function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoUnder, onMark, periodStart, periodEnd }: {
+const BoardRow = memo(function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoUnder, onMark, periodStart, periodEnd }: {
   /** Which pane this instance renders: the static unit cell or the
    *  scrolling day cells.  Both panes map the same rows at the same
    *  FIXED height (h-36), so they stay aligned without sharing a DOM
@@ -341,7 +374,7 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
   /** OTHER dispatchers this unit also has a row under in this run —
    *  each row counts only its own dispatcher's loads. */
   alsoUnder: string[];
-  onMark: (day: string, reason: string | null) => void;
+  onMark: (row: RunRow, day: string, reason: string | null) => void;
 }) {
   const { t } = useTranslation();
   const marks = new Map((row.inactive_dates ?? []).map((m) => [m.date, m.reason]));
@@ -485,7 +518,8 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
          live HERE so a $0.00 row explains itself without switching to
          the sheet.  h-36 is the row-height CONTRACT with the days pane
          — overflow-hidden guards it. */
-      <div className="h-36 overflow-hidden px-3 py-2 border-b border-border last:border-b-0">
+      <div className="h-36 overflow-hidden px-3 py-2 border-b border-border last:border-b-0"
+        style={CV_ROW}>
         <div className="flex items-center gap-1.5 text-sm font-medium whitespace-nowrap">
           <span className="shrink-0">{row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')}</span>
           <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.company_code}</span>
@@ -630,7 +664,7 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
   }
 
   return (
-    <div className="flex h-36 border-b border-border last:border-b-0">
+    <div className="flex h-36 border-b border-border last:border-b-0" style={CV_ROW}>
       {days.map((d, i) => {
         const dayLoads = byDay.get(d) ?? [];
         const reason = marks.get(d);
@@ -825,7 +859,7 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
         const seamless = nextStripLoad != null
           && (stripLoadAt(d) === nextStripLoad
             || (dayLoads.length > 0 && dayLoads[0] === nextStripLoad));
-        const wrapCls = `flex-1 snap-start min-w-0 ${
+        const wrapCls = `flex-1 min-w-0 ${
           seamless ? '' : 'border-r'} border-border last:border-r-0`;
         if (!clickable || !inside) return <div key={d} className={wrapCls}>{cell}</div>;
         return (
@@ -862,13 +896,13 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
                   { reason: suggested.get(d)!.reason,
                     source: suggested.get(d)!.source }),
                 separatorBefore: true,
-                onSelect: () => onMark(d, suggested.get(d)!.reason),
+                onSelect: () => onMark(row, d, suggested.get(d)!.reason),
               }] : []),
               ...(reason != null ? [{
                 key: 'clear',
                 label: t('kpi_board.clear', 'Active day (clear mark)'),
                 separatorBefore: true,
-                onSelect: () => onMark(d, null),
+                onSelect: () => onMark(row, d, null),
               }] : []),
               ...REASONS.map((r, i) => ({
                 key: r,
@@ -876,7 +910,7 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
                   r.charAt(0).toUpperCase() + r.slice(1)),
                 disabled: reason === r,
                 separatorBefore: i === 0 && reason == null,
-                onSelect: () => onMark(d, r),
+                onSelect: () => onMark(row, d, r),
               })),
               {
                 key: 'cancel',
@@ -918,4 +952,4 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
       })}
     </div>
   );
-}
+});
