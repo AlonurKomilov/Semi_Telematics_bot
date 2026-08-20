@@ -413,6 +413,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           {row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')}
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
         </div>
+        {/* One fact family per line — days, then money.  The old single
+            run wrapped wherever the column edge fell, splitting facts
+            mid-sentence and stranding a trailing "·"; deliberate lines
+            break at the same place on every row, so one fact scans
+            straight down the column. */}
         <div className="text-xs text-muted-foreground tabular-nums">
           <Tip label={<DaysTipContent row={row} loads={loads}
             draft={clickable} periodStart={periodStart}
@@ -421,7 +426,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               {daysCell(row, loadedDayCount(loads, row.window_start, row.window_end), t)}
             </span>
           </Tip>
-          {' · '}
+        </div>
+        <div className="text-xs text-muted-foreground tabular-nums">
           <span className="whitespace-nowrap">
             ${Math.round(row.kpi_gross).toLocaleString()}
             {row.weekly_target != null && (
@@ -441,7 +447,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
           ) : (
             <>{Number(row.pct)}%</>
           )}
-          {' → '}{usd(row.confirmed_dollars)}
+          {' → '}
+          {/* The row's ANSWER — the one number the reader came for. */}
+          <span className="font-medium text-foreground whitespace-nowrap">
+            {usd(row.confirmed_dollars)}
+          </span>
         </div>
         {Number(row.pct) === 0 && row.zero_reason && (
           <Tip label={zeroTip(row, t)}>
