@@ -688,7 +688,7 @@ export default function IncentiveRuns() {
                 <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
               )}
               <button type="button" onClick={() => setAdjustmentsOpen(true)}
-                className={`inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 hover:border-ring transition ${
+                className={`ml-auto inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 hover:border-ring transition ${
                   adjustedRows.length > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
                 <ListChecks size={12} />
                 {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
@@ -1002,7 +1002,7 @@ function RunNoteLine({ run, onSaved }: { run: RunDetail; onSaved: () => void }) 
   }
   return (
     <button type="button" onClick={() => { setText(run.note ?? ''); setEditing(true); }}
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition">
+      className="inline-flex items-center gap-1.5 py-1 -my-1 text-xs text-muted-foreground hover:text-foreground transition">
       <StickyNote size={12} />
       {run.note
         ? <span className="italic">{run.note}</span>

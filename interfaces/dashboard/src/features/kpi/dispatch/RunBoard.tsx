@@ -151,7 +151,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
     : 0;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-8">
+      <div className="space-y-3">
       {draft && (
         /* The board's one non-obvious gesture, said once where the days
            are — a flat cell gives no affordance cue by itself. */
@@ -177,27 +178,28 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           )}
         </div>
       )}
-      {/* The board's four day states, named once — a reviewer must be
+      {/* The board's day states, named once — a reviewer must be
           able to tell WHY Wednesday is amber and Saturday is not
-          without decoding chips by trial. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          without decoding chips by trial.  A bounded well: the legend
+          is a REGION (the board's only decoder), not loose prose. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex items-center" aria-hidden>
-            <span className={`rounded-l rounded-r-none px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
-            <span className="h-5 w-6 rounded-r bg-ok-bg" />
+            <span className={`h-6 leading-6 rounded-l rounded-r-none px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
+            <span className="h-6 w-6 rounded-r bg-ok-bg" />
           </span>
           {t('kpi_board.leg_loads4', 'load (rate · place → delivers) — the bar spans its days')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn')}`}>{t('kpi_board.inactive', 'inactive')}</span>
+          <span className={`inline-block h-6 leading-6 rounded px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn')}`}>{t('kpi_board.inactive', 'inactive')}</span>
           {t('kpi_board.leg_inactive2', 'not counted')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded border border-dashed border-warn-bd px-1.5 text-xs uppercase tracking-wide ${toneText('warn')}`}>{t('kpi_board.leg_repair', 'repair?')}</span>
+          <span className={`inline-block h-6 leading-6 rounded border border-dashed border-warn-bd px-1.5 text-xs uppercase tracking-wide ${toneText('warn')}`}>{t('kpi_board.leg_repair', 'repair?')}</span>
           {t('kpi_board.leg_suggested', 'suggested — click to confirm')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-flex size-5 items-center justify-center rounded border border-dashed border-border">
+          <span className="inline-flex h-6 w-10 items-center justify-center rounded border border-dashed border-border">
             <CalendarOff size={12} className="text-muted-foreground/60" aria-hidden />
           </span>
           {t('kpi_board.leg_empty2', 'no loads, counting — click to mark inactive')}
@@ -213,7 +215,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             once scrolled past, leaving an amber pill with no definition
             anywhere on screen. */}
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block rounded px-1.5 text-xs font-medium ${toneClasses('warn')}`}>{t('kpi_board.stale', 'stale')}</span>
+          <span className={`inline-block h-6 leading-6 rounded px-1.5 text-xs font-medium ${toneClasses('warn')}`}>{t('kpi_board.stale', 'stale')}</span>
           {t('kpi_board.leg_stale', 'loads changed after generation — still pays from the snapshot')}
         </span>
       </div>
@@ -224,7 +226,9 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             { n: suggestionCount })}
         </p>
       )}
+      </div>
 
+      <div className="space-y-3">
       {[...byDispatcher.entries()].map(([name, rows]) => {
         const gross = rows.reduce((a, r) => a + r.kpi_gross, 0);
         const miles = rows.reduce((a, r) => a + r.miles, 0);
@@ -232,13 +236,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         const confirmed = rows.reduce((a, r) => a + r.confirmed_dollars, 0);
         const isCollapsed = !!collapsed[name];
         return (
-          <section key={name} className="bg-card border border-border rounded-xl overflow-hidden">
+          <section key={name} className="bg-card border border-border rounded-xl">
             {/* Section header — the dispatcher's summary band. */}
             <button
               type="button"
               onClick={() => setCollapsed((m) => ({ ...m, [name]: !m[name] }))}
               aria-expanded={!isCollapsed}
-              className="w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted/40 border-b border-border text-left hover:bg-muted/70 transition"
+              className={`sticky top-0 z-30 w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted border-b border-border text-left hover:bg-border/60 transition ${isCollapsed ? 'rounded-xl' : 'rounded-t-xl'}`}
             >
               {isCollapsed
                 ? <ChevronRight size={16} className="text-muted-foreground shrink-0" />
@@ -263,14 +267,14 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               >
                 <div className="w-max min-w-full">
                   {/* Day header row. */}
-                  <div className="flex border-b border-border bg-muted/20">
+                  <div className="flex border-b border-border bg-muted">
                     {/* w-72: the card's content wants ~290px — at w-56
                         every money line wrapped at the column edge. */}
-                    <div className={`sticky left-0 z-20 w-72 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
+                    <div className={`sticky left-0 z-20 w-72 shrink-0 bg-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d, i) => (
-                      <div key={d} className={`w-28 flex-none snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0 ${i % 2 === 1 ? 'bg-muted/30' : ''}`}>
+                      <div key={d} className="w-28 flex-none snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0">
                         {dayLabel(d)}
                       </div>
                     ))}
@@ -299,6 +303,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           </section>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -450,7 +455,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
   ].join(' ');
 
   return (
-    <div className="flex border-b border-border last:border-b-0">
+    <div className="flex min-h-32 border-b border-border last:border-b-0">
       {/* Truck identity + its sheet numbers, pinned while days scroll.
           Gross and the zero-reason live HERE so a $0.00 row explains
           itself without switching to the sheet. */}
@@ -458,6 +463,13 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
         <div className="text-sm font-medium">
           {row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')}
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
+          {stale && (
+            <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
+              <span tabIndex={0} className={`ml-1.5 inline-block align-middle text-xs font-normal ${toneClasses('warn')} px-1.5 rounded`}>
+                {t('kpi_board.stale', 'stale')}
+              </span>
+            </Tip>
+          )}
           {alsoUnder.length > 0 && (
             /* The same truck under two dispatchers is BY DESIGN (each
                row counts only its own dispatcher's loads) — but
@@ -526,8 +538,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
             reader compares trucks by running one line down the column.
             The WHOLE result is the answer, so the whole line carries
             the weight, not just the dollars. */}
-        <div className="mt-0.5 text-xs font-medium text-foreground tabular-nums">
-          <span className="whitespace-nowrap">
+        <div className="mt-0.5 flex items-baseline text-sm font-semibold text-foreground tabular-nums">
+          <span className="w-16 shrink-0 whitespace-nowrap">
             {row.matched_rule ? (
               <Tip label={matchedTip(row.matched_rule, t)}>
                 <span tabIndex={0} aria-label={matchedTip(row.matched_rule, t)}
@@ -538,7 +550,12 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
             ) : (
               <>{Number(row.pct)}%</>
             )}
-            {' → '}
+            {' →'}
+          </span>
+          {/* Right-aligned amount slot: the one number every row exists
+              to produce lines up down the column instead of drifting
+              with the tier's string width. */}
+          <span className="flex-1 text-right">
             {usd(row.confirmed_dollars)}
           </span>
         </div>
@@ -572,7 +589,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
                   land between them; a continuation line then STARTS
                   with "→", which reads as a chain, never a bullet. */}
               <span tabIndex={0} aria-label={tierTip}
-                className="underline decoration-dotted underline-offset-4 cursor-help">
+                className="block truncate underline decoration-dotted underline-offset-4 cursor-help">
                 <span className="whitespace-nowrap">
                   {row.next_tier.min_rpm != null
                     ? t('kpi_board.next_gap2', '{{gap}} more (same miles)',
@@ -605,7 +622,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
                 and must exist in the accessibility tree. */}
             <div tabIndex={0} role="img" aria-label={meterTip}
               className="mt-0.5 py-1 -my-1 cursor-help">
-              <div className="relative h-1 w-56 max-w-full rounded bg-muted">
+              <div className="relative h-1 w-full rounded bg-muted">
                 <div className={`h-full rounded ${meter.earning ? 'bg-ok' : 'bg-warn'}`}
                   style={{ width: `${meter.fill}%` }} />
                 {meter.tick != null && (
@@ -616,13 +633,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
             </div>
           </Tip>
         )}
-        {stale && (
-          <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
-            <span tabIndex={0} className={`mt-1 ml-1 inline-block text-xs font-medium ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
-              {t('kpi_board.stale', 'stale')}
-            </span>
-          </Tip>
-        )}
+
       </div>
 
       {days.map((d, i) => {
@@ -636,10 +647,9 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
         const cell = (
           <div
             className={`group relative h-full min-h-14 px-1.5 py-1.5 space-y-1 ${
-              !inside ? 'bg-muted/40'
-                : reason != null ? 'bg-warn-bg'
-                  : i % 2 === 1 ? 'bg-muted/30' : ''
-            } ${clickable && inside ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+              !inside ? 'bg-muted/60'
+                : reason != null ? 'bg-warn-bg' : ''
+            } ${clickable && inside ? 'cursor-pointer hover:bg-muted hover:ring-1 hover:ring-inset hover:ring-border' : ''}`}
           >
             {dayLoads.slice(0, 2).map((l, i) => {
               const runDays = i <= 1 ? stripRun(l, d) : 0;
