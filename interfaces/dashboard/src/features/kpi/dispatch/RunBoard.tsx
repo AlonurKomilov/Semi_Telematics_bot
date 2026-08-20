@@ -14,7 +14,7 @@
  * reports drift per row, surfaced as a banner — the board must never
  * silently disagree with the sheet.
  */
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
@@ -72,24 +72,15 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [busyRow, setBusyRow] = useState<number | null>(null);
   const qc = useQueryClient();
-  // Eleven cards, ONE scroll position: every card's day scroller mirrors
-  // the one being dragged, so reading Sunday costs one scroll, not
-  // eleven.  Imperative (no state) — setting scrollLeft on siblings
-  // cannot re-render at scroll rate.
-  const scrollersRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [scrolled, setScrolled] = useState(false);
-  const registerScroller = (key: string) => (el: HTMLDivElement | null) => {
-    const m = scrollersRef.current;
-    if (el) m.set(key, el); else m.delete(key);
-  };
-  const onBoardScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const src = e.currentTarget;
-    setScrolled(src.scrollLeft > 0);
-    for (const el of scrollersRef.current.values()) {
-      if (el !== src && el.scrollLeft !== src.scrollLeft) {
-        el.scrollLeft = src.scrollLeft;
-      }
-    }
+  // Each dispatcher's card scrolls ALONE (owner decision 2026-08-20):
+  // a manager reviews one person at a time and their loads differ, so
+  // the cards never mirror each other.  Do not reintroduce a shared
+  // scroll position.  The state only flips at the 0-boundary, so this
+  // never re-renders at scroll rate.
+  const [scrolledMap, setScrolledMap] = useState<Record<string, boolean>>({});
+  const onBoardScroll = (key: string) => (e: React.UIEvent<HTMLDivElement>) => {
+    const on = e.currentTarget.scrollLeft > 0;
+    setScrolledMap((m) => (!!m[key] === on ? m : { ...m, [key]: on }));
   };
 
   const loadsQ = useQuery({
@@ -261,8 +252,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
 
             {!isCollapsed && (
               <div
-                ref={registerScroller(name)}
-                onScroll={onBoardScroll}
+                onScroll={onBoardScroll(name)}
                 className="overflow-x-auto snap-x scroll-pl-72"
               >
                 <div className="w-max min-w-full">
@@ -270,7 +260,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                   <div className="flex border-b border-border bg-muted">
                     {/* w-72: the card's content wants ~290px — at w-56
                         every money line wrapped at the column edge. */}
-                    <div className={`sticky left-0 z-20 w-72 shrink-0 bg-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
+                    <div className={`sticky left-0 z-20 w-72 shrink-0 bg-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolledMap[name] ? 'shadow-md' : ''}`}>
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d, i) => (
@@ -290,7 +280,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                       periodEnd={run.period_end}
                       suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
                       stale={loadsQ.data?.drift.includes(row.id) ?? false}
-                      scrolled={scrolled}
+                      scrolled={!!scrolledMap[name]}
                       clickable={draft && busyRow !== row.id}
                       alsoUnder={(unitDispatchers.get(row.vehicle_unit) ?? [])
                         .filter((n) => n !== name)}
