@@ -262,7 +262,9 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                 <div className="w-max min-w-full">
                   {/* Day header row. */}
                   <div className="flex border-b border-border bg-muted/20">
-                    <div className={`sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
+                    {/* w-72: the card's content wants ~290px — at w-56
+                        every money line wrapped at the column edge. */}
+                    <div className={`sticky left-0 z-10 w-72 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d, i) => (
@@ -418,8 +420,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
   // both briefly; this tip says them properly.
   const tierDelta = row.next_tier
     ? row.next_tier.dollars_at - row.confirmed_dollars : 0;
+  // At $0.00 the gain IS the total — "(+$80.00)" next to "pays $80.00"
+  // restates it, so the delta only shows when there is a now to beat.
+  const showTierDelta = tierDelta > 0 && Number(row.confirmed_dollars) > 0;
   const tierTip = !row.next_tier ? '' : [
-    tierDelta > 0
+    showTierDelta
       ? t('kpi_board.tier_pay2',
         'At the {{pct}}% tier this row pays {{at}} — {{d}} more than now.',
         { pct: row.next_tier.pct, at: usd(row.next_tier.dollars_at),
@@ -442,7 +447,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
       {/* Truck identity + its sheet numbers, pinned while days scroll.
           Gross and the zero-reason live HERE so a $0.00 row explains
           itself without switching to the sheet. */}
-      <div className={`sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-2 border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
+      <div className={`sticky left-0 z-10 w-72 shrink-0 bg-card px-3 py-2 border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
         <div className="text-sm font-medium">
           {row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')}
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
@@ -467,7 +472,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             </span>
           </Tip>
         </div>
-        <div className="text-xs text-muted-foreground tabular-nums">
+        {/* Space groups the card, not ink: 8px opens each group (what
+            happened / what could happen), 2px holds a group's lines
+            together — proximity separates for free where dividers
+            would draw boxes inside an already-bordered row. */}
+        <div className="mt-2 text-xs text-muted-foreground tabular-nums">
           <span className="whitespace-nowrap">
             ${Math.round(row.kpi_gross).toLocaleString()}
             {row.weekly_target != null && (
@@ -489,11 +498,12 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
             </>
           )}
         </div>
-        {/* The payout gets its OWN line on every row — with RPM on the
-            line above, one shared line wrapped at the column edge and
-            stranded a trailing "·" again.  A constant two-line shape
-            breaks nothing and scans the same on every card. */}
-        <div className="text-xs text-muted-foreground tabular-nums">
+        {/* The payout gets its OWN line on every row — a constant shape
+            that lands "% → $" at the same y-offset on every card, so a
+            reader compares trucks by running one line down the column.
+            The WHOLE result is the answer, so the whole line carries
+            the weight, not just the dollars. */}
+        <div className="mt-0.5 text-xs font-medium text-foreground tabular-nums">
           <span className="whitespace-nowrap">
             {row.matched_rule ? (
               <Tip label={matchedTip(row.matched_rule, t)}>
@@ -506,10 +516,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
               <>{Number(row.pct)}%</>
             )}
             {' → '}
-            {/* The row's ANSWER — the one number the reader came for. */}
-            <span className="font-medium text-foreground">
-              {usd(row.confirmed_dollars)}
-            </span>
+            {usd(row.confirmed_dollars)}
           </span>
         </div>
         {/* The no_tier chip only earns its space when the next-tier line
@@ -529,19 +536,20 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
         )}
         {row.next_tier && (
           /* Endowed progress: the row is already most of the way to the
-             next tier — a shortfall converted into a target.  Two
-             nowrap segments (goal · pay) so the narrow card breaks
-             BETWEEN them, never inside; "same miles" surfaces the RPM
-             tiers' real condition — the gap grows if cheap miles come
-             with the revenue (the Tip says why). */
-          <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+             next tier — a shortfall converted into a target.  This line
+             is a HYPOTHETICAL among facts, so it wears the info tone
+             (the grey lines above are what happened; this is what could
+             happen).  Grammar rule for the card: "·" joins peers, "→"
+             means leads-to — so the goal is one arrow chain, gross →
+             percent → pay, the same "% → $" shape as the payout line
+             above it. */
+          <div className={`mt-2 text-xs tabular-nums ${toneText('info')}`}>
             <Tip label={tierTip}>
-              {/* Three complete phrases joined by SPACES — a wrap can
-                  only land between them, so no separator dot ever
-                  dangles at a line edge, and mid-line it still reads
-                  as one sentence ("… tier pays $257.33"). */}
+              {/* Complete phrases joined by SPACES — a wrap can only
+                  land between them; a continuation line then STARTS
+                  with "→", which reads as a chain, never a bullet. */}
               <span tabIndex={0} aria-label={tierTip}
-                className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
+                className="underline decoration-dotted underline-offset-4 cursor-help">
                 <span className="whitespace-nowrap">
                   {row.next_tier.min_rpm != null
                     ? t('kpi_board.next_gap2', '{{gap}} more (same miles)',
@@ -551,15 +559,15 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                 </span>
                 {' '}
                 <span className="whitespace-nowrap">
-                  {t('kpi_board.next_goal', '→ {{pct}}% tier',
+                  {t('kpi_board.next_goal2', '→ {{pct}}%',
                     { pct: row.next_tier.pct })}
                 </span>
                 {' '}
                 <span className="whitespace-nowrap">
-                  {tierDelta > 0
-                    ? t('kpi_board.next_pays2', 'pays {{at}} (+{{d}})',
+                  {showTierDelta
+                    ? t('kpi_board.next_pays4', '→ {{at}} (+{{d}})',
                       { at: usd(row.next_tier.dollars_at), d: usd(tierDelta) })
-                    : t('kpi_board.next_pays', 'pays {{at}}',
+                    : t('kpi_board.next_pays3', '→ {{at}}',
                       { at: usd(row.next_tier.dollars_at) })}
                 </span>
               </span>
@@ -573,8 +581,8 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, o
                 the tip text as its name: the meter carries three values
                 and must exist in the accessibility tree. */}
             <div tabIndex={0} role="img" aria-label={meterTip}
-              className="mt-1 py-1 -my-1 cursor-help">
-              <div className="relative h-1 w-40 max-w-full rounded bg-muted">
+              className="mt-0.5 py-1 -my-1 cursor-help">
+              <div className="relative h-1 w-56 max-w-full rounded bg-muted">
                 <div className={`h-full rounded ${meter.earning ? 'bg-ok' : 'bg-warn'}`}
                   style={{ width: `${meter.fill}%` }} />
                 {meter.tick != null && (
