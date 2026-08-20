@@ -13,23 +13,21 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CalendarOff } from 'lucide-react';
 import { Tip } from '../../../../components/tooltip';
-import { ActionMenu } from '../../../../components/ui/context-menu';
 import { toneClasses, toneText } from '../../../../lib/status';
 import type { DaySuggestion, RunLoad, RunRow } from '../../api';
 import { nextDay } from '../explain';
 import { boardGeometry, prevDay } from './geometry';
 import { ROW_CONTAIN, dayLabel, place, usd } from './shared';
 
-const REASONS = ['home time', 'repair', 'holiday'];
-
-export const DayCells = memo(function DayCells({ row, days, loads, suggestions, clickable, onMark }: {
+export const DayCells = memo(function DayCells({ row, days, loads, suggestions, clickable, onOpenMenu }: {
   row: RunRow;
   days: string[];
   loads: RunLoad[] | undefined;
   /** Maintenance-suggested inactive days (human confirms by click). */
   suggestions: DaySuggestion[];
   clickable: boolean;
-  onMark: (row: RunRow, day: string, reason: string | null) => void;
+  /** Open the board's ONE shared day menu, anchored at this cell. */
+  onOpenMenu: (row: RunRow, day: string, anchor: HTMLElement) => void;
 }) {
   const { t } = useTranslation();
   const marks = new Map((row.inactive_dates ?? []).map((m) => [m.date, m.reason]));
@@ -50,9 +48,9 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
         const reason = marks.get(d);
         const inside = inWindow(d);
         // The INNER cell fills its wrapper; sizing lives on the wrapper
-        // below — the wrapper (or the ActionMenu trigger button) is the
-        // real flex item, so putting basis/grow here was dead code and
-        // let a wide chip widen ONE row's column off the header grid.
+        // below — the wrapper (or the cell button) is the real flex
+        // item, so putting basis/grow here was dead code and let a
+        // wide chip widen ONE row's column off the header grid.
         const cell = (
           <div
             className={`group relative h-full min-h-14 px-1.5 py-1.5 space-y-1 ${
@@ -242,91 +240,39 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
           seamless ? '' : 'border-r'} border-border last:border-r-0`;
         if (!clickable || !inside) return <div key={d} className={wrapCls}>{cell}</div>;
         return (
-          <ActionMenu
-            key={d}
-            items={[
-              {
-                key: 'heading',
-                label: `${row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')} · ${dayLabel(d)}`,
-                disabled: true,
-                onSelect: () => {},
-              },
-              // The consequence AT the moment of choosing — it already
-              // lived in the cell's accessible name, invisible to the
-              // sighted user with the menu open.
-              ...(row.weekly_target != null ? [{
-                key: 'consequence',
-                label: reason == null
-                  ? t('kpi_board.menu_target_down', 'target {{a}} → {{b}}', {
-                      a: `$${Math.round(row.adjusted_target).toLocaleString()}`,
-                      b: `$${Math.round(Math.max(0, row.adjusted_target - row.weekly_target / 7)).toLocaleString()}`,
-                    })
-                  : t('kpi_board.menu_target_up', 'count it again: target {{a}} → {{b}}', {
-                      a: `$${Math.round(row.adjusted_target).toLocaleString()}`,
-                      b: `$${Math.round(row.adjusted_target + row.weekly_target / 7).toLocaleString()}`,
-                    }),
-                disabled: true,
-                onSelect: () => {},
-              }] : []),
-              ...(reason == null && suggested.has(d) ? [{
-                key: 'confirm-suggest',
-                label: t('kpi_board.confirm_suggest',
-                  'Confirm {{reason}} — {{source}}',
-                  { reason: suggested.get(d)!.reason,
-                    source: suggested.get(d)!.source }),
-                separatorBefore: true,
-                onSelect: () => onMark(row, d, suggested.get(d)!.reason),
-              }] : []),
-              ...(reason != null ? [{
-                key: 'clear',
-                label: t('kpi_board.clear', 'Active day (clear mark)'),
-                separatorBefore: true,
-                onSelect: () => onMark(row, d, null),
-              }] : []),
-              ...REASONS.map((r, i) => ({
-                key: r,
-                label: t(`kpi_board.reason_${r.replace(' ', '_')}`,
-                  r.charAt(0).toUpperCase() + r.slice(1)),
-                disabled: reason === r,
-                separatorBefore: i === 0 && reason == null,
-                onSelect: () => onMark(row, d, r),
-              })),
-              {
-                key: 'cancel',
-                label: t('common.cancel', 'Cancel'),
-                separatorBefore: true,
-                onSelect: () => {},
-              },
-            ]}
-          >
-            <button type="button" className={`${wrapCls} text-left`}
-              aria-label={(reason != null
-                ? t('kpi_board.day_aria_unmark',
-                    'Make {{day}} count again for unit {{unit}}{{stake}}',
-                    { day: dayLabel(d), unit: row.vehicle_unit,
-                      stake: row.weekly_target != null
-                        ? ` — ${t('kpi_board.aria_up', 'target +${{v}}',
-                            { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
-                : suggested.has(d)
-                  /* The suggestion state must reach the screen reader —
-                     without this prefix a REPAIR? cell announced exactly
-                     like a plain empty day. */
-                  ? t('kpi_board.day_aria_suggest',
-                      '{{reason}} suggested — confirm {{day}} inactive for unit {{unit}}{{stake}}',
-                      { reason: suggested.get(d)!.reason,
-                        day: dayLabel(d), unit: row.vehicle_unit,
-                        stake: row.weekly_target != null
-                          ? ` — ${t('kpi_board.aria_down', 'target −${{v}}',
-                              { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
-                  : t('kpi_board.day_aria_mark',
-                    'Mark {{day}} inactive for unit {{unit}}{{stake}}',
-                    { day: dayLabel(d), unit: row.vehicle_unit,
+          /* A plain button — the menu it opens is the board's ONE
+             shared AnchoredMenu (see board/menu.ts): a menu component
+             per cell priced large periods out (7 days × 69 trucks =
+             ~480 menus; 30 days ≈ 2,000). */
+          <button key={d} type="button" className={`${wrapCls} text-left`}
+            aria-haspopup="menu"
+            onClick={(e) => onOpenMenu(row, d, e.currentTarget)}
+            aria-label={(reason != null
+              ? t('kpi_board.day_aria_unmark',
+                  'Make {{day}} count again for unit {{unit}}{{stake}}',
+                  { day: dayLabel(d), unit: row.vehicle_unit,
+                    stake: row.weekly_target != null
+                      ? ` — ${t('kpi_board.aria_up', 'target +${{v}}',
+                          { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
+              : suggested.has(d)
+                /* The suggestion state must reach the screen reader —
+                   without this prefix a REPAIR? cell announced exactly
+                   like a plain empty day. */
+                ? t('kpi_board.day_aria_suggest',
+                    '{{reason}} suggested — confirm {{day}} inactive for unit {{unit}}{{stake}}',
+                    { reason: suggested.get(d)!.reason,
+                      day: dayLabel(d), unit: row.vehicle_unit,
                       stake: row.weekly_target != null
                         ? ` — ${t('kpi_board.aria_down', 'target −${{v}}',
-                            { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' }))}>
-              {cell}
-            </button>
-          </ActionMenu>
+                            { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' })
+                : t('kpi_board.day_aria_mark',
+                  'Mark {{day}} inactive for unit {{unit}}{{stake}}',
+                  { day: dayLabel(d), unit: row.vehicle_unit,
+                    stake: row.weekly_target != null
+                      ? ` — ${t('kpi_board.aria_down', 'target −${{v}}',
+                          { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' }))}>
+            {cell}
+          </button>
         );
       })}
     </div>

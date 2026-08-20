@@ -17,11 +17,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CalendarOff, ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
+import { CalendarOff, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { toneClasses, toneText } from '../../../lib/status';
+import { AnchoredMenu } from '../../../components/ui/context-menu';
 import { dayRange } from './board/geometry';
+import { dayMenuItems } from './board/menu';
 import { DayCells } from './board/DayCells';
 import { UnitCard } from './board/UnitCard';
 import { dayLabel, usd } from './board/shared';
@@ -46,6 +48,15 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [busyRow, setBusyRow] = useState<number | null>(null);
+  // The board's ONE day menu — cells are plain buttons that anchor it
+  // here (board/menu.ts builds the items on open).  A menu component
+  // per cell priced large periods out.
+  const [menuCell, setMenuCell] = useState<{
+    row: RunRow; day: string; anchor: HTMLElement;
+  } | null>(null);
+  const openDayMenu = useCallback(
+    (row: RunRow, day: string, anchor: HTMLElement) =>
+      setMenuCell({ row, day, anchor }), []);
   const qc = useQueryClient();
   // Each dispatcher's card scrolls ALONE (owner decision 2026-08-20):
   // a manager reviews one person at a time and their loads differ, so
@@ -218,6 +229,28 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
       </div>
 
       <div className="space-y-3">
+      {/* One gesture to shrink a 69-row board to its 12 summary bands
+          — collapsed sections keep name, counts and total. */}
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm"
+          onClick={() => {
+            const names = [...byDispatcher.keys()];
+            const allCollapsed = names.every((n) => collapsed[n]);
+            setCollapsed(Object.fromEntries(names.map((n) => [n, !allCollapsed])));
+          }}>
+          {[...byDispatcher.keys()].every((n) => collapsed[n]) ? (
+            <>
+              <ChevronsUpDown size={14} className="mr-1.5" />
+              {t('kpi_board.expand_all', 'Expand all')}
+            </>
+          ) : (
+            <>
+              <ChevronsDownUp size={14} className="mr-1.5" />
+              {t('kpi_board.collapse_all', 'Collapse all')}
+            </>
+          )}
+        </Button>
+      </div>
       {[...byDispatcher.entries()].map(([name, rows]) => {
         const gross = rows.reduce((a, r) => a + r.kpi_gross, 0);
         const miles = rows.reduce((a, r) => a + r.miles, 0);
@@ -296,7 +329,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                         loads={loadsQ.data ? (loadsQ.data.rows[String(row.id)] ?? []) : undefined}
                         suggestions={loadsQ.data?.suggestions[String(row.id)] ?? EMPTY_SUGGESTIONS}
                         clickable={draft && busyRow !== row.id}
-                        onMark={markDay}
+                        onOpenMenu={openDayMenu}
                       />
                     ))}
                   </div>
@@ -307,6 +340,20 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         );
       })}
       </div>
+
+      <AnchoredMenu
+        open={menuCell != null}
+        anchor={menuCell?.anchor ?? null}
+        onOpenChange={(o) => { if (!o) setMenuCell(null); }}
+        items={menuCell == null ? [] : dayMenuItems({
+          row: menuCell.row,
+          day: menuCell.day,
+          suggestion: (loadsQ.data?.suggestions[String(menuCell.row.id)] ?? [])
+            .find((sug) => sug.date === menuCell.day),
+          t,
+          onMark: markDay,
+        })}
+      />
     </div>
   );
 }

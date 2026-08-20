@@ -126,6 +126,44 @@ export function ContextMenu({ items, children, className, disabled, render }: Co
   );
 }
 
+export interface AnchoredMenuProps {
+  /** Actions shown while open.  Empty → nothing renders. */
+  items: MenuAction[];
+  /** The element the popup positions against — usually the cell/row the
+   *  user clicked.  null → nothing renders. */
+  anchor: HTMLElement | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Popup alignment relative to the anchor (default "start"). */
+  align?: 'start' | 'center' | 'end';
+}
+
+/**
+ * The third opener: ONE controlled menu instance positioned against any
+ * element the caller names.  For grids where hundreds of cells share
+ * one action vocabulary — mounting a ``Menu.Root`` per cell makes a
+ * large grid expensive to render, while one shared instance costs the
+ * same as a single ⋮ menu.  The caller owns the open state and the
+ * anchor (typically ``onClick={(e) => open(e.currentTarget)}`` on each
+ * cell, which should carry ``aria-haspopup="menu"``); closing returns
+ * focus to the anchor.  Same ``MenuAction[]`` data, same
+ * ``MenuActionList`` renderer as the other two openers.
+ */
+export function AnchoredMenu({ items, anchor, open, onOpenChange, align = 'start' }: AnchoredMenuProps) {
+  if (anchor == null || items.length === 0) return null;
+  return (
+    <Menu.Root open={open} onOpenChange={onOpenChange}>
+      <Menu.Portal>
+        <Menu.Positioner anchor={anchor} className="z-50 outline-none" align={align} sideOffset={4}>
+          <Menu.Popup className={POPUP} finalFocus={{ current: anchor }}>
+            <MenuActionList items={items} />
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
 export interface ActionMenuProps {
   /** Actions shown when the trigger is clicked.  Empty → nothing renders. */
   items: MenuAction[];
