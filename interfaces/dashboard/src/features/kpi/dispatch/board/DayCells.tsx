@@ -18,7 +18,7 @@ import { toneClasses, toneText } from '../../../../lib/status';
 import type { DaySuggestion, RunLoad, RunRow } from '../../api';
 import { nextDay } from '../explain';
 import { boardGeometry, prevDay } from './geometry';
-import { CV_ROW, dayLabel, place, usd } from './shared';
+import { dayLabel, place, usd } from './shared';
 
 const REASONS = ['home time', 'repair', 'holiday'];
 
@@ -44,7 +44,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
   });
 
   return (
-    <div className="flex h-36 border-b border-border last:border-b-0" style={CV_ROW}>
+    <div className="flex h-36 border-b border-border last:border-b-0">
       {days.map((d) => {
         const dayLoads = byDay.get(d) ?? [];
         const reason = marks.get(d);

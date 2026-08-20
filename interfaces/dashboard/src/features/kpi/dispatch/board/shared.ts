@@ -30,10 +30,3 @@ export const place = (s: string) => s.replace(/\s+\d+$/, '').trim();
 /** The row-height CONTRACT: both panes render every row at this
  *  height, so the two columns stay in step down a 69-row board. */
 export const ROW_H = 'h-36';
-
-// Rows outside the viewport skip layout and paint; the intrinsic size
-// is the row's exact rendered height, so scrolling never shifts.
-export const CV_ROW = {
-  contentVisibility: 'auto', containIntrinsicSize: 'auto 9rem',
-} as React.CSSProperties;
-

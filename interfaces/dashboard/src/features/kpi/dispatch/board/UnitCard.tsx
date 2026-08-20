@@ -13,7 +13,7 @@ import { toneClasses } from '../../../../lib/status';
 import type { RunLoad, RunRow } from '../../api';
 import { daysCell, daysSummary, loadedDayCount, matchedTip, zeroTip } from '../explain';
 import { DaysTipContent } from '../DaysTip';
-import { CV_ROW, money0, usd } from './shared';
+import { money0, usd } from './shared';
 
 export const UnitCard = memo(function UnitCard({ row, loads, stale, clickable, alsoUnder, periodStart, periodEnd }: {
   row: RunRow;
@@ -104,8 +104,7 @@ export const UnitCard = memo(function UnitCard({ row, loads, stale, clickable, a
          live HERE so a $0.00 row explains itself without switching to
          the sheet.  h-36 is the row-height CONTRACT with the days pane
          — overflow-hidden guards it. */
-      <div className="h-36 overflow-hidden px-3 py-2 border-b border-border last:border-b-0"
-        style={CV_ROW}>
+      <div className="h-36 overflow-hidden px-3 py-2 border-b border-border last:border-b-0">
         <div className="flex items-center gap-1.5 text-sm font-medium whitespace-nowrap">
           <span className="shrink-0">{row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')}</span>
           <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.company_code}</span>
