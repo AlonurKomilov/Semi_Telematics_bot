@@ -283,10 +283,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                   onScroll={onBoardScroll(name)}
                   className="min-w-0 flex-1 overflow-x-auto snap-x"
                 >
-                  <div className="w-max min-w-full">
+                  {/* minWidth is the scroll floor: below 112px/day the
+                      pane scrolls; above it the columns grow equally,
+                      so a wide window spends its space on the days. */}
+                  <div className="min-w-full" style={{ minWidth: days.length * 112 }}>
                     <div className="flex h-8 border-b border-border bg-muted">
                       {days.map((d) => (
-                        <div key={d} className="flex w-28 flex-none snap-start items-center px-2 text-xs text-muted-foreground border-r border-border last:border-r-0">
+                        <div key={d} className="flex flex-1 snap-start items-center px-2 text-xs text-muted-foreground border-r border-border last:border-r-0">
                           {dayLabel(d)}
                         </div>
                       ))}
@@ -646,9 +649,13 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
             {dayLoads.slice(0, 2).map((l, i) => {
               const runDays = i <= 1 ? stripRun(l, d) : 0;
               const cont = runDays > 0;
-              // Label runway = this cell + every following STRIP cell
-              // (w-28 = 112px each), minus the 6px insets both ends.
-              const runway = cont ? (runDays + 1) * 112 - 12 : undefined;
+              // Label runway = this cell + every following STRIP cell.
+              // Columns are flex-equal, so the runway is a PERCENTAGE
+              // of this cell (100% per covered day) — slightly
+              // conservative (each cell's padding is counted once),
+              // which only ends the text a few px before the bar.
+              const runway = cont
+                ? `calc(${(runDays + 1) * 100}% - 12px)` : undefined;
               const loadAria = t('kpi_board.load_aria',
                 'Load {{rate}} — {{from}} to {{to}}, {{mi}} mi, delivers {{del}}', {
                   rate: usd(l.total_rate),
@@ -818,7 +825,7 @@ function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoU
         const seamless = nextStripLoad != null
           && (stripLoadAt(d) === nextStripLoad
             || (dayLoads.length > 0 && dayLoads[0] === nextStripLoad));
-        const wrapCls = `w-28 flex-none snap-start ${
+        const wrapCls = `flex-1 snap-start min-w-0 ${
           seamless ? '' : 'border-r'} border-border last:border-r-0`;
         if (!clickable || !inside) return <div key={d} className={wrapCls}>{cell}</div>;
         return (
