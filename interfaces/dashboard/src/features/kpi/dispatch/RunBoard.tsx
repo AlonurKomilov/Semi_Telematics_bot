@@ -251,28 +251,18 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             </button>
 
             {!isCollapsed && (
-              <div
-                onScroll={onBoardScroll(name)}
-                className="overflow-x-auto snap-x scroll-pl-72"
-              >
-                <div className="w-max min-w-full">
-                  {/* Day header row. */}
-                  <div className="flex border-b border-border bg-muted">
-                    {/* w-72: the card's content wants ~290px — at w-56
-                        every money line wrapped at the column edge. */}
-                    <div className={`sticky left-0 z-20 w-72 shrink-0 bg-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border ${scrolledMap[name] ? 'shadow-md' : ''}`}>
-                      {t('kpi_board.unit', 'Unit')}
-                    </div>
-                    {days.map((d, i) => (
-                      <div key={d} className="w-28 flex-none snap-start px-2 py-1.5 text-xs text-muted-foreground border-r border-border last:border-r-0">
-                        {dayLabel(d)}
-                      </div>
-                    ))}
+              <div className="flex">
+                {/* Unit pane — OUTSIDE the scroller: this info never
+                    moves, so the scrollbar must not run under it.
+                    w-72: the card's content wants ~290px. */}
+                <div className={`w-72 shrink-0 border-r border-border ${scrolledMap[name] ? 'shadow-md' : ''}`}>
+                  <div className="flex h-8 items-center bg-muted px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground border-b border-border">
+                    {t('kpi_board.unit', 'Unit')}
                   </div>
-
                   {rows.map((row) => (
                     <BoardRow
                       key={row.id}
+                      part="unit"
                       row={row}
                       days={days}
                       loads={loadsQ.data ? (loadsQ.data.rows[String(row.id)] ?? []) : undefined}
@@ -280,13 +270,44 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                       periodEnd={run.period_end}
                       suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
                       stale={loadsQ.data?.drift.includes(row.id) ?? false}
-                      scrolled={!!scrolledMap[name]}
                       clickable={draft && busyRow !== row.id}
                       alsoUnder={(unitDispatchers.get(row.vehicle_unit) ?? [])
                         .filter((n) => n !== name)}
                       onMark={(day, reason) => markDay(row, day, reason)}
                     />
                   ))}
+                </div>
+                {/* Days pane — the ONLY thing that scrolls; its
+                    scrollbar starts where the calendar starts. */}
+                <div
+                  onScroll={onBoardScroll(name)}
+                  className="min-w-0 flex-1 overflow-x-auto snap-x"
+                >
+                  <div className="w-max min-w-full">
+                    <div className="flex h-8 border-b border-border bg-muted">
+                      {days.map((d) => (
+                        <div key={d} className="flex w-28 flex-none snap-start items-center px-2 text-xs text-muted-foreground border-r border-border last:border-r-0">
+                          {dayLabel(d)}
+                        </div>
+                      ))}
+                    </div>
+                    {rows.map((row) => (
+                      <BoardRow
+                        key={row.id}
+                        part="days"
+                        row={row}
+                        days={days}
+                        loads={loadsQ.data ? (loadsQ.data.rows[String(row.id)] ?? []) : undefined}
+                        periodStart={run.period_start}
+                        periodEnd={run.period_end}
+                        suggestions={loadsQ.data?.suggestions[String(row.id)] ?? []}
+                        stale={loadsQ.data?.drift.includes(row.id) ?? false}
+                        clickable={draft && busyRow !== row.id}
+                        alsoUnder={[]}
+                        onMark={(day, reason) => markDay(row, day, reason)}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -298,7 +319,12 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
   );
 }
 
-function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, alsoUnder, onMark, periodStart, periodEnd }: {
+function BoardRow({ part, row, days, loads, suggestions, stale, clickable, alsoUnder, onMark, periodStart, periodEnd }: {
+  /** Which pane this instance renders: the static unit cell or the
+   *  scrolling day cells.  Both panes map the same rows at the same
+   *  FIXED height (h-36), so they stay aligned without sharing a DOM
+   *  ancestor. */
+  part: 'unit' | 'days';
   row: RunRow;
   days: string[];
   loads: RunLoad[] | undefined;
@@ -308,8 +334,6 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
   suggestions: DaySuggestion[];
   /** Live loads no longer sum to this row's snapshot. */
   stale: boolean;
-  /** Any card is horizontally scrolled — draw the frozen-column seam. */
-  scrolled: boolean;
   clickable: boolean;
   /** OTHER dispatchers this unit also has a row under in this run —
    *  each row counts only its own dispatcher's loads. */
@@ -452,18 +476,19 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
     </div>
   );
 
-  return (
-    <div className="flex min-h-32 border-b border-border last:border-b-0">
-      {/* Truck identity + its sheet numbers, pinned while days scroll.
-          Gross and the zero-reason live HERE so a $0.00 row explains
-          itself without switching to the sheet. */}
-      <div className={`sticky left-0 z-20 w-72 shrink-0 bg-card px-3 py-2 border-r border-border ${scrolled ? 'shadow-md' : ''}`}>
-        <div className="text-sm font-medium">
-          {row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')}
-          <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
+  if (part === 'unit') {
+    return (
+      /* Truck identity + its sheet numbers.  Gross and the zero-reason
+         live HERE so a $0.00 row explains itself without switching to
+         the sheet.  h-36 is the row-height CONTRACT with the days pane
+         — overflow-hidden guards it. */
+      <div className="h-36 overflow-hidden px-3 py-2 border-b border-border last:border-b-0">
+        <div className="flex items-center gap-1.5 text-sm font-medium whitespace-nowrap">
+          <span className="shrink-0">{row.vehicle_unit || t('kpi_board.no_unit', 'No unit assigned')}</span>
+          <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.company_code}</span>
           {stale && (
             <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
-              <span tabIndex={0} className={`ml-1.5 inline-block align-middle text-xs font-normal ${toneClasses('warn')} px-1.5 rounded`}>
+              <span tabIndex={0} className={`shrink-0 text-xs font-normal ${toneClasses('warn')} px-1.5 rounded`}>
                 {t('kpi_board.stale', 'stale')}
               </span>
             </Tip>
@@ -476,7 +501,7 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
               'Unit {{unit}} also has a row under {{names}} in this run — each dispatcher’s row counts only the loads they dispatched on it.',
               { unit: row.vehicle_unit, names: alsoUnder.join(', ') })}>
               <span tabIndex={0}
-                className="ml-1.5 text-xs font-normal text-muted-foreground underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help whitespace-nowrap">
+                className="min-w-0 truncate text-xs font-normal text-muted-foreground underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 cursor-help">
                 {t('kpi_board.also_under', 'also under {{name}}', {
                   name: alsoUnder.length === 1
                     ? alsoUnder[0].split(' ')[0]
@@ -598,7 +623,11 @@ function BoardRow({ row, days, loads, suggestions, stale, scrolled, clickable, a
         )}
 
       </div>
+    );
+  }
 
+  return (
+    <div className="flex h-36 border-b border-border last:border-b-0">
       {days.map((d, i) => {
         const dayLoads = byDay.get(d) ?? [];
         const reason = marks.get(d);
