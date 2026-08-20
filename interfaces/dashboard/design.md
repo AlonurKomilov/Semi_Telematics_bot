@@ -61,13 +61,64 @@ foreground token.** Don't rely on the inherited `color` — inheritance pulls
 whatever some ancestor last set, and that ancestor may not flip with the
 theme.
 
-Why this matters (a real bug this rule exists to prevent): `<body>` carries
-an always-dark splash background, so its text default was historically a
-raw near-white. Form controls (`Input`, `Textarea`) declared a `bg` and a
+Why this matters (a real bug this rule exists to prevent): `<body>` used to
+carry an always-dark splash background, so its text default was historically
+a raw near-white. Form controls (`Input`, `Textarea`) declared a `bg` and a
 `placeholder:` colour but **no value colour** — so the typed text inherited
 near-white. On the **dark** theme (dark field) it was visible; on the
 **light** theme (white field) it was white-on-white — invisible. The field
 looked empty even though text was there.
+
+A second bug from the same family, and why the token pairs matter: the
+`destructive` colour was registered in `tailwind.config.js` **without** a
+`foreground` key, so `text-destructive-foreground` — used on five delete /
+disconnect buttons — matched no rule and the label fell back to inherited
+`--foreground`. That made the label colour an accident of the theme, and
+both themes failed AA on it (4.15:1 on light, 3.03:1 on dark). Note the fix
+is asymmetric on purpose: light's `--destructive` is dark enough to carry a
+near-white label (4.56:1), dark's is light enough to need a near-black one
+(6.26:1). **Measure before changing either.**
+
+### The pre-paint theme stamp ⭐
+
+`index.html` opens with an inline `<script id="theme-boot">`. It reads the
+stored theme and stamps `<html>` — the `dark` class plus `data-theme` /
+`data-density` / `data-radius` — **before the first paint**. Everything else
+about theming depends on it, so it is worth knowing why it exists and what it
+may not do.
+
+**Why it can't be React's job.** `ThemeProvider` applies the theme from an
+effect, which runs *after* the first paint, and the module bundle only
+executes once it has been fetched and parsed. Whatever paints before that is
+governed by the document alone. That gap used to be papered over with
+`bg-gray-950` on `<body>` — an always-dark splash. It spared dark-theme users
+a white flash and handed light-theme users something worse: nothing ever
+removed the class, so the dark canvas stayed under the app permanently and
+showed through **every surface that isn't full-viewport** — the boot spinners
+in `App.tsx`, the maintenance overlay. (The public-apply branch escaped it
+only because `main.tsx` resets `body.className` for its own mount.) With the
+stamp in place `<body>` needs no literal at all: `body { background-color:
+var(--background) }` resolves correctly in both themes, and the stylesheet is
+a render-blocking `<link>`, so it is parsed before anything paints.
+
+**Four rules the script must keep** — `src/test/themeBoot.test.ts` runs the
+real script out of `index.html` against the real `applyTheme` and enforces
+all four:
+
+1. **Read-only.** `preferences/local.ts` is the single writer of that key and
+   owns the legacy copy-forward; a second writer breaks that contract.
+2. **Skipped on the apply host** — same predicate as `main.tsx`. That surface
+   owns its own theme via `applyPublicFormTheme`.
+3. **Hand-written, never build-generated.** Tailwind's content scanner reads
+   this file for class names; generated markup is invisible to it.
+4. **In step with `applyTheme` and the registry defaults.** The script runs
+   before any module exists, so it re-states the enums and defaults as
+   literals — a duplication that is only safe because the test compares the
+   two on every valid input, on garbage, on nothing, and on the legacy key.
+
+**Verify against a build, never the dev server.** `npm run dev` injects CSS
+via JS and so does not reproduce the pre-JS window at all. Use
+`npm run build && npm run preview`, with storage both seeded and cleared.
 
 Rules that fall out of this:
 - A form control / button / chip / any text-on-surface element **declares
@@ -433,10 +484,12 @@ This doc governs `dashboard` only.
   / the matching `*-foreground`. `bg-<x>` and `text-<x>-foreground` travel
   together (see §2 "Declare colour"). A control with a `bg`/`placeholder`
   but no value colour is the classic light-theme-invisible bug.
-- ❌ No raw palette in **`index.html`** either (it's in scope). The body's
-  always-dark splash `bg` is the one allowed literal — its text is a token
-  (`text-foreground`). A raw near-white default there is what made input
-  text invisible on light.
+- ❌ No raw palette in **`index.html`** either (it's in scope) — and there is
+  now **no allowed exception**: the always-dark splash `bg` that used to be
+  one is gone, replaced by the pre-paint theme stamp (§2). Body carries only
+  `text-foreground`. A raw near-white default there is what made input text
+  invisible on light; the splash literal is what left light users on a dark
+  canvas.
 - ✅ Colour comes from a token; status from a tone; spacing from the 4px
   scale; radius from `--radius`; type from the Geist scale (incl. 2xs/3xs)
   at a §4 role combo; icons from lucide at a standard step.

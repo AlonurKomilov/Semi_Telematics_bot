@@ -345,11 +345,11 @@ export default function Companies() {
                 </div>
               </div>
 
-              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
+              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
                 {saving ? 'Saving...' : 'Update Company'}
               </button>
               {selected.is_active && (
-                <button onClick={() => handleDeactivate(selected.id)} className="w-full py-2 bg-destructive/80 hover:bg-destructive rounded text-sm font-medium transition">
+                <button onClick={() => handleDeactivate(selected.id)} className="w-full py-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded text-sm font-medium transition">
                   Deactivate Company
                 </button>
               )}

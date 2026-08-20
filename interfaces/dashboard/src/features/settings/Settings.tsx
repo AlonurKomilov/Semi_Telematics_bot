@@ -641,7 +641,7 @@ export default function Settings() {
                     className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring font-mono" />
                 </div>
                 <button onClick={handleConnectBot} disabled={botSaving || botToken.length < 30}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition whitespace-nowrap">
+                  className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition whitespace-nowrap">
                   {botSaving ? t('bot_card.validating') : t('bot_card.validate')}
                 </button>
               </div>
@@ -741,7 +741,7 @@ export default function Settings() {
       <section className="bg-card border border-border rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Working Hours</h2>
-          <button onClick={() => setShowSchedule(!showSchedule)} className="px-3 py-1.5 bg-primary hover:bg-primary/90 rounded text-xs font-medium transition">
+          <button onClick={() => setShowSchedule(!showSchedule)} className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded text-xs font-medium transition">
             {showSchedule ? 'Cancel' : '+ Add Schedule'}
           </button>
         </div>

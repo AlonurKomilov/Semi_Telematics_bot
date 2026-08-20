@@ -116,12 +116,16 @@ export type InviteChannel = 'telegram' | 'url' | 'email';
 /** Row height shared by every DataGrid (mirrors DataGrid's Density). */
 export type TableDensity = 'compact' | 'default' | 'roomy';
 
-const THEME_DEFAULT: ThemeSetting = {
+// Exported for ``themeBoot.test.ts``: the pre-paint script in index.html
+// re-states these literals (it runs before any module loads, so it cannot
+// import them), and the test asserts the two copies still agree.  Nothing
+// else should read them — call sites get the guard via ``sanitize``.
+export const THEME_DEFAULT: ThemeSetting = {
   color: 'dark-blue', density: 'default', radius: 'rounded',
 };
-const THEME_COLORS: ThemeColor[] = ['dark-blue', 'dark-purple', 'dark-green', 'light'];
-const THEME_DENSITIES: ThemeDensity[] = ['compact', 'default', 'comfortable'];
-const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
+export const THEME_COLORS: ThemeColor[] = ['dark-blue', 'dark-purple', 'dark-green', 'light'];
+export const THEME_DENSITIES: ThemeDensity[] = ['compact', 'default', 'comfortable'];
+export const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
 
 /** Assistant panel width bounds — must match ``clampPanelW`` in
  *  features/ai/AssistantContext.tsx (that clamp handles the live drag;

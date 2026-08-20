@@ -91,6 +91,19 @@ Legacy values are migrated **lazily** on first read and copied forward;
 the old entry is deliberately **left in place** so a release rollback
 loses nothing.
 
+## The one sanctioned reader outside this service
+
+`index.html`'s inline `theme-boot` script reads `4truck.pref.theme` (and
+the legacy `dashboard-theme`) straight from `localStorage`. That is not a
+violation of the rule above — it is the one place the rule *cannot* apply:
+it runs before any module exists, to stamp the theme onto `<html>` before
+the first paint. It is **read-only**, so `local.ts` remains the single
+writer and keeps sole ownership of the copy-forward.
+`src/test/themeBoot.test.ts` pins both halves — that the script agrees with
+`applyTheme` on every valid value, and that it never writes. Anything else
+that wants pre-hydration state must clear the same bar; the default answer
+is still `usePreference`.
+
 ## Sync (Cloud vs Local)
 
 - `prefs.syncEnabled` is the master switch, surfaced on `/profile`. It is

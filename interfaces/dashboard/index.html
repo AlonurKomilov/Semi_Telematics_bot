@@ -4,6 +4,58 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>4truck — Trucking Operations</title>
+
+    <!-- Pre-paint theme stamp. Must stay INLINE and FIRST: it is the only
+         code that runs before the first paint, and it replaces the
+         always-dark <body> splash this file used to carry. Read-only,
+         hand-written, skipped on the apply host. Full rationale and the
+         rules it must keep: design.md §2 "The pre-paint theme stamp";
+         enforced by src/test/themeBoot.test.ts. -->
+    <script id="theme-boot">
+      (function () {
+        // Is this the public apply host, which owns its own theme?
+        // Same predicate as main.tsx. Guarded so an old engine without
+        // URLSearchParams still boots the dashboard normally.
+        var skip = false;
+        try {
+          skip = location.hostname.toLowerCase().indexOf('apply.') === 0
+            || new URLSearchParams(location.search).has('apply');
+        } catch (e) { skip = false; }
+        if (skip) return;
+
+        // Read never throws: a blocked store, absent key or corrupt JSON
+        // all resolve to {}, and every field then falls to its default.
+        // The DEFAULT IS DARK, so this must run even when storage is
+        // unavailable — returning early there would hand every private-
+        // mode user the light theme.
+        var t = {};
+        try {
+          var read = function (key) {
+            var raw = localStorage.getItem(key);
+            if (!raw) return null;
+            var v = JSON.parse(raw);
+            return (v && typeof v === 'object') ? v : null;
+          };
+          // Canonical key first, then the pre-service one. Never written
+          // back — local.ts owns the copy-forward.
+          t = read('4truck.pref.theme') || read('dashboard-theme') || {};
+        } catch (e) { t = {}; }
+
+        var pick = function (v, allowed, fallback) {
+          return allowed.indexOf(v) === -1 ? fallback : v;
+        };
+        var color   = pick(t.color,   ['dark-blue', 'dark-purple', 'dark-green', 'light'], 'dark-blue');
+        var density = pick(t.density, ['compact', 'default', 'comfortable'], 'default');
+        var radius  = pick(t.radius,  ['sharp', 'rounded', 'pill'], 'rounded');
+
+        var root = document.documentElement;
+        if (color === 'light') root.classList.remove('dark');
+        else root.classList.add('dark');
+        root.dataset.theme = color;
+        root.dataset.density = density;
+        root.dataset.radius = radius;
+      })();
+    </script>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
@@ -13,13 +65,11 @@
          on instances where Turnstile is disabled. -->
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
-  <!-- bg-gray-950 is an intentional always-dark splash so dark-theme
-       users don't see a white flash before React applies the theme
-       class.  text-foreground (not a raw palette) so any component
-       that inherits its colour stays visible in BOTH themes — a raw
-       near-white default here is what made form-input text invisible
-       on the light theme. -->
-  <body class="bg-gray-950 text-foreground">
+  <!-- No background literal, on purpose — the theme-boot script above
+       makes index.css's `body { background-color: var(--background) }`
+       correct from the first frame. text-foreground stays so inherited
+       text is visible in both themes. See design.md §2. -->
+  <body class="text-foreground">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

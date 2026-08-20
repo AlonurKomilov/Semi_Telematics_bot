@@ -131,8 +131,16 @@ export function statusClasses(status: string | null | undefined): string {
  * index.css instead of hardcoding `#22c55e` etc. in Recharts props.
  * Pass the CSS var through to `fill` / `stroke`.  Index is 1-based to
  * match the token names; wraps after 5.
+ *
+ * The clamp is load-bearing, not defensive tidying.  JS `%` keeps the
+ * sign of the dividend, so a 0-based caller got `((0 - 1) % 5) + 1 === 0`
+ * and this returned `var(--chart-0)` — a token that exists in no theme,
+ * so the mark rendered with NO colour at all.  That shipped: PartDetail's
+ * cost line called `chartColor(0)`.  Wrapping the index instead of
+ * trusting the caller means a 0-based or negative series index lands on
+ * a real token rather than silently disappearing.
  */
 export function chartColor(n: number): string {
-  const i = ((n - 1) % 5) + 1;
+  const i = Number.isFinite(n) ? ((Math.trunc(n) - 1) % 5 + 5) % 5 + 1 : 1;
   return `var(--chart-${i})`;
 }

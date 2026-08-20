@@ -20,7 +20,19 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function applyTheme(theme: Theme) {
+/**
+ * Turn a stored theme into DOM state.  THE definition of that mapping.
+ *
+ * Exported because it has a second implementation: the pre-paint boot
+ * script in ``index.html`` has to do exactly this before React exists,
+ * or the first painted frame is the wrong theme.  Two implementations
+ * of one mapping drift silently — a theme that renders correctly after
+ * hydration and wrong before it is the kind of bug nobody files.  So
+ * ``themeBoot.test.ts`` runs the inline script and this function over
+ * the same inputs and asserts they agree; that test is the only reason
+ * this is not a module-private function.
+ */
+export function applyTheme(theme: Theme) {
   const root = document.documentElement;
   if (theme.color === 'light') {
     root.classList.remove('dark');

@@ -151,7 +151,7 @@ export default function Routes() {
         <button
           onClick={fetchRoute}
           disabled={loading || !vehicleName}
-          className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
+          className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
         >
           {loading ? 'Loading...' : 'Load Route'}
         </button>

@@ -6,8 +6,13 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Colour = token, never literal.** No `#hex` in components. No raw
   Tailwind palette (`text-green-500`, `bg-amber-100`). Use the semantic
   tokens (`bg-card`, `text-muted-foreground`, `bg-primary`, …). This
-  includes `index.html` — its only allowed literal is the body's
-  always-dark splash `bg`; the body text is `text-foreground`.
+  includes `index.html`, which now has **no** exception: the body's
+  always-dark splash `bg` was the last one and is gone — the inline
+  `theme-boot` script stamps the real theme before the first paint, so
+  `body` carries only `text-foreground`. That script must stay inline,
+  first, read-only and hand-written; `src/test/themeBoot.test.ts` runs it
+  against `applyTheme` and fails on drift. Why, in full: design.md §2
+  "The pre-paint theme stamp".
 - **Declare text colour — never inherit it.** Any text-on-surface element
   (inputs, buttons, chips) sets `text-foreground` / the matching
   `*-foreground`; `bg-<x>` and `text-<x>-foreground` travel together. A

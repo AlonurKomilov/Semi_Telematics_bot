@@ -132,17 +132,13 @@ const DENSITY_LABELS: Record<Density, string> = {
   roomy: 'Roomy',
 };
 
-/** Pre-server-sync storage key — read once as the preference default
- *  so an operator's old device-local choice migrates into the synced
- *  per-user preference instead of resetting to Default. */
-const LEGACY_DENSITY_KEY = '4truck.table.density';
-function readLegacyDensity(): Density {
-  try {
-    const v = localStorage.getItem(LEGACY_DENSITY_KEY);
-    if (v === 'compact' || v === 'default' || v === 'roomy') return v;
-  } catch { /* ignore */ }
-  return 'default';
-}
+// The pre-server-sync density migration used to live here as
+// LEGACY_DENSITY_KEY + readLegacyDensity().  It had no caller: the
+// preferences registry took the job over and owns it now, declaring
+// '4truck.table.density' under `legacyKeys` on the 'table.density'
+// entry, which migrates the value lazily on first read.  Two copies of
+// one migration is how they drift, so this one is gone rather than
+// kept "just in case" — registry.test.ts pins the surviving one.
 
 /** One button in the bulk-action bar (the top toolbar strip shown when
  *  rows are selected).  DataGrid renders these from the ``bulkActions``

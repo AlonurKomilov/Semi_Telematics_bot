@@ -43,7 +43,15 @@ export default {
         secondary: { DEFAULT: tokenColor('--secondary'), foreground: tokenColor('--secondary-foreground') },
         muted: { DEFAULT: tokenColor('--muted'), foreground: tokenColor('--muted-foreground') },
         accent: { DEFAULT: tokenColor('--accent'), foreground: tokenColor('--accent-foreground') },
-        destructive: { DEFAULT: tokenColor('--destructive') },
+        // The fill and its on-colour travel together, same as `primary`
+        // and `card`.  Without the `foreground` key Tailwind had nothing
+        // to look up for `text-destructive-foreground`, so that class
+        // emitted NO rule and five destructive buttons inherited their
+        // label colour from the body instead of declaring it.
+        destructive: {
+          DEFAULT: tokenColor('--destructive'),
+          foreground: tokenColor('--destructive-foreground'),
+        },
         // Semantic status hues — the meaning layer (ok/warn/danger/info).
         // The solid tone supports `/<alpha>` via tokenColor().  Each tone
         // also ships pre-baked `-bg` (15% fill) and `-bd` (30% border)

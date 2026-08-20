@@ -61,9 +61,13 @@
     --font-heading: var(--font-sans);
   }
 
-  /* The macOS/iOS rubber-band otherwise flashes the body's always-dark
-     splash under a light-theme app; none also kills accidental
-     pull-to-refresh.  The splash contract (index.html) is untouched. */
+  /* The macOS/iOS rubber-band otherwise drags the themed body away and
+     exposes the bare UA canvas behind it; `none` also kills accidental
+     pull-to-refresh.
+     (This used to say the rubber-band "flashes the body's always-dark
+     splash" and that "the splash contract is untouched" — both were made
+     false by the pre-paint theme stamp, which removed the splash literal
+     from <body> entirely.  See design.md §2.) */
   html, body {
     overscroll-behavior-y: none;
   }
@@ -102,6 +106,19 @@
     --accent-foreground: oklch(0.205 0 0);
 
     --destructive: oklch(0.577 0.245 27.325);
+
+    /* Label colour ON a solid destructive fill.  This token was USED
+       (`text-destructive-foreground`, five delete/disconnect buttons)
+       long before it was declared — so it emitted no rule and the label
+       fell back to inherited `--foreground`.  That made the colour an
+       accident of the theme rather than a decision, and both themes
+       failed AA on it: near-black on light `#e7000b` is 4.15:1, and
+       near-white on dark `#fb575d` is 3.03:1.
+       Measured, the fills want OPPOSITE labels — light red is dark
+       enough for white text (4.56:1), dark red is light enough for
+       black text (6.26:1) — which is why this is declared per theme
+       and not once.  Re-measure before changing either `--destructive`. */
+    --destructive-foreground: oklch(0.985 0 0);
 
     --border: oklch(0.922 0 0);
 
@@ -238,6 +255,12 @@
 
     --destructive: oklch(0.68 0.20 22);
 
+    /* Near-BLACK here, unlike light's near-white — see the light block's
+       note.  The dark fill is lifted to L 0.68 so it reads on the deep
+       canvas, which makes it too light to carry white text (3.03:1); a
+       dark label on it measures 6.26:1. */
+    --destructive-foreground: oklch(0.145 0 0);
+
     --border: oklch(1 0 0 / 12%);
 
     --input: oklch(1 0 0 / 18%);
@@ -309,6 +332,25 @@
   }
   html {
     font-family: var(--font-sans, sans-serif);
+  }
+
+  /* ── Theme picker swatches ──────────────────────────────────
+     What each option ACTUALLY produces, so the dot in the picker is a
+     preview instead of an approximation.  Before these existed the dots
+     were raw palette classes (`bg-blue-500`, `bg-purple-500`, …) — banned
+     by design.md §10, and wrong besides: none of them matched the accent
+     the option applies.
+     Declared ONCE, on :root only, and deliberately NOT re-pointed in
+     `.dark` — a swatch answers "what would this option look like", which
+     does not change with the theme you are currently in.  Each value is
+     the `--primary` its preset installs below; `light` shows its canvas
+     instead, because Light is a mode, not an accent (its primary is
+     near-black, which would read as a broken dot). */
+  :root {
+    --swatch-dark-blue:   oklch(0.62 0.21 264);
+    --swatch-dark-purple: oklch(0.62 0.20 300);
+    --swatch-dark-green:  oklch(0.65 0.19 142);
+    --swatch-light:       oklch(1 0 0);
   }
 
   /* ── Theme accent presets ───────────────────────────────── */

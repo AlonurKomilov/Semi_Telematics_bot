@@ -361,7 +361,21 @@
     "toggle": "Cambiar tema",
     "light": "Claro",
     "dark": "Oscuro",
-    "system": "Sistema"
+    "system": "Sistema",
+    "color_light": "Claro",
+    "group_color": "Color",
+    "group_density": "Densidad",
+    "group_corners": "Esquinas",
+    "dark_blue": "Azul oscuro",
+    "dark_purple": "Morado oscuro",
+    "dark_green": "Verde oscuro",
+    "density_compact": "Compacta",
+    "density_default": "Normal",
+    "density_roomy": "Amplia",
+    "corners_sharp": "Rectas",
+    "corners_rounded": "Redondeadas",
+    "corners_pill": "Píldora",
+    "picker": "Tema"
   },
   "forms": {
     "create": "Crear",

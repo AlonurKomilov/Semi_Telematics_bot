@@ -993,7 +993,7 @@ export default function TaskDetailSheet({
                     <button
                       type="button"
                       onClick={confirmDelete}
-                      className="flex-1 py-1.5 bg-destructive hover:bg-destructive/90 rounded text-xs font-medium inline-flex items-center justify-center gap-1.5"
+                      className="flex-1 py-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded text-xs font-medium inline-flex items-center justify-center gap-1.5"
                     >
                       <Trash2 size={12} />
                       Yes, delete this task

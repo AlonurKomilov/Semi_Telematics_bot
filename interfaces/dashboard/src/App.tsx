@@ -183,9 +183,14 @@ export default function App() {
     clearBounceCounter();
   }, [loading, user]);
 
+  // ``bg-background`` on every full-viewport boot state below is not
+  // decoration: these render before any shell exists, so whatever they
+  // don't paint is the bare document canvas.  While <body> carried an
+  // always-dark literal that meant a light-theme user stared at a dark
+  // screen for the whole auth round trip.
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
       </div>
     );
@@ -203,7 +208,7 @@ export default function App() {
     // wait is.
     const signingOut = explicitSignoutActive();
     return (
-      <div className="flex flex-col items-center justify-center gap-3 h-screen">
+      <div className="flex flex-col items-center justify-center gap-3 h-screen bg-background">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
         {signingOut && (
           <p className="text-sm text-muted-foreground">Signing out…</p>
@@ -213,7 +218,7 @@ export default function App() {
   }
   if (user && isOnApex()) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
       </div>
     );
