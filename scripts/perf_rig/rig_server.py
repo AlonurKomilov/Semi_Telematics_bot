@@ -20,7 +20,11 @@ import time
 # ── env BEFORE any app import (fail-fast secrets, scratch object store) ──
 SCRATCH = os.path.dirname(os.path.abspath(__file__))
 os.environ.setdefault("ENCRYPTION_KEY", "")
-os.environ["JWT_SECRET"] = "perf-rig-secret-not-production"
+# Random per boot — the rig's tokens must not be forgeable from the
+# repo text (they only open the rig's own localhost API, but a fixed
+# secret in a committed file is bad hygiene regardless).
+import secrets as _secrets
+os.environ["JWT_SECRET"] = _secrets.token_hex(32)
 os.environ["OBJECT_STORE_ROOT"] = os.path.join(SCRATCH, "objstore")
 PG_URL = "postgresql://rig:rig@127.0.0.1:55439/rig"
 

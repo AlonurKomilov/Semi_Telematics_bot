@@ -1,0 +1,5 @@
+# Written at runtime — a live rig token and scratch object store
+# must never be committable, even by accident.
+rig_token.txt
+objstore/
+node_modules/
