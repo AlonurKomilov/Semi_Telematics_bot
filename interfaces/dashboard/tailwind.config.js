@@ -229,9 +229,26 @@ export default {
       width: dimensionScale(defaultTheme.spacing),
       height: dimensionScale(defaultTheme.spacing),
       size: dimensionScale(defaultTheme.spacing),
-      minWidth: dimensionScale(defaultTheme.spacing),
-      minHeight: dimensionScale(defaultTheme.spacing),
       maxHeight: dimensionScale(defaultTheme.spacing),
+
+      // `min-h-tap` / `min-w-tap` — the pointer-target floor, and the ONE
+      // step in this file that deliberately rides no axis.
+      //
+      // A floor expressed on the Size ladder is not a floor: it shrinks
+      // with everything else and stops protecting exactly when it is
+      // needed. Measured — the house `p-1 -m-1` invisible-padding idiom
+      // gives a 24px box at 1.0 and only 22px at 0.75, and `min-h-6`
+      // compiles to `calc(1.5rem * var(--size-control, 1))`, so neither
+      // holds the WCAG 2.5.8 minimum once the user shrinks the UI.
+      //
+      // 24px is the AA floor from WCAG 2.5.8, in CSS pixels, which is why
+      // it is a literal and why design.md §5.1's "no arbitrary lengths"
+      // rule names this as its one sanctioned exception. A named step
+      // rather than `min-h-[24px]` at 500 call sites: greppable, states
+      // its intent, and cannot silently fail to exist the way an
+      // arbitrary value does when the scanner never sees it.
+      minWidth: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
+      minHeight: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
       // maxWidth is TWO ladders in one key: the named dialog steps
       // (`max-w-lg`) and the whole spacing scale (`max-w-40`). Tailwind's
       // default is a function that merges `theme('spacing')` in, so

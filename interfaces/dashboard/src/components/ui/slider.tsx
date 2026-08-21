@@ -87,6 +87,15 @@ export function Slider({
             getAriaValueText={formatValue ? (_formatted, v) => formatValue(v) : undefined}
             className={cn(
               'size-3.5 rounded-full bg-background border-2 border-primary shadow-sm',
+              // The painted thumb is 14px; the TARGET is the 24px square
+              // this pseudo-element centres on it. Growing the thumb
+              // itself would make the control look clumsy, and padding
+              // is inert on a `size-*` box (border-box eats it), so the
+              // hit area is drawn separately and invisibly. `size-[24px]`
+              // rather than a scale step: a floor must not shrink with
+              // the very control it belongs to.
+              'relative after:absolute after:left-1/2 after:top-1/2 after:size-[24px]',
+              "after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']",
               // focus-WITHIN, not focus-visible: the primitive renders the
               // real focusable input inside this element, so a
               // `focus-visible:` rule here can never match and the

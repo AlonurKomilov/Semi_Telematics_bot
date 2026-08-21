@@ -192,7 +192,7 @@ export default function Sidebar({ forceExpanded = false }: {
                 disabled={groupActive && open}
                 aria-expanded={open}
                 aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
-                className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
+                className="inline-flex size-6 min-h-tap min-w-tap items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
               >
                 {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
@@ -298,7 +298,7 @@ export default function Sidebar({ forceExpanded = false }: {
                           disabled={childActive && open}
                           aria-expanded={open}
                           aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
-                          className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
+                          className="inline-flex size-6 min-h-tap min-w-tap items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
                         >
                           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>

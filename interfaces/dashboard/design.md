@@ -299,6 +299,19 @@ formulas.
 - ❌ **No arbitrary lengths** (`h-[220px]`, `p-[3px]`). They are the one
   thing the multipliers cannot reach — an arbitrary value is a promise
   that the element will never follow the user's setting.
+- ✅ **`min-h-tap` / `min-w-tap` — the one sanctioned non-scaling step.**
+  A pointer target may not shrink below **24×24 CSS px** (WCAG 2.5.8 AA),
+  and a floor expressed on the Size ladder is not a floor: it shrinks with
+  everything else and stops protecting exactly when it is needed. Measured
+  — the house `p-1 -m-1` invisible-padding idiom gives 24px at 1× and only
+  **22px at 0.75×**, and `min-h-6` compiles to
+  `calc(1.5rem * var(--size-control, 1))`. So every interactive control
+  carries `min-h-tap` (plus `min-w-tap` when it is square or icon-only).
+  It costs nothing at the default multiplier — the minimum equals the
+  height already declared beside it — and it is what lets the Size floor
+  drop below 100% at all. Do **not** spell it `min-h-[24px]`: a named step
+  is greppable, and an arbitrary value silently emits no rule at all if
+  the scanner never sees the literal.
 - ⚠️ **Never subtract the shell frame in a `calc(100vh − Nrem)`.** That
   figure encodes today's padding, so it is wrong the moment Size moves —
   and two of the three that existed were already wrong at 1×. Use

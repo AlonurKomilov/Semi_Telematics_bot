@@ -32,7 +32,11 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   multiplier), a **`calc(100vh − Nrem)`** that subtracts the shell frame
   (wrong the moment padding moves — use `h-full` or `flex-1 min-h-0`),
   and a **pixel constant standing in for a rendered height**. Never
-  extend Tailwind's `spacing` key: it fuses the four axes into one. Per
+  extend Tailwind's `spacing` key: it fuses the four axes into one.
+  **Every interactive control carries `min-h-tap`** (plus `min-w-tap` when
+  square or icon-only) — the 24px WCAG 2.5.8 floor, deliberately the one
+  step that does NOT scale, because a floor on the Size ladder shrinks
+  away with everything else. Free at the default multiplier. Per
   component sizing is free — `--size-*` inherits, so setting one on a
   wrapper scales its subtree; regions MULTIPLY the global, never replace
   it. Axis table, the enlarge-only floor and why:

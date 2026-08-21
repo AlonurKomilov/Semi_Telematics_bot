@@ -40,7 +40,11 @@ export interface MenuAction {
 }
 
 const ITEM =
-  'w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer ' +
+  // min-h-tap: the row measures 28px today, comfortably over the WCAG
+  // 2.5.8 floor — but its height is `py-1.5` plus a line box, and BOTH
+  // ride the Size axes, so it falls through the floor as soon as the
+  // user shrinks. The clamp costs nothing at the default multiplier.
+  'w-full flex items-center gap-2 px-3 py-1.5 min-h-tap text-xs cursor-pointer ' +
   'outline-none data-[highlighted]:bg-accent ' +
   'data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed';
 

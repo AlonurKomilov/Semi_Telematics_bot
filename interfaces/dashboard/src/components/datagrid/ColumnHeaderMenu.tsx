@@ -131,8 +131,11 @@ export default function ColumnHeaderMenu({
               e.stopPropagation();
               props.onClick?.(e);
             }}
-            // p-1.5/-m-1: a 26px hit box (WCAG 2.5.8) in an 18px layout slot.
-            className="p-1.5 -m-1 text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100"
+            // p-1.5/-m-1: a 26px hit box (WCAG 2.5.8) in an 18px layout
+            // slot. `min-*-tap` is what keeps it a hit box once the user
+            // shrinks the UI — the padding rides --size-layout and would
+            // otherwise fall through the floor with everything else.
+            className="inline-flex items-center justify-center p-1.5 -m-1 min-h-tap min-w-tap text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100"
           >
             <MoreVertical size={14} />
           </button>
