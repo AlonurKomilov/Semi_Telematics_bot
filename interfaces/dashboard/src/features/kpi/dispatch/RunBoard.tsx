@@ -178,6 +178,18 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             'Click a day and pick a reason (home time, repair, holiday) to mark it inactive — the truck’s target lowers with each inactive day. Click an inactive day to make it count again — the target rises back.')}
         </p>
       )}
+      {loadsQ.isPending && draft && (
+        /* The drift banner mounts here when the loads query lands —
+           on live TMS data drift is the COMMON case, and its late
+           insertion pushed the legend and every section down (the
+           CLS cluster DevTools showed).  An invisible same-structure
+           skeleton holds the exact height; no drift → it collapses
+           (the rare case pays the shift, not the common one). */
+        <div className="invisible flex flex-wrap items-center gap-2 text-xs px-2 py-1.5 rounded" aria-hidden>
+          <span>&nbsp;</span>
+          <Button size="sm" variant="outline" tabIndex={-1}>&nbsp;</Button>
+        </div>
+      )}
       {drift > 0 && (
         /* Instruction + the control for it in one block: prose that
            prescribes an action the reader cannot take is a dead end. */

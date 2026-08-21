@@ -509,6 +509,13 @@ export default function IncentiveRuns() {
                       <GradePill value={runLoadsQ.data.dispatcher_grades[name]} />
                     </Tip>
                   )}
+                  {!runLoadsQ.data && runLoadsQ.isPending && (
+                    /* The pill mounts when the loads query lands, a beat
+                       after the strip — inserting it reflowed the strip
+                       and shifted everything below (the DevTools CLS
+                       cluster).  Hold its slot until grades arrive. */
+                    <span className="inline-block size-5" aria-hidden />
+                  )}
                   <span className="font-medium tabular-nums">{usd(total)}</span>
                 </span>
               ))}
