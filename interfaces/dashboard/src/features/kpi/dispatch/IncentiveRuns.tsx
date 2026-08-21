@@ -578,11 +578,18 @@ export default function IncentiveRuns() {
         </div>
       )}
 
-      <MonthlyPayoutsPanel allRuns={allRuns}
-        onSelectRun={(id) => {
-          setSelected(id);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }} />
+      {/* Waits for the summary+board above to reach FINAL height —
+          mounted early it sat under a short skeleton and was shoved
+          ~a full viewport down when the run detail landed (the 0.16
+          CLS event DevTools pinned on this section). Appearing once,
+          at its final position, moves nothing. */}
+      {!(selected != null && detailQ.isLoading) && (
+        <MonthlyPayoutsPanel allRuns={allRuns}
+          onSelectRun={(id) => {
+            setSelected(id);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }} />
+      )}
 
       <NewRunDialog
         open={newOpen}
