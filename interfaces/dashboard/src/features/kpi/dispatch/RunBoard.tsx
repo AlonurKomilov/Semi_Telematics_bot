@@ -14,7 +14,7 @@
  * reports drift per row, surfaced as a banner — the board must never
  * silently disagree with the sheet.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, TriangleAlert } from 'lucide-react';
@@ -25,6 +25,7 @@ import { AnchoredMenu } from '../../../components/ui/context-menu';
 import { dayRange } from './board/geometry';
 import { dayMenuItems } from './board/menu';
 import { BoardGlyphDefs, CalendarOffGlyph } from './board/glyphs';
+import { NearGate } from './board/NearGate';
 import { DayCells } from './board/DayCells';
 import { UnitCard } from './board/UnitCard';
 import { dayLabel, usd } from './board/shared';
@@ -48,14 +49,6 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
 }) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  // STAGGERED MOUNT (perf audit F1): building all 12 sections in one
-  // commit was a single ~300ms task at the exact moment of the click
-  // (Sheet→Board, Expand all).  Bodies now mount in small batches —
-  // the first paint carries the first two, the rest follow one frame
-  // apart, so no task crosses ~80ms and the click answers instantly.
-  // Headers always render (name, counts, total), so the page reads
-  // complete while bodies fill in top-down.
-  const [mountedBodies, setMountedBodies] = useState(2);
   const [busyRow, setBusyRow] = useState<number | null>(null);
   // The board's ONE day menu — cells are plain buttons that anchor it
   // here (board/menu.ts builds the items on open).  A menu component
@@ -102,13 +95,6 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
     list.push(row);
     byDispatcher.set(row.dispatcher_name, list);
   }
-  const sectionCount = byDispatcher.size;
-  useEffect(() => {
-    if (mountedBodies >= sectionCount) return;
-    const id = requestAnimationFrame(() => setMountedBodies((n) => n + 2));
-    return () => cancelAnimationFrame(id);
-  }, [mountedBodies, sectionCount]);
-
   // A truck whose loads split between dispatchers gets a ROW PER
   // DISPATCHER (KPI grades people; each row counts only that person's
   // loads).  Unexplained, the second row reads as a duplicate-data bug
@@ -266,9 +252,6 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
             const names = [...byDispatcher.keys()];
             const allCollapsed = names.every((n) => collapsed[n]);
             setCollapsed(Object.fromEntries(names.map((n) => [n, !allCollapsed])));
-            // Expanding all remounts every body — re-stagger so the
-            // click stays a short task instead of one big commit.
-            if (allCollapsed) setMountedBodies(2);
           }}>
           {[...byDispatcher.keys()].every((n) => collapsed[n]) ? (
             <>
@@ -313,15 +296,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               <span className="ml-auto text-sm font-medium tabular-nums">{usd(confirmed)}</span>
             </button>
 
-            {/* Not-yet-mounted bodies hold their EXACT final height
-                (day-header 32px + rows × 144px, border-box), so the
-                staggered fill swaps content into already-reserved
-                space — DevTools measured CLS 0.30 when the sections
-                pushed each other down as they mounted. */}
-            {!isCollapsed && sectionIdx >= mountedBodies && (
-              <div style={{ height: 32 + rows.length * 144 }} aria-hidden />
-            )}
-            {!isCollapsed && sectionIdx < mountedBodies && (
+            {/* O-1 (owner-approved): the body mounts only when near
+                the viewport — opening the board costs the on-screen
+                sections, never the fleet.  The gate holds the exact
+                final height (day-header 32 + rows × 144, border-box),
+                so page length and layout never move. */}
+            {!isCollapsed && (
+              <NearGate index={sectionIdx} height={32 + rows.length * 144}>
               <div className="flex">
                 {/* Unit pane — OUTSIDE the scroller: this info never
                     moves, so the scrollbar must not run under it.
@@ -375,6 +356,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                   </div>
                 </div>
               </div>
+              </NearGate>
             )}
           </section>
         );
