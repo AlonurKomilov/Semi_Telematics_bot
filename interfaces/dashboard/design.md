@@ -522,7 +522,41 @@ This doc governs `dashboard` only.
 
 ---
 
-## 10. Hard rules (the enforcement checklist)
+## 10. Performance budgets
+
+Speed limits for user-facing surfaces — adopted 2026-08-21 from the
+instrumented Dispatch-KPI audits, owner-approved.  A change that
+breaks one of these does not ship; an audit argues against these
+numbers, never from scratch.
+
+| SLI | Budget | Note |
+|---|---|---|
+| INP, any gesture | **< 200 ms @ 4× CPU throttle** | the human "frozen" line, on a cheap-laptop simulation |
+| Gesture settle (click → last work) | **< 300 ms @ 1×, < 800 ms @ 4×** | heavy boards assemble AFTER the click — INP alone under-describes them |
+| Long tasks during a gesture | **none > 50 ms** | input-blocking |
+| CLS on load | **≤ 0.1** | reserve space for late data — nothing may shove the page |
+| DOM nodes, board-class views | **≤ 2,500 at any fleet size** | volume is the multiplier behind every other cost |
+| Time to primary data on screen | **≤ 2,000 ms** | |
+| Server share of the load path | tracked, **≤ 35 %** | frontend work cannot fix a backend-bound load |
+| Frame budget | `1000 / refresh-rate` ms | 10 ms on a 100 Hz display — never assume 16.7 |
+
+**How to measure (so two sessions never argue methods):**
+
+1. **Absolute verdicts** — DevTools → Performance → *Live metrics* on a
+   desktop-class machine, page reloaded, **3 runs, report the spread**;
+   gestures via the *Interactions* track; the 4×-throttle rows via
+   Performance → CPU: 4× slowdown.  Screenshots of the panel are
+   evidence.
+2. **A/B comparisons and node counts** — the self-serve rig in
+   [scripts/perf_rig/](../../scripts/perf_rig/README.md): an isolated
+   seeded board (12 dispatchers / 69 trucks) + headless-Chromium
+   driver.  Valid for *relative* change-vs-baseline and structural
+   counts; NOT for absolute wall-clock (the dev server is a noisy
+   shared box — measured 5–10× worse than a desktop).
+3. Never measure against a real account (owner rule) — the rig exists
+   so nobody has to.
+
+## 11. Hard rules (the enforcement checklist)
 
 - ❌ No `#hex` in `.tsx` components (charts/maps → config or `chartColor()`).
 - ❌ No raw Tailwind palette for meaning: `text-red-500`, `bg-green-100`,

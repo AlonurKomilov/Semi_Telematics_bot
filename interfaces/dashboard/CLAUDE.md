@@ -205,6 +205,12 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   affects anyone else, it's a typed column / feature table instead. Full
   rule + how to add one:
   [src/preferences/CLAUDE.md](src/preferences/CLAUDE.md).
+- **Performance = budgets in design.md §10.** INP < 200 ms @ 4×
+  throttle, settle < 300 ms, CLS ≤ 0.1, ≤ 2,500 DOM nodes on
+  board-class views — a change that breaks one doesn't ship.  Measure
+  per the recipe there (DevTools Live Metrics ×3 for absolutes; the
+  [scripts/perf_rig/](../../scripts/perf_rig/README.md) seeded rig for
+  A/Bs); never against a real account.
 - **Charts/maps** can't use classes: charts → `chartColor(n)` (the
   `--chart-1..5` tokens); map hex → a shared config constant, never inline.
 
