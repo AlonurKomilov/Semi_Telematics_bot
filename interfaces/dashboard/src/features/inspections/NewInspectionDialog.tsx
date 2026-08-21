@@ -206,7 +206,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
       <DialogContent showCloseButton={false} className="sm:max-w-lg p-5">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">{t('inspections.new.title')}</h3>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
             <X size={16} />
           </button>
         </div>

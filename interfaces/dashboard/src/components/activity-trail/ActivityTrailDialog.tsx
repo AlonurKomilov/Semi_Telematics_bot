@@ -82,7 +82,7 @@ export function ActivityTrailTrigger({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
     >
       <History size={14} /> View activity history
     </button>

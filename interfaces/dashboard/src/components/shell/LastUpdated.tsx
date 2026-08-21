@@ -44,7 +44,7 @@ export default function LastUpdated({
     <button
       onClick={onRefresh}
       disabled={!onRefresh || isFetching}
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition disabled:opacity-60 disabled:cursor-default"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition disabled:opacity-60 disabled:cursor-default py-1 -my-1 min-h-tap"
       title={fetchedAt ? `Last updated ${label}` : 'Not loaded yet'}
     >
       <RefreshCw

@@ -1219,7 +1219,7 @@ function ConnectForm({
             spellCheck={false}
           />
           <details className="text-2xs text-muted-foreground">
-            <summary className="cursor-pointer select-none hover:text-foreground">
+            <summary className="cursor-pointer select-none hover:text-foreground py-0.5 -my-0.5 min-h-tap">
               Where do I find this?
             </summary>
             <div className="mt-1.5 pl-3 space-y-1.5 border-l-2 border-border">

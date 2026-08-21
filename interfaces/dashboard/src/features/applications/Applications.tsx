@@ -1178,7 +1178,7 @@ function InProgressDrafts() {
   if (error) {
     return (
       <section className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-        {error} <button type="button" className="underline" onClick={() => load()}>Try again</button>
+        {error} <button type="button" className="underline py-0.5 -my-0.5 min-h-tap" onClick={() => load()}>Try again</button>
       </section>
     );
   }
@@ -2001,7 +2001,7 @@ function DocThumb({ appId, slot }: { appId: number; slot: string }) {
 
   return (
     <button type="button" onClick={open} disabled={!url}
-      className="group flex flex-col overflow-hidden rounded-md border border-border text-left hover:border-ring disabled:cursor-default">
+      className="group flex flex-col overflow-hidden rounded-md border border-border text-left hover:border-ring disabled:cursor-default py-0.5 -my-0.5 min-h-tap">
       <div className="flex aspect-[4/3] items-center justify-center bg-muted">
         {err ? <span className="text-2xs text-muted-foreground">unavailable</span>
           : !url ? <span className="text-2xs text-muted-foreground">loading…</span>
@@ -2087,7 +2087,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-sm font-medium">Notifications</span>
               {unread > 0 && (
-                <button onClick={markAll} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                <button onClick={markAll} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap">
                   <CheckCheck size={12} /> Mark all read
                 </button>
               )}

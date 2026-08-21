@@ -322,7 +322,7 @@ export default function WorkOrders() {
           <button
             type="button"
             onClick={clearFilters}
-            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap"
           >
             <X size={12} />
             {t('work_orders_page.clear_filters')}

@@ -251,7 +251,7 @@ export default function ApplicationsConfigPanel() {
               someone does after a rotation, not part of setting a
               passphrase, so it no longer competes with the decision. */}
           <details className="rounded-lg border border-border p-3">
-            <summary className="text-xs font-medium text-foreground cursor-pointer">
+            <summary className="text-xs font-medium text-foreground cursor-pointer py-1 -my-1 min-h-tap">
               Re-protect files already exported
             </summary>
             <p className="mt-2 text-xs text-muted-foreground">

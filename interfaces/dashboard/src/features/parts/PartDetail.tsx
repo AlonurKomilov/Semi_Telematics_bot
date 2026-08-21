@@ -178,7 +178,7 @@ export default function PartDetail() {
         return r.vendor_id ? (
           <button
             type="button"
-            className="text-left font-medium text-foreground hover:underline"
+            className="text-left font-medium text-foreground hover:underline py-0.5 -my-0.5 min-h-tap"
             onClick={(e) => { e.stopPropagation(); navigate(`/vendors/${r.vendor_id}`); }}
           >
             {String(v)}

@@ -836,7 +836,7 @@ export default function LiveMap() {
                   {activePoiKey && !routeLoading && (
                     <button
                       onClick={clearRouteLine}
-                      className="ml-2 text-3xs text-primary hover:underline normal-case font-normal"
+                      className="ml-2 text-3xs text-primary hover:underline normal-case font-normal py-1.5 -my-1.5 min-h-tap"
                     >
                       clear route
                     </button>

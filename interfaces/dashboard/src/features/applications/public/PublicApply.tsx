@@ -723,7 +723,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
                     <span className="text-xs text-muted-foreground">Check your email — your link is on its way.</span>
                   ) : (
                     <button type="button" onClick={saveForLater} disabled={laterState === 'sending'}
-                      className="text-xs text-primary hover:underline disabled:opacity-50">
+                      className="text-xs text-primary hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap">
                       {laterState === 'sending' ? 'Sending…'
                         : laterState === 'fail' ? 'Email failed — try again'
                         : 'Save & finish later'}

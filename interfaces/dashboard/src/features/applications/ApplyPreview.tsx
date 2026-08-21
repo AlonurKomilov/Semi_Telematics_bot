@@ -48,7 +48,7 @@ function AssetControl({ label, url, present, busy, onPick, onClear }: {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.currentTarget.value = ''; }} />
         {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <ImagePlus size={14} />}
       </label>
-      {present && <button type="button" onClick={onClear} disabled={busy} title="remove" className="text-2xs hover:text-danger disabled:opacity-50">×</button>}
+      {present && <button type="button" onClick={onClear} disabled={busy} title="remove" className="text-2xs hover:text-danger disabled:opacity-50 py-1 -my-1 min-h-tap">×</button>}
     </span>
   );
 }

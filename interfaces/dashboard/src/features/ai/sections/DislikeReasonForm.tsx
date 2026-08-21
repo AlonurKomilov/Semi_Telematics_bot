@@ -88,7 +88,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
         <Tip label={t('chat.dislike_form.close')}>
           <button
             onClick={onSkip}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap"
             aria-label={t('chat.dislike_form.close')}
           >
             <X size={14} />
@@ -124,7 +124,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
         <button
           onClick={onSkip}
           disabled={submitting}
-          className="text-2xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          className="text-2xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 py-1 -my-1 min-h-tap"
         >
           {t('chat.dislike_form.skip')}
         </button>

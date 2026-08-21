@@ -332,7 +332,7 @@ export function SignatureBlock({ mode, name, dataUrl, fullName, onMode, onName, 
             className="h-40 w-full touch-none cursor-crosshair rounded-md border border-border bg-card" />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">Sign above with your mouse or finger.</span>
-            <button type="button" onClick={clear} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+            <button type="button" onClick={clear} className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">Clear</button>
           </div>
           {error && <span className="text-xs text-destructive">{error}</span>}
         </div>

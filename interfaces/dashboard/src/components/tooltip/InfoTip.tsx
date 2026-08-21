@@ -32,7 +32,14 @@ export function InfoTip({ label, size = 14 }: InfoTipProps) {
         // A real button: keyboard-focusable, Enter/Space toggles, and
         // click-to-open works on touch where hover tooltips can't.
         aria-label="More information"
-        className="inline-flex align-middle cursor-pointer rounded p-1 -m-1 text-muted-foreground/60 hover:text-muted-foreground data-open:text-foreground transition-colors"
+        // `p-1 -m-1` alone gives a 22x22 box at the default size=14 —
+        // two pixels under the WCAG 2.5.8 floor — and it rides
+        // --size-layout, so it falls further as the user shrinks the
+        // UI. `min-*-tap` is the part that does not move. The clamp
+        // costs ~2px of horizontal flow at size=14; the alternative was
+        // a hand-tuned negative margin per icon size, which is a magic
+        // constant that goes stale the first time a size is added.
+        className="inline-flex items-center justify-center align-middle cursor-pointer rounded p-1 -m-1 min-h-tap min-w-tap text-muted-foreground/60 hover:text-muted-foreground data-open:text-foreground transition-colors"
       >
         <Info size={size} />
       </PopoverPrimitive.Trigger>

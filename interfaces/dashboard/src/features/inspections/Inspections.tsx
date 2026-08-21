@@ -356,7 +356,7 @@ export default function Inspections() {
           <button
             type="button"
             onClick={clearVehicleFilter}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
           >
             <X size={12} />
             {t('inspections.filter_banner.clear')}

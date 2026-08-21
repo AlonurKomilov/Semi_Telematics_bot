@@ -24,7 +24,7 @@ import { cn } from '../../lib/utils';
  *   - Empty selection = no filter on this column (same as before opening)
  *   - Live-updates as boxes tick (no Apply button — matches Notion / Linear UX)
  *
- * Why not use ``ui/dropdown-menu``: the Menu primitive's items dismiss
+ * Why not a Menu primitive here: its items dismiss
  * the menu on click, which breaks multi-select.  Popover gives us a
  * persistent surface where multiple ticks compose without closing.
  */

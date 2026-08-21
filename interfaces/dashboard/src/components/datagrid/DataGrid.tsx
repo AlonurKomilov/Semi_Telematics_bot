@@ -4247,6 +4247,20 @@ export default function DataGrid({
                   // differently than divs).
                   style: isSelected ? { boxShadow: 'inset 3px 0 0 0 var(--primary)' } : undefined,
                   className: cn(
+                    // A clickable ROW is a pointer target, and at compact
+                    // density it measures exactly 24px — the WCAG 2.5.8
+                    // minimum — so it falls through as soon as the user
+                    // shrinks the UI (20.4px at 0.85x, measured).
+                    //
+                    // `h-tap` and not `min-h-tap`: a table row's height comes
+                    // from the table layout algorithm, and min-height on a
+                    // <tr> is ignored (measured — no effect at any
+                    // multiplier). `height` on a <tr> IS treated as a
+                    // minimum, so this floors the compact row while default
+                    // and roomy rows, whose content is taller, still grow
+                    // past it. Only applied when the row is clickable;
+                    // a read-only row is not a target.
+                    onRowClick ? 'h-tap' : '',
                     // A clickable row needs a hover the eye actually
                     // catches.  The base ``hover:bg-muted/50`` is only a
                     // 20% step up from the ``bg-muted/30`` zebra, so on

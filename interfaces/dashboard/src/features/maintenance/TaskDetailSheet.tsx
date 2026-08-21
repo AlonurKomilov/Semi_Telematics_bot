@@ -825,7 +825,7 @@ export default function TaskDetailSheet({
                       <button
                         type="button"
                         onClick={handleAttachmentDelete}
-                        className="text-muted-foreground hover:text-destructive"
+                        className="text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
                         aria-label="Remove attachment"
                       >
                         <X size={14} />
@@ -1023,7 +1023,7 @@ export default function TaskDetailSheet({
                 <button
                   type="button"
                   onClick={onShowActivityTrail}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
                 >
                   <History size={14} /> View activity history
                 </button>

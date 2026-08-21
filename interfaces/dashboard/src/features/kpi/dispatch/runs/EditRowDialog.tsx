@@ -94,7 +94,7 @@ export function EditRowDialog({ runId, row, onClose, onSaved, onGoBoard }: {
             : t('kpi_runs.edit_days_ro0', 'No inactive days — mark repair / home time / holiday per-day on the board.')}
           {' '}
           <button type="button" onClick={onGoBoard}
-            className="underline underline-offset-4 hover:text-foreground transition">
+            className="underline underline-offset-4 hover:text-foreground transition py-0.5 -my-0.5 min-h-tap">
             {t('kpi_runs.open_board', 'Open the board')}
           </button>
         </p>

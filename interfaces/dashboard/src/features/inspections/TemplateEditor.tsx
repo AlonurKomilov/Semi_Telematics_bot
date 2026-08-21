@@ -129,7 +129,7 @@ function AddItemDialog({
           <h3 className="text-base font-semibold">
             {t('inspections.add_item_title', { vehicleType })}
           </h3>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
             <X size={16} />
           </button>
         </div>

@@ -227,7 +227,12 @@ export default {
       // element while its `w-N h-N` siblings grow — which turns a round
       // icon button into an oval.
       width: dimensionScale(defaultTheme.spacing),
-      height: dimensionScale(defaultTheme.spacing),
+      // `h-tap` exists for ONE case that `min-h-tap` cannot serve: a table
+      // row. A row's height comes from the table layout algorithm, not from
+      // min-height — measured, `min-h-tap` on a <tr> leaves a compact row at
+      // 20.4px at 0.85x. `height` on a <tr> IS treated as a minimum, so this
+      // floors the row while a taller row still grows past it.
+      height: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
       size: dimensionScale(defaultTheme.spacing),
       maxHeight: dimensionScale(defaultTheme.spacing),
 

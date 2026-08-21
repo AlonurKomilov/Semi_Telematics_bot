@@ -843,7 +843,7 @@ export function InvitesPanel() {
                   title={t('actions.copy_invite_link', { defaultValue: 'Copy invite link' })}
                 >
                   {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
-                  <span className="ml-1">
+                  <span className="ml-1 py-0.5 -my-0.5 min-h-tap">
                     {isJustCopied
                       ? t('actions.copied', { defaultValue: 'Copied' })
                       : t('actions.copy', { defaultValue: 'Copy' })}

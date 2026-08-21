@@ -193,11 +193,11 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
       {email.connected && !email.verified && !showForm && (
         <p className="text-xs text-muted-foreground mt-2">
           We sent a confirmation link to <span className="font-medium">{email.address}</span>. Click it to start receiving email alerts.{' '}
-          <button className="text-primary hover:underline"
+          <button className="text-primary hover:underline py-0.5 -my-0.5 min-h-tap"
                   onClick={() => { void load().then(onChanged); }}>
             Already confirmed? Refresh
           </button>. Didn’t arrive?{' '}
-          <button className="text-primary hover:underline disabled:opacity-50" disabled={busy}
+          <button className="text-primary hover:underline disabled:opacity-50 py-0.5 -my-0.5 min-h-tap" disabled={busy}
                   onClick={() => void submit(email.address, true)}>
             Resend
           </button>.

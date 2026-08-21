@@ -1930,7 +1930,7 @@ function AttachmentRow({
       <button
         type="button"
         onClick={handleDownload}
-        className="text-xs text-primary hover:underline"
+        className="text-xs text-primary hover:underline py-1 -my-1 min-h-tap"
       >
         {t('work_orders_page.download')}
       </button>

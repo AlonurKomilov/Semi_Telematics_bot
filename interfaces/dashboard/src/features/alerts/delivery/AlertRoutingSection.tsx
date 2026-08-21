@@ -324,7 +324,7 @@ export default function AlertRoutingSection({
         type="button"
         onClick={onYes}
         disabled={busy === busyKey}
-        className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+        className="text-xs font-medium text-destructive hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap"
       >
         {busy === busyKey ? '…' : yesLabel}
       </button>
@@ -765,7 +765,7 @@ export default function AlertRoutingSection({
               <button
                 type="button"
                 onClick={load}
-                className="ml-auto shrink-0 font-medium underline hover:opacity-70"
+                className="ml-auto shrink-0 font-medium underline hover:opacity-70 py-0.5 -my-0.5 min-h-tap"
               >
                 {t('common.retry')}
               </button>

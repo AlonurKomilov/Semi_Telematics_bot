@@ -389,7 +389,7 @@ export default function Geofences() {
       {pickingFromMap && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[400] bg-warn text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
           <MapPin size={16} aria-hidden /> Click anywhere on the map to set zone center
-          <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs">Cancel</button>
+          <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs py-1 -my-1 min-h-tap">Cancel</button>
         </div>
       )}
 
@@ -410,7 +410,7 @@ export default function Geofences() {
             <div className="bg-card border border-border rounded-xl p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold">New Zone</h2>
-                <button onClick={closeAddPanel} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
+                <button onClick={closeAddPanel} className="text-muted-foreground hover:text-foreground text-sm py-0.5 -my-0.5 min-h-tap">✕</button>
               </div>
 
               {/* Name */}

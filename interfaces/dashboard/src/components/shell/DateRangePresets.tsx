@@ -541,7 +541,7 @@ export default function DateRangePresets({
             aria-expanded={open}
           >
             {isFetching
-              ? <Loader2 size={12} className="animate-spin" aria-label="Loading" />
+              ? <Loader2 size={12} className="animate-spin py-0.5 -my-0.5 min-h-tap" aria-label="Loading" />
               : <Calendar size={12} />}
             {isCustom ? (rangeLabel ?? `${value}d`) : null}
           </button>

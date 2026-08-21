@@ -350,7 +350,7 @@ export function NotificationsPanel(
             <button
               onClick={() => ackAllStaged(shown.map((a) => a.id))}
               disabled={busy || shown.length === 0}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors py-1 -my-1 min-h-tap"
             >
               <CheckCheck size={14} aria-hidden /> Acknowledge all
             </button>
@@ -492,9 +492,9 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
 
   return (
     <li className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors">
-      <button onClick={onOpen} className="flex items-start gap-2.5 flex-1 min-w-0 text-left">
+      <button onClick={onOpen} className="flex items-start gap-2.5 flex-1 min-w-0 text-left py-0.5 -my-0.5 min-h-tap">
         <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
-        <span className="flex-1 min-w-0">
+        <span className="flex-1 min-w-0 py-0.5 -my-0.5 min-h-tap">
           <span className="flex items-baseline justify-between gap-2">
             <span className="min-w-0 inline-flex items-baseline gap-1.5">
               <span className="text-sm font-medium truncate">{alert.vehicle_name || 'Vehicle'}</span>

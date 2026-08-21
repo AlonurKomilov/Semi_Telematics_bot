@@ -1537,7 +1537,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               <span>{t('chat.thoughts_local_note')}</span>
                               <button
                                 onClick={dismissThoughtNote}
-                                className="shrink-0 font-medium hover:text-foreground transition-colors"
+                                className="shrink-0 font-medium hover:text-foreground transition-colors py-0.5 -my-0.5 min-h-tap"
                               >
                                 {t('chat.got_it')}
                               </button>

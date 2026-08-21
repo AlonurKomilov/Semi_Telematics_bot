@@ -203,7 +203,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
             <>
               This closes in <span className="font-semibold tabular-nums">{leftSec}</span>s.{' '}
               <button
-                className="font-semibold text-foreground hover:underline"
+                className="font-semibold text-foreground hover:underline py-0.5 -my-0.5 min-h-tap"
                 onClick={() => setStopped(true)}
               >
                 Click to stop.

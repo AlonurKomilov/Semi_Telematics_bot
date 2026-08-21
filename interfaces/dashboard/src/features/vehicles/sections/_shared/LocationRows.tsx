@@ -79,7 +79,7 @@ export function LocationRows({
             <button
               type="button"
               onClick={copyCoords}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors py-0.5 -my-0.5 min-h-tap"
               aria-label={copied ? 'Coordinates copied' : 'Copy coordinates'}
             >
               {copied ? (

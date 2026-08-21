@@ -569,7 +569,7 @@ export default function CarrierProfile() {
         editing ? 'sticky top-0 z-30 -mx-1 border-b border-border bg-background px-1 py-2' : ''
       }`}>
         <button type="button" onClick={leavePage}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
           <ArrowLeft size={16} /> Carrier Directory
         </button>
         {canEdit && (editing ? (
