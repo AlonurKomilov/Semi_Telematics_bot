@@ -201,7 +201,7 @@ export default function FuelCosts() {
             </div>
             <button
               type="submit" disabled={saving}
-              className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition whitespace-nowrap"
+              className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition whitespace-nowrap min-h-tap"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>

@@ -668,7 +668,7 @@ export default function ForumRoutingSection() {
                     <button
                       onClick={handleDisconnect}
                       disabled={busyKey === '__disconnect__'}
-                      className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition"
+                      className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition min-h-tap"
                     >
                       {t('forum_routing.btn_disconnect_yes')}
                     </button>

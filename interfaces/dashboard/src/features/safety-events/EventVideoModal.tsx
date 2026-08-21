@@ -187,7 +187,7 @@ export default function EventVideoModal({
               <span className="text-sm">{loadError}</span>
               <button
                 onClick={fetchUrl}
-                className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-xs font-medium"
+                className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-xs font-medium min-h-tap"
               >
                 Try again
               </button>

@@ -85,7 +85,7 @@ export default function PendingInviteBanner() {
       <button
         type="button"
         onClick={handleSignOutAndAccept}
-        className="bg-primary text-primary-foreground rounded px-3 py-1 text-xs font-medium hover:bg-primary/90 transition"
+        className="bg-primary text-primary-foreground rounded px-3 py-1 text-xs font-medium hover:bg-primary/90 transition min-h-tap"
       >
         Sign out & accept
       </button>

@@ -178,13 +178,13 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
         <div className="mt-2 flex items-center gap-2">
           <button
             onClick={approve}
-            className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-2xs font-medium text-primary-foreground hover:brightness-110 transition"
+            className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-2xs font-medium text-primary-foreground hover:brightness-110 transition min-h-tap"
           >
             <Check size={12} aria-hidden /> Approve
           </button>
           <button
             onClick={reject}
-            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-2xs text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-2xs text-muted-foreground hover:text-foreground transition-colors min-h-tap"
           >
             <X size={12} aria-hidden /> Reject
           </button>

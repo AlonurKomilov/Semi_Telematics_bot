@@ -110,7 +110,7 @@ export default function OnboardingBanner({
         <button
           onClick={dismiss}
           aria-label="Dismiss onboarding"
-          className="text-muted-foreground hover:text-foreground p-1"
+          className="text-muted-foreground hover:text-foreground p-1 min-h-tap"
         >
           <X size={16} />
         </button>

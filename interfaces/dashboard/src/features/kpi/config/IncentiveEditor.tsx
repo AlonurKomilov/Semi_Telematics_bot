@@ -803,7 +803,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
               the moment there is something to save. */}
           {rulesDirty && (
             <button type="button" onClick={discardRules}
-              className="py-1 -my-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              className="py-1 -my-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground min-h-tap">
               {t('kpi_config.discard', 'Discard changes')}
             </button>
           )}
@@ -879,7 +879,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           )}
           {targetsDirty && (
             <button type="button" onClick={discardTargets}
-              className="py-1 -my-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              className="py-1 -my-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground min-h-tap">
               {t('kpi_config.discard', 'Discard changes')}
             </button>
           )}

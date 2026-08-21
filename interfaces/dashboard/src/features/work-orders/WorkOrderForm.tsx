@@ -1219,7 +1219,7 @@ export default function WorkOrderForm() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
             >
               <Save size={14} />
               {saving ? t('work_orders_page.saving') : isEdit ? t('work_orders_page.save_changes') : t('work_orders_page.create_draft')}
@@ -1464,7 +1464,7 @@ export default function WorkOrderForm() {
           <button
             type="button"
             onClick={addTaskGroup}
-            className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
+            className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded min-h-tap"
           >
             <Plus size={12} />
             {t('work_orders_page.add_task_group')}
@@ -1804,7 +1804,7 @@ export default function WorkOrderForm() {
             <button
               type="button"
               onClick={applyScanOverwrites}
-              className="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition"
+              className="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
             >
               {t('work_orders_page.scan_apply', { defaultValue: 'Overwrite selected' })}
             </button>
@@ -1938,7 +1938,7 @@ function AttachmentRow({
         <button
           type="button"
           onClick={onDelete}
-          className="text-muted-foreground hover:text-destructive p-1"
+          className="text-muted-foreground hover:text-destructive p-1 min-h-tap"
           aria-label={t('work_orders_page.delete_attachment')}
         >
           <X size={14} />

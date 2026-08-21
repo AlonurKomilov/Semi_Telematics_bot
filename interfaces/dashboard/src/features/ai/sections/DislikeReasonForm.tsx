@@ -131,7 +131,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
         <button
           onClick={submit}
           disabled={submitting || (!reason && !note.trim())}
-          className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed min-h-tap"
         >
           {submitting
             ? t('chat.dislike_form.sending')

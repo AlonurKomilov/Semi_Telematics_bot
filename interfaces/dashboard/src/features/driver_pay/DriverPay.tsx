@@ -293,7 +293,7 @@ function RunsTab() {
           <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)}
             className="ml-2 border rounded px-2 py-1 bg-background" />
         </label>
-        <button onClick={create} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm">
+        <button onClick={create} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm min-h-tap">
           Create draft run
         </button>
       </div>
@@ -585,7 +585,7 @@ function RulesTab() {
             </>
           )}
         </div>
-        <button onClick={save} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm">
+        <button onClick={save} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm min-h-tap">
           Add Rule
         </button>
       </div>
@@ -755,7 +755,7 @@ function SettingsTab() {
             <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} />
             Opted in
           </label>
-          <button onClick={save} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm">
+          <button onClick={save} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm min-h-tap">
             Save
           </button>
         </div>

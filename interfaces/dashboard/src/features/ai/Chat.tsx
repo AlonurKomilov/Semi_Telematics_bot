@@ -1423,7 +1423,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <Tip label={`Generate your ${briefingLabel.toLowerCase()} — or type /briefing`}>
                 <button
                   onClick={runBriefing}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors min-h-tap"
                 >
                   <Sparkles size={16} aria-hidden />
                   {briefingLabel}

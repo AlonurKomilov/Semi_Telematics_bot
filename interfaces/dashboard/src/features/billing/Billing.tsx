@@ -665,7 +665,7 @@ export default function Billing() {
             <button
               onClick={handlePortal}
               disabled={portalLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted transition disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted transition disabled:opacity-60 min-h-tap"
             >
               <ExternalLink size={12} />
               {portalLoading ? 'Opening…' : 'Manage payment'}

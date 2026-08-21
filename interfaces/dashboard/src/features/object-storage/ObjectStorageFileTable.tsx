@@ -152,7 +152,7 @@ export default function ObjectStorageFileTable() {
               type="button"
               onClick={retryAllStuck}
               disabled={bulkRetrying}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
             >
               {bulkRetrying ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
               {t('storage.files.retry_all_stuck', { count: stuckCount })}

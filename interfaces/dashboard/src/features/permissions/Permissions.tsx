@@ -391,7 +391,7 @@ export default function Permissions() {
             </div>
             <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
               <button onClick={() => setConfirmOpen(false)} disabled={saving} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
-              <button onClick={applyChanges} disabled={saving} className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50">
+              <button onClick={applyChanges} disabled={saving} className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50 min-h-tap">
                 {saving ? 'Saving…' : 'Confirm & apply'}
               </button>
             </div>

@@ -494,7 +494,7 @@ export default function TaskDetailSheet({
                 <button
                   type="button"
                   onClick={onShowServiceHistory}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-muted hover:bg-muted/80 border border-border rounded-md transition"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-muted hover:bg-muted/80 border border-border rounded-md transition min-h-tap"
                   title="View service history"
                 >
                   <History size={12} />
@@ -899,7 +899,7 @@ export default function TaskDetailSheet({
                 <button
                   onClick={handleUpdate}
                   disabled={saving}
-                  className="flex-1 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition"
+                  className="flex-1 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap"
                 >
                   {saving ? 'Saving...' : 'Update Task'}
                 </button>
@@ -993,7 +993,7 @@ export default function TaskDetailSheet({
                     <button
                       type="button"
                       onClick={confirmDelete}
-                      className="flex-1 py-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded text-xs font-medium inline-flex items-center justify-center gap-1.5"
+                      className="flex-1 py-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded text-xs font-medium inline-flex items-center justify-center gap-1.5 min-h-tap"
                     >
                       <Trash2 size={12} />
                       Yes, delete this task

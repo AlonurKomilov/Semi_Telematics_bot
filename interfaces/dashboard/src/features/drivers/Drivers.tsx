@@ -464,7 +464,7 @@ function DriverDrawer({
               </div>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1">
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">
             <X size={16} />
           </button>
         </div>
@@ -751,7 +751,7 @@ function ProfileTab({
         <button
           onClick={save}
           disabled={!dirty || saving}
-          className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50"
+          className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50 min-h-tap"
         >
           <Save size={14} />{saving ? 'Saving…' : 'Save changes'}
         </button>
@@ -865,7 +865,7 @@ function VehiclesTab({
           <button
             onClick={add}
             disabled={!vehicleName.trim() || adding}
-            className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50"
+            className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50 min-h-tap"
           >
             <Plus size={14} />{adding ? 'Assigning…' : 'Assign'}
           </button>

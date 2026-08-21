@@ -563,11 +563,11 @@ export default function Geofences() {
 
               <div className="flex gap-2 pt-1">
                 <button onClick={closeAddPanel}
-                  className="flex-1 py-2 rounded-lg border border-border text-sm hover:bg-muted transition">
+                  className="flex-1 py-2 rounded-lg border border-border text-sm hover:bg-muted transition min-h-tap">
                   Cancel
                 </button>
                 <button onClick={handleSave} disabled={saving}
-                  className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-60">
+                  className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-60 min-h-tap">
                   {saving ? 'Saving…' : 'Create Zone'}
                 </button>
               </div>

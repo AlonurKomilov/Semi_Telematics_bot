@@ -249,13 +249,13 @@ function AssignmentsTab() {
         </div>
         <button
           onClick={onAssign}
-          className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
+          className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground min-h-tap"
         >
           Assign
         </button>
         <button
           onClick={onRunNow}
-          className="rounded border border-border/50 px-3 py-1 text-sm"
+          className="rounded border border-border/50 px-3 py-1 text-sm min-h-tap"
         >
           Run engine now
         </button>
@@ -274,7 +274,7 @@ function AssignmentsTab() {
           placeholder={t('forms.filter_by_driver_id')}
           className="rounded border border-border/50 bg-background px-2 py-1 text-sm"
         />
-        <button onClick={load} className="rounded border border-border/50 px-3 py-1 text-sm">
+        <button onClick={load} className="rounded border border-border/50 px-3 py-1 text-sm min-h-tap">
           Apply
         </button>
       </div>
@@ -499,7 +499,7 @@ function RulesTab() {
         <div className="md:col-span-2">
           <button
             onClick={onCreate}
-            className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
+            className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground min-h-tap"
           >
             Create rule
           </button>

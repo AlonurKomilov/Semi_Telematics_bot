@@ -121,7 +121,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
         <button
           onClick={diagnoseFaults}
           disabled={diagnosing}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors disabled:opacity-60"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors disabled:opacity-60 min-h-tap"
         >
           {diagnosing ? (
             <>

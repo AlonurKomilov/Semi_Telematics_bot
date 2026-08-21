@@ -116,7 +116,7 @@ function ConflictChoice({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex-1 rounded-md border border-border bg-muted px-2.5 py-1.5 text-left hover:border-ring focus:outline-none focus:border-ring disabled:opacity-50"
+      className="flex-1 rounded-md border border-border bg-muted px-2.5 py-1.5 text-left hover:border-ring focus:outline-none focus:border-ring disabled:opacity-50 min-h-tap"
       title={`Use ${source}'s value`}
     >
       <div className="text-2xs text-muted-foreground">

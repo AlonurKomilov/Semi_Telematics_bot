@@ -329,7 +329,7 @@ export default function Profile() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="mt-5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition"
+          className="mt-5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition min-h-tap"
         >
           {saving ? 'Saving…' : 'Save preferences'}
         </button>
@@ -564,7 +564,7 @@ function SignInMethods() {
             <button
               type="button"
               onClick={resendVerification}
-              className="shrink-0 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded"
+              className="shrink-0 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded min-h-tap"
             >
               {t('profile.signin_resend_verification', 'Resend link')}
             </button>
@@ -649,7 +649,7 @@ function SignInMethods() {
                   type="button"
                   onClick={submitCredentials}
                   disabled={savingCreds || !newEmail || !newPassword}
-                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
                 >
                   {savingCreds
                     ? t('profile.signin_saving', 'Saving…')
@@ -701,7 +701,7 @@ function SignInMethods() {
             <button
               onClick={unlink}
               disabled={unlinking}
-              className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 px-2 py-1 rounded"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap"
             >
               <Unlink size={12} />
               {unlinking ? t('profile.signin_unlinking', 'Unlinking…') : t('profile.signin_unlink', 'Disconnect')}
@@ -710,7 +710,7 @@ function SignInMethods() {
             <button
               onClick={startLink}
               disabled={linking || linkStatus === 'pending'}
-              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-40 px-2 py-1 rounded"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap"
             >
               <LinkIcon size={12} />
               {linking
@@ -888,7 +888,7 @@ function DataExport() {
       <button
         onClick={download}
         disabled={downloading}
-        className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition"
+        className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition min-h-tap"
       >
         <ExternalLink size={14} />
         {downloading
@@ -1073,7 +1073,7 @@ function ActiveSessions() {
           <button
             onClick={terminateOthers}
             disabled={terminating || busyId !== null}
-            className="inline-flex items-center gap-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded transition"
+            className="inline-flex items-center gap-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded transition min-h-tap"
           >
             <LogOut size={14} />
             {terminating ? 'Signing out…' : `Sign out other sessions (${otherCount})`}

@@ -217,7 +217,7 @@ function AddItemDialog({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted"
+            className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted min-h-tap"
           >
             {t('common.cancel')}
           </button>
@@ -225,7 +225,7 @@ function AddItemDialog({
             type="button"
             onClick={save}
             disabled={saving || !label.trim() || !finalKey}
-            className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
           >
             {saving ? t('common.saving') : t('inspections.add_item_btn')}
           </button>
@@ -343,7 +343,7 @@ function ItemRow({
           aria-label="Move up"
           disabled={isFirst || saving}
           onClick={onMoveUp}
-          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
         >
           <ChevronUp size={14} />
         </button>
@@ -352,7 +352,7 @@ function ItemRow({
           aria-label="Move down"
           disabled={isLast || saving}
           onClick={onMoveDown}
-          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
         >
           <ChevronDown size={14} />
         </button>
@@ -398,7 +398,7 @@ function ItemRow({
             onClick={clearReference}
             disabled={saving}
             title={t('inspections.ref_image_clear')}
-            className="p-1 text-muted-foreground hover:text-destructive"
+            className="p-1 text-muted-foreground hover:text-destructive min-h-tap"
           >
             <X size={12} />
           </button>
@@ -445,7 +445,7 @@ function ItemRow({
         onClick={remove}
         disabled={saving}
         title={t('common.delete')}
-        className="flex-shrink-0 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded"
+        className="flex-shrink-0 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded min-h-tap"
       >
         <Trash2 size={14} />
       </button>
@@ -540,7 +540,7 @@ function TemplateCard({
           <button
             type="button"
             onClick={reset}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-destructive/30 text-destructive rounded-md hover:bg-destructive/10"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-destructive/30 text-destructive rounded-md hover:bg-destructive/10 min-h-tap"
           >
             <RotateCcw size={12} />
             {t('inspections.reset_to_default')}

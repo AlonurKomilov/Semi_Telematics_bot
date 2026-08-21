@@ -1493,7 +1493,7 @@ export default function TeamManagement() {
                                       onClick={() => handlePromoteOwnerRequest(selected.id)}
                                       className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition"
                                     >Send code</button>
-                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition">Cancel</button>
+                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
                                 </div>
                               )}
@@ -1512,7 +1512,7 @@ export default function TeamManagement() {
                                       onClick={() => handlePromoteOwnerConfirm(selected.id)}
                                       className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition"
                                     >Confirm co-owner</button>
-                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition">Cancel</button>
+                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
                                 </div>
                               )}
@@ -1542,7 +1542,7 @@ export default function TeamManagement() {
                                       onClick={() => handleDemoteOwner(selected.id)}
                                       className="px-4 py-1.5 bg-danger text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition"
                                     >Confirm removal</button>
-                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition">Cancel</button>
+                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
                                 </div>
                               )}

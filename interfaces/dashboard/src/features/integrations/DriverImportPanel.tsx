@@ -73,7 +73,7 @@ export default function DriverImportPanel() {
           type="button"
           onClick={loadPlan}
           disabled={loading}
-          className="shrink-0 px-2.5 py-1.5 rounded border border-border bg-muted text-xs text-foreground hover:border-ring focus:outline-none disabled:opacity-50"
+          className="shrink-0 px-2.5 py-1.5 rounded border border-border bg-muted text-xs text-foreground hover:border-ring focus:outline-none disabled:opacity-50 min-h-tap"
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : 'Preview import'}
         </button>
@@ -111,7 +111,7 @@ export default function DriverImportPanel() {
               type="button"
               onClick={apply}
               disabled={applying}
-              className="px-2.5 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 focus:outline-none disabled:opacity-50"
+              className="px-2.5 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 focus:outline-none disabled:opacity-50 min-h-tap"
             >
               {applying
                 ? <Loader2 size={14} className="animate-spin" />

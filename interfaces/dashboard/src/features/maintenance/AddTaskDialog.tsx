@@ -551,7 +551,7 @@ export default function AddTaskDialog({
             </span>
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
+            <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
               {saving ? 'Saving...' : 'Create'}
             </button>
           </div>

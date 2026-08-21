@@ -138,7 +138,7 @@ export default function ServiceTaskPicker({
           <button
             type="button" onClick={submit} disabled={create.isPending}
             aria-label="Save service task"
-            className="p-1.5 rounded-md text-primary hover:bg-muted disabled:opacity-50"
+            className="p-1.5 rounded-md text-primary hover:bg-muted disabled:opacity-50 min-h-tap"
           >
             {create.isPending
               ? <Loader2 size={14} className="animate-spin" />

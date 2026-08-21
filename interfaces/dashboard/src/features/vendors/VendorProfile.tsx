@@ -273,7 +273,7 @@ export default function VendorProfile() {
               <button
                 type="button"
                 onClick={openEdit}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition min-h-tap"
               >
                 <Pencil size={14} />
                 Edit
@@ -368,7 +368,7 @@ export default function VendorProfile() {
                     </button>
                     </Tip>
                     <button type="button" onClick={unlink} disabled={dirBusy}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition">
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition min-h-tap">
                       <Link2Off size={14} /> Unlink
                     </button>
                   </span>
@@ -449,7 +449,7 @@ export default function VendorProfile() {
                   </p>
                   {canManageAccount && (
                     <button type="button" onClick={enableSharing} disabled={dirBusy}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition">
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition min-h-tap">
                       Enable sharing
                     </button>
                   )}

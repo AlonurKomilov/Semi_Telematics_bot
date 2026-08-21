@@ -187,7 +187,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 onClick={downloadReport}
                 disabled={downloading}
                 title={t('inspections.download_report')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
               >
                 <FileDown size={14} />
                 {downloading ? t('common.loading') : t('inspections.download_report')}
@@ -196,7 +196,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
             <button
               onClick={onClose}
               aria-label="Close"
-              className="text-muted-foreground hover:text-foreground p-1"
+              className="text-muted-foreground hover:text-foreground p-1 min-h-tap"
             >
               <X size={16} />
             </button>
@@ -424,7 +424,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                     type="button"
                     onClick={submitReview}
                     disabled={submitting}
-                    className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition"
+                    className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap"
                   >
                     {submitting ? t('common.saving') : t('inspections.submit_review')}
                   </button>
@@ -442,7 +442,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                       type="button"
                       onClick={resendReminder}
                       disabled={resending}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
                     >
                       <BellRing size={14} />
                       {resending ? t('inspections.remind_sending') : t('inspections.remind_btn')}

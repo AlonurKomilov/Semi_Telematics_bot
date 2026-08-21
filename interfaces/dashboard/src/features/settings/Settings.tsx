@@ -368,7 +368,7 @@ export default function Settings() {
             <button
               onClick={handleSaveAccountTz}
               disabled={accountTzSaving}
-              className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+              className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50 min-h-tap"
             >
               {accountTzSaving ? 'Saving…' : 'Save'}
             </button>
@@ -413,7 +413,7 @@ export default function Settings() {
             <button
               onClick={handleSavePublicName}
               disabled={publicNameSaving}
-              className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+              className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50 min-h-tap"
             >
               {publicNameSaving ? 'Saving…' : 'Save'}
             </button>
@@ -604,7 +604,7 @@ export default function Settings() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-muted-foreground">{t('bot_card.disconnect_confirm')}</span>
                     <button onClick={handleDisconnectBot} disabled={botSaving}
-                      className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition">
+                      className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition min-h-tap">
                       {botSaving ? t('bot_card.disconnecting') : t('bot_card.disconnect_yes')}
                     </button>
                     <button onClick={() => setShowBotDisconnect(false)}
@@ -641,7 +641,7 @@ export default function Settings() {
                     className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring font-mono" />
                 </div>
                 <button onClick={handleConnectBot} disabled={botSaving || botToken.length < 30}
-                  className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition whitespace-nowrap">
+                  className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition whitespace-nowrap min-h-tap">
                   {botSaving ? t('bot_card.validating') : t('bot_card.validate')}
                 </button>
               </div>
@@ -780,7 +780,7 @@ export default function Settings() {
               </Select>
             </div>
             <div className="flex items-end">
-              <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
+              <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
                 {saving ? 'Saving...' : 'Add'}
               </button>
             </div>

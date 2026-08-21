@@ -752,7 +752,7 @@ export default function KnowledgeBase() {
           />
           <button
             type="submit"
-            className="inline-flex items-center justify-center px-3 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm rounded-lg transition-colors"
+            className="inline-flex items-center justify-center px-3 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm rounded-lg transition-colors min-h-tap"
             aria-label={t('knowledge.search_placeholder')}
           >
             <SearchIcon size={14} />
@@ -941,7 +941,7 @@ export default function KnowledgeBase() {
               <button
                 type="submit"
                 disabled={saving || !fTitle.trim()}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors min-h-tap"
               >
                 {saving
                   ? t('knowledge.btn_saving')
@@ -952,7 +952,7 @@ export default function KnowledgeBase() {
               <button
                 type="button"
                 onClick={resetForm}
-                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground/80 text-sm rounded-lg transition-colors"
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground/80 text-sm rounded-lg transition-colors min-h-tap"
               >
                 {t('knowledge.btn_cancel')}
               </button>

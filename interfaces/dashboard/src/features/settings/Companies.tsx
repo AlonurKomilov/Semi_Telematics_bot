@@ -226,7 +226,7 @@ export default function Companies() {
             <p className="mt-1 text-2xs text-muted-foreground">USDOT number — immutable id, reusable across integrations.</p>
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
+            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
               {saving ? 'Saving...' : 'Add'}
             </button>
           </div>
@@ -319,7 +319,7 @@ export default function Companies() {
                       <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
                     </label>
                     {selected.has_logo && (
-                      <button onClick={removeLogo} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:text-destructive">
+                      <button onClick={removeLogo} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:text-destructive min-h-tap">
                         <Trash2 size={12} /> Remove
                       </button>
                     )}
@@ -345,7 +345,7 @@ export default function Companies() {
                 </div>
               </div>
 
-              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
+              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition min-h-tap">
                 {saving ? 'Saving...' : 'Update Company'}
               </button>
               {selected.is_active && (

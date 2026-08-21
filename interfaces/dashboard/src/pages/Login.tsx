@@ -634,7 +634,7 @@ export default function Login() {
           <button
             type="button"
             onClick={startBotLogin}
-            className="w-full py-2.5 bg-muted hover:bg-muted/80 border border-border text-foreground text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 bg-muted hover:bg-muted/80 border border-border text-foreground text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 min-h-tap"
           >
             <span>🤖</span>
             <span>{t('login_tg.login_via_bot')}</span>
@@ -673,7 +673,7 @@ export default function Login() {
             <button
               type="button"
               onClick={cancelBotLogin}
-              className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors"
+              className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors min-h-tap"
             >
               {t('common.cancel')}
             </button>

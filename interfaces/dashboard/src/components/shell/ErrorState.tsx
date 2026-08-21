@@ -37,7 +37,7 @@ export default function ErrorState({
           {onRetry && (
             <button
               onClick={onRetry}
-              className="mt-3 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background hover:bg-muted transition"
+              className="mt-3 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background hover:bg-muted transition min-h-tap"
             >
               {t('common.try_again')}
             </button>

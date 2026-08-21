@@ -574,7 +574,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
           />
           {unlockErr && <p className="mt-2 text-xs text-destructive">{unlockErr}</p>}
           <button type="button" onClick={unlock} disabled={unlockBusy}
-            className="mt-4 w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+            className="mt-4 w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 min-h-tap">
             {unlockBusy ? 'Opening…' : 'Continue my application'}
           </button>
           <p className="mt-4 text-xs text-muted-foreground">
@@ -648,11 +648,11 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
             </p>
             <div className="flex shrink-0 gap-2">
               <button type="button" onClick={resumeSaved}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 min-h-tap">
                 Resume
               </button>
               <button type="button" onClick={discardSaved}
-                className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground hover:bg-muted">
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground hover:bg-muted min-h-tap">
                 Start over
               </button>
             </div>
@@ -715,7 +715,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-4">
               <div className="flex items-center gap-3">
                 <button type="button" onClick={back} disabled={step === 0 || submitting}
-                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40">
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40 min-h-tap">
                   <ArrowLeft size={16} /> Back
                 </button>
                 {!preview && token && EMAIL_OK.test(applicantEmail) && maxReached >= 1 && (
@@ -732,7 +732,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
                 )}
               </div>
               <button type="submit" disabled={submitting || (!!preview && isLast)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 min-h-tap">
                 {preview
                   ? (isLast ? 'Submit disabled in preview' : 'Continue')
                   : submitting ? 'Submitting…' : isLast ? 'Submit application' : 'Continue'}

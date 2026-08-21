@@ -550,7 +550,7 @@ export default function DateRangePresets({
         <button
           disabled={disabled}
           onClick={toggleOpen}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed min-h-tap"
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-busy={isFetching}
@@ -704,7 +704,7 @@ export default function DateRangePresets({
                 <button
                   onClick={applyCustom}
                   disabled={!pickedStart}
-                  className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed min-h-tap"
                 >
                   Apply
                 </button>

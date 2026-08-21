@@ -68,14 +68,14 @@ function ScheduleRow({
       <div className="flex gap-2 ml-3">
         <button
           onClick={onEdit}
-          className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded"
+          className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded min-h-tap"
           title="Edit"
         >
           <Pencil size={16} />
         </button>
         <button
           onClick={onDelete}
-          className="p-2 text-destructive hover:text-destructive/80 transition-colors rounded"
+          className="p-2 text-destructive hover:text-destructive/80 transition-colors rounded min-h-tap"
           title="Stop"
         >
           <Trash2 size={16} />
@@ -266,7 +266,7 @@ function ScheduleEditor({
       <div className="flex gap-2">
         <button
           onClick={onCancel}
-          className="flex-1 py-2 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground text-sm transition-colors"
+          className="flex-1 py-2 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground text-sm transition-colors min-h-tap"
         >
           Cancel
         </button>
@@ -433,7 +433,7 @@ export default function ScheduledReports() {
       {!editor && canAddMore && (
         <button
           onClick={openAdd}
-          className="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-medium text-sm transition-colors border border-primary/30 flex items-center justify-center gap-2"
+          className="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-medium text-sm transition-colors border border-primary/30 flex items-center justify-center gap-2 min-h-tap"
         >
           <Plus size={16} />
           Add schedule

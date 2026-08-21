@@ -95,7 +95,7 @@ export function LanguageSelector() {
       <button
         type="button"
         aria-label={t('language.switch')}
-        className="inline-flex items-center px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition"
+        className="inline-flex items-center px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap"
       >
         <span className="text-xs font-medium tracking-wider">{SHORT_CODE[current]}</span>
       </button>

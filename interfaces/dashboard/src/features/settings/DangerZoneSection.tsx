@@ -143,7 +143,7 @@ export default function DangerZoneSection() {
           <button
             onClick={cancelDeletion}
             disabled={busy}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
           >
             {busy ? '…' : 'Reactivate account'}
           </button>
@@ -169,7 +169,7 @@ export default function DangerZoneSection() {
             <button
               onClick={confirmDelete}
               disabled={busy || code.length !== 6}
-              className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 min-h-tap"
             >
               {busy ? '…' : 'Confirm deletion'}
             </button>
@@ -195,7 +195,7 @@ export default function DangerZoneSection() {
           <button
             onClick={requestCode}
             disabled={busy}
-            className="rounded-md border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            className="rounded-md border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 min-h-tap"
           >
             {busy ? '…' : 'Delete this account…'}
           </button>

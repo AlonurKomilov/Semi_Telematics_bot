@@ -1484,7 +1484,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
           <div className="flex items-center gap-1">
             {app && (
               <button onClick={downloadPacket} title="Download application packet (PDF)"
-                className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground min-h-tap">
                 <Download size={14} /> Download packet (PDF)
               </button>
             )}

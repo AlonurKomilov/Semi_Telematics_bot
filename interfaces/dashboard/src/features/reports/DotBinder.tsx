@@ -141,7 +141,7 @@ export default function DotBinder() {
           type="button"
           onClick={generate}
           disabled={generating}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium text-primary-foreground transition"
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium text-primary-foreground transition min-h-tap"
         >
           <FileText size={14} />
           {generating ? 'Generating PDF…' : 'Generate PDF'}

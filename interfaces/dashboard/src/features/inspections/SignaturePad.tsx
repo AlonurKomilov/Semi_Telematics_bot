@@ -123,7 +123,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
           type="button"
           onClick={clear}
           disabled={!didDraw || submitting}
-          className="flex-1 px-2 py-1.5 text-xs border border-border rounded hover:bg-muted disabled:opacity-50"
+          className="flex-1 px-2 py-1.5 text-xs border border-border rounded hover:bg-muted disabled:opacity-50 min-h-tap"
         >
           {t('inspections.signature.clear')}
         </button>
@@ -131,7 +131,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="flex-1 px-2 py-1.5 text-xs border border-border rounded hover:bg-muted disabled:opacity-50"
+          className="flex-1 px-2 py-1.5 text-xs border border-border rounded hover:bg-muted disabled:opacity-50 min-h-tap"
         >
           {t('inspections.signature.cancel')}
         </button>
@@ -139,7 +139,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
           type="button"
           onClick={confirm}
           disabled={!didDraw || submitting || saving}
-          className="flex-[1.4] px-2 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50"
+          className="flex-[1.4] px-2 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50 min-h-tap"
         >
           {submitting || saving ? t('inspections.signature.saving') : t('inspections.signature.confirm')}
         </button>

@@ -402,14 +402,14 @@ function RuleRow({
         <button
           disabled={!dirty || saving}
           onClick={onSave}
-          className="px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90"
+          className="px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 min-h-tap"
         >
           {saving ? '…' : 'Save'}
         </button>
         <button
           disabled={!rule.overridden || saving}
           onClick={onReset}
-          className="px-2.5 py-1 rounded text-xs font-medium border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted"
+          className="px-2.5 py-1 rounded text-xs font-medium border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted min-h-tap"
           title="Reset to default"
         >
           ⟲

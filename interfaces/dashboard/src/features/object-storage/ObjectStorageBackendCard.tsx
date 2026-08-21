@@ -210,7 +210,7 @@ export default function ObjectStorageBackendCard() {
                 type="button"
                 onClick={handleDisconnect}
                 disabled={disconnecting}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
               >
                 {disconnecting ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
                 {disconnecting ? t('storage.disconnecting') : t('storage.disconnect_button')}
@@ -220,7 +220,7 @@ export default function ObjectStorageBackendCard() {
                 type="button"
                 onClick={handleConnect}
                 disabled={connecting}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
               >
                 {connecting ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}
                 {connecting ? t('storage.redirecting') : t('storage.connect_button')}
@@ -296,7 +296,7 @@ export function BackendOption({
           type="button"
           onClick={onSwitch}
           disabled={switching}
-          className="self-start inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
+          className="self-start inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
         >
           {switching && <Loader2 size={12} className="animate-spin" />}
           {switching ? t('storage.settings.switching') : t('storage.settings.switch_button')}

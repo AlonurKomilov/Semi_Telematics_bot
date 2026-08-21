@@ -187,7 +187,7 @@ export default function ObjectStorageUsageCard() {
           <button
             onClick={review}
             disabled={busy}
-            className="ml-auto px-3 py-1.5 border border-border bg-background hover:bg-muted rounded-lg text-xs font-medium text-foreground transition disabled:opacity-50"
+            className="ml-auto px-3 py-1.5 border border-border bg-background hover:bg-muted rounded-lg text-xs font-medium text-foreground transition disabled:opacity-50 min-h-tap"
           >
             Review…
           </button>
@@ -236,7 +236,7 @@ export default function ObjectStorageUsageCard() {
             <button
               onClick={confirmDelete}
               disabled={busy}
-              className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 rounded-lg text-sm font-medium text-destructive-foreground transition inline-flex items-center gap-1.5 disabled:opacity-50"
+              className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 rounded-lg text-sm font-medium text-destructive-foreground transition inline-flex items-center gap-1.5 disabled:opacity-50 min-h-tap"
             >
               <Trash2 size={14} />
               Delete {reviewing?.candidate_count.toLocaleString()} files

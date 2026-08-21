@@ -685,7 +685,7 @@ export default function PivotPanel({
                     <button
                       type="button"
                       aria-label={`Add ${byKey.get(key)?.label ?? key}`}
-                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors min-h-tap"
                     >
                       <Plus size={14} />
                     </button>
@@ -905,7 +905,7 @@ function FieldRow({
           {...attributes}
           {...listeners}
           aria-label={`Reorder ${label}`}
-          className="shrink-0 p-1 -ml-1 rounded cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors touch-none"
+          className="shrink-0 p-1 -ml-1 rounded cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors touch-none min-h-tap"
         >
           <GripVertical size={14} />
         </button>
@@ -937,7 +937,7 @@ function FieldRow({
             <button
               type="button"
               aria-label={`${label} options`}
-              className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors min-h-tap"
             >
               <MoreVertical size={14} />
             </button>

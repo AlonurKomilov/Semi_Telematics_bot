@@ -362,7 +362,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted"
+            className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted min-h-tap"
           >
             {t('common.cancel')}
           </button>
@@ -370,7 +370,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
             type="button"
             onClick={submit}
             disabled={saving || !vehicleName.trim() || driverId == null}
-            className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
           >
             {saving ? t('common.saving') : t('inspections.new.assign')}
           </button>

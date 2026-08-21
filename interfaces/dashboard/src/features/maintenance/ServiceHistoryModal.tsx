@@ -141,7 +141,7 @@ export function ServiceHistoryModal({
             <h2 className="text-lg font-semibold">Service History</h2>
             <p className="text-sm text-muted-foreground">Vehicle #{vehicleName}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1">
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">
             <X size={16} />
           </button>
         </div>

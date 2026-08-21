@@ -151,7 +151,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
               Re-usable defaults for the common service intervals.
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1">
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">
             <X size={16} />
           </button>
         </div>
@@ -330,7 +330,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex-1 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition"
+                className="flex-1 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
               >
                 {saving ? 'Saving…' : 'Save template'}
               </button>

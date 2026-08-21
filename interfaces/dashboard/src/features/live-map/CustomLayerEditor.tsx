@@ -367,7 +367,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           </h2>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-lg leading-none"
+            className="text-muted-foreground hover:text-foreground text-lg leading-none min-h-tap"
             aria-label="Close"
           >×</button>
         </div>
@@ -436,7 +436,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                   type="button"
                   onClick={runPinPreview}
                   disabled={pinPreviewing || !pinLat || !pinLng}
-                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5 min-h-tap"
                 >
                   {pinPreviewing ? 'Detecting…' : <><Search size={14} /> Detect brand</>}
                 </button>
@@ -627,12 +627,12 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           <button
             onClick={onClose}
             disabled={busy}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
+            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap"
           >Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={busy}
-            className="px-3 py-1.5 text-xs font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
+            className="px-3 py-1.5 text-xs font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50 min-h-tap"
           >
             {busy ? 'Saving…' : mode === 'edit' ? 'Save' : 'Create'}
           </button>

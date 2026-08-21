@@ -332,7 +332,7 @@ export default function Reports() {
           <button
             type="button"
             onClick={exportCsv}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border min-h-tap"
           >
             <Download size={14} />
             {t('cost_reports.export_csv')}

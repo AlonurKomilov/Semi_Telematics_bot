@@ -834,7 +834,7 @@ export default function Scorecards() {
               type="button"
               onClick={exportCsv}
               disabled={cards.length === 0}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition min-h-tap"
               title={t('scorecards.csv_download_title')}
             >
               <Download size={12} />
@@ -1054,7 +1054,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
           <button
             onClick={onClose}
             aria-label={t('common.close')}
-            className="text-muted-foreground hover:text-foreground p-1"
+            className="text-muted-foreground hover:text-foreground p-1 min-h-tap"
           >
             <X size={16} />
           </button>
