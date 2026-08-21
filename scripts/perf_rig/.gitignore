@@ -3,3 +3,5 @@
 rig_token.txt
 objstore/
 node_modules/
+*.log
+dist-*/
