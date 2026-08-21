@@ -89,7 +89,12 @@ export default function Sidebar({ forceExpanded = false }: {
       // (see ``rounded-tl-xl`` on <main>), revealing the chrome
       // colour behind it.  That single inset curve is what gives
       // the Samsara-style continuous-chrome look.
-      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar text-sidebar-foreground flex flex-col shrink-0 h-screen transition-[width] duration-150 ease-out`}
+      //
+      // NO width transition, deliberately: animating width re-lays-out
+      // the ENTIRE content area every frame for the whole duration —
+      // measured at ~39 dropped frames (~400ms of stutter) per toggle
+      // with a large board open.  An instant snap costs one relayout.
+      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar text-sidebar-foreground flex flex-col shrink-0 h-screen`}
     >
       {/* Logo row + collapse toggle.  Expanded: one h-12 row carries the
           brand text, persona selector, and collapse button — plenty of

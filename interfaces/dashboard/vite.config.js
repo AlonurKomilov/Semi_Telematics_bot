@@ -25,7 +25,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Split heavy vendor libs into their own chunks so:
-        //  - editing a chart page doesn't invalidate the user's recharts cache
         //  - editing a map page doesn't invalidate the user's leaflet cache
         //  - the React/router/query bundle is reused across every navigation
         //  - i18n + small utils ride their own long-lived chunks instead
@@ -33,11 +32,16 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'query-vendor': ['@tanstack/react-query', '@tanstack/react-query-devtools', '@tanstack/react-table'],
-          'chart-vendor': ['recharts'],
-          // leaflet is only reached via lazy map pages — Rollup bundles
-          // it into a shared chunk for those automatically.  A forced
-          // ``map-vendor`` manualChunk just produces an empty chunk
-          // (nothing in the static graph imports it), so it's omitted.
+          // recharts and leaflet are only reached via lazy pages —
+          // Rollup bundles each into a shared async chunk for those
+          // pages automatically (same cache stability, correct hash).
+          // FORCING them into manualChunks backfires two ways: leaflet
+          // produced an empty chunk, and recharts — which shares
+          // modules (react-is) with the eager util-vendor — got
+          // chunk-order-linked into the ENTRY as a bare side-effect
+          // import: 115 kB gzip of chart code preloaded on every
+          // page, measured by the 2026-08-21 perf audit on a page
+          // with zero charts.  Lazy-only libs stay OUT of this map.
           // three IS also lazy-only, but unlike leaflet the split works
           // (verified in dist: a real chunk, imported only by Scene) —
           // it exists for CACHE STABILITY: editing our Scene code must
