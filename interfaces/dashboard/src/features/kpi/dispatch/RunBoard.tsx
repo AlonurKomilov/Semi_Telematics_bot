@@ -301,6 +301,14 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               <span className="ml-auto text-sm font-medium tabular-nums">{usd(confirmed)}</span>
             </button>
 
+            {/* Not-yet-mounted bodies hold their EXACT final height
+                (day-header 32px + rows × 144px, border-box), so the
+                staggered fill swaps content into already-reserved
+                space — DevTools measured CLS 0.30 when the sections
+                pushed each other down as they mounted. */}
+            {!isCollapsed && sectionIdx >= mountedBodies && (
+              <div style={{ height: 32 + rows.length * 144 }} aria-hidden />
+            )}
             {!isCollapsed && sectionIdx < mountedBodies && (
               <div className="flex">
                 {/* Unit pane — OUTSIDE the scroller: this info never
