@@ -30,10 +30,16 @@ Reads the login token from `rig_token.txt`, written by the server.
   DevTools Live Metrics on a desktop-class machine (see the design.md
   recipe).
 
-## Cleanup
+## Cleanup — part of the run, not optional
 
-Everything lives in the `kpi-perf-rig-pg` container and the two
-processes; `docker stop kpi-perf-rig-pg` and killing them leaves zero
-trace.  The rig never touches the real database, object store, or any
+**Owner rule: measurement runs are one-time and disposable.**  Never
+store results — no report files, no committed or lingering logs, no
+kept scratch builds.  A result's only permanent home is the commit
+message of the change it justifies; everything else is regenerated
+fresh next time.  A stale number is worse than none: it looks
+identical to a fresh one and will be trusted by whoever finds it.
+
+Tear down when done: `docker stop kpi-perf-rig-pg` (self-removing)
+and kill the two processes — that leaves zero trace.  The rig never touches the real database, object store, or any
 external service (loads are served from an in-process override, the
 same way the test suite does it).

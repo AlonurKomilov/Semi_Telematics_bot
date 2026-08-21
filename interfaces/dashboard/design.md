@@ -555,6 +555,14 @@ numbers, never from scratch.
    shared box — measured 5–10× worse than a desktop).
 3. Never measure against a real account (owner rule) — the rig exists
    so nobody has to.
+4. **A measurement is a ONE-TIME, disposable act — never stored**
+   (owner rule).  No report files, no kept logs, no processes or
+   containers left running: the single permanent record of a result
+   is the **commit message of the change it justifies**.  When you
+   finish, tear the rig down (its README shows the two commands) and
+   delete scratch builds.  Why this hard line: a stale number looks
+   identical to a fresh one, and a developer finding a three-month-old
+   log will trust it — always re-measure, never re-read.
 
 ## 11. Hard rules (the enforcement checklist)
 
