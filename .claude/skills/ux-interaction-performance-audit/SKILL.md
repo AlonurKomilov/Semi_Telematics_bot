@@ -75,6 +75,17 @@ identical (the working tree is truth, git only locates scope):
   in-chat report).  A stale number looks identical to a fresh one and
   WILL be trusted by whoever finds it — always re-measure, never
   re-read.
+  **Workspace isolation:** the runner, any rig, and every artifact
+  they create (profiles, minted tokens, scratch builds, containers,
+  browser installs) live in an ISOLATED disposable workspace — the
+  session scratchpad or OS temp — never inside the audited project's
+  tree.  The user's project stays clean: nothing to hunt down and
+  delete tomorrow.  Hosts and ports are never assumed or hardcoded —
+  they come from the profile or the environment, a rig binds
+  loopback-only, and a taken port means pick another, never fight for
+  it.  If the owner explicitly asks to KEEP a per-project harness, it
+  lives in ONE self-contained folder with its runtime files
+  git-ignored — deletable with a single command.
 
 In every mode: never guess about code you haven't read — mark
 `NEEDS-CONTEXT` and name the exact file or measurement you need.
@@ -437,4 +448,4 @@ ephemeral.
   containers — after the run; or re-reading any stored number instead
   of re-measuring.
 
-<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 · v1.4: seeded-rig pattern, disposable-measurement rule, bundled tools/measure.mjs runner, duplicate-name probe -->
+<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 · v1.4: seeded-rig pattern, disposable-measurement rule, workspace isolation, bundled tools/measure.mjs runner, duplicate-name probe -->
