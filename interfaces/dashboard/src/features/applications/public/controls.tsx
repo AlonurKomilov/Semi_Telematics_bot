@@ -213,7 +213,7 @@ export function DocUpload({ label, sub, required, accept = 'image/*,application/
           <span className="text-xs text-muted-foreground">JPG, PNG or PDF · up to {maxMB} MB</span>
           {allowsImage && (
             <button type="button" onClick={(e) => { e.stopPropagation(); camRef.current?.click(); }}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted">
+              className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted min-h-tap">
               <Camera size={14} /> Take photo
             </button>
           )}
@@ -308,7 +308,7 @@ export function SignatureBlock({ mode, name, dataUrl, fullName, onMode, onName, 
       <div className="inline-flex w-fit rounded-md border border-border p-0.5">
         {(['type', 'draw'] as const).map((m) => (
           <button key={m} type="button" onClick={() => onMode(m)}
-            className={`rounded px-3 py-1 text-sm capitalize ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
+            className={`rounded px-3 py-1 text-sm capitalize ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'} min-h-tap`}>
             {m === 'type' ? 'Type' : 'Draw'}
           </button>
         ))}

@@ -346,7 +346,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                               // but drivable.
                               repair_priority: it.status === 'oos' ? 'emergency' : 'non_scheduled',
                             })}
-                            className="mt-2 inline-flex items-center px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-accent text-foreground font-medium transition-colors"
+                            className="mt-2 inline-flex items-center px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-accent text-foreground font-medium transition-colors min-h-tap"
                           >
                             + Work order
                           </button>

@@ -55,13 +55,14 @@
         root.dataset.radius = radius;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts
-        // — themeBoot.test.ts asserts that it does. 1 is "as designed";
-        // the lower bound is 1 because 78 interactive targets already sit
-        // exactly on the 24px WCAG minimum, so shrinking breaks them.
+        // — themeBoot.test.ts asserts that it does. 1 is "as designed".
+        // Shrinking is safe because every pointer target carries a
+        // non-scaling 24px floor (min-h-tap); 0.85 is where small TYPE
+        // stops being worth reading. Rationale: registry.ts SIZE_MIN.
         var clamp = function (v) {
           var n = typeof v === 'number' ? v : Number(v);
           if (!isFinite(n)) return 1;
-          return Math.min(1.5, Math.max(1, n));
+          return Math.min(1.5, Math.max(0.85, n));
         };
         var g = clamp(s.global);
         var axes = ['text', 'control', 'layout', 'panel'];

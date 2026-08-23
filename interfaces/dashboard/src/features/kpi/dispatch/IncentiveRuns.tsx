@@ -350,7 +350,7 @@ export default function IncentiveRuns() {
                   aria-pressed={viewMode === 'sheet'}
                   className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs ${viewMode === 'sheet'
                     ? 'bg-card text-foreground shadow-sm font-medium'
-                    : 'text-muted-foreground hover:text-foreground'}`}
+                    : 'text-muted-foreground hover:text-foreground'} min-h-tap`}
                 >
                   <Table2 size={14} />
                   {t('kpi_runs.view_sheet', 'Sheet')}
@@ -361,7 +361,7 @@ export default function IncentiveRuns() {
                   aria-pressed={viewMode === 'board'}
                   className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs ${viewMode === 'board'
                     ? 'bg-card text-foreground shadow-sm font-medium'
-                    : 'text-muted-foreground hover:text-foreground'}`}
+                    : 'text-muted-foreground hover:text-foreground'} min-h-tap`}
                 >
                   <CalendarRange size={14} />
                   {t('kpi_runs.view_board', 'Board')}
@@ -479,7 +479,7 @@ export default function IncentiveRuns() {
               )}
               <button type="button" onClick={() => setAdjustmentsOpen(true)}
                 className={`ml-auto inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 hover:border-ring transition ${
-                  adjustedRows.length > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  adjustedRows.length > 0 ? 'text-foreground' : 'text-muted-foreground'} min-h-tap`}>
                 <ListChecks size={12} />
                 {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
               </button>
@@ -487,7 +487,7 @@ export default function IncentiveRuns() {
                   edit (day marks, extras, overrides, finalize) with
                   its author and old → new values. */}
               <button type="button" onClick={() => setTrailOpen(true)}
-                className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 text-muted-foreground hover:border-ring transition">
+                className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 text-muted-foreground hover:border-ring transition min-h-tap">
                 <History size={12} />
                 {t('kpi_runs.activity', 'Activity')}
               </button>

@@ -218,7 +218,7 @@ function Cell({ checked, disabled, hint, onChange }: {
         checked
           ? 'bg-primary/15 text-primary hover:bg-primary/25'
           : 'bg-muted text-muted-foreground hover:bg-muted/80'
-      }`}
+      } min-h-tap`}
     >
       {checked ? 'On' : 'Off'}
     </button>

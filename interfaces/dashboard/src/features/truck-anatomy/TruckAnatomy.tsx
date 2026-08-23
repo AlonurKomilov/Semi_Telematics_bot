@@ -134,7 +134,7 @@ export default function TruckAnatomy() {
                     }}
                     className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium uppercase tracking-wide transition-colors ${
                       active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                    }`}
+                    } min-h-tap`}
                   >
                     {g.systemLabel}
                     <span className="tabular-nums font-normal normal-case tracking-normal text-2xs">
@@ -150,7 +150,7 @@ export default function TruckAnatomy() {
                         selection.assemblyKey === a.key
                           ? 'bg-primary/10 text-primary font-medium'
                           : 'text-foreground hover:bg-muted/60'
-                      }`}
+                      } min-h-tap`}
                     >
                       <ChevronRight size={12} className="shrink-0 text-muted-foreground/60" />
                       <span className="min-w-0 truncate">{a.label}</span>

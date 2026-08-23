@@ -353,7 +353,7 @@ function PayEstimateToggle() {
         onClick={() => { void flip(); }}
         className={`mt-0.5 shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
           enabled ? 'bg-primary' : 'bg-muted-foreground/30'
-        } ${busy ? 'opacity-60' : ''}`}
+        } ${busy ? 'opacity-60' : ''} min-h-tap`}
       >
         <span
           className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${

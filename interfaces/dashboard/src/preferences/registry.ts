@@ -125,11 +125,9 @@ export interface ThemeSetting {
  * global rather than replacing it.
  *
  * Every number is clamped on the way in — see SIZE_MIN / SIZE_MAX.  The
- * clamp is not tidiness: 78 interactive targets currently measure
- * exactly 24.0 px, the WCAG 2.5.8 minimum, so any multiplier below 1
- * puts them under it.  Until that floor is repaired the control is
- * enlarge-only, and the floor lives HERE and in the pre-paint script in
- * index.html — `themeBoot.test.ts` asserts the two agree.
+ * clamp lives HERE and in the pre-paint script in index.html —
+ * `themeBoot.test.ts` asserts the two agree, because a boot stamp that
+ * clamped differently would paint one size and then jump to another.
  */
 export type SizeRegion =
   | 'text' | 'tables' | 'controls' | 'overlays' | 'navigation' | 'assistant';
@@ -142,8 +140,22 @@ export interface SizeSetting {
   regions: Partial<Record<SizeRegion, number>>;
 }
 
-/** Enlarge-only until the 24 px floor is repaired; see SizeSetting. */
-export const SIZE_MIN = 1;
+/**
+ * The range the Size control offers.
+ *
+ * 0.85 is not a round number — it is where LEGIBILITY takes over from
+ * geometry as the binding constraint. Every pointer target now carries a
+ * non-scaling 24 px floor (`min-h-tap` / `h-tap`, see design.md §5.1), so
+ * hit areas hold all the way down; what does not hold is type. The
+ * smallest step in the app is `text-3xs` at 10 px, which renders 8.5 px at
+ * 0.85 — already at the edge of what is worth reading, and Geist's stem is
+ * one device pixel at 11.63 px, so below that the glyphs of the dominant
+ * `text-xs` stop landing on whole pixels on a DPR-1 screen.
+ *
+ * Going lower is therefore a TYPE decision, not an accessibility one: it
+ * needs a floor on the small type steps first, not more work on targets.
+ */
+export const SIZE_MIN = 0.85;
 export const SIZE_MAX = 1.5;
 
 export type NotifPosition = 'top-right' | 'bottom-right' | 'bottom-center';

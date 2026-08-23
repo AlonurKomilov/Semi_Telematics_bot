@@ -309,7 +309,7 @@ function AssignmentsTab() {
                   <span className="inline-flex justify-end w-full">
                     <button
                       onClick={() => onCancel(a.id)}
-                      className="text-xs text-destructive underline"
+                      className="text-xs text-destructive underline py-1 -my-1 min-h-tap"
                     >
                       Cancel
                     </button>
@@ -538,7 +538,7 @@ function RulesTab() {
               render: (_v, row) => {
                 const r = row as unknown as CoachingRule;
                 return (
-                  <button onClick={() => onToggle(r)} className="text-xs underline">
+                  <button onClick={() => onToggle(r)} className="text-xs underline py-1 -my-1 min-h-tap py-1 -my-1 min-h-tap">
                     {r.active ? 'Disable' : 'Enable'}
                   </button>
                 );
@@ -552,7 +552,7 @@ function RulesTab() {
                   <span className="inline-flex justify-end w-full">
                     <button
                       onClick={() => onDelete(r.id)}
-                      className="text-xs text-destructive underline"
+                      className="text-xs text-destructive underline py-1 -my-1 min-h-tap"
                     >
                       Delete
                     </button>

@@ -713,7 +713,7 @@ export default function KnowledgeBase() {
           canCreate ? (
             <button
               onClick={() => { resetForm(); setShowForm(true); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
             >
               <Plus size={14} />
               {t('knowledge.new_article')}
@@ -985,7 +985,7 @@ export default function KnowledgeBase() {
             canCreate ? (
               <button
                 onClick={() => { resetForm(); setShowForm(true); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
               >
                 <Plus size={14} />
                 {t('knowledge.new_article')}
@@ -1259,7 +1259,7 @@ function ArticleCard({
             bookmarked
               ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          }`}
+          } min-h-tap min-w-tap min-h-tap min-w-tap`}
         >
           <Pin size={14} className={bookmarked ? 'fill-current' : ''} />
         </button>
@@ -1371,14 +1371,14 @@ function ExpandedArticleBody({
         <div className="flex gap-2 pt-2">
           <button
             onClick={() => onEdit(a)}
-            className="inline-flex items-center gap-1 px-3 py-1 bg-muted hover:bg-muted/80 text-foreground/80 text-xs rounded transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1 bg-muted hover:bg-muted/80 text-foreground/80 text-xs rounded transition-colors min-h-tap"
           >
             <Pencil size={12} />
             {t('knowledge.btn_edit')}
           </button>
           <button
             onClick={() => onDelete(a.id)}
-            className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors min-h-tap"
           >
             <Trash2 size={12} />
             {t('knowledge.btn_delete')}
@@ -1393,14 +1393,14 @@ function ExpandedArticleBody({
           </span>
           <button
             onClick={() => onApprove(a.id)}
-            className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md transition-colors ${toneClasses('ok')}`}
+            className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md transition-colors ${toneClasses('ok')} min-h-tap`}
           >
             <Check size={12} />
             {t('knowledge.btn_approve')}
           </button>
           <button
             onClick={() => onReject(a.id)}
-            className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors min-h-tap"
           >
             <X size={12} />
             {t('knowledge.btn_reject')}

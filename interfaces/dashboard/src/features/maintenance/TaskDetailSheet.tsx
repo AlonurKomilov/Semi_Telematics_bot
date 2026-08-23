@@ -509,7 +509,7 @@ export default function TaskDetailSheet({
                 ``spawned_from_id`` is set (legacy or user-created tasks
                 show nothing here). */}
             {task.spawned_from_id && (
-              <div className={`mb-4 px-3 py-2 rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('info')}`}>
+              <div className={`mb-4 px-3 py-2 min-h-tap rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('info')}`}>
                 <span aria-hidden>↻</span>
                 Auto-renewed from task #{task.spawned_from_id}
               </div>
@@ -523,7 +523,7 @@ export default function TaskDetailSheet({
             {task.work_order_id && (
               <a
                 href={`/work-orders/${task.work_order_id}`}
-                className={`mb-4 px-3 py-2 rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('ok')}`}
+                className={`mb-4 px-3 py-2 min-h-tap rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('ok')}`}
               >
                 <span aria-hidden>📄</span>
                 Closed by Work Order #{task.work_order_id}
@@ -665,7 +665,7 @@ export default function TaskDetailSheet({
                           active
                             ? 'bg-card text-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground'
-                        }`}
+                        } min-h-tap`}
                       >
                         {opt.label}
                       </button>
@@ -803,7 +803,7 @@ export default function TaskDetailSheet({
                         href={'/api/maintenance/tasks/' + task.id + '/attachment'}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-1 truncate hover:underline"
+                        className="flex-1 truncate hover:underline min-h-tap"
                         title={task.attachment_name}
                       >
                         {task.attachment_name}
@@ -914,7 +914,7 @@ export default function TaskDetailSheet({
                   type="button"
                   onClick={handleMarkComplete}
                   disabled={saving}
-                  className={`mt-2 w-full py-1.5 rounded text-xs font-medium transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${toneClasses('ok')}`}
+                  className={`mt-2 w-full py-1.5 min-h-tap rounded text-xs font-medium transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${toneClasses('ok')}`}
                 >
                   <CheckSquare size={12} />
                   Mark complete

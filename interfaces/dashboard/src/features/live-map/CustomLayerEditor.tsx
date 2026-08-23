@@ -344,7 +344,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           <button
             type="button"
             onClick={() => setPicking(false)}
-            className="text-xs text-muted-foreground hover:text-foreground underline"
+            className="text-xs text-muted-foreground hover:text-foreground underline py-1 -my-1 min-h-tap"
           >Cancel (Esc)</button>
         </div>
       )}
@@ -522,7 +522,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
               <button
                 type="button"
                 onClick={() => setShowAdvancedOverpass((v) => !v)}
-                className="text-2xs text-muted-foreground hover:text-foreground underline"
+                className="text-2xs text-muted-foreground hover:text-foreground underline py-1 -my-1 min-h-tap"
               >
                 {showAdvancedOverpass
                   ? <span className="inline-flex items-center gap-1"><ArrowLeft size={12} /> Back to brand search</span>
@@ -580,7 +580,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                   onClick={() => setColor(c)}
                   className={`w-6 h-6 rounded border-2 transition ${
                     color === c ? 'border-foreground' : 'border-transparent'
-                  }`}
+                  } min-h-tap min-w-tap`}
                   style={{ background: c }}
                   aria-label={`Color ${c}`}
                 />
@@ -601,7 +601,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                     icon === i
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-ring'
-                  }`}
+                  } min-h-tap min-w-tap`}
                 >{i}</button>
               ))}
             </div>

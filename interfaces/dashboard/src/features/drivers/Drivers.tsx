@@ -484,7 +484,7 @@ function DriverDrawer({
               onClick={() => onTab(tt.key)}
               className={`relative px-2 py-1.5 rounded-md text-xs font-medium transition flex items-center justify-center gap-1.5 ${
                 tab === tt.key ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground/80'
-              }`}
+              } min-h-tap`}
             >
               {tt.icon}{tt.label}
               {tt.soon && (
@@ -614,7 +614,7 @@ function IntegrationsTab({
             <button
               disabled={dtBusy}
               onClick={() => linkDatatruck('')}
-              className="shrink-0 text-xs text-danger hover:opacity-80 inline-flex items-center gap-1 disabled:opacity-50"
+              className="shrink-0 text-xs text-danger hover:opacity-80 inline-flex items-center gap-1 disabled:opacity-50 py-1 -my-1 min-h-tap"
             >
               <Link2Off size={12} /> Unlink
             </button>
@@ -829,7 +829,7 @@ function VehiclesTab({
                 <button
                   onClick={() => end(a.id)}
                   disabled={endingId === a.id}
-                  className="text-xs text-destructive hover:underline disabled:opacity-50"
+                  className="text-xs text-destructive hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap"
                 >
                   {endingId === a.id ? 'Ending…' : 'End'}
                 </button>
@@ -1164,7 +1164,7 @@ function SamsaraDriverPicker({
               <button
                 type="button"
                 onClick={() => { onChange(null); setOpen(false); setQuery(''); }}
-                className="text-xs text-destructive hover:underline"
+                className="text-xs text-destructive hover:underline py-1 -my-1 min-h-tap"
               >
                 Unlink
               </button>
@@ -1195,7 +1195,7 @@ function SamsaraDriverPicker({
                     disabled={linkedElsewhere}
                     className={`w-full text-left px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-muted/50 ${
                       isSelected ? 'bg-primary/10' : ''
-                    } ${linkedElsewhere ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    } ${linkedElsewhere ? 'opacity-50 cursor-not-allowed' : ''} min-h-tap`}
                   >
                     {isSelected ? (
                       <Check size={12} className="text-primary shrink-0" />

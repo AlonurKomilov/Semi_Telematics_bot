@@ -190,7 +190,7 @@ export default function Parts() {
                   })
                   .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed'));
               }}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')}`}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')} min-h-tap`}
             >
               <Check size={12} aria-hidden />
               {asmLabel.get(part.suggested_assembly) ?? part.suggested_assembly}?

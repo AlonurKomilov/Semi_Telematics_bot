@@ -152,7 +152,7 @@ export default function FuelCosts() {
         actions={
           <button
             onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
           >
             <Plus size={14} />
             {showForm ? 'Cancel' : 'Add entry'}
@@ -257,7 +257,7 @@ export default function FuelCosts() {
             tab === 'entries' ? (
               <button
                 onClick={() => setShowForm(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
               >
                 <Plus size={14} />
                 Add entry

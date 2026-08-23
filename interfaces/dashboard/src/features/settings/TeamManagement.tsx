@@ -876,7 +876,7 @@ export default function TeamManagement() {
                   showDrivers
                     ? 'bg-primary/10 border-primary/30 text-primary'
                     : 'bg-muted border-border text-muted-foreground hover:border-primary/30'
-                }`}
+                } min-h-tap`}
                 title="Drivers are managed in the Drivers feature; shown here for role changes (promote to staff)."
               >
                 <IdCard size={12} />
@@ -936,7 +936,7 @@ export default function TeamManagement() {
                         onClick={() => { setDetailTab(tab.key); setConfirmAction(null); }}
                         className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition inline-flex items-center justify-center gap-1.5 ${
                           sel ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground/80'
-                        }`}
+                        } min-h-tap`}
                       >
                         <Icon size={12} aria-hidden="true" />
                         {tab.label}
@@ -1038,7 +1038,7 @@ export default function TeamManagement() {
                               <Building2 size={12} aria-hidden="true" />
                               One company at a time.
                             </p>
-                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-3xs">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
+                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-3xs py-1 -my-1 min-h-tap">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
                           </div>
                           <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
                             <Building2 size={14} className="text-muted-foreground" aria-hidden="true" />
@@ -1139,7 +1139,7 @@ export default function TeamManagement() {
                                       if (editCompanyIds.length === allCompanies.length) setEditCompanyIds([]);
                                       else setEditCompanyIds(allCompanies.map(c => c.id));
                                     }}
-                                    className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider"
+                                    className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
                                   >
                                     {editCompanyIds.length === allCompanies.length ? 'Deselect All' : 'Select All'}
                                   </button>
@@ -1192,7 +1192,7 @@ export default function TeamManagement() {
                                       if (editVehicles.length === vehicleList.length) setEditVehicles([]);
                                       else setEditVehicles(vehicleList.map(v => v.name));
                                     }}
-                                    className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider"
+                                    className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
                                   >
                                     {editVehicles.length === vehicleList.length ? 'Deselect All' : 'Select All'}
                                   </button>
@@ -1280,14 +1280,14 @@ export default function TeamManagement() {
                             <button
                               onClick={() => handleSaveAccess(selected.id, true)}
                               disabled={savingCompanies || savingVehicles}
-                              className="px-4 py-1.5 bg-warn text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition"
+                              className="px-4 py-1.5 bg-warn text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                             >
                               {savingCompanies || savingVehicles ? 'Saving…' : 'Confirm & save'}
                             </button>
                             <button
                               onClick={() => setPendingAccessSave(null)}
                               disabled={savingCompanies || savingVehicles}
-                              className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
+                              className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap"
                             >
                               Cancel
                             </button>
@@ -1379,13 +1379,13 @@ export default function TeamManagement() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleRoleChange(selected.id, pendingRole)}
-                                className="px-4 py-1.5 bg-warn text-white hover:opacity-90 rounded text-xs font-medium transition"
+                                className="px-4 py-1.5 bg-warn text-white hover:opacity-90 rounded text-xs font-medium transition min-h-tap"
                               >
                                 Confirm
                               </button>
                               <button
                                 onClick={() => { setConfirmAction(null); setPendingRole(null); }}
-                                className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
+                                className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap"
                               >
                                 Cancel
                               </button>
@@ -1441,7 +1441,7 @@ export default function TeamManagement() {
                                   cannotModify
                                     ? 'bg-muted-foreground/20 cursor-not-allowed opacity-60'
                                     : selected.is_manager ? 'bg-primary' : 'bg-muted-foreground/30'
-                                }`}
+                                } min-h-tap`}
                               >
                                 <span
                                   className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
@@ -1491,7 +1491,7 @@ export default function TeamManagement() {
                                     <button
                                       disabled={ownerBusy || !ownerPassword}
                                       onClick={() => handlePromoteOwnerRequest(selected.id)}
-                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition"
+                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                                     >Send code</button>
                                     <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
@@ -1510,7 +1510,7 @@ export default function TeamManagement() {
                                     <button
                                       disabled={ownerBusy || ownerCode.length < 6}
                                       onClick={() => handlePromoteOwnerConfirm(selected.id)}
-                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition"
+                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                                     >Confirm co-owner</button>
                                     <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
@@ -1540,7 +1540,7 @@ export default function TeamManagement() {
                                     <button
                                       disabled={ownerBusy || !ownerPassword}
                                       onClick={() => handleDemoteOwner(selected.id)}
-                                      className="px-4 py-1.5 bg-danger text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition"
+                                      className="px-4 py-1.5 bg-danger text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                                     >Confirm removal</button>
                                     <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
@@ -1627,13 +1627,13 @@ export default function TeamManagement() {
                                 onClick={() => handleToggleActive(selected.id, !selected.is_active)}
                                 className={`px-4 py-1.5 rounded text-xs font-medium transition text-primary-foreground ${
                                   selected.is_active ? 'bg-danger hover:opacity-90' : 'bg-ok hover:opacity-90'
-                                }`}
+                                } min-h-tap`}
                               >
                                 {selected.is_active ? 'Deactivate' : 'Activate'}
                               </button>
                               <button
                                 onClick={() => setConfirmAction(null)}
-                                className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
+                                className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap"
                               >
                                 Cancel
                               </button>

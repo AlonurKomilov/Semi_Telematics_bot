@@ -33,7 +33,7 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
     <div className="lg:col-span-2">
       <Link
         to="/vehicles"
-        className="inline-flex items-center gap-1 text-primary hover:underline text-sm mb-4"
+        className="inline-flex items-center gap-1 text-primary hover:underline text-sm mb-3.5 py-0.5 min-h-tap"
       >
         <ChevronLeft size={14} />
         Back to vehicles

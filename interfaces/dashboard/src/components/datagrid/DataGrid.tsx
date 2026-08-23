@@ -619,7 +619,7 @@ function SegmentTab({
         // geometry above assumes precisely that (baseline B rides the
         // border row's centre).  A second -mb-px here shifted the
         // whole silhouette 1px past the border and broke the joint.
-        'relative inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+        'relative inline-flex items-center gap-1.5 px-4 py-2 min-h-tap text-xs font-medium transition-colors',
         active
           ? 'text-foreground'
           : 'rounded-t-md text-muted-foreground hover:text-foreground hover:bg-muted/40',
@@ -2560,7 +2560,7 @@ export default function DataGrid({
             setSorting(defaultSorting ?? []);
             setGlobalFilter('');
           }}
-          className="ml-0.5 px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground">
+          className="ml-0.5 px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground min-h-tap">
           Clear all
         </button>
       )}
@@ -3371,7 +3371,7 @@ export default function DataGrid({
                 type="button"
                 onClick={() => setTabDialog('new')}
                 aria-label="New tab"
-                className="self-center mb-1 ml-1 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                className="self-center mb-1 ml-1 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors min-h-tap min-w-tap"
               >
                 <Plus size={16} />
               </button>

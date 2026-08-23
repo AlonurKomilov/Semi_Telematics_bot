@@ -593,14 +593,14 @@ export default function DateRangePresets({
             <div className="relative">
               <button
                 onClick={() => monthShift(-1)}
-                className="absolute left-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10"
+                className="absolute left-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10 min-h-tap min-w-tap"
                 aria-label="Previous month"
               >
                 <ChevronLeft size={14} />
               </button>
               <button
                 onClick={() => monthShift(1)}
-                className="absolute right-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10"
+                className="absolute right-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10 min-h-tap min-w-tap"
                 aria-label="Next month"
               >
                 <ChevronRight size={14} />
@@ -674,7 +674,7 @@ export default function DateRangePresets({
                   <button
                     type="button"
                     onClick={() => { setTimeStart('00:00'); setTimeEnd('24:00'); }}
-                    className="text-2xs text-muted-foreground hover:text-foreground"
+                    className="text-2xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
                   >
                     Reset
                   </button>
@@ -697,7 +697,7 @@ export default function DateRangePresets({
               <span className="flex items-center gap-2">
                 <button
                   onClick={() => { setOpen(false); resetPicks(); }}
-                  className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                  className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground min-h-tap"
                 >
                   Cancel
                 </button>

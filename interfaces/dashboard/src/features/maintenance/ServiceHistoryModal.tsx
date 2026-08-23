@@ -270,7 +270,7 @@ export function ServiceHistoryModal({
                       </p>
                       <a
                         href={`/work-orders/${entry.wo.id}`}
-                        className="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
+                        className="text-xs mt-0.5 inline-flex items-center gap-1 px-1.5 py-1 min-h-tap bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
                         onClick={e => e.stopPropagation()}
                       >
                         <FileText size={12} />
@@ -318,7 +318,7 @@ export function ServiceHistoryModal({
                       {task.work_order_id && (
                         <a
                           href={`/work-orders/${task.work_order_id}`}
-                          className="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
+                          className="text-xs mt-0.5 inline-flex items-center gap-1 px-1.5 py-1 min-h-tap bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
                           onClick={e => e.stopPropagation()}
                         >
                           <FileText size={12} aria-hidden />

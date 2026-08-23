@@ -317,7 +317,7 @@ export default function SavedTabDialog({
                     aria-label="No colour"
                     aria-pressed={tone === undefined}
                     className={cn(
-                      'size-6 rounded-full border border-dashed border-muted-foreground/60 transition',
+                      'size-6 rounded-full border border-dashed border-muted-foreground/60 transition min-h-tap min-w-tap',
                       tone === undefined
                         ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
                         : 'hover:border-ring',
@@ -332,7 +332,7 @@ export default function SavedTabDialog({
                       aria-label={TONE_LABEL[t]}
                       aria-pressed={tone === t}
                       className={cn(
-                        'size-6 rounded-full transition', TONE_SWATCH[t],
+                        'size-6 rounded-full transition min-h-tap min-w-tap', TONE_SWATCH[t],
                         tone === t
                           ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
                           : 'hover:opacity-80',
@@ -363,7 +363,7 @@ export default function SavedTabDialog({
                   onClick={() => setIcon(undefined)}
                   aria-pressed={icon === undefined}
                   className={cn(
-                    'h-6 px-2 rounded-md border text-2xs transition',
+                    'h-6 px-2 rounded-md border text-2xs transition min-h-tap',
                     icon === undefined
                       ? 'border-foreground text-foreground'
                       : 'border-border text-muted-foreground hover:border-ring',
@@ -401,7 +401,7 @@ export default function SavedTabDialog({
                         className={cn(
                           // Same selected-state language as the colour
                           // swatches: a ring, not a border-colour swap.
-                          'size-7 rounded-md border inline-flex items-center justify-center transition',
+                          'size-7 rounded-md border inline-flex items-center justify-center transition min-h-tap min-w-tap',
                           icon === key
                             ? 'border-transparent bg-primary/10 text-foreground ring-2 ring-foreground ring-offset-2 ring-offset-background'
                             : 'border-border text-muted-foreground hover:border-ring',

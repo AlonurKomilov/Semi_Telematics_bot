@@ -83,7 +83,7 @@ export default function AISummaryCard({ stats }: AISummaryCardProps) {
             <p className="text-sm font-semibold text-foreground">Today's snapshot</p>
             <button
               onClick={() => navigate('/ai/chat?tab=briefing')}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0 py-1 -my-1 min-h-tap"
             >
               Ask AI for more
               <ArrowRight size={12} />

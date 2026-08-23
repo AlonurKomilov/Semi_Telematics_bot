@@ -83,7 +83,7 @@ export default function ForgotPassword() {
             </p>
             <Link
               to="/login"
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline min-h-tap"
             >
               <ArrowLeft size={14} />
               {t('auth.back_to_login')}
@@ -130,7 +130,7 @@ export default function ForgotPassword() {
             <div className="pt-2 text-center">
               <Link
                 to="/login"
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground min-h-tap"
               >
                 <ArrowLeft size={12} />
                 {t('auth.back_to_login')}

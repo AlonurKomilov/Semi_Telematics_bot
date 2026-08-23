@@ -202,7 +202,7 @@ function SelectFilter({
                       key={opt.value}
                       type="button"
                       onClick={() => toggle(opt.value)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-left"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-left min-h-tap"
                       title={opt.label}
                     >
                       <span

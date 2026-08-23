@@ -176,7 +176,7 @@ export default function Events() {
           <button
             type="button"
             onClick={() => setViewingEvent(evt)}
-            className="inline-flex items-center gap-1 text-primary hover:underline text-sm"
+            className="inline-flex items-center gap-1 text-primary hover:underline text-sm py-1 -my-1 min-h-tap"
           >
             <Play size={12} />
             View
@@ -286,7 +286,7 @@ export default function Events() {
             .map(([t, count]) => (
               <span
                 key={t}
-                className="inline-flex items-center gap-1.5 bg-muted text-foreground/80 px-2.5 py-1 rounded text-xs cursor-pointer hover:bg-muted/80"
+                className="inline-flex items-center gap-1.5 bg-muted text-foreground/80 px-2.5 py-1 rounded text-xs cursor-pointer hover:bg-muted/80 min-h-tap"
                 onClick={() => setTypeFilter(t === typeFilter ? 'all' : t)}
               >
                 <EventIcon type={t} size={12} />
@@ -305,7 +305,7 @@ export default function Events() {
               onClick={() => setTypeFilter(t)}
               className={`text-xs px-2.5 py-1 rounded capitalize whitespace-nowrap ${
                 typeFilter === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
+              } min-h-tap`}
             >
               {t === 'all' ? 'All' : cleanEventLabel(t)}
             </button>

@@ -1496,7 +1496,7 @@ export default function WorkOrderForm() {
                     <button
                       type="button"
                       onClick={() => setParts(prev => [...prev, blankPart(gv)])}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
                       <Plus size={12} />
                       {t('work_orders_page.add_part')}
@@ -1504,7 +1504,7 @@ export default function WorkOrderForm() {
                     <button
                       type="button"
                       onClick={() => setLaborLines(prev => [...prev, blankLabor(gv)])}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
                       <Plus size={12} />
                       {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
@@ -1543,7 +1543,7 @@ export default function WorkOrderForm() {
                     <button
                       type="button"
                       onClick={() => setParts(prev => [...prev, blankPart('')])}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
                       <Plus size={12} />
                       {t('work_orders_page.add_part')}
@@ -1551,7 +1551,7 @@ export default function WorkOrderForm() {
                     <button
                       type="button"
                       onClick={() => setLaborLines(prev => [...prev, blankLabor('')])}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
                       <Plus size={12} />
                       {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}

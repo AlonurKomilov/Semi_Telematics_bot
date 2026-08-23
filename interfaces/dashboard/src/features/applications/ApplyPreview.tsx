@@ -27,7 +27,7 @@ function Swatch({ label, value, onChange }: { label: string; value: string; onCh
       {label}
       <input type="color" value={value || '#000000'} onChange={(e) => onChange(e.target.value)}
         title={label} className="h-7 w-8 cursor-pointer rounded border border-border bg-card" />
-      {value && <button type="button" onClick={() => onChange('')} title="clear" className="text-2xs hover:text-danger">×</button>}
+      {value && <button type="button" onClick={() => onChange('')} title="clear" className="text-2xs hover:text-danger py-1 -my-1 min-h-tap">×</button>}
     </span>
   );
 }
@@ -96,7 +96,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
       <Swatch label="Background" value={brand.bg_color} onChange={(c) => onColor('bg_color', c)} />
       <Swatch label="Heading" value={brand.heading_color} onChange={(c) => onColor('heading_color', c)} />
       <button type="button" onClick={onAiTheme} title="Generate palettes from the logo"
-        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 min-h-tap text-xs transition-colors ${
           aiOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-foreground hover:bg-muted/70'
         }`}>
         <Sparkles size={12} /> AI theme
@@ -379,7 +379,7 @@ export default function ApplyPreview() {
               <Sparkles size={14} className="text-primary" /> AI theme
             </p>
             <button type="button" onClick={() => setAiOpen(false)}
-              className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+              className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">Close</button>
           </div>
           <p className="mt-1 text-2xs text-muted-foreground">
             Palettes built from the carrier's logo with colour-theory rules.

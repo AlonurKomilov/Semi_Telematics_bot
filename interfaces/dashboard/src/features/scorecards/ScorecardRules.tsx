@@ -209,7 +209,7 @@ export function ScorecardRulesPanel() {
                 filter === c
                   ? 'bg-card shadow-sm text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
+              } min-h-tap`}
             >
               {c === 'all' ? 'All' : CAT_META[c]?.label ?? c}
             </button>
@@ -323,16 +323,23 @@ function RuleRow({
       {/* enabled toggle */}
       <button
         onClick={() => onChange({ enabled: !draft.enabled })}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
-          draft.enabled ? 'bg-ok' : 'bg-muted'
-        }`}
+        // Hit box split from paint — see ui/switch.tsx. The pill stays
+        // 20px; the button is what has to clear 24px.
+        className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center -my-0.5"
         title={draft.enabled ? 'Enabled' : 'Disabled'}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-            draft.enabled ? 'translate-x-4' : 'translate-x-0.5'
+          aria-hidden
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+            draft.enabled ? 'bg-ok' : 'bg-muted'
           }`}
-        />
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+              draft.enabled ? 'translate-x-4' : 'translate-x-0.5'
+            }`}
+          />
+        </span>
       </button>
 
       {/* label + id */}
@@ -417,7 +424,7 @@ function RuleRow({
         {hasCurve && (
           <button
             onClick={() => setShowCurve((v) => !v)}
-            className="px-2 py-1 rounded text-xs font-medium border border-border hover:bg-muted"
+            className="px-2 py-1 rounded text-xs font-medium border border-border hover:bg-muted min-h-tap"
             title="Edit curve anchors"
           >
             {showCurve ? '▴' : '▾'}

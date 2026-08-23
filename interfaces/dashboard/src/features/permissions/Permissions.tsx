@@ -312,9 +312,15 @@ export default function Permissions() {
                         role="switch"
                         aria-checked={on}
                         aria-label={`${title} department`}
-                        className={`relative w-8 h-4 rounded-full transition shrink-0 ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                        // Hit box split from paint: the pill is 16px tall,
+                        // so a floor written ON it would deform the switch.
+                        // The button carries the 24px WCAG 2.5.8 target and
+                        // -my-1 keeps the row the height the pill gave it.
+                        className="inline-flex items-center justify-center min-h-tap min-w-tap -my-1 shrink-0"
                       >
-                        <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-background shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
+                        <span aria-hidden className={`relative block w-8 h-4 rounded-full transition ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+                          <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-background shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
+                        </span>
                       </button>
                       <span className={`text-xs ${on ? 'text-foreground' : 'text-muted-foreground'}`}>{title}</span>
                     </span>

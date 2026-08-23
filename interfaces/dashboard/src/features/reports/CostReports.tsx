@@ -555,7 +555,7 @@ export default function Reports() {
                   <button
                     type="button"
                     onClick={() => setDrillSystem(null)}
-                    className="text-xs text-muted-foreground hover:text-foreground"
+                    className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
                   >
                     Close
                   </button>

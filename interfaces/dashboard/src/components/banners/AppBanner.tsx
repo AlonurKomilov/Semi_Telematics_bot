@@ -154,7 +154,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
               onClick={() => setExpanded(v => !v)}
               aria-label={expanded ? 'Collapse' : 'Expand'}
               aria-expanded={expanded}
-              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 min-h-tap min-w-tap"
             >
               {expanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
             </button>
@@ -162,7 +162,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
           <button
             onClick={close}
             aria-label="Close"
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 min-h-tap min-w-tap"
           >
             <X size={14} aria-hidden />
           </button>
@@ -186,7 +186,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
                   a.primary
                     ? 'bg-primary text-primary-foreground hover:bg-primary/80'
                     : 'border border-border text-foreground hover:bg-muted'
-                }`}
+                } min-h-tap`}
               >
                 {a.label}
               </button>

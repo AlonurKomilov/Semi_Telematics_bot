@@ -141,7 +141,7 @@ export default function ObjectStorageFileTable() {
                   filter === k
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-card hover:bg-muted border-border'
-                }`}
+                } min-h-tap`}
               >
                 {t(`storage.files.filter_${k}`)}
               </button>
@@ -237,7 +237,7 @@ export default function ObjectStorageFileTable() {
                       type="button"
                       onClick={() => retryOne(r.queue_id)}
                       disabled={retrying.has(r.queue_id)}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
                     >
                       {retrying.has(r.queue_id)
                         ? <Loader2 size={12} className="animate-spin" />

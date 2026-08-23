@@ -191,7 +191,7 @@ export default function LiveAckPanel() {
       <button
         type="button"
         onClick={toggleSound}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition ${
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-tap rounded-md text-xs font-medium border transition ${
           soundOn
             ? 'bg-primary/10 border-primary/40 text-primary'
             : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'

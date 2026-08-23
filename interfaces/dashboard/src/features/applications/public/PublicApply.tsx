@@ -251,11 +251,11 @@ function Success({ data, reference, onReset }: { data: Data; reference: string; 
       <div className="mt-5 rounded-md border border-border bg-card p-4">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Your reference number</p>
         <p className="mt-1 font-mono text-lg font-semibold text-foreground">{reference}</p>
-        <a href={`/status/${encodeURIComponent(reference)}`} className="mt-2 inline-block text-xs text-primary hover:underline">
+        <a href={`/status/${encodeURIComponent(reference)}`} className="mt-2 inline-block text-xs text-primary hover:underline py-1 -my-1 min-h-tap">
           Check your application status later →
         </a>
       </div>
-      <button onClick={onReset} className="mt-6 text-sm text-primary hover:underline">Start a new application</button>
+      <button onClick={onReset} className="mt-6 inline-flex items-center py-0.5 min-h-tap text-sm text-primary hover:underline">Start a new application</button>
     </div>
   );
 }

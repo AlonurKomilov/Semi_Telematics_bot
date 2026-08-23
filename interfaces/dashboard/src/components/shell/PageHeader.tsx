@@ -48,7 +48,7 @@ export default function PageHeader({
                   href={helpHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap"
                 >
                   <HelpCircle size={12} />
                   {helpLabel}
@@ -56,7 +56,7 @@ export default function PageHeader({
               ) : (
                 <Link
                   to={helpHref}
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap"
                 >
                   <HelpCircle size={12} />
                   {helpLabel}

@@ -82,21 +82,30 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         disabled={lock}
         aria-pressed={on}
         aria-label={`${f.label} — ${ariaSuffix}: ${on ? 'granted' : 'no access'}`}
-        className={`inline-flex items-center justify-center w-5 h-5 rounded border transition ${
-          changed ? 'ring-2 ring-primary/30 ' : ''
-        }${lock
-          ? 'bg-primary/40 border-primary/40 text-primary-foreground cursor-not-allowed'
-          : on
-            ? soft
-              // Derived tick: a primary-coloured check on a light primary
-              // wash reads on BOTH themes (primary-foreground would go
-              // invisible against a 20% wash on the light theme).
-              ? 'bg-primary/20 border-primary/40 text-primary'
-              : 'bg-primary border-primary text-primary-foreground'
-            : `bg-transparent text-transparent hover:border-muted-foreground ${soft ? 'border-border/60' : 'border-border'}`
-        }`}
+        // Hit box split from paint. A 24px TICK would widen every column
+        // of the matrix, so the 20px box stays what is drawn and the
+        // button around it carries the WCAG 2.5.8 target; -m-0.5 gives
+        // the grid back the rhythm the paint had.
+        className="inline-flex items-center justify-center min-h-tap min-w-tap -m-0.5 disabled:cursor-not-allowed"
       >
-        {lock ? <Lock size={12} strokeWidth={2.5} /> : <CheckMark />}
+        <span
+          aria-hidden
+          className={`inline-flex items-center justify-center w-5 h-5 rounded border transition ${
+            changed ? 'ring-2 ring-primary/30 ' : ''
+          }${lock
+            ? 'bg-primary/40 border-primary/40 text-primary-foreground'
+            : on
+              ? soft
+                // Derived tick: a primary-coloured check on a light primary
+                // wash reads on BOTH themes (primary-foreground would go
+                // invisible against a 20% wash on the light theme).
+                ? 'bg-primary/20 border-primary/40 text-primary'
+                : 'bg-primary border-primary text-primary-foreground'
+              : `bg-transparent text-transparent hover:border-muted-foreground ${soft ? 'border-border/60' : 'border-border'}`
+          }`}
+        >
+          {lock ? <Lock size={12} strokeWidth={2.5} /> : <CheckMark />}
+        </span>
       </button>
     );
   };
@@ -251,7 +260,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               r === role
                 ? 'bg-primary text-primary-foreground border-primary font-medium'
                 : 'border-border text-muted-foreground hover:text-foreground'
-            }`}
+            } min-h-tap`}
           >
             {api.roleLabel(r)}
           </button>
@@ -262,7 +271,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             type="button"
             onClick={() => setRoleView(role)}
             aria-label={`Preview the dashboard as ${api.roleLabel(role)}`}
-            className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-md border border-border text-foreground hover:bg-muted"
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-md border border-border text-foreground hover:bg-muted min-h-tap"
           >
             <Eye size={14} aria-hidden /> Preview dashboard
           </button>
@@ -288,7 +297,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                   i === Math.min(tier, cols.length - 1)
                     ? 'bg-card text-foreground font-medium shadow-sm'
                     : 'text-muted-foreground'
-                }`}
+                } min-h-tap`}
               >
                 {c.label}
               </button>

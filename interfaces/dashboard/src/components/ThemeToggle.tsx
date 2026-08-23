@@ -58,7 +58,7 @@ function Chip<T extends string>({
       onClick={() => onClick(value)}
       aria-pressed={active}
       className={cn(
-        'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
+        'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
         active
           ? 'bg-primary/15 text-primary ring-1 ring-primary/40'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -169,7 +169,7 @@ export function ThemeToggle() {
                     onClick={() => { setDragging(null); setSize({ global: 1 }); }}
                     disabled={size.global === 1 && dragging === null}
                     aria-label={t('theme.size_reset', 'Reset')}
-                    className="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   >
                     <RotateCcw size={12} />
                   </button>

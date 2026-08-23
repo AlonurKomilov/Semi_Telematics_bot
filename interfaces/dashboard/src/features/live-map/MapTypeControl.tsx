@@ -140,21 +140,28 @@ export default function MapTypeControl({
               Standard OSM tiles already include road labels in the tile artwork. */}
           {mapType !== 'standard' && (
             <label className="flex items-center gap-2.5 cursor-pointer py-0.5 hover:text-foreground group">
+              {/* Hit box split from paint: the box reads as 16px but the
+                  target has to clear 24px, and -m-1 keeps the row's gap. */}
               <span
                 onClick={() => setShowLabels(!showLabels)}
-                className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition ${
-                  showLabels
-                    ? 'border-transparent bg-primary'
-                    : 'border-border bg-muted group-hover:border-ring'
-                }`}
+                className="min-h-tap min-w-tap -m-1 flex-shrink-0 inline-flex items-center justify-center"
                 role="checkbox"
                 aria-checked={showLabels}
                 tabIndex={0}
                 onKeyDown={(e) => e.key === ' ' && setShowLabels(!showLabels)}
               >
-                {showLabels && (
-                  <Check size={11} className="text-primary-foreground" />
-                )}
+                <span
+                  aria-hidden
+                  className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                    showLabels
+                      ? 'border-transparent bg-primary'
+                      : 'border-border bg-muted group-hover:border-ring'
+                  }`}
+                >
+                  {showLabels && (
+                    <Check size={11} className="text-primary-foreground" />
+                  )}
+                </span>
               </span>
               <span className={`text-xs ${showLabels ? 'text-foreground' : 'text-muted-foreground'}`}>
                 Labels

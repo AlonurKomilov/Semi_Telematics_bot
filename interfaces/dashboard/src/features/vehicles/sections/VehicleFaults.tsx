@@ -181,7 +181,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
                       // emergency — the operator escalates in the form.
                       repair_priority: 'non_scheduled',
                     })}
-                    className="shrink-0 whitespace-nowrap px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-accent text-foreground font-medium transition-colors"
+                    className="shrink-0 whitespace-nowrap px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-accent text-foreground font-medium transition-colors min-h-tap"
                   >
                     + Work order
                   </button>
@@ -210,7 +210,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
                   },
                 })
               }
-              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors py-1 -my-1 min-h-tap"
             >
               Open in AI Chat
             </button>

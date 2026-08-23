@@ -87,7 +87,7 @@ export function FeatureConfigGear({
   const label = t('config.gear_label', '{{feature}} configuration', { feature });
 
   const gearCls =
-    'inline-flex items-center justify-center size-8 rounded-md border '
+    'inline-flex items-center justify-center size-8 min-h-tap min-w-tap rounded-md border '
     + 'border-border text-muted-foreground hover:bg-muted hover:text-foreground transition';
 
   // Page-mode: same gear, same slot, same gate — it just navigates.

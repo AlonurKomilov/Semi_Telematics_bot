@@ -624,13 +624,13 @@ export default function CarrierProfile() {
           <div className="mt-2 flex flex-wrap gap-3 text-sm">
             {safeHref(profile.website) && (
               <a href={safeHref(profile.website)}
-                target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap">
                 <ExternalLink size={14} /> Website
               </a>
             )}
             {safeHref(profile.video_url) && (
               <a href={safeHref(profile.video_url)} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-primary hover:underline">
+                className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap">
                 <ExternalLink size={14} /> Video overview
               </a>
             )}

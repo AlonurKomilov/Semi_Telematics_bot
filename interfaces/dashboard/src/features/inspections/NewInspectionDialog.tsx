@@ -342,7 +342,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
                   disabled={saving}
                   className={`px-1.5 py-0.5 text-xs border rounded ${
                     dueDays === d ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'
-                  }`}
+                  } min-h-tap`}
                 >
                   +{d}d
                 </button>

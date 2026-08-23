@@ -713,7 +713,7 @@ export default function LiveMap() {
                 <button
                   key={key}
                   onClick={() => setStatusFilter(key)}
-                  className={`text-xs px-2 py-1 rounded ${statusFilter === key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                  className={`text-xs px-2 py-1 rounded ${statusFilter === key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'} min-h-tap`}
                 >
                   {label} ({counts[key]})
                 </button>
@@ -764,7 +764,7 @@ export default function LiveMap() {
                 setSelected(null);
                 setSelectedPos(null);
               }}
-              className="text-primary hover:underline text-xs inline-flex items-center gap-1"
+              className="text-primary hover:underline text-xs inline-flex items-center gap-1 py-1 -my-1 min-h-tap"
             >
               <ArrowLeft size={12} /> Back
             </button>
@@ -904,7 +904,7 @@ export default function LiveMap() {
                                     isActive
                                       ? 'bg-primary/10 ring-1 ring-primary/30'
                                       : 'hover:bg-muted/60'
-                                  }`}
+                                  } min-h-tap`}
                                 >
                                   <span className={`text-3xs shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
                                     {isActive ? <ArrowRight size={12} /> : `${i + 1}.`}
@@ -931,7 +931,7 @@ export default function LiveMap() {
                                     return next;
                                   })
                                 }
-                                className="w-full text-left text-3xs text-primary hover:underline px-1.5 pt-0.5"
+                                className="w-full text-left text-3xs text-primary hover:underline px-1.5 pt-0.5 min-h-tap"
                               >
                                 {isExpanded
                                   ? 'Show less'

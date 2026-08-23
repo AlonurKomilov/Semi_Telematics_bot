@@ -136,7 +136,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
               isPreviewing
                 ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
                 : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
-            }`}
+            } min-h-tap min-w-tap`}
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-label="View dashboard as…"
@@ -153,7 +153,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
             isPreviewing
               ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
               : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
-          }`}
+          } min-h-tap`}
           aria-haspopup="listbox"
           aria-expanded={open}
         >

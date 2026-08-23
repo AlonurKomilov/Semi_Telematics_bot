@@ -198,7 +198,7 @@ function ThinkingStep({ text, label, live = false }: {
       <button
         onClick={() => setChoice(!open)}
         aria-expanded={open}
-        className="flex items-center gap-1 text-left text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        className="flex items-center gap-1 text-left text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
       >
         <span>{label}</span>
         <ChevronDown
@@ -245,7 +245,7 @@ function ToolStepLink({ toolName }: { toolName?: string }) {
   return (
     <button
       onClick={() => { navigate(link.path); closePanel(); }}
-      className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:border-ring hover:bg-muted transition-colors"
+      className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:border-ring hover:bg-muted transition-colors min-h-tap"
     >
       <ArrowUpRight size={12} aria-hidden />
       {t('chat.open_feature', { feature: t(link.labelKey) })}
@@ -1338,13 +1338,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     >
                       <button
                         onClick={() => void deleteConversation(conv)}
-                        className="px-2 py-1 rounded-md text-2xs font-medium bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors"
+                        className="px-2 py-1 rounded-md text-2xs font-medium bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors min-h-tap"
                       >
                         {t('chat.delete_yes')}
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(null)}
-                        className="px-2 py-1 rounded-md text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                        className="px-2 py-1 rounded-md text-2xs text-muted-foreground hover:text-foreground transition-colors min-h-tap"
                       >
                         {t('chat.cancel')}
                       </button>
@@ -1355,7 +1355,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <button
                           onClick={(e) => { e.stopPropagation(); void exportConversation(conv); }}
                           aria-label={t('chat.export_conversation')}
-                          className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-opacity"
+                          className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-opacity min-h-tap min-w-tap"
                         >
                           <Download size={14} />
                         </button>
@@ -1364,7 +1364,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <button
                           onClick={(e) => { e.stopPropagation(); armDelete(conv.id); }}
                           aria-label={t('chat.delete_chat')}
-                          className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-opacity"
+                          className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-opacity min-h-tap min-w-tap"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1517,7 +1517,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           if (next.has(i)) next.delete(i); else next.add(i);
                           return next;
                         })}
-                        className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
                       >
                         <Lightbulb size={12} />
                         <span>
@@ -1947,7 +1947,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <button
                           key={i}
                           onClick={() => send(s)}
-                          className="px-2.5 py-1 text-2xs rounded-full bg-card hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors"
+                          className="px-2.5 py-1 text-2xs rounded-full bg-card hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors min-h-tap"
                         >
                           {s}
                         </button>
@@ -2132,7 +2132,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                                 setAttachments(res.list);
                               }
                             }}
-                            className="flex w-full items-center gap-2 px-2.5 py-1 text-xs rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
+                            className="flex w-full items-center gap-2 px-2.5 py-1 text-xs rounded-md text-left text-foreground/80 hover:bg-muted transition-colors min-h-tap"
                           >
                             {f.kind === 'image'
                               ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />

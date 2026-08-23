@@ -81,7 +81,7 @@ export function PageSectionsGear<P extends object>({
                 <button
                   type="button"
                   onClick={() => resetValue()}
-                  className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
+                  className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
                 >
                   <RotateCcw size={12} aria-hidden /> Reset to default
                 </button>
@@ -216,7 +216,7 @@ function ManagerBlock<P extends object>({
           type="button"
           disabled={busy}
           onClick={() => save(current)}
-          className="text-2xs font-medium text-primary hover:underline disabled:opacity-50"
+          className="text-2xs font-medium text-primary hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap"
         >
           Use my current arrangement
         </button>
@@ -225,7 +225,7 @@ function ManagerBlock<P extends object>({
             type="button"
             disabled={busy}
             onClick={() => clear()}
-            className="text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50 py-1 -my-1 min-h-tap"
           >
             Clear team default
           </button>

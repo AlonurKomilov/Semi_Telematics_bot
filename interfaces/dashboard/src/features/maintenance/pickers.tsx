@@ -199,7 +199,7 @@ export function MilesPicker({
             type="button"
             title={presetTitle(p)}
             onClick={() => onChange(String(p))}
-            className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer"
+            className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer min-h-tap"
           >
             {presetLabel(p)}
           </button>
@@ -247,7 +247,7 @@ export function HoursPicker({
             type="button"
             title={presetTitle(p)}
             onClick={() => onChange(String(p))}
-            className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer"
+            className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer min-h-tap"
           >
             {presetLabel(p)}
           </button>
@@ -286,7 +286,7 @@ export function DaysPicker({
             type="button"
             title={`${p} days from today`}
             onClick={() => onChange(String(p))}
-            className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer"
+            className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer min-h-tap"
           >
             {presetLabel(p)}
           </button>

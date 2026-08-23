@@ -51,7 +51,7 @@ export default function KpiConfiguration() {
           and a config page with no exit strands the person who came to
           change one number. */}
       <Link to="/kpi/dispatch"
-        className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition">
+        className="mb-1.5 inline-flex items-center gap-1 py-0.5 min-h-tap text-sm text-muted-foreground hover:text-foreground transition">
         <ArrowLeft size={14} />
         {t('kpi_config.back', 'Dispatch KPI')}
       </Link>
@@ -99,7 +99,7 @@ export default function KpiConfiguration() {
           {dirtyList.map((d) => (
             <button key={d.id} type="button"
               onClick={() => document.getElementById(d.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:border-ring transition">
+              className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:border-ring transition min-h-tap">
               {d.label}
             </button>
           ))}

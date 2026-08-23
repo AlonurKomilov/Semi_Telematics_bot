@@ -134,7 +134,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
         <div className="border-t border-border px-3 py-1.5">
           <button
             onClick={() => exportCsv(effectiveLayers, allFeatures, enabled)}
-            className="w-full text-3xs text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1"
+            className="w-full text-3xs text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1 py-1 -my-1 min-h-tap"
           >
             <Download size={12} /><span>Export all POIs in current area (CSV)</span>
           </button>
@@ -166,7 +166,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       <button
                         type="button"
                         onClick={() => setEditorState({ mode: 'create' })}
-                        className="text-3xs font-bold text-primary hover:underline normal-case tracking-normal"
+                        className="text-3xs font-bold text-primary hover:underline normal-case tracking-normal py-1 -my-1 min-h-tap"
                       >
                         + New
                       </button>
@@ -231,18 +231,25 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
               <ContextMenu key={def.id} items={layerMenu} render={<div />}>
                 {/* ── Main toggle row ── */}
                 <label className="flex items-center gap-2.5 cursor-pointer py-0.5 hover:text-foreground group">
-                  {/* Checkbox */}
+                  {/* Checkbox — hit box split from paint: the box reads as
+                      16px, the target has to clear 24px, and -m-1 gives the
+                      row back the gap the paint had. */}
                   <span
                     onClick={() => toggle(def.id)}
-                    className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition
-                      ${isOn ? 'border-transparent' : 'border-border bg-muted group-hover:border-ring'}`}
-                    style={isOn ? { background: def.color } : {}}
+                    className="min-h-tap min-w-tap -m-1 flex-shrink-0 inline-flex items-center justify-center"
                     role="checkbox"
                     aria-checked={isOn}
                     tabIndex={0}
                     onKeyDown={(e) => e.key === ' ' && toggle(def.id)}
                   >
-                    {isOn && <Check size={11} className="text-white" />}
+                    <span
+                      aria-hidden
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition
+                        ${isOn ? 'border-transparent' : 'border-border bg-muted group-hover:border-ring'}`}
+                      style={isOn ? { background: def.color } : {}}
+                    >
+                      {isOn && <Check size={11} className="text-white" />}
+                    </span>
                   </span>
 
                   {/* Icon — token-coloured like the label so on/off state reads the same */}
@@ -255,7 +262,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
 
                   {/* Label */}
                   <span
-                    className={`flex-1 leading-tight text-xs ${isOn ? 'text-foreground' : 'text-muted-foreground'}`}
+                    className={`flex-1 leading-tight text-xs ${isOn ? 'text-foreground' : 'text-muted-foreground'} py-1 -my-1 min-h-tap`}
                     onClick={() => toggle(def.id)}
                   >
                     {def.label}
@@ -288,7 +295,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                             e.stopPropagation();
                             setEditorState({ mode: 'edit', layerId: customDbId! });
                           }}
-                          className="text-muted-foreground hover:text-foreground leading-none px-0.5"
+                          className="text-muted-foreground hover:text-foreground leading-none px-0.5 py-1 -my-1 min-h-tap"
                         ><Pencil size={12} /></button>
                       </Tip>
                       <Tip label="Delete layer">
@@ -300,7 +307,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                             e.stopPropagation();
                             handleDeleteCustom(customDbId!, def.label);
                           }}
-                          className="text-muted-foreground hover:text-destructive leading-none px-0.5"
+                          className="text-muted-foreground hover:text-destructive leading-none px-0.5 py-1 -my-1 min-h-tap"
                         ><Trash2 size={12} /></button>
                       </Tip>
                     </>
@@ -320,7 +327,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       onClick={() =>
                         setChipsOpen((prev) => ({ ...prev, [def.id]: !prev[def.id] }))
                       }
-                      className="flex items-center gap-1 pl-7 text-3xs text-muted-foreground hover:text-foreground transition py-0.5"
+                      className="flex items-center gap-1 pl-7 text-3xs text-muted-foreground hover:text-foreground transition py-0.5 min-h-tap"
                     >
                       {isChipsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       <span>Filter brands</span>
@@ -348,7 +355,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                                 ${active
                                   ? 'text-white border-transparent'
                                   : 'text-muted-foreground border-border hover:border-ring hover:text-foreground'
-                                }`}
+                                } min-h-tap`}
                               style={active ? { background: def.color, borderColor: def.color } : {}}
                             >
                               {bf.label}

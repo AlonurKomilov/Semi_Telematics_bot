@@ -145,7 +145,7 @@ export default function NotificationCenter() {
                 filter === f.key
                   ? 'bg-primary/15 text-primary'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
+              } min-h-tap`}
             >
               {f.label}
             </button>
@@ -155,13 +155,13 @@ export default function NotificationCenter() {
         <button
           onClick={() => void markAll()}
           disabled={unread === 0}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors py-1 -my-1 min-h-tap"
         >
           <CheckCheck size={14} aria-hidden /> Mark all read
         </button>
         <button
           onClick={() => navigate('/notifications/preferences')}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
         >
           <Settings size={14} aria-hidden /> Preferences
         </button>
@@ -210,7 +210,7 @@ export default function NotificationCenter() {
             <button
               onClick={() => void load(filter, notices[notices.length - 1]?.id)}
               disabled={loading}
-              className="text-xs font-medium text-primary hover:underline disabled:opacity-40"
+              className="text-xs font-medium text-primary hover:underline disabled:opacity-40 py-1 -my-1 min-h-tap"
             >
               {loading ? 'Loading…' : 'Load older'}
             </button>

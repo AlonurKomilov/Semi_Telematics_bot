@@ -183,7 +183,7 @@ export default function ServiceTasks() {
                 void act('System set', () =>
                   updateServiceTask(t.id, { system_key: t.suggested_system }));
               }}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')}`}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')} min-h-tap`}
             >
               <Check size={12} aria-hidden />
               {systemLabel(t.suggested_system) || t.suggested_system}?

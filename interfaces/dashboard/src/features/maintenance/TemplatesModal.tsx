@@ -212,7 +212,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition min-h-tap"
           >
             <Plus size={14} />
             New template
@@ -283,7 +283,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
                         active
                           ? 'bg-card text-foreground shadow-sm'
                           : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      } min-h-tap`}
                     >
                       {opt.label}
                     </button>

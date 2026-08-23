@@ -370,7 +370,7 @@ export default function ForumRoutingSection() {
             <>
               <button
                 onClick={() => setShowMapping(s => !s)}
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"
               >
                 {showMapping
                   ? <ChevronDown size={14} />
@@ -522,7 +522,7 @@ export default function ForumRoutingSection() {
                                         active
                                           ? 'border-primary/40 bg-primary/10 text-primary'
                                           : 'border-border text-muted-foreground hover:border-ring'
-                                      }`}
+                                      } min-h-tap`}
                                     >
                                       {active && <Check size={12} />}
                                       {SUBTYPE_LABELS[s] || s}
@@ -574,17 +574,17 @@ export default function ForumRoutingSection() {
                           </span>
                           <button type="button" onClick={() => { void deleteTopic(tp); }}
                             disabled={busyKey === '__ctopic__'}
-                            className="text-xs font-medium text-destructive hover:underline disabled:opacity-50">
+                            className="text-xs font-medium text-destructive hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap">
                             {busyKey === '__ctopic__' ? '…' : t('forum_routing.topic_remove')}
                           </button>
                           <button type="button" onClick={() => setConfirmTopic(null)}
-                            className="text-xs text-muted-foreground hover:text-foreground">
+                            className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">
                             {t('forum_routing.btn_cancel')}
                           </button>
                         </span>
                       ) : (
                         <button type="button" onClick={() => setConfirmTopic(tp.id)}
-                          className="text-xs text-destructive hover:underline">
+                          className="text-xs text-destructive hover:underline py-1 -my-1 min-h-tap">
                           {t('forum_routing.topic_remove')}
                         </button>
                       )}
@@ -595,7 +595,7 @@ export default function ForumRoutingSection() {
                   {!showAddTopic ? (
                     <button type="button"
                       onClick={() => { setShowAddTopic(true); setCtName(''); setCtType(''); setCtSubs([]); }}
-                      className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
+                      className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap">
                       {t('forum_routing.add_topic_btn')}
                     </button>
                   ) : (
@@ -629,7 +629,7 @@ export default function ForumRoutingSection() {
                                   onClick={() => setCtSubs(on ? ctSubs.filter((x) => x !== s) : [...ctSubs, s])}
                                   className={`px-2 py-0.5 rounded-md border text-2xs transition ${
                                     on ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-ring'
-                                  }`}>
+                                  } min-h-tap`}>
                                   {SUBTYPE_LABELS[s] || s}
                                 </button>
                               );
@@ -640,11 +640,11 @@ export default function ForumRoutingSection() {
                       })()}
                       <button type="button" onClick={() => { void createTopic(); }}
                         disabled={busyKey === '__ctopic__' || !ctName.trim() || !ctType}
-                        className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50">
+                        className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50 min-h-tap">
                         {busyKey === '__ctopic__' ? '…' : t('forum_routing.topic_create')}
                       </button>
                       <button type="button" onClick={() => setShowAddTopic(false)}
-                        className="text-xs text-muted-foreground hover:text-foreground">
+                        className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">
                         {t('forum_routing.btn_cancel')}
                       </button>
                     </div>
@@ -656,7 +656,7 @@ export default function ForumRoutingSection() {
                 {!confirmDisconnect ? (
                   <button
                     onClick={() => setConfirmDisconnect(true)}
-                    className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded text-xs font-medium transition"
+                    className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded text-xs font-medium transition min-h-tap"
                   >
                     {t('forum_routing.btn_disconnect')}
                   </button>
@@ -674,7 +674,7 @@ export default function ForumRoutingSection() {
                     </button>
                     <button
                       onClick={() => setConfirmDisconnect(false)}
-                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded text-xs font-medium transition"
+                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded text-xs font-medium transition min-h-tap"
                     >
                       {t('forum_routing.btn_cancel')}
                     </button>

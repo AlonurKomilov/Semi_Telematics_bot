@@ -339,15 +339,15 @@ function RunsTab() {
               const r = row as unknown as DriverPayRun;
               return (
                 <span className="inline-flex justify-end gap-2 w-full">
-                  <button onClick={() => openRun(r.id)} className="text-primary text-xs hover:underline">
+                  <button onClick={() => openRun(r.id)} className="text-primary text-xs hover:underline py-1 -my-1 min-h-tap">
                     Detail
                   </button>
                   {r.status === 'draft' && (
                     <>
-                      <button onClick={() => finalize(r.id)} className="text-ok text-xs hover:underline">
+                      <button onClick={() => finalize(r.id)} className="text-ok text-xs hover:underline py-1 -my-1 min-h-tap">
                         Finalize
                       </button>
-                      <button onClick={() => cancel(r.id)} className="text-danger text-xs hover:underline">
+                      <button onClick={() => cancel(r.id)} className="text-danger text-xs hover:underline py-1 -my-1 min-h-tap">
                         Cancel
                       </button>
                     </>
@@ -370,10 +370,10 @@ function RunsTab() {
             </h3>
             <div className="flex items-center gap-3">
               <button onClick={() => exportRunCsv(selected)}
-                className="text-primary text-sm hover:underline">
+                className="text-primary text-sm hover:underline py-1 -my-1 min-h-tap">
                 Export CSV
               </button>
-              <button onClick={() => setSelected(null)} className="text-sm text-muted-foreground hover:underline">
+              <button onClick={() => setSelected(null)} className="text-sm text-muted-foreground hover:underline py-1 -my-1 min-h-tap">
                 Close
               </button>
             </div>
@@ -632,7 +632,7 @@ function RulesTab() {
               const r = row as unknown as BonusRule;
               return (
                 <span className="inline-flex justify-end w-full">
-                  <button onClick={() => remove(r.id)} className="text-destructive text-xs hover:underline">
+                  <button onClick={() => remove(r.id)} className="text-destructive text-xs hover:underline py-1 -my-1 min-h-tap">
                     Delete
                   </button>
                 </span>

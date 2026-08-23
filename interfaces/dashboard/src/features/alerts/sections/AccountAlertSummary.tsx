@@ -130,7 +130,7 @@ export default function AccountAlertSummary() {
                 disabled={!b.urlValue}
                 className={`w-full text-left grid grid-cols-[8rem_1fr_3rem] gap-3 items-center text-xs px-2 py-1.5 rounded transition ${
                   b.urlValue ? 'hover:bg-muted cursor-pointer' : 'cursor-default'
-                }`}
+                } min-h-tap`}
               >
                 <span className="text-muted-foreground truncate">{b.label}</span>
                 <div className="h-2 bg-muted rounded overflow-hidden">

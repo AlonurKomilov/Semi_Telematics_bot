@@ -141,7 +141,7 @@ export default function PushChannelCard({ onChanged }: { onChanged: () => void }
                   onClick={() => void removeDevice(d.endpoint)}
                   disabled={busy}
                   aria-label={`Remove ${d.device_label || 'device'}`}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-danger-bg hover:text-danger transition-colors disabled:opacity-40"
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-danger-bg hover:text-danger transition-colors disabled:opacity-40 min-h-tap min-w-tap"
                 >
                   <Trash2 size={14} aria-hidden />
                 </button>

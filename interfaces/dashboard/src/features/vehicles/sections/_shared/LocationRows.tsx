@@ -56,7 +56,7 @@ export function LocationRows({
               href={mapsHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1 text-right"
+              className="text-primary hover:underline inline-flex items-center gap-1 text-right min-h-tap"
             >
               <span>{address}</span>
               <ExternalLink size={12} className="flex-shrink-0 opacity-70" />
@@ -68,7 +68,7 @@ export function LocationRows({
         </Freshness>
       </div>
       <Row label="Speed" ts={ts} cue={false} value={speedMph != null ? `${speedMph} mph` : '—'} />
-      <div className="flex justify-between items-center text-sm gap-3">
+      <div className="flex justify-between items-center text-sm gap-3 py-1 -my-1 min-h-tap">
         <span className="text-muted-foreground flex-shrink-0">Coordinates</span>
         {hasCoords ? (
           <span className="inline-flex items-center gap-2">

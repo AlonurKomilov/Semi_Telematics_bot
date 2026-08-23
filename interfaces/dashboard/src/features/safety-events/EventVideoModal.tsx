@@ -231,7 +231,7 @@ export default function EventVideoModal({
               href={mapsHref!}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline min-h-tap"
               title="Open in Google Maps"
             >
               <MapPin size={12} /> {latLng}
@@ -251,7 +251,7 @@ export default function EventVideoModal({
               videoUrl
                 ? 'bg-primary/15 hover:bg-primary/25 text-primary'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
-            }`}
+            } min-h-tap`}
           >
             <Download size={14} />
             Download

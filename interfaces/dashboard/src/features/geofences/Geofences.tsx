@@ -478,7 +478,7 @@ export default function Geofences() {
                     type="button"
                     onClick={pickingFromMap ? cancelMapPick : startMapPick}
                     title={pickingFromMap ? 'Cancel map pick' : 'Click on map to set location'}
-                    className={`shrink-0 px-2.5 py-2 rounded-lg border text-sm transition ${
+                    className={`shrink-0 px-2.5 py-2 min-h-tap rounded-lg border text-sm transition ${
                       pickingFromMap
                         ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
                         : 'border-border bg-background hover:bg-muted'
@@ -579,7 +579,7 @@ export default function Geofences() {
             <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold truncate pr-2">{selected.properties?.name || 'Zone'}</h2>
-                <button onClick={() => setPanelMode('list')} className="text-muted-foreground hover:text-foreground text-sm shrink-0">✕</button>
+                <button onClick={() => setPanelMode('list')} className="text-muted-foreground hover:text-foreground text-sm shrink-0 py-1 -my-1 min-h-tap">✕</button>
               </div>
               <dl className="space-y-2 text-sm">
                 <div><dt className="text-xs text-muted-foreground uppercase tracking-wide">Shape</dt><dd className="capitalize">{selected.geometry.type === 'Point' ? 'Circle' : 'Polygon'}</dd></div>
@@ -599,10 +599,10 @@ export default function Geofences() {
                   );
                 })()}
                 {selected.geometry.type === 'Polygon' && (
-                  <div><dt className="text-xs text-muted-foreground uppercase tracking-wide">Vertices</dt><dd>{((selected.geometry.coordinates as [number, number][][])[0] || []).length}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground uppercase tracking-wide py-1 -my-1 min-h-tap">Vertices</dt><dd>{((selected.geometry.coordinates as [number, number][][])[0] || []).length}</dd></div>
                 )}
                 <div>
-                  <dt className="text-xs text-muted-foreground uppercase tracking-wide">Source</dt>
+                  <dt className="text-xs text-muted-foreground uppercase tracking-wide py-1 -my-1 min-h-tap">Source</dt>
                   <dd>
                     <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border font-medium ${
                       selected.properties?.source === 'platform'
@@ -660,7 +660,7 @@ export default function Geofences() {
                       <button
                         onClick={() => handleDelete(f.properties!.id as number)}
                         disabled={deletingId === f.properties?.id}
-                        className="text-destructive/70 hover:text-destructive text-xs px-1 shrink-0"
+                        className="text-destructive/70 hover:text-destructive text-xs px-1 shrink-0 py-1 -my-1 min-h-tap"
                         title="Delete zone"
                       >
                         {deletingId === f.properties?.id ? '…' : '✕'}

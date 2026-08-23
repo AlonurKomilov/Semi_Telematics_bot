@@ -306,7 +306,7 @@ export default function Inspections() {
           <button
             type="button"
             onClick={() => setShowNewDialog(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
           >
             <Plus size={14} />
             {t('inspections.new.button')}
@@ -396,7 +396,7 @@ export default function Inspections() {
                 active
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card hover:bg-muted text-foreground border-border'
-              }`}
+              } min-h-tap`}
             >
               <span className={`w-2 h-2 rounded-full ${chip.dot}`} />
               {chip.label}

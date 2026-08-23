@@ -212,7 +212,7 @@ export function ActivityTrailList({
             <button
               type="button"
               onClick={() => onRestore(e)}
-              className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
             >
               <ArchiveRestore size={14} /> Restore this record
             </button>

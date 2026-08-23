@@ -263,7 +263,7 @@ export default function Profile() {
                 onClick={() => setDndEnabled(v => !v)}
                 className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
                   dndEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}
+                } min-h-tap`}
               >
                 <span
                   className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
@@ -571,7 +571,7 @@ function SignInMethods() {
           ) : me?.email ? (
             <a
               href="/forgot-password"
-              className="shrink-0 text-xs text-primary hover:underline px-2 py-1"
+              className="shrink-0 inline-flex items-center text-xs text-primary hover:underline px-2 py-1 min-h-tap"
             >
               {t('profile.signin_change_password', 'Change password')}
             </a>
@@ -579,7 +579,7 @@ function SignInMethods() {
             <button
               type="button"
               onClick={() => setShowEmailForm((v) => !v)}
-              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded min-h-tap"
             >
               {showEmailForm
                 ? t('profile.signin_email_cancel', 'Cancel')
@@ -1058,7 +1058,7 @@ function ActiveSessions() {
                   onClick={() => revoke(s)}
                   disabled={isBusy || terminating}
                   title="Sign out this device"
-                  className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed transition min-h-tap min-w-tap"
                 >
                   <X size={16} />
                 </button>

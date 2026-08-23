@@ -16,7 +16,7 @@ export default function Breadcrumb() {
     <nav className="flex items-center gap-1.5 text-sm text-muted-foreground min-w-0">
       <Link
         to="/"
-        className="inline-flex items-center gap-1 hover:text-foreground transition shrink-0"
+        className="inline-flex items-center gap-1 hover:text-foreground transition shrink-0 min-h-tap"
       >
         <Home size={14} />
         <span className="hidden sm:inline">Home</span>

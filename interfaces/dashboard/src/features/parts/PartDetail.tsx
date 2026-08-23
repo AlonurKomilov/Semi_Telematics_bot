@@ -370,7 +370,7 @@ export default function PartDetail() {
       <button
         type="button"
         onClick={() => navigate('/parts')}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition mb-3"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition mb-3 py-1 -my-1 min-h-tap"
       >
         <ArrowLeft size={14} /> Parts
       </button>
@@ -475,7 +475,7 @@ export default function PartDetail() {
                 type="button"
                 disabled={busy}
                 onClick={() => setAssembly(data.part.suggested_assembly!)}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')} min-h-tap`}
               >
                 <Check size={12} aria-hidden />
                 {asmLabelOf.get(data.part.suggested_assembly) ?? data.part.suggested_assembly}?

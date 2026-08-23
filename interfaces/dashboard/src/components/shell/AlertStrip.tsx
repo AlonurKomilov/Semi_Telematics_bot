@@ -37,7 +37,7 @@ export default function AlertStrip({ items }: AlertStripProps) {
             to={item.href}
             className={`flex items-center justify-between gap-3 px-4 py-3 border rounded-xl transition ${cls}`}
           >
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 min-h-tap">
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-card/40 shrink-0">
                 <Icon size={18} />
               </span>

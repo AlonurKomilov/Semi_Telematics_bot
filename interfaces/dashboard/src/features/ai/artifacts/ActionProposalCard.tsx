@@ -212,7 +212,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
           {undoAvailable && (
             <button
               onClick={undo}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs transition-colors ${
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 -my-0.5 min-h-tap text-2xs transition-colors ${
                 undoConfirm
                   ? `font-medium ${toneClasses('warn')}`
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'

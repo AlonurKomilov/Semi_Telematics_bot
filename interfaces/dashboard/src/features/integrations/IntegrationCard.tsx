@@ -395,7 +395,7 @@ export default function IntegrationCard({
           href={entry.docs_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 inline-block text-xs text-primary hover:underline"
+          className="mt-2 inline-block text-xs text-primary hover:underline py-1 -my-1 min-h-tap"
         >
           Provider docs ↗
         </a>
@@ -862,7 +862,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
               without it the operator has to already know the split. */}
           <Link
             to="/companies"
-            className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-tap"
             title="Create the company on the Companies page — it appears here for its API key"
           >
             <Plus size={12} />

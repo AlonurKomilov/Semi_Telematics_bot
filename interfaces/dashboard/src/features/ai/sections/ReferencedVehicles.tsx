@@ -130,7 +130,7 @@ export function ReferencedVehicles({ toolResults }: { toolResults: unknown }) {
           <Tip key={r.vehicle} label={r.note ? `${r.vehicle} — ${r.note}` : `Open ${r.vehicle}`}>
             <button
               onClick={() => open(r)}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium cursor-pointer transition-opacity hover:opacity-80 ${toneClasses(r.tone)}`}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium cursor-pointer transition-opacity hover:opacity-80 ${toneClasses(r.tone)} min-h-tap`}
             >
               <Truck size={12} aria-hidden />
               <span>{r.vehicle}</span>

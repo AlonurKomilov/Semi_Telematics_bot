@@ -354,7 +354,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
               <button
                 type="button"
                 onClick={() => setShowAllEvents((v) => !v)}
-                className="mt-2 text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                className="mt-2 text-2xs text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
               >
                 {showAllEvents
                   ? 'Show less'

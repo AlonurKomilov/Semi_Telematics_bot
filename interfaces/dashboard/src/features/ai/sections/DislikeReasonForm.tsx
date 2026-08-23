@@ -105,7 +105,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
               reason === key
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-card text-foreground/80 border-border hover:border-ring'
-            }`}
+            } min-h-tap`}
           >
             {t(`chat.dislike_form.reason.${key}`)}
           </button>

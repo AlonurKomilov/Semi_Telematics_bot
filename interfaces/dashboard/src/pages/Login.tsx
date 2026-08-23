@@ -353,7 +353,7 @@ export default function Login() {
         {/* Tab switcher */}
         <div className="flex mb-6 border-b border-border">
           <button
-            className={`flex-1 pb-2 text-sm font-medium transition-colors ${
+            className={`flex-1 pb-2 min-h-tap text-sm font-medium transition-colors ${
               mode === 'login'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground/80'
@@ -363,7 +363,7 @@ export default function Login() {
             Sign In
           </button>
           <button
-            className={`flex-1 pb-2 text-sm font-medium transition-colors ${
+            className={`flex-1 pb-2 min-h-tap text-sm font-medium transition-colors ${
               mode === 'register'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground/80'
@@ -514,7 +514,7 @@ export default function Login() {
               </label>
               <a
                 href="/forgot-password"
-                className="text-xs text-primary hover:underline"
+                className="inline-flex items-center min-h-tap text-xs text-primary hover:underline"
               >
                 {t('auth.forgot_password')}
               </a>
@@ -585,7 +585,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowDisconnect(true)}
-              className="text-xs text-muted-foreground hover:text-foreground/80 transition-colors underline underline-offset-2"
+              className="text-xs text-muted-foreground hover:text-foreground/80 transition-colors underline underline-offset-2 py-1 -my-1 min-h-tap"
             >
               {t('login_tg.disconnect_session')}
             </button>
@@ -665,7 +665,7 @@ export default function Login() {
                 href={botLoginLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-center text-xs text-primary hover:text-primary/80 underline underline-offset-2"
+                className="block text-center text-xs text-primary hover:text-primary/80 underline underline-offset-2 min-h-tap"
               >
                 {t('login_tg.didnt_open')}
               </a>
@@ -688,7 +688,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => { cancelBotLogin(); }}
-              className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors"
+              className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors min-h-tap"
             >
               Try again
             </button>

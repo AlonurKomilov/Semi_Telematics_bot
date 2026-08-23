@@ -363,7 +363,7 @@ export default function VendorProfile() {
                       setRateComment(data.directory?.my_review?.comment ?? '');
                       setRateOpen(true);
                     }} disabled={dirBusy}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition min-h-tap">
                       <Star size={14} /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
                     </button>
                     </Tip>

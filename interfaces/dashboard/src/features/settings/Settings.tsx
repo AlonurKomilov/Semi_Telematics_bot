@@ -608,13 +608,13 @@ export default function Settings() {
                       {botSaving ? t('bot_card.disconnecting') : t('bot_card.disconnect_yes')}
                     </button>
                     <button onClick={() => setShowBotDisconnect(false)}
-                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded text-xs font-medium transition">
+                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded text-xs font-medium transition min-h-tap">
                       {t('common.cancel')}
                     </button>
                   </div>
                 ) : (
                   <button onClick={() => setShowBotDisconnect(true)}
-                    className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded text-xs font-medium transition">
+                    className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded text-xs font-medium transition min-h-tap">
                     {t('bot_card.disconnect')}
                   </button>
                 ))}
@@ -741,7 +741,7 @@ export default function Settings() {
       <section className="bg-card border border-border rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Working Hours</h2>
-          <button onClick={() => setShowSchedule(!showSchedule)} className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded text-xs font-medium transition">
+          <button onClick={() => setShowSchedule(!showSchedule)} className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded text-xs font-medium transition min-h-tap">
             {showSchedule ? 'Cancel' : '+ Add Schedule'}
           </button>
         </div>
@@ -815,7 +815,7 @@ export default function Settings() {
                   return (
                     <button
                       onClick={() => handleDeleteSchedule(s.id)}
-                      className="text-destructive hover:text-destructive/80 text-xs"
+                      className="text-destructive hover:text-destructive/80 text-xs py-1 -my-1 min-h-tap"
                     >
                       Delete
                     </button>

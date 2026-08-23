@@ -299,7 +299,7 @@ const Step2: StepDef = {
             <div className="mb-2 flex items-center justify-between">
               <p className={sectionTitle}>Previous addresses — last 3 years</p>
               <button type="button" onClick={() => setHist([...hist, blankAddress()])}
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><Plus size={14} /> Add address</button>
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus size={14} /> Add address</button>
             </div>
             {errors['addressHistory._'] && <p className="mb-2 text-xs text-destructive">{errors['addressHistory._']}</p>}
             <div className="flex flex-col gap-4">
@@ -735,7 +735,7 @@ const Step6: StepDef = {
           <div className="rounded-md border border-border p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className={sectionTitle}>Accident records</span>
-              <button type="button" onClick={() => setAcc([...accidents, blankAccident()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><Plus size={14} /> Add</button>
+              <button type="button" onClick={() => setAcc([...accidents, blankAccident()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus size={14} /> Add</button>
             </div>
             {errors['incidents.accidents._'] && <p className="mb-2 text-xs text-destructive">{errors['incidents.accidents._']}</p>}
             <div className="flex flex-col gap-4">
@@ -760,7 +760,7 @@ const Step6: StepDef = {
           <div className="rounded-md border border-border p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className={sectionTitle}>Violation records</span>
-              <button type="button" onClick={() => setVio([...violations, blankViolation()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><Plus size={14} /> Add</button>
+              <button type="button" onClick={() => setVio([...violations, blankViolation()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus size={14} /> Add</button>
             </div>
             {errors['incidents.violations._'] && <p className="mb-2 text-xs text-destructive">{errors['incidents.violations._']}</p>}
             <div className="flex flex-col gap-4">
@@ -945,7 +945,7 @@ function DisclosureCard({ doc, checked, error, onChange }: {
         <Check_ checked={checked} onChange={onChange}>
           <span className="text-sm">I have read and authorize the <span className="font-medium">{doc.title}</span>.</span>
         </Check_>
-        {!open && <button type="button" onClick={() => setOpen(true)} className="mt-1 ml-7 block text-2xs text-primary hover:underline">Read the full document</button>}
+        {!open && <button type="button" onClick={() => setOpen(true)} className="mt-1 ml-7 block text-2xs text-primary hover:underline py-1 -my-1 min-h-tap">Read the full document</button>}
       </div>
     </div>
   );

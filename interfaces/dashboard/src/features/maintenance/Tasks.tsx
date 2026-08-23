@@ -388,7 +388,7 @@ export default function Tasks() {
                 title="List view"
                 className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'list'
                   ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'}`}
+                  : 'text-muted-foreground hover:text-foreground'} min-h-tap min-w-tap`}
               >
                 <List size={14} />
               </button>
@@ -400,7 +400,7 @@ export default function Tasks() {
                 title="Calendar view"
                 className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'calendar'
                   ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'}`}
+                  : 'text-muted-foreground hover:text-foreground'} min-h-tap min-w-tap`}
               >
                 <CalendarDays size={14} />
               </button>
@@ -422,7 +422,7 @@ export default function Tasks() {
                 DOT Binder tab) in 2026-06 — the binder is a
                 stakeholder-facing compliance PDF, not a maintenance-
                 editing surface. */}
-            <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition">
+            <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
               <Plus size={14} />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
@@ -488,7 +488,7 @@ export default function Tasks() {
           title="No maintenance tasks yet"
           description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
           action={(
-            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition">
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap">
               <Plus size={14} />
               New task
             </button>

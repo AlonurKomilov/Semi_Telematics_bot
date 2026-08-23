@@ -126,7 +126,7 @@ export default function ParkingDetailSheet({
             {!isLive && (
               <button
                 onClick={() => setViewing(event)}
-                className="text-xs font-normal text-primary hover:underline"
+                className="text-xs font-normal text-primary hover:underline py-1 -my-1 min-h-tap"
               >
                 ← back to current stop
               </button>
@@ -257,7 +257,7 @@ export default function ParkingDetailSheet({
             {canResolve && !shown.resolved && (
               <button
                 onClick={() => onResolve(shown)}
-                className="px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-lg text-xs font-medium text-primary-foreground transition"
+                className="px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-lg text-xs font-medium text-primary-foreground transition min-h-tap"
               >
                 Resolve
               </button>
@@ -271,7 +271,7 @@ export default function ParkingDetailSheet({
               href={mapsUrl(shown.latitude, shown.longitude)}
               target="_blank"
               rel="noopener noreferrer"
-              className="-mx-1 px-1 py-1.5 rounded text-xs font-medium text-primary hover:underline"
+              className="-mx-1 inline-flex items-center px-1 py-1.5 min-h-tap rounded text-xs font-medium text-primary hover:underline"
             >
               Open in Google Maps
             </a>

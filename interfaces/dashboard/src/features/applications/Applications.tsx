@@ -199,7 +199,7 @@ function CompanyBrandPanel({ company, onChanged, onDirtyChange }: {
             <span className="ml-1 opacity-70">· name &amp; MC/DOT managed by owner</span>
           </p>
           <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+            className="mt-1.5 inline-flex items-center gap-1.5 py-1 min-h-tap text-xs text-primary hover:underline">
             <ExternalLink size={12} /> Logo, hero photo &amp; theme colours — edit live in Preview
           </a>
         </div>
@@ -263,7 +263,7 @@ function CompanyBrandPanel({ company, onChanged, onDirtyChange }: {
       </div>
       <div className="mt-3 flex items-center justify-between">
         <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline min-h-tap">
           <ExternalLink size={12} /> Preview application
         </a>
         <Button size="sm" onClick={saveBrand} disabled={busy || !dirty}>
@@ -381,7 +381,7 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
             'Discard the unsaved carrier details in the panel below?',
           )) return;
           onCancel();
-        }} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+        }} className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">Cancel</button>
       </div>
       {/* Auto-remind: nudge applicants who started but didn't submit.  Off by
           default; the cadence + lifetime cap are this link's policy. */}
@@ -995,26 +995,26 @@ export default function Applications() {
                   <div className="ml-auto flex items-center gap-1">
                     {live && (
                       <button onClick={() => copyLink(l)} title="Copy link"
-                        className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md hover:bg-muted">
+                        className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
                         {copied === l.id ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
                       </button>
                     )}
                     {l.is_active === 1 && (
                       <button onClick={() => setEditingLink(editingLink === l.id ? null : l.id)}
                         title="Edit link (label, source, carrier, expiry)"
-                        className={`inline-flex size-7 items-center justify-center rounded-md hover:bg-muted ${editingLink === l.id ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'}`}>
+                        className={`inline-flex size-7 items-center justify-center rounded-md hover:bg-muted ${editingLink === l.id ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'} min-h-tap min-w-tap`}>
                         <Pencil size={14} />
                       </button>
                     )}
                     {live && (
                       <button onClick={() => revokeLink(l.id)} title="Revoke"
-                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted">
+                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
                         <Ban size={14} />
                       </button>
                     )}
                     {!live && (
                       <button onClick={() => deleteLink(l.id)} title="Delete link permanently"
-                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted">
+                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -1048,11 +1048,11 @@ export default function Applications() {
         <div className="flex flex-wrap items-center gap-1.5 pb-3">
           <div className="inline-flex rounded-md border border-border p-0.5">
             <button onClick={() => setView('table')}
-              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
+              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'} min-h-tap`}>
               <List size={12} /> Table
             </button>
             <button onClick={() => setView('board')}
-              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'board' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
+              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'board' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'} min-h-tap`}>
               <LayoutGrid size={12} /> Board
             </button>
           </div>
@@ -1503,7 +1503,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                 <ul className="mt-1.5 space-y-0.5">
                   {app.related.map((r) => (
                     <li key={r.id}>
-                      <button onClick={() => onOpen(r.id)} className="text-xs underline hover:no-underline">
+                      <button onClick={() => onOpen(r.id)} className="text-xs underline hover:no-underline py-1 -my-1 min-h-tap">
                         {r.reference} · <span className="capitalize">{r.status}</span> · {r.submitted_at ? formatDay(r.submitted_at, { timeZone: tz }) : ''}
                       </button>
                     </li>
@@ -1543,7 +1543,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                           : allowed && !needsChecks
                             ? 'border border-border text-foreground hover:bg-muted'
                             : 'border border-border text-muted-foreground opacity-40'
-                      }`}>
+                      } min-h-tap`}>
                       {s}
                     </button>
                   );
@@ -1585,7 +1585,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                   const done = !!app.vetting?.[key]?.done;
                   return (
                     <button key={key} type="button" onClick={() => toggleCheck(key, !done)}
-                      className="flex w-full items-center gap-2 text-left text-sm">
+                      className="flex w-full items-center gap-2 text-left text-sm py-1 -my-1 min-h-tap">
                       <span className={`flex size-4 shrink-0 items-center justify-center rounded border ${done ? 'border-ok bg-ok-bg' : 'border-border'}`}>
                         {done && <Check size={12} className="text-ok" />}
                       </span>
@@ -1672,7 +1672,7 @@ function PiiRow({ label, value, kind }: {
       <span className="font-mono text-sm text-foreground">{shown ? value : masked}</span>
       <button type="button" onClick={() => setShown((v) => !v)}
         aria-label={`${shown ? 'Hide' : 'Reveal'} ${label}`}
-        className="text-xs text-muted-foreground underline hover:text-foreground">
+        className="text-xs text-muted-foreground underline hover:text-foreground py-1 -my-1 min-h-tap">
         {shown ? 'Hide' : 'Reveal'}
       </button>
     </div>
@@ -2130,7 +2130,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
                         className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${
                           !live ? 'border-dashed border-border text-muted-foreground'
                           : on ? 'border-primary bg-primary/10 text-foreground'
-                          : 'border-border text-muted-foreground hover:bg-muted'}`}
+                          : 'border-border text-muted-foreground hover:bg-muted'} min-h-tap`}
                       >
                         <I size={12} /> {label}
                       </button>
@@ -2143,7 +2143,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
                   preferences, and two panels for one setting that never
                   mention each other read as two independent settings. */}
               <Link to="/notifications/preferences"
-                className="mt-1.5 inline-block text-2xs text-primary hover:underline">
+                className="mt-1 inline-flex items-center py-1 min-h-tap text-2xs text-primary hover:underline">
                 {prefsLoaded && NOTIFY_CHANNELS.some((c) => !connected.includes(c.key))
                   ? 'Connect a channel' : 'Manage in Notification preferences'}
               </Link>

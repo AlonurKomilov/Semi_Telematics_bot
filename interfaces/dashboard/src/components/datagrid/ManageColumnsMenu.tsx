@@ -146,7 +146,7 @@ export default function ManageColumnsMenu({
                     onClick={() => !disabled && onToggle(opt.id)}
                     disabled={disabled}
                     className={cn(
-                      'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left',
+                      'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left min-h-tap',
                       disabled
                         ? 'opacity-60 cursor-not-allowed'
                         : 'hover:bg-accent',

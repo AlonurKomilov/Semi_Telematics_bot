@@ -360,7 +360,7 @@ export default function AlertsResults() {
               e.stopPropagation();
               openDrillIn(row as unknown as Alert);
             }}
-            className="font-mono text-xs text-muted-foreground hover:text-primary hover:underline focus:outline-none focus:text-primary"
+            className="font-mono text-xs text-muted-foreground hover:text-primary hover:underline focus:outline-none focus:text-primary py-1 -my-1 min-h-tap"
             // The row itself is clickable now, so this needs no hover
             // label — it needs a NAME, for the keyboard and screen-reader
             // path where the row's own handler isn't reachable.

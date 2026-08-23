@@ -339,7 +339,7 @@ export default function AddTaskDialog({
                         on
                           ? 'bg-primary text-primary-foreground border-primary'
                           : 'bg-card border-border hover:bg-muted'
-                      }`}
+                      } min-h-tap`}
                     >
                       {on ? '✓ ' : ''}#{v.name}
                     </button>
@@ -350,7 +350,7 @@ export default function AddTaskDialog({
                 <button
                   type="button"
                   onClick={() => setFMultiVehicles(new Set())}
-                  className="mt-1 text-2xs text-muted-foreground hover:text-foreground"
+                  className="mt-1 text-2xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
                 >
                   Clear selection
                 </button>
@@ -433,7 +433,7 @@ export default function AddTaskDialog({
                       active
                         ? 'bg-card text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    } min-h-tap`}
                   >
                     {opt.label}
                   </button>

@@ -409,7 +409,7 @@ function ItemRow({
           onClick={() => fileRef.current?.click()}
           disabled={saving}
           title={t('inspections.ref_image_add')}
-          className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-2xs border border-border rounded-md hover:bg-muted text-muted-foreground"
+          className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-2xs border border-border rounded-md hover:bg-muted text-muted-foreground min-h-tap"
         >
           <ImageIcon size={12} />
           {t('inspections.ref_image_add')}
@@ -532,7 +532,7 @@ function TemplateCard({
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-border rounded-md hover:bg-muted"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-border rounded-md hover:bg-muted min-h-tap"
           >
             <Plus size={12} />
             {t('inspections.add_item_btn')}

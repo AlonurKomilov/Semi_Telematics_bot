@@ -217,7 +217,7 @@ export function NotificationsPanel(
             <button
               onClick={() => refetch()}
               aria-label="Refresh"
-              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors min-h-tap min-w-tap"
             >
               <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} aria-hidden />
             </button>
@@ -225,7 +225,7 @@ export function NotificationsPanel(
           <button
             onClick={() => goto('/notifications/preferences')}
             aria-label="Notification preferences"
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors min-h-tap min-w-tap"
           >
             <Settings size={14} aria-hidden />
           </button>
@@ -309,7 +309,7 @@ export function NotificationsPanel(
             />
             <button
               onClick={() => goto('/notifications')}
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
             >
               See all <ArrowRight size={14} aria-hidden />
             </button>
@@ -350,13 +350,13 @@ export function NotificationsPanel(
             <button
               onClick={() => ackAllStaged(shown.map((a) => a.id))}
               disabled={busy || shown.length === 0}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors py-1 -my-1 min-h-tap"
+              className="inline-flex items-center gap-1.5 py-1 -my-1 min-h-tap text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors py-1 -my-1 min-h-tap"
             >
               <CheckCheck size={14} aria-hidden /> Acknowledge all
             </button>
             <button
               onClick={() => goto('/alerts')}
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
             >
               Open Alerts <ArrowRight size={14} aria-hidden />
             </button>
@@ -407,7 +407,7 @@ export function NotificationsPanel(
                 />
                 <button
                   onClick={() => goto('/notifications')}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
                 >
                   See all <ArrowRight size={14} aria-hidden />
                 </button>
@@ -431,7 +431,7 @@ function MarkAllReadButton({ unread, onClick }: {
     <button
       onClick={onClick}
       disabled={unread === 0}
-      className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
+      className="inline-flex items-center gap-1.5 py-1 -my-1 min-h-tap text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
     >
       <CheckCheck size={14} aria-hidden /> Mark all read
     </button>
@@ -457,7 +457,7 @@ function TabPill({ active, onClick, dim, children }: {
           ? 'bg-primary/15 text-primary'
           : `hover:bg-muted hover:text-foreground ${
               dim ? 'text-muted-foreground/50' : 'text-muted-foreground'}`
-      }`}
+      } min-h-tap`}
     >
       {children}
     </button>
@@ -531,7 +531,7 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
         // Always visible (dimmed) — NOT hover-only: this app runs on cab
         // tablets with no hover, where a reveal-on-hover action is
         // unreachable.  Solid on hover/focus.
-        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-ok-bg hover:text-ok focus:text-ok transition-colors shrink-0 disabled:opacity-40"
+        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-ok-bg hover:text-ok focus:text-ok transition-colors shrink-0 disabled:opacity-40 min-h-tap min-w-tap"
       >
         <Check size={14} aria-hidden />
       </button>
@@ -609,7 +609,7 @@ export function InboxRow({ notice, onOpen, onAction }: {
             onClick={() => setExpanded((e) => !e)}
             aria-label={expanded ? 'Collapse' : 'Expand'}
             aria-expanded={expanded}
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors shrink-0 min-h-tap min-w-tap"
           >
             {expanded
               ? <ChevronUp size={14} aria-hidden />
@@ -624,7 +624,7 @@ export function InboxRow({ notice, onOpen, onAction }: {
         <div className="mt-1.5 pl-6">
           <button
             onClick={() => onAction(notice.action!.url)}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors min-h-tap"
           >
             {notice.action.label} <ArrowRight size={12} aria-hidden />
           </button>

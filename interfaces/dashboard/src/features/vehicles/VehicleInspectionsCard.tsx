@@ -68,7 +68,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
         </h2>
         <Link
           to={`/inspections?vehicle=${encodeURIComponent(vehicleName)}`}
-          className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
+          className="text-xs text-primary hover:underline inline-flex items-center gap-0.5 min-h-tap"
         >
           {t('inspections.vehicle_section.view_all')}
           <ChevronRight size={12} />

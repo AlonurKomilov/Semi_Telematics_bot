@@ -481,7 +481,7 @@ export default function LoadManageDialog({
               <button
                 type="button"
                 onClick={() => setShowAllEvents((s) => !s)}
-                className="mt-2 text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                className="mt-2 text-2xs text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
               >
                 {showAllEvents ? 'Show less' : `Show ${events.length - 5} more`}
               </button>

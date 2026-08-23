@@ -148,7 +148,7 @@ export function CalendarMonth({
           <button
             type="button"
             onClick={() => setViewDate(new Date())}
-            className="px-2 py-1 text-xs hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+            className="px-2 py-1 text-xs hover:bg-muted rounded text-muted-foreground hover:text-foreground min-h-tap"
           >
             Today
           </button>
@@ -230,7 +230,7 @@ export function CalendarMonth({
                         isProjected
                           ? 'bg-card hover:bg-muted border border-dashed border-border'
                           : 'bg-muted/60 hover:bg-muted'
-                      }`}
+                      } min-h-tap`}
                       title={`#${task.vehicle_name} · ${task.task_type} · ${task.description || 'no description'}${projTitle}`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotCls}`} />
@@ -243,7 +243,7 @@ export function CalendarMonth({
                   <button
                     type="button"
                     onClick={() => setDayDetail({ date: cell, tasks: dayTasks })}
-                    className="text-3xs text-muted-foreground hover:text-foreground text-left px-1.5"
+                    className="text-3xs text-muted-foreground hover:text-foreground text-left px-1.5 py-1 -my-1 min-h-tap"
                   >
                     + {overflow} more
                   </button>
@@ -278,7 +278,7 @@ export function CalendarMonth({
                   key={task.id}
                   type="button"
                   onClick={() => onTaskClick(task)}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 text-2xs rounded bg-card hover:bg-muted border border-border"
+                  className="inline-flex items-center gap-1.5 px-2 py-1 text-2xs rounded bg-card hover:bg-muted border border-border min-h-tap"
                   title={`#${task.vehicle_name} · ${task.task_type} · ${task.description || 'no description'}`}
                 >
                   <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />

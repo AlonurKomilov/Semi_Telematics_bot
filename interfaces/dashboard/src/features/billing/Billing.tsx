@@ -409,7 +409,7 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
       <button
         onClick={onUpgrade}
         disabled={current || loading}
-        className={`w-full py-2 rounded-lg text-sm font-semibold transition ${
+        className={`w-full py-2 min-h-tap rounded-lg text-sm font-semibold transition ${
           current ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary/90 text-primary-foreground'
         }`}
       >
@@ -543,7 +543,7 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
       key: 'hosted_invoice_url', label: 'Receipt', sortable: false,
       render: (v) => v ? (
         <a href={String(v)} target="_blank" rel="noopener noreferrer"
-           className="inline-flex items-center gap-1 text-primary text-xs hover:underline">
+           className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap">
           <FileText size={12} /> View
         </a>
       ) : <span className="text-muted-foreground text-xs">—</span>,

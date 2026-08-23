@@ -938,7 +938,7 @@ export default function Scorecards() {
                       active
                         ? 'border-transparent text-white'
                         : 'border-border text-foreground/70 hover:bg-muted'
-                    }`}
+                    } min-h-tap`}
                     style={active ? { background: c.color } : undefined}
                   >
                     {label}

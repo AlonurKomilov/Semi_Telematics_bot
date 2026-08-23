@@ -125,18 +125,18 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
                       </span>
                       <button type="button" onClick={() => { void detach(persona); }}
                         disabled={busy === `sub-${persona}`}
-                        className="text-xs font-medium text-destructive hover:underline disabled:opacity-50">
+                        className="text-xs font-medium text-destructive hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap">
                         {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_detach')}
                       </button>
                       <button type="button" onClick={() => setConfirming('')}
-                        className="text-xs text-muted-foreground hover:text-foreground">
+                        className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">
                         {t('alert_routing.cancel')}
                       </button>
                     </span>
                   ) : (
                     <button type="button" onClick={() => setConfirming(`detach-${persona}`)}
                       disabled={busy === `sub-${persona}`}
-                      className="text-xs text-destructive hover:underline disabled:opacity-50">
+                      className="text-xs text-destructive hover:underline disabled:opacity-50 py-1 -my-1 min-h-tap">
                       {t('alert_routing.subbot_detach')}
                     </button>
                   ))}
@@ -151,7 +151,7 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
                     {t('alert_routing.main_sends')}
                   </span>
                   <button type="button" onClick={() => setOpenInput(`token-${persona}`)}
-                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
+                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap">
                     {t('alert_routing.subbot_attach')}
                   </button>
                 </>
@@ -167,11 +167,11 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
                   />
                   <button type="button" onClick={() => { void attach(persona); }}
                     disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
-                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50">
+                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50 min-h-tap">
                     {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
                   </button>
                   <button type="button" onClick={() => setOpenInput('')}
-                    className="text-xs text-muted-foreground hover:text-foreground">
+                    className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">
                     {t('alert_routing.cancel')}
                   </button>
                 </>

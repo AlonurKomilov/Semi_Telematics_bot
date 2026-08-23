@@ -839,7 +839,7 @@ export function InvitesPanel() {
                   type="button"
                   className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
                     isJustCopied ? toneText('ok') : 'text-primary'
-                  }`}
+                  } py-1 -my-1 min-h-tap`}
                   title={t('actions.copy_invite_link', { defaultValue: 'Copy invite link' })}
                 >
                   {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
@@ -857,7 +857,7 @@ export function InvitesPanel() {
                 onClick={() => resendInviteEmail(inv)}
                 disabled={anyMutationInFlight}
                 aria-busy={isThisRowResending}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-wait transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-wait transition-colors py-1 -my-1 min-h-tap"
                 title={t('actions.resend_email', { defaultValue: 'Resend the invite email to the same recipient' })}
               >
                 {isThisRowResending
@@ -875,7 +875,7 @@ export function InvitesPanel() {
                 onClick={() => setConfirming(inv)}
                 disabled={anyMutationInFlight}
                 aria-busy={isThisRowRevoking}
-                className={`inline-flex items-center gap-1 text-xs ${toneText('danger')} hover:opacity-80 disabled:opacity-50 disabled:cursor-wait transition-colors`}
+                className={`inline-flex items-center gap-1 text-xs ${toneText('danger')} hover:opacity-80 disabled:opacity-50 disabled:cursor-wait transition-colors py-1 -my-1 min-h-tap`}
                 title={isBounced
                   ? t('actions.revoke_bounced_hint', {
                       defaultValue: 'Resending to a bounced address bounces again — revoke this invite, then create a new one with the corrected address.',
@@ -897,7 +897,7 @@ export function InvitesPanel() {
                 onClick={() => extendInvite(inv)}
                 disabled={anyMutationInFlight}
                 aria-busy={isThisRowExtending}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-wait transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-wait transition-colors py-1 -my-1 min-h-tap"
                 title={t('actions.extend_invite_24h', { defaultValue: 'Extend this invite by 24 hours (same code)' })}
               >
                 {isThisRowExtending
@@ -915,7 +915,7 @@ export function InvitesPanel() {
                 onClick={() => setConfirming(inv)}
                 disabled={anyMutationInFlight}
                 aria-busy={isThisRowRevoking}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-wait transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-wait transition-colors py-1 -my-1 min-h-tap"
                 title={t('actions.revoke', { defaultValue: 'Revoke invite' })}
               >
                 <Trash2 size={12} />
@@ -943,7 +943,7 @@ export function InvitesPanel() {
         <button
           ref={newInviteBtnRef}
           onClick={() => { setRecipientEmail(''); setShowForm(true); }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
         >
           <Plus size={14} />
           New invite
@@ -965,7 +965,7 @@ export function InvitesPanel() {
           action={
             <button
               onClick={() => { setRecipientEmail(''); setShowForm(true); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
             >
               <Plus size={14} />
               New invite
@@ -1057,7 +1057,7 @@ export function InvitesPanel() {
                         channel === key
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      } min-h-tap`}
                     >
                       <span className="inline-flex items-center justify-center gap-1.5">
                         <Icon size={12} />{label}
