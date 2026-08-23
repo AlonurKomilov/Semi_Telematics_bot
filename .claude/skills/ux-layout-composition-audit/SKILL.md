@@ -1,6 +1,6 @@
 ---
 name: ux-layout-composition-audit
-description: Layout-composition audit — the sibling of ux-psychology-audit, aimed at its blind spot. It audits whether an ARRANGEMENT communicates structure before a single word is read — five passes: S1 regions & enclosure (can the eye count the zones?), S2 spacing hierarchy (does between-group air exceed within-group?), S3 weight & affordance (does visual form declare each region's role — source vs destination, interactive vs static — and is every drag/drop target visible BEFORE the interaction?), S4 stability (does the layout hold still as content changes?), S5 proportion & placement (does SIZE track logical importance — visual hierarchy, Fitts, WCAG 2.5.8 target minimums — and do recurring controls hold one position across sibling surfaces?). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census that walks every container including hidden-state geometry (empty zones, drag states) found in code conditionals. Includes the sanctioned reference-comparison method (auditing against a mature implementation like MUI without cargo-culting it). Use when a surface "looks mixed", components "are not separated", users can't tell where one section ends, for any multi-zone panel (pivot/report builders, form builders, layer panels, dashboards, drag-and-drop surfaces), after building or restructuring a page/panel layout, or when comparing an in-house component against a reference. Report is delivered IN CHAT (no files by default).
+description: Layout-composition audit — sibling of ux-psychology-audit, aimed at its blind spot — does the ARRANGEMENT communicate structure before a word is read? Five passes — S1 regions & enclosure, S2 spacing hierarchy (between-group vs within-group air), S3 weight & affordance (source vs destination legible, drop targets visible BEFORE drag), S4 stability (layout holds still), S5 proportion & placement (size tracks importance — Fitts, WCAG 2.5.8; recurring controls hold one position). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census of every container, including hidden-state geometry in conditionals. Use when a surface "looks mixed", components "are not separated", users can't tell where a section ends, for any multi-zone panel (pivot/report/form builders, layer panels, dashboards, drag-and-drop surfaces), after restructuring a layout, or auditing against a mature reference (e.g. MUI) without cargo-culting. Report delivered IN CHAT (no files by default).
 ---
 
 # UX Audit — layout composition
@@ -18,23 +18,25 @@ surface.
 >
 > | The finding sounds like… | It belongs to… |
 > |---|---|
-> | "this gap/radius/size isn't on the scale" · "this control isn't the shared primitive" (e.g. a native checkbox amid styled ones) | the design-system pass ([design.md](../../../interfaces/dashboard/design.md) + [CLAUDE.md](../../../interfaces/dashboard/CLAUDE.md)) |
+> | "this gap/radius/size isn't on the scale" · "this control isn't the shared primitive" (e.g. a native checkbox amid styled ones) | `ux-design-system-audit` (discovers and audits against the project's own design docs/tokens) |
 > | "this word means two things" · "one object, two faces" · "a region has no heading" · "offered then refused" · "flow starts at 0%" | `ux-psychology-audit` (C1/C2/C3/P) |
 > | "these two zones read as one" · "between-gap equals within-gap" · "the empty zone has no drop area" · "source and destination look alike" · "the layout walks under the cursor" · "the page rebuilds on a mode switch" (the geometric fact; the comprehension cost stays with C3) · "too small to hit" · "bigger than its importance" · "this control moved between sibling pages" | **this skill** |
 >
-> The dividing rule for sizes mirrors the spacing one: the design
-> pass owns whether a height/width is a legal ladder step (`h-8`,
-> `max-w-lg`); this skill owns whether the RESULTING hit area is big
-> enough, whether the size matches the element's importance, and
-> whether same-class components agree on a step. Tie-breaker: an
-> off-ladder size anywhere → design pass, even when it is also too
-> small; a ladder-legal size that still fails the 24px floor, inverts
-> importance, or splits same-class siblings across steps → here.
+> The dividing rule for sizes mirrors the spacing one: the
+> design-system audit owns whether a height/width is a legal ladder
+> step (`h-8`, `max-w-lg`); this skill owns whether the RESULTING hit
+> area is big enough, whether the size matches the element's
+> importance, and whether same-class components agree on a step.
+> Tie-breaker: an off-ladder size anywhere → `ux-design-system-audit`,
+> even when it is also too small; a ladder-legal size that still fails
+> the 24px floor, inverts importance, or splits same-class siblings
+> across steps → here.
 >
-> The dividing rule for spacing: the design pass owns whether a
-> SINGLE value is legal on the scale (is `gap-2` sanctioned); this
+> The dividing rule for spacing: the design-system audit owns whether
+> a SINGLE value is legal on the scale (is `gap-2` sanctioned); this
 > skill owns whether values AGREE across regions and what the spacing
-> *says* about grouping. An illegal value anywhere → design pass. A
+> *says* about grouping. An illegal value anywhere →
+> `ux-design-system-audit`. A
 > disagreement between sibling regions (pool rows `py-1`, zone rows
 > `py-1.5` — both legal) → here, even when the fix is a one-token
 > swap.
@@ -69,7 +71,9 @@ and name exactly what's missing.
   "`border-b border-border last:border-b-0` is the only separation,
   and the last section drops even that" is a finding. Read the actual
   wrappers: `flex`/`grid`, `gap-*`, `space-y-*`, `border*`, `bg-*`,
-  `rounded*`, `p-*`/`m-*`, `min-h-*`, `absolute/sticky`.
+  `rounded*`, `p-*`/`m-*`, `min-h-*`, `absolute/sticky`. (Examples are
+  Tailwind; in other stacks quote whatever carries the geometry — CSS
+  rules, inline styles, styled-component props — the same way.)
 - **Hunt hidden-state geometry in conditionals.** Every
   `items.length === 0 && …`, ternary, and early return is a shape some
   user will see. Screenshots never show the empty zone, the mid-drag
@@ -299,7 +303,7 @@ every *container*.
 2. **One card per region**, S1–S5 verdicts each, terse:
    ```
    ### <tree path, e.g. Panel → Values zone>
-   - S1 Enclosure — OK | ISSUE: <finding + fix> `Impact · Effort`
+   - S1 Enclosure — OK | ISSUE: <finding + fix> `Impact · Effort · Build`
    - S2 Spacing — …
    - S3 Weight/affordance — …
    - S4 Stability — …
@@ -341,7 +345,7 @@ is a legitimate audit move — used one way.
 **Cargo-cult — reject on sight:** importing their palette, radius,
 chip shape, or gutters into a product with its own token SSOT; copying
 their layout topology built for a different canvas (their 600px dialog
-vs our 240–640px rail); copying features that serve their API surface,
+vs a 240–640px rail); copying features that serve their API surface,
 not a user need you can name; treating their internal inconsistencies
 as authority; comparing across interaction budgets (desktop
 mouse+keyboard reference for a touch sheet).
@@ -363,11 +367,11 @@ mouse+keyboard reference for a touch sheet).
 ## Findings
 ### <Surface name>
 - **[S<n> <Pass — STATUS>]** `[code|ui|code+ui]` <what the geometry
-  does / quoted evidence / the exact structural fix.> `Impact: high|med|low · Effort: S|M|L`
+  does / quoted evidence / the exact structural fix.> `Impact: high|med|low · Effort: S|M|L · Build: existing|compose|new-component|new-dependency`
 
 ## Routed to other audits
-- <finding that surfaced here but belongs to the design pass or the
-  sibling skill, with its destination — surfacing it is fine,
+- <finding that surfaced here but belongs to `ux-design-system-audit`
+  or the sibling skill, with its destination — surfacing it is fine,
   double-reporting is not>
 
 ## Layout rules proposed (candidates for the design-system SSOT)
@@ -381,24 +385,49 @@ mouse+keyboard reference for a touch sheet).
 ```
 
 Rules: every `CONFUSION` carries a fix concrete enough to implement
-without discussion, plus `Impact · Effort`; no pass skipped for any
+without discussion, plus `Impact · Effort · Build` (Build values as in
+the sibling skill: `existing` = components already in the project,
+`compose` = assembled from existing primitives, `new-component` = a
+new design-system component must be built, `new-dependency` = an
+external library is needed — the audit classifies, never picks a
+library; `new-component`/`new-dependency` findings hand off to the
+`ux-component-sourcing` skill at implementation time, which matters
+here more than anywhere: drag-and-drop and virtualized lists are
+canonical rung-4 territory; tags self-clean — the newest report for a
+surface supersedes its old findings, and `ux-component-sourcing`
+downgrades over-classified `new-*` tags after checking the real
+inventory); no pass skipped for any
 surface (`N/A` with a reason is fine, silence is not); quoted class
 strings or screenshot references as evidence; findings that belong to
 the other two audits go under "Routed", never duplicated as findings.
+The `Build` tag lives in the report only — never written into source
+as a code comment; `new-component`/`new-dependency` findings repeat at
+the end of Top actions as "→ ux-component-sourcing" items — the
+handoff note a later repo session starts from.
 If the user asks for their language, write the prose in it but keep
 statuses and pass names in English so rollups stay comparable.
 
-## Step — Deliver the report IN CHAT (no files by default)
+## Step — Deliver the report IN CHAT (markdown, never a report file)
 
-Post the full report directly in the chat reply. Do **not** write a
-report file. **Exception — explicit request only:** on "save", write
-to `docs/ux-audits/<YYYY-MM-DD>-<scope-slug>-layout.md` (LOCAL-ONLY,
-gitignored) in addition to the chat reply; `-2` suffix on collision.
+Post the full report directly in the chat reply as markdown. Do
+**not** write report files and do **not** invent a reports directory —
+dated audit files accumulate into stale clutter, and the project
+should stay clean; the chat markdown IS the deliverable, the user
+copies it out if they want it. If the user explicitly asks for a file,
+write exactly ONE at the path THEY name. For long-term tracking,
+convert `CONFUSION` and `DARK-PATTERN-RISK` items into tracker issues
+and let the report stay ephemeral.
 
 ## Aggregation
 
 This skill's reports share the sibling's statuses and `Impact ·
-Effort` tags on purpose: a rollup may merge Part P, Part C and Part S
-findings into one ranked list. Chat-only reports from past sessions
-are not recoverable — say so in a rollup header rather than implying
-full coverage.
+Effort · Build` tags on purpose: a rollup may merge Part P, Part C and
+Part S findings into one ranked list — dropping findings fixed or
+superseded in the current working tree, collapsing findings that need
+the same capability into one sourcing item, and grouping
+`Build: new-dependency` items together so external-library decisions
+are made once (dependencies overlap and interact). Reports from past
+sessions are recoverable only if the user pastes or points at them —
+say so in a rollup header rather than implying full coverage.
+
+<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 -->
