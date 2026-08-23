@@ -549,7 +549,7 @@ the disposable-measurement and workspace-isolation rules, and the
 bundled universal runner (`tools/measure.mjs`).  This section holds
 only THIS project's numbers — the values layer the skill reads in its
 Step 0b.  This project's kept harness:
-[scripts/perf_rig/](../../scripts/perf_rig/README.md) — the seeded
+[abc-lab/perf-rig/](../../abc-lab/perf-rig/README.md) — the seeded
 12-dispatcher / 69-truck board for A/B runs.
 
 ## 11. Hard rules (the enforcement checklist)
