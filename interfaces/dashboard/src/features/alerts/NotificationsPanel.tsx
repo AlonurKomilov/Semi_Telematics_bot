@@ -28,6 +28,7 @@ import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
 import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
 import { useInbox, useInboxActions, type InboxNotice } from './useInbox';
 import { ScrollRegion } from '../../components/scrolling';
+import { cn } from '@/lib/utils';
 
 const SEVERITY_TONE: Record<AlertSeverity, Tone> = {
   critical: 'danger',
@@ -219,7 +220,7 @@ export function NotificationsPanel(
               aria-label="Refresh"
               className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors min-h-tap min-w-tap"
             >
-              <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} aria-hidden />
+              <RefreshCw className={cn(isFetching ? 'animate-spin' : '', 'size-3.5')} aria-hidden />
             </button>
           )}
           <button
@@ -227,7 +228,7 @@ export function NotificationsPanel(
             aria-label="Notification preferences"
             className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors min-h-tap min-w-tap"
           >
-            <Settings size={14} aria-hidden />
+            <Settings className="size-3.5" aria-hidden />
           </button>
         </div>
       </div>
@@ -278,7 +279,7 @@ export function NotificationsPanel(
           <ScrollRegion label="Unread notifications" className="flex-1 min-h-0">
             {(isLoading || inboxLoading) && merged.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-muted-foreground">
-                <Loader2 size={18} className="animate-spin" aria-hidden />
+                <Loader2 className="animate-spin size-4.5" aria-hidden />
               </div>
             ) : merged.length === 0 ? (
               <EmptyState label="You’re all caught up" />
@@ -311,7 +312,7 @@ export function NotificationsPanel(
               onClick={() => goto('/notifications')}
               className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
             >
-              See all <ArrowRight size={14} aria-hidden />
+              See all <ArrowRight className="size-3.5" aria-hidden />
             </button>
           </div>
         </>
@@ -331,7 +332,7 @@ export function NotificationsPanel(
           <ScrollRegion label="All notifications" className="flex-1 min-h-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-10 text-muted-foreground">
-                <Loader2 size={18} className="animate-spin" aria-hidden />
+                <Loader2 className="animate-spin size-4.5" aria-hidden />
               </div>
             ) : shown.length === 0 ? (
               <EmptyState label={tab === 'critical' ? 'No critical alerts' : 'You’re all caught up'} />
@@ -352,13 +353,13 @@ export function NotificationsPanel(
               disabled={busy || shown.length === 0}
               className="inline-flex items-center gap-1.5 py-1 -my-1 min-h-tap text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors py-1 -my-1 min-h-tap"
             >
-              <CheckCheck size={14} aria-hidden /> Acknowledge all
+              <CheckCheck className="size-3.5" aria-hidden /> Acknowledge all
             </button>
             <button
               onClick={() => goto('/alerts')}
               className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
             >
-              Open Alerts <ArrowRight size={14} aria-hidden />
+              Open Alerts <ArrowRight className="size-3.5" aria-hidden />
             </button>
           </div>
         </>
@@ -373,7 +374,7 @@ export function NotificationsPanel(
               <ScrollRegion label="Archived notifications" className="flex-1 min-h-0">
                 {inboxLoading ? (
                   <div className="flex items-center justify-center py-10 text-muted-foreground">
-                    <Loader2 size={18} className="animate-spin" aria-hidden />
+                    <Loader2 className="animate-spin size-4.5" aria-hidden />
                   </div>
                 ) : list.length === 0 ? (
                   <EmptyState label={src === 'system'
@@ -409,7 +410,7 @@ export function NotificationsPanel(
                   onClick={() => goto('/notifications')}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
                 >
-                  See all <ArrowRight size={14} aria-hidden />
+                  See all <ArrowRight className="size-3.5" aria-hidden />
                 </button>
               </div>
             </>
@@ -433,7 +434,7 @@ function MarkAllReadButton({ unread, onClick }: {
       disabled={unread === 0}
       className="inline-flex items-center gap-1.5 py-1 -my-1 min-h-tap text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
     >
-      <CheckCheck size={14} aria-hidden /> Mark all read
+      <CheckCheck className="size-3.5" aria-hidden /> Mark all read
     </button>
   );
   return unread === 0
@@ -493,7 +494,7 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
   return (
     <li className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors">
       <button onClick={onOpen} className="flex items-start gap-2.5 flex-1 min-w-0 text-left py-0.5 -my-0.5 min-h-tap">
-        <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
+        <Icon className={`${toneText(tone)} mt-0.5 shrink-0 size-4`} aria-hidden />
         <span className="flex-1 min-w-0 py-0.5 -my-0.5 min-h-tap">
           <span className="flex items-baseline justify-between gap-2">
             <span className="min-w-0 inline-flex items-baseline gap-1.5">
@@ -533,7 +534,7 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
         // unreachable.  Solid on hover/focus.
         className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-ok-bg hover:text-ok focus:text-ok transition-colors shrink-0 disabled:opacity-40 min-h-tap min-w-tap"
       >
-        <Check size={14} aria-hidden />
+        <Check className="size-3.5" aria-hidden />
       </button>
     </li>
   );
@@ -582,7 +583,7 @@ export function InboxRow({ notice, onOpen, onAction }: {
             notice.read ? 'opacity-60' : ''
           }`}
         >
-          <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
+          <Icon className={`${toneText(tone)} mt-0.5 shrink-0 size-4`} aria-hidden />
           <span className="flex-1 min-w-0">
             <span className="flex items-baseline justify-between gap-2">
               <span className="text-sm font-medium truncate">{notice.title}</span>
@@ -612,8 +613,8 @@ export function InboxRow({ notice, onOpen, onAction }: {
             className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors shrink-0 min-h-tap min-w-tap"
           >
             {expanded
-              ? <ChevronUp size={14} aria-hidden />
-              : <ChevronDown size={14} aria-hidden />}
+              ? <ChevronUp className="size-3.5" aria-hidden />
+              : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
         )}
         {!notice.read && (
@@ -626,7 +627,7 @@ export function InboxRow({ notice, onOpen, onAction }: {
             onClick={() => onAction(notice.action!.url)}
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors min-h-tap"
           >
-            {notice.action.label} <ArrowRight size={12} aria-hidden />
+            {notice.action.label} <ArrowRight className="size-3" aria-hidden />
           </button>
         </div>
       )}
@@ -637,7 +638,7 @@ export function InboxRow({ notice, onOpen, onAction }: {
 function EmptyState({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-10 px-4 text-center">
-      <BellOff size={24} className="text-muted-foreground" aria-hidden />
+      <BellOff className="text-muted-foreground size-6" aria-hidden />
       <p className="text-sm text-muted-foreground">{label}</p>
     </div>
   );

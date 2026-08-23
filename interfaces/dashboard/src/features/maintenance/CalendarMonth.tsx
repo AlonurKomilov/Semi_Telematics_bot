@@ -143,7 +143,7 @@ export function CalendarMonth({
             className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
             aria-label="Previous month"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft className="size-4" />
           </button>
           <button
             type="button"
@@ -158,7 +158,7 @@ export function CalendarMonth({
             className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
             aria-label="Next month"
           >
-            <ChevronRight size={16} />
+            <ChevronRight className="size-4" />
           </button>
         </div>
       </div>
@@ -322,7 +322,7 @@ export function CalendarMonth({
                 aria-label="Close"
                 className="text-muted-foreground hover:text-foreground p-1"
               >
-                <X size={16} />
+                <X className="size-4" />
               </button>
             </div>
             <ul className="space-y-2">

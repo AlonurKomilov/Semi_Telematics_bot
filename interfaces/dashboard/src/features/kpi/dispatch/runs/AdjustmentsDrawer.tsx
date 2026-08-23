@@ -76,8 +76,8 @@ export function AdjustmentsDrawer({ open, run, draft, onClose, onChanged }: {
                     <Button size="sm" variant="ghost" disabled={busy === r.id}
                       onClick={() => revert(r)}>
                       {busy === r.id
-                        ? <Loader2 size={14} className="animate-spin" />
-                        : <Undo2 size={14} className="mr-1" />}
+                        ? <Loader2 className="animate-spin" />
+                        : <Undo2 className="mr-1" />}
                       {t('kpi_runs.adj_revert', 'Revert')}
                     </Button>
                   )}

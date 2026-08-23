@@ -239,7 +239,7 @@ export default function IncentiveRuns() {
             {/* Demoted while a draft is open — the intended next step is
                FINALIZING the run in front of you, not starting another. */}
             <Button variant={run && draft ? 'outline' : 'default'} size="sm" onClick={() => setNewOpen(true)}>
-              <Plus size={16} className="mr-1.5" />
+              <Plus className="mr-1.5" />
               {t('kpi_runs.new', 'New run')}
             </Button>
             <FeatureConfigGear
@@ -267,7 +267,7 @@ export default function IncentiveRuns() {
             <Link to="/kpi/dispatch/configuration"
               className="inline-flex items-center gap-1 py-1 -my-1 text-sm text-primary underline underline-offset-4 hover:no-underline">
               {t('kpi_runs.empty_cta', 'Open KPI configuration')}
-              <ArrowRight size={14} />
+              <ArrowRight className="size-3.5" />
             </Link>
           )}
         />
@@ -352,7 +352,7 @@ export default function IncentiveRuns() {
                     ? 'bg-card text-foreground shadow-sm font-medium'
                     : 'text-muted-foreground hover:text-foreground'} min-h-tap`}
                 >
-                  <Table2 size={14} />
+                  <Table2 className="size-3.5" />
                   {t('kpi_runs.view_sheet', 'Sheet')}
                 </button>
                 <button
@@ -363,7 +363,7 @@ export default function IncentiveRuns() {
                     ? 'bg-card text-foreground shadow-sm font-medium'
                     : 'text-muted-foreground hover:text-foreground'} min-h-tap`}
                 >
-                  <CalendarRange size={14} />
+                  <CalendarRange className="size-3.5" />
                   {t('kpi_runs.view_board', 'Board')}
                 </button>
               </div>
@@ -378,7 +378,7 @@ export default function IncentiveRuns() {
                     <Button variant="ghost"
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => setDiscardOpen(true)}>
-                      <Trash2 size={14} className="mr-1.5" />
+                      <Trash2 className="mr-1.5" />
                       {t('kpi_runs.discard', 'Discard draft')}
                     </Button>
                     <span className="h-5 w-px bg-border" aria-hidden />
@@ -397,17 +397,17 @@ export default function IncentiveRuns() {
                 <Button variant="outline" size="sm"
                   onClick={() => downloadIncentiveRunCsv(run.id)
                     .catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed'))}>
-                  <Download size={14} className="mr-1.5" />
+                  <Download className="mr-1.5" />
                   {t('kpi_runs.export', 'Export run')}
                 </Button>
                 {draft ? (
                   <Button onClick={() => setFinalizeOpen(true)}>
-                    <Lock size={14} className="mr-1.5" />
+                    <Lock className="mr-1.5" />
                     {t('kpi_runs.finalize', 'Finalize run')}
                   </Button>
                 ) : (
                   <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
-                    <Lock size={12} />
+                    <Lock className="size-3" />
                     {t('kpi_runs.finalized', 'Finalized — the paid record')}
                   </span>
                 )}
@@ -432,7 +432,7 @@ export default function IncentiveRuns() {
                     st.done ? 'text-foreground'
                       : st.current ? 'text-foreground font-medium'
                         : 'text-muted-foreground'}`}>
-                    {st.done && <Check size={12} className="text-muted-foreground" />}
+                    {st.done && <Check className="text-muted-foreground size-3" />}
                     {st.label}
                   </span>
                   {i < arr.length - 1 && <span className="text-muted-foreground/50">›</span>}
@@ -480,7 +480,7 @@ export default function IncentiveRuns() {
               <button type="button" onClick={() => setAdjustmentsOpen(true)}
                 className={`ml-auto inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 hover:border-ring transition ${
                   adjustedRows.length > 0 ? 'text-foreground' : 'text-muted-foreground'} min-h-tap`}>
-                <ListChecks size={12} />
+                <ListChecks className="size-3" />
                 {t('kpi_runs.adjustments_n', 'Adjustments ({{n}})', { n: adjustedRows.length })}
               </button>
               {/* The run's who-did-what record — every payout-moving
@@ -488,7 +488,7 @@ export default function IncentiveRuns() {
                   its author and old → new values. */}
               <button type="button" onClick={() => setTrailOpen(true)}
                 className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-2 text-muted-foreground hover:border-ring transition min-h-tap">
-                <History size={12} />
+                <History className="size-3" />
                 {t('kpi_runs.activity', 'Activity')}
               </button>
             </div>
@@ -554,20 +554,20 @@ export default function IncentiveRuns() {
               {
                 key: 'loads',
                 label: t('kpi_runs.view_loads', 'View loads…'),
-                icon: <Table2 size={14} className="text-muted-foreground" />,
+                icon: <Table2 className="text-muted-foreground size-3.5" />,
                 onSelect: () => setLoadsRow(row as unknown as RunRow),
               },
               ...(draft ? [
               {
                 key: 'edit',
                 label: t('kpi_runs.edit_row2', 'Extras…'),
-                icon: <Pencil size={14} className="text-muted-foreground" />,
+                icon: <Pencil className="text-muted-foreground size-3.5" />,
                 onSelect: () => setEditRow(row as unknown as RunRow),
               },
               {
                 key: 'exception',
                 label: t('kpi_runs.exception', 'Exception…'),
-                icon: <Scale size={14} className="text-muted-foreground" />,
+                icon: <Scale className="text-muted-foreground size-3.5" />,
                 onSelect: () => setExceptRow(row as unknown as RunRow),
               },
               ] : []),
@@ -639,7 +639,7 @@ export default function IncentiveRuns() {
               {t('common.cancel', 'Cancel')}
             </Button>
             <Button variant="destructive" onClick={() => discard.mutate()} disabled={discard.isPending}>
-              {discard.isPending && <Loader2 size={16} className="animate-spin mr-1.5" />}
+              {discard.isPending && <Loader2 className="animate-spin mr-1.5" />}
               {t('kpi_runs.discard_confirm', 'Discard')}
             </Button>
           </DialogFooter>
@@ -733,7 +733,7 @@ export default function IncentiveRuns() {
               {t('common.cancel', 'Cancel')}
             </Button>
             <Button variant="destructive" onClick={() => recreate.mutate()} disabled={recreate.isPending}>
-              {recreate.isPending && <Loader2 size={16} className="animate-spin mr-1.5" />}
+              {recreate.isPending && <Loader2 className="animate-spin mr-1.5" />}
               {t('kpi_runs.recreate_confirm', 'Discard & regenerate')}
             </Button>
           </DialogFooter>
@@ -769,7 +769,7 @@ export default function IncentiveRuns() {
               {t('common.cancel', 'Cancel')}
             </Button>
             <Button onClick={() => finalize.mutate()} disabled={finalize.isPending}>
-              {finalize.isPending && <Loader2 size={16} className="animate-spin mr-1.5" />}
+              {finalize.isPending && <Loader2 className="animate-spin mr-1.5" />}
               {t('kpi_runs.finalize_confirm', 'Finalize')}
             </Button>
           </DialogFooter>

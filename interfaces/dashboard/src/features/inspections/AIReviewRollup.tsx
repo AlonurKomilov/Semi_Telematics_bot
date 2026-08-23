@@ -64,7 +64,7 @@ export function AIReviewRollup({ inspection: ins }: Props) {
   return (
     <div className={`mx-5 mt-4 rounded-lg border p-3 ${tone}`}>
       <div className="flex items-center gap-2 mb-1">
-        <Sparkles size={16} className="text-primary" />
+        <Sparkles className="text-primary size-4" />
         <span className="text-sm font-semibold">{t('inspections.ai.title')}</span>
       </div>
       <p className="text-xs text-muted-foreground">

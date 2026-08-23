@@ -207,7 +207,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">{t('inspections.new.title')}</h3>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
 
@@ -266,7 +266,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
           </Select>
           {vehicleName.trim() && driverId == null && !loadingDrivers && (
             <span className="mt-1 inline-flex items-center gap-1 text-2xs text-warn">
-              <AlertTriangle size={12} />
+              <AlertTriangle className="size-3" />
               {t('inspections.new.no_driver_for_vehicle')}
             </span>
           )}

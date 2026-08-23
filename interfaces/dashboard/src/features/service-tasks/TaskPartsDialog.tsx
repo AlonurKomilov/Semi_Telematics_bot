@@ -121,7 +121,7 @@ export default function TaskPartsDialog({
                     aria-label={`Unlink ${l.part_name}`}
                     className="text-muted-foreground hover:text-destructive p-1"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 className="size-3.5" />
                   </button>
                 )}
               </li>

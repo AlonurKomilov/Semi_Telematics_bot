@@ -234,7 +234,7 @@ export default function TripsDrawer({
             className="text-muted-foreground hover:text-foreground p-1 -m-1"
             aria-label="Close"
           >
-            <X size={16} />
+            <X className="size-4" />
           </SheetClose>
         </SheetHeader>
 

@@ -327,7 +327,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
       {(insights.headline || insights.bullets.length > 0 || insights.coaching) && (
         <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-lg p-2.5">
           <div className="flex items-center gap-1.5 mb-1.5">
-            <Sparkles size={14} className="text-primary" />
+            <Sparkles className="text-primary size-3.5" />
             <p className="text-xs font-semibold text-foreground">AI Insights</p>
           </div>
           {insights.headline && (
@@ -347,7 +347,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
           {insights.coaching && (
             <div className="mt-2 bg-background/60 border border-primary/30 rounded-md px-2 py-1.5">
               <div className="flex items-center gap-1.5 mb-0.5">
-                <Lightbulb size={12} className="text-primary" />
+                <Lightbulb className="text-primary size-3" />
                 <p className="text-3xs uppercase tracking-wide text-primary font-bold">
                   {top && top.rule_id && HARDWARE_ACTION_BY_RULE[top.rule_id]
                     ? 'Fleet / Ops Action'
@@ -463,7 +463,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
 
       {card.insufficient_data && (
         <div className={`flex items-start gap-2 text-2xs border rounded-lg px-2.5 py-1.5 ${toneClasses('warn')}`}>
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <AlertTriangle className="mt-0.5 shrink-0 size-3" />
           <span>Insufficient drive time this window — excluded from rankings.</span>
         </div>
       )}

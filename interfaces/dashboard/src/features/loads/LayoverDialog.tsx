@@ -163,7 +163,7 @@ export default function LayoverDialog({
             Cancel
           </Button>
           <Button onClick={() => { void save(); }} disabled={saving || !canSave}>
-            {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {saving && <Loader2 className="animate-spin mr-1.5" />}
             {isDeduction ? 'Add deduction' : 'Add layover'}
           </Button>
         </DialogFooter>

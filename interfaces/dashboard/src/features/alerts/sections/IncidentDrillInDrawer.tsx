@@ -135,7 +135,7 @@ function DrawerHeader({ alert, onClose }: {
         className="text-muted-foreground hover:text-foreground p-1 -m-1 min-h-tap"
         aria-label={t('alerts.drillin.close')}
       >
-        <X size={16} />
+        <X className="size-4" />
       </button>
     </header>
   );
@@ -192,7 +192,7 @@ function DrawerFooter({ alert, onAcknowledged }: {
         disabled={busy}
         className="w-full"
       >
-        <CheckCircle2 size={16} aria-hidden />
+        <CheckCircle2 aria-hidden />
         {busy ? 'Acknowledging…' : 'Acknowledge'}
       </Button>
       <p className="text-2xs text-muted-foreground mt-2 text-center">
@@ -285,13 +285,13 @@ function DrawerLink({ icon: Icon, label, hint, to }: {
       className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:border-primary/40 hover:bg-muted/40 transition group"
     >
       <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-muted text-muted-foreground group-hover:text-primary group-hover:bg-primary/10">
-        <Icon size={16} />
+        <Icon className="size-4" />
       </span>
       <span className="flex-1 min-w-0">
         <span className="block text-sm font-medium text-foreground">{label}</span>
         <span className="block text-2xs text-muted-foreground">{hint}</span>
       </span>
-      <ExternalLink size={14} className="text-muted-foreground/60" />
+      <ExternalLink className="text-muted-foreground/60 size-3.5" />
     </Link>
   );
 }
@@ -347,7 +347,7 @@ function VideoBlock({ alert }: { alert: Alert }) {
   return (
     <section>
       <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-2 inline-flex items-center gap-1.5">
-        <Video size={12} />
+        <Video className="size-3" />
         {t('alerts.drillin.forward_camera')}
       </h3>
       {loading && (

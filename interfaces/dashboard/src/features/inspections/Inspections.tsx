@@ -308,7 +308,7 @@ export default function Inspections() {
             onClick={() => setShowNewDialog(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
           >
-            <Plus size={14} />
+            <Plus className="size-3.5" />
             {t('inspections.new.button')}
           </button>
         }
@@ -358,7 +358,7 @@ export default function Inspections() {
             onClick={clearVehicleFilter}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
           >
-            <X size={12} />
+            <X className="size-3" />
             {t('inspections.filter_banner.clear')}
           </button>
         </div>
@@ -366,7 +366,7 @@ export default function Inspections() {
 
       {/* Search input — by driver id or vehicle name */}
       <div className="relative mb-3 max-w-sm">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5" />
         <input
           type="text"
           value={search}

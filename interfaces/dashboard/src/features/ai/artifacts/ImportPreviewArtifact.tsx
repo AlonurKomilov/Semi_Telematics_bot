@@ -139,7 +139,7 @@ function EditableRows({
                         aria-label="Save cell"
                         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        <Check size={12} aria-hidden />
+                        <Check className="size-3" aria-hidden />
                       </button>
                     </div>
                   </td>
@@ -152,7 +152,7 @@ function EditableRows({
                   aria-label={`Remove row ${i + 1}`}
                   className="text-muted-foreground hover:text-destructive transition-colors"
                 >
-                  <X size={12} aria-hidden />
+                  <X className="size-3" aria-hidden />
                 </button>
               </td>
             </tr>
@@ -239,7 +239,7 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
             onClick={() => void startEdit()}
             className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
           >
-            <Pencil size={12} aria-hidden /> Edit rows
+            <Pencil className="size-3" aria-hidden /> Edit rows
           </button>
         )}
         {editMode && (
@@ -247,7 +247,7 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
             onClick={() => setEditMode(false)}
             className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
           >
-            <Check size={12} aria-hidden /> Done editing
+            <Check className="size-3" aria-hidden /> Done editing
           </button>
         )}
         {loadErr && <span className="text-destructive">{loadErr}</span>}
@@ -255,7 +255,7 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
       {(preview.notices?.length ?? 0) > 0 && (
         <div className="mt-1.5 rounded-md border border-info-bd bg-info-bg p-2">
           <div className={`mb-1 inline-flex items-center gap-1 text-3xs font-medium ${toneText('info')}`}>
-            <Info size={12} aria-hidden /> Adjusted during validation
+            <Info className="size-3" aria-hidden /> Adjusted during validation
           </div>
           <ul className="space-y-0.5 text-3xs text-muted-foreground">
             {preview.notices!.map((n, i) => (
@@ -267,7 +267,7 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
       {preview.skipped.length > 0 && (
         <div className="mt-1.5 rounded-md border border-warn-bd bg-warn-bg p-2">
           <div className={`mb-1 inline-flex items-center gap-1 text-3xs font-medium ${toneText('warn')}`}>
-            <AlertTriangle size={12} aria-hidden /> Skipped rows
+            <AlertTriangle className="size-3" aria-hidden /> Skipped rows
           </div>
           <ul className="space-y-0.5 text-3xs text-muted-foreground">
             {preview.skipped.map((s, i) => (

@@ -137,7 +137,7 @@ export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
           onClick={() => setSigning(true)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted"
         >
-          <PenLine size={12} />
+          <PenLine className="size-3" />
           {t('inspections.signature.co_sign')}
         </button>
       )}

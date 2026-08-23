@@ -26,7 +26,7 @@ export function loadRowMenu(
     {
       key: 'edit',
       label: 'Edit load',
-      icon: <Pencil size={14} className="text-muted-foreground" />,
+      icon: <Pencil className="text-muted-foreground size-3.5" />,
       onSelect: () => deps.openEdit(load),
     },
   ];

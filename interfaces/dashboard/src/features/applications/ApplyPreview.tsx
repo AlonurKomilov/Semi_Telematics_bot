@@ -46,7 +46,7 @@ function AssetControl({ label, url, present, busy, onPick, onClear }: {
         className={`inline-flex h-7 w-9 items-center justify-center overflow-hidden rounded border border-border bg-card ${busy ? 'opacity-50' : 'cursor-pointer hover:border-primary'}`}>
         <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={busy}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.currentTarget.value = ''; }} />
-        {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <ImagePlus size={14} />}
+        {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <ImagePlus className="size-3.5" />}
       </label>
       {present && <button type="button" onClick={onClear} disabled={busy} title="remove" className="text-2xs hover:text-danger disabled:opacity-50 py-1 -my-1 min-h-tap">×</button>}
     </span>
@@ -77,7 +77,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
           {([['desktop', Monitor], ['mobile', Smartphone]] as const).map(([d, Icon]) => (
             <button key={d} type="button" onClick={() => onDevice(d)} title={d}
               className={`px-2 py-1 ${device === d ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
-              <Icon size={14} />
+              <Icon className="size-3.5" />
             </button>
           ))}
         </span>
@@ -99,7 +99,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
         className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 min-h-tap text-xs transition-colors ${
           aiOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-foreground hover:bg-muted/70'
         }`}>
-        <Sparkles size={12} /> AI theme
+        <Sparkles className="size-3" /> AI theme
       </button>
       {surfaceContrastWeak(brand.surface_color) && (
         <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
@@ -376,7 +376,7 @@ export default function ApplyPreview() {
         <div className="fixed bottom-20 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-foreground shadow-xl">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-sm font-medium">
-              <Sparkles size={14} className="text-primary" /> AI theme
+              <Sparkles className="text-primary size-3.5" /> AI theme
             </p>
             <button type="button" onClick={() => setAiOpen(false)}
               className="text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap">Close</button>
@@ -391,7 +391,7 @@ export default function ApplyPreview() {
               placeholder="Style wishes (optional) — e.g. bold & modern, warm, dark…"
               className="h-8 flex-1 rounded-md border border-border bg-muted px-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring" />
             <Button size="sm" onClick={generateAiThemes} disabled={aiBusy}>
-              {aiBusy ? <><Loader2 size={14} className="animate-spin" /> Designing…</> : 'Generate'}
+              {aiBusy ? <><Loader2 className="animate-spin" /> Designing…</> : 'Generate'}
             </Button>
           </div>
           {aiPalettes.length > 0 && (

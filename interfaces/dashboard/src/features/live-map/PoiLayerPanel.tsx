@@ -121,12 +121,12 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
         className="w-full flex items-center justify-between px-3 py-2.5 font-semibold text-foreground hover:bg-muted/60 rounded-xl transition"
       >
         <span className="flex items-center gap-1.5">
-          <MapIcon size={16} className="text-muted-foreground" />
+          <MapIcon className="text-muted-foreground size-4" />
           <span>Map Layers</span>
         </span>
         {collapsed
-          ? <ChevronDown size={14} className="text-muted-foreground" />
-          : <ChevronUp size={14} className="text-muted-foreground" />}
+          ? <ChevronDown className="text-muted-foreground size-3.5" />
+          : <ChevronUp className="text-muted-foreground size-3.5" />}
       </button>
 
       {/* CSV export — only shown when at least one layer is on with loaded data */}
@@ -136,7 +136,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
             onClick={() => exportCsv(effectiveLayers, allFeatures, enabled)}
             className="w-full text-3xs text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1 py-1 -my-1 min-h-tap"
           >
-            <Download size={12} /><span>Export all POIs in current area (CSV)</span>
+            <Download className="size-3" /><span>Export all POIs in current area (CSV)</span>
           </button>
         </div>
       )}
@@ -223,8 +223,8 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
             // Right-click a custom layer → Edit / Delete (mirrors the ✏/🗑
             // controls, which stay visible).  Built-in layers get no menu.
             const layerMenu: MenuAction[] = showCustomCtrls ? [
-              { key: 'edit', label: 'Edit layer', icon: <Pencil size={14} className="text-muted-foreground" />, onSelect: () => setEditorState({ mode: 'edit', layerId: customDbId! }) },
-              { key: 'delete', label: 'Delete layer', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => handleDeleteCustom(customDbId!, def.label) },
+              { key: 'edit', label: 'Edit layer', icon: <Pencil className="text-muted-foreground size-3.5" />, onSelect: () => setEditorState({ mode: 'edit', layerId: customDbId! }) },
+              { key: 'delete', label: 'Delete layer', icon: <Trash2 className="size-3.5" />, danger: true, separatorBefore: true, onSelect: () => handleDeleteCustom(customDbId!, def.label) },
             ] : [];
 
             return (
@@ -248,7 +248,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                         ${isOn ? 'border-transparent' : 'border-border bg-muted group-hover:border-ring'}`}
                       style={isOn ? { background: def.color } : {}}
                     >
-                      {isOn && <Check size={11} className="text-white" />}
+                      {isOn && <Check className="size-3 text-white" />}
                     </span>
                   </span>
 
@@ -296,7 +296,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                             setEditorState({ mode: 'edit', layerId: customDbId! });
                           }}
                           className="text-muted-foreground hover:text-foreground leading-none px-0.5 py-1 -my-1 min-h-tap"
-                        ><Pencil size={12} /></button>
+                        ><Pencil className="size-3" /></button>
                       </Tip>
                       <Tip label="Delete layer">
                         <button
@@ -308,7 +308,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                             handleDeleteCustom(customDbId!, def.label);
                           }}
                           className="text-muted-foreground hover:text-destructive leading-none px-0.5 py-1 -my-1 min-h-tap"
-                        ><Trash2 size={12} /></button>
+                        ><Trash2 className="size-3" /></button>
                       </Tip>
                     </>
                   )}
@@ -316,7 +316,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
 
                 {/* Error */}
                 {errMsg && (
-                  <p className="text-3xs text-destructive leading-tight pl-7 pb-0.5 flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> {errMsg}</p>
+                  <p className="text-3xs text-destructive leading-tight pl-7 pb-0.5 flex items-center gap-1"><TriangleAlert className="shrink-0 size-3" /> {errMsg}</p>
                 )}
 
                 {/* ── Brand filter section ── */}
@@ -329,7 +329,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       }
                       className="flex items-center gap-1 pl-7 text-3xs text-muted-foreground hover:text-foreground transition py-0.5 min-h-tap"
                     >
-                      {isChipsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      {isChipsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
                       <span>Filter brands</span>
                       {/* Active-filter count badge (visible even when chips are collapsed) */}
                       {activeBrands.size > 0 && (

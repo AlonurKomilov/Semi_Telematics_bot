@@ -60,7 +60,7 @@ export default function DriverImportPanel() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-            <UserPlus size={14} className="text-muted-foreground" />
+            <UserPlus className="text-muted-foreground size-3.5" />
             Import drivers from Datatruck
           </div>
           <p className="text-2xs text-muted-foreground">
@@ -75,7 +75,7 @@ export default function DriverImportPanel() {
           disabled={loading}
           className="shrink-0 px-2.5 py-1.5 rounded border border-border bg-muted text-xs text-foreground hover:border-ring focus:outline-none disabled:opacity-50 min-h-tap"
         >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : 'Preview import'}
+          {loading ? <Loader2 className="animate-spin size-3.5" /> : 'Preview import'}
         </button>
       </div>
 
@@ -114,7 +114,7 @@ export default function DriverImportPanel() {
               className="px-2.5 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 focus:outline-none disabled:opacity-50 min-h-tap"
             >
               {applying
-                ? <Loader2 size={14} className="animate-spin" />
+                ? <Loader2 className="animate-spin size-3.5" />
                 : `Import ${plan.counts.create} + link ${plan.counts.link}`}
             </button>
           )}

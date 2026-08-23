@@ -39,7 +39,7 @@ export default function AlertStrip({ items }: AlertStripProps) {
           >
             <div className="flex items-center gap-3 min-w-0 min-h-tap">
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-card/40 shrink-0">
-                <Icon size={18} />
+                <Icon className="size-4.5" />
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wide opacity-80">
@@ -53,7 +53,7 @@ export default function AlertStrip({ items }: AlertStripProps) {
                 </p>
               </div>
             </div>
-            <ChevronRight size={16} className="shrink-0 opacity-60" />
+            <ChevronRight className="shrink-0 opacity-60 size-4" />
           </Link>
         );
       })}

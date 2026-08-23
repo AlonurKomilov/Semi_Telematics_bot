@@ -159,7 +159,7 @@ function CdlFastFill({ token, data, set, setIfEmpty }: {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center">
-        <Camera size={20} className="hidden shrink-0 text-primary sm:block" />
+        <Camera className="hidden shrink-0 text-primary sm:block size-5" />
         <div className="flex-1">
           <p className="text-sm font-medium text-foreground">Have your CDL handy?</p>
           <p className="text-xs text-muted-foreground">
@@ -177,14 +177,14 @@ function CdlFastFill({ token, data, set, setIfEmpty }: {
             onChange={(e) => { onPick(e.target.files?.[0]); e.currentTarget.value = ''; }} />
           <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
             {busy
-              ? <><Loader2 size={14} className="animate-spin" /> Reading…</>
-              : <><Camera size={14} /> {hasDoc ? 'Retake photo' : 'Add photo'}</>}
+              ? <><Loader2 className="animate-spin size-3.5" /> Reading…</>
+              : <><Camera className="size-3.5" /> {hasDoc ? 'Retake photo' : 'Add photo'}</>}
           </span>
         </label>
       </div>
       {state === 'ok' && (
         <p className="flex items-start gap-1.5 rounded-md border border-info-bd bg-info-bg px-3 py-2 text-xs text-info">
-          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          <CheckCircle2 className="mt-0.5 shrink-0 size-3.5" />
           We filled in details from your license — please double-check everything, especially your address.
         </p>
       )}
@@ -299,7 +299,7 @@ const Step2: StepDef = {
             <div className="mb-2 flex items-center justify-between">
               <p className={sectionTitle}>Previous addresses — last 3 years</p>
               <button type="button" onClick={() => setHist([...hist, blankAddress()])}
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus size={14} /> Add address</button>
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus className="size-3.5" /> Add address</button>
             </div>
             {errors['addressHistory._'] && <p className="mb-2 text-xs text-destructive">{errors['addressHistory._']}</p>}
             <div className="flex flex-col gap-4">
@@ -308,7 +308,7 @@ const Step2: StepDef = {
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">Address #{i + 1}</span>
                     <button type="button" onClick={() => setHist(hist.filter((_, idx) => idx !== i))}
-                      className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
+                      className="text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button>
                   </div>
                   <div className={grid}>
                     <Field label="Street" className={full} required error={errors[`addressHistory.${i}.addr1`]}><TextInput value={a.addr1} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, addr1: v } : x))} error={!!errors[`addressHistory.${i}.addr1`]} /></Field>
@@ -420,12 +420,12 @@ const Step3: StepDef = {
           </div>
           {ocrBusy && (
             <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 size={12} className="animate-spin" /> Reading your license…
+              <Loader2 className="animate-spin size-3" /> Reading your license…
             </p>
           )}
           {ocrOk && !ocrBusy && (
             <p className="mt-2 flex items-start gap-1.5 rounded-md border border-info-bd bg-info-bg px-3 py-2 text-xs text-info">
-              <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+              <CheckCircle2 className="mt-0.5 shrink-0 size-3.5" />
               We filled in the license details above from your photo — please double-check them.
             </p>
           )}
@@ -613,7 +613,7 @@ const Step5: StepDef = {
                 Position #{String(i + 1).padStart(2, '0')}{i === 0 && <span className="ml-1.5 font-normal text-muted-foreground">· most recent</span>}
               </span>
               <button type="button" onClick={() => setJobs(jobs.filter((_, idx) => idx !== i))}
-                className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
+                className="text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button>
             </div>
             <div className={grid}>
               <Field label="Company / motor carrier" required error={errors[`employment.${i}.company`]}
@@ -646,7 +646,7 @@ const Step5: StepDef = {
                   error={!!errors[`employment.${i}.company`]} />
                 {j.usdot && (
                   <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
-                    <ShieldCheck size={12} className="shrink-0" />
+                    <ShieldCheck className="shrink-0 size-3" />
                     FMCSA-verified · USDOT {j.usdot}{j.mc ? ` · MC ${j.mc}` : ''}
                   </p>
                 )}
@@ -684,7 +684,7 @@ const Step5: StepDef = {
         ))}
         <button type="button" onClick={() => setJobs([...jobs, blankJob()])}
           className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted">
-          <Plus size={16} /> {jobs.length === 0 ? 'Add first employer' : 'Add another employer'}
+          <Plus className="size-4" /> {jobs.length === 0 ? 'Add first employer' : 'Add another employer'}
         </button>
         </>)}
       </div>
@@ -735,13 +735,13 @@ const Step6: StepDef = {
           <div className="rounded-md border border-border p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className={sectionTitle}>Accident records</span>
-              <button type="button" onClick={() => setAcc([...accidents, blankAccident()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus size={14} /> Add</button>
+              <button type="button" onClick={() => setAcc([...accidents, blankAccident()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus className="size-3.5" /> Add</button>
             </div>
             {errors['incidents.accidents._'] && <p className="mb-2 text-xs text-destructive">{errors['incidents.accidents._']}</p>}
             <div className="flex flex-col gap-4">
               {accidents.map((a, i) => (
                 <div key={i} className="rounded border border-border/60 p-3">
-                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setAcc(accidents.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button></div>
+                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setAcc(accidents.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button></div>
                   <div className={grid}>
                     <Field label="Date" required error={errors[`incidents.accidents.${i}.date`]}><TextInput type="date" value={a.date} onChange={(v) => updAcc(i, 'date', v)} mono error={!!errors[`incidents.accidents.${i}.date`]} /></Field>
                     <Field label="Location"><TextInput value={a.location} onChange={(v) => updAcc(i, 'location', v)} /></Field>
@@ -760,13 +760,13 @@ const Step6: StepDef = {
           <div className="rounded-md border border-border p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className={sectionTitle}>Violation records</span>
-              <button type="button" onClick={() => setVio([...violations, blankViolation()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus size={14} /> Add</button>
+              <button type="button" onClick={() => setVio([...violations, blankViolation()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"><Plus className="size-3.5" /> Add</button>
             </div>
             {errors['incidents.violations._'] && <p className="mb-2 text-xs text-destructive">{errors['incidents.violations._']}</p>}
             <div className="flex flex-col gap-4">
               {violations.map((a, i) => (
                 <div key={i} className="rounded border border-border/60 p-3">
-                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setVio(violations.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button></div>
+                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setVio(violations.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button></div>
                   <div className={grid}>
                     <Field label="Date" required error={errors[`incidents.violations.${i}.date`]}><TextInput type="date" value={a.date} onChange={(v) => updVio(i, 'date', v)} mono error={!!errors[`incidents.violations.${i}.date`]} /></Field>
                     <Field label="State"><SelectInput value={a.state} onChange={(v) => updVio(i, 'state', v)} options={US_STATES} mono /></Field>
@@ -890,7 +890,7 @@ const FINAL_CONSENT_KEYS = ['employment_verification', ...CHECK_CONSENTS.map((x)
 function UnnamedCarrierNotice() {
   return (
     <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-      <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+      <ShieldCheck className="mt-0.5 shrink-0 size-4.5" />
       <div>
         <p className="font-medium">This posting isn&rsquo;t ready for signatures yet</p>
         <p className="mt-1">
@@ -932,9 +932,9 @@ function DisclosureCard({ doc, checked, error, onChange }: {
     <div className={`rounded-md border ${error ? 'border-destructive/50' : 'border-border'} bg-card`}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-2 px-4 py-3 text-left">
-        <FileText size={16} className="shrink-0 text-muted-foreground" />
+        <FileText className="shrink-0 text-muted-foreground size-4" />
         <span className="flex-1 text-sm font-medium text-foreground">{doc.title}</span>
-        <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''} size-4`} />
       </button>
       {open && (
         <div className="max-h-72 overflow-y-auto border-t border-border px-4 py-3">
@@ -994,7 +994,7 @@ function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef
       return (
         <div className="flex flex-col gap-4">
           <div className="flex items-start gap-2 rounded-md border border-info-bd bg-info-bg p-3 text-sm text-info">
-            <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+            <ShieldCheck className="mt-0.5 shrink-0 size-4.5" />
             <p>Federal law requires this authorization, and it must be presented on its own. Please read the full document below, then check the box to authorize.</p>
           </div>
           <div className="rounded-md border border-border bg-card p-4">
@@ -1055,7 +1055,7 @@ const Step10: StepDef = {
     return (
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-2 rounded-md border border-info-bd bg-info-bg p-3 text-sm text-info">
-          <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+          <ShieldCheck className="mt-0.5 shrink-0 size-4.5" />
           <p>Final authorizations. Review the document below and check each box. Your data is encrypted and used only for this hiring decision.</p>
         </div>
         <div>

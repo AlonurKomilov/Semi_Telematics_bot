@@ -334,7 +334,7 @@ export default function Reports() {
             onClick={exportCsv}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border min-h-tap"
           >
-            <Download size={14} />
+            <Download className="size-3.5" />
             {t('cost_reports.export_csv')}
           </button>
         </Tip>
@@ -378,7 +378,7 @@ export default function Reports() {
                   so higherIsBad=true.  Vendor count is neutral —
                   more vendors isn't inherently good or bad. */}
               <SummaryCard
-                icon={<DollarSign size={14} />}
+                icon={<DollarSign className="size-3.5" />}
                 label={t('cost_reports.card_total_spend')}
                 value={money(s.current.total_spent)}
                 deltaPct={s.delta_pct.total_spent}
@@ -386,7 +386,7 @@ export default function Reports() {
                 higherIsBad
               />
               <SummaryCard
-                icon={<Receipt size={14} />}
+                icon={<Receipt className="size-3.5" />}
                 label={t('cost_reports.card_work_orders')}
                 value={String(s.current.work_order_count)}
                 deltaPct={s.delta_pct.work_order_count}
@@ -394,7 +394,7 @@ export default function Reports() {
                 higherIsBad
               />
               <SummaryCard
-                icon={<Wallet size={14} />}
+                icon={<Wallet className="size-3.5" />}
                 label={t('cost_reports.card_avg_per_wo')}
                 value={moneyDetail(s.avg_per_wo.current)}
                 deltaPct={s.delta_pct.avg_per_wo}
@@ -402,7 +402,7 @@ export default function Reports() {
                 higherIsBad
               />
               <SummaryCard
-                icon={<Users size={14} />}
+                icon={<Users className="size-3.5" />}
                 label={t('cost_reports.card_vendors')}
                 value={String(s.current.vendor_count)}
                 deltaPct={s.delta_pct.vendor_count}
@@ -794,7 +794,7 @@ function DeltaChip({
   const arrow = pct > 0 ? '+' : '';
   return (
     <p className={`text-2xs inline-flex items-center gap-1 mt-1.5 ${color}`}>
-      <Icon size={12} />
+      <Icon className="size-3" />
       <span className="font-medium tabular-nums">
         {arrow}{pct.toFixed(1)}%
       </span>

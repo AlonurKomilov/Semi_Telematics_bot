@@ -377,7 +377,7 @@ export default function Geofences() {
           actions={
             canManage && panelMode !== 'add' ? (
               <Button onClick={openAddPanel}>
-                <Plus size={16} className="mr-1.5" />
+                <Plus className="mr-1.5" />
                 Add zone
               </Button>
             ) : null
@@ -388,7 +388,7 @@ export default function Geofences() {
       {/* Map-pick tip banner (shown inside map area so map stays visible) */}
       {pickingFromMap && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[400] bg-warn text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
-          <MapPin size={16} aria-hidden /> Click anywhere on the map to set zone center
+          <MapPin className="size-4" aria-hidden /> Click anywhere on the map to set zone center
           <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs py-1 -my-1 min-h-tap">Cancel</button>
         </div>
       )}
@@ -640,8 +640,8 @@ export default function Geofences() {
                   // on platform-owned zones (Samsara-sourced zones are
                   // read-only here, same as the inline ✕ gate).
                   const zoneMenu: MenuAction[] = [
-                    { key: 'open', label: 'Open zone', icon: <Eye size={14} className="text-muted-foreground" />, onSelect: () => { setSelected(f); setPanelMode('detail'); } },
-                    ...(canDelete ? [{ key: 'delete', label: 'Delete zone', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => handleDelete(f.properties!.id as number) }] : []),
+                    { key: 'open', label: 'Open zone', icon: <Eye className="text-muted-foreground size-3.5" />, onSelect: () => { setSelected(f); setPanelMode('detail'); } },
+                    ...(canDelete ? [{ key: 'delete', label: 'Delete zone', icon: <Trash2 className="size-3.5" />, danger: true, separatorBefore: true, onSelect: () => handleDelete(f.properties!.id as number) }] : []),
                   ];
                   return (
                   <ContextMenu key={i} items={zoneMenu} render={<li className="flex items-center gap-1" />}>
@@ -686,7 +686,7 @@ export default function Geofences() {
               action={
                 canManage ? (
                   <Button onClick={openAddPanel}>
-                    <Plus size={16} className="mr-1.5" />
+                    <Plus className="mr-1.5" />
                     Add zone
                   </Button>
                 ) : undefined

@@ -57,7 +57,7 @@ export default function IntegrationsConfigPanel() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-6">
-        <Loader2 size={18} className="animate-spin text-muted-foreground" />
+        <Loader2 className="animate-spin text-muted-foreground size-4.5" />
       </div>
     );
   }

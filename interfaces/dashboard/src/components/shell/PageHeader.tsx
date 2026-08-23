@@ -31,7 +31,7 @@ export default function PageHeader({
           <div className="flex items-center gap-2.5">
             {Icon && (
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
-                <Icon size={18} />
+                <Icon className="size-4.5" />
               </span>
             )}
             <h1 className="text-2xl font-bold text-foreground truncate">{title}</h1>
@@ -50,7 +50,7 @@ export default function PageHeader({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap"
                 >
-                  <HelpCircle size={12} />
+                  <HelpCircle className="size-3" />
                   {helpLabel}
                 </a>
               ) : (
@@ -58,7 +58,7 @@ export default function PageHeader({
                   to={helpHref}
                   className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap"
                 >
-                  <HelpCircle size={12} />
+                  <HelpCircle className="size-3" />
                   {helpLabel}
                 </Link>
               )}

@@ -233,7 +233,13 @@ export default {
       // 20.4px at 0.85x. `height` on a <tr> IS treated as a minimum, so this
       // floors the row while a taller row still grows past it.
       height: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
-      size: dimensionScale(defaultTheme.spacing),
+      // `size-4.5` = 18px. It is added HERE and nowhere else on purpose:
+      // 18 is a sanctioned ICON step (CLAUDE.md: 12·14·16·18·20·24) but it
+      // is not on Tailwind's spacing ladder, which jumps 16 -> 20. Without
+      // it the 52 `size={18}` icons have no class to migrate to. Adding a
+      // step to a DERIVED key costs nothing; adding one to `spacing` would
+      // fuse the four axes, which is why it does not go there.
+      size: { ...dimensionScale(defaultTheme.spacing), '4.5': scaled('1.125rem', 'control') },
       maxHeight: dimensionScale(defaultTheme.spacing),
 
       // `min-h-tap` / `min-w-tap` — the pointer-target floor, and the ONE

@@ -163,13 +163,13 @@ export default function StatementDrawer({
           <SheetTitle className="text-base font-semibold text-foreground">Settlement statement</SheetTitle>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="xs" onClick={() => window.print()}>
-              <Printer size={14} className="mr-1" /> Print
+              <Printer className="mr-1" /> Print
             </Button>
             <Button type="button" variant="outline" size="xs" onClick={downloadCsv}>
-              <Download size={14} className="mr-1" /> CSV
+              <Download className="mr-1" /> CSV
             </Button>
             <SheetClose aria-label="Close" className="p-1 text-muted-foreground hover:text-foreground">
-              <X size={16} />
+              <X className="size-4" />
             </SheetClose>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function StatementDrawer({
           {/* Zero-pay warning — a delivered load resolving to $0 underpays silently. */}
           {zeroPay > 0 && (
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-warn-bd bg-warn-bg px-3 py-2 text-xs text-warn print:border">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <AlertTriangle className="mt-0.5 shrink-0 size-3.5" />
               <span>
                 {zeroPay} delivered load{zeroPay === 1 ? '' : 's'} resolved to $0 pay —
                 set this driver&apos;s pay model or enter pay on the load, or they&apos;ll be underpaid.
@@ -285,7 +285,7 @@ export default function StatementDrawer({
                 <input className={`${selectCls} w-24`} type="number" min="0" placeholder="Amount $" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Amount" />
                 <input className={`${selectCls} flex-1 min-w-[6rem]`} placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
                 <Button type="button" variant="outline" size="xs" disabled={busy || !Number(amount)} onClick={() => { void addEntry(); }}>
-                  <Plus size={12} className="mr-1" /> Add
+                  <Plus className="mr-1" /> Add
                 </Button>
               </div>
             </div>

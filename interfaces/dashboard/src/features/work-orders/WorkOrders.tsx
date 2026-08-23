@@ -292,7 +292,7 @@ export default function WorkOrders() {
             to="/work-orders/new"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition"
           >
-            <Plus size={14} />
+            <Plus className="size-3.5" />
             {t('work_orders_page.new_button')}
           </Link>
         }
@@ -324,7 +324,7 @@ export default function WorkOrders() {
             onClick={clearFilters}
             className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap"
           >
-            <X size={12} />
+            <X className="size-3" />
             {t('work_orders_page.clear_filters')}
           </button>
         </div>
@@ -371,7 +371,7 @@ export default function WorkOrders() {
               to="/work-orders/new"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
-              <Plus size={14} />
+              <Plus className="size-3.5" />
               {t('work_orders_page.new_button')}
             </Link>
           }
@@ -402,7 +402,7 @@ export default function WorkOrders() {
           the form / detail pages so users learn the vocabulary early. */}
       {workOrders.length > 0 && (
         <p className="text-xs text-muted-foreground mt-2 inline-flex items-center gap-1">
-          <Paperclip size={12} />
+          <Paperclip className="size-3" />
           {t('work_orders_page.row_click_hint')}
         </p>
       )}

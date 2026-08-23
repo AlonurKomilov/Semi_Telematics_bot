@@ -63,7 +63,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
     <div className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold inline-flex items-center gap-2">
-          <ClipboardCheck size={18} className="text-primary" />
+          <ClipboardCheck className="text-primary size-4.5" />
           {t('inspections.vehicle_section.title')}
         </h2>
         <Link
@@ -71,7 +71,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
           className="text-xs text-primary hover:underline inline-flex items-center gap-0.5 min-h-tap"
         >
           {t('inspections.vehicle_section.view_all')}
-          <ChevronRight size={12} />
+          <ChevronRight className="size-3" />
         </Link>
       </div>
 

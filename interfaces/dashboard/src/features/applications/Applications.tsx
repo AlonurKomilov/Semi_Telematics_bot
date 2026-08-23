@@ -200,7 +200,7 @@ function CompanyBrandPanel({ company, onChanged, onDirtyChange }: {
           </p>
           <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
             className="mt-1.5 inline-flex items-center gap-1.5 py-1 min-h-tap text-xs text-primary hover:underline">
-            <ExternalLink size={12} /> Logo, hero photo &amp; theme colours — edit live in Preview
+            <ExternalLink className="size-3" /> Logo, hero photo &amp; theme colours — edit live in Preview
           </a>
         </div>
       </div>
@@ -264,7 +264,7 @@ function CompanyBrandPanel({ company, onChanged, onDirtyChange }: {
       <div className="mt-3 flex items-center justify-between">
         <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline min-h-tap">
-          <ExternalLink size={12} /> Preview application
+          <ExternalLink className="size-3" /> Preview application
         </a>
         <Button size="sm" onClick={saveBrand} disabled={busy || !dirty}>
           {busy ? '…' : 'Save carrier profile'}
@@ -865,16 +865,15 @@ export default function Applications() {
             aria-expanded={linksOpen}
             className="flex flex-1 items-center gap-2 text-left"
           >
-            <LinkIcon size={16} className="text-muted-foreground" /> Application Links
+            <LinkIcon className="text-muted-foreground size-4" /> Application Links
             {!linksOpen && links.length > 0 && (
               <span className="text-xs font-normal text-muted-foreground">
                 {links.length}
               </span>
             )}
             <ChevronDown
-              size={16}
               aria-hidden
-              className={`ml-auto text-muted-foreground transition-transform ${linksOpen ? '' : '-rotate-90'}`}
+              className={`ml-auto text-muted-foreground transition-transform ${linksOpen ? '' : '-rotate-90'} size-4`}
             />
           </button>
         </h2>
@@ -937,10 +936,10 @@ export default function Applications() {
               // Right-click the link → the same actions as the inline
               // buttons (which stay as the visible affordance).
               const linkMenu: MenuAction[] = [
-                ...(live ? [{ key: 'copy', label: 'Copy link', icon: <Copy size={14} className="text-muted-foreground" />, onSelect: () => copyLink(l) }] : []),
-                ...(l.is_active === 1 ? [{ key: 'edit', label: 'Edit link', icon: <Pencil size={14} className="text-muted-foreground" />, onSelect: () => setEditingLink(l.id) }] : []),
-                ...(live ? [{ key: 'revoke', label: 'Revoke', icon: <Ban size={14} />, danger: true, separatorBefore: true, onSelect: () => revokeLink(l.id) }] : []),
-                ...(!live ? [{ key: 'delete', label: 'Delete permanently', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteLink(l.id) }] : []),
+                ...(live ? [{ key: 'copy', label: 'Copy link', icon: <Copy className="text-muted-foreground size-3.5" />, onSelect: () => copyLink(l) }] : []),
+                ...(l.is_active === 1 ? [{ key: 'edit', label: 'Edit link', icon: <Pencil className="text-muted-foreground size-3.5" />, onSelect: () => setEditingLink(l.id) }] : []),
+                ...(live ? [{ key: 'revoke', label: 'Revoke', icon: <Ban className="size-3.5" />, danger: true, separatorBefore: true, onSelect: () => revokeLink(l.id) }] : []),
+                ...(!live ? [{ key: 'delete', label: 'Delete permanently', icon: <Trash2 className="size-3.5" />, danger: true, separatorBefore: true, onSelect: () => deleteLink(l.id) }] : []),
               ];
               return (
               <ContextMenu key={l.id} items={linkMenu} render={<li className="text-sm" />}>
@@ -996,26 +995,26 @@ export default function Applications() {
                     {live && (
                       <button onClick={() => copyLink(l)} title="Copy link"
                         className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
-                        {copied === l.id ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+                        {copied === l.id ? <Check className="text-ok size-3.5" /> : <Copy className="size-3.5" />}
                       </button>
                     )}
                     {l.is_active === 1 && (
                       <button onClick={() => setEditingLink(editingLink === l.id ? null : l.id)}
                         title="Edit link (label, source, carrier, expiry)"
                         className={`inline-flex size-7 items-center justify-center rounded-md hover:bg-muted ${editingLink === l.id ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'} min-h-tap min-w-tap`}>
-                        <Pencil size={14} />
+                        <Pencil className="size-3.5" />
                       </button>
                     )}
                     {live && (
                       <button onClick={() => revokeLink(l.id)} title="Revoke"
                         className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
-                        <Ban size={14} />
+                        <Ban className="size-3.5" />
                       </button>
                     )}
                     {!live && (
                       <button onClick={() => deleteLink(l.id)} title="Delete link permanently"
                         className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
-                        <Trash2 size={14} />
+                        <Trash2 className="size-3.5" />
                       </button>
                     )}
                   </div>
@@ -1049,11 +1048,11 @@ export default function Applications() {
           <div className="inline-flex rounded-md border border-border p-0.5">
             <button onClick={() => setView('table')}
               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'} min-h-tap`}>
-              <List size={12} /> Table
+              <List className="size-3" /> Table
             </button>
             <button onClick={() => setView('board')}
               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'board' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'} min-h-tap`}>
-              <LayoutGrid size={12} /> Board
+              <LayoutGrid className="size-3" /> Board
             </button>
           </div>
         </div>
@@ -1263,7 +1262,7 @@ function InProgressDrafts() {
   return (
     <section className="bg-card border border-border rounded-lg p-4">
       <h2 className="text-base font-semibold flex items-center gap-2 mb-1">
-        <Clock3 size={16} className="text-muted-foreground" /> In progress ({rows.length})
+        <Clock3 className="text-muted-foreground size-4" /> In progress ({rows.length})
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
         Started but not submitted. Drafts stay private until submission — you see
@@ -1346,7 +1345,7 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
               <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(key)}`}>{key}</span>
               <span className="text-2xs text-muted-foreground">
                 {key === 'hired' && (
-                  <Lock size={12} className="mr-1 inline text-muted-foreground" aria-label="Locked — use the Hire button" />
+                  <Lock className="mr-1 inline text-muted-foreground size-3" aria-label="Locked — use the Hire button" />
                 )}
                 {items.length}
               </span>
@@ -1485,10 +1484,10 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             {app && (
               <button onClick={downloadPacket} title="Download application packet (PDF)"
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground min-h-tap">
-                <Download size={14} /> Download packet (PDF)
+                <Download className="size-3.5" /> Download packet (PDF)
               </button>
             )}
-            <SheetClose aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></SheetClose>
+            <SheetClose aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X className="size-4" /></SheetClose>
           </div>
         </div>
 
@@ -1498,7 +1497,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             {app.related && app.related.length > 0 && (
               <div className={`rounded-md p-3 text-sm ${toneClasses('warn')}`}>
                 <p className="flex items-center gap-1.5 font-medium">
-                  <Users size={14} /> Re-applicant — {app.related.length} prior application{app.related.length > 1 ? 's' : ''} in this account
+                  <Users className="size-3.5" /> Re-applicant — {app.related.length} prior application{app.related.length > 1 ? 's' : ''} in this account
                 </p>
                 <ul className="mt-1.5 space-y-0.5">
                   {app.related.map((r) => (
@@ -1587,7 +1586,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                     <button key={key} type="button" onClick={() => toggleCheck(key, !done)}
                       className="flex w-full items-center gap-2 text-left text-sm py-1 -my-1 min-h-tap">
                       <span className={`flex size-4 shrink-0 items-center justify-center rounded border ${done ? 'border-ok bg-ok-bg' : 'border-border'}`}>
-                        {done && <Check size={12} className="text-ok" />}
+                        {done && <Check className="text-ok size-3" />}
                       </span>
                       <span className="text-foreground">{label}</span>
                       {required && <span className="text-2xs text-muted-foreground">required</span>}
@@ -1596,7 +1595,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                 })}
               </div>
               <p className="mt-1.5 flex items-center gap-1 text-2xs text-muted-foreground">
-                <ShieldCheck size={12} /> All required checks must be complete before approving.
+                <ShieldCheck className="size-3" /> All required checks must be complete before approving.
               </p>
             </Section>
 
@@ -1937,10 +1936,10 @@ function Consents({ c }: { c: Record<string, unknown> }) {
       {CONSENT_LABELS.map(([k, label]) => (
         <div key={k} className="flex items-center gap-1.5 text-sm">
           {c?.[k]
-            ? <Check size={14} className="text-ok shrink-0" />
+            ? <Check className="text-ok shrink-0 size-3.5" />
             : asked(k)
-              ? <X size={14} className="text-destructive shrink-0" />
-              : <Minus size={14} className="text-muted-foreground shrink-0" />}
+              ? <X className="text-destructive shrink-0 size-3.5" />
+              : <Minus className="text-muted-foreground shrink-0 size-3.5" />}
           <span className={c?.[k] ? 'text-foreground' : 'text-muted-foreground'}>
             {label}
             {!c?.[k] && !asked(k) && (
@@ -2006,11 +2005,11 @@ function DocThumb({ appId, slot }: { appId: number; slot: string }) {
         {err ? <span className="text-2xs text-muted-foreground">unavailable</span>
           : !url ? <span className="text-2xs text-muted-foreground">loading…</span>
           : isImage ? <img src={url} alt={label} className="h-full w-full object-cover" />
-          : <FileText size={24} className="text-muted-foreground" />}
+          : <FileText className="text-muted-foreground size-6" />}
       </div>
       <div className="flex items-center justify-between gap-1 px-2 py-1.5">
         <span className="truncate text-2xs text-foreground">{label}</span>
-        {url && <ExternalLink size={12} className="shrink-0 text-muted-foreground group-hover:text-foreground" />}
+        {url && <ExternalLink className="shrink-0 text-muted-foreground group-hover:text-foreground size-3" />}
       </div>
     </button>
   );
@@ -2073,7 +2072,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
     <div className="relative">
       <button onClick={() => setOpen((o) => !o)} title="Notifications"
         className="relative rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
-        <Bell size={16} />
+        <Bell className="size-4" />
         {unread > 0 && (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-2xs font-semibold text-destructive-foreground">
             {unread > 9 ? '9+' : unread}
@@ -2088,7 +2087,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
               <span className="text-sm font-medium">Notifications</span>
               {unread > 0 && (
                 <button onClick={markAll} className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap">
-                  <CheckCheck size={12} /> Mark all read
+                  <CheckCheck className="size-3" /> Mark all read
                 </button>
               )}
             </div>
@@ -2132,7 +2131,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
                           : on ? 'border-primary bg-primary/10 text-foreground'
                           : 'border-border text-muted-foreground hover:bg-muted'} min-h-tap`}
                       >
-                        <I size={12} /> {label}
+                        <I className="size-3" /> {label}
                       </button>
                     </Tip>
                   );

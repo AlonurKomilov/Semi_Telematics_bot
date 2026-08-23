@@ -28,13 +28,13 @@ export function parkingRowMenu(
     {
       key: 'detail',
       label: 'Open details',
-      icon: <History size={14} className="text-muted-foreground" />,
+      icon: <History className="text-muted-foreground size-3.5" />,
       onSelect: () => deps.openDetail(ev),
     },
     {
       key: 'maps',
       label: 'Open in Google Maps',
-      icon: <MapPin size={14} className="text-muted-foreground" />,
+      icon: <MapPin className="text-muted-foreground size-3.5" />,
       onSelect: () => window.open(
         mapsUrl(ev.latitude, ev.longitude), '_blank', 'noopener,noreferrer',
       ),
@@ -46,7 +46,7 @@ export function parkingRowMenu(
     actions.push({
       key: 'resolve',
       label: 'Resolve event',
-      icon: <CheckCircle2 size={14} className="text-muted-foreground" />,
+      icon: <CheckCircle2 className="text-muted-foreground size-3.5" />,
       onSelect: () => deps.confirmResolve(ev),
     });
   }

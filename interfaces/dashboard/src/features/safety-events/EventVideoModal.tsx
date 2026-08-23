@@ -133,12 +133,12 @@ export default function EventVideoModal({
             <span className="font-medium">{dateStr}</span>
             <span className="opacity-30">•</span>
             <span className="inline-flex items-center gap-1.5">
-              <Truck size={14} className="opacity-70" />
+              <Truck className="opacity-70 size-3.5" />
               {event.vehicle_name || '—'}
             </span>
             <span className="opacity-30">•</span>
             <span className="inline-flex items-center gap-1.5">
-              <User size={14} className="opacity-70" />
+              <User className="opacity-70 size-3.5" />
               {event.driver_name || 'Unassigned'}
             </span>
           </div>
@@ -149,7 +149,7 @@ export default function EventVideoModal({
               aria-label="Close"
               className="inline-flex size-8 items-center justify-center rounded-md hover:bg-white/10 transition-colors"
             >
-              <X size={16} />
+              <X className="size-4" />
             </button>
           </div>
         </div>
@@ -179,7 +179,7 @@ export default function EventVideoModal({
         <div className="bg-black flex items-center justify-center min-h-[40vh] max-h-[60vh]">
           {loading ? (
             <div className="flex flex-col items-center gap-2 text-white/70 py-12">
-              <Loader2 size={24} className="animate-spin" />
+              <Loader2 className="animate-spin size-6" />
               <span className="text-xs">Loading video…</span>
             </div>
           ) : loadError ? (
@@ -218,12 +218,12 @@ export default function EventVideoModal({
           )}
           {event.g_force > 0 && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Gauge size={12} /> {event.g_force.toFixed(2)} g
+              <Gauge className="size-3" /> {event.g_force.toFixed(2)} g
             </span>
           )}
           {eventTime && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock size={12} /> {formatDate(eventTime, { timeZone: tz })}
+              <Clock className="size-3" /> {formatDate(eventTime, { timeZone: tz })}
             </span>
           )}
           {latLng && (
@@ -234,7 +234,7 @@ export default function EventVideoModal({
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline min-h-tap"
               title="Open in Google Maps"
             >
-              <MapPin size={12} /> {latLng}
+              <MapPin className="size-3" /> {latLng}
             </a>
           )}
           {/* Download — points at the fresh S3 URL directly so the
@@ -253,7 +253,7 @@ export default function EventVideoModal({
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             } min-h-tap`}
           >
-            <Download size={14} />
+            <Download className="size-3.5" />
             Download
           </a>
         </div>

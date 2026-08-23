@@ -194,7 +194,7 @@ function Th({ icon: Icon, label, hint }: {
     <span className={`inline-flex items-center gap-1.5 font-medium ${
       hint ? 'opacity-50' : ''
     }`}>
-      <Icon size={14} aria-hidden /> {label}
+      <Icon className="size-3.5" aria-hidden /> {label}
     </span>
   );
   return (

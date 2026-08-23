@@ -141,8 +141,8 @@ export default function ServiceTaskPicker({
             className="p-1.5 rounded-md text-primary hover:bg-muted disabled:opacity-50 min-h-tap"
           >
             {create.isPending
-              ? <Loader2 size={14} className="animate-spin" />
-              : <Check size={14} />}
+              ? <Loader2 className="animate-spin size-3.5" />
+              : <Check className="size-3.5" />}
           </button>
           <button
             type="button"
@@ -150,7 +150,7 @@ export default function ServiceTaskPicker({
             aria-label="Cancel"
             className="p-1.5 rounded-md text-muted-foreground hover:bg-muted"
           >
-            <X size={14} />
+            <X className="size-3.5" />
           </button>
         </div>
         {error && <p className="mt-1 text-2xs text-destructive">{error}</p>}

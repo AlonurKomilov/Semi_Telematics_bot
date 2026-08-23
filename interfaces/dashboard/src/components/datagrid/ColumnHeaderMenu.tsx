@@ -137,7 +137,7 @@ export default function ColumnHeaderMenu({
             // otherwise fall through the floor with everything else.
             className="inline-flex items-center justify-center p-1.5 -m-1 min-h-tap min-w-tap text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100"
           >
-            <MoreVertical size={14} />
+            <MoreVertical className="size-3.5" />
           </button>
         )}
       />
@@ -155,17 +155,17 @@ export default function ColumnHeaderMenu({
                     )}
                   >
                     <span className="shrink-0 w-4 flex justify-center text-muted-foreground">
-                      <ArrowUpDown size={14} />
+                      <ArrowUpDown className="size-3.5" />
                     </span>
                     <span className="flex-1 text-foreground text-left">Sort</span>
                     {sorted && (
                       <span aria-hidden="true" className="text-muted-foreground">
                         {sorted === 'asc'
-                          ? <ArrowUp size={12} />
-                          : <ArrowDown size={12} />}
+                          ? <ArrowUp className="size-3" />
+                          : <ArrowDown className="size-3" />}
                       </span>
                     )}
-                    <ChevronRight size={12} className="text-muted-foreground" aria-hidden="true" />
+                    <ChevronRight className="text-muted-foreground size-3" aria-hidden="true" />
                   </MenuPrimitive.SubmenuTrigger>
                   <MenuPrimitive.Portal>
                     <MenuPrimitive.Positioner
@@ -176,7 +176,7 @@ export default function ColumnHeaderMenu({
                     >
                       <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                         <MenuItem
-                          icon={<ArrowUp size={14} />}
+                          icon={<ArrowUp className="size-3.5" />}
                           label="Ascending"
                           active={sorted === 'asc'}
                           onClick={onSortAsc}
@@ -185,7 +185,7 @@ export default function ColumnHeaderMenu({
                           hintTip={gateSort ? gateReason : undefined}
                         />
                         <MenuItem
-                          icon={<ArrowDown size={14} />}
+                          icon={<ArrowDown className="size-3.5" />}
                           label="Descending"
                           active={sorted === 'desc'}
                           onClick={onSortDesc}
@@ -197,7 +197,7 @@ export default function ColumnHeaderMenu({
                           <>
                             <div className="my-1 border-t border-border" />
                             <MenuItem
-                              icon={<X size={14} />}
+                              icon={<X className="size-3.5" />}
                               label="Clear sort"
                               onClick={onClearSort}
                             />
@@ -213,7 +213,7 @@ export default function ColumnHeaderMenu({
             {canFilter && (
               <>
                 <MenuItem
-                  icon={<FilterIcon size={14} />}
+                  icon={<FilterIcon className="size-3.5" />}
                   label="Filter…"
                   active={filterActive > 0}
                   badge={filterActive > 0 ? String(filterActive) : undefined}
@@ -231,10 +231,10 @@ export default function ColumnHeaderMenu({
                   )}
                 >
                   <span className="shrink-0 w-4 flex justify-center text-muted-foreground">
-                    <Pin size={14} />
+                    <Pin className="size-3.5" />
                   </span>
                   <span className="flex-1 text-foreground text-left">Pin</span>
-                  <ChevronRight size={12} className="text-muted-foreground" aria-hidden="true" />
+                  <ChevronRight className="text-muted-foreground size-3" aria-hidden="true" />
                 </MenuPrimitive.SubmenuTrigger>
                 <MenuPrimitive.Portal>
                   <MenuPrimitive.Positioner
@@ -245,12 +245,12 @@ export default function ColumnHeaderMenu({
                   >
                     <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                       <MenuItem
-                        icon={<ArrowLeftToLine size={14} />}
+                        icon={<ArrowLeftToLine className="size-3.5" />}
                         label="Pin to Left"
                         onClick={onPinLeft}
                       />
                       <MenuItem
-                        icon={<ArrowRightToLine size={14} />}
+                        icon={<ArrowRightToLine className="size-3.5" />}
                         label="Pin to Right"
                         onClick={onPinRight}
                       />
@@ -260,7 +260,7 @@ export default function ColumnHeaderMenu({
               </MenuPrimitive.SubmenuRoot>
             ) : (
               <MenuItem
-                icon={<PinOff size={14} />}
+                icon={<PinOff className="size-3.5" />}
                 label="Unpin"
                 active
                 onClick={onUnpin}
@@ -279,7 +279,7 @@ export default function ColumnHeaderMenu({
                 )}
               >
                 <span className="shrink-0 w-4 flex justify-center text-muted-foreground">
-                  <GroupIcon size={14} />
+                  <GroupIcon className="size-3.5" />
                 </span>
                 <span className="flex-1 text-foreground text-left">Group</span>
                 {currentGroup && (
@@ -287,7 +287,7 @@ export default function ColumnHeaderMenu({
                     {currentGroup}
                   </span>
                 )}
-                <ChevronRight size={12} className="text-muted-foreground" aria-hidden="true" />
+                <ChevronRight className="text-muted-foreground size-3" aria-hidden="true" />
               </MenuPrimitive.SubmenuTrigger>
               <MenuPrimitive.Portal>
                 <MenuPrimitive.Positioner
@@ -301,8 +301,8 @@ export default function ColumnHeaderMenu({
                       <MenuItem
                         key={name}
                         icon={name === currentGroup
-                          ? <Check size={14} />
-                          : <GroupIcon size={14} />}
+                          ? <Check className="size-3.5" />
+                          : <GroupIcon className="size-3.5" />}
                         label={name}
                         active={name === currentGroup}
                         onClick={() => onAssignGroup(name)}
@@ -312,13 +312,13 @@ export default function ColumnHeaderMenu({
                       <div className="my-1 border-t border-border" />
                     )}
                     <MenuItem
-                      icon={<Plus size={14} />}
+                      icon={<Plus className="size-3.5" />}
                       label="New group…"
                       onClick={onNewGroup}
                     />
                     {currentGroup && (
                       <MenuItem
-                        icon={<UngroupIcon size={14} />}
+                        icon={<UngroupIcon className="size-3.5" />}
                         label="Remove from group"
                         onClick={onUngroup}
                       />
@@ -332,7 +332,7 @@ export default function ColumnHeaderMenu({
                 operators don't confuse it with the column-bracket
                 "Group" submenu above. */}
             <MenuItem
-              icon={<ListTree size={14} />}
+              icon={<ListTree className="size-3.5" />}
               label={rowGrouped ? 'Ungroup rows' : 'Group rows by this'}
               active={rowGrouped}
               onClick={onRowGroup}
@@ -351,7 +351,7 @@ export default function ColumnHeaderMenu({
                 items makes the operator click twice to learn nothing. */}
             {aggregable && gateAgg && (
               <MenuItem
-                icon={<Sigma size={14} />}
+                icon={<Sigma className="size-3.5" />}
                 disabled
                 hint="needs every row"
                 hintTip={gateReason}
@@ -369,7 +369,7 @@ export default function ColumnHeaderMenu({
                   )}
                 >
                   <span className="shrink-0 w-4 flex justify-center text-muted-foreground">
-                    <Sigma size={14} />
+                    <Sigma className="size-3.5" />
                   </span>
                   <span className="flex-1 text-foreground text-left">Aggregate</span>
                   {aggCurrent && (
@@ -377,7 +377,7 @@ export default function ColumnHeaderMenu({
                       {AGG_FN_LABELS[aggCurrent]}
                     </span>
                   )}
-                  <ChevronRight size={12} className="text-muted-foreground" aria-hidden="true" />
+                  <ChevronRight className="text-muted-foreground size-3" aria-hidden="true" />
                 </MenuPrimitive.SubmenuTrigger>
                 <MenuPrimitive.Portal>
                   <MenuPrimitive.Positioner
@@ -391,8 +391,8 @@ export default function ColumnHeaderMenu({
                         <MenuItem
                           key={fn}
                           icon={fn === aggCurrent
-                            ? <Check size={14} />
-                            : <Sigma size={14} />}
+                            ? <Check className="size-3.5" />
+                            : <Sigma className="size-3.5" />}
                           label={AGG_FN_LABELS[fn]}
                           active={fn === aggCurrent}
                           onClick={() => onSetAgg(fn)}
@@ -402,7 +402,7 @@ export default function ColumnHeaderMenu({
                         <>
                           <div className="my-1 border-t border-border" />
                           <MenuItem
-                            icon={<X size={14} />}
+                            icon={<X className="size-3.5" />}
                             label="None"
                             onClick={() => onSetAgg(null)}
                           />
@@ -414,20 +414,20 @@ export default function ColumnHeaderMenu({
               </MenuPrimitive.SubmenuRoot>
             )}
             <MenuItem
-              icon={<MoveHorizontal size={14} />}
+              icon={<MoveHorizontal className="size-3.5" />}
               label="Autosize column"
               onClick={onAutosize}
             />
             <div className="my-1 border-t border-border" />
             <MenuItem
-              icon={<EyeOff size={14} />}
+              icon={<EyeOff className="size-3.5" />}
               label="Hide column"
               onClick={onHide}
               disabled={!canHide}
               hint="last column"
             />
             <MenuItem
-              icon={<Columns3 size={14} />}
+              icon={<Columns3 className="size-3.5" />}
               label="Manage columns…"
               onClick={onManage}
             />

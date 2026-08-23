@@ -133,7 +133,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
     <div className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
       <div className="px-3 pt-2.5 pb-2">
         <div className="flex items-start gap-2">
-          <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
+          <Icon className={`${toneText(tone)} mt-0.5 shrink-0 size-4`} aria-hidden />
           <p className="flex-1 min-w-0 text-sm font-semibold inline-flex items-baseline gap-1.5">
             <span className="truncate">{title}</span>
             {tag && (
@@ -156,7 +156,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
               aria-expanded={expanded}
               className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 min-h-tap min-w-tap"
             >
-              {expanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+              {expanded ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
             </button>
           )}
           <button
@@ -164,7 +164,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
             aria-label="Close"
             className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 min-h-tap min-w-tap"
           >
-            <X size={14} aria-hidden />
+            <X className="size-3.5" aria-hidden />
           </button>
         </div>
         {detail && expanded && (

@@ -27,19 +27,19 @@ export function workOrderRowMenu(
     {
       key: 'open',
       label: 'Open',
-      icon: <ArrowUpRight size={14} className="text-muted-foreground" />,
+      icon: <ArrowUpRight className="text-muted-foreground size-3.5" />,
       onSelect: () => deps.navigate(path),
     },
     {
       key: 'open-new',
       label: 'Open in new tab',
-      icon: <ExternalLink size={14} className="text-muted-foreground" />,
+      icon: <ExternalLink className="text-muted-foreground size-3.5" />,
       onSelect: () => window.open(path, '_blank', 'noopener'),
     },
     ...(deps.openHistory ? [{
       key: 'history',
       label: 'View activity history',
-      icon: <History size={14} className="text-muted-foreground" />,
+      icon: <History className="text-muted-foreground size-3.5" />,
       onSelect: () => deps.openHistory!(wo),
     }] : []),
   ];

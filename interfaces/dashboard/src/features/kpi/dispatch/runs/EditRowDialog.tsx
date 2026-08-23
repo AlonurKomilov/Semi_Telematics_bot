@@ -105,7 +105,7 @@ export function EditRowDialog({ runId, row, onClose, onSaved, onGoBoard }: {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button onClick={save} disabled={busy}>
-            {busy && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {busy && <Loader2 className="animate-spin mr-1.5" />}
             {t('kpi_runs.save_recompute', 'Save & recompute')}
           </Button>
         </DialogFooter>

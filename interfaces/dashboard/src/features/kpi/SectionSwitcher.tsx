@@ -23,14 +23,14 @@ export function SectionSwitcher({ current }: { current: string }) {
         // The ACTIVE item must not dress like the disabled ones — a
         // check names it; selecting it again is a harmless no-op.
         icon: s.key === current
-          ? <Check size={14} className="text-foreground" /> : undefined,
+          ? <Check className="text-foreground size-3.5" /> : undefined,
         disabled: !s.ready,
         onSelect: () => { if (s.key !== current) navigate(s.path); },
       }))}
     >
       <Button variant="outline" size="sm">
         {KPI_SECTIONS.find((s) => s.key === current)?.label ?? current}
-        <ChevronDown size={14} className="ml-1.5 text-muted-foreground" />
+        <ChevronDown className="ml-1.5 text-muted-foreground" />
       </Button>
     </ActionMenu>
   );

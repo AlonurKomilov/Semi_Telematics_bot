@@ -80,7 +80,7 @@ export default function SyncPreviewModal({
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={onClose}
                   disabled={applying} aria-label="Close">
-            <X size={16} />
+            <X />
           </Button>
         </div>
 
@@ -99,10 +99,10 @@ export default function SyncPreviewModal({
           {diff.kind === 'vehicles' && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <Stat tone="ok" icon={<Plus size={16} />} n={diff.counts.new} text="new" />
-                <Stat tone="info" icon={<ArrowUpCircle size={16} />} n={diff.counts.enrich} text="enriched" />
-                <Stat tone="warn" icon={<AlertTriangle size={16} />} n={diff.counts.review} text="to review" />
-                <Stat tone="neutral" icon={<RefreshCw size={16} />} n={diff.counts.unchanged} text="unchanged" />
+                <Stat tone="ok" icon={<Plus className="size-4" />} n={diff.counts.new} text="new" />
+                <Stat tone="info" icon={<ArrowUpCircle className="size-4" />} n={diff.counts.enrich} text="enriched" />
+                <Stat tone="warn" icon={<AlertTriangle className="size-4" />} n={diff.counts.review} text="to review" />
+                <Stat tone="neutral" icon={<RefreshCw className="size-4" />} n={diff.counts.unchanged} text="unchanged" />
               </div>
 
               {diff.review.length > 0 && (
@@ -149,8 +149,8 @@ export default function SyncPreviewModal({
             return (
               <>
                 <div className="grid grid-cols-2 gap-2">
-                  <Stat tone="ok" icon={<Plus size={16} />} n={diff.counts.new} text="new work orders" />
-                  <Stat tone="info" icon={<RefreshCw size={16} />} n={changedRows.length} text="with changes" />
+                  <Stat tone="ok" icon={<Plus className="size-4" />} n={diff.counts.new} text="new work orders" />
+                  <Stat tone="info" icon={<RefreshCw className="size-4" />} n={changedRows.length} text="with changes" />
                 </div>
                 {unchanged > 0 && (
                   <p className="text-2xs text-muted-foreground">
@@ -205,7 +205,7 @@ export default function SyncPreviewModal({
             Decline
           </Button>
           <Button type="button" size="sm" onClick={onAccept} disabled={applying || nothingToDo}>
-            {applying ? <Loader2 size={14} className="animate-spin" /> : null}
+            {applying ? <Loader2 className="animate-spin" /> : null}
             {applying ? 'Applying…' : `Accept & apply${nothingToDo ? '' : ` (${actionable})`}`}
           </Button>
         </div>

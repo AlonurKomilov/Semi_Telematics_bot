@@ -73,7 +73,7 @@ export default function FleetShell() {
               className="lg:hidden inline-flex size-8 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               aria-label="Toggle navigation"
             >
-              {mobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+              {mobileSidebarOpen ? <X className="size-4.5" /> : <Menu className="size-4.5" />}
             </button>
           </div>
 
@@ -88,7 +88,7 @@ export default function FleetShell() {
               className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-[220px] lg:w-[280px]"
               aria-label="Open command palette"
             >
-              <Search size={14} />
+              <Search className="size-3.5" />
               <span>Search…</span>
               <kbd className="ml-auto px-1.5 py-0.5 text-3xs border border-border rounded bg-card">
                 {shortcut('K')}
@@ -99,7 +99,7 @@ export default function FleetShell() {
               className="md:hidden inline-flex size-8 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               aria-label="Open search"
             >
-              <Search size={18} />
+              <Search className="size-4.5" />
             </button>
             <LanguageSelector />
             <AlertsLauncher />

@@ -138,7 +138,7 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
         <div className="flex items-center gap-2 text-primary">
           {logoSrc
             ? <img src={logoSrc} alt={brand?.name || 'Carrier'} className="h-7 w-auto max-w-40 object-contain" />
-            : <Truck size={24} style={accent ? { color: accent } : undefined} />}
+            : <Truck className="size-6" style={accent ? { color: accent } : undefined} />}
           <span className="text-base font-semibold text-foreground" style={headingStyle}>
             {brand?.name ? `${brand.name} · Driver Application` : 'Driver Application'}
           </span>
@@ -152,7 +152,7 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
               <div className="mt-3 flex flex-wrap gap-2">
                 {brand.perks.slice(0, 6).map((p) => (
                   <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
-                    <CheckCircle2 size={14} style={accent ? { color: accent } : undefined} /> {p}
+                    <CheckCircle2 className="size-3.5" style={accent ? { color: accent } : undefined} /> {p}
                   </span>
                 ))}
               </div>
@@ -174,7 +174,7 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
                 { icon: ShieldCheck, text: 'FMCSA §391.21' },
               ].map(({ icon: I, text }) => (
                 <span key={text} className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                  <I size={14} /> {text}
+                  <I className="size-3.5" /> {text}
                 </span>
               ))}
             </div>
@@ -225,7 +225,7 @@ function Stepper({ current, max, onJump, style }: {
               }`}>
               <span className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
                 done ? 'border-primary bg-primary text-primary-foreground' : on ? 'border-primary text-primary' : 'border-border text-muted-foreground'
-              }`}>{done ? <CheckCircle2 size={14} /> : ui + 1}</span>
+              }`}>{done ? <CheckCircle2 className="size-3.5" /> : ui + 1}</span>
               <span>
                 <span className={`block text-sm ${on ? 'font-medium text-foreground' : 'text-foreground'}`}>{u.label}</span>
                 <span className="block text-xs text-muted-foreground">{u.sub}</span>
@@ -241,7 +241,7 @@ function Stepper({ current, max, onJump, style }: {
 function Success({ data, reference, onReset }: { data: Data; reference: string; onReset: () => void }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <span className="mx-auto flex size-14 items-center justify-center rounded-full bg-ok-bg text-ok"><CheckCircle2 size={30} /></span>
+      <span className="mx-auto flex size-14 items-center justify-center rounded-full bg-ok-bg text-ok"><CheckCircle2 className="size-7" /></span>
       <h2 className="mt-4 text-2xl font-bold text-foreground">Application submitted</h2>
       <p className="mt-2 text-sm text-muted-foreground">
         Thanks {data.personal?.first || 'driver'} — a recruiter will reach out at{' '}
@@ -673,7 +673,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
                   {cur.group ? `${cur.group} · ${groupPos} of ${groupSize}` : `Step ${curUnit + 1} of ${UNITS.length}`}
                   {savedTick && (step > 0 || maxReached > 0) && (
                     <span className="ml-2 inline-flex items-center gap-1 text-2xs text-muted-foreground/70">
-                      <CheckCircle2 size={12} /> {savedCloud ? 'Saved' : 'Saved on this device'}
+                      <CheckCircle2 className="size-3" /> {savedCloud ? 'Saved' : 'Saved on this device'}
                     </span>
                   )}
                 </p>
@@ -716,7 +716,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
               <div className="flex items-center gap-3">
                 <button type="button" onClick={back} disabled={step === 0 || submitting}
                   className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40 min-h-tap">
-                  <ArrowLeft size={16} /> Back
+                  <ArrowLeft className="size-4" /> Back
                 </button>
                 {!preview && token && EMAIL_OK.test(applicantEmail) && maxReached >= 1 && (
                   laterState === 'sent' ? (
@@ -736,7 +736,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
                 {preview
                   ? (isLast ? 'Submit disabled in preview' : 'Continue')
                   : submitting ? 'Submitting…' : isLast ? 'Submit application' : 'Continue'}
-                {!submitting && !(preview && isLast) && <ArrowRight size={16} />}
+                {!submitting && !(preview && isLast) && <ArrowRight className="size-4" />}
               </button>
             </div>
           </form>

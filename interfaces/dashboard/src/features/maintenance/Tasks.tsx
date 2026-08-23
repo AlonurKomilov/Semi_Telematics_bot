@@ -390,7 +390,7 @@ export default function Tasks() {
                   ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'} min-h-tap min-w-tap`}
               >
-                <List size={14} />
+                <List className="size-3.5" />
               </button>
               <button
                 type="button"
@@ -402,7 +402,7 @@ export default function Tasks() {
                   ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'} min-h-tap min-w-tap`}
               >
-                <CalendarDays size={14} />
+                <CalendarDays className="size-3.5" />
               </button>
             </div>
             {/* The page-level "Export CSV" button was removed — the
@@ -415,7 +415,7 @@ export default function Tasks() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
               title="Manage re-usable task templates"
             >
-              <ClipboardList size={14} />
+              <ClipboardList className="size-3.5" />
               Templates
             </button>
             {/* DOT Binder button moved to Reports module (Reports →
@@ -423,7 +423,7 @@ export default function Tasks() {
                 stakeholder-facing compliance PDF, not a maintenance-
                 editing surface. */}
             <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
-              <Plus size={14} />
+              <Plus className="size-3.5" />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
           </div>
@@ -489,7 +489,7 @@ export default function Tasks() {
           description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
           action={(
             <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap">
-              <Plus size={14} />
+              <Plus className="size-3.5" />
               New task
             </button>
           )}

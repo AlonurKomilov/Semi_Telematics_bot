@@ -364,7 +364,7 @@ export default function PivotPanel({
    *  so an unchecked item would sit left of a checked one and the label
    *  would visibly jump sideways each time you toggled it. */
   const check = (on: boolean) => (
-    on ? <Check size={14} /> : <span aria-hidden className="inline-block w-3.5 shrink-0" />
+    on ? <Check className="size-3.5" /> : <span aria-hidden className="inline-block w-3.5 shrink-0" />
   );
 
   /** The zone's OWN settings — they govern the column this zone renders,
@@ -444,20 +444,20 @@ export default function PivotPanel({
     const last = list.length - 1;
     return [
       {
-        key: 'up', label: 'Move up', icon: <ArrowUp size={14} />,
+        key: 'up', label: 'Move up', icon: <ArrowUp className="size-3.5" />,
         disabled: at <= 0, onSelect: () => moveTo(axis, key, at - 1),
       },
       {
-        key: 'down', label: 'Move down', icon: <ArrowDown size={14} />,
+        key: 'down', label: 'Move down', icon: <ArrowDown className="size-3.5" />,
         disabled: at >= last, onSelect: () => moveTo(axis, key, at + 1),
       },
       {
-        key: 'top', label: 'Move to top', icon: <ChevronsUp size={14} />,
+        key: 'top', label: 'Move to top', icon: <ChevronsUp className="size-3.5" />,
         disabled: at <= 0, separatorBefore: true,
         onSelect: () => moveTo(axis, key, 0),
       },
       {
-        key: 'bottom', label: 'Move to bottom', icon: <ChevronsDown size={14} />,
+        key: 'bottom', label: 'Move to bottom', icon: <ChevronsDown className="size-3.5" />,
         disabled: at >= last, onSelect: () => moveTo(axis, key, last),
       },
       // Rendering settings sit between PLACEMENT (the moves above) and
@@ -472,7 +472,7 @@ export default function PivotPanel({
       ...axesFor(key).map((t, i) => ({
         key: `to-${t}`,
         label: t === axis ? `In ${AXIS_LABEL[t]}` : `Move to ${AXIS_LABEL[t]}`,
-        icon: t === axis ? <Check size={14} /> : undefined,
+        icon: t === axis ? <Check className="size-3.5" /> : undefined,
         separatorBefore: i === 0,
         disabled: t === axis,
         onSelect: () => place(key, t),
@@ -482,7 +482,7 @@ export default function PivotPanel({
         // fully reversible, nothing is destroyed.  Red-and-trash for a
         // reversible act spends the warning vocabulary we need for the
         // acts that really are irreversible.
-        key: 'remove', label: 'Remove from report', icon: <X size={14} />,
+        key: 'remove', label: 'Remove from report', icon: <X className="size-3.5" />,
         separatorBefore: true, onSelect: () => remove(key),
       },
     ];
@@ -499,7 +499,7 @@ export default function PivotPanel({
           // A check on the ACTIVE function — the menu listed them
           // identically whichever was running, so the only way to know
           // what you had picked was to close it again.
-          icon: fn === picked.aggFn ? <Check size={14} /> : undefined,
+          icon: fn === picked.aggFn ? <Check className="size-3.5" /> : undefined,
           onSelect: () => setAggFn(key, fn),
         }))}
       >
@@ -601,19 +601,19 @@ export default function PivotPanel({
               aria-label="Open the rows behind a figure"
               onClick={() => onChange({ ...model, drillDown: !drillOn })}
             >
-              <ListTree size={16} />
+              <ListTree />
             </Button>
           </Tip>
         </h3>
         {/* Same step as the toggle beside it and the toolbar opposite. */}
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close pivot panel">
-          <X size={16} />
+          <X />
         </Button>
       </div>
 
       <div className="p-3 border-b border-border">
         <div className="relative">
-          <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -628,7 +628,7 @@ export default function PivotPanel({
               aria-label="Clear search"
               className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
-              <X size={16} />
+              <X className="size-4" />
             </button>
           )}
         </div>
@@ -687,7 +687,7 @@ export default function PivotPanel({
                       aria-label={`Add ${byKey.get(key)?.label ?? key}`}
                       className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors min-h-tap"
                     >
-                      <Plus size={14} />
+                      <Plus className="size-3.5" />
                     </button>
                   </ActionMenu>
                 )}
@@ -760,8 +760,8 @@ export default function PivotPanel({
                 </span>
                 <span className="inline-flex items-center gap-1.5 shrink-0">
                   <span className="text-2xs tabular-nums text-muted-foreground">{keys.length}</span>
-                  {open ? <ChevronUp size={14} className="text-muted-foreground" />
-                    : <ChevronDown size={14} className="text-muted-foreground" />}
+                  {open ? <ChevronUp className="text-muted-foreground size-3.5" />
+                    : <ChevronDown className="text-muted-foreground size-3.5" />}
                 </span>
               </button>
               {open && (
@@ -824,7 +824,7 @@ export default function PivotPanel({
             // thing hidden. Elevation + a slight lift make the pick-up
             // state unmistakable.
             <div className="flex w-fit max-w-full translate-x-3 translate-y-3 scale-[1.02] items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-primary bg-card shadow-xl cursor-grabbing">
-              <GripVertical size={14} className="shrink-0 text-muted-foreground" />
+              <GripVertical className="shrink-0 text-muted-foreground size-3.5" />
               <span className="min-w-0 flex-1 truncate text-foreground">
                 {byKey.get(dragKey)?.label ?? dragKey}
               </span>
@@ -907,7 +907,7 @@ function FieldRow({
           aria-label={`Reorder ${label}`}
           className="shrink-0 p-1 -ml-1 rounded cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors touch-none min-h-tap"
         >
-          <GripVertical size={14} />
+          <GripVertical className="size-3.5" />
         </button>
         {assigned ? (
           <input
@@ -939,7 +939,7 @@ function FieldRow({
               aria-label={`${label} options`}
               className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors min-h-tap"
             >
-              <MoreVertical size={14} />
+              <MoreVertical className="size-3.5" />
             </button>
           </ActionMenu>
         )}

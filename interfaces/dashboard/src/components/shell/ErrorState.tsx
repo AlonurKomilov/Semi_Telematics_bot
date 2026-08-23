@@ -25,7 +25,7 @@ export default function ErrorState({
     >
       <div className="flex items-start gap-3">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-destructive/10 text-destructive shrink-0">
-          <AlertTriangle size={18} />
+          <AlertTriangle className="size-4.5" />
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">{resolvedTitle}</p>

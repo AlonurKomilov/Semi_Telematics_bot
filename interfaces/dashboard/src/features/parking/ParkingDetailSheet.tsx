@@ -236,8 +236,7 @@ export default function ParkingDetailSheet({
                           a row, and the whole point of the panel is that these
                           rows open. */}
                       <ChevronRight
-                        size={14}
-                        className="shrink-0 text-muted-foreground"
+                        className="shrink-0 text-muted-foreground size-3.5"
                         aria-hidden
                       />
                     </button>

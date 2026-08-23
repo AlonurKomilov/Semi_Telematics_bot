@@ -385,8 +385,8 @@ export default function Permissions() {
                     {changes.filter((c) => c.key === key).map((c) => (
                       <li key={c.label} className="flex items-center gap-2 text-sm">
                         {c.granted
-                          ? <Check size={14} className="text-ok shrink-0" />
-                          : <X size={14} className="text-danger shrink-0" />}
+                          ? <Check className="text-ok shrink-0 size-3.5" />
+                          : <X className="text-danger shrink-0 size-3.5" />}
                         <span>{c.label}</span>
                         <span className="text-2xs text-muted-foreground">{c.from} → {c.to}</span>
                       </li>

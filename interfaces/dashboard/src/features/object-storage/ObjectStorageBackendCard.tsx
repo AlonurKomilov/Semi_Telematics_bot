@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
+import { cn } from '@/lib/utils';
 
 /**
  * Storage settings card — backend chooser + Google Drive connection.
@@ -157,7 +158,7 @@ export default function ObjectStorageBackendCard() {
     return (
       <div className="bg-card border border-border rounded-lg p-4">
         <p className="text-sm text-muted-foreground inline-flex items-center gap-2">
-          <Loader2 size={14} className="animate-spin" />
+          <Loader2 className="animate-spin size-3.5" />
           {t('storage.loading')}
         </p>
       </div>
@@ -168,7 +169,7 @@ export default function ObjectStorageBackendCard() {
     return (
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="inline-flex items-center gap-2 text-sm text-destructive">
-          <AlertTriangle size={14} />
+          <AlertTriangle className="size-3.5" />
           {error instanceof Error ? error.message : 'Could not load storage settings'}
         </div>
       </div>
@@ -186,7 +187,7 @@ export default function ObjectStorageBackendCard() {
       {/* ── Drive connection block (single source) ───────────── */}
       <section>
         <div className="flex items-start gap-3">
-          <Cloud size={18} className={driveConnected ? 'text-blue-500 mt-0.5' : 'text-muted-foreground mt-0.5'} />
+          <Cloud className={cn(driveConnected ? 'text-blue-500 mt-0.5' : 'text-muted-foreground mt-0.5', 'size-4.5')} />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">{t('storage.settings.drive_section')}</p>
             {driveConnected ? (
@@ -212,7 +213,7 @@ export default function ObjectStorageBackendCard() {
                 disabled={disconnecting}
                 className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
               >
-                {disconnecting ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
+                {disconnecting ? <Loader2 className="animate-spin size-3" /> : <Unlink className="size-3" />}
                 {disconnecting ? t('storage.disconnecting') : t('storage.disconnect_button')}
               </button>
             ) : (
@@ -222,7 +223,7 @@ export default function ObjectStorageBackendCard() {
                 disabled={connecting}
                 className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
               >
-                {connecting ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}
+                {connecting ? <Loader2 className="animate-spin size-3" /> : <ExternalLink className="size-3" />}
                 {connecting ? t('storage.redirecting') : t('storage.connect_button')}
               </button>
             )}
@@ -269,7 +270,7 @@ export function BackendOption({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium inline-flex items-center gap-1.5">
             {title}
-            {active && <CheckCircle2 size={12} className="text-primary" />}
+            {active && <CheckCircle2 className="text-primary size-3" />}
             {recommended && !active && (
               <span className="text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
                 ★
@@ -283,12 +284,12 @@ export function BackendOption({
       </div>
       {active ? (
         <span className="text-2xs text-primary font-medium inline-flex items-center gap-1 self-start">
-          <CheckCircle2 size={12} />
+          <CheckCircle2 className="size-3" />
           {t('storage.settings.active')}
         </span>
       ) : blocked ? (
         <span className="text-2xs text-muted-foreground inline-flex items-center gap-1 self-start">
-          <AlertTriangle size={12} />
+          <AlertTriangle className="size-3" />
           {t('storage.settings.needs_drive')}
         </span>
       ) : !onSwitch ? null : (
@@ -298,7 +299,7 @@ export function BackendOption({
           disabled={switching}
           className="self-start inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
         >
-          {switching && <Loader2 size={12} className="animate-spin" />}
+          {switching && <Loader2 className="animate-spin size-3" />}
           {switching ? t('storage.settings.switching') : t('storage.settings.switch_button')}
         </button>
       )}
@@ -323,7 +324,7 @@ function RoutingTable({ connectedToDrive }: { connectedToDrive: boolean }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="p-3 rounded-lg border border-border bg-muted/30">
           <p className="text-xs font-medium inline-flex items-center gap-1.5 mb-2">
-            <Cloud size={12} className={connectedToDrive ? 'text-blue-500' : 'text-muted-foreground'} />
+            <Cloud className={cn(connectedToDrive ? 'text-blue-500' : 'text-muted-foreground', 'size-3')} />
             {connectedToDrive
               ? t('storage.settings.routing_drive_header_connected')
               : t('storage.settings.routing_drive_header_disconnected')}
@@ -331,7 +332,7 @@ function RoutingTable({ connectedToDrive }: { connectedToDrive: boolean }) {
           <ul className="text-2xs text-muted-foreground space-y-0.5">
             {driveItems.map(s => (
               <li key={s} className="flex items-start gap-1.5">
-                <CheckCircle2 size={12} className="text-ok mt-0.5 shrink-0" />
+                <CheckCircle2 className="text-ok mt-0.5 shrink-0 size-3" />
                 {s}
               </li>
             ))}
@@ -339,7 +340,7 @@ function RoutingTable({ connectedToDrive }: { connectedToDrive: boolean }) {
         </div>
         <div className="p-3 rounded-lg border border-border bg-muted/30">
           <p className="text-xs font-medium inline-flex items-center gap-1.5 mb-2">
-            <HardDrive size={12} className="text-muted-foreground" />
+            <HardDrive className="text-muted-foreground size-3" />
             {t('storage.settings.routing_platform_header')}
           </p>
           <ul className="text-2xs text-muted-foreground space-y-0.5">

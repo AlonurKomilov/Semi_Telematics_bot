@@ -140,7 +140,7 @@ export default function MyNotifications() {
           on a content mutation, so an always-present node that only
           changes opacity would never be read out. */}
       <p className="text-xs text-ok inline-flex items-center gap-1.5 h-4" aria-live="polite">
-        {saved && (<><CheckCircle2 size={14} aria-hidden /> Saved</>)}
+        {saved && (<><CheckCircle2 className="size-3.5" aria-hidden /> Saved</>)}
       </p>
 
       <SourceLabel>Channels</SourceLabel>
@@ -148,7 +148,7 @@ export default function MyNotifications() {
         {/* Telegram — master switch + resolve receipts */}
         <section className="bg-card border border-border rounded-xl p-4">
           <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
-            <Send size={16} /> Telegram
+            <Send className="size-4" /> Telegram
           </p>
           <p className="text-xs text-muted-foreground mb-3">
             Direct messages from the bot to your personal chat.
@@ -163,7 +163,7 @@ export default function MyNotifications() {
             />
             <span className="flex-1 min-w-0">
               <span className="text-sm inline-flex items-center gap-1.5">
-                {prefs.alerts_on ? <Bell size={14} /> : <BellOff size={14} />}
+                {prefs.alerts_on ? <Bell className="size-3.5" /> : <BellOff className="size-3.5" />}
                 Personal alerts enabled
               </span>
               <span className="block text-xs text-muted-foreground mt-0.5">
@@ -181,7 +181,7 @@ export default function MyNotifications() {
             />
             <span className="flex-1 min-w-0">
               <span className="text-sm inline-flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-ok" />
+                <CheckCircle2 className="text-ok size-3.5" />
                 Resolved-alert receipts
               </span>
               <span className="block text-xs text-muted-foreground mt-0.5">

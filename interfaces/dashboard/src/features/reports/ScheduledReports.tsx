@@ -71,14 +71,14 @@ function ScheduleRow({
           className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded min-h-tap"
           title="Edit"
         >
-          <Pencil size={16} />
+          <Pencil className="size-4" />
         </button>
         <button
           onClick={onDelete}
           className="p-2 text-destructive hover:text-destructive/80 transition-colors rounded min-h-tap"
           title="Stop"
         >
-          <Trash2 size={16} />
+          <Trash2 className="size-4" />
         </button>
       </div>
     </div>
@@ -159,7 +159,7 @@ function ScheduleEditor({
           {initial.reportTypeLocked ? 'Edit schedule' : 'New schedule'}
         </h3>
         <button onClick={onCancel} className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
-          <X size={16} />
+          <X className="size-4" />
         </button>
       </div>
 
@@ -238,7 +238,7 @@ function ScheduleEditor({
                 : 'bg-muted border-border text-muted-foreground hover:text-foreground'
             } ${!telegramEligible ? 'opacity-40 cursor-not-allowed' : ''}`}
           >
-            <MessageSquare size={16} />
+            <MessageSquare className="size-4" />
             Telegram
           </button>
           <button
@@ -251,7 +251,7 @@ function ScheduleEditor({
                 : 'bg-muted border-border text-muted-foreground hover:text-foreground'
             } ${!emailEligible ? 'opacity-40 cursor-not-allowed' : ''}`}
           >
-            <Mail size={16} />
+            <Mail className="size-4" />
             Email
           </button>
         </div>
@@ -435,7 +435,7 @@ export default function ScheduledReports() {
           onClick={openAdd}
           className="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-medium text-sm transition-colors border border-primary/30 flex items-center justify-center gap-2 min-h-tap"
         >
-          <Plus size={16} />
+          <Plus className="size-4" />
           Add schedule
         </button>
       )}

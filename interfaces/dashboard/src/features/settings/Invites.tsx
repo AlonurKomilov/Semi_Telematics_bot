@@ -31,6 +31,7 @@ import { Tip } from '../../components/tooltip';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import { usePreference } from '../../preferences';
+import { cn } from '@/lib/utils';
 
 // Role choices for the create-invite form — the shared assignable-role
 // list (owner excluded; the server rank-check forbids inviting peers /
@@ -810,7 +811,7 @@ export function InvitesPanel() {
                 className="inline-flex items-center gap-1 text-2xs text-muted-foreground"
                 title={`Sent to ${inv.sent_to_email}${inv.email_send_count && inv.email_send_count > 1 ? ` (${inv.email_send_count} attempts)` : ''}${inv.email_bounce_reason ? ' — ' + inv.email_bounce_reason : ''}`}
               >
-                <Mail size={12} className={isBounced || isComplained ? toneText('danger') : undefined} />
+                <Mail className={cn(isBounced || isComplained ? toneText('danger') : undefined, 'size-3')} />
                 <span className="truncate max-w-[160px]">{inv.sent_to_email}</span>
                 {inv.email_send_count != null && inv.email_send_count > 1 && (
                   <span className="opacity-60">×{inv.email_send_count}</span>
@@ -831,8 +832,8 @@ export function InvitesPanel() {
               <ActionMenu
                 align="start"
                 items={[
-                  { key: 'telegram', label: t('actions.copy_telegram', { defaultValue: 'Copy Telegram link' }), icon: <Send size={14} className="text-muted-foreground" />, onSelect: () => copyLink(code, 'telegram') },
-                  { key: 'url', label: t('actions.copy_url', { defaultValue: 'Copy URL' }), icon: <LinkIcon size={14} className="text-muted-foreground" />, onSelect: () => copyLink(code, 'url') },
+                  { key: 'telegram', label: t('actions.copy_telegram', { defaultValue: 'Copy Telegram link' }), icon: <Send className="text-muted-foreground size-3.5" />, onSelect: () => copyLink(code, 'telegram') },
+                  { key: 'url', label: t('actions.copy_url', { defaultValue: 'Copy URL' }), icon: <LinkIcon className="text-muted-foreground size-3.5" />, onSelect: () => copyLink(code, 'url') },
                 ]}
               >
                 <button
@@ -842,13 +843,13 @@ export function InvitesPanel() {
                   } py-1 -my-1 min-h-tap`}
                   title={t('actions.copy_invite_link', { defaultValue: 'Copy invite link' })}
                 >
-                  {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
+                  {isJustCopied ? <Check className="size-3" /> : <Copy className="size-3" />}
                   <span className="ml-1 py-0.5 -my-0.5 min-h-tap">
                     {isJustCopied
                       ? t('actions.copied', { defaultValue: 'Copied' })
                       : t('actions.copy', { defaultValue: 'Copy' })}
                   </span>
-                  <ChevronDown size={12} className="ml-0.5 opacity-60" aria-hidden="true" />
+                  <ChevronDown className="ml-0.5 opacity-60 size-3" aria-hidden="true" />
                 </button>
               </ActionMenu>
             )}
@@ -861,8 +862,8 @@ export function InvitesPanel() {
                 title={t('actions.resend_email', { defaultValue: 'Resend the invite email to the same recipient' })}
               >
                 {isThisRowResending
-                  ? <Loader2 size={12} className="animate-spin" />
-                  : <Send size={12} />}
+                  ? <Loader2 className="animate-spin size-3" />
+                  : <Send className="size-3" />}
                 <span>
                   {isThisRowResending
                     ? t('actions.resending', { defaultValue: 'Resending…' })
@@ -884,7 +885,7 @@ export function InvitesPanel() {
                       defaultValue: 'Recipient reported this as spam — revoke the invite. Sending again would damage your sender reputation.',
                     })}
               >
-                <Trash2 size={12} />
+                <Trash2 className="size-3" />
                 <span>
                   {isThisRowRevoking
                     ? t('actions.revoking', { defaultValue: 'Revoking…' })
@@ -901,8 +902,8 @@ export function InvitesPanel() {
                 title={t('actions.extend_invite_24h', { defaultValue: 'Extend this invite by 24 hours (same code)' })}
               >
                 {isThisRowExtending
-                  ? <Loader2 size={12} className="animate-spin" />
-                  : <TimerReset size={12} />}
+                  ? <Loader2 className="animate-spin size-3" />
+                  : <TimerReset className="size-3" />}
                 <span>
                   {isThisRowExtending
                     ? t('actions.extending', { defaultValue: 'Extending…' })
@@ -918,7 +919,7 @@ export function InvitesPanel() {
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-wait transition-colors py-1 -my-1 min-h-tap"
                 title={t('actions.revoke', { defaultValue: 'Revoke invite' })}
               >
-                <Trash2 size={12} />
+                <Trash2 className="size-3" />
                 <span>
                   {isThisRowRevoking
                     ? t('actions.revoking', { defaultValue: 'Revoking…' })
@@ -945,7 +946,7 @@ export function InvitesPanel() {
           onClick={() => { setRecipientEmail(''); setShowForm(true); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
         >
-          <Plus size={14} />
+          <Plus className="size-3.5" />
           New invite
         </button>
       </div>
@@ -967,7 +968,7 @@ export function InvitesPanel() {
               onClick={() => { setRecipientEmail(''); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
             >
-              <Plus size={14} />
+              <Plus className="size-3.5" />
               New invite
             </button>
           }
@@ -1060,7 +1061,7 @@ export function InvitesPanel() {
                       } min-h-tap`}
                     >
                       <span className="inline-flex items-center justify-center gap-1.5">
-                        <Icon size={12} />{label}
+                        <Icon className="size-3" />{label}
                       </span>
                     </button>
                   ))}
@@ -1170,7 +1171,7 @@ export function InvitesPanel() {
                 disabled={creating}
                 aria-busy={creating}
               >
-                {creating && <Loader2 size={14} className="animate-spin" />}
+                {creating && <Loader2 className="animate-spin" />}
                 {creating
                   ? t('actions.creating', { defaultValue: 'Creating…' })
                   : channel === 'email'

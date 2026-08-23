@@ -221,7 +221,7 @@ export default function SavedTabDialog({
                       )}
                     >
                       <span className="truncate">{summarize(col, f.value, facet)}</span>
-                      <SlidersHorizontal size={14} className="text-muted-foreground shrink-0" />
+                      <SlidersHorizontal className="text-muted-foreground shrink-0 size-3.5" />
                     </button>
                     <button
                       type="button"
@@ -229,7 +229,7 @@ export default function SavedTabDialog({
                       aria-label={`Remove ${col.label} filter`}
                       className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
                     >
-                      <X size={14} />
+                      <X className="size-3.5" />
                     </button>
                     {/* value editor — the same popover the column header uses */}
                     {col.filterMode === 'range' ? (
@@ -280,7 +280,7 @@ export default function SavedTabDialog({
               <div className="mt-2">
                 <Select value="" onValueChange={addRow}>
                   <SelectTrigger className="h-8 w-auto gap-2 text-xs text-primary border-dashed">
-                    <Plus size={14} />
+                    <Plus className="size-3.5" />
                     <SelectValue placeholder="Add filter" />
                   </SelectTrigger>
                   <SelectContent>
@@ -373,7 +373,7 @@ export default function SavedTabDialog({
                 </button>
               </div>
               <div className="relative mb-1.5">
-                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5" />
                 <Input
                   value={iconQuery}
                   onChange={(e) => setIconQuery(e.target.value)}
@@ -407,7 +407,7 @@ export default function SavedTabDialog({
                             : 'border-border text-muted-foreground hover:border-ring',
                         )}
                       >
-                        <Icon size={14} />
+                        <Icon className="size-3.5" />
                       </button>
                     </Tip>
                   );

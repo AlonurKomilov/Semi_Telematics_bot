@@ -55,7 +55,7 @@ export default function UtilizationSummary() {
   return (
     <div className="mb-4 bg-card border border-border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Gauge size={16} className="text-muted-foreground" />
+        <Gauge className="text-muted-foreground size-4" />
         <h2 className="text-base font-semibold">Utilization — last 30 days</h2>
         <span className="ml-auto text-xs text-muted-foreground">
           {rows.length} {rows.length === 1 ? 'vehicle' : 'vehicles'} reporting

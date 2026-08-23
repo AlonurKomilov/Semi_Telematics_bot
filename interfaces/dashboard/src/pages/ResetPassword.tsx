@@ -80,7 +80,7 @@ export default function ResetPassword() {
         {done ? (
           <div className="space-y-4 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-ok-bg flex items-center justify-center">
-              <CheckCircle2 className="text-ok" size={20} />
+              <CheckCircle2 className="text-ok size-5" />
             </div>
             <h2 className="text-lg font-semibold">{t('auth.reset_success_title')}</h2>
             <p className="text-sm text-muted-foreground">
@@ -131,7 +131,7 @@ export default function ResetPassword() {
             )}
             {error && (
               <p className="text-xs text-danger inline-flex items-center gap-1">
-                <AlertTriangle size={12} />
+                <AlertTriangle className="size-3" />
                 {error}
               </p>
             )}

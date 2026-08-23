@@ -231,14 +231,14 @@ export function MediaGallery({ inspection }: Props) {
             aria-label="Close"
             className="absolute top-4 right-4 text-white hover:text-white/80 p-2"
           >
-            <X size={24} />
+            <X className="size-6" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); downloadMedia(inspection.id, active); }}
             aria-label="Download"
             className="absolute top-4 right-16 text-white hover:text-white/80 p-2"
           >
-            <Download size={20} />
+            <Download className="size-5" />
           </button>
           <div className="max-w-[95vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
             {active.media_type === 'photo' ? (

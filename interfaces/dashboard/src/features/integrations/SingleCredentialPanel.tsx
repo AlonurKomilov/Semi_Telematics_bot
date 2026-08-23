@@ -41,7 +41,7 @@ export default function SingleCredentialPanel({
       <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
         <span className="text-muted-foreground">{what}</span>
         <Button type="button" variant="ghost" size="sm" onClick={onUpdate}>
-          <Pencil size={14} />
+          <Pencil />
           Update credentials
         </Button>
       </div>

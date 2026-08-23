@@ -26,13 +26,13 @@ export function vehicleRowMenu(
     {
       key: 'open',
       label: 'Open',
-      icon: <ArrowUpRight size={14} className="text-muted-foreground" />,
+      icon: <ArrowUpRight className="text-muted-foreground size-3.5" />,
       onSelect: () => deps.navigate(deps.path),
     },
     {
       key: 'open-new',
       label: 'Open in new tab',
-      icon: <ExternalLink size={14} className="text-muted-foreground" />,
+      icon: <ExternalLink className="text-muted-foreground size-3.5" />,
       onSelect: () => window.open(deps.path, '_blank', 'noopener'),
     },
   ];
@@ -40,7 +40,7 @@ export function vehicleRowMenu(
     actions.push({
       key: 'edit',
       label: 'Edit vehicle',
-      icon: <Pencil size={14} className="text-muted-foreground" />,
+      icon: <Pencil className="text-muted-foreground size-3.5" />,
       separatorBefore: true,
       onSelect: () => deps.openEdit(vehicle),
     });

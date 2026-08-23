@@ -35,7 +35,7 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
         to="/vehicles"
         className="inline-flex items-center gap-1 text-primary hover:underline text-sm mb-3.5 py-0.5 min-h-tap"
       >
-        <ChevronLeft size={14} />
+        <ChevronLeft className="size-3.5" />
         Back to vehicles
       </Link>
       <div className="flex items-baseline gap-3">

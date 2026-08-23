@@ -161,7 +161,7 @@ export default function AssistantPanel() {
                 Expand + Close, divided from the messages by a border. */}
             <div className="flex h-11 items-center justify-between px-3 border-b border-border shrink-0">
               <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Bot size={16} className="text-primary" aria-hidden />
+                <Bot className="text-primary size-4" aria-hidden />
                 Assistant
               </span>
               <div className="flex items-center gap-1">
@@ -176,7 +176,7 @@ export default function AssistantPanel() {
                     aria-label={panelExpanded ? 'Collapse assistant to side panel' : 'Expand assistant'}
                     aria-pressed={panelExpanded}
                   >
-                    {panelExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                    {panelExpanded ? <Minimize2 /> : <Maximize2 />}
                   </Button>
                 </Tip>
                 <Tip label={`Close (${shortcut('J')})`}>
@@ -187,7 +187,7 @@ export default function AssistantPanel() {
                     className="shrink-0 text-muted-foreground"
                     aria-label="Close assistant"
                   >
-                    <X size={16} />
+                    <X />
                   </Button>
                 </Tip>
               </div>
@@ -199,7 +199,7 @@ export default function AssistantPanel() {
               {open && (
                 <Suspense fallback={
                   <div className="flex h-full items-center justify-center">
-                    <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                    <Loader2 className="animate-spin text-muted-foreground size-5" />
                   </div>
                 }>
                   <Chat variant="panel" />

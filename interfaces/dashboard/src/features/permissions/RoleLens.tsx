@@ -104,7 +104,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               : `bg-transparent text-transparent hover:border-muted-foreground ${soft ? 'border-border/60' : 'border-border'}`
           }`}
         >
-          {lock ? <Lock size={12} strokeWidth={2.5} /> : <CheckMark />}
+          {lock ? <Lock className="size-3" strokeWidth={2.5} /> : <CheckMark />}
         </span>
       </button>
     );
@@ -143,7 +143,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     f, 'manage — the same flag as view',
     (
       <Tip label="One flag covers View and Manage for this feature — toggling either changes both.">
-        <span className="inline-flex text-muted-foreground"><Link2 size={12} aria-hidden /></span>
+        <span className="inline-flex text-muted-foreground"><Link2 className="size-3" aria-hidden /></span>
       </Tip>
     ),
     true,
@@ -172,7 +172,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     const cap = capRow(via);
     return verbCell(cap, 'config', (
       <Tip label={`Shared control — the same flag as “${cap.label}”${note ? ` (here: ${note})` : ''}. Changing it here changes it everywhere that flag appears.`}>
-        <span className="inline-flex text-muted-foreground"><Link2 size={12} aria-hidden /></span>
+        <span className="inline-flex text-muted-foreground"><Link2 className="size-3" aria-hidden /></span>
       </Tip>
     ));
   };
@@ -273,7 +273,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             aria-label={`Preview the dashboard as ${api.roleLabel(role)}`}
             className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-md border border-border text-foreground hover:bg-muted min-h-tap"
           >
-            <Eye size={14} aria-hidden /> Preview dashboard
+            <Eye className="size-3.5" aria-hidden /> Preview dashboard
           </button>
         )}
       </div>
@@ -475,7 +475,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           <span className="font-medium">–</span> means this feature has no flag of that verb —
           nothing to grant, not a denial.
           Where one flag covers both verbs, the Manage tick is drawn softer with a link
-          mark (<Link2 size={12} className="inline align-[-2px]" aria-hidden />) — either tick toggles both.
+          mark (<Link2 className="inline align-[-2px] size-3" aria-hidden />) — either tick toggles both.
           * scoped feature — whose data is set per-user in Team Management.
         </p>
       </div>

@@ -61,9 +61,16 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **`font-mono` = machine identifiers only** (IDs, IPs, hashes, tokens,
   code). Never on human-readable data (company codes, names, statuses) — and
   style the same column (Company, status) identically across pages.
-- **Icons = lucide-react at a standard size.** `12 · 14 · 16 · 18 · 20 · 24`
-  (via `size={16}` or `size-4`), coloured by a token. No off-step sizes
-  (`size={11}`/`{13}`/`{22}`), no second icon set, no emoji as UI icons.
+- **Icons = lucide-react, sized by CLASS not by the prop.**
+  `className="size-4"`, never `size={16}` — the prop writes an `<svg>`
+  ATTRIBUTE, which no Size multiplier can reach, so that icon alone
+  stays 16px while the UI around it grows. Ladder: `size-3` · `size-3.5`
+  · `size-4` · `size-4.5` · `size-5` · `size-6` (12·14·16·18·20·24),
+  coloured by a token. **Inside a `<Button>` write no size at all** — the
+  variant owns it. A wrapper taking a numeric size from its own callers
+  translates via `iconSizeClass()` ([`lib/iconSize.ts`](src/lib/iconSize.ts)).
+  No off-step sizes, no second icon set, no emoji as UI icons.
+  Full table + why: [design.md §7](design.md).
 - **Sizes & layers = scales too (design.md §7).** Controls on
   `h-7 · h-8 · h-9` (`size-7/8/9` icon-buttons); menus `w-44/56/64`, list
   panels `w-80`; new dialogs `max-w-lg/xl/2xl`. Z-index ladder: `0–20`

@@ -269,7 +269,7 @@ export default function AddTaskDialog({
           {templates.length > 0 && (
             <label className="col-span-full block">
               <span className="block text-xs text-muted-foreground mb-1 inline-flex items-center gap-1">
-                <ClipboardList size={12} />
+                <ClipboardList className="size-3" />
                 Apply template (optional)
               </span>
               {/* Value stays pinned to '' so the picker always shows the

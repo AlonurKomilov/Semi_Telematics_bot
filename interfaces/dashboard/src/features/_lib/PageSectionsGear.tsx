@@ -67,7 +67,7 @@ export function PageSectionsGear<P extends object>({
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
-          <Settings2 size={16} aria-hidden />
+          <Settings2 className="size-4" aria-hidden />
         </PopoverPrimitive.Trigger>
       </Tip>
       <PopoverPrimitive.Portal>
@@ -83,7 +83,7 @@ export function PageSectionsGear<P extends object>({
                   onClick={() => resetValue()}
                   className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
                 >
-                  <RotateCcw size={12} aria-hidden /> Reset to default
+                  <RotateCcw className="size-3" aria-hidden /> Reset to default
                 </button>
               )}
             </div>
@@ -114,8 +114,8 @@ export function PageSectionsGear<P extends object>({
                       }`}
                     >
                       {item.hidden
-                        ? <EyeOff size={14} aria-hidden className="shrink-0" />
-                        : <Eye size={14} aria-hidden className="shrink-0 text-primary" />}
+                        ? <EyeOff aria-hidden className="shrink-0 size-3.5" />
+                        : <Eye aria-hidden className="shrink-0 text-primary size-3.5" />}
                       <span className="truncate">{item.label}</span>
                     </button>
                   )}
@@ -131,7 +131,7 @@ export function PageSectionsGear<P extends object>({
                           moveSection(gearItems(base, registry, prev), item.id, -1))}
                         className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       >
-                        <ChevronUp size={14} aria-hidden />
+                        <ChevronUp className="size-3.5" aria-hidden />
                       </button>
                       <button
                         type="button"
@@ -141,7 +141,7 @@ export function PageSectionsGear<P extends object>({
                           moveSection(gearItems(base, registry, prev), item.id, 1))}
                         className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       >
-                        <ChevronDown size={14} aria-hidden />
+                        <ChevronDown className="size-3.5" aria-hidden />
                       </button>
                     </span>
                   )}

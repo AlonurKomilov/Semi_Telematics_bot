@@ -189,7 +189,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 title={t('inspections.download_report')}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
               >
-                <FileDown size={14} />
+                <FileDown className="size-3.5" />
                 {downloading ? t('common.loading') : t('inspections.download_report')}
               </button>
             )}
@@ -198,7 +198,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
               aria-label="Close"
               className="text-muted-foreground hover:text-foreground p-1 min-h-tap"
             >
-              <X size={16} />
+              <X className="size-4" />
             </button>
           </div>
         </div>
@@ -253,7 +253,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 phone GPS fallback. */}
             {ins.location_lat != null && ins.location_lon != null && (
               <div className="px-5 py-2.5 border-b border-border flex items-center gap-2 text-xs">
-                <MapPin size={14} className="text-muted-foreground flex-shrink-0" />
+                <MapPin className="text-muted-foreground flex-shrink-0 size-3.5" />
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${ins.location_lat},${ins.location_lon}`}
                   target="_blank"
@@ -444,7 +444,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                       disabled={resending}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
                     >
-                      <BellRing size={14} />
+                      <BellRing className="size-3.5" />
                       {resending ? t('inspections.remind_sending') : t('inspections.remind_btn')}
                     </button>
                   )}

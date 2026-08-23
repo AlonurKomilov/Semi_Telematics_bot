@@ -98,7 +98,7 @@ export default function ManageColumnsMenu({
         >
           <PopoverPrimitive.Popup className="w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-              <Columns3 size={14} className="text-muted-foreground" />
+              <Columns3 className="text-muted-foreground size-3.5" />
               <span className="text-xs font-medium text-foreground">Columns</span>
               <span className="ml-auto text-2xs text-muted-foreground tabular-nums">
                 {visibleCount} of {options.length}
@@ -106,7 +106,7 @@ export default function ManageColumnsMenu({
             </div>
             {showSearch && (
               <div className="px-2 py-1.5 border-b border-border flex items-center gap-1.5">
-                <Search size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+                <Search className="text-muted-foreground shrink-0 size-3" aria-hidden="true" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -167,7 +167,7 @@ export default function ManageColumnsMenu({
                           : 'border-border',
                       )}
                     >
-                      {visible && <Check size={12} className="text-primary-foreground" aria-hidden="true" />}
+                      {visible && <Check className="text-primary-foreground size-3" aria-hidden="true" />}
                     </span>
                     <span className="flex-1 truncate text-foreground">{opt.label}</span>
                   </button>
@@ -182,7 +182,7 @@ export default function ManageColumnsMenu({
                 onClick={onReset}
                 className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1.5 min-h-tap"
               >
-                <RotateCcw size={12} aria-hidden="true" />
+                <RotateCcw className="size-3" aria-hidden="true" />
                 Reset to defaults
               </button>
             </div>

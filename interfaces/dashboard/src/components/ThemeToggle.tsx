@@ -120,7 +120,7 @@ export function ThemeToggle() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <Palette size={16} />
+        <Palette />
       </Button>
 
       {open && (
@@ -171,7 +171,7 @@ export function ThemeToggle() {
                     aria-label={t('theme.size_reset', 'Reset')}
                     className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   >
-                    <RotateCcw size={12} />
+                    <RotateCcw className="size-3" />
                   </button>
                 </Tip>
               </div>
@@ -216,7 +216,7 @@ export function ThemeToggle() {
             onClick={() => setOpen(false)}
             className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground"
           >
-            <SlidersHorizontal size={12} />
+            <SlidersHorizontal className="size-3" />
             {t('theme.size_by_region', 'Size by region…')}
           </Link>
 

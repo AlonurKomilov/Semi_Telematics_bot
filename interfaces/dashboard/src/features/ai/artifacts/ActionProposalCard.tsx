@@ -163,7 +163,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
         <span className="text-2xs font-medium text-foreground">{a.summary}</span>
         {a.risk && a.risk !== 'low' && (
           <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-3xs font-medium ${toneClasses('warn')}`}>
-            <ShieldAlert size={12} aria-hidden /> {a.risk}
+            <ShieldAlert className="size-3" aria-hidden /> {a.risk}
           </span>
         )}
       </div>
@@ -180,26 +180,26 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
             onClick={approve}
             className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-2xs font-medium text-primary-foreground hover:brightness-110 transition min-h-tap"
           >
-            <Check size={12} aria-hidden /> Approve
+            <Check className="size-3" aria-hidden /> Approve
           </button>
           <button
             onClick={reject}
             className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-2xs text-muted-foreground hover:text-foreground transition-colors min-h-tap"
           >
-            <X size={12} aria-hidden /> Reject
+            <X className="size-3" aria-hidden /> Reject
           </button>
           {error && <span className="text-3xs text-destructive">{error}</span>}
         </div>
       )}
       {phase === 'working' && (
         <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-          <Loader2 size={12} className="animate-spin" aria-hidden /> Working…
+          <Loader2 className="animate-spin size-3" aria-hidden /> Working…
         </div>
       )}
       {phase === 'done' && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-2xs text-ok">
-            <Check size={12} aria-hidden /> {msg || 'Done'}
+            <Check className="size-3" aria-hidden /> {msg || 'Done'}
           </span>
           {result?.target_type === 'work_order' && result?.target_id ? (
             <Link
@@ -218,7 +218,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
-              <Undo2 size={12} aria-hidden />
+              <Undo2 className="size-3" aria-hidden />
               {undoConfirm ? 'Undo this action?' : 'Undo'}
             </button>
           )}
@@ -227,17 +227,17 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       )}
       {phase === 'done' && fileNote && (
         <p className="mt-1 inline-flex items-center gap-1 text-3xs text-muted-foreground">
-          <Paperclip size={12} aria-hidden /> {fileNote}
+          <Paperclip className="size-3" aria-hidden /> {fileNote}
         </p>
       )}
       {phase === 'undoing' && (
         <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-          <Loader2 size={12} className="animate-spin" aria-hidden /> Undoing…
+          <Loader2 className="animate-spin size-3" aria-hidden /> Undoing…
         </div>
       )}
       {phase === 'undone' && (
         <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-          <Undo2 size={12} aria-hidden />
+          <Undo2 className="size-3" aria-hidden />
           {(undoResult?.message as string) || 'Undone — the changes were reversed.'}
         </div>
       )}

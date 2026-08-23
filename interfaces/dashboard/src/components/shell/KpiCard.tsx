@@ -92,7 +92,7 @@ export default function KpiCard({
           <span
             className={`inline-flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${t.iconBg} ${t.iconFg}`}
           >
-            <Icon size={18} />
+            <Icon className="size-4.5" />
           </span>
         )}
         {trailing}

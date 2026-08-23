@@ -29,6 +29,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { Vendor, WorkOrder, AnyColumn, DirectoryEntry, MarketRollupRow } from '../../types';
+import { cn } from '@/lib/utils';
 
 const PAYMENT_TONE: Record<string, Tone> = {
   unpaid: 'warn', paid: 'ok', partial: 'warn', void: 'neutral',
@@ -258,7 +259,7 @@ export default function VendorProfile() {
               onClick={() => navigate('/vendors')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
             >
-              <ArrowLeft size={14} />
+              <ArrowLeft className="size-3.5" />
               All vendors
             </button>
             <button
@@ -266,7 +267,7 @@ export default function VendorProfile() {
               onClick={() => setHistoryOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
             >
-              <HistoryIcon size={14} />
+              <HistoryIcon className="size-3.5" />
               History
             </button>
             {canWrite && vendor && (
@@ -275,7 +276,7 @@ export default function VendorProfile() {
                 onClick={openEdit}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition min-h-tap"
               >
-                <Pencil size={14} />
+                <Pencil className="size-3.5" />
                 Edit
               </button>
             )}
@@ -290,7 +291,7 @@ export default function VendorProfile() {
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
                 >
-                  <Merge size={14} />
+                  <Merge className="size-3.5" />
                   Merge into…
                 </button>
               </Tip>
@@ -334,7 +335,7 @@ export default function VendorProfile() {
               shop's name/contact ever travel.  The sole manual control
               here is Unlink — the wrong-auto-match escape hatch. */}
           <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
-            <Globe size={16} className="text-muted-foreground shrink-0" />
+            <Globe className="text-muted-foreground shrink-0 size-4" />
             {data?.directory ? (
               <>
                 <div className="min-w-0">
@@ -342,7 +343,7 @@ export default function VendorProfile() {
                     In global directory as <span className="font-medium">{data.directory.name}</span>
                     {(data.directory.rating_count ?? 0) > 0 && (
                       <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Star size={12} className="text-warn" />
+                        <Star className="text-warn size-3" />
                         <span className="tabular-nums">{data.directory.rating_avg}</span>
                         <span>({data.directory.rating_count})</span>
                       </span>
@@ -364,12 +365,12 @@ export default function VendorProfile() {
                       setRateOpen(true);
                     }} disabled={dirBusy}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition min-h-tap">
-                      <Star size={14} /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
+                      <Star className="size-3.5" /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
                     </button>
                     </Tip>
                     <button type="button" onClick={unlink} disabled={dirBusy}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition min-h-tap">
-                      <Link2Off size={14} /> Unlink
+                      <Link2Off className="size-3.5" /> Unlink
                     </button>
                   </span>
                 )}
@@ -405,7 +406,7 @@ export default function VendorProfile() {
           {data?.directory && market && market.reason !== 'disabled' && (
             <div className="bg-card border border-border rounded-lg p-3 mb-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
-                <TrendingUp size={14} /> Market price ranges
+                <TrendingUp className="size-3.5" /> Market price ranges
               </p>
               {market.available ? (
                 market.rows.length === 0 ? (
@@ -546,8 +547,8 @@ export default function VendorProfile() {
                 onClick={() => setRateStars(n)}
                 className="p-1"
                 aria-label={`${n} star${n > 1 ? 's' : ''}`}>
-                <Star size={20}
-                  className={n <= rateStars ? 'text-warn fill-warn' : 'text-muted-foreground'} />
+                <Star
+                  className={cn(n <= rateStars ? 'text-warn fill-warn' : 'text-muted-foreground', 'size-5')} />
               </button>
             ))}
           </div>

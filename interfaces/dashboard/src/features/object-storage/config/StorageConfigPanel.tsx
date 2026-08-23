@@ -62,7 +62,7 @@ export default function StorageConfigPanel() {
   if (isLoading || !data) {
     return (
       <div className="flex justify-center py-6">
-        <Loader2 size={18} className="animate-spin text-muted-foreground" />
+        <Loader2 className="animate-spin text-muted-foreground size-4.5" />
       </div>
     );
   }
@@ -80,7 +80,7 @@ export default function StorageConfigPanel() {
       </p>
       <div className="grid grid-cols-1 gap-2.5">
         <BackendOption
-          icon={<HardDrive size={16} />}
+          icon={<HardDrive className="size-4" />}
           title={t('storage.settings.backend_disk_title')}
           description={t('storage.settings.backend_disk_desc')}
           active={activeBackend === 'disk'}
@@ -90,7 +90,7 @@ export default function StorageConfigPanel() {
           onSwitch={() => handleSwitch('disk')}
         />
         <BackendOption
-          icon={<Cloud size={16} />}
+          icon={<Cloud className="size-4" />}
           title={t('storage.settings.backend_gdrive_title')}
           description={t('storage.settings.backend_gdrive_desc')}
           active={activeBackend === 'gdrive'}
@@ -100,7 +100,7 @@ export default function StorageConfigPanel() {
           onSwitch={() => handleSwitch('gdrive')}
         />
         <BackendOption
-          icon={<RefreshCcw size={16} />}
+          icon={<RefreshCcw className="size-4" />}
           title={t('storage.settings.backend_hybrid_title')}
           description={t('storage.settings.backend_hybrid_desc')}
           active={activeBackend === 'hybrid'}

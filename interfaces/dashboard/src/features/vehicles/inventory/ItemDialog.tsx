@@ -220,7 +220,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
         <DialogHeader>
           <DialogTitle>
             <span className="inline-flex items-center gap-2 min-w-0">
-              <Icon size={18} className="text-muted-foreground shrink-0" />
+              <Icon className="text-muted-foreground shrink-0 size-4.5" />
               <span className="truncate">{item.label}</span>
               <span className={`px-2 py-0.5 rounded-md text-xs border shrink-0 ${statusClasses(item.status)}`}>
                 {STATUS_LABELS[item.status] ?? item.status}
@@ -280,7 +280,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                     itemId: item.id, toVehicleName: transferTo.trim(), note,
                   }), true)}
                 >
-                  <ArrowRightLeft size={14} /> Transfer
+                  <ArrowRightLeft /> Transfer
                 </Button>
               </div>
 
@@ -305,11 +305,11 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
               <div className="flex items-center justify-between gap-2 pt-1">
                 <Button variant="outline" size="sm" disabled={busy}
                   onClick={() => run(() => verify.mutateAsync(item.id), true)}>
-                  <Check size={14} /> Verify present
+                  <Check /> Verify present
                 </Button>
                 <Button variant="destructive" size="sm" disabled={busy}
                   onClick={() => run(() => remove.mutateAsync({ itemId: item.id, note }), true)}>
-                  <Trash2 size={14} /> Remove
+                  <Trash2 /> Remove
                 </Button>
               </div>
               {err && <p className={`text-sm rounded-md px-3 py-2 ${toneClasses('danger')}`}>{err}</p>}

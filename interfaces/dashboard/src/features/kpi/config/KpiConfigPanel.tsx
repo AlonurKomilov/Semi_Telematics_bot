@@ -127,7 +127,7 @@ export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
       </p>
       {loading ? (
         <div className="flex justify-center py-6">
-          <Loader2 size={18} className="animate-spin text-muted-foreground" />
+          <Loader2 className="animate-spin text-muted-foreground size-4.5" />
         </div>
       ) : (
         <ul className="divide-y divide-border border-t border-border">
@@ -170,7 +170,7 @@ export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
           </span>
         )}
         <Button variant={dirty ? 'default' : 'outline'} onClick={save} disabled={saving || loading || !dirty}>
-          {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+          {saving && <Loader2 className="animate-spin mr-1.5" />}
           Save thresholds
         </Button>
       </div>

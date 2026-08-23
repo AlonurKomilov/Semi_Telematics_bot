@@ -41,7 +41,7 @@ export default function BannerSettingsCard() {
   return (
     <section className="bg-card border border-border rounded-xl p-4">
       <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
-        <PanelTopClose size={16} /> Notification position
+        <PanelTopClose className="size-4" /> Notification position
       </p>
       <p className="text-xs text-muted-foreground mb-3">
         Where in-app notifications appear on this device.

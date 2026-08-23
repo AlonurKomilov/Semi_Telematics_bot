@@ -322,7 +322,7 @@ export default function ForumRoutingSection() {
             {state.connected && (
               <div className="mt-1 space-y-0.5">
                 <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                  <Check size={12} className="text-ok" />
+                  <Check className="text-ok size-3" />
                   {t('forum_routing.mode_group_connected', { title: state.chat_title })}
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -373,8 +373,8 @@ export default function ForumRoutingSection() {
                 className="inline-flex items-center gap-1 text-xs text-primary hover:underline py-1 -my-1 min-h-tap"
               >
                 {showMapping
-                  ? <ChevronDown size={14} />
-                  : <ChevronRight size={14} />}
+                  ? <ChevronDown className="size-3.5" />
+                  : <ChevronRight className="size-3.5" />}
                 {showMapping
                   ? t('forum_routing.btn_hide_mapping')
                   : t('forum_routing.btn_show_mapping')}
@@ -432,7 +432,7 @@ export default function ForumRoutingSection() {
                         <Fragment key={r.alert_type}>
                         <tr className="border-b border-border/40 last:border-0">
                           <td className="px-3 py-2 align-top w-10">
-                            <TypeIcon size={16} className="text-muted-foreground" />
+                            <TypeIcon className="text-muted-foreground size-4" />
                           </td>
                           <td className="px-3 py-2 align-top">
                             <p className="font-medium">{r.name}</p>
@@ -524,7 +524,7 @@ export default function ForumRoutingSection() {
                                           : 'border-border text-muted-foreground hover:border-ring'
                                       } min-h-tap`}
                                     >
-                                      {active && <Check size={12} />}
+                                      {active && <Check className="size-3" />}
                                       {SUBTYPE_LABELS[s] || s}
                                     </button>
                                   );

@@ -383,7 +383,7 @@ export default function LoadManageDialog({
                       aria-label="Remove item"
                       title="Remove item"
                     >
-                      <Trash2 size={12} />
+                      <Trash2 />
                     </Button>
                   </li>
                 ))}
@@ -419,7 +419,7 @@ export default function LoadManageDialog({
                 disabled={itemBusy || !Number(itemAmount)}
                 onClick={() => { void addItem(); }}
               >
-                <Plus size={14} className="mr-1" />
+                <Plus className="mr-1" />
                 Add
               </Button>
             </div>
@@ -500,8 +500,8 @@ export default function LoadManageDialog({
               className="mr-auto"
             >
               {removing
-                ? <Loader2 size={16} className="animate-spin" />
-                : <Trash2 size={16} />}
+                ? <Loader2 className="animate-spin" />
+                : <Trash2 />}
               <span className="ml-1.5">Remove</span>
             </Button>
           ) : <span className="mr-auto" />}
@@ -509,7 +509,7 @@ export default function LoadManageDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
-            {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {saving && <Loader2 className="animate-spin mr-1.5" />}
             {isEdit ? 'Save changes' : 'Add load'}
           </Button>
         </DialogFooter>

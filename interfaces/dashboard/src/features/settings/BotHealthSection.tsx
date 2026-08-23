@@ -153,8 +153,8 @@ export default function BotHealthSection({ hasBot }: { hasBot: boolean }) {
           className="inline-flex items-center gap-1.5 h-8 px-3 border border-border hover:border-ring rounded text-xs font-medium text-foreground transition disabled:opacity-50"
         >
           {checking
-            ? <Loader2 size={14} className="animate-spin" />
-            : <RefreshCw size={14} />}
+            ? <Loader2 className="animate-spin size-3.5" />
+            : <RefreshCw className="size-3.5" />}
           {checking ? t('bot_health.checking') : t('bot_health.check_now')}
         </button>
       </div>

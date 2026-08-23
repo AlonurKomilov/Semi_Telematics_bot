@@ -232,7 +232,7 @@ export default function Reports() {
           disabled={exporting}
           className="inline-flex items-center gap-1 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted disabled:opacity-50 transition"
         >
-          <Download size={12} />
+          <Download className="size-3" />
           PDF
         </button>
         <button
@@ -240,7 +240,7 @@ export default function Reports() {
           disabled={exporting}
           className="inline-flex items-center gap-1 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted disabled:opacity-50 transition"
         >
-          <Download size={12} />
+          <Download className="size-3" />
           CSV
         </button>
       </div>,
@@ -277,7 +277,7 @@ export default function Reports() {
               onClick={() => navigate('/ai/chat', { state: { initialMessage: 'Analyze the active vehicle fault codes and tell me which trucks need attention' } })}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary/15 hover:bg-primary/25 text-primary font-medium transition shrink-0 ml-3 min-h-tap"
             >
-              <Sparkles size={12} />
+              <Sparkles className="size-3" />
               Ask AI about faults
             </button>
           )}

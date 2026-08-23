@@ -154,7 +154,7 @@ export default function ObjectStorageFileTable() {
               disabled={bulkRetrying}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
             >
-              {bulkRetrying ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+              {bulkRetrying ? <Loader2 className="animate-spin size-3" /> : <RotateCcw className="size-3" />}
               {t('storage.files.retry_all_stuck', { count: stuckCount })}
             </button>
           )}
@@ -167,7 +167,7 @@ export default function ObjectStorageFileTable() {
       {/* Empty / loading / list */}
       {isLoading && !data ? (
         <div className="p-6 text-center text-sm text-muted-foreground inline-flex items-center gap-2 justify-center w-full">
-          <Loader2 size={14} className="animate-spin" />
+          <Loader2 className="animate-spin size-3.5" />
           {t('common.loading')}
         </div>
       ) : items.length === 0 ? (
@@ -240,8 +240,8 @@ export default function ObjectStorageFileTable() {
                       className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 min-h-tap"
                     >
                       {retrying.has(r.queue_id)
-                        ? <Loader2 size={12} className="animate-spin" />
-                        : <RefreshCw size={12} />}
+                        ? <Loader2 className="animate-spin size-3" />
+                        : <RefreshCw className="size-3" />}
                       {t('storage.files.retry')}
                     </button>
                   </span>
@@ -268,7 +268,7 @@ function StatusChip({ row }: { row: StorageFile }) {
       t('storage.files.status_stuck');
     return (
       <span className="inline-flex items-center gap-1 text-danger" title={row.last_error ?? undefined}>
-        <AlertTriangle size={12} />
+        <AlertTriangle className="size-3" />
         {label}
       </span>
     );
@@ -276,14 +276,14 @@ function StatusChip({ row }: { row: StorageFile }) {
   if ((row.attempts ?? 0) > 0) {
     return (
       <span className="inline-flex items-center gap-1 text-warn">
-        <Clock size={12} />
+        <Clock className="size-3" />
         {t('storage.files.status_retrying', { n: row.attempts + 1 })}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-muted-foreground">
-      <Clock size={12} />
+      <Clock className="size-3" />
       {t('storage.files.status_pending')}
     </span>
   );

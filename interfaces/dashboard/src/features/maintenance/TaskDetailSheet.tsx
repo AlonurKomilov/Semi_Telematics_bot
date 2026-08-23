@@ -497,10 +497,10 @@ export default function TaskDetailSheet({
                   className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-muted hover:bg-muted/80 border border-border rounded-md transition min-h-tap"
                   title="View service history"
                 >
-                  <History size={12} />
+                  <History className="size-3" />
                   History
                 </button>
-                <button onClick={() => onClose()} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+                <button onClick={() => onClose()} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X className="size-4" /></button>
               </div>
             </div>
             {/* Auto-renewal breadcrumb — shown at the top of the
@@ -536,7 +536,7 @@ export default function TaskDetailSheet({
             {task.snoozed_until
               && new Date(task.snoozed_until).getTime() > Date.now() && (
               <div className={`mb-4 px-3 py-2 rounded text-xs flex items-center gap-2 ${toneClasses('warn')}`}>
-                <BellOff size={14} className="shrink-0" />
+                <BellOff className="shrink-0 size-3.5" />
                 <span className="flex-1">
                   Snoozed until {formatDate(task.snoozed_until, { timeZone: tz })}
                 </span>
@@ -545,7 +545,7 @@ export default function TaskDetailSheet({
                   onClick={() => handleSnooze(null)}
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-warn-bg hover:bg-warn-bg rounded text-warn"
                 >
-                  <Bell size={12} />
+                  <Bell className="size-3" />
                   Resume
                 </button>
               </div>
@@ -791,14 +791,14 @@ export default function TaskDetailSheet({
                 <div className="border-t border-border/40 pt-3 -mx-0" aria-hidden />
                 <div className="block">
                   <span className="block text-xs text-muted-foreground mb-1 inline-flex items-center gap-1">
-                    <Paperclip size={12} />
+                    <Paperclip className="size-3" />
                     Receipt / Photo
                   </span>
                   {task.attachment_name ? (
                     <div className="flex items-center gap-2 p-2 bg-muted/40 border border-border rounded text-xs">
                       {(task.attachment_content_type || '').startsWith('image/')
-                        ? <ImageIcon size={14} className="text-muted-foreground shrink-0" />
-                        : <FileText size={14} className="text-muted-foreground shrink-0" />}
+                        ? <ImageIcon className="text-muted-foreground shrink-0 size-3.5" />
+                        : <FileText className="text-muted-foreground shrink-0 size-3.5" />}
                       <a
                         href={'/api/maintenance/tasks/' + task.id + '/attachment'}
                         target="_blank"
@@ -809,7 +809,7 @@ export default function TaskDetailSheet({
                         {task.attachment_name}
                       </a>
                       <label className="cursor-pointer text-muted-foreground hover:text-foreground" title="Replace">
-                        <Upload size={14} />
+                        <Upload className="size-3.5" />
                         <input
                           type="file"
                           accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif"
@@ -828,12 +828,12 @@ export default function TaskDetailSheet({
                         className="text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
                         aria-label="Remove attachment"
                       >
-                        <X size={14} />
+                        <X className="size-3.5" />
                       </button>
                     </div>
                   ) : (
                     <label className="flex items-center justify-center gap-1.5 p-2 bg-muted/40 hover:bg-muted border border-dashed border-border rounded text-xs cursor-pointer text-muted-foreground hover:text-foreground">
-                      <Upload size={14} />
+                      <Upload className="size-3.5" />
                       {uploadingAttachment ? 'Uploading…' : 'Attach a receipt or photo (max 10 MB)'}
                       <input
                         type="file"
@@ -916,7 +916,7 @@ export default function TaskDetailSheet({
                   disabled={saving}
                   className={`mt-2 w-full py-1.5 min-h-tap rounded text-xs font-medium transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${toneClasses('ok')}`}
                 >
-                  <CheckSquare size={12} />
+                  <CheckSquare className="size-3" />
                   Mark complete
                 </button>
               )}
@@ -929,7 +929,7 @@ export default function TaskDetailSheet({
                 snoozeOpen ? (
                   <div className="flex items-center gap-1.5 pt-2">
                     <span className="text-2xs text-muted-foreground inline-flex items-center gap-1 mr-1">
-                      <BellOff size={12} />
+                      <BellOff className="size-3" />
                       Snooze for:
                     </span>
                     <button
@@ -959,7 +959,7 @@ export default function TaskDetailSheet({
                       aria-label="Cancel snooze"
                       className="text-muted-foreground hover:text-foreground p-1"
                     >
-                      <X size={14} />
+                      <X className="size-3.5" />
                     </button>
                   </div>
                 ) : (
@@ -968,7 +968,7 @@ export default function TaskDetailSheet({
                     onClick={() => setSnoozeOpen(true)}
                     className="mt-2 w-full py-1.5 bg-muted/60 hover:bg-muted border border-border rounded text-xs font-medium text-foreground transition inline-flex items-center justify-center gap-1.5"
                   >
-                    <BellOff size={12} />
+                    <BellOff className="size-3" />
                     Snooze
                   </button>
                 )
@@ -995,7 +995,7 @@ export default function TaskDetailSheet({
                       onClick={confirmDelete}
                       className="flex-1 py-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded text-xs font-medium inline-flex items-center justify-center gap-1.5 min-h-tap"
                     >
-                      <Trash2 size={12} />
+                      <Trash2 className="size-3" />
                       Yes, delete this task
                     </button>
                   </div>
@@ -1006,7 +1006,7 @@ export default function TaskDetailSheet({
                   onClick={() => setDeleteOpen(true)}
                   className="mt-2 w-full py-1.5 bg-muted/60 hover:bg-destructive/10 border border-border hover:border-destructive/30 rounded text-xs font-medium text-muted-foreground hover:text-destructive transition inline-flex items-center justify-center gap-1.5"
                 >
-                  <Trash2 size={12} />
+                  <Trash2 className="size-3" />
                   Delete
                 </button>
               )}
@@ -1025,7 +1025,7 @@ export default function TaskDetailSheet({
                   onClick={onShowActivityTrail}
                   className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
                 >
-                  <History size={14} /> View activity history
+                  <History className="size-3.5" /> View activity history
                 </button>
               </div>
             </div>

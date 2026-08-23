@@ -95,7 +95,7 @@ export function FeatureConfigGear({
     return (
       <Tip label={label}>
         <Link to={to} aria-label={label} className={gearCls}>
-          <Cog size={16} />
+          <Cog className="size-4" />
         </Link>
       </Tip>
     );
@@ -110,7 +110,7 @@ export function FeatureConfigGear({
           onClick={() => setOpen(true)}
           className={gearCls}
         >
-          <Cog size={16} />
+          <Cog className="size-4" />
         </button>
       </Tip>
       <Dialog open={open} onOpenChange={setOpen}>

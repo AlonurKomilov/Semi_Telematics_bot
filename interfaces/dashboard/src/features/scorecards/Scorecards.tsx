@@ -837,7 +837,7 @@ export default function Scorecards() {
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition min-h-tap"
               title={t('scorecards.csv_download_title')}
             >
-              <Download size={12} />
+              <Download className="size-3" />
               {t('scorecards.csv_label')}
             </button>
             <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
@@ -1056,7 +1056,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
             aria-label={t('common.close')}
             className="text-muted-foreground hover:text-foreground p-1 min-h-tap"
           >
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
 

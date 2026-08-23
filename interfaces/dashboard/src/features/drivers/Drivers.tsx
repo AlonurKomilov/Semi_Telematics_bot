@@ -189,7 +189,7 @@ function InviteDriverButton({ onCreated }: { onCreated: () => void }) {
   return (
     <>
       <Button onClick={() => { reset(); setOpen(true); }}>
-        <UserPlus size={16} /> Invite driver
+        <UserPlus /> Invite driver
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -210,7 +210,7 @@ function InviteDriverButton({ onCreated }: { onCreated: () => void }) {
                   variant="outline"
                   onClick={() => { navigator.clipboard?.writeText(joinUrl); setCopied(true); }}
                 >
-                  {copied ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+                  {copied ? <Check className="text-ok" /> : <Copy />}
                   {copied ? 'Copied' : 'Copy'}
                 </Button>
               </div>
@@ -343,7 +343,7 @@ export default function Drivers() {
 
       {expiringCount > 0 && (
         <div className={`mb-4 p-3 rounded-lg border flex items-center gap-2 text-sm ${toneClasses('warn')}`}>
-          <AlertTriangle size={16} className={`shrink-0 ${toneText('warn')}`} />
+          <AlertTriangle className={`shrink-0 ${toneText('warn')} size-4`} />
           <span>
             <strong>{expiringCount}</strong> document{expiringCount === 1 ? '' : 's'} expiring in the next 30 days across the fleet.
           </span>
@@ -465,19 +465,19 @@ function DriverDrawer({
             </div>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
 
         <div className="grid grid-cols-3 gap-1 bg-muted/50 rounded-lg p-0.5">
           {([
-            { key: 'profile' as DetailTab,     label: 'Profile',     icon: <IdCard size={12} />,         soon: false },
-            { key: 'vehicles' as DetailTab,    label: 'Vehicles',    icon: <Truck size={12} />,          soon: false },
-            { key: 'documents' as DetailTab,   label: 'Documents',   icon: <FileText size={12} />,       soon: false },
-            { key: 'inspections' as DetailTab, label: 'Inspections', icon: <ClipboardCheck size={12} />, soon: true  },
-            { key: 'trainings' as DetailTab,   label: 'Trainings',   icon: <GraduationCap size={12} />,  soon: true  },
-            { key: 'hos' as DetailTab,         label: 'HOS',         icon: <Clock size={12} />,          soon: true  },
-            { key: 'integrations' as DetailTab, label: 'Integrations', icon: <Link2 size={12} />,        soon: false },
+            { key: 'profile' as DetailTab,     label: 'Profile',     icon: <IdCard className="size-3" />,         soon: false },
+            { key: 'vehicles' as DetailTab,    label: 'Vehicles',    icon: <Truck className="size-3" />,          soon: false },
+            { key: 'documents' as DetailTab,   label: 'Documents',   icon: <FileText className="size-3" />,       soon: false },
+            { key: 'inspections' as DetailTab, label: 'Inspections', icon: <ClipboardCheck className="size-3" />, soon: true  },
+            { key: 'trainings' as DetailTab,   label: 'Trainings',   icon: <GraduationCap className="size-3" />,  soon: true  },
+            { key: 'hos' as DetailTab,         label: 'HOS',         icon: <Clock className="size-3" />,          soon: true  },
+            { key: 'integrations' as DetailTab, label: 'Integrations', icon: <Link2 className="size-3" />,        soon: false },
           ]).filter((tt) => tabs.includes(tt.key)).map((tt) => (
             <button
               key={tt.key}
@@ -509,21 +509,21 @@ function DriverDrawer({
         )}
         {tab === 'inspections' && (
           <ComingSoonTab
-            icon={<ClipboardCheck size={24} className="text-muted-foreground" />}
+            icon={<ClipboardCheck className="text-muted-foreground size-6" />}
             title="DOT inspections"
             description="Pre-trip, post-trip, annual, and DOT roadside inspection records — including defects, vehicle, and inspector — will be available here."
           />
         )}
         {tab === 'trainings' && (
           <ComingSoonTab
-            icon={<GraduationCap size={24} className="text-muted-foreground" />}
+            icon={<GraduationCap className="text-muted-foreground size-6" />}
             title="Training records"
             description="Defensive driving, hazmat, cargo securement, and other certifications with expiration tracking. Certificates link back to the Documents tab."
           />
         )}
         {tab === 'hos' && (
           <ComingSoonTab
-            icon={<Clock size={24} className="text-muted-foreground" />}
+            icon={<Clock className="text-muted-foreground size-6" />}
             title="Hours of Service"
             description="Live duty status (on duty / off duty / driving / sleeper berth) plus drive-time, on-duty time, and cycle/shift remaining — synced from Samsara HOS."
           />
@@ -607,7 +607,7 @@ function IntegrationsTab({
           <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3">
             <div className="min-w-0">
               <p className="text-sm font-medium inline-flex items-center gap-1.5">
-                <Link2 size={14} className="text-primary shrink-0" /> {currentDt.name}
+                <Link2 className="text-primary shrink-0 size-3.5" /> {currentDt.name}
               </p>
               <p className="text-2xs text-muted-foreground">Linked — the driver's Datatruck loads attribute to them automatically.</p>
             </div>
@@ -616,7 +616,7 @@ function IntegrationsTab({
               onClick={() => linkDatatruck('')}
               className="shrink-0 text-xs text-danger hover:opacity-80 inline-flex items-center gap-1 disabled:opacity-50 py-1 -my-1 min-h-tap"
             >
-              <Link2Off size={12} /> Unlink
+              <Link2Off className="size-3" /> Unlink
             </button>
           </div>
         ) : (
@@ -753,7 +753,7 @@ function ProfileTab({
           disabled={!dirty || saving}
           className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50 min-h-tap"
         >
-          <Save size={14} />{saving ? 'Saving…' : 'Save changes'}
+          <Save className="size-3.5" />{saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
     </div>
@@ -819,7 +819,7 @@ function VehiclesTab({
             {assignments.map((a) => (
               <li key={a.id} className="flex items-center justify-between bg-muted/40 rounded px-2 py-1.5 text-sm">
                 <span className="flex items-center gap-2">
-                  <Truck size={14} className="text-muted-foreground" />
+                  <Truck className="text-muted-foreground size-3.5" />
                   <span className="font-medium">{a.vehicle_name}</span>
                   {a.is_primary && (
                     <span className="px-1.5 py-0.5 text-3xs rounded bg-primary/15 text-primary">Primary</span>
@@ -867,7 +867,7 @@ function VehiclesTab({
             disabled={!vehicleName.trim() || adding}
             className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50 min-h-tap"
           >
-            <Plus size={14} />{adding ? 'Assigning…' : 'Assign'}
+            <Plus className="size-3.5" />{adding ? 'Assigning…' : 'Assign'}
           </button>
         </div>
       </Section>
@@ -976,7 +976,7 @@ function DocumentsTab({
             />
             {uploading && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Upload size={12} className="animate-pulse" /> Uploading…
+                <Upload className="animate-pulse size-3" /> Uploading…
               </span>
             )}
           </div>
@@ -992,7 +992,7 @@ function DocumentsTab({
               <li key={d.id} className="bg-muted/40 rounded px-2 py-1.5 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <FileText size={14} className="text-muted-foreground shrink-0" />
+                    <FileText className="text-muted-foreground shrink-0 size-3.5" />
                     <span className="font-medium truncate">{d.file_name}</span>
                     <StorageBadge driveId={d.drive_file_id} />
                   </div>
@@ -1002,7 +1002,7 @@ function DocumentsTab({
                       className="p-1 text-muted-foreground hover:text-foreground rounded"
                       aria-label="Download"
                     >
-                      <Download size={14} />
+                      <Download className="size-3.5" />
                     </button>
                     <button
                       onClick={() => remove(d.id)}
@@ -1010,14 +1010,14 @@ function DocumentsTab({
                       className="p-1 text-destructive hover:bg-destructive/10 rounded disabled:opacity-50"
                       aria-label="Delete"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 className="size-3.5" />
                     </button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-2xs text-muted-foreground">
                   <span>{DOC_LABEL[d.doc_type] ?? d.doc_type}</span>
                   <span>·</span>
-                  <Calendar size={12} />
+                  <Calendar className="size-3" />
                   <ExpirationChip iso={d.expires_at} />
                 </div>
               </li>
@@ -1125,7 +1125,7 @@ function SamsaraDriverPicker({
       >
         {selected ? (
           <span className="flex items-center gap-2 min-w-0">
-            <Link2 size={12} className="text-primary shrink-0" />
+            <Link2 className="text-primary shrink-0 size-3" />
             <span className="truncate font-medium">{selected.name}</span>
             {selected.username && (
               <span className="text-3xs text-muted-foreground tabular-nums">
@@ -1135,14 +1135,14 @@ function SamsaraDriverPicker({
           </span>
         ) : value ? (
           <span className="flex items-center gap-2 min-w-0">
-            <AlertTriangle size={12} className={`shrink-0 ${toneText('warn')}`} />
+            <AlertTriangle className={`shrink-0 ${toneText('warn')} size-3`} />
             <span className="truncate text-muted-foreground">
               ID {value} (not in fleet)
             </span>
           </span>
         ) : (
           <span className="flex items-center gap-2 text-muted-foreground">
-            <Link2Off size={12} />
+            <Link2Off className="size-3" />
             <span>Not linked</span>
           </span>
         )}
@@ -1152,7 +1152,7 @@ function SamsaraDriverPicker({
       {open && (
         <div className="absolute z-20 mt-1 left-0 right-0 bg-card border border-border rounded shadow-lg max-h-80 overflow-hidden flex flex-col">
           <div className="p-1.5 border-b border-border flex items-center gap-1.5">
-            <Search size={12} className="text-muted-foreground" />
+            <Search className="text-muted-foreground size-3" />
             <input
               autoFocus
               value={query}
@@ -1198,7 +1198,7 @@ function SamsaraDriverPicker({
                     } ${linkedElsewhere ? 'opacity-50 cursor-not-allowed' : ''} min-h-tap`}
                   >
                     {isSelected ? (
-                      <Check size={12} className="text-primary shrink-0" />
+                      <Check className="text-primary shrink-0 size-3" />
                     ) : (
                       <span className="w-3 shrink-0" />
                     )}
@@ -1231,7 +1231,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   if (!samsaraDriverId) {
     return (
       <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-        <Link2Off size={12} />
+        <Link2Off className="size-3" />
         Unlinked
       </span>
     );
@@ -1250,7 +1250,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
         title="This Samsara driver ID is not in the fleet roster — possibly stale or wrong."
         className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-md border ${toneClasses('warn')}`}
       >
-        <AlertTriangle size={12} />
+        <AlertTriangle className="size-3" />
         ID {samsaraDriverId} — not in Samsara
       </span>
     );
@@ -1260,7 +1260,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
       title={`Linked to Samsara driver ${match.name} (${match.username || match.samsara_driver_id})`}
       className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30"
     >
-      <Link2 size={12} />
+      <Link2 className="size-3" />
       {match.name}
       {match.deactivated && (
         <span className={`ml-1 ${toneText('warn')}`}>(deactivated)</span>

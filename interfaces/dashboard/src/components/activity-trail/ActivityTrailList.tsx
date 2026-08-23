@@ -214,7 +214,7 @@ export function ActivityTrailList({
               onClick={() => onRestore(e)}
               className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
             >
-              <ArchiveRestore size={14} /> Restore this record
+              <ArchiveRestore className="size-3.5" /> Restore this record
             </button>
           )}
           {e.action === 'restore' && e.context?.restored_from_event != null && (

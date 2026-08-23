@@ -311,11 +311,11 @@ export default function Loads() {
               <>
                 <span aria-hidden className="h-5 w-px bg-border mx-1" />
                 <Button variant="outline" onClick={() => setLayoverOpen(true)}>
-                  <Clock size={16} className="mr-1.5" />
+                  <Clock className="mr-1.5" />
                   {t('loads_page.add_off_load', 'Off-load pay / deduction')}
                 </Button>
                 <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
-                  <Plus size={16} className="mr-1.5" />
+                  <Plus className="mr-1.5" />
                   {t('loads_page.add', 'Add load')}
                 </Button>
               </>

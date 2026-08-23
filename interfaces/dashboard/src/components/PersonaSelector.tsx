@@ -141,7 +141,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
             aria-expanded={open}
             aria-label="View dashboard as…"
           >
-            {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye size={16} />}
+            {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye className="size-4" />}
           </button>
         </Tip>
       ) : (
@@ -157,9 +157,9 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           aria-haspopup="listbox"
           aria-expanded={open}
         >
-          {isPreviewing && <Eye size={12} className="opacity-80" />}
+          {isPreviewing && <Eye className="opacity-80 size-3" />}
           <span>{viewLabel}{tierSuffix}</span>
-          <ChevronDown size={12} className="opacity-60" />
+          <ChevronDown className="opacity-60 size-3" />
         </button>
         </Tip>
       )}
@@ -193,8 +193,8 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                     }`}
                   >
                     <span className="flex-1">{v.label}</span>
-                    {isActive && <Check size={14} className="opacity-80" />}
-                    <ChevronRight size={14} className="opacity-50" />
+                    {isActive && <Check className="opacity-80 size-3.5" />}
+                    <ChevronRight className="opacity-50 size-3.5" />
                   </button>
                   {/* Flyout — flush to the right so hover bridges without a gap. */}
                   <ul
@@ -213,7 +213,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                             }`}
                           >
                             <span className="flex-1">{label}</span>
-                            {tierActive && <Check size={14} className="opacity-80" />}
+                            {tierActive && <Check className="opacity-80 size-3.5" />}
                           </button>
                         </li>
                       );
@@ -236,7 +236,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                   }`}
                 >
                   <span className="flex-1">{v.label}</span>
-                  {isActive && <Check size={14} className="opacity-80" />}
+                  {isActive && <Check className="opacity-80 size-3.5" />}
                 </button>
               </li>
             );

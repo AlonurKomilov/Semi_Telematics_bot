@@ -109,7 +109,7 @@ export default function DangerZoneSection() {
   return (
     <section className="bg-card rounded-lg border border-destructive/40 p-6 mt-6">
       <h2 className="text-lg font-semibold flex items-center gap-2 text-destructive">
-        <AlertTriangle size={18} />
+        <AlertTriangle className="size-4.5" />
         Danger zone
       </h2>
 

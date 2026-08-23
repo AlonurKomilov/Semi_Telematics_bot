@@ -93,7 +93,7 @@ export default function TruckAnatomy() {
               size="sm" variant="outline"
               onClick={() => { setSelection({ systemKey: null, assemblyKey: null }); setExplode(false); setQuery(''); }}
             >
-              <RotateCcw size={14} /> Reset view
+              <RotateCcw /> Reset view
             </Button>
           </div>
         )}
@@ -104,7 +104,7 @@ export default function TruckAnatomy() {
         <aside className="w-80 shrink-0 flex flex-col min-h-0 bg-card border border-border rounded-lg overflow-hidden">
           <div className="p-2 border-b border-border">
             <div className="relative">
-              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -152,7 +152,7 @@ export default function TruckAnatomy() {
                           : 'text-foreground hover:bg-muted/60'
                       } min-h-tap`}
                     >
-                      <ChevronRight size={12} className="shrink-0 text-muted-foreground/60" />
+                      <ChevronRight className="shrink-0 text-muted-foreground/60 size-3" />
                       <span className="min-w-0 truncate">{a.label}</span>
                     </button>
                   ))}

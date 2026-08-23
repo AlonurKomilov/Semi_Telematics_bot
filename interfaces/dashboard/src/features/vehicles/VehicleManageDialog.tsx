@@ -282,7 +282,7 @@ export default function VehicleManageDialog({
                 type="button" variant="outline" size="xs"
                 onClick={pullExisting} disabled={pulling}
               >
-                {pulling ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {pulling ? <Loader2 className="animate-spin" /> : <Sparkles />}
                 Use its details
               </Button>
             </div>
@@ -299,14 +299,14 @@ export default function VehicleManageDialog({
           <DialogFooter className="flex items-center justify-between gap-2">
             {isEdit ? (
               <Button type="button" variant="ghost" size="sm" onClick={handleRemove} disabled={removing} className="text-danger">
-                {removing ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {removing ? <Loader2 className="animate-spin" /> : <Trash2 />}
                 Remove
               </Button>
             ) : <span />}
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
               <Button type="submit" size="sm" disabled={saving || !draft.unit_number.trim()}>
-                {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                {saving ? <Loader2 className="animate-spin" /> : null}
                 {isEdit ? 'Save' : 'Add vehicle'}
               </Button>
             </div>

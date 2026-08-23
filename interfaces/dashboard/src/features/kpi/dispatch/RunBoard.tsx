@@ -180,7 +180,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
         /* Instruction + the control for it in one block: prose that
            prescribes an action the reader cannot take is a dead end. */
         <div className={`flex flex-wrap items-center gap-2 text-xs ${toneClasses('warn')} px-2 py-1.5 rounded`}>
-          <TriangleAlert size={12} className="shrink-0" />
+          <TriangleAlert className="shrink-0 size-3" />
           <span>
             {t('kpi_board.drift_n',
               'Loads changed after this run was generated — {{n}} rows (marked “stale”) still pay from the run’s snapshot.',
@@ -255,12 +255,12 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
           }}>
           {[...byDispatcher.keys()].every((n) => collapsed[n]) ? (
             <>
-              <ChevronsUpDown size={14} className="mr-1.5" />
+              <ChevronsUpDown className="mr-1.5" />
               {t('kpi_board.expand_all', 'Expand all')}
             </>
           ) : (
             <>
-              <ChevronsDownUp size={14} className="mr-1.5" />
+              <ChevronsDownUp className="mr-1.5" />
               {t('kpi_board.collapse_all', 'Collapse all')}
             </>
           )}
@@ -282,8 +282,8 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
               className={`sticky top-0 z-30 w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted border-b border-border text-left hover:bg-border/60 transition ${isCollapsed ? 'rounded-xl' : 'rounded-t-xl'}`}
             >
               {isCollapsed
-                ? <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-                : <ChevronDown size={16} className="text-muted-foreground shrink-0" />}
+                ? <ChevronRight className="text-muted-foreground shrink-0 size-4" />
+                : <ChevronDown className="text-muted-foreground shrink-0 size-4" />}
               <span className="text-sm font-semibold">{name}</span>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {rows.length === 1

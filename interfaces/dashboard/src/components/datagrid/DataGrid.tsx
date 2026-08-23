@@ -650,7 +650,7 @@ function SegmentTab({
         {LeadIcon ? (
           // The tab's chosen icon leads the label (neutral-coloured — only
           // the count badge takes a tone).  Takes the dot's place.
-          <LeadIcon size={14} className={cn('shrink-0', active ? 'text-foreground' : 'text-muted-foreground')} />
+          <LeadIcon className={cn('shrink-0', active ? 'text-foreground' : 'text-muted-foreground', 'size-3.5')} />
         ) : dot ? (
           <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
         ) : null}
@@ -1251,7 +1251,7 @@ export default function DataGrid({
       {
         key: 'edit',
         label: 'Edit tab',
-        icon: <Pencil size={14} className="text-muted-foreground" />,
+        icon: <Pencil className="text-muted-foreground size-3.5" />,
         onSelect: () => {
           const v = savedTabList.find(x => x.id === tabId);
           if (v) setTabDialog(v);
@@ -1260,33 +1260,33 @@ export default function DataGrid({
       {
         key: 'default',
         label: isDefault ? 'Default tab · clear' : 'Set as default tab',
-        icon: <Star size={14} className={isDefault ? 'text-primary fill-current' : 'text-muted-foreground'} />,
+        icon: <Star className={cn(isDefault ? 'text-primary fill-current' : 'text-muted-foreground', 'size-3.5')} />,
         onSelect: () => setDefaultTab(isDefault ? '' : tabId),
       },
       {
         key: 'left',
         label: 'Move left',
-        icon: <ChevronLeft size={14} className="text-muted-foreground" />,
+        icon: <ChevronLeft className="text-muted-foreground size-3.5" />,
         disabled: idx <= 0,
         onSelect: () => moveTab(tabId, -1),
       },
       {
         key: 'right',
         label: 'Move right',
-        icon: <ChevronRight size={14} className="text-muted-foreground" />,
+        icon: <ChevronRight className="text-muted-foreground size-3.5" />,
         disabled: idx >= savedTabList.length - 1,
         onSelect: () => moveTab(tabId, 1),
       },
       {
         key: 'duplicate',
         label: 'Duplicate tab',
-        icon: <Copy size={14} className="text-muted-foreground" />,
+        icon: <Copy className="text-muted-foreground size-3.5" />,
         onSelect: () => duplicateTab(tabId),
       },
       {
         key: 'delete',
         label: 'Delete tab',
-        icon: <Trash2 size={14} />,
+        icon: <Trash2 className="size-3.5" />,
         danger: true,
         separatorBefore: true,
         onSelect: () => deleteTab(tabId),
@@ -2092,7 +2092,7 @@ export default function DataGrid({
   // a second strip below it.
   const selectionBarContent = (
     <div className="flex items-center gap-0.5">
-      <CornerUpRight size={14} className="text-muted-foreground mr-1 shrink-0" aria-hidden="true" />
+      <CornerUpRight className="text-muted-foreground mr-1 shrink-0 size-3.5" aria-hidden="true" />
       <span className="text-xs font-medium text-foreground mr-1">
         {selectedRowIds.size} {selectedRowIds.size === 1 ? 'row' : 'rows'} selected
       </span>
@@ -2132,7 +2132,7 @@ export default function DataGrid({
                       aria-label={action.label}
                     >
                       {inner}
-                      {!Icon && <ChevronDown size={12} className="opacity-60" />}
+                      {!Icon && <ChevronDown className="opacity-60" />}
                     </Button>
                   </Tip>
                 )}
@@ -2471,11 +2471,11 @@ export default function DataGrid({
     <>
       {trimmedGlobal && (
         <span className={chipCls}>
-          <Search size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+          <Search className="text-muted-foreground shrink-0 size-3" aria-hidden="true" />
           <span className="truncate max-w-64">“{trimmedGlobal}”</span>
           <button type="button" onClick={() => setGlobalFilter('')}
             aria-label="Clear search" className={chipX}>
-            <X size={12} />
+            <X className="size-3" />
           </button>
         </span>
       )}
@@ -2483,7 +2483,7 @@ export default function DataGrid({
         const col = columns.find(c => c.key === f.id);
         return (
           <span key={`f-${f.id}`} className={chipCls}>
-            <FilterIcon size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+            <FilterIcon className="text-muted-foreground shrink-0 size-3" aria-hidden="true" />
             <Tip label={`${col?.label || f.id}: ${describeFilter(f.id, f.value)}`}>
               <span className="truncate max-w-72">
                 <span className="font-medium">{col?.label || f.id}</span>
@@ -2493,7 +2493,7 @@ export default function DataGrid({
             <button type="button"
               onClick={() => setColumnFilters(prev => prev.filter(x => x.id !== f.id))}
               aria-label={`Clear ${col?.label || f.id} filter`} className={chipX}>
-              <X size={12} />
+              <X className="size-3" />
             </button>
           </span>
         );
@@ -2507,7 +2507,7 @@ export default function DataGrid({
         const col = columns.find(c => c.key === s.id);
         return (
           <span key={`s-${s.id}`} className={cn(chipCls, pivotOn && 'opacity-60')}>
-            <ArrowUpDown size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+            <ArrowUpDown className="text-muted-foreground shrink-0 size-3" aria-hidden="true" />
             <Tip label={pivotOn
               ? `Not applied while pivoting — a pivot orders by a measure, from its own column header. Returns when you turn Pivot off.`
               : `Sorted by ${col?.label || s.id} · ${s.desc ? 'descending' : 'ascending'}`}>
@@ -2530,20 +2530,20 @@ export default function DataGrid({
               aria-label={defaultSorting?.length
                 ? `Reset ${col?.label || s.id} sort to default`
                 : `Clear ${col?.label || s.id} sort`} className={chipX}>
-              <X size={12} />
+              <X className="size-3" />
             </button>
           </span>
         );
       })}
       {rowGroupBy && (
         <span className={chipCls}>
-          <ListTree size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+          <ListTree className="text-muted-foreground shrink-0 size-3" aria-hidden="true" />
           <span className="truncate max-w-72">
             Grouped by <span className="font-medium">{groupedCol?.label || rowGroupBy}</span>
           </span>
           <button type="button" onClick={() => setRowGroupPref(null)}
             aria-label="Ungroup rows" className={chipX}>
-            <X size={12} />
+            <X className="size-3" />
           </button>
         </span>
       )}
@@ -3373,7 +3373,7 @@ export default function DataGrid({
                 aria-label="New tab"
                 className="self-center mb-1 ml-1 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors min-h-tap min-w-tap"
               >
-                <Plus size={16} />
+                <Plus className="size-4" />
               </button>
             </Tip>
           )}
@@ -3440,9 +3440,8 @@ export default function DataGrid({
           {hasSearch ? (
             <div className="relative max-w-xs flex-shrink-0">
               <Search
-                size={14}
                 aria-hidden
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5"
               />
               <Input
                 placeholder={searchPlaceholder ?? 'Search…'}
@@ -3500,7 +3499,7 @@ export default function DataGrid({
                     disabled={holdsPartialData}
                     className="size-8"
                   >
-                    <Table2 size={16} />
+                    <Table2 />
                   </Button>
                 </Tip>
               )}
@@ -3565,7 +3564,7 @@ export default function DataGrid({
                               onClick={() => handleExportCsv('all')}
                               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
                             >
-                              <Download size={14} className="text-muted-foreground" />
+                              <Download className="text-muted-foreground size-3.5" />
                               <span className="flex-1 text-foreground text-left">
                                 Pivot table
                               </span>
@@ -3581,7 +3580,7 @@ export default function DataGrid({
                               onClick={() => handleExportCsv('page')}
                               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
                             >
-                              <Download size={14} className="text-muted-foreground" />
+                              <Download className="text-muted-foreground size-3.5" />
                               <span className="flex-1 text-foreground text-left">Current page</span>
                               <span className="text-2xs text-muted-foreground tabular-nums">
                                 {pageCount.toLocaleString()} rows
@@ -3599,7 +3598,7 @@ export default function DataGrid({
                                 : handleExportCsv('all'))}
                               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
                             >
-                              <Download size={14} className="text-muted-foreground" />
+                              <Download className="text-muted-foreground size-3.5" />
                               <span className="flex-1 text-foreground text-left">
                                 {onExportAllRows || !holdsPartialData
                                   ? 'All rows'
@@ -3677,7 +3676,7 @@ export default function DataGrid({
           const paged = enablePagination && table.getPageCount() > 1;
           return (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-border bg-card text-2xs text-muted-foreground">
-              <EyeOff size={12} aria-hidden className="shrink-0" />
+              <EyeOff aria-hidden className="shrink-0 size-3" />
               {searchNote.byColumn > 0 ? (
                 <>
                   <span>
@@ -4126,11 +4125,11 @@ export default function DataGrid({
                               ) : i === firstDataIdx ? (
                                 <span className="inline-flex items-center gap-2 min-w-0">
                                   <ChevronRight
-                                    size={14}
                                     aria-hidden="true"
                                     className={cn(
                                       'shrink-0 text-muted-foreground transition-transform',
                                       row.getIsExpanded() && 'rotate-90',
+                                      'size-3.5',
                                     )}
                                   />
                                   <span className="font-medium text-foreground truncate">
@@ -4168,11 +4167,11 @@ export default function DataGrid({
                             table). */}
                         <span className="sticky left-2 inline-flex w-fit items-center gap-2">
                           <ChevronRight
-                            size={14}
                             aria-hidden="true"
                             className={cn(
                               'text-muted-foreground transition-transform',
                               row.getIsExpanded() && 'rotate-90',
+                              'size-3.5',
                             )}
                           />
                           {bulkSelection ? (
@@ -4782,8 +4781,8 @@ function ColumnHeaderCell({
   // rendered — keeps the header visually quiet on every column that
   // isn't currently driving the order.
   const sortIndicator =
-    sortedRaw === 'asc'  ? <ChevronUp size={12} aria-hidden="true" /> :
-    sortedRaw === 'desc' ? <ChevronDown size={12} aria-hidden="true" /> :
+    sortedRaw === 'asc'  ? <ChevronUp className="size-3" aria-hidden="true" /> :
+    sortedRaw === 'desc' ? <ChevronDown className="size-3" aria-hidden="true" /> :
     null;
 
   // Filter-value shape depends on ``colConfig.filterMode``:

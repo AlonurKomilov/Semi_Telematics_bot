@@ -98,7 +98,7 @@ export default function OnboardingBanner({
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-primary">
-            <Sparkles size={18} />
+            <Sparkles className="size-4.5" />
           </span>
           <div>
             <p className="text-sm font-semibold text-foreground">Welcome to 4truck</p>
@@ -112,7 +112,7 @@ export default function OnboardingBanner({
           aria-label="Dismiss onboarding"
           className="text-muted-foreground hover:text-foreground p-1 min-h-tap"
         >
-          <X size={16} />
+          <X className="size-4" />
         </button>
       </div>
 
@@ -133,14 +133,14 @@ export default function OnboardingBanner({
                 className={`shrink-0 mt-0.5 ${s.done ? toneText('ok') : 'text-muted-foreground group-hover:text-primary'}`}
               >
                 {s.done ? (
-                  <CheckCircle2 size={16} />
+                  <CheckCircle2 className="size-4" />
                 ) : (
-                  <CircleDashed size={16} />
+                  <CircleDashed className="size-4" />
                 )}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Icon size={12} className="text-muted-foreground shrink-0" />
+                  <Icon className="text-muted-foreground shrink-0 size-3" />
                   <p
                     className={`text-sm font-medium truncate ${s.done ? 'line-through' : 'text-foreground'}`}
                   >

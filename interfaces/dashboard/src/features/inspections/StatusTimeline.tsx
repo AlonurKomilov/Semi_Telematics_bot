@@ -3,6 +3,7 @@ import { ClipboardList, Send, CheckCircle2, Circle, type LucideIcon } from 'luci
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
 import type { PTIInspectionDetail } from '../../types';
+import { cn } from '@/lib/utils';
 
 /**
  * Status timeline rendered at the top of the inspection drawer.
@@ -47,9 +48,9 @@ function TimelineNode({ reached, Icon, label, detail, subtle }: NodeProps) {
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-1.5">
         {reached ? (
-          <Icon size={14} className={iconClass} />
+          <Icon className={cn(iconClass, 'size-3.5')} />
         ) : (
-          <Circle size={14} className={iconClass} />
+          <Circle className={cn(iconClass, 'size-3.5')} />
         )}
         <span className={`text-xs ${labelClass}`}>{label}</span>
       </div>

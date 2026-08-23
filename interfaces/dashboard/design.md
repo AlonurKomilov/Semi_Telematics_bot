@@ -489,9 +489,36 @@ them next to a comment saying so.
 
 - **Colour** comes from a token — `text-muted-foreground`, `toneText('warn')`,
   `text-primary` — never a raw palette class.
-- **Convention:** `size={16}` (lucide prop) or `size-4` (Tailwind) — both
-  fine; just stay on the step values above. **Don't** invent in-between
-  sizes (`size={11}`, `size={13}`, `size={22}`).
+- **Convention: the CLASS, never the prop.** `<Plus className="size-4" />`,
+  not `<Plus size={16} />`. The two used to be interchangeable and are
+  not any more: lucide's `size` prop writes `width`/`height` ATTRIBUTES
+  on the `<svg>`, which no multiplier can reach — measured, a
+  `size={16}` icon is 16px at 1× and still 16px at 1.5×, while every box
+  and word around it grows. The class rides `--size-control` and comes
+  out at 24px. The ladder in class form:
+
+  | px | 10 | 12 | 14 | 16 | 18 | 20 | 24 |
+  |---|---|---|---|---|---|---|---|
+  | class | `size-2.5` | `size-3` | `size-3.5` | `size-4` | `size-4.5` | `size-5` | `size-6` |
+
+  `size-4.5` is declared in `tailwind.config.js` because 18 is a
+  sanctioned icon step that Tailwind's spacing ladder skips (it jumps
+  16 → 20). It is added to the `size` key only — never to `spacing`,
+  which would fuse the four axes.
+
+  **Inside a `<Button>`, write no size at all.** The button's variant
+  already sets its icon size (`[&_svg:not([class*='size-'])]:size-3.5`
+  on `sm`, and so on), and `tailwind-merge` makes the variant win over
+  the base — so an explicit class there opts the icon OUT of the
+  button's own vocabulary. Measured: an icon in `<Button size="sm">`
+  renders 14px whatever the prop said.
+
+  A wrapper that takes a numeric `size` from ITS callers (`InfoTip`,
+  `PoiIcon`, `EventIcon`) cannot know the number until runtime — those
+  translate through `iconSizeClass()` in
+  [`src/lib/iconSize.ts`](src/lib/iconSize.ts), the single place that
+  mapping lives. **Don't** invent in-between sizes (`size-[11px]`,
+  `size={13}`).
 
 ---
 

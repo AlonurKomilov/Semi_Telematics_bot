@@ -444,7 +444,7 @@ function RunsTab() {
                       type="button" variant="outline" size="xs"
                       onClick={() => setStatementItem(it)}
                     >
-                      <FileText size={12} className="mr-1" /> Statement
+                      <FileText className="mr-1" /> Statement
                     </Button>
                   );
                 },

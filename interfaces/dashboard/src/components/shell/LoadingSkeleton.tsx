@@ -21,7 +21,7 @@ export function Skeleton({ className = '' }: SkeletonProps) {
 export function LoadingPill({ message = 'Loading…' }: { message?: string }) {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-      <Loader2 size={12} className="animate-spin shrink-0" />
+      <Loader2 className="animate-spin shrink-0 size-3" />
       <span>{message}</span>
     </div>
   );

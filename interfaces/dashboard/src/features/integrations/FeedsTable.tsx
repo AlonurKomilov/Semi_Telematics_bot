@@ -144,9 +144,9 @@ export default function FeedsTable({
             title={r.action.title}
           >
             {r.action.busy ? (
-              <Loader2 size={12} className="animate-spin" />
+              <Loader2 className="animate-spin" />
             ) : (
-              <RefreshCw size={12} />
+              <RefreshCw />
             )}
             {r.action.label}
           </Button>
@@ -166,14 +166,14 @@ export default function FeedsTable({
   return (
     <div className="mt-4 border border-border rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border">
-        <Database size={14} className="text-muted-foreground" />
+        <Database className="text-muted-foreground size-3.5" />
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Synced data
         </span>
       </div>
       {loading ? (
         <p className="flex items-center gap-1.5 px-3 py-3 text-sm text-muted-foreground">
-          <Loader2 size={12} className="animate-spin" />
+          <Loader2 className="animate-spin size-3" />
           Loading…
         </p>
       ) : error ? (

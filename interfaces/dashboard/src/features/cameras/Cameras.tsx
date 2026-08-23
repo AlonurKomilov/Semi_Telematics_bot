@@ -180,7 +180,7 @@ export default function Cameras() {
                   : 'bg-background border-border text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Filter size={12} />
+              <Filter className="size-3" />
               {showHistory ? 'All history' : 'Latest only'}
             </button>
             <input

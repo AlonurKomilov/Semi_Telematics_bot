@@ -142,7 +142,7 @@ export function ServiceHistoryModal({
             <p className="text-sm text-muted-foreground">Vehicle #{vehicleName}</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
 
@@ -252,7 +252,7 @@ export function ServiceHistoryModal({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 text-sm">
                         <span className="inline-flex items-center gap-1.5 text-foreground font-medium">
-                          <Receipt size={14} className="text-muted-foreground" />
+                          <Receipt className="text-muted-foreground size-3.5" />
                           Work order{entry.wo.invoice_number ? ` · Inv ${entry.wo.invoice_number}` : ''}
                         </span>
                         <StatusBadge status={entry.wo.payment_status} />
@@ -273,7 +273,7 @@ export function ServiceHistoryModal({
                         className="text-xs mt-0.5 inline-flex items-center gap-1 px-1.5 py-1 min-h-tap bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
                         onClick={e => e.stopPropagation()}
                       >
-                        <FileText size={12} />
+                        <FileText className="size-3" />
                         Open work order #{entry.wo.id}
                       </a>
                     </div>
@@ -307,7 +307,7 @@ export function ServiceHistoryModal({
                       </p>
                       {task.attested_at && (
                         <p className="text-xs mt-1 inline-flex items-center gap-1 text-ok">
-                          <Check size={12} aria-hidden />
+                          <Check className="size-3" aria-hidden />
                           Attested by{' '}
                           <span className="font-medium">
                             {task.attested_by_name || `user ${task.attested_by}`}
@@ -321,7 +321,7 @@ export function ServiceHistoryModal({
                           className="text-xs mt-0.5 inline-flex items-center gap-1 px-1.5 py-1 min-h-tap bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
                           onClick={e => e.stopPropagation()}
                         >
-                          <FileText size={12} aria-hidden />
+                          <FileText className="size-3" aria-hidden />
                           Work Order #{task.work_order_id}
                         </a>
                       )}

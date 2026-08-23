@@ -87,7 +87,7 @@ export default function SizeCard() {
           disabled={atDefault}
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground shrink-0 py-1 -my-1 min-h-tap"
         >
-          <RotateCcw size={14} />
+          <RotateCcw className="size-3.5" />
           Reset all
         </button>
       </div>

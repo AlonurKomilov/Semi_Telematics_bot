@@ -22,7 +22,7 @@ export default function EmptyState({
       className={`bg-card border border-dashed border-border rounded-xl p-10 text-center ${className}`}
     >
       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted text-muted-foreground mb-4">
-        <Icon size={24} />
+        <Icon className="size-6" />
       </div>
       <p className="text-base font-medium text-foreground">{title}</p>
       {description && (

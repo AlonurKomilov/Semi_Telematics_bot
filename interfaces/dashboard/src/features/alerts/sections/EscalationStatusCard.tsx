@@ -67,7 +67,7 @@ export default function EscalationStatusCard() {
     <section className="mb-4 bg-card border border-border rounded-xl p-5">
       <header className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
-          <Bell size={16} className="text-muted-foreground" />
+          <Bell className="text-muted-foreground size-4" />
           {t('alerts.escalations.title')}
         </h2>
         <span className="text-2xs text-muted-foreground">
@@ -103,7 +103,7 @@ export default function EscalationStatusCard() {
             </span>
           </div>
           <p className="text-2xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
-            <Clock size={12} />
+            <Clock className="size-3" />
             {t('alerts.escalations.breached_hint')}
           </p>
         </div>

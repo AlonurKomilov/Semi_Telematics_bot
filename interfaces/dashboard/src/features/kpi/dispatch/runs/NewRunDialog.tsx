@@ -124,7 +124,7 @@ export function NewRunDialog({ open, onClose, onCreated, existing }: {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button onClick={create} disabled={busy || !from || !to || badOrder}>
-            {busy && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {busy && <Loader2 className="animate-spin mr-1.5" />}
             {t('kpi_runs.create', 'Create run')}
           </Button>
         </DialogFooter>

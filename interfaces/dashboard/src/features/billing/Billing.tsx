@@ -151,7 +151,7 @@ function PastDueBanner({ since }: { since: string }) {
   const days = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 86_400_000));
   return (
     <div className="mb-4 bg-destructive/10 border border-destructive/40 rounded-lg px-4 py-3 flex items-start gap-3">
-      <AlertTriangle className="text-destructive shrink-0 mt-0.5" size={18} />
+      <AlertTriangle className="text-destructive shrink-0 mt-0.5 size-4.5" />
       <div className="text-sm">
         <p className="font-semibold text-destructive">Payment past due ({days} day{days === 1 ? '' : 's'})</p>
         <p className="text-muted-foreground mt-0.5">
@@ -173,7 +173,7 @@ function CompBanner({ summary }: { summary: BillingSummary }) {
   const wouldBe = summary.subtotal_cents;
   return (
     <div className="mb-4 bg-primary/5 border border-primary/30 rounded-lg px-4 py-3 flex items-start gap-3">
-      <Gift className="text-primary shrink-0 mt-0.5" size={18} />
+      <Gift className="text-primary shrink-0 mt-0.5 size-4.5" />
       <div className="text-sm">
         <p className="font-semibold text-foreground">Complimentary Account</p>
         <p className="text-muted-foreground mt-0.5">
@@ -544,7 +544,7 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
       render: (v) => v ? (
         <a href={String(v)} target="_blank" rel="noopener noreferrer"
            className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap">
-          <FileText size={12} /> View
+          <FileText className="size-3" /> View
         </a>
       ) : <span className="text-muted-foreground text-xs">—</span>,
     },
@@ -667,7 +667,7 @@ export default function Billing() {
               disabled={portalLoading}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted transition disabled:opacity-60 min-h-tap"
             >
-              <ExternalLink size={12} />
+              <ExternalLink className="size-3" />
               {portalLoading ? 'Opening…' : 'Manage payment'}
             </button>
           ) : undefined

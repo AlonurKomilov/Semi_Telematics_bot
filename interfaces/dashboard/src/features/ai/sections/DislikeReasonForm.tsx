@@ -91,7 +91,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
             className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap"
             aria-label={t('chat.dislike_form.close')}
           >
-            <X size={14} />
+            <X className="size-3.5" />
           </button>
         </Tip>
       </div>

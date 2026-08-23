@@ -18,14 +18,14 @@ export default function Breadcrumb() {
         to="/"
         className="inline-flex items-center gap-1 hover:text-foreground transition shrink-0 min-h-tap"
       >
-        <Home size={14} />
+        <Home className="size-3.5" />
         <span className="hidden sm:inline">Home</span>
       </Link>
       {!isHome && (
         <>
-          <ChevronRight size={14} className="shrink-0" />
+          <ChevronRight className="shrink-0 size-3.5" />
           <span className="text-muted-foreground/80 hidden sm:inline">{route.group}</span>
-          <ChevronRight size={14} className="shrink-0 hidden sm:inline" />
+          <ChevronRight className="shrink-0 hidden sm:inline size-3.5" />
           <span className="text-foreground font-medium truncate">{route.label}</span>
         </>
       )}

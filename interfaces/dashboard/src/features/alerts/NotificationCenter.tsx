@@ -157,13 +157,13 @@ export default function NotificationCenter() {
           disabled={unread === 0}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors py-1 -my-1 min-h-tap"
         >
-          <CheckCheck size={14} aria-hidden /> Mark all read
+          <CheckCheck className="size-3.5" aria-hidden /> Mark all read
         </button>
         <button
           onClick={() => navigate('/notifications/preferences')}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
         >
-          <Settings size={14} aria-hidden /> Preferences
+          <Settings className="size-3.5" aria-hidden /> Preferences
         </button>
       </div>
 
@@ -172,7 +172,7 @@ export default function NotificationCenter() {
         <p className="text-xs text-muted-foreground mb-3">
           Vehicle alerts live on the{' '}
           <button onClick={() => navigate('/alerts')} className="text-primary hover:underline font-medium">
-            Alerts board <ArrowRight size={12} className="inline" aria-hidden />
+            Alerts board <ArrowRight className="inline size-3" aria-hidden />
           </button>{' '}
           with their acknowledgement history.
         </p>
@@ -181,11 +181,11 @@ export default function NotificationCenter() {
       <section className="bg-card border border-border rounded-xl overflow-hidden">
         {loading && notices.length === 0 ? (
           <div className="flex items-center justify-center py-14 text-muted-foreground">
-            <Loader2 size={18} className="animate-spin" aria-hidden />
+            <Loader2 className="animate-spin size-4.5" aria-hidden />
           </div>
         ) : notices.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-14 px-4 text-center">
-            <BellOff size={24} className="text-muted-foreground" aria-hidden />
+            <BellOff className="text-muted-foreground size-6" aria-hidden />
             <p className="text-sm text-muted-foreground">
               Nothing here yet — notices appear as things happen.
             </p>

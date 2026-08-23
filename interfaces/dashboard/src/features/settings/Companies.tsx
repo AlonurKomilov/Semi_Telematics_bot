@@ -175,7 +175,7 @@ export default function Companies() {
             onClick={() => { setShowAdd(!showAdd); setError(''); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
           >
-            <Plus size={14} />
+            <Plus className="size-3.5" />
             {showAdd ? 'Cancel' : 'Add company'}
           </button>
         }
@@ -184,7 +184,7 @@ export default function Companies() {
       {/* Locator banner — operators looking for the API Key column
           used to land here; the field moved to the Integrations card. */}
       <div className={`${toneClasses('info')} mb-4 rounded-md px-3 py-2 text-xs flex items-center gap-2`}>
-        <KeyRound size={14} />
+        <KeyRound className="size-3.5" />
         <span>
           Samsara API keys are now managed under{' '}
           <Link to="/integrations" className="underline font-medium">
@@ -245,7 +245,7 @@ export default function Companies() {
               onClick={() => setShowAdd(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
             >
-              <Plus size={14} />
+              <Plus className="size-3.5" />
               Add company
             </button>
           }
@@ -315,12 +315,12 @@ export default function Companies() {
                   <CompanyLogo id={selected.id} hasLogo={selected.has_logo} version={logoVersion} size={48} />
                   <div className="flex flex-wrap gap-2">
                     <label className="cursor-pointer inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted">
-                      <Upload size={12} /> {logoBusy ? 'Uploading…' : 'Upload logo'}
+                      <Upload className="size-3" /> {logoBusy ? 'Uploading…' : 'Upload logo'}
                       <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
                     </label>
                     {selected.has_logo && (
                       <button onClick={removeLogo} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:text-destructive min-h-tap">
-                        <Trash2 size={12} /> Remove
+                        <Trash2 className="size-3" /> Remove
                       </button>
                     )}
                   </div>

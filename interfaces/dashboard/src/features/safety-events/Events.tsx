@@ -18,6 +18,7 @@ import {
   DateRangePresets,
 } from '../../components/shell';
 import type { SafetyEvent, SafetyEventsResponse, AnyColumn } from '../../types';
+import { iconSizeClass } from '@/lib/iconSize';
 
 const EVENT_TYPES = ['all', 'crash', 'braking', 'harshTurn', 'laneDeparture', 'followingDistance', 'rollingStop', 'acceleration'] as const;
 
@@ -57,7 +58,7 @@ const TYPE_ICON_COLORS: Record<EventIconKey, string> = {
 function EventIcon({ type, size = 14 }: { type: string; size?: number }) {
   const Icon = TYPE_ICON_COMPONENTS[type as EventIconKey] ?? AlertTriangle;
   const color = TYPE_ICON_COLORS[type as EventIconKey] ?? 'text-muted-foreground';
-  return <Icon size={size} className={`inline-block shrink-0 ${color}`} />;
+  return <Icon className={`inline-block shrink-0 ${iconSizeClass(size)} ${color}`} />;
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
@@ -178,7 +179,7 @@ export default function Events() {
             onClick={() => setViewingEvent(evt)}
             className="inline-flex items-center gap-1 text-primary hover:underline text-sm py-1 -my-1 min-h-tap"
           >
-            <Play size={12} />
+            <Play className="size-3" />
             View
           </button>
         );

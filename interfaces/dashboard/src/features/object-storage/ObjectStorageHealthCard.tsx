@@ -53,7 +53,7 @@ export default function ObjectStorageHealthCard() {
   if (isLoading && !data) {
     return (
       <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground inline-flex items-center gap-2">
-        <Loader2 size={14} className="animate-spin" />
+        <Loader2 className="animate-spin size-3.5" />
         {t('storage.status.loading')}
       </div>
     );
@@ -74,19 +74,19 @@ export default function ObjectStorageHealthCard() {
         <BackendPill backend={backend} />
         {drive.connected && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CheckCircle2 size={14} className="text-ok" />
+            <CheckCircle2 className="text-ok size-3.5" />
             {t('storage.status.drive_connected_as', { email: drive.email ?? '—' })}
           </span>
         )}
         {!drive.connected && (isGDrive || isHybrid) && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-warn">
-            <AlertTriangle size={14} />
+            <AlertTriangle className="size-3.5" />
             {t('storage.status.drive_token_expired')}
           </span>
         )}
         {!drive.connected && !isGDrive && !isHybrid && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CloudOff size={14} />
+            <CloudOff className="size-3.5" />
             {t('storage.status.drive_not_connected')}
           </span>
         )}
@@ -107,7 +107,7 @@ export default function ObjectStorageHealthCard() {
           <div>
             <div className="flex items-center justify-between text-xs mb-1">
               <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                <HardDrive size={14} />
+                <HardDrive className="size-3.5" />
                 {t('storage.status.local_cache')}
               </span>
               <span className={`tabular-nums font-medium ${toneText(tone)}`}>
@@ -125,19 +125,19 @@ export default function ObjectStorageHealthCard() {
           {/* Sync counters */}
           <div className="grid grid-cols-3 gap-3 pt-1">
             <CountChip
-              icon={<Cloud size={16} />}
+              icon={<Cloud className="size-4" />}
               label={t('storage.status.synced')}
               value={media.remote}
               tone={toneClasses('ok')}
             />
             <CountChip
-              icon={<RefreshCcw size={16} />}
+              icon={<RefreshCcw className="size-4" />}
               label={t('storage.status.pending')}
               value={queue.pending}
               tone={toneClasses('info')}
             />
             <CountChip
-              icon={<AlertTriangle size={16} />}
+              icon={<AlertTriangle className="size-4" />}
               label={t('storage.status.stuck')}
               value={queue.stuck}
               tone={toneClasses(queue.stuck > 0 ? 'danger' : 'neutral')}
@@ -146,7 +146,7 @@ export default function ObjectStorageHealthCard() {
 
           {queue.stuck > 0 && drive.connected && (
             <p className="text-2xs text-warn inline-flex items-center gap-1.5 pt-1">
-              <AlertTriangle size={12} />
+              <AlertTriangle className="size-3" />
               {t('storage.status.stuck_hint')}
             </p>
           )}
@@ -161,17 +161,17 @@ function BackendPill({ backend }: { backend: string }) {
   const palette: Record<string, { cls: string; icon: JSX.Element; label: string }> = {
     disk: {
       cls: 'bg-muted text-muted-foreground border-border',
-      icon: <HardDrive size={12} />,
+      icon: <HardDrive className="size-3" />,
       label: t('storage.badge_disk'),
     },
     gdrive: {
       cls: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30',
-      icon: <Cloud size={12} />,
+      icon: <Cloud className="size-3" />,
       label: t('storage.badge_gdrive'),
     },
     hybrid: {
       cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
-      icon: <RefreshCcw size={12} />,
+      icon: <RefreshCcw className="size-3" />,
       label: t('storage.badge_hybrid'),
     },
   };

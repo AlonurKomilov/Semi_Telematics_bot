@@ -156,7 +156,7 @@ function IdentityBadges({ u }: { u: AdminUser }) {
             : 'bg-muted text-muted-foreground/50 opacity-60'
         }`}
       >
-        <Mail size={12} aria-hidden="true" />
+        <Mail className="size-3" aria-hidden="true" />
       </span>
       <span
         title={
@@ -171,7 +171,7 @@ function IdentityBadges({ u }: { u: AdminUser }) {
             : 'bg-muted text-muted-foreground/50 opacity-60'
         }`}
       >
-        <Send size={12} aria-hidden="true" />
+        <Send className="size-3" aria-hidden="true" />
       </span>
     </span>
   );
@@ -202,7 +202,7 @@ function PrimaryOwnerMark() {
       title="Primary owner — can't be removed; alone manages co-owners + account deletion."
       className="inline-flex text-primary"
     >
-      <Crown size={12} aria-hidden="true" />
+      <Crown className="size-3" aria-hidden="true" />
     </span>
   );
 }
@@ -879,7 +879,7 @@ export default function TeamManagement() {
                 } min-h-tap`}
                 title="Drivers are managed in the Drivers feature; shown here for role changes (promote to staff)."
               >
-                <IdCard size={12} />
+                <IdCard className="size-3" />
                 {showDrivers ? 'Hide drivers' : `Show drivers (${driverCount})`}
               </button>
             </div>
@@ -911,7 +911,7 @@ export default function TeamManagement() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => setSelected(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+                  <button onClick={() => setSelected(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X className="size-4" /></button>
                 </div>
 
                 {/* Detail tabs — lucide icons + ARIA tab semantics
@@ -938,7 +938,7 @@ export default function TeamManagement() {
                           sel ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground/80'
                         } min-h-tap`}
                       >
-                        <Icon size={12} aria-hidden="true" />
+                        <Icon className="size-3" aria-hidden="true" />
                         {tab.label}
                       </button>
                     );
@@ -994,22 +994,22 @@ export default function TeamManagement() {
                         <div className="text-base font-semibold text-foreground inline-flex items-center gap-2">
                           {isDriver ? (
                             <>
-                              <Building2 size={14} aria-hidden="true" className="text-muted-foreground" />
+                              <Building2 aria-hidden="true" className="text-muted-foreground size-3.5" />
                               {allCompanies.find(c => c.id === editCompanyIds[0])?.code || '—'}
                               <span className="text-xs text-muted-foreground font-normal">
                                 {editVehicles.length > 0 && `· ${editVehicles.length} vehicle${editVehicles.length === 1 ? '' : 's'}`}
                               </span>
                             </>
                           ) : accessScope === 'all' ? (
-                            <><Globe size={14} aria-hidden="true" className="text-muted-foreground" />All vehicles</>
+                            <><Globe aria-hidden="true" className="text-muted-foreground size-3.5" />All vehicles</>
                           ) : accessScope === 'company' ? (
                             <>
-                              <Building2 size={14} aria-hidden="true" className="text-muted-foreground" />
+                              <Building2 aria-hidden="true" className="text-muted-foreground size-3.5" />
                               {editCompanyIds.length} {editCompanyIds.length === 1 ? 'company' : 'companies'}
                             </>
                           ) : (
                             <>
-                              <Truck size={14} aria-hidden="true" className="text-muted-foreground" />
+                              <Truck aria-hidden="true" className="text-muted-foreground size-3.5" />
                               {editVehicles.length} {editVehicles.length === 1 ? 'vehicle' : 'vehicles'}
                             </>
                           )}
@@ -1035,13 +1035,13 @@ export default function TeamManagement() {
                         <>
                           <div className={`px-3 py-2 rounded-lg border text-xs ${toneClasses('warn')}`}>
                             <p className="font-medium mb-0.5 inline-flex items-center gap-1">
-                              <Building2 size={12} aria-hidden="true" />
+                              <Building2 className="size-3" aria-hidden="true" />
                               One company at a time.
                             </p>
                             <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-3xs py-1 -my-1 min-h-tap">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
                           </div>
                           <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                            <Building2 size={14} className="text-muted-foreground" aria-hidden="true" />
+                            <Building2 className="text-muted-foreground size-3.5" aria-hidden="true" />
                             Assigned Company
                           </h3>
                           {allCompanies.length === 0 ? (
@@ -1090,7 +1090,7 @@ export default function TeamManagement() {
                                           (company is derived from the
                                           selected vehicles' carriers) */}
                           <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                            <Truck size={14} className="text-muted-foreground" aria-hidden="true" />
+                            <Truck className="text-muted-foreground size-3.5" aria-hidden="true" />
                             Vehicle Access
                           </h3>
                           <div
@@ -1116,7 +1116,7 @@ export default function TeamManagement() {
                                     sel ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                                   }`}
                                 >
-                                  <Icon size={14} aria-hidden="true" />
+                                  <Icon className="size-3.5" aria-hidden="true" />
                                   {opt.label}
                                 </button>
                               );
@@ -1164,7 +1164,7 @@ export default function TeamManagement() {
                                         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
                                           checked ? 'bg-primary border-primary' : 'border-border'
                                         }`}>
-                                          {checked && <Check size={12} className="text-primary-foreground" aria-hidden="true" />}
+                                          {checked && <Check className="text-primary-foreground size-3" aria-hidden="true" />}
                                         </div>
                                         <div className="flex-1">
                                           <span className="text-sm font-medium">{c.code}</span>
@@ -1204,9 +1204,8 @@ export default function TeamManagement() {
                                 <>
                                   <div className="relative mb-2">
                                     <Search
-                                      size={14}
                                       aria-hidden="true"
-                                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5"
                                     />
                                     <input
                                       value={vehicleQuery}
@@ -1244,7 +1243,7 @@ export default function TeamManagement() {
                                             <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
                                               checked ? 'bg-primary border-primary' : 'border-border'
                                             }`}>
-                                              {checked && <Check size={12} className="text-primary-foreground" aria-hidden="true" />}
+                                              {checked && <Check className="text-primary-foreground size-3" aria-hidden="true" />}
                                             </div>
                                             <div className="flex-1">
                                               <span className="text-sm font-medium">{v.name}</span>
@@ -1411,7 +1410,7 @@ export default function TeamManagement() {
                             <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3">
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium inline-flex items-center gap-1.5">
-                                  <Shield size={14} className="text-primary shrink-0" aria-hidden="true" />
+                                  <Shield className="text-primary shrink-0 size-3.5" aria-hidden="true" />
                                   {tierLabel}
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -1476,7 +1475,7 @@ export default function TeamManagement() {
                                   onClick={() => setOwnerFlow('promote-pw')}
                                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-border bg-muted text-muted-foreground hover:border-primary/30 hover:text-foreground/80 transition"
                                 >
-                                  <Crown size={14} /> Make co-owner
+                                  <Crown className="size-3.5" /> Make co-owner
                                 </button>
                               )}
                               {ownerFlow === 'promote-pw' && (
@@ -1562,7 +1561,7 @@ export default function TeamManagement() {
                       {!isSelfEdit && (ROLE_RANK[selected.role] ?? 0) < myRank && (
                         <div className="border-t border-border pt-5">
                           <h3 className="text-sm font-semibold text-foreground/80 mb-3 inline-flex items-center gap-2">
-                            <Clock size={14} className="text-muted-foreground" aria-hidden="true" />
+                            <Clock className="text-muted-foreground size-3.5" aria-hidden="true" />
                             Working Hours
                           </h3>
                           <label className="block text-2xs text-muted-foreground mb-1 uppercase tracking-wider">
@@ -1782,7 +1781,7 @@ function IdentityLinks({ member, onPatched }: {
             aria-label="Copy Telegram ID"
             title="Copy Telegram ID"
           >
-            <Copy size={12} />
+            <Copy className="size-3" />
           </button>
         ) : (
           <Button
@@ -1807,7 +1806,7 @@ function IdentityLinks({ member, onPatched }: {
               aria-label="Copy sign-in link"
               title="Copy sign-in link"
             >
-              <Copy size={12} />
+              <Copy className="size-3" />
             </button>
           </div>
           <p className="mt-1 text-2xs text-muted-foreground">

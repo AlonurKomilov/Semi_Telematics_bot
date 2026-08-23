@@ -152,7 +152,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
 
@@ -201,7 +201,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
                   className="text-muted-foreground hover:text-destructive p-1"
                   aria-label={`Delete ${t.name}`}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 className="size-3.5" />
                 </button>
               </li>
             ))}
@@ -214,7 +214,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
             onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition min-h-tap"
           >
-            <Plus size={14} />
+            <Plus className="size-3.5" />
             New template
           </button>
         ) : (

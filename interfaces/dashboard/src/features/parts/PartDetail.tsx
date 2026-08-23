@@ -160,7 +160,7 @@ export default function PartDetail() {
             {fast && (
               <Tip label={`Replaced about every ${days} days — worth checking for a failing component or a repair that isn't holding.`}>
                 <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-2xs font-medium ${toneClasses('warn')}`}>
-                  <TriangleAlert size={12} /> repeating fast
+                  <TriangleAlert className="size-3" /> repeating fast
                 </span>
               </Tip>
             )}
@@ -372,7 +372,7 @@ export default function PartDetail() {
         onClick={() => navigate('/parts')}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition mb-3 py-1 -my-1 min-h-tap"
       >
-        <ArrowLeft size={14} /> Parts
+        <ArrowLeft className="size-3.5" /> Parts
       </button>
 
       <PageHeader
@@ -394,17 +394,17 @@ export default function PartDetail() {
               </span>
             )}
             <Button variant="outline" size="sm" onClick={openEdit}>
-              <Pencil size={14} /> Edit
+              <Pencil /> Edit
             </Button>
             <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
-              <HistoryIcon size={14} /> History
+              <HistoryIcon /> History
             </Button>
             <Button variant="outline" size="sm" onClick={() => {
               setMergeScope('mine'); setMergeTarget('');
               setPubTerm(''); setPubPick(null);
               setMergeOpen(true);
             }}>
-              <Merge size={14} /> Merge into…
+              <Merge /> Merge into…
             </Button>
           </span>
         )}
@@ -436,7 +436,7 @@ export default function PartDetail() {
               answers "which product is this?" (identity), this one
               "what kind of thing is this?" (classification). */}
           <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Cog size={16} className="text-muted-foreground shrink-0" />
+            <Cog className="text-muted-foreground shrink-0 size-4" />
             <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">System</span>
             {(() => {
               const asm = asmAll.find((a) => a.key === (data.part.assembly_key ?? ''));
@@ -477,7 +477,7 @@ export default function PartDetail() {
                 onClick={() => setAssembly(data.part.suggested_assembly!)}
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')} min-h-tap`}
               >
-                <Check size={12} aria-hidden />
+                <Check className="size-3" aria-hidden />
                 {asmLabelOf.get(data.part.suggested_assembly) ?? data.part.suggested_assembly}?
               </button>
             )}
@@ -490,7 +490,7 @@ export default function PartDetail() {
               (or via Merge into… → Catalog); Unlink is the
               wrong-match escape hatch and it STICKS. */}
           <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
-            <Globe size={16} className="text-muted-foreground shrink-0" />
+            <Globe className="text-muted-foreground shrink-0 size-4" />
             {data.public ? (
               <>
                 <p className="text-sm text-foreground min-w-0">
@@ -503,7 +503,7 @@ export default function PartDetail() {
                 </p>
                 <button type="button" onClick={doUnlink} disabled={busy}
                   className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition min-h-tap">
-                  <Link2Off size={14} /> Unlink
+                  <Link2Off className="size-3.5" /> Unlink
                 </button>
               </>
             ) : (

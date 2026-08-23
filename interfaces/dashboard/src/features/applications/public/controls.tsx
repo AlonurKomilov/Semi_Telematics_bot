@@ -130,7 +130,7 @@ export function Check_({ checked, onChange, children }: {
       <span className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border ${
         checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
       }`}>
-        {checked && <Check size={12} />}
+        {checked && <Check className="size-3" />}
       </span>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only" />
       <span className="text-foreground">{children}</span>
@@ -192,13 +192,13 @@ export function DocUpload({ label, sub, required, accept = 'image/*,application/
         <div className="flex items-center gap-3 rounded-md border border-border bg-card p-2.5">
           {value.dataUrl
             ? <img src={value.dataUrl} alt="" className="size-12 rounded object-cover" />
-            : <span className="flex size-12 items-center justify-center rounded bg-muted"><FileText size={20} className="text-muted-foreground" /></span>}
+            : <span className="flex size-12 items-center justify-center rounded bg-muted"><FileText className="text-muted-foreground size-5" /></span>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm text-foreground">{value.name}</p>
             <p className="text-xs text-muted-foreground">{(value.size / 1024).toFixed(0)} KB</p>
           </div>
           <button type="button" onClick={() => onChange(null)}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"><X size={16} /></button>
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"><X className="size-4" /></button>
         </div>
       ) : (
         <div
@@ -208,13 +208,13 @@ export function DocUpload({ label, sub, required, accept = 'image/*,application/
           className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-md border border-dashed p-4 text-center transition-colors hover:bg-muted/50 ${
             shownErr ? 'border-destructive' : 'border-border'
           }`}>
-          <UploadCloud size={20} className="text-muted-foreground" />
+          <UploadCloud className="text-muted-foreground size-5" />
           <span className="text-sm text-foreground">Tap to upload or drag a file</span>
           <span className="text-xs text-muted-foreground">JPG, PNG or PDF · up to {maxMB} MB</span>
           {allowsImage && (
             <button type="button" onClick={(e) => { e.stopPropagation(); camRef.current?.click(); }}
               className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted min-h-tap">
-              <Camera size={14} /> Take photo
+              <Camera className="size-3.5" /> Take photo
             </button>
           )}
         </div>

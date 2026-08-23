@@ -92,7 +92,7 @@ export default function PushChannelCard({ onChanged }: { onChanged: () => void }
     <section className="bg-card border border-border rounded-xl p-4">
       <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-base font-semibold inline-flex items-center gap-2">
-          <MonitorSmartphone size={16} /> Push
+          <MonitorSmartphone className="size-4" /> Push
         </p>
         {devices.length > 0 && (
           <span className="text-xs font-medium text-ok">
@@ -143,7 +143,7 @@ export default function PushChannelCard({ onChanged }: { onChanged: () => void }
                   aria-label={`Remove ${d.device_label || 'device'}`}
                   className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-danger-bg hover:text-danger transition-colors disabled:opacity-40 min-h-tap min-w-tap"
                 >
-                  <Trash2 size={14} aria-hidden />
+                  <Trash2 className="size-3.5" aria-hidden />
                 </button>
               </Tip>
             </li>

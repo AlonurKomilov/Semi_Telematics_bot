@@ -766,7 +766,7 @@ export default function LiveMap() {
               }}
               className="text-primary hover:underline text-xs inline-flex items-center gap-1 py-1 -my-1 min-h-tap"
             >
-              <ArrowLeft size={12} /> Back
+              <ArrowLeft className="size-3" /> Back
             </button>
             <h3 className="font-bold text-lg leading-tight">{selected.name}</h3>
             <p className="text-muted-foreground text-xs">{selected.address || 'Unknown location'}</p>
@@ -788,11 +788,11 @@ export default function LiveMap() {
                   <div>
                     <div className="flex justify-between text-xs mb-1">
                       <span className={`inline-flex items-center gap-1 ${selected.fuel_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}`}>
-                        <Fuel size={14} /> Fuel
+                        <Fuel className="size-3.5" /> Fuel
                       </span>
                       <span className={`inline-flex items-center gap-1 ${selected.fuel_percent < 15 ? 'text-danger font-semibold' : ''}`}>
                         {Math.round(selected.fuel_percent)}%
-                        {selected.fuel_percent < 15 && <TriangleAlert size={12} />}
+                        {selected.fuel_percent < 15 && <TriangleAlert className="size-3" />}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -807,11 +807,11 @@ export default function LiveMap() {
                   <div>
                     <div className="flex justify-between text-xs mb-1">
                       <span className={`inline-flex items-center gap-1 ${selected.def_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}`}>
-                        <FlaskConical size={14} /> DEF
+                        <FlaskConical className="size-3.5" /> DEF
                       </span>
                       <span className={`inline-flex items-center gap-1 ${selected.def_percent < 15 ? 'text-danger font-semibold' : ''}`}>
                         {Math.round(selected.def_percent)}%
-                        {selected.def_percent < 15 && <><TriangleAlert size={12} /> DERATE RISK</>}
+                        {selected.def_percent < 15 && <><TriangleAlert className="size-3" /> DERATE RISK</>}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -907,7 +907,7 @@ export default function LiveMap() {
                                   } min-h-tap`}
                                 >
                                   <span className={`text-3xs shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
-                                    {isActive ? <ArrowRight size={12} /> : `${i + 1}.`}
+                                    {isActive ? <ArrowRight className="size-3" /> : `${i + 1}.`}
                                   </span>
                                   <span className="flex-1 truncate">{name}</span>
                                   <span
@@ -974,10 +974,10 @@ export default function LiveMap() {
                     />
                     <span className="font-medium truncate flex-1">{p.name}</span>
                     {p.fuel_percent != null && p.fuel_percent < 15 && (
-                      <Fuel size={12} className="text-danger shrink-0" aria-label="Low fuel" />
+                      <Fuel className="text-danger shrink-0 size-3" aria-label="Low fuel" />
                     )}
                     {p.def_percent != null && p.def_percent < 15 && (
-                      <FlaskConical size={12} className="text-danger shrink-0" aria-label="Low DEF" />
+                      <FlaskConical className="text-danger shrink-0 size-3" aria-label="Low DEF" />
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground ml-4 truncate">{p.address || '—'}</p>
@@ -986,7 +986,7 @@ export default function LiveMap() {
                     <div className="ml-4 mt-1.5 space-y-1">
                       {p.fuel_percent != null && (
                         <div className="flex items-center gap-1">
-                          <Fuel size={12} className="w-5 text-muted-foreground shrink-0" />
+                          <Fuel className="w-5 text-muted-foreground shrink-0 size-3" />
                           <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${p.fuel_percent < 15 ? 'bg-danger' : p.fuel_percent < 25 ? 'bg-warn' : 'bg-ok'}`}
@@ -1000,7 +1000,7 @@ export default function LiveMap() {
                       )}
                       {p.def_percent != null && (
                         <div className="flex items-center gap-1">
-                          <FlaskConical size={12} className="w-5 text-muted-foreground shrink-0" />
+                          <FlaskConical className="w-5 text-muted-foreground shrink-0 size-3" />
                           <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${p.def_percent < 15 ? 'bg-danger' : p.def_percent < 25 ? 'bg-warn' : 'bg-ok'}`}

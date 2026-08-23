@@ -349,7 +349,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
   if (loading) {
     return (
       <div className="flex justify-center py-8">
-        <Loader2 size={18} className="animate-spin text-muted-foreground" />
+        <Loader2 className="animate-spin text-muted-foreground size-4.5" />
       </div>
     );
   }
@@ -388,7 +388,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
                         ? 'border-primary text-primary'
                         : 'border-border text-muted-foreground'
                   }`}>
-                    {step.done ? <Check size={12} /> : i + 1}
+                    {step.done ? <Check className="size-3" /> : i + 1}
                   </span>
                   <span className={step.done
                     ? 'text-muted-foreground line-through'
@@ -406,7 +406,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
               <Link to="/kpi/incentives"
                 className="inline-flex items-center gap-1 py-1 -my-1 text-primary underline underline-offset-4 hover:no-underline">
                 {t('kpi_config.step_run', 'Create the first run')}
-                <ArrowRight size={14} />
+                <ArrowRight className="size-3.5" />
               </Link>
             </li>
           </ol>
@@ -583,7 +583,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
               el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
           }}>
-            <Plus size={14} /> {t('kpi_config.add_tier', 'Add tier')}
+            <Plus /> {t('kpi_config.add_tier', 'Add tier')}
           </Button>
         </div>
         {cfg.tiers.length === 0 ? (
@@ -602,7 +602,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
                 toast.success(t('kpi_config.preset_applied',
                   '4 tiers added; the 2% exception cap and $7,000 / 1.9 RPM floors are filled in Model & policy above.'));
               }}>
-              <Wand2 size={14} className="mr-1.5" />
+              <Wand2 className="mr-1.5" />
               {t('kpi_config.preset', 'Start from a common ladder')}
             </Button>
             <p className="text-xs text-muted-foreground max-w-prose">
@@ -722,7 +722,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
                     aria-label={t('kpi_config.remove_tier', 'Remove tier')}
                     className="inline-flex size-7 items-center justify-center rounded text-muted-foreground hover:text-danger hover:bg-muted min-h-tap min-w-tap"
                   >
-                    <X size={14} />
+                    <X className="size-3.5" />
                   </button>
                 </span>
               </li>
@@ -740,7 +740,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" variant="outline" onClick={runPreview}
               disabled={previewing || !configured}>
-              {previewing && <Loader2 size={14} className="animate-spin mr-1.5" />}
+              {previewing && <Loader2 className="animate-spin mr-1.5" />}
               {rulesDirty
                 ? t('kpi_config.preview_btn2', 'Preview payout change')
                 : t('kpi_config.preview_btn3', 'Preview these rules on the latest run')}
@@ -808,7 +808,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </button>
           )}
           <Button variant={rulesDirty ? 'default' : 'outline'} onClick={requestSaveRules} disabled={saving || !rulesDirty}>
-            {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {saving && <Loader2 className="animate-spin mr-1.5" />}
             {t('kpi_config.save_rules', 'Save incentive rules')}
           </Button>
         </div>
@@ -884,7 +884,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             </button>
           )}
           <Button variant={targetsDirty ? 'default' : 'outline'} onClick={saveTargets} disabled={saving || !targetsDirty}>
-            {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {saving && <Loader2 className="animate-spin mr-1.5" />}
             {t('kpi_config.save_targets', 'Save targets')}
           </Button>
         </div>
@@ -906,7 +906,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
               {t('common.cancel', 'Cancel')}
             </Button>
             <Button variant="destructive" onClick={() => { void saveRules(); }} disabled={saving}>
-              {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+              {saving && <Loader2 className="animate-spin mr-1.5" />}
               {t('kpi_config.empty_save_confirm', 'Save with no tiers')}
             </Button>
           </DialogFooter>

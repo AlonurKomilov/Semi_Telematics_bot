@@ -132,7 +132,7 @@ export function ReferencedVehicles({ toolResults }: { toolResults: unknown }) {
               onClick={() => open(r)}
               className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium cursor-pointer transition-opacity hover:opacity-80 ${toneClasses(r.tone)} min-h-tap`}
             >
-              <Truck size={12} aria-hidden />
+              <Truck className="size-3" aria-hidden />
               <span>{r.vehicle}</span>
               {r.note && <span className="opacity-70">· {r.note}</span>}
             </button>

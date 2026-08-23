@@ -349,7 +349,7 @@ export default function AlertRoutingSection({
               reserved for actions so state vs click-me reads at a
               glance (component-grammar rule from the UX audit). */}
           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${toneClasses('ok')}`}>
-            <Check size={12} />
+            <Check className="size-3" />
             {bound.chat_title || bound.chat_id}
           </span>
           {bound.last_error && (
@@ -359,7 +359,7 @@ export default function AlertRoutingSection({
                silent-forever failure the audit flagged. */
             <Tip label={bound.last_error}>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs ${toneClasses('warn')}`}>
-                <AlertTriangle size={12} />
+                <AlertTriangle className="size-3" />
                 {t('alert_routing.delivery_failing')}
               </span>
             </Tip>
@@ -462,7 +462,7 @@ export default function AlertRoutingSection({
             onClick={() => setExpanded({ ...expanded, [persona]: !open })}
             className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
           >
-            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
             {t('alert_routing.topics_expander')}
           </button>
           {/* Settings apply to a group that isn't bound yet — say so,
@@ -558,7 +558,7 @@ export default function AlertRoutingSection({
                                 >
                                   {/* ✓ marks a SELECTED filter so it can't
                                       be mistaken for a pressable action. */}
-                                  {active && <Check size={12} />}
+                                  {active && <Check className="size-3" />}
                                   {SUBTYPE_LABELS[s] || s}
                                 </button>
                               );
@@ -760,7 +760,7 @@ export default function AlertRoutingSection({
               instead of rendering a roster that looks empty-by-permission. */}
           {topicsError && (
             <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('warn')}`}>
-              <Info size={14} className="mt-0.5 shrink-0" />
+              <Info className="mt-0.5 shrink-0 size-3.5" />
               <span>{t('alert_routing.topics_error')}</span>
               <button
                 type="button"
@@ -791,7 +791,7 @@ export default function AlertRoutingSection({
                 {t('alert_routing.setup_title')}
               </p>
               <p className="flex items-center gap-1.5 text-muted-foreground">
-                <Check size={12} className="text-ok shrink-0" />
+                <Check className="text-ok shrink-0 size-3" />
                 {t('alert_routing.setup_step_bot', { username: botConfig.bot_username })}
               </p>
               <p className="text-foreground">{t('alert_routing.setup_step_group')}</p>

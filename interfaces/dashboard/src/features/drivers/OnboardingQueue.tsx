@@ -67,7 +67,7 @@ export default function OnboardingQueue() {
   return (
     <div className="mb-4 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-1.5 mb-1">
-        <UserPlus size={16} className="text-primary shrink-0" aria-hidden />
+        <UserPlus className="text-primary shrink-0 size-4" aria-hidden />
         <span className="text-base font-semibold text-foreground">Onboarding</span>
         <span className={`text-2xs px-1.5 py-0.5 rounded-md ${toneClasses('warn')}`}>
           {queue.length} waiting
@@ -90,7 +90,7 @@ export default function OnboardingQueue() {
                 setTimeout(() => setCopied(false), 2000);
               }}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
+              {copied ? <Check /> : <Copy />} {copied ? 'Copied' : 'Copy'}
             </Button>
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function OnboardingQueue() {
               disabled={busyId === a.id}
               onClick={() => hire(a)}
             >
-              <UserPlus size={14} aria-hidden /> Hire
+              <UserPlus aria-hidden /> Hire
             </Button>
           </li>
         ))}

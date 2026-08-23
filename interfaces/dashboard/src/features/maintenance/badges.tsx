@@ -171,7 +171,7 @@ export function TaskTypeCell({
   }
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Icon size={14} className={`shrink-0 ${colour}`} />
+      <Icon className={`shrink-0 ${colour} size-3.5`} />
       <span className="capitalize">{label}</span>
     </span>
   );

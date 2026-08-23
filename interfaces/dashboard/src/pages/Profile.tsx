@@ -515,7 +515,7 @@ function SignInMethods() {
   return (
     <section className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center gap-2 mb-1">
-        <ShieldCheck size={18} className="text-muted-foreground" />
+        <ShieldCheck className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">{t('profile.signin_title', 'Sign-in methods')}</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
@@ -534,7 +534,7 @@ function SignInMethods() {
         {/* Email */}
         <li className="flex items-start gap-3 py-3">
           <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${me?.email ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
-            <Mail size={18} />
+            <Mail className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
@@ -676,7 +676,7 @@ function SignInMethods() {
         {/* Telegram */}
         <li className="flex items-start gap-3 py-3">
           <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${me?.telegram_id ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
-            <Send size={18} />
+            <Send className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">{t('profile.signin_telegram_label', 'Telegram')}</div>
@@ -703,7 +703,7 @@ function SignInMethods() {
               disabled={unlinking}
               className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap"
             >
-              <Unlink size={12} />
+              <Unlink className="size-3" />
               {unlinking ? t('profile.signin_unlinking', 'Unlinking…') : t('profile.signin_unlink', 'Disconnect')}
             </button>
           ) : (
@@ -712,7 +712,7 @@ function SignInMethods() {
               disabled={linking || linkStatus === 'pending'}
               className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap"
             >
-              <LinkIcon size={12} />
+              <LinkIcon className="size-3" />
               {linking
                 ? t('profile.signin_starting', 'Opening…')
                 : linkStatus === 'pending'
@@ -786,7 +786,7 @@ function RecentActivity() {
   return (
     <section className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center gap-2 mb-1">
-        <History size={18} className="text-muted-foreground" />
+        <History className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">{t('profile.activity_title', 'Recent sign-in activity')}</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
@@ -810,7 +810,7 @@ function RecentActivity() {
           return (
             <li key={idx} className="flex items-center gap-3 py-2.5 text-sm">
               <div className={`shrink-0 ${ok ? 'text-ok' : 'text-danger'}`}>
-                {ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                {ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -873,7 +873,7 @@ function DataExport() {
   return (
     <section className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center gap-2 mb-1">
-        <Download size={18} className="text-muted-foreground" />
+        <Download className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">{t('profile.export_title', 'Download my data')}</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
@@ -890,7 +890,7 @@ function DataExport() {
         disabled={downloading}
         className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition min-h-tap"
       >
-        <ExternalLink size={14} />
+        <ExternalLink className="size-3.5" />
         {downloading
           ? t('profile.export_preparing', 'Preparing…')
           : t('profile.export_button', 'Download JSON')}
@@ -1010,7 +1010,7 @@ function ActiveSessions() {
   return (
     <section className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center gap-2 mb-1">
-        <ShieldCheck size={18} className="text-muted-foreground" />
+        <ShieldCheck className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">Active sessions</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
@@ -1036,7 +1036,7 @@ function ActiveSessions() {
           return (
             <li key={s.id} className="flex items-start gap-3 py-3">
               <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${isCurrent ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                <Icon size={18} />
+                <Icon className="size-4.5" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1060,7 +1060,7 @@ function ActiveSessions() {
                   title="Sign out this device"
                   className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed transition min-h-tap min-w-tap"
                 >
-                  <X size={16} />
+                  <X className="size-4" />
                 </button>
               )}
             </li>
@@ -1075,7 +1075,7 @@ function ActiveSessions() {
             disabled={terminating || busyId !== null}
             className="inline-flex items-center gap-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded transition min-h-tap"
           >
-            <LogOut size={14} />
+            <LogOut className="size-3.5" />
             {terminating ? 'Signing out…' : `Sign out other sessions (${otherCount})`}
           </button>
         </div>

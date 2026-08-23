@@ -291,7 +291,7 @@ export default function CarrierDirectory() {
             <Button size="sm" variant="ghost" onClick={() => { setAdding(false); setNewName(''); }}>Cancel</Button>
           </div>
         ) : (
-          <Button size="sm" onClick={() => setAdding(true)}><Plus size={16} /> Add carrier</Button>
+          <Button size="sm" onClick={() => setAdding(true)}><Plus /> Add carrier</Button>
         ))}
       />
       {/* Three distinct non-happy renders. They used to collapse into
@@ -308,7 +308,7 @@ export default function CarrierDirectory() {
           description="A carrier profile is your team's shared sheet on one external carrier you recruit for — who they will hire, what they pay, and how to submit drivers to them."
           action={canEdit ? (
             <Button size="sm" onClick={() => setAdding(true)}>
-              <Plus size={16} /> Add your first carrier
+              <Plus /> Add your first carrier
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">

@@ -119,7 +119,7 @@ export default function ObjectStorageUsageCard() {
   if (isLoading) {
     return (
       <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground inline-flex items-center gap-2">
-        <Loader2 size={14} className="animate-spin" />
+        <Loader2 className="animate-spin size-3.5" />
         Measuring stored files…
       </div>
     );
@@ -134,7 +134,7 @@ export default function ObjectStorageUsageCard() {
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <HardDrive size={16} className="text-muted-foreground" />
+        <HardDrive className="text-muted-foreground size-4" />
         <h3 className="text-sm font-semibold">Stored files</h3>
         <InfoTip label="Everything this account holds on our servers, grouped by what created it. Files synced to your own Google Drive are not counted here — those live in your cloud." />
         <span className="ml-auto text-xs text-muted-foreground">
@@ -177,7 +177,7 @@ export default function ObjectStorageUsageCard() {
 
       {data.orphan_files > 0 && (
         <div className="flex items-center gap-2 flex-wrap pt-1">
-          <AlertTriangle size={14} className="text-warn shrink-0" />
+          <AlertTriangle className="text-warn shrink-0 size-3.5" />
           <span className="text-xs text-muted-foreground">
             {data.orphan_files.toLocaleString()} file
             {data.orphan_files === 1 ? '' : 's'} ({formatBytes(data.orphan_bytes)}) are
@@ -238,7 +238,7 @@ export default function ObjectStorageUsageCard() {
               disabled={busy}
               className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 rounded-lg text-sm font-medium text-destructive-foreground transition inline-flex items-center gap-1.5 disabled:opacity-50 min-h-tap"
             >
-              <Trash2 size={14} />
+              <Trash2 className="size-3.5" />
               Delete {reviewing?.candidate_count.toLocaleString()} files
             </button>
           </DialogFooter>

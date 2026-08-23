@@ -76,7 +76,7 @@ export function ExceptionDialog({ runId, row, onClose, onSaved }: {
           )}
           <Button variant="outline" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button onClick={() => apply(false)} disabled={busy || pct === '' || !reason.trim()}>
-            {busy && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {busy && <Loader2 className="animate-spin mr-1.5" />}
             {t('kpi_runs.exc_apply', 'Apply exception')}
           </Button>
         </DialogFooter>

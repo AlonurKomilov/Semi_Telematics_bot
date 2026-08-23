@@ -71,7 +71,7 @@ export default function PendingInviteBanner() {
 
   return (
     <div className="bg-primary/10 border-b border-primary/30 px-4 py-2.5 flex items-center gap-3 text-sm">
-      <Mail size={16} className="text-primary flex-shrink-0" />
+      <Mail className="text-primary flex-shrink-0 size-4" />
       <div className="flex-1 min-w-0">
         <span className="text-foreground">
           <strong>{preview.inviter_display_name}</strong> invited you to{' '}
@@ -95,7 +95,7 @@ export default function PendingInviteBanner() {
         className="text-muted-foreground hover:text-foreground"
         aria-label="Dismiss"
       >
-        <X size={14} />
+        <X className="size-3.5" />
       </button>
     </div>
   );

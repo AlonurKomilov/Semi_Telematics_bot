@@ -276,7 +276,7 @@ export default function PublicCarrierIntake() {
   if (state === 'loading') {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3">
-        <Loader2 size={24} className="animate-spin text-primary" />
+        <Loader2 className="animate-spin text-primary size-6" />
         <p className="text-sm text-muted-foreground">Loading your saved answers…</p>
       </div>
     );
@@ -286,7 +286,7 @@ export default function PublicCarrierIntake() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-          <Building2 size={24} className="mx-auto text-muted-foreground" />
+          <Building2 className="mx-auto text-muted-foreground size-6" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">This link isn't available</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             The invite link may have expired or been replaced. Reply to the
@@ -304,7 +304,7 @@ export default function PublicCarrierIntake() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-          <Building2 size={24} className="mx-auto text-muted-foreground" />
+          <Building2 className="mx-auto text-muted-foreground size-6" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">Couldn't load the form</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your link is fine — we just couldn't reach the server. Check your
@@ -321,7 +321,7 @@ export default function PublicCarrierIntake() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-          <CheckCircle2 size={24} className="mx-auto text-ok" />
+          <CheckCircle2 className="mx-auto text-ok size-6" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">Thank you!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your profile was sent to {agency || 'the recruiting team'}.
@@ -477,7 +477,7 @@ export default function PublicCarrierIntake() {
                   {(p.extra ?? 0) > 0 && ` · +${p.extra} of your own`}
                 </span>
                 <Button size="xs" variant="outline" onClick={() => addRow(s.key)}>
-                  <Plus size={14} /> Add field
+                  <Plus /> Add field
                 </Button>
               </div>
             </div>
@@ -511,7 +511,7 @@ export default function PublicCarrierIntake() {
                         <button type="button" onClick={() => removeRow(s.key, i)}
                           aria-label={`Remove ${r.label || 'field'}`}
                           className="inline-flex items-center justify-center text-muted-foreground hover:text-danger">
-                          <X size={16} />
+                          <X className="size-4" />
                         </button>
                       ) : <span />}
                     </div>

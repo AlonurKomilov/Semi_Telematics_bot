@@ -106,7 +106,7 @@ export default function AccountAlertSummary() {
     <section className="mb-4 bg-card border border-border rounded-xl p-5">
       <header className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
-          <BarChart3 size={16} className="text-muted-foreground" />
+          <BarChart3 className="text-muted-foreground size-4" />
           {t('alerts.volume_summary.title', { n: days })}
         </h2>
         <span className="text-2xs text-muted-foreground tabular-nums">

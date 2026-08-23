@@ -77,7 +77,7 @@ export default function BackfillStatusBadge({
   if (data.state === 'running') {
     return (
       <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-        <Loader2 size={12} className="animate-spin" />
+        <Loader2 className="animate-spin size-3" />
         <span>
           Backfilling {backfillProgressLabel(data)}
           {data.rows_inserted ? ` · ${data.rows_inserted.toLocaleString()} rows` : ''}
@@ -89,7 +89,7 @@ export default function BackfillStatusBadge({
   if (data.state === 'completed') {
     return (
       <div className="flex items-center gap-1.5 text-2xs text-ok">
-        <Check size={12} />
+        <Check className="size-3" />
         Backfill done · {data.rows_inserted?.toLocaleString() ?? 0} rows
       </div>
     );
@@ -113,7 +113,7 @@ export default function BackfillStatusBadge({
           disabled={resetting}
           title="Clear the stuck record so you can re-run the backfill"
         >
-          {resetting ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+          {resetting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           Reset
         </Button>
       </div>
@@ -138,7 +138,7 @@ export default function BackfillStatusBadge({
           disabled={resetting}
           title="Clear the skipped record so you can re-run the backfill"
         >
-          {resetting ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+          {resetting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           Reset
         </Button>
       </div>

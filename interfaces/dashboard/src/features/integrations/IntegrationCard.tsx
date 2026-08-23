@@ -329,7 +329,7 @@ export default function IntegrationCard({
         }}
       >
         <div className="size-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
-          <Plug size={20} />
+          <Plug className="size-5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -358,7 +358,7 @@ export default function IntegrationCard({
             aria-expanded={expanded}
             className="shrink-0"
           >
-            {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+            {expanded ? <ChevronDown /> : <ChevronRight />}
           </Button>
         )}
       </div>
@@ -367,7 +367,7 @@ export default function IntegrationCard({
           a problem the operator needs to see at a glance. */}
       {isErrored && integration?.last_health_error && (
         <div className={`mt-3 flex items-start gap-2 text-xs border rounded-md px-2.5 py-2 ${toneClasses('danger')}`}>
-          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+          <AlertTriangle className="flex-shrink-0 mt-0.5 size-3.5" />
           <span className="break-words">{integration.last_health_error}</span>
         </div>
       )}
@@ -566,9 +566,9 @@ export default function IntegrationCard({
               }
             >
               {testing ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RefreshCw size={14} />
+                <RefreshCw />
               )}
               {testing ? 'Testing…' : 'Test all'}
             </Button>
@@ -600,11 +600,11 @@ export default function IntegrationCard({
                 }
               >
                 {(triggering || backfillRunning) ? (
-                  <Loader2 size={14} className="animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : integration.last_backfill_at ? (
-                  <Check size={14} />
+                  <Check />
                 ) : (
-                  <RefreshCw size={14} />
+                  <RefreshCw />
                 )}
                 {backfillRunning && backfillStatus
                   ? `Running · ${backfillProgressLabel(backfillStatus, historyWindow)}`
@@ -620,7 +620,7 @@ export default function IntegrationCard({
               onClick={() => setShowDisconnect(true)}
               title="Disconnect the integration — your synced data is kept"
             >
-              <X size={14} />
+              <X />
               Disconnect
             </Button>
           </div>
@@ -865,7 +865,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
             className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-tap"
             title="Create the company on the Companies page — it appears here for its API key"
           >
-            <Plus size={12} />
+            <Plus className="size-3" />
             Add company
           </Link>
         </span>
@@ -964,8 +964,8 @@ function CompanyKeyRow({
               title="Probe this company's Samsara /me endpoint"
             >
               {testing
-                ? <Loader2 size={12} className="animate-spin" />
-                : <RefreshCw size={12} />}
+                ? <Loader2 className="animate-spin" />
+                : <RefreshCw />}
               Test
             </Button>
             {/* Per-company history refresh — same shape as Test but
@@ -983,24 +983,24 @@ function CompanyKeyRow({
               }
             >
               {refreshing
-                ? <Loader2 size={12} className="animate-spin" />
-                : <RefreshCw size={12} />}
+                ? <Loader2 className="animate-spin" />
+                : <RefreshCw />}
               Refresh
             </Button>
             {company.has_key ? (
               <span className="text-ok text-2xs flex items-center gap-1">
-                <Check size={12} /> key set
+                <Check className="size-3" /> key set
               </span>
             ) : (
               <span className="text-muted-foreground italic text-2xs">no key</span>
             )}
             <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-              <Pencil size={12} />
+              <Pencil />
               {company.has_key ? 'Rotate' : 'Set key'}
             </Button>
             {company.has_key && (
               <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
-                <Trash2 size={12} />
+                <Trash2 />
               </Button>
             )}
           </>
@@ -1023,7 +1023,7 @@ function CompanyKeyRow({
             onClick={onSave}
             disabled={saving || !tokenDraft.trim()}
           >
-            {saving ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
+            {saving ? <Loader2 className="animate-spin" /> : 'Save'}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={onCancel}>
             Cancel
@@ -1137,7 +1137,7 @@ function FeedbackBanner({
   const Icon = kind === 'success' ? Check : kind === 'error' ? AlertTriangle : RefreshCw;
   return (
     <div className={`mt-3 flex items-start gap-2 text-xs border rounded px-2.5 py-2 ${tone}`}>
-      <Icon size={14} className="flex-shrink-0 mt-0.5" />
+      <Icon className="flex-shrink-0 mt-0.5 size-3.5" />
       <span className="flex-1 break-words">{message}</span>
       <Button
         type="button"
@@ -1147,7 +1147,7 @@ function FeedbackBanner({
         className="flex-shrink-0 opacity-60 hover:opacity-100"
         aria-label="Dismiss"
       >
-        <X size={12} />
+        <X />
       </Button>
     </div>
   );
@@ -1271,7 +1271,7 @@ function ConnectForm({
       {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={submitting || !canSubmit}>
-          <Check size={14} />
+          <Check />
           {submitting ? 'Connecting…' : 'Connect'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>

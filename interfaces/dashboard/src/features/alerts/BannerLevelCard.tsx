@@ -32,7 +32,7 @@ export default function BannerLevelCard() {
   return (
     <section className="bg-card border border-border rounded-xl p-4">
       <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
-        <BellRing size={16} /> On-screen alerts
+        <BellRing className="size-4" /> On-screen alerts
       </p>
       <p className="text-xs text-muted-foreground mb-3">
         Which alerts pop up while you have the dashboard open.

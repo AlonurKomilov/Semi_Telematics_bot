@@ -180,7 +180,7 @@ export function WorkHoursPanel() {
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
         >
-          <Plus size={14} aria-hidden="true" />
+          <Plus className="size-3.5" aria-hidden="true" />
           {t('actions.new_schedule', { defaultValue: 'New schedule' })}
         </button>
       </div>
@@ -264,7 +264,7 @@ export function WorkHoursPanel() {
                   aria-label="Edit schedule"
                   title="Edit"
                 >
-                  <Pencil size={14} aria-hidden="true" />
+                  <Pencil className="size-3.5" aria-hidden="true" />
                 </button>
                 <button
                   onClick={() => setConfirmDeleteId(s.id)}
@@ -272,7 +272,7 @@ export function WorkHoursPanel() {
                   aria-label="Delete schedule"
                   title="Delete"
                 >
-                  <Trash2 size={14} aria-hidden="true" />
+                  <Trash2 className="size-3.5" aria-hidden="true" />
                 </button>
               </div>
             </div>

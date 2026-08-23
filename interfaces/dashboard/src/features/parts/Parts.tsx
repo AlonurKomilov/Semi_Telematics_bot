@@ -192,7 +192,7 @@ export default function Parts() {
               }}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')} min-h-tap`}
             >
-              <Check size={12} aria-hidden />
+              <Check className="size-3" aria-hidden />
               {asmLabel.get(part.suggested_assembly) ?? part.suggested_assembly}?
             </button>
           );
@@ -254,7 +254,7 @@ export default function Parts() {
         description="Every part your invoices mention, deduplicated into one catalog. Open a part to see which trucks keep needing it and what each shop charges. Assembly is level 2 of System → Assembly → Part — it groups a part inside its system so Cost Reports can break a system's bar down."
         actions={(
           <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Add part
+            <Plus /> Add part
           </Button>
         )}
       />
@@ -304,7 +304,7 @@ export default function Parts() {
                 disabled={applyAll.isPending}
                 onClick={() => applyAll.mutate()}
               >
-                <Wand2 size={14} />
+                <Wand2 />
                 {applyAll.isPending
                   ? 'Applying…'
                   : `Apply ${suggestionCount} suggested assembl${suggestionCount === 1 ? 'y' : 'ies'}`}

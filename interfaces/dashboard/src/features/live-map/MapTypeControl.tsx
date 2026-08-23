@@ -19,6 +19,7 @@
 import { useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Map as MapIcon, Mountain, Satellite, type LucideIcon } from 'lucide-react';
 import type { MapType } from '@/hooks/useLeafletMap';
+import { cn } from '@/lib/utils';
 
 interface MapTypeControlProps {
   mapType: MapType;
@@ -85,12 +86,12 @@ export default function MapTypeControl({
         className="w-full flex items-center justify-between px-3 py-2.5 font-semibold text-foreground hover:bg-muted/60 rounded-xl transition"
       >
         <span className="flex items-center gap-1.5">
-          <MapIcon size={16} className="text-muted-foreground" />
+          <MapIcon className="text-muted-foreground size-4" />
           <span>Map Type</span>
         </span>
         {collapsed
-          ? <ChevronDown size={14} className="text-muted-foreground" />
-          : <ChevronUp size={14} className="text-muted-foreground" />}
+          ? <ChevronDown className="text-muted-foreground size-3.5" />
+          : <ChevronUp className="text-muted-foreground size-3.5" />}
       </button>
 
       {!collapsed && (
@@ -118,12 +119,12 @@ export default function MapTypeControl({
                     {/* Check badge */}
                     {active && (
                       <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center leading-none">
-                        <Check size={10} />
+                        <Check className="size-2.5" />
                       </span>
                     )}
                   </div>
                   {/* Icon + label */}
-                  <Icon size={18} className={active ? 'text-primary' : 'text-muted-foreground'} />
+                  <Icon className={cn(active ? 'text-primary' : 'text-muted-foreground', 'size-4.5')} />
                   <span
                     className={`text-2xs leading-tight ${
                       active ? 'text-primary font-medium' : 'text-muted-foreground'
@@ -159,7 +160,7 @@ export default function MapTypeControl({
                   }`}
                 >
                   {showLabels && (
-                    <Check size={11} className="text-primary-foreground" />
+                    <Check className="size-3 text-primary-foreground" />
                   )}
                 </span>
               </span>

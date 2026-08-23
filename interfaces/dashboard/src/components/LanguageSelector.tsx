@@ -85,7 +85,7 @@ export function LanguageSelector() {
     key: lng,
     label: NATIVE_LABEL[lng],
     icon: lng === current
-      ? <Check size={14} aria-hidden className="text-foreground" />
+      ? <Check aria-hidden className="text-foreground size-3.5" />
       : <span aria-hidden className="inline-block size-3.5" />,
     onSelect: () => pick(lng),
   }));

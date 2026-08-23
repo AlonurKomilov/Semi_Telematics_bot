@@ -28,6 +28,7 @@ import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
 import { usePreference } from '../../../preferences';
 import { Tip } from '../../../components/tooltip';
+import { cn } from '@/lib/utils';
 
 const LAST_ACK_KEY = '4truck_dispatch_last_ack_iso';
 
@@ -172,18 +173,18 @@ export default function LiveAckPanel() {
   return (
     <div className="mb-3 flex flex-wrap items-stretch gap-2">
       <Chip
-        icon={<Activity size={14} className="text-primary" />}
+        icon={<Activity className="text-primary size-3.5" />}
         label={t('alerts.live_ack.pending')}
         value={isLoading ? '…' : String(pending)}
       />
       <Chip
-        icon={<Activity size={14} className={delta > 0 ? 'text-warn' : 'text-muted-foreground'} />}
+        icon={<Activity className={cn(delta > 0 ? 'text-warn' : 'text-muted-foreground', 'size-3.5')} />}
         label={t('alerts.live_ack.new_since_last_look')}
         value={delta > 0 ? `+${delta}` : '0'}
         accent={delta > 0 ? 'text-warn' : undefined}
       />
       <Chip
-        icon={<Clock size={14} className="text-muted-foreground" />}
+        icon={<Clock className="text-muted-foreground size-3.5" />}
         label={t('alerts.live_ack.last_ack')}
         value={lastAckLabel}
       />
@@ -197,7 +198,7 @@ export default function LiveAckPanel() {
             : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
         }`}
       >
-        {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+        {soundOn ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
         {t(soundOn ? 'alerts.live_ack.sound_on' : 'alerts.live_ack.enable_sound')}
       </button>
       </Tip>

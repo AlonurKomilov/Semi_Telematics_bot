@@ -140,7 +140,7 @@ export default function ApplicationsConfigPanel() {
           told that plainly rather than discovering it. */}
       {data.using_default && (
         <div className="flex items-start gap-2">
-          <TriangleAlert size={14} className="text-warn shrink-0 mt-0.5" />
+          <TriangleAlert className="text-warn shrink-0 mt-0.5 size-3.5" />
           <p className="text-xs text-muted-foreground">
             Using the default passphrase for your company. It keeps exports
             complete and recoverable, but it is derived from identifiers that
@@ -172,7 +172,7 @@ export default function ApplicationsConfigPanel() {
               onClick={() => { setValue(generatePassphrase()); setSuggested(true); }}
               disabled={busy}
             >
-              <Wand2 size={14} /> Suggest strong
+              <Wand2 /> Suggest strong
             </Button>
             {suggested && (
               <Button
@@ -181,11 +181,11 @@ export default function ApplicationsConfigPanel() {
                 onClick={() => { setValue(''); setSuggested(false); }}
                 disabled={busy}
               >
-                <X size={14} /> Discard
+                <X /> Discard
               </Button>
             )}
             <Button size="sm" onClick={save} disabled={busy || value.trim().length < 8}>
-              {busy ? <Loader2 size={14} className="animate-spin" /> : data.configured ? 'Replace' : 'Set passphrase'}
+              {busy ? <Loader2 className="animate-spin" /> : data.configured ? 'Replace' : 'Set passphrase'}
             </Button>
           </div>
 
@@ -207,7 +207,7 @@ export default function ApplicationsConfigPanel() {
           <div className="flex flex-wrap items-center gap-2">
             {!revealed && (
               <Button size="sm" variant="outline" onClick={reveal} disabled={busy}>
-                <Eye size={14} /> Show current
+                <Eye /> Show current
               </Button>
             )}
           </div>
@@ -283,8 +283,8 @@ export default function ApplicationsConfigPanel() {
                 }}
               >
                 {reexporting
-                  ? <Loader2 size={14} className="animate-spin" />
-                  : <RefreshCw size={14} />}
+                  ? <Loader2 className="animate-spin" />
+                  : <RefreshCw />}
                 <span className="ml-1.5">Re-export all</span>
               </Button>
               {/* Files travel. Rotation is not a recall, and someone will

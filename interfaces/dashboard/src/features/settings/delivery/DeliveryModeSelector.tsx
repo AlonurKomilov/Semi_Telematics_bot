@@ -74,7 +74,7 @@ export default function DeliveryModeSelector({
         } ${!canManageAccount ? 'opacity-70 cursor-default' : ''}`}
       >
         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-          {selected && <Check size={14} className="text-primary shrink-0" />}
+          {selected && <Check className="text-primary shrink-0 size-3.5" />}
           {title}
         </span>
         <span className="block text-xs text-muted-foreground mt-0.5">{desc}</span>
@@ -89,7 +89,7 @@ export default function DeliveryModeSelector({
       </div>
       {showNudge && (
         <div className={`mb-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('info')}`}>
-          <Info size={14} className="mt-0.5 shrink-0" />
+          <Info className="mt-0.5 shrink-0 size-3.5" />
           <span>{t('alert_routing.nudge', { count: data.vehicle_count })}</span>
           <button
             type="button"
@@ -97,7 +97,7 @@ export default function DeliveryModeSelector({
             onClick={() => setNudgeDismissed(true)}
             className="ml-auto shrink-0 hover:opacity-70"
           >
-            <X size={14} />
+            <X className="size-3.5" />
           </button>
         </div>
       )}

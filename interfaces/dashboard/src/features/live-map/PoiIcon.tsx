@@ -1,4 +1,6 @@
 import type { PoiIconSpec } from '@/config/poiLayers';
+import { iconSizeClass } from '@/lib/iconSize';
+import { cn } from '@/lib/utils';
 
 /**
  * Renders a POI layer icon in React UI (panel rows, group headers,
@@ -32,8 +34,7 @@ export default function PoiIcon({ icon, size, className, color, onClick }: {
   const Icon = icon;
   return (
     <Icon
-      size={size}
-      className={className}
+      className={cn(iconSizeClass(size), className)}
       style={color ? { color } : undefined}
       onClick={onClick}
     />

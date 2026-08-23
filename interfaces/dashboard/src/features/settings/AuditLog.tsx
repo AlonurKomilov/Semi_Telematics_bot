@@ -108,7 +108,7 @@ const makeColumns = (
             size="sm" variant="outline"
             onClick={(ev) => { ev.stopPropagation(); onExpandGroup(e); }}
           >
-            <Layers size={14} /> View all {e.count}
+            <Layers /> View all {e.count}
           </Button>
         );
       }
@@ -216,7 +216,7 @@ export default function AuditLog() {
                 disabled={restoreGroup.isPending}
                 onClick={() => restoreGroup.mutate(group.group_id!)}
               >
-                <ArchiveRestore size={14} />
+                <ArchiveRestore />
                 Restore all {group.count}
               </Button>
               <p className="mt-1 text-2xs text-muted-foreground">

@@ -136,7 +136,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <Search size={16} className="text-muted-foreground shrink-0" />
+          <Search className="text-muted-foreground shrink-0 size-4" />
           <input
             ref={inputRef}
             value={query}
@@ -176,7 +176,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
                       active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
                     }`}
                   >
-                    <Icon size={14} />
+                    <Icon className="size-3.5" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">
@@ -192,7 +192,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     {m.group}
                   </span>
                   {active && (
-                    <ArrowRight size={14} className="text-primary shrink-0" />
+                    <ArrowRight className="text-primary shrink-0 size-3.5" />
                   )}
                 </button>
               );

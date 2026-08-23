@@ -38,7 +38,7 @@ export function ConfigMovedNotice({ what }: { what: string }) {
 
   return (
     <div className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
-      <Cog size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+      <Cog className="mt-0.5 shrink-0 text-muted-foreground size-3.5" />
       <p className="flex-1 text-xs text-muted-foreground">
         <span className="text-foreground font-medium">{what}</span> moved to
         the gear in the page header, with every other feature&rsquo;s
@@ -50,7 +50,7 @@ export function ConfigMovedNotice({ what }: { what: string }) {
         aria-label="Dismiss"
         className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition"
       >
-        <X size={14} />
+        <X className="size-3.5" />
       </button>
     </div>
   );

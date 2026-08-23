@@ -79,7 +79,7 @@ export function AvatarMenu() {
               user dropdown. */}
           <div className="py-1">
             <MenuButton
-              icon={<UserCog size={14} />}
+              icon={<UserCog className="size-3.5" />}
               label="My Profile"
               onClick={() => go('/profile')}
             />
@@ -88,7 +88,7 @@ export function AvatarMenu() {
           {/* Sign out */}
           <div className="border-t border-border py-1">
             <MenuButton
-              icon={<LogOut size={14} />}
+              icon={<LogOut className="size-3.5" />}
               label="Sign out"
               danger
               onClick={() => { logout(); setOpen(false); }}

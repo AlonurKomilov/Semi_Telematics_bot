@@ -185,7 +185,7 @@ export default function ServiceTasks() {
               }}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')} min-h-tap`}
             >
-              <Check size={12} aria-hidden />
+              <Check className="size-3" aria-hidden />
               {systemLabel(t.suggested_system) || t.suggested_system}?
             </button>
           );
@@ -279,7 +279,7 @@ export default function ServiceTasks() {
         description="The shared list of work your fleet does — used by both maintenance schedules and work orders, so the same job is named the same way everywhere. System is the reporting axis ('what are brakes costing us?'); labor always follows the task's system, and an assembly-specific task also gives its labor an assembly."
         actions={canManage ? (
           <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Add service task
+            <Plus /> Add service task
           </Button>
         ) : undefined}
       />

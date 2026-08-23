@@ -59,7 +59,7 @@ export function LocationRows({
               className="text-primary hover:underline inline-flex items-center gap-1 text-right min-h-tap"
             >
               <span>{address}</span>
-              <ExternalLink size={12} className="flex-shrink-0 opacity-70" />
+              <ExternalLink className="flex-shrink-0 opacity-70 size-3" />
             </a>
             </Tip>
           ) : (
@@ -83,9 +83,9 @@ export function LocationRows({
               aria-label={copied ? 'Coordinates copied' : 'Copy coordinates'}
             >
               {copied ? (
-                <Check size={14} className="text-ok" />
+                <Check className="text-ok size-3.5" />
               ) : (
-                <Copy size={14} />
+                <Copy className="size-3.5" />
               )}
             </button>
             </Tip>

@@ -59,7 +59,7 @@ export default function VerifyEmail() {
         {status === 'verifying' && (
           <>
             <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-              <Loader2 className="animate-spin text-muted-foreground" size={20} />
+              <Loader2 className="animate-spin text-muted-foreground size-5" />
             </div>
             <h2 className="text-lg font-semibold">{t('auth.verify_in_progress')}</h2>
           </>
@@ -67,7 +67,7 @@ export default function VerifyEmail() {
         {status === 'success' && (
           <>
             <div className="mx-auto w-12 h-12 rounded-full bg-ok-bg flex items-center justify-center">
-              <CheckCircle2 className="text-ok" size={20} />
+              <CheckCircle2 className="text-ok size-5" />
             </div>
             <h2 className="text-lg font-semibold">{t('auth.verify_success_title')}</h2>
             <p className="text-sm text-muted-foreground">
@@ -84,7 +84,7 @@ export default function VerifyEmail() {
         {status === 'error' && (
           <>
             <div className="mx-auto w-12 h-12 rounded-full bg-warn-bg flex items-center justify-center">
-              <AlertTriangle className="text-warn" size={20} />
+              <AlertTriangle className="text-warn size-5" />
             </div>
             <h2 className="text-lg font-semibold">{t('auth.verify_failed_title')}</h2>
             <p className="text-sm text-muted-foreground">{errorMessage}</p>

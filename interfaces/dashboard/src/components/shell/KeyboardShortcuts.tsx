@@ -123,7 +123,7 @@ export default function KeyboardShortcuts({ onOpenSearch }: KeyboardShortcutsPro
             aria-label="Close"
             className="text-muted-foreground hover:text-foreground p-1"
           >
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
         <ul className="p-3 space-y-1.5">

@@ -76,7 +76,7 @@ export default function AISummaryCard({ stats }: AISummaryCardProps) {
     <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-xl p-5 mb-6">
       <div className="flex items-start gap-3">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-primary shrink-0">
-          <Sparkles size={18} />
+          <Sparkles className="size-4.5" />
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -86,7 +86,7 @@ export default function AISummaryCard({ stats }: AISummaryCardProps) {
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0 py-1 -my-1 min-h-tap"
             >
               Ask AI for more
-              <ArrowRight size={12} />
+              <ArrowRight className="size-3" />
             </button>
           </div>
           <ul className="space-y-1">

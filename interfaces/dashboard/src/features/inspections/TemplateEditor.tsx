@@ -130,7 +130,7 @@ function AddItemDialog({
             {t('inspections.add_item_title', { vehicleType })}
           </h3>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
-            <X size={16} />
+            <X className="size-4" />
           </button>
         </div>
 
@@ -345,7 +345,7 @@ function ItemRow({
           onClick={onMoveUp}
           className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
         >
-          <ChevronUp size={14} />
+          <ChevronUp className="size-3.5" />
         </button>
         <button
           type="button"
@@ -354,15 +354,15 @@ function ItemRow({
           onClick={onMoveDown}
           className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
         >
-          <ChevronDown size={14} />
+          <ChevronDown className="size-3.5" />
         </button>
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate flex items-center gap-1.5">
-          {itemType === 'photo' && <Camera size={14} className="text-blue-500 flex-shrink-0" />}
-          {itemType === 'document' && <FileText size={14} className="text-violet-500 flex-shrink-0" />}
-          {itemType === 'check' && <CheckSquare size={14} className="text-muted-foreground flex-shrink-0" />}
+          {itemType === 'photo' && <Camera className="text-blue-500 flex-shrink-0 size-3.5" />}
+          {itemType === 'document' && <FileText className="text-violet-500 flex-shrink-0 size-3.5" />}
+          {itemType === 'check' && <CheckSquare className="text-muted-foreground flex-shrink-0 size-3.5" />}
           <span className="truncate">{item.label}</span>
         </div>
         <div className="text-xs text-muted-foreground flex items-center gap-2">
@@ -400,7 +400,7 @@ function ItemRow({
             title={t('inspections.ref_image_clear')}
             className="p-1 text-muted-foreground hover:text-destructive min-h-tap"
           >
-            <X size={12} />
+            <X className="size-3" />
           </button>
         </div>
       ) : (
@@ -411,7 +411,7 @@ function ItemRow({
           title={t('inspections.ref_image_add')}
           className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-2xs border border-border rounded-md hover:bg-muted text-muted-foreground min-h-tap"
         >
-          <ImageIcon size={12} />
+          <ImageIcon className="size-3" />
           {t('inspections.ref_image_add')}
         </button>
       )}
@@ -447,7 +447,7 @@ function ItemRow({
         title={t('common.delete')}
         className="flex-shrink-0 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded min-h-tap"
       >
-        <Trash2 size={14} />
+        <Trash2 className="size-3.5" />
       </button>
     </div>
   );
@@ -534,7 +534,7 @@ function TemplateCard({
             onClick={() => setAdding(true)}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-border rounded-md hover:bg-muted min-h-tap"
           >
-            <Plus size={12} />
+            <Plus className="size-3" />
             {t('inspections.add_item_btn')}
           </button>
           <button
@@ -542,7 +542,7 @@ function TemplateCard({
             onClick={reset}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-destructive/30 text-destructive rounded-md hover:bg-destructive/10 min-h-tap"
           >
-            <RotateCcw size={12} />
+            <RotateCcw className="size-3" />
             {t('inspections.reset_to_default')}
           </button>
         </div>

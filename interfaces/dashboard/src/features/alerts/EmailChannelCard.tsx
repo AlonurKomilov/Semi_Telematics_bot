@@ -126,15 +126,15 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
       {/* Channel header + status */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-base font-semibold inline-flex items-center gap-2">
-          <Mail size={16} /> Email
+          <Mail className="size-4" /> Email
         </p>
         {email.connected && (
           email.verified
             ? <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">
-                <CheckCircle2 size={14} /> Verified
+                <CheckCircle2 className="size-3.5" /> Verified
               </span>
             : <span className="inline-flex items-center gap-1 text-xs font-medium text-warn">
-                <Clock size={14} /> Pending
+                <Clock className="size-3.5" /> Pending
               </span>
         )}
       </div>

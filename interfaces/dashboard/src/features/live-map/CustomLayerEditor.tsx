@@ -340,7 +340,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           className="fixed left-1/2 top-4 -translate-x-1/2 z-[2100] bg-card border border-border rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm"
           role="status"
         >
-          <span className="inline-flex items-center gap-1.5"><MapPin size={14} /> Click anywhere on the map to set the pin location</span>
+          <span className="inline-flex items-center gap-1.5"><MapPin className="size-3.5" /> Click anywhere on the map to set the pin location</span>
           <button
             type="button"
             onClick={() => setPicking(false)}
@@ -388,7 +388,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                     ? 'border-primary text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
-              ><Icon size={14} />{lbl}</button>
+              ><Icon className="size-3.5" />{lbl}</button>
             ))}
           </div>
         )}
@@ -429,7 +429,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                     onClick={() => { setError(null); setInfo(null); setPicking(true); }}
                     className="flex-1 px-3 py-1.5 text-xs font-medium rounded border border-border bg-background hover:bg-muted transition flex items-center justify-center gap-1"
                   >
-                    <MapPin size={14} /><span>Pick on map</span>
+                    <MapPin className="size-3.5" /><span>Pick on map</span>
                   </button>
                 )}
                 <button
@@ -438,7 +438,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                   disabled={pinPreviewing || !pinLat || !pinLng}
                   className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5 min-h-tap"
                 >
-                  {pinPreviewing ? 'Detecting…' : <><Search size={14} /> Detect brand</>}
+                  {pinPreviewing ? 'Detecting…' : <><Search className="size-3.5" /> Detect brand</>}
                 </button>
               </div>
               {pinPreview && <BrandPreviewCard preview={pinPreview} />}
@@ -525,8 +525,8 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                 className="text-2xs text-muted-foreground hover:text-foreground underline py-1 -my-1 min-h-tap"
               >
                 {showAdvancedOverpass
-                  ? <span className="inline-flex items-center gap-1"><ArrowLeft size={12} /> Back to brand search</span>
-                  : <span className="inline-flex items-center gap-1">Advanced: write raw Overpass query <ArrowRight size={12} /></span>}
+                  ? <span className="inline-flex items-center gap-1"><ArrowLeft className="size-3" /> Back to brand search</span>
+                  : <span className="inline-flex items-center gap-1">Advanced: write raw Overpass query <ArrowRight className="size-3" /></span>}
               </button>
             </div>
           )}

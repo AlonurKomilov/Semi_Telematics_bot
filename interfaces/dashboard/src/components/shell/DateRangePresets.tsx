@@ -541,8 +541,8 @@ export default function DateRangePresets({
             aria-expanded={open}
           >
             {isFetching
-              ? <Loader2 size={12} className="animate-spin py-0.5 -my-0.5 min-h-tap" aria-label="Loading" />
-              : <Calendar size={12} />}
+              ? <Loader2 className="animate-spin py-0.5 -my-0.5 min-h-tap size-3" aria-label="Loading" />
+              : <Calendar className="size-3" />}
             {isCustom ? (rangeLabel ?? `${value}d`) : null}
           </button>
         </div>
@@ -556,12 +556,12 @@ export default function DateRangePresets({
           aria-busy={isFetching}
         >
           {isFetching ? (
-            <Loader2 size={14} className="animate-spin text-primary" aria-label="Loading" />
+            <Loader2 className="animate-spin text-primary size-3.5" aria-label="Loading" />
           ) : (
-            <Calendar size={14} className="text-muted-foreground" />
+            <Calendar className="text-muted-foreground size-3.5" />
           )}
           {rangeLabel ?? (isCustom ? `Last ${value} days` : labelFor(value, options))}
-          <ChevronDown size={12} className="text-muted-foreground" />
+          <ChevronDown className="text-muted-foreground size-3" />
         </button>
       )}
 
@@ -596,14 +596,14 @@ export default function DateRangePresets({
                 className="absolute left-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10 min-h-tap min-w-tap"
                 aria-label="Previous month"
               >
-                <ChevronLeft size={14} />
+                <ChevronLeft className="size-3.5" />
               </button>
               <button
                 onClick={() => monthShift(1)}
                 className="absolute right-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10 min-h-tap min-w-tap"
                 aria-label="Next month"
               >
-                <ChevronRight size={14} />
+                <ChevronRight className="size-3.5" />
               </button>
               <div className="flex gap-5">
                 <div className="hidden md:block">

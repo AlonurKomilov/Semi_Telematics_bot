@@ -164,15 +164,15 @@ export default function ServiceTaskDetail() {
         actions={(
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => navigate('/service-tasks')}>
-              <ArrowLeft size={14} /> All service tasks
+              <ArrowLeft /> All service tasks
             </Button>
             {canManage && (
               <>
                 <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-                  <Pencil size={14} /> Edit
+                  <Pencil /> Edit
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setPartsOpen(true)}>
-                  <Package size={14} /> Usual parts
+                  <Package /> Usual parts
                 </Button>
               </>
             )}
@@ -208,7 +208,7 @@ export default function ServiceTaskDetail() {
           <Field label="Set centrally">
             {shared ? (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Lock size={12} aria-hidden /> Name and system
+                <Lock className="size-3" aria-hidden /> Name and system
               </span>
             ) : (
               <span className="text-muted-foreground">Nothing — it's yours</span>
@@ -265,7 +265,7 @@ export default function ServiceTaskDetail() {
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>
-              <HistoryIcon size={14} /> History
+              <HistoryIcon /> History
             </Button>
             {task.status === 'active' ? (
               <Button size="sm" variant="outline" onClick={() => act('Task archived', () => updateServiceTask(task.id, { status: 'archived' }))}>

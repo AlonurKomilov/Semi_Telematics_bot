@@ -27,6 +27,7 @@ import {
 } from '../../components/ui/dialog';
 import { toneClasses, toneText } from '../../lib/status';
 import type { Vehicle } from '../../types';
+import { cn } from '@/lib/utils';
 
 export interface DeviceEvent {
   id: number;
@@ -93,7 +94,7 @@ export default function DeviceEventsCard({
   return (
     <div className="mb-4 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-2 mb-2">
-        <AlertTriangle size={16} className={toneText('warn')} />
+        <AlertTriangle className={cn(toneText('warn'), 'size-4')} />
         <h3 className="text-base font-semibold">
           Device change{open.length === 1 ? '' : 's'} to review
         </h3>
@@ -118,7 +119,7 @@ export default function DeviceEventsCard({
                     disabled={busyId === e.id}
                     onClick={() => resolveSimple(e, 'same_truck')}
                   >
-                    {busyId === e.id && <Loader2 size={14} className="animate-spin" />}
+                    {busyId === e.id && <Loader2 className="animate-spin" />}
                     Same truck
                   </Button>
                   <Button
@@ -135,7 +136,7 @@ export default function DeviceEventsCard({
                   disabled={busyId === e.id}
                   onClick={() => resolveSimple(e, 'acknowledge')}
                 >
-                  {busyId === e.id && <Loader2 size={14} className="animate-spin" />}
+                  {busyId === e.id && <Loader2 className="animate-spin" />}
                   Acknowledge
                 </Button>
               )}
@@ -255,7 +256,7 @@ function SplitDialog({
             Cancel
           </Button>
           <Button type="button" disabled={saving || !unit.trim()} onClick={submit}>
-            {saving && <Loader2 size={14} className="animate-spin" />}
+            {saving && <Loader2 className="animate-spin" />}
             Create unit &amp; move link
           </Button>
         </DialogFooter>

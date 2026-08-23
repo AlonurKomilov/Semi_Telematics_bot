@@ -532,7 +532,7 @@ export default function Settings() {
                 className="inline-flex items-center gap-1 mb-2 px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
               >
                 {t('bot_card.configure_routing')}
-                <ArrowRight size={14} />
+                <ArrowRight className="size-3.5" />
               </Link>
               {/* Binding a group there is the REQUIRED step; the Sub bot
                   below is optional (UX audit A/C3 — essential vs optional). */}
@@ -659,22 +659,22 @@ export default function Settings() {
           <div className="space-y-2">
             {canInvite && (
               <Link to="/invites" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 hover:border-ring transition">
-                <Link2 size={16} className="text-muted-foreground shrink-0" />
+                <Link2 className="text-muted-foreground shrink-0 size-4" />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-medium text-foreground">{t('bot_card.card_invites')}</span>
                   <span className="block text-xs text-muted-foreground">{t('bot_card.card_invites_desc')}</span>
                 </span>
-                <ArrowRight size={14} className="text-muted-foreground shrink-0" />
+                <ArrowRight className="text-muted-foreground shrink-0 size-3.5" />
               </Link>
             )}
             {canManageWorkHours && (
               <Link to="/work-hours" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 hover:border-ring transition">
-                <Clock size={16} className="text-muted-foreground shrink-0" />
+                <Clock className="text-muted-foreground shrink-0 size-4" />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-medium text-foreground">{t('bot_card.card_work_hours')}</span>
                   <span className="block text-xs text-muted-foreground">{t('bot_card.card_work_hours_desc')}</span>
                 </span>
-                <ArrowRight size={14} className="text-muted-foreground shrink-0" />
+                <ArrowRight className="text-muted-foreground shrink-0 size-3.5" />
               </Link>
             )}
           </div>

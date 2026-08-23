@@ -76,7 +76,7 @@ export default function ApplyStatus() {
       <header className="border-b border-border bg-card">
         <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
           <div className="flex items-center gap-2 text-primary">
-            <Truck size={24} />
+            <Truck className="size-6" />
             <span className="text-base font-semibold text-foreground">Application Status</span>
           </div>
         </div>
@@ -101,7 +101,7 @@ export default function ApplyStatus() {
             </label>
             <button type="submit" disabled={loading || !reference.trim() || !email.trim()}
               className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 min-h-tap">
-              <Search size={14} /> {loading ? 'Checking…' : 'Check status'}
+              <Search className="size-3.5" /> {loading ? 'Checking…' : 'Check status'}
             </button>
           </div>
 
@@ -116,7 +116,7 @@ export default function ApplyStatus() {
           {result?.found && (
             <div className="mt-4 rounded-md border border-border p-4">
               <div className="flex items-center gap-2">
-                <CheckCircle2 size={18} className="text-muted-foreground" />
+                <CheckCircle2 className="text-muted-foreground size-4.5" />
                 <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(result.status)}`}>
                   {view?.label ?? result.status}
                 </span>

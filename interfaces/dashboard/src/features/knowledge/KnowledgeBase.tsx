@@ -32,7 +32,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 function CategoryIcon({ category, size = 13, className = '' }: { category: string; size?: number; className?: string }) {
   const Icon = CATEGORY_ICONS[category] || BookOpen;
-  return <Icon size={size} className={`shrink-0 ${className}`} />;
+  return <Icon className={`shrink-0 ${iconSizeClass(size)} ${className}`} />;
 }
 
 /**
@@ -337,6 +337,8 @@ import {
 import { formatDate, formatRelative } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { cn } from '@/lib/utils';
+import { iconSizeClass } from '@/lib/iconSize';
 
 interface KBArticle {
   id: number;
@@ -673,11 +675,12 @@ export default function KnowledgeBase() {
   };
 
   const MediaIcon = ({ type, size = 14 }: { type: string; size?: number }) => {
-    if (type === 'video') return <FileVideo size={size} />;
-    if (type === 'pdf') return <FileText size={size} />;
-    if (type === 'image') return <FileImage size={size} />;
-    if (type === 'link') return <LinkIcon size={size} />;
-    return <FileText size={size} />;
+    const c = iconSizeClass(size);
+    if (type === 'video') return <FileVideo className={c} />;
+    if (type === 'pdf') return <FileText className={c} />;
+    if (type === 'image') return <FileImage className={c} />;
+    if (type === 'link') return <LinkIcon className={c} />;
+    return <FileText className={c} />;
   };
 
   const mediaLinkLabel = (type: string) => {
@@ -715,7 +718,7 @@ export default function KnowledgeBase() {
               onClick={() => { resetForm(); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
             >
-              <Plus size={14} />
+              <Plus className="size-3.5" />
               {t('knowledge.new_article')}
             </button>
           ) : undefined
@@ -755,7 +758,7 @@ export default function KnowledgeBase() {
             className="inline-flex items-center justify-center px-3 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm rounded-lg transition-colors min-h-tap"
             aria-label={t('knowledge.search_placeholder')}
           >
-            <SearchIcon size={14} />
+            <SearchIcon className="size-3.5" />
           </button>
           {search && (
             <button
@@ -763,7 +766,7 @@ export default function KnowledgeBase() {
               onClick={() => { setSearch(''); setSearchInput(''); setPage(0); }}
               className="inline-flex items-center gap-1 px-3 py-2 bg-muted hover:bg-muted/80 text-foreground/80 text-sm rounded-lg"
             >
-              <X size={12} />
+              <X className="size-3" />
               {t('knowledge.search_clear')}
             </button>
           )}
@@ -932,7 +935,7 @@ export default function KnowledgeBase() {
 
             {fVisibility === 'public' && (
               <div className={`p-3 rounded-lg text-sm inline-flex items-start gap-2 ${toneClasses('warn')}`}>
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <AlertTriangle className="shrink-0 mt-0.5 size-3.5" />
                 <span>{t('knowledge.public_approval_warning')}</span>
               </div>
             )}
@@ -987,7 +990,7 @@ export default function KnowledgeBase() {
                 onClick={() => { resetForm(); setShowForm(true); }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
               >
-                <Plus size={14} />
+                <Plus className="size-3.5" />
                 {t('knowledge.new_article')}
               </button>
             ) : undefined
@@ -1105,7 +1108,7 @@ function ArticleSection({
       {title && (
         <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-medium inline-flex items-center gap-1.5">
           {title === 'Pinned' || title.length < 12
-            ? <Pin size={12} />
+            ? <Pin className="size-3" />
             : null}
           {title}
         </h3>
@@ -1163,10 +1166,10 @@ function ArticleCard({
   // Right-click the card → Bookmark, plus Edit / Delete for the owner
   // (the inline controls in the expanded body stay as the visible path).
   const cardMenu: MenuAction[] = [
-    { key: 'bookmark', label: bookmarked ? 'Remove bookmark' : 'Bookmark', icon: <Pin size={14} className={bookmarked ? 'text-primary fill-current' : 'text-muted-foreground'} />, onSelect: () => onToggleBookmark(a.id, bookmarked) },
+    { key: 'bookmark', label: bookmarked ? 'Remove bookmark' : 'Bookmark', icon: <Pin className={cn(bookmarked ? 'text-primary fill-current' : 'text-muted-foreground', 'size-3.5')} />, onSelect: () => onToggleBookmark(a.id, bookmarked) },
     ...(isOwner ? [
-      { key: 'edit', label: 'Edit', icon: <Pencil size={14} className="text-muted-foreground" />, separatorBefore: true, onSelect: () => onEdit(a) },
-      { key: 'delete', label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => onDelete(a.id) },
+      { key: 'edit', label: 'Edit', icon: <Pencil className="text-muted-foreground size-3.5" />, separatorBefore: true, onSelect: () => onEdit(a) },
+      { key: 'delete', label: 'Delete', icon: <Trash2 className="size-3.5" />, danger: true, onSelect: () => onDelete(a.id) },
     ] : []),
   ];
   return (
@@ -1261,10 +1264,10 @@ function ArticleCard({
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           } min-h-tap min-w-tap min-h-tap min-w-tap`}
         >
-          <Pin size={14} className={bookmarked ? 'fill-current' : ''} />
+          <Pin className={cn(bookmarked ? 'fill-current' : '', 'size-3.5')} />
         </button>
         <span className="text-muted-foreground shrink-0">
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
         </span>
       </div>
 
@@ -1373,14 +1376,14 @@ function ExpandedArticleBody({
             onClick={() => onEdit(a)}
             className="inline-flex items-center gap-1 px-3 py-1 bg-muted hover:bg-muted/80 text-foreground/80 text-xs rounded transition-colors min-h-tap"
           >
-            <Pencil size={12} />
+            <Pencil className="size-3" />
             {t('knowledge.btn_edit')}
           </button>
           <button
             onClick={() => onDelete(a.id)}
             className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors min-h-tap"
           >
-            <Trash2 size={12} />
+            <Trash2 className="size-3" />
             {t('knowledge.btn_delete')}
           </button>
         </div>
@@ -1388,21 +1391,21 @@ function ExpandedArticleBody({
       {canApprove && a.visibility === 'public' && !a.approved && (
         <div className="flex gap-2 pt-2 border-t border-border mt-2 flex-wrap items-center">
           <span className="text-xs text-warn self-center mr-2 inline-flex items-center gap-1">
-            <AlertTriangle size={12} />
+            <AlertTriangle className="size-3" />
             {t('knowledge.needs_approval_label')}
           </span>
           <button
             onClick={() => onApprove(a.id)}
             className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md transition-colors ${toneClasses('ok')} min-h-tap`}
           >
-            <Check size={12} />
+            <Check className="size-3" />
             {t('knowledge.btn_approve')}
           </button>
           <button
             onClick={() => onReject(a.id)}
             className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors min-h-tap"
           >
-            <X size={12} />
+            <X className="size-3" />
             {t('knowledge.btn_reject')}
           </button>
         </div>
@@ -1486,7 +1489,7 @@ function ArticleEngagement({
         title={t('knowledge.views_title', 'Total times this article has been opened')}
         className="inline-flex items-center gap-1"
       >
-        <Eye size={12} />
+        <Eye className="size-3" />
         {viewCount}
       </span>
       <button
@@ -1500,7 +1503,7 @@ function ArticleEngagement({
             : 'border-border hover:bg-muted'
         }`}
       >
-        <ThumbsUp size={12} />
+        <ThumbsUp className="size-3" />
         {counts.helpful}
       </button>
       <button
@@ -1514,7 +1517,7 @@ function ArticleEngagement({
             : 'border-border hover:bg-muted'
         }`}
       >
-        <ThumbsDown size={12} />
+        <ThumbsDown className="size-3" />
         {counts.unhelpful}
       </button>
     </div>
@@ -1590,7 +1593,7 @@ function MediaInput({
               : t('knowledge.field_image', 'Image file')}
           </label>
           <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/30 rounded-lg text-sm">
-            <FileText size={14} className="text-primary shrink-0" />
+            <FileText className="text-primary shrink-0 size-3.5" />
             <span className="truncate flex-1">{uploadName}</span>
             {uploadSize > 0 && (
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -1603,7 +1606,7 @@ function MediaInput({
               className="text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
               title={t('knowledge.upload_remove', 'Remove attached file')}
             >
-              <X size={14} />
+              <X className="size-3.5" />
             </button>
           </div>
         </>
@@ -1634,7 +1637,7 @@ function MediaInput({
             className="hidden"
             disabled={uploading}
           />
-          <FileText size={14} className="text-muted-foreground" />
+          <FileText className="text-muted-foreground size-3.5" />
           <span>
             {uploading
               ? t('knowledge.upload_uploading', 'Uploading…')

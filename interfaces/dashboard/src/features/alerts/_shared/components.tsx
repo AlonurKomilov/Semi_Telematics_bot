@@ -166,7 +166,7 @@ export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
   return (
     <Tip label={when ? `Auto-resolved ${when}` : ''}>
       <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-        <CheckCircle2 size={14} aria-hidden />
+        <CheckCircle2 className="size-3.5" aria-hidden />
         Auto-resolved
       </span>
     </Tip>

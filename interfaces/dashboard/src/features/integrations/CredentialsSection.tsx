@@ -27,7 +27,7 @@ export default function CredentialsSection({
     <div className="mt-4 border border-border rounded-lg overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/40 border-b border-border">
         <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          <KeyRound size={14} />
+          <KeyRound className="size-3.5" />
           {title}
         </span>
         {headerRight}

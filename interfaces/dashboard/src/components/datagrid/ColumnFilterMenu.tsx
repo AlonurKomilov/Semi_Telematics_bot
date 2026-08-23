@@ -173,9 +173,8 @@ function SelectFilter({
             {showSearch && (
               <div className="relative p-2 border-b border-border">
                 <Search
-                  size={12}
                   aria-hidden="true"
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3"
                 />
                 <input
                   type="text"
@@ -213,7 +212,7 @@ function SelectFilter({
                             : 'border-border',
                         )}
                       >
-                        {sel && <Check size={12} className="text-primary-foreground" aria-hidden="true" />}
+                        {sel && <Check className="text-primary-foreground size-3" aria-hidden="true" />}
                       </span>
                       <span className="flex-1 truncate text-foreground">
                         {opt.label || <em className="text-muted-foreground">(empty)</em>}
@@ -235,7 +234,7 @@ function SelectFilter({
                   onClick={() => onChange([])}
                   className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
                 >
-                  <X size={12} aria-hidden="true" />
+                  <X className="size-3" aria-hidden="true" />
                   Clear {label} filter
                 </button>
               </div>
@@ -348,7 +347,7 @@ function RangeFilter({
                   onClick={() => onChange([null, null])}
                   className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
                 >
-                  <X size={12} aria-hidden="true" />
+                  <X className="size-3" aria-hidden="true" />
                   Clear {label} filter
                 </button>
               </div>
@@ -442,7 +441,7 @@ function DateRangeFilter({
                   onClick={() => onChange([null, null])}
                   className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
                 >
-                  <X size={12} aria-hidden="true" />
+                  <X className="size-3" aria-hidden="true" />
                   Clear {label} filter
                 </button>
               </div>

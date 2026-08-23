@@ -68,8 +68,8 @@ export default function StoredPreferencesCard() {
         <div className="min-w-0">
           <div className="text-sm font-medium inline-flex items-center gap-2">
             {syncEnabled
-              ? <Cloud size={16} className="text-primary shrink-0" />
-              : <HardDrive size={16} className="text-muted-foreground shrink-0" />}
+              ? <Cloud className="text-primary shrink-0 size-4" />
+              : <HardDrive className="text-muted-foreground shrink-0 size-4" />}
             {syncEnabled ? 'Synced to your account' : 'This browser only'}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -96,7 +96,7 @@ export default function StoredPreferencesCard() {
           appearance go back to their defaults.
         </p>
         <Button variant="outline" size="sm" onClick={handleReset} className="shrink-0">
-          <RotateCcw size={14} /> Reset all
+          <RotateCcw /> Reset all
         </Button>
       </div>
     </section>

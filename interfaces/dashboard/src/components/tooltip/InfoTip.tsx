@@ -17,6 +17,7 @@
 import type { ReactNode } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Info } from 'lucide-react';
+import { iconSizeClass } from '@/lib/iconSize';
 
 interface InfoTipProps {
   /** The explanation shown in the bubble. */
@@ -41,7 +42,7 @@ export function InfoTip({ label, size = 14 }: InfoTipProps) {
         // constant that goes stale the first time a size is added.
         className="inline-flex items-center justify-center align-middle cursor-pointer rounded p-1 -m-1 min-h-tap min-w-tap text-muted-foreground/60 hover:text-muted-foreground data-open:text-foreground transition-colors"
       >
-        <Info size={size} />
+        <Info className={iconSizeClass(size)} />
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>
         {/* Anchored to the ⓘ itself (element, not cursor) — the bubble

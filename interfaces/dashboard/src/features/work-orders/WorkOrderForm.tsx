@@ -822,7 +822,7 @@ export default function WorkOrderForm() {
                       className="text-muted-foreground hover:text-destructive p-1"
                       aria-label={t('work_orders_page.remove_part')}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 className="size-3.5" />
                     </button>
                   </Tip>
                 </td>
@@ -899,7 +899,7 @@ export default function WorkOrderForm() {
                       aria-label={t('work_orders_page.remove_labor', { defaultValue: 'Remove labor line' })}
                       className="text-muted-foreground hover:text-destructive p-1"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 className="size-3.5" />
                     </button>
                   </Tip>
                 </td>
@@ -1186,7 +1186,7 @@ export default function WorkOrderForm() {
               onClick={() => leaveGuard('/work-orders')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
             >
-              <ArrowLeft size={14} />
+              <ArrowLeft className="size-3.5" />
               {t('work_orders_page.back')}
             </button>
             {/* AI pre-fill from an invoice photo/PDF.  Transient
@@ -1209,8 +1209,8 @@ export default function WorkOrderForm() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 disabled:opacity-50 rounded-md text-xs font-medium text-foreground transition border border-border"
             >
               {scanning
-                ? <Loader2 size={14} className="animate-spin" />
-                : <Sparkles size={14} className="text-primary" />}
+                ? <Loader2 className="animate-spin size-3.5" />
+                : <Sparkles className="text-primary size-3.5" />}
               {scanning
                 ? t('work_orders_page.scanning', { defaultValue: 'Reading invoice…' })
                 : t('work_orders_page.scan_invoice', { defaultValue: 'Scan invoice' })}
@@ -1221,7 +1221,7 @@ export default function WorkOrderForm() {
               disabled={saving}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
             >
-              <Save size={14} />
+              <Save className="size-3.5" />
               {saving ? t('work_orders_page.saving') : isEdit ? t('work_orders_page.save_changes') : t('work_orders_page.create_draft')}
             </button>
           </div>
@@ -1238,7 +1238,7 @@ export default function WorkOrderForm() {
           Highlights stay on the fields until the user edits them. */}
       {scanSummary && (
         <div className="mb-4 bg-primary/5 border border-primary/20 rounded-xl p-3 text-sm flex items-start gap-2.5">
-          <Sparkles size={16} className="text-primary mt-0.5 shrink-0" />
+          <Sparkles className="text-primary mt-0.5 shrink-0 size-4" />
           <div className="flex-1 min-w-0">
             <p className="font-medium text-foreground">
               {t('work_orders_page.scan_banner_title', {
@@ -1277,7 +1277,7 @@ export default function WorkOrderForm() {
             onClick={() => setScanSummary(null)}
             className="text-muted-foreground hover:text-foreground transition shrink-0"
           >
-            <X size={14} />
+            <X className="size-3.5" />
           </button>
         </div>
       )}
@@ -1285,7 +1285,7 @@ export default function WorkOrderForm() {
       {/* ── Vehicle + status block ─────────────────────────────── */}
       <section className="bg-card border border-border rounded-xl p-5 mb-5">
         <h3 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
-          <Receipt size={14} className="text-muted-foreground" />
+          <Receipt className="text-muted-foreground size-3.5" />
           {t('work_orders_page.section_shop_visit')}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1347,7 +1347,7 @@ export default function WorkOrderForm() {
             />
             {asOfNote && (
               <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
-                {asOfLoading && <Loader2 size={12} className="animate-spin" />}
+                {asOfLoading && <Loader2 className="animate-spin size-3" />}
                 {asOfNote}
               </p>
             )}
@@ -1466,7 +1466,7 @@ export default function WorkOrderForm() {
             onClick={addTaskGroup}
             className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded min-h-tap"
           >
-            <Plus size={12} />
+            <Plus className="size-3" />
             {t('work_orders_page.add_task_group')}
           </button>
         </div>
@@ -1498,7 +1498,7 @@ export default function WorkOrderForm() {
                       onClick={() => setParts(prev => [...prev, blankPart(gv)])}
                       className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
-                      <Plus size={12} />
+                      <Plus className="size-3" />
                       {t('work_orders_page.add_part')}
                     </button>
                     <button
@@ -1506,7 +1506,7 @@ export default function WorkOrderForm() {
                       onClick={() => setLaborLines(prev => [...prev, blankLabor(gv)])}
                       className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
-                      <Plus size={12} />
+                      <Plus className="size-3" />
                       {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
                     </button>
                     <Tip label={t('work_orders_page.remove_task_group')}>
@@ -1516,7 +1516,7 @@ export default function WorkOrderForm() {
                         aria-label={t('work_orders_page.remove_task_group')}
                         className="text-muted-foreground hover:text-destructive p-1"
                       >
-                        <X size={14} />
+                        <X className="size-3.5" />
                       </button>
                     </Tip>
                   </span>
@@ -1545,7 +1545,7 @@ export default function WorkOrderForm() {
                       onClick={() => setParts(prev => [...prev, blankPart('')])}
                       className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
-                      <Plus size={12} />
+                      <Plus className="size-3" />
                       {t('work_orders_page.add_part')}
                     </button>
                     <button
@@ -1553,7 +1553,7 @@ export default function WorkOrderForm() {
                       onClick={() => setLaborLines(prev => [...prev, blankLabor('')])}
                       className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded min-h-tap"
                     >
-                      <Plus size={12} />
+                      <Plus className="size-3" />
                       {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
                     </button>
                   </span>
@@ -1688,7 +1688,7 @@ export default function WorkOrderForm() {
           upload UI is missing and doesn't scroll past hunting for it. */}
       {!isEdit && (
         <section className={`mb-5 p-4 rounded-xl text-sm inline-flex items-start gap-2 w-full ${toneClasses('info')}`}>
-          <Paperclip size={16} className="shrink-0 mt-0.5" />
+          <Paperclip className="shrink-0 mt-0.5 size-4" />
           <div>
             <p className="font-medium">{t('work_orders_page.attachments_unlock_title')}</p>
             <p className="text-xs mt-0.5 text-info">
@@ -1703,7 +1703,7 @@ export default function WorkOrderForm() {
         <section className="bg-card border border-border rounded-xl p-5 mb-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
-              <Paperclip size={14} className="text-muted-foreground" />
+              <Paperclip className="text-muted-foreground size-3.5" />
               {t('work_orders_page.section_attachments')}
             </h3>
             <div className="flex items-center gap-2">
@@ -1732,7 +1732,7 @@ export default function WorkOrderForm() {
       {isEdit && linkedTasks.length > 0 && (
         <section className="bg-card border border-border rounded-xl p-5 mb-5">
           <h3 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
-            <LinkIcon size={14} className="text-muted-foreground" />
+            <LinkIcon className="text-muted-foreground size-3.5" />
             {t('work_orders_page.section_linked_tasks')}
           </h3>
           <ul className="space-y-1.5">
@@ -1863,7 +1863,7 @@ function AttachUploadButton({
   // so the same file can be re-attached if the user deletes + re-adds.
   return (
     <label className={`inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded cursor-pointer ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-      <Plus size={12} />
+      <Plus className="size-3" />
       {label}
       <input
         type="file"
@@ -1914,7 +1914,7 @@ function AttachmentRow({
   return (
     <li className="flex items-center gap-3 p-2.5 bg-muted/40 border border-border rounded-lg">
       <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0">
-        {isImage ? <ImageIcon size={16} className="text-muted-foreground" /> : <FileText size={16} className="text-muted-foreground" />}
+        {isImage ? <ImageIcon className="text-muted-foreground size-4" /> : <FileText className="text-muted-foreground size-4" />}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{attachment.file_name}</p>
@@ -1941,7 +1941,7 @@ function AttachmentRow({
           className="text-muted-foreground hover:text-destructive p-1 min-h-tap"
           aria-label={t('work_orders_page.delete_attachment')}
         >
-          <X size={14} />
+          <X className="size-3.5" />
         </button>
       </Tip>
     </li>

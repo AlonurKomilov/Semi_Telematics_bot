@@ -24,6 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { renderArtifact, type Artifact } from './artifacts';
 import { ScrollRegion } from '../../components/scrolling';
+import { cn } from '@/lib/utils';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -202,8 +203,7 @@ function ThinkingStep({ text, label, live = false }: {
       >
         <span>{label}</span>
         <ChevronDown
-          size={12}
-          className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''} size-3`}
           aria-hidden
         />
       </button>
@@ -247,7 +247,7 @@ function ToolStepLink({ toolName }: { toolName?: string }) {
       onClick={() => { navigate(link.path); closePanel(); }}
       className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:border-ring hover:bg-muted transition-colors min-h-tap"
     >
-      <ArrowUpRight size={12} aria-hidden />
+      <ArrowUpRight className="size-3" aria-hidden />
       {t('chat.open_feature', { feature: t(link.labelKey) })}
     </button>
   );
@@ -1263,7 +1263,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   const trustBadge = scope?.restricted ? (
     <Tip label="Your access is limited to these vehicles — answers cover only them.">
       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-muted text-muted-foreground border border-border whitespace-nowrap">
-        <Eye size={12} aria-hidden />
+        <Eye className="size-3" aria-hidden />
         Answering for your {scope.vehicle_count ?? 0} vehicle{scope.vehicle_count === 1 ? '' : 's'}
       </span>
     </Tip>
@@ -1283,7 +1283,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           aria-label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
           className="shrink-0 text-muted-foreground"
         >
-          <SquarePen size={16} aria-hidden />
+          <SquarePen aria-hidden />
         </Button>
       </Tip>
 
@@ -1299,7 +1299,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
             aria-label={t('chat.history')}
             className="shrink-0 text-muted-foreground"
           >
-            <History size={16} aria-hidden />
+            <History aria-hidden />
           </Button>
         </Tip>
         {historyOpen && (
@@ -1357,7 +1357,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           aria-label={t('chat.export_conversation')}
                           className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-opacity min-h-tap min-w-tap"
                         >
-                          <Download size={14} />
+                          <Download className="size-3.5" />
                         </button>
                       </Tip>
                       <Tip label={t('chat.delete_chat')}>
@@ -1366,7 +1366,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           aria-label={t('chat.delete_chat')}
                           className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-opacity min-h-tap min-w-tap"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 className="size-3.5" />
                         </button>
                       </Tip>
                     </>
@@ -1396,7 +1396,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         <div className="flex items-center justify-between flex-shrink-0 mb-4">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Bot size={20} className="text-primary" />
+              <Bot className="text-primary size-5" />
               AI Assistant
             </h1>
             {trustBadge}
@@ -1410,7 +1410,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       <ScrollRegion label="Conversation" className="flex-1 space-y-4 pr-1 min-h-0">
         {messages.length === 0 && !loading && (
           <div className="text-center text-muted-foreground mt-16">
-            <Bot size={40} className="mx-auto mb-3 text-primary/40" />
+            <Bot className="mx-auto mb-3 text-primary/40 size-10" />
             <p className="text-lg font-semibold">{t('chat.title')}</p>
             <p className="text-sm mt-1">
               {isDriverView
@@ -1425,7 +1425,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   onClick={runBriefing}
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors min-h-tap"
                 >
-                  <Sparkles size={16} aria-hidden />
+                  <Sparkles className="size-4" aria-hidden />
                   {briefingLabel}
                 </button>
               </Tip>
@@ -1459,10 +1459,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground"
                       >
                         {f.kind === 'image'
-                          ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                          ? <ImageIcon className="shrink-0 text-muted-foreground size-3" aria-hidden />
                           : f.kind === 'text'
-                            ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
-                            : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                            ? <FileText className="shrink-0 text-muted-foreground size-3" aria-hidden />
+                            : <Paperclip className="shrink-0 text-muted-foreground size-3" aria-hidden />}
                         <span className="max-w-40 truncate">{f.name}</span>
                       </span>
                     ))}
@@ -1478,7 +1478,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       aria-label={t('chat.edit_message')}
                       className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                     >
-                      <Pencil size={12} />
+                      <Pencil className="size-3" />
                     </button>
                   </Tip>
                   <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1519,13 +1519,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         })}
                         className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1 -my-1 min-h-tap"
                       >
-                        <Lightbulb size={12} />
+                        <Lightbulb className="size-3" />
                         <span>
                           {exploded.length > 1
                             ? `${exploded.length} ${t('chat.steps')}`
                             : t('chat.thought_process')}
                         </span>
-                        <ChevronDown size={12} className={`transition-transform ${reasoningExpanded.has(i) ? 'rotate-180' : ''}`} />
+                        <ChevronDown className={`transition-transform ${reasoningExpanded.has(i) ? 'rotate-180' : ''} size-3`} />
                       </button>
                       {reasoningExpanded.has(i) && (
                         <div className="mt-1.5 max-h-64 overflow-y-auto pr-1">
@@ -1557,7 +1557,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             ) : (
                               <TimelineRow
                                 key={si}
-                                marker={<Check size={12} className="text-primary/70" />}
+                                marker={<Check className="text-primary/70 size-3" />}
                                 last={false}
                               >
                                 <div className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
@@ -1578,7 +1578,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             )
                           ))}
                           <TimelineRow
-                            marker={<Check size={12} className="text-primary/70" />}
+                            marker={<Check className="text-primary/70 size-3" />}
                             last
                           >
                             <div className="text-2xs text-muted-foreground">
@@ -1611,7 +1611,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     const TierIcon = (TIER_ICONS as Record<string, LucideIcon>)[msg.modelTier.toLowerCase()];
                     return (
                       <span className="inline-flex items-center gap-1 text-3xs text-muted-foreground/60">
-                        {TierIcon && <TierIcon size={12} aria-hidden />}
+                        {TierIcon && <TierIcon className="size-3" aria-hidden />}
                         {msg.modelTier}
                       </span>
                     );
@@ -1645,8 +1645,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           aria-pressed={feedbackByIdx[i] === 'up'}
                         >
                           <ThumbsUp
-                            size={12}
-                            className={feedbackByIdx[i] === 'up' ? 'fill-current' : ''}
+                            className={cn(feedbackByIdx[i] === 'up' ? 'fill-current' : '', 'size-3')}
                           />
                         </button>
                       </Tip>
@@ -1663,8 +1662,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           aria-pressed={feedbackByIdx[i] === 'down'}
                         >
                           <ThumbsDown
-                            size={12}
-                            className={feedbackByIdx[i] === 'down' ? 'fill-current' : ''}
+                            className={cn(feedbackByIdx[i] === 'down' ? 'fill-current' : '', 'size-3')}
                           />
                         </button>
                       </Tip>
@@ -1676,8 +1674,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                           <RefreshCw
-                            size={12}
-                            className={regeneratingIdx === i ? 'animate-spin' : ''}
+                            className={cn(regeneratingIdx === i ? 'animate-spin' : '', 'size-3')}
                           />
                         </button>
                       </Tip>
@@ -1690,8 +1687,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
                     >
                       {copiedIdx === i
-                        ? <Check size={12} className="text-ok" />
-                        : <Copy size={12} />}
+                        ? <Check className="text-ok size-3" />
+                        : <Copy className="size-3" />}
                     </button>
                   </Tip>
                 </div>
@@ -1717,7 +1714,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
             <div className="w-full text-sm">
               <div className="flex items-center justify-between gap-4 mb-2">
                 <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
-                  <Loader2 size={12} className="animate-spin text-primary" aria-hidden />
+                  <Loader2 className="animate-spin text-primary size-3" aria-hidden />
                   <span>{liveStatusLabel}…</span>
                 </span>
                 {elapsedSec > 0 && (
@@ -1778,7 +1775,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       ) : (
                         <TimelineRow
                           key={si}
-                          marker={<Check size={12} className="text-primary/70" />}
+                          marker={<Check className="text-primary/70 size-3" />}
                           last={false}
                         >
                           <div className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
@@ -1818,7 +1815,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 onClick={() => { setError(''); send(lastFailed!); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
               >
-                <RotateCcw size={12} />
+                <RotateCcw className="size-3" />
                 Retry
               </button>
             )}
@@ -1837,7 +1834,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               onClick={() => { setInput(''); c.run(); }}
               className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
             >
-              <Sparkles size={14} className="text-primary shrink-0" aria-hidden />
+              <Sparkles className="text-primary shrink-0 size-3.5" aria-hidden />
               <span className="font-medium">/{c.name}</span>
               <span className="text-2xs text-muted-foreground">{c.label}</span>
             </button>
@@ -1889,7 +1886,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   role="status"
                   className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium text-primary"
                 >
-                  <Sparkles size={12} className="animate-pulse shrink-0" aria-hidden />
+                  <Sparkles className="animate-pulse shrink-0 size-3" aria-hidden />
                   <span className="truncate">
                     {t('chat.running')}
                     {(() => {
@@ -1912,7 +1909,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       // Fresh answer: success stamp first, swaps to the idle
                       // label when the flash timer clears doneFlash.
                       <span className={`inline-flex items-center gap-1.5 ${toneText('ok')}`} role="status">
-                        <Check size={12} className="shrink-0" aria-hidden />
+                        <Check className="shrink-0 size-3" aria-hidden />
                         {t('chat.done_step')}
                         {stepDuration(doneFlash) && (
                           <span className="tabular-nums opacity-70">{stepDuration(doneFlash)}</span>
@@ -1920,7 +1917,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5">
-                        <Bot size={12} className="shrink-0" aria-hidden />
+                        <Bot className="shrink-0 size-3" aria-hidden />
                         {t('chat.awaiting_reply')}
                       </span>
                     )}
@@ -1931,11 +1928,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         aria-label={t('chat.suggestions')}
                         className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
                       >
-                        <Lightbulb size={12} aria-hidden />
+                        <Lightbulb className="size-3" aria-hidden />
                         <span className="tabular-nums">{suggestions.length}</span>
                         <ChevronDown
-                          size={12}
-                          className={`transition-transform ${suggestionsOpen ? 'rotate-180' : ''}`}
+                          className={`transition-transform ${suggestionsOpen ? 'rotate-180' : ''} size-3`}
                           aria-hidden
                         />
                       </button>
@@ -1961,7 +1957,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   role="status"
                   className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium"
                 >
-                  <Check size={12} className="shrink-0" aria-hidden />
+                  <Check className="shrink-0 size-3" aria-hidden />
                   <span>{t('chat.done_step')}</span>
                   {stepDuration(doneFlash ?? undefined) && (
                     <span className="ml-auto shrink-0 tabular-nums opacity-70">
@@ -1973,7 +1969,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <div className={`${stripState ? 'rounded-lg' : 'rounded-xl'} border bg-card px-3 pt-2.5 pb-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20 ${dragOver ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}>
           {dragOver && (
             <div className="mb-1.5 flex items-center gap-1.5 text-2xs font-medium text-primary" role="status">
-              <Paperclip size={12} aria-hidden /> {t('chat.attach_drop')}
+              <Paperclip className="size-3" aria-hidden /> {t('chat.attach_drop')}
             </div>
           )}
           {/* Attachment chips — the device-held file(s) riding with each
@@ -1988,7 +1984,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   role="status"
                   className="inline-flex items-center gap-1 rounded-md border border-border border-dashed bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
                 >
-                  <Loader2 size={12} className="shrink-0 animate-spin" aria-hidden />
+                  <Loader2 className="shrink-0 animate-spin size-3" aria-hidden />
                   <span className="max-w-40 truncate">{name}</span>
                   <span className="text-3xs">{t('chat.attach_preparing')}</span>
                 </span>
@@ -1999,10 +1995,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground"
                 >
                   {a.kind === 'text'
-                    ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                    ? <FileText className="shrink-0 text-muted-foreground size-3" aria-hidden />
                     : a.kind === 'image'
-                      ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
-                      : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                      ? <ImageIcon className="shrink-0 text-muted-foreground size-3" aria-hidden />
+                      : <Paperclip className="shrink-0 text-muted-foreground size-3" aria-hidden />}
                   <span className="max-w-40 truncate">{a.name}</span>
                   <span className="text-3xs text-muted-foreground tabular-nums">
                     {Math.max(1, Math.round(a.size / 1024))} KB
@@ -2016,7 +2012,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     aria-label={t('chat.attach_remove')}
                     className="ml-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <X size={12} aria-hidden />
+                    <X className="size-3" aria-hidden />
                   </button>
                 </span>
               ))}
@@ -2073,9 +2069,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   className="flex size-8 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
                 >
                   <Plus
-                    size={16}
                     aria-hidden
-                    className={`transition-transform ${plusOpen ? 'rotate-45' : ''}`}
+                    className={`transition-transform ${plusOpen ? 'rotate-45' : ''} size-4`}
                   />
                 </button>
               </Tip>
@@ -2101,7 +2096,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       onClick={() => { setPlusOpen(false); fileInputRef.current?.click(); }}
                       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
                     >
-                      <Paperclip size={14} className="text-primary shrink-0" aria-hidden />
+                      <Paperclip className="text-primary shrink-0 size-3.5" aria-hidden />
                       <span className="font-medium">{t('chat.attach_file')}</span>
                     </button>
                   </Tip>
@@ -2135,10 +2130,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             className="flex w-full items-center gap-2 px-2.5 py-1 text-xs rounded-md text-left text-foreground/80 hover:bg-muted transition-colors min-h-tap"
                           >
                             {f.kind === 'image'
-                              ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                              ? <ImageIcon className="shrink-0 text-muted-foreground size-3" aria-hidden />
                               : f.kind === 'text'
-                                ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
-                                : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                                ? <FileText className="shrink-0 text-muted-foreground size-3" aria-hidden />
+                                : <Paperclip className="shrink-0 text-muted-foreground size-3" aria-hidden />}
                             <span className="max-w-40 truncate">{f.name}</span>
                             <span className="ml-auto text-3xs text-muted-foreground tabular-nums">
                               {Math.max(1, Math.round(f.size / 1024))} KB
@@ -2162,17 +2157,17 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           className="flex w-full items-center gap-2 px-2.5 py-1 text-xs text-foreground/80"
                         >
                           {f.kind === 'image'
-                            ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                            ? <ImageIcon className="shrink-0 text-muted-foreground size-3" aria-hidden />
                             : f.kind === 'text'
-                              ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
-                              : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                              ? <FileText className="shrink-0 text-muted-foreground size-3" aria-hidden />
+                              : <Paperclip className="shrink-0 text-muted-foreground size-3" aria-hidden />}
                           <span className="max-w-40 truncate">{f.name}</span>
                           <button
                             onClick={() => setConvoFiles(removeConversationAttachment(conversationId, f.name))}
                             aria-label={t('chat.attach_remove')}
                             className="ml-auto rounded text-muted-foreground hover:text-foreground transition-colors"
                           >
-                            <X size={12} aria-hidden />
+                            <X className="size-3" aria-hidden />
                           </button>
                         </div>
                       ))}
@@ -2186,7 +2181,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       onClick={() => { setPlusOpen(false); setInput(''); c.run(); }}
                       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
                     >
-                      <Sparkles size={14} className="text-primary shrink-0" aria-hidden />
+                      <Sparkles className="text-primary shrink-0 size-3.5" aria-hidden />
                       <span className="font-medium">{c.label}</span>
                       <span className="ml-auto text-3xs text-muted-foreground font-mono">/{c.name}</span>
                     </button>
@@ -2210,11 +2205,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         aria-expanded={tierOpen}
                         className="flex items-center gap-1 rounded-md px-2 py-1.5 text-2xs font-medium text-muted-foreground/80 hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                       >
-                        <ActiveIcon size={14} aria-hidden />
+                        <ActiveIcon className="size-3.5" aria-hidden />
                         <span>{active.label}</span>
                         <ChevronDown
-                          size={12}
-                          className={`transition-transform shrink-0 ${tierOpen ? 'rotate-180' : ''}`}
+                          className={`transition-transform shrink-0 ${tierOpen ? 'rotate-180' : ''} size-3`}
                         />
                       </button>
                     </Tip>
@@ -2240,7 +2234,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               } disabled:cursor-default`}
                             >
                               <div className="flex items-center gap-2">
-                                <Icon size={16} aria-hidden className="shrink-0" />
+                                <Icon aria-hidden className="shrink-0 size-4" />
                                 <span className="font-medium">{tier.label}</span>
                                 {tier.model_count > 0 && (
                                   <span className="ml-auto text-3xs text-muted-foreground">
@@ -2269,7 +2263,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     aria-label={t('chat.stop_generating')}
                     className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-foreground hover:bg-muted/80 transition-colors"
                   >
-                    <Square size={14} className="fill-current" />
+                    <Square className="fill-current size-3.5" />
                   </button>
                 </Tip>
               ) : (
@@ -2280,7 +2274,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     aria-label={t('chat.send')}
                     className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <ArrowUp size={16} />
+                    <ArrowUp className="size-4" />
                   </button>
                 </Tip>
               )}

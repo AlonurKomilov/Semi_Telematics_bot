@@ -118,7 +118,7 @@ export default function Sidebar({ forceExpanded = false }: {
               className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
               aria-label="Expand sidebar"
             >
-              <PanelLeftOpen size={16} />
+              <PanelLeftOpen className="size-4" />
             </button>
           </Tip>
         </div>
@@ -143,7 +143,7 @@ export default function Sidebar({ forceExpanded = false }: {
                 className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
                 aria-label="Collapse sidebar"
               >
-                <PanelLeftClose size={16} />
+                <PanelLeftClose className="size-4" />
               </button>
             </Tip>
           )}
@@ -194,7 +194,7 @@ export default function Sidebar({ forceExpanded = false }: {
                 aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
                 className="inline-flex size-6 min-h-tap min-w-tap items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
               >
-                {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
               </button>
             );
             return (
@@ -214,7 +214,7 @@ export default function Sidebar({ forceExpanded = false }: {
                       }`
                     }
                   >
-                    <SettingsIcon size={16} className="shrink-0" />
+                    <SettingsIcon className="shrink-0 size-4" />
                     <span className="flex-1">{label}</span>
                     {/* No children (a role manager holds only the parent) →
                         no expand arrow over nothing. */}
@@ -222,7 +222,7 @@ export default function Sidebar({ forceExpanded = false }: {
                   </NavLink>
                 ) : (
                   <div className="flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm text-muted-foreground">
-                    <SettingsIcon size={16} className="shrink-0" />
+                    <SettingsIcon className="shrink-0 size-4" />
                     <span className="flex-1">{label}</span>
                     {chevron}
                   </div>
@@ -243,7 +243,7 @@ export default function Sidebar({ forceExpanded = false }: {
                         }`
                       }
                     >
-                      <Icon size={14} className="shrink-0" />
+                      <Icon className="shrink-0 size-3.5" />
                       {label}
                     </NavLink>
                   );
@@ -290,7 +290,7 @@ export default function Sidebar({ forceExpanded = false }: {
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                         }`}
                       >
-                        <Icon size={16} className="shrink-0" />
+                        <Icon className="shrink-0 size-4" />
                         <span className="flex-1">{label}</span>
                         <button
                           type="button"
@@ -300,7 +300,7 @@ export default function Sidebar({ forceExpanded = false }: {
                           aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
                           className="inline-flex size-6 min-h-tap min-w-tap items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
                         >
-                          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
                         </button>
                       </NavLink>
                       {open && kids.map((k) => {
@@ -317,7 +317,7 @@ export default function Sidebar({ forceExpanded = false }: {
                               }`
                             }
                           >
-                            <KIcon size={14} className="shrink-0" />
+                            <KIcon className="shrink-0 size-3.5" />
                             {t(k.labelKey)}
                           </NavLink>
                         );
@@ -348,7 +348,7 @@ export default function Sidebar({ forceExpanded = false }: {
                       }`
                     }
                   >
-                    <Icon size={16} className="shrink-0" />
+                    <Icon className="shrink-0 size-4" />
                     {!collapsed && label}
                   </NavLink>
                 );

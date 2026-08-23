@@ -39,7 +39,7 @@ export function RunNoteLine({ run, onSaved }: { run: RunDetail; onSaved: () => v
   return (
     <button type="button" onClick={() => { setText(run.note ?? ''); setEditing(true); }}
       className="inline-flex items-center gap-1.5 py-1 -my-1 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">
-      <StickyNote size={12} />
+      <StickyNote className="size-3" />
       {run.note
         ? <span className="italic">{run.note}</span>
         : t('kpi_runs.note_add', 'Add a note…')}

@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
+import { cn } from '@/lib/utils';
 
 interface LastUpdatedProps {
   fetchedAt?: number | null;
@@ -48,8 +49,7 @@ export default function LastUpdated({
       title={fetchedAt ? `Last updated ${label}` : 'Not loaded yet'}
     >
       <RefreshCw
-        size={12}
-        className={isFetching ? 'animate-spin' : ''}
+        className={cn(isFetching ? 'animate-spin' : '', 'size-3')}
       />
       <span>Updated {label}</span>
     </button>

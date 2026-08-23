@@ -245,7 +245,7 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
-          <Link2 size={16} className="text-muted-foreground" />
+          <Link2 className="text-muted-foreground size-4" />
           {active ? (
             /* Three FIXED slots — state · expiry · recipient — so two
                carriers can be compared down the page. Slots used to appear
@@ -294,18 +294,18 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
                   the most frequent, so it carries the weight. Edit link is
                   occasional; Revoke destroys a URL already in someone's
                   inbox and must not look like its benign neighbours. */}
-              <Button size="sm" onClick={copy}><Copy size={14} /> Copy link</Button>
+              <Button size="sm" onClick={copy}><Copy /> Copy link</Button>
               {/* "Edit link" not "Edit" — the page-level Edit button sits
                   a few pixels away and edits a different object. */}
               {!editing && (
                 <Button size="sm" variant="ghost" onClick={startEdit}>
-                  <Pencil size={14} /> Edit link
+                  <Pencil /> Edit link
                 </Button>
               )}
               <span className="mx-1 h-5 w-px bg-border" aria-hidden />
               <Button size="sm" variant="ghost" onClick={revoke} disabled={busy}
                 className={toneText('danger')}>
-                <Ban size={14} /> Revoke
+                <Ban /> Revoke
               </Button>
             </>
           )}
@@ -313,7 +313,7 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
             /* Refresh, not an envelope: replacing rotates the token. The
                envelope belongs to the paths that actually offer to email. */
             <Button size="sm" variant={active ? 'ghost' : 'default'} onClick={startCreate}>
-              {active ? <RefreshCw size={14} /> : <Mail size={14} />}
+              {active ? <RefreshCw /> : <Mail />}
               {active ? 'Replace link' : lapsed ? 'Send a new link' : 'Invite carrier'}
             </Button>
           )}
@@ -570,7 +570,7 @@ export default function CarrierProfile() {
       }`}>
         <button type="button" onClick={leavePage}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
-          <ArrowLeft size={16} /> Carrier Directory
+          <ArrowLeft className="size-4" /> Carrier Directory
         </button>
         {canEdit && (editing ? (
           <div className="flex items-center gap-2">
@@ -584,8 +584,8 @@ export default function CarrierProfile() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={remove}><Trash2 size={16} /> Delete</Button>
-            <Button size="sm" onClick={startEdit}><Pencil size={16} /> Edit</Button>
+            <Button size="sm" variant="ghost" onClick={remove}><Trash2 /> Delete</Button>
+            <Button size="sm" onClick={startEdit}><Pencil /> Edit</Button>
           </div>
         ))}
       </div>
@@ -625,13 +625,13 @@ export default function CarrierProfile() {
             {safeHref(profile.website) && (
               <a href={safeHref(profile.website)}
                 target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap">
-                <ExternalLink size={14} /> Website
+                <ExternalLink className="size-3.5" /> Website
               </a>
             )}
             {safeHref(profile.video_url) && (
               <a href={safeHref(profile.video_url)} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-primary hover:underline min-h-tap">
-                <ExternalLink size={14} /> Video overview
+                <ExternalLink className="size-3.5" /> Video overview
               </a>
             )}
           </div>
@@ -657,7 +657,7 @@ export default function CarrierProfile() {
               happened. */}
           {canEdit && (
             <Button size="xs" variant="ghost" onClick={markReviewed} disabled={reviewing}>
-              <Check size={14} /> {reviewing ? 'Marking…' : 'Mark reviewed'}
+              <Check /> {reviewing ? 'Marking…' : 'Mark reviewed'}
             </Button>
           )}
         </div>
@@ -678,7 +678,7 @@ export default function CarrierProfile() {
           </ol>
           {canEdit && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={startEdit}><Pencil size={14} /> Fill it in myself</Button>
+              <Button size="sm" onClick={startEdit}><Pencil /> Fill it in myself</Button>
               <span className="text-xs text-muted-foreground">
                 …or use the fill link panel above to invite the carrier.
               </span>
@@ -725,7 +725,7 @@ export default function CarrierProfile() {
                     invisible to the manager relying on it. */}
                 {s.internal && (
                   <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-2xs font-medium ${toneClasses('neutral')}`}>
-                    <Lock size={12} /> Internal
+                    <Lock className="size-3" /> Internal
                   </span>
                 )}
               </div>
@@ -735,7 +735,7 @@ export default function CarrierProfile() {
                   {done} of {tplLen} filled{extra > 0 ? ` · +${extra} custom` : ''}
                 </span>
                 {editing && draft && (
-                  <Button size="xs" variant="ghost" onClick={() => addRow(s.key)}><Plus size={14} /> Add field</Button>
+                  <Button size="xs" variant="ghost" onClick={() => addRow(s.key)}><Plus /> Add field</Button>
                 )}
               </div>
             </div>
@@ -768,7 +768,7 @@ export default function CarrierProfile() {
                           <button type="button" onClick={() => removeRow(s.key, i)}
                             aria-label={`Remove ${r.label || 'field'}`}
                             className="inline-flex items-center justify-center text-muted-foreground hover:text-danger">
-                            <X size={16} />
+                            <X className="size-4" />
                           </button>
                         ) : <span />}
                       </div>

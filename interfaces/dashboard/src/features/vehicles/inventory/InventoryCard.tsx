@@ -53,7 +53,7 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
         </div>
         {canManage && (
           <Button variant="outline" size="xs" onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Add
+            <Plus /> Add
           </Button>
         )}
       </div>
@@ -74,7 +74,7 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
                   onClick={() => setSelected(item)}
                   className="w-full flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/40 transition"
                 >
-                  <Icon size={16} className="text-muted-foreground shrink-0" />
+                  <Icon className="text-muted-foreground shrink-0 size-4" />
                   <span className="flex-1 min-w-0">
                     <span className="text-sm text-foreground truncate block">
                       {item.label}

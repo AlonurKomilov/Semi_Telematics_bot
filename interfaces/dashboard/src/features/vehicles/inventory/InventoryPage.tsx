@@ -45,7 +45,7 @@ const COLUMNS: AnyColumn[] = [
       const { Icon } = categoryMeta(r.category);
       return (
         <span className="inline-flex items-center gap-2">
-          <Icon size={14} className="text-muted-foreground shrink-0" />
+          <Icon className="text-muted-foreground shrink-0 size-3.5" />
           <span>{String(v ?? '')}</span>
         </span>
       );
@@ -150,7 +150,7 @@ export default function InventoryPage() {
         description="Every tracked item across the fleet — search by serial or card number, filter missing/damaged. Click a row to open its truck."
         actions={canManage ? (
           <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Add item
+            <Plus /> Add item
           </Button>
         ) : undefined}
       />

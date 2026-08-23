@@ -75,7 +75,7 @@ export default function ForgotPassword() {
         {submitted ? (
           <div className="space-y-4 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Mail className="text-primary" size={20} />
+              <Mail className="text-primary size-5" />
             </div>
             <h2 className="text-lg font-semibold">{t('auth.forgot_sent_title')}</h2>
             <p className="text-sm text-muted-foreground">
@@ -85,7 +85,7 @@ export default function ForgotPassword() {
               to="/login"
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline min-h-tap"
             >
-              <ArrowLeft size={14} />
+              <ArrowLeft className="size-3.5" />
               {t('auth.back_to_login')}
             </Link>
           </div>
@@ -132,7 +132,7 @@ export default function ForgotPassword() {
                 to="/login"
                 className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground min-h-tap"
               >
-                <ArrowLeft size={12} />
+                <ArrowLeft className="size-3" />
                 {t('auth.back_to_login')}
               </Link>
             </div>

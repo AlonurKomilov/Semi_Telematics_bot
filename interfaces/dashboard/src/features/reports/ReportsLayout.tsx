@@ -109,7 +109,7 @@ export default function ReportsLayout() {
                   }`
                 }
               >
-                <Icon size={16} />
+                <Icon className="size-4" />
                 {tab.label}
               </NavLink>
             );

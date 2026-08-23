@@ -132,7 +132,7 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
           checkboxes — see Cell), and this badge names the default in words.
           System rows are mostly MANDATORY (locked), so it says that instead. */}
       <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground mb-3">
-        <Check size={12} aria-hidden />
+        <Check className="size-3" aria-hidden />
         {section === 'system'
           ? 'Security and billing notices can\u2019t be switched off'
           : 'On by default — turn off what you don\u2019t want'}
@@ -184,7 +184,7 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
 function Th({ icon: Icon, label, hint }: { icon: typeof Send; label: string; hint: string }) {
   const head = (
     <span className={`inline-flex items-center gap-1.5 font-medium ${hint ? 'opacity-50' : ''}`}>
-      <Icon size={14} aria-hidden /> {label}
+      <Icon className="size-3.5" aria-hidden /> {label}
     </span>
   );
   return (

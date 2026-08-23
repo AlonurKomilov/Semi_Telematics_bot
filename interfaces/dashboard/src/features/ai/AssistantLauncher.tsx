@@ -18,6 +18,7 @@ import { useAssistant } from './AssistantContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Tip } from '../../components/tooltip';
 import { shortcut } from '../../utils/platform';
+import { cn } from '@/lib/utils';
 
 export function AssistantLauncher() {
   const { open, togglePanel, runPhase } = useAssistant();
@@ -40,7 +41,7 @@ export function AssistantLauncher() {
             : 'text-muted-foreground hover:bg-muted hover:text-foreground'
         }`}
       >
-        <Icon size={18} className={runPhase === 'running' ? 'animate-spin' : ''} aria-hidden />
+        <Icon className={cn(runPhase === 'running' ? 'animate-spin' : '', 'size-4.5')} aria-hidden />
         {/* Idle-but-running is impossible (running implies the spinner),
             so the dot only marks a just-finished run while closed. */}
         {runPhase === 'done' && !open && (

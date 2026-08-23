@@ -645,8 +645,8 @@ export default function PivotView({
                         <span className="inline-flex items-center gap-1">
                           {model.sort?.leaf === result.leafIds[i] && (
                             model.sort.dir === 'desc'
-                              ? <ArrowDown size={12} />
-                              : <ArrowUp size={12} />
+                              ? <ArrowDown className="size-3" />
+                              : <ArrowUp className="size-3" />
                           )}
                           {cell.label}
                         </span>
@@ -864,8 +864,8 @@ export default function PivotView({
                       className="shrink-0 -ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                     >
                       {collapsed.has(row.key)
-                        ? <ChevronRight size={16} />
-                        : <ChevronDown size={16} />}
+                        ? <ChevronRight className="size-4" />
+                        : <ChevronDown className="size-4" />}
                     </button>
                   ) : (
                     // Keep leaves aligned with their expandable siblings.
