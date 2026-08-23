@@ -1,6 +1,8 @@
 ---
 name: ux-interaction-performance-audit
-description: Interaction-performance audit — fifth member of the ux audit family (psychology=words/flows, layout=geometry, design-system=tokens, sourcing=components). Reads TIME: whether the main thread stays responsive mid-gesture — drag, scroll, type, resize — against frame/input budgets. Use when a surface "freezes", "lags", "stutters", "hangs while dragging" (any language — "qotyapti"), when the user asks "is it my PC or the code?", for any drag-and-drop board, large grid, live dashboard or infinite list, or after changing interaction-heavy surfaces. Static pass (hot-path smells, M1–M9) always runs; deep pass (DevTools/Playwright trace) on request or when static can't explain the symptom. Part O headroom pass — nothing broken but the user wants more ("optimize", "make it faster", "10x") — baseline → SLO → Amdahl leverage ladder, plus sync/waterfall coherence. Never assumes the stack, never names a library — Build tags route to ux-component-sourcing. Report IN CHAT (no files by default).
+version: 1.4.1
+source: https://github.com/AlonurKomilov/skills
+description: Interaction-performance audit — fifth member of the ux audit family (psychology=words/flows, layout=geometry, design-system=tokens, sourcing=components). Reads TIME — whether the main thread stays responsive mid-gesture — drag, scroll, type, resize — against frame/input budgets. Use when a surface "freezes", "lags", "stutters", "hangs while dragging" (any language — "qotyapti"), when the user asks "is it my PC or the code?", for any drag-and-drop board, large grid, live dashboard or infinite list, or after changing interaction-heavy surfaces. Static pass (hot-path smells, M1–M9) always runs; deep pass (DevTools/Playwright trace) on request or when static can't explain the symptom. Part O headroom pass — nothing broken but the user wants more ("optimize", "make it faster", "10x") — baseline → SLO → Amdahl leverage ladder, plus sync/waterfall coherence. Never assumes the stack, never names a library — Build tags route to ux-component-sourcing. Report IN CHAT (no files by default).
 ---
 
 # UX Audit — interaction performance
@@ -455,4 +457,4 @@ ephemeral.
   containers — after the run; or re-reading any stored number instead
   of re-measuring.
 
-<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 · v1.4: seeded-rig pattern, disposable-measurement rule, workspace isolation + the abc-lab/ workspace convention, bundled tools/measure.mjs runner, duplicate-name probe -->
+<!-- SSOT: github.com/AlonurKomilov/skills -->

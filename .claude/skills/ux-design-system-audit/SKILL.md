@@ -1,5 +1,7 @@
 ---
 name: ux-design-system-audit
+version: 1.0.0
+source: https://github.com/AlonurKomilov/skills
 description: Design-system compliance audit — fourth member of the ux audit family (psychology reads words/flows, layout reads geometry, sourcing obtains components). Audits whether every rendered value — colour, spacing, size, radius, type, icons, z-index, primitives, naming, per-user state — comes from the project OWN sanctioned system, not call-site improvisation. Step 0 discovers the project design docs, tokens, primitives and guardrails and audits against THOSE — never another project values; uncovered categories become SSOT-GAP findings with proposed rules. Use for "design system audit", "token audit", "consistency check", hardcoded colors/hex, arbitrary spacing, mixed fonts, duplicated primitives, or after any session that built or changed UI; also the routing target the siblings call the design-system audit. On explicit request ("full compliance sweep") run Part V — a grep-driven violation census with per-category counts. Report delivered IN CHAT (no files by default).
 ---
 
@@ -311,4 +313,4 @@ supersedes older ones; drop findings already fixed; `Build: new-*`
 items are verified (and downgraded when over-classified) by
 `ux-component-sourcing`.
 
-<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 -->
+<!-- SSOT: github.com/AlonurKomilov/skills -->

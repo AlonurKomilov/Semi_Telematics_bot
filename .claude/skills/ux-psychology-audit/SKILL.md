@@ -1,5 +1,7 @@
 ---
 name: ux-psychology-audit
+version: 2.0.0
+source: https://github.com/AlonurKomilov/skills
 description: Full UX audit of any user-facing feature, flow, screen, or service — TWO parts in one run. Part P audits behavioral psychology (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect + ethics gate). Part C audits clarity for a NEW user (C1 object map/OOUX, C2 component grammar, C3 cognitive walkthrough). On explicit request ("deep audit", "component by component", "tree audit", "audit every word/element") switch to Part T — audit every node of the component tree (wording, control choice, visual form, behavior, sibling consistency), then synthesize the whole image. Use when the user asks for a "UX audit", "psychology review", "clarity audit", "UX check", says a screen is confusing / not understandable / components look alike, or when wrapping up a user-facing feature and project instructions call for a UX pass. Works on ANY surface in any product domain; can audit the live rendered UI when browser/screenshot tools exist. Report delivered IN CHAT (no files by default).
 ---
 
@@ -326,4 +328,4 @@ project uses, and let the report itself stay ephemeral.
 
 If the user asks for a rollup: read the reports the user pastes or points at, plus any delivered in the current chat session; merge summary tables, deduplicate findings that touch the same surface (the newest report per surface is authoritative — its older findings are superseded), re-rank all `OPPORTUNITY`, `CONFUSION`, and `DARK-PATTERN-RISK` items into one platform-wide priority list using their Impact/Effort tags, drop `new-component`/`new-dependency` items whose finding is already fixed in the current working tree (stale tags are noise — spot-check before batching), collapse findings that need the same capability into one sourcing item, group `Build: new-dependency` items together so external-library decisions are made once (dependencies overlap and interact), and list conflicting findings explicitly rather than silently picking one. Union the "Not yet audited" lists (minus anything since covered) so the next Mode B session knows where to resume. Note: reports from PAST sessions are recoverable only if the user pastes or points at them — aggregation covers what is provided plus the current conversation; say so in the rollup header instead of implying full coverage.
 
-<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 -->
+<!-- SSOT: github.com/AlonurKomilov/skills -->

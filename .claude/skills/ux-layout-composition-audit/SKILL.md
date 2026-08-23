@@ -1,5 +1,7 @@
 ---
 name: ux-layout-composition-audit
+version: 1.0.0
+source: https://github.com/AlonurKomilov/skills
 description: Layout-composition audit — sibling of ux-psychology-audit, aimed at its blind spot — does the ARRANGEMENT communicate structure before a word is read? Five passes — S1 regions & enclosure, S2 spacing hierarchy (between-group vs within-group air), S3 weight & affordance (source vs destination legible, drop targets visible BEFORE drag), S4 stability (layout holds still), S5 proportion & placement (size tracks importance — Fitts, WCAG 2.5.8; recurring controls hold one position). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census of every container, including hidden-state geometry in conditionals. Use when a surface "looks mixed", components "are not separated", users can't tell where a section ends, for any multi-zone panel (pivot/report/form builders, layer panels, dashboards, drag-and-drop surfaces), after restructuring a layout, or auditing against a mature reference (e.g. MUI) without cargo-culting. Report delivered IN CHAT (no files by default).
 ---
 
@@ -430,4 +432,4 @@ are made once (dependencies overlap and interact). Reports from past
 sessions are recoverable only if the user pastes or points at them —
 say so in a rollup header rather than implying full coverage.
 
-<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 -->
+<!-- SSOT: github.com/AlonurKomilov/skills -->
