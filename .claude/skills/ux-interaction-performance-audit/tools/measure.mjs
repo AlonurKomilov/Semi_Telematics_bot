@@ -14,17 +14,17 @@
  *
  * Profile shape (all target-specific knowledge lives here):
  * {
- *   "baseUrl": "http://127.0.0.1:8020",
+ *   "baseUrl": "https://staging.example.test",
  *   "viewport": { "width": 1306, "height": 855 },        // optional
  *   "runs": 3,                                            // optional
  *   "throttle": [1, 4],                                   // optional
  *   "auth": { "type": "none" }                            // or:
- *         { "type": "localStorage", "key": "jwt",
+ *         { "type": "localStorage", "key": "auth_token",
  *           "value": "...", "valueFile": "path" },        // one of value/valueFile
  *   "pages": [{
  *     "name": "board",
- *     "path": "/kpi/dispatch",
- *     "ready": { "selector": "[class*=bg-ok-bg]" },       // or {"minCount": {"selector": "section", "count": 12}}
+ *     "path": "/heavy-board",
+ *     "ready": { "selector": "[data-row-loaded]" },       // or {"minCount": {"selector": "section", "count": 12}}
  *     "settleMs": 1500,                                   // optional post-ready wait
  *     "gestures": [
  *       { "name": "expand-all", "click": { "role": "button", "text": "Expand all" } },
