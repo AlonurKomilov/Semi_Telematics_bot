@@ -540,29 +540,17 @@ numbers, never from scratch.
 | Server share of the load path | tracked, **≤ 35 %** | frontend work cannot fix a backend-bound load |
 | Frame budget | `1000 / refresh-rate` ms | 10 ms on a 100 Hz display — never assume 16.7 |
 
-**How to measure (so two sessions never argue methods):**
-
-1. **Absolute verdicts** — DevTools → Performance → *Live metrics* on a
-   desktop-class machine, page reloaded, **3 runs, report the spread**;
-   gestures via the *Interactions* track; the 4×-throttle rows via
-   Performance → CPU: 4× slowdown.  Screenshots of the panel are
-   evidence.
-2. **A/B comparisons and node counts** — the self-serve rig in
-   [scripts/perf_rig/](../../scripts/perf_rig/README.md): an isolated
-   seeded board (12 dispatchers / 69 trucks) + headless-Chromium
-   driver.  Valid for *relative* change-vs-baseline and structural
-   counts; NOT for absolute wall-clock (the dev server is a noisy
-   shared box — measured 5–10× worse than a desktop).
-3. Never measure against a real account (owner rule) — the rig exists
-   so nobody has to.
-4. **A measurement is a ONE-TIME, disposable act — never stored**
-   (owner rule).  No report files, no kept logs, no processes or
-   containers left running: the single permanent record of a result
-   is the **commit message of the change it justifies**.  When you
-   finish, tear the rig down (its README shows the two commands) and
-   delete scratch builds.  Why this hard line: a stale number looks
-   identical to a fresh one, and a developer finding a three-month-old
-   log will trust it — always re-measure, never re-read.
+**How to measure — the METHOD lives in exactly one place:** the
+`ux-interaction-performance-audit` skill
+([.claude/skills/ux-interaction-performance-audit/SKILL.md](../../.claude/skills/ux-interaction-performance-audit/SKILL.md))
+owns the whole protocol — the DevTools passes, ×3-with-spread, the
+4×-throttle doctrine, the seeded-rig pattern, never-a-real-account,
+the disposable-measurement and workspace-isolation rules, and the
+bundled universal runner (`tools/measure.mjs`).  This section holds
+only THIS project's numbers — the values layer the skill reads in its
+Step 0b.  This project's kept harness:
+[scripts/perf_rig/](../../scripts/perf_rig/README.md) — the seeded
+12-dispatcher / 69-truck board for A/B runs.
 
 ## 11. Hard rules (the enforcement checklist)
 

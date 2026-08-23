@@ -207,10 +207,10 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   [src/preferences/CLAUDE.md](src/preferences/CLAUDE.md).
 - **Performance = budgets in design.md §10.** INP < 200 ms @ 4×
   throttle, settle < 300 ms, CLS ≤ 0.1, ≤ 2,500 DOM nodes on
-  board-class views — a change that breaks one doesn't ship.  Measure
-  per the recipe there (DevTools Live Metrics ×3 for absolutes; the
-  [scripts/perf_rig/](../../scripts/perf_rig/README.md) seeded rig for
-  A/Bs); never against a real account.
+  board-class views — a change that breaks one doesn't ship.  The HOW
+  (protocol, rig pattern, safety and disposability rules, universal
+  runner) is the `ux-interaction-performance-audit` skill — design.md
+  §10 keeps only this project's numbers.
 - **Charts/maps** can't use classes: charts → `chartColor(n)` (the
   `--chart-1..5` tokens); map hex → a shared config constant, never inline.
 
