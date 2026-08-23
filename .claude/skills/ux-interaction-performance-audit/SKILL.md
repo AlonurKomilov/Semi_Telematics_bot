@@ -84,8 +84,14 @@ identical (the working tree is truth, git only locates scope):
   they come from the profile or the environment, a rig binds
   loopback-only, and a taken port means pick another, never fight for
   it.  If the owner explicitly asks to KEEP a per-project harness, it
-  lives in ONE self-contained folder with its runtime files
-  git-ignored — deletable with a single command.
+  lives in the family's ONE workspace folder at the project root —
+  **`abc-lab/<harness-name>/`** — never scattered through the
+  project's own tree.  `abc-lab/` is the abc-skills family's
+  designated lab: every kept tool, rig or script any family skill
+  creates goes there, each harness self-contained with its runtime
+  files git-ignored, and the whole lab carries a one-line README
+  saying so.  The contract to the owner: `rm -rf abc-lab` removes
+  every trace of the family's tooling from the project, always.
 
 In every mode: never guess about code you haven't read — mark
 `NEEDS-CONTEXT` and name the exact file or measurement you need.
@@ -448,4 +454,4 @@ ephemeral.
   containers — after the run; or re-reading any stored number instead
   of re-measuring.
 
-<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 · v1.4: seeded-rig pattern, disposable-measurement rule, workspace isolation, bundled tools/measure.mjs runner, duplicate-name probe -->
+<!-- SSOT: github.com/AlonurKomilov/skills · 2026-08-21 · v1.4: seeded-rig pattern, disposable-measurement rule, workspace isolation + the abc-lab/ workspace convention, bundled tools/measure.mjs runner, duplicate-name probe -->
