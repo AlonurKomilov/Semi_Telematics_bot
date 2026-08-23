@@ -6,6 +6,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { sizeRegion } from '@/lib/sizeRegion';
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -55,6 +56,11 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        // Overlays are their own Size REGION: a dialog is a separate
+        // surface from the page behind it, and it is the one place a
+        // reader may want roomier than the dense screen it opened from.
+        // Caller style wins — this only supplies a default.
+        style={{ ...sizeRegion('overlays'), ...props.style }}
         className={cn(
           // A viewport-centred fixed box: without a height cap, content
           // taller than the screen overflows BOTH edges and the footer

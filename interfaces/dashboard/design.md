@@ -323,14 +323,33 @@ formulas.
   as the header it reserves for.
 - **Per-component sizing is free.** `--size-*` inherits, so setting one
   on any wrapper scales everything inside it — no context, no props.
-  Regions **multiply**: use `calc(a × var(--global) × var(--region))`,
-  never `var(--region, var(--global))`, which silently *replaces* the
-  global the moment a region is set.
-- **The floor is 1.0, and that is not arbitrary.** 78 interactive targets
-  currently measure exactly 24.0 px — the WCAG 2.5.8 minimum — so any
-  multiplier below 1 puts them under it. The control is enlarge-only
-  (1 → 1.5) until those targets gain a height floor. The clamp is
-  written twice, in `preferences/registry.ts` and in the pre-paint script;
+- **Regions are a THIRD factor, applied at the point of use.** Every
+  length is `calc(step × var(--size-<axis>, 1) × var(--size-region, 1))`,
+  and a surface claims a region by spreading `sizeRegion('tables')`
+  ([`src/lib/sizeRegion.ts`](src/lib/sizeRegion.ts)) onto the root it
+  already renders. Measured: unset costs nothing (identical boxes inside
+  and out); global 1.2 × region 1.4 gives 26.88px from a 16px step, i.e.
+  it MULTIPLIES — the nested-fallback form
+  `var(--region, var(--global))` would have replaced the global and
+  silently thrown 1.2 away. `min-h-tap` still measures 24.0px inside a
+  region shrunk to 0.85.
+
+  It is a style, not a wrapper component, because the surfaces that own
+  a region are already flex parents and scroll containers, and slipping
+  a `<div>` in between is how a layout loses `flex-1` or `min-h-0`.
+
+  Nesting REPLACES rather than compounds — an overlay opened from inside
+  the assistant renders at the overlay scale, not at both. A region names
+  where you are, and you are in one place at a time.
+- **The floor is 0.85, and it is a TYPE limit, not a target limit.** It
+  was 1.0 while pointer targets had no floor of their own; 193 of them
+  were measured under 24px in Chrome and given `min-h-tap`, which does
+  not scale, so hit areas now hold all the way down. What stops the
+  slider at 0.85 is legibility: `text-3xs` (10px) renders 8.5px there,
+  and Geist's stem is one device pixel at 11.63px, so below that the
+  dominant `text-xs` stops landing on whole pixels at DPR 1. Going lower
+  needs a floor on the small type steps first. The clamp is written
+  twice, in `preferences/registry.ts` and in the pre-paint script;
   `themeBoot.test.ts` asserts the two agree.
 
 ---

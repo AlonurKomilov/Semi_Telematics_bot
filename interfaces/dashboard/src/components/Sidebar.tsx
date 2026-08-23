@@ -8,6 +8,7 @@ import { usePreference } from '../preferences';
 import { useRoleView } from '../context/RoleViewContext';
 import { PersonaSelector } from './PersonaSelector';
 import { generateNav, type NavItem } from '../shells/nav/generateNav';
+import { sizeRegion } from '@/lib/sizeRegion';
 
 // Sidebar generates its own nav from the feature catalog, keyed off the
 // active persona (RoleViewContext.activeView).  No per-shell nav config:
@@ -82,6 +83,7 @@ export default function Sidebar({ forceExpanded = false }: {
 
   return (
     <aside
+      style={sizeRegion('navigation')}
       // No outer rounding, no right border — the sidebar merges
       // seamlessly with the topbar into a single L-shaped chrome
       // panel.  The rounded "indent" where chrome meets content is

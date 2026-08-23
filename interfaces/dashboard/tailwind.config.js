@@ -71,7 +71,22 @@ const remValue = (v) => {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 };
 
-const scaled = (value, axis) => `calc(${value} * var(--size-${axis}, 1))`;
+/**
+ * One step, on one axis, times whatever REGION it happens to render in.
+ *
+ * The region factor is here rather than in a wrapper that recomputes the
+ * four axes, because a custom property cannot be defined in terms of its
+ * own inherited value — `--size-text: calc(var(--size-region-x) *
+ * var(--size-text))` is a cycle and drops to the guaranteed-invalid
+ * value. Multiplying at the point of USE has no such problem: a wrapper
+ * sets `--size-region` alone and every length below it follows.
+ *
+ * Unset it costs nothing — `var(--size-region, 1)` is the identity, and
+ * the emitted CSS is byte-identical in behaviour to the two-factor form
+ * for every element outside a region.
+ */
+const scaled = (value, axis) =>
+  `calc(${value} * var(--size-${axis}, 1) * var(--size-region, 1))`;
 
 /** Breathing room, offsets and gaps — one axis, no size test needed. */
 const layoutScale = (source) => Object.fromEntries(

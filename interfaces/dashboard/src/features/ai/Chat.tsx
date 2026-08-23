@@ -25,6 +25,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { renderArtifact, type Artifact } from './artifacts';
 import { ScrollRegion } from '../../components/scrolling';
 import { cn } from '@/lib/utils';
+import { sizeRegion } from '@/lib/sizeRegion';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -1384,7 +1385,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     // Both variants are h-full now: the page branch used to subtract a
     // hardcoded 6rem for the shell frame, which was 0.5rem SHORT at lg
     // and would drift further the moment Size scales that padding.
-    <div className="flex flex-col h-full">
+    // The assistant is its own Size REGION — it is a conversation, and
+    // reading comfort there is a different judgement from the density
+    // someone wants on an operations screen. See lib/sizeRegion.ts.
+    <div className="flex flex-col h-full" style={sizeRegion('assistant')}>
       {/* ── Header ──────────────────────────────────────────────
           Panel mode: the New-chat / History controls PORTAL into the panel's
           chrome header (beside ✕, below) so the chat area keeps the full

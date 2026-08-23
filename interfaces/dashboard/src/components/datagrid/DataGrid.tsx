@@ -83,6 +83,7 @@ import {
   useScrollRegion,
 } from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
+import { sizeRegion } from '@/lib/sizeRegion';
 
 type Density = 'compact' | 'default' | 'roomy';
 
@@ -3266,7 +3267,10 @@ export default function DataGrid({
     // ``min-height: auto`` (never smaller than its content), which on a
     // 250-row table means "never smaller than 250 rows" and the whole
     // mechanism silently does nothing.
-    <div className={fills ? 'flex flex-col min-h-0' : undefined}>
+    // The Size REGION for tables is the whole grid, tab strip included —
+    // a strip rendered at one scale above a body at another would read
+    // as two components. See lib/sizeRegion.ts.
+    <div className={fills ? 'flex flex-col min-h-0' : undefined} style={sizeRegion('tables')}>
       {/* Segment tab strip — OUTSIDE the card, floating directly on
           the page background (no fill of its own), like physical
           folder tabs poking up from the card below.  ``-mb-px`` +
