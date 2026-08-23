@@ -23,6 +23,7 @@ import { useDockedContentClass } from '../features/ai/AssistantContext';
 import { shortcut } from '../utils/platform';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
+import { sizeRegion } from '@/lib/sizeRegion';
 
 export default function AccountingShell() {
   const dockedContentClass = useDockedContentClass();
@@ -59,7 +60,7 @@ export default function AccountingShell() {
       />
 
       <div className="flex-1 flex flex-col overflow-hidden bg-sidebar pr-2 pb-2">
-        <header className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
+        <header style={sizeRegion('controls')} className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}
@@ -103,7 +104,7 @@ export default function AccountingShell() {
           </div>
         </header>
 
-        <main className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}>
+        <main style={sizeRegion('text')} className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}>
           <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
             <Outlet />
           </div>

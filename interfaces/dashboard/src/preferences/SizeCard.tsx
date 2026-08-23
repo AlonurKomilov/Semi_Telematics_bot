@@ -7,13 +7,14 @@
  * quick toggle, and one a w-56 popover cannot hold without inventing a
  * width design.md §7 forbids.
  *
- * Per-region sliders are designed and the engine already publishes
- * `--size-region-*`, but they are not on this page yet: nothing reads
- * those variables until each region has an owning wrapper. See the note
- * where they will go.
+ * The six per-region sliders live here too, behind a disclosure. They
+ * MULTIPLY the global rather than replacing it, so 110% on Tables over a
+ * 120% interface renders at 132% — the composition is done by the
+ * cascade, in `tailwind.config.js`, not by this page. Each region is
+ * claimed by the surface that already owns it (`lib/sizeRegion.ts`).
  */
 import { useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, ChevronRight } from 'lucide-react';
 
 import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
@@ -22,6 +23,7 @@ import { useTheme, applySize } from '../context/ThemeContext';
 import { usePreference } from './usePreference';
 import { publishAppearanceDefault, resetAppearanceDefault } from './appearance';
 import { SIZE_MIN, SIZE_MAX, SIZE_DEFAULT } from './registry';
+import type { SizeRegion as SizeRegionKey } from './registry';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -63,8 +65,21 @@ function SizeRow({
   );
 }
 
+/** Region key -> what the user calls that part of the screen. Ordered
+ *  the way the eye moves through the app, not alphabetically. The keys
+ *  are frozen (registry.ts); only these labels are editable. */
+const REGION_ROWS: { key: SizeRegionKey; label: string }[] = [
+  { key: 'text',       label: 'Main content' },
+  { key: 'tables',     label: 'Tables' },
+  { key: 'controls',   label: 'Top bar' },
+  { key: 'navigation', label: 'Sidebar' },
+  { key: 'overlays',   label: 'Dialogs & panels' },
+  { key: 'assistant',  label: 'Assistant' },
+];
+
 export default function SizeCard() {
   const { size, setSize } = useTheme();
+  const [open, setOpen] = useState(false);
   const { value: followMe, setValue: setFollowMe } = usePreference('appearance.followMe');
   const { value: syncEnabled } = usePreference('prefs.syncEnabled');
 
@@ -75,7 +90,10 @@ export default function SizeCard() {
     resetAppearanceDefault();
   };
 
-  const atDefault = size.global === 1;
+  const tuned = REGION_ROWS.filter(
+    (r) => (size.regions[r.key] ?? 1) !== 1,
+  ).length;
+  const atDefault = size.global === 1 && tuned === 0;
 
   return (
     <section id="appearance" className="bg-card border border-border rounded-xl p-5 scroll-mt-20">
@@ -92,7 +110,7 @@ export default function SizeCard() {
         </button>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Make the interface bigger. Applies to this browser; the switch below shares it with your other ones.
+        Resize the interface. Applies to this browser; the switch below shares it with your other ones.
       </p>
 
       <div className="space-y-3">
@@ -104,16 +122,54 @@ export default function SizeCard() {
           onCommit={(v) => setSize({ global: v })}
         />
 
-        {/* The six per-region sliders are NOT here yet, deliberately.
-            The engine publishes `--size-region-*` and the cascade is
-            ready, but no component reads those variables until the
-            regions get an owner — a single wrapper whose dimensions they
-            can scope. Cards, chips, list rows and toolbars have no such
-            wrapper at all today (239 / 144 / 54 / 53 hand-rolled sites,
-            no primitive), and the shell page frame is six byte-identical
-            copies. Shipping the sliders before their consumers would put
-            six controls on this page that move nothing — which is
-            exactly the fault this whole feature exists to fix. */}
+        {/* Per-area sliders are BEHIND a disclosure, not stacked under
+            the first one. "Everything" is the control almost everyone
+            wants; six more of the same shape beside it would make the
+            page read as six equal decisions and bury the one that
+            matters. Open, they show what they are worth — each one
+            multiplies the global rather than replacing it. */}
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
+          >
+            <ChevronRight
+              className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
+              aria-hidden
+            />
+            Fine-tune by area
+            {tuned > 0 && (
+              <span className="text-2xs tabular-nums text-primary">
+                {tuned} adjusted
+              </span>
+            )}
+          </button>
+
+          {open && (
+            <div className="mt-3 space-y-3 border-l border-border pl-3">
+              <p className="text-xs text-muted-foreground">
+                Each area multiplies the size above — 110% here on a 120%
+                interface renders at 132%.
+              </p>
+              {REGION_ROWS.map(({ key, label }) => (
+                <SizeRow
+                  key={key}
+                  label={label}
+                  ariaLabel={`${label} size`}
+                  value={size.regions[key] ?? 1}
+                  onPreview={(v) => applySize({
+                    ...size, regions: { ...size.regions, [key]: v },
+                  })}
+                  onCommit={(v) => setSize({
+                    regions: { ...size.regions, [key]: v },
+                  })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Cross-device. Disabled WITH THE REASON SHOWN rather than hidden

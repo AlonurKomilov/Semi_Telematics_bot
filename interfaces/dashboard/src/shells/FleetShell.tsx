@@ -26,6 +26,7 @@ import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 import FleetHero from './heroes/FleetHero';
 import ShellHero from './heroes/ShellHero';
+import { sizeRegion } from '@/lib/sizeRegion';
 
 export default function FleetShell() {
   const dockedContentClass = useDockedContentClass();
@@ -66,7 +67,7 @@ export default function FleetShell() {
             status strip or not.  Default shell (Owner/Admin) just
             omits the middle Hero, leaving the topbar's flex layout
             balanced between mobile-menu and tools. */}
-        <header className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
+        <header style={sizeRegion('controls')} className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}
@@ -109,7 +110,7 @@ export default function FleetShell() {
           </div>
         </header>
 
-        <main className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}>
+        <main style={sizeRegion('text')} className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}>
           <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
             <Outlet />
           </div>
