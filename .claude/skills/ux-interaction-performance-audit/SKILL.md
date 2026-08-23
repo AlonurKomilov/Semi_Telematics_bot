@@ -1,6 +1,6 @@
 ---
 name: ux-interaction-performance-audit
-version: 1.4.1
+version: 1.5.0
 source: https://github.com/AlonurKomilov/skills
 description: Interaction-performance audit — fifth member of the ux audit family (psychology=words/flows, layout=geometry, design-system=tokens, sourcing=components). Reads TIME — whether the main thread stays responsive mid-gesture — drag, scroll, type, resize — against frame/input budgets. Use when a surface "freezes", "lags", "stutters", "hangs while dragging" (any language — "qotyapti"), when the user asks "is it my PC or the code?", for any drag-and-drop board, large grid, live dashboard or infinite list, or after changing interaction-heavy surfaces. Static pass (hot-path smells, M1–M9) always runs; deep pass (DevTools/Playwright trace) on request or when static can't explain the symptom. Part O headroom pass — nothing broken but the user wants more ("optimize", "make it faster", "10x") — baseline → SLO → Amdahl leverage ladder, plus sync/waterfall coherence. Never assumes the stack, never names a library — Build tags route to ux-component-sourcing. Report IN CHAT (no files by default).
 ---
@@ -95,6 +95,16 @@ identical (the working tree is truth, git only locates scope):
   files git-ignored, and the whole lab carries a one-line README
   saying so.  The contract to the owner: `rm -rf abc-lab` removes
   every trace of the family's tooling from the project, always.
+  **Secrets never enter the lab's tracked files:** a kept harness
+  contains NO credentials in its code — signing secrets are generated
+  per boot, and auth material (tokens, `.env` files, keys) lives only
+  in runtime-written files its own `.gitignore` blocks.  The project's
+  ROOT `.gitignore` repeats the same patterns lab-wide (logs, `.env*`,
+  `*.pem`, `*.key`, `id_rsa*`, `*token*.txt`, `*secret*`,
+  `node_modules`, scratch builds) as belt-and-braces, so a future
+  harness that forgets its own `.gitignore` still cannot leak.  Before
+  a harness's first commit, run the project's secret scanner or
+  pre-commit hook if one exists.
 
 In every mode: never guess about code you haven't read — mark
 `NEEDS-CONTEXT` and name the exact file or measurement you need.

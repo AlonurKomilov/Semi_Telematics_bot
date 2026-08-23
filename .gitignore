@@ -75,3 +75,20 @@ docs/*
 # them): they are point-in-time working papers, not source.  The
 # ux-psychology-audit skill still writes them here and aggregates them
 # across sessions from disk — they just never enter git.
+
+# abc-lab (the skills-family workspace): harness CODE is tracked and
+# reviewed like any code; anything runtime- or secret-shaped never is.
+# Belt-and-braces over each harness's own .gitignore, so a future
+# harness that forgets to write one still cannot leak.
+abc-lab/**/*.log
+abc-lab/**/.env
+abc-lab/**/.env.*
+abc-lab/**/*.pem
+abc-lab/**/*.key
+abc-lab/**/id_rsa*
+abc-lab/**/id_ed25519*
+abc-lab/**/*token*.txt
+abc-lab/**/*secret*
+abc-lab/**/node_modules/
+abc-lab/**/objstore/
+abc-lab/**/dist*/
