@@ -19,7 +19,7 @@ import { boardGeometry, prevDay } from './geometry';
 import { CalendarOffGlyph } from './glyphs';
 import { ROW_CONTAIN, dayLabel, place, usd } from './shared';
 
-export const DayCells = memo(function DayCells({ row, days, loads, suggestions, clickable, onOpenMenu }: {
+export const DayCells = memo(function DayCells({ row, days, loads, suggestions, clickable, onOpenMenu, onOpenLoad }: {
   row: RunRow;
   days: string[];
   loads: RunLoad[] | undefined;
@@ -28,6 +28,8 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
   clickable: boolean;
   /** Open the board's ONE shared day menu, anchored at this cell. */
   onOpenMenu: (row: RunRow, day: string, anchor: HTMLElement) => void;
+  /** Open a load's details — the chips are their own controls. */
+  onOpenLoad: (row: RunRow, load: RunLoad) => void;
 }) {
   const { t } = useTranslation();
   const marks = new Map((row.inactive_dates ?? []).map((m) => [m.date, m.reason]));
@@ -53,10 +55,15 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
         // wide chip widen ONE row's column off the header grid.
         const cell = (
           <div
-            className={`group relative h-full min-h-14 px-1.5 py-1.5 space-y-1 ${
+            className={`relative h-full min-h-14 px-1.5 py-1.5 space-y-1 ${
               !inside ? 'bg-muted/60'
                 : reason != null ? 'bg-warn-bg' : ''
-            } ${clickable && inside ? 'cursor-pointer hover:bg-muted hover:ring-1 hover:ring-inset hover:ring-border' : ''}`}
+            } ${clickable && inside
+              /* pointer-events-none: empty cell area belongs to the day
+                 button UNDER this layer; the chips re-enable themselves.
+                 Hover moves to the wrapper's group for the same reason. */
+              ? 'pointer-events-none z-10 group-hover:bg-muted group-hover:ring-1 group-hover:ring-inset group-hover:ring-border'
+              : ''}`}
           >
             {dayLoads.slice(0, 2).map((l, i) => {
               const runDays = i <= 1 ? stripRun(l, d) : 0;
@@ -76,6 +83,8 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                   mi: Math.round(l.miles).toLocaleString(),
                   del: dayLabel(deliveryEnd(l)),
                 });
+              const loadOpenAria = t('kpi_board.load_open_aria',
+                '{{load}} — open load details', { load: loadAria });
               return cont ? (
                 /* DAY-ALIGNED fill + floating label.  The fill ends at
                    the cell edge (uniform bg-ok-bg, single alpha layer,
@@ -86,8 +95,10 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                    surface. */
                 <div key={i} className="relative">
                   <Tip label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
-                    <div className="block h-6 rounded-l rounded-r-none -mr-1.5 bg-ok-bg"
-                      role="img" aria-label={loadAria} />
+                    <button type="button"
+                      className="pointer-events-auto block w-full h-6 min-h-tap rounded-l rounded-r-none -mr-1.5 bg-ok-bg"
+                      aria-label={loadOpenAria}
+                      onClick={() => onOpenLoad(row, l)} />
                   </Tip>
                   <span
                     className="pointer-events-none absolute left-1.5 top-0 z-10 flex h-6 leading-6 text-xs tabular-nums text-ok"
@@ -105,14 +116,15 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
               ) : (
                 <Tip key={i}
                   label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
-                  <div
+                  <button type="button"
                     /* h-6 + leading-6 (not flex): truncate's ellipsis
                        needs a block formatting context. */
-                    className={`block h-6 leading-6 rounded text-xs tabular-nums px-1.5 truncate ${toneClasses('ok')}`}
-                    role="img" aria-label={loadAria}
+                    className={`pointer-events-auto block w-full h-6 min-h-tap leading-6 rounded text-xs tabular-nums px-1.5 truncate text-left ${toneClasses('ok')}`}
+                    aria-label={loadOpenAria}
+                    onClick={() => onOpenLoad(row, l)}
                   >
                     ${Math.round(l.total_rate).toLocaleString()} · {place(l.delivery_location) || l.load_number}
-                  </div>
+                  </button>
                 </Tip>
               );
             })}
@@ -197,17 +209,19 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                       tint (color-mix), so an alpha modifier on top
                       painted a ~9% wash — invisible on white.  Same
                       fill as the chip = one unbroken bar. */}
-                  <span className={`block h-6 bg-ok-bg ${
-                    lane === 1 ? 'mt-7' : ''} ${
-                    leftConnected ? '-ml-1.5 rounded-l-none' : 'rounded-l'} ${
-                    continues ? 'rounded-r-none -mr-1.5' : 'rounded-r'}`}>
+                  <button type="button"
+                    className={`pointer-events-auto block w-full h-6 min-h-tap bg-ok-bg ${
+                      lane === 1 ? 'mt-7' : ''} ${
+                      leftConnected ? '-ml-1.5 rounded-l-none' : 'rounded-l'} ${
+                      continues ? 'rounded-r-none -mr-1.5' : 'rounded-r'}`}
+                    onClick={() => onOpenLoad(row, info.load)}>
                     <span className="sr-only">
-                      {t('kpi_board.transit_sr', 'in transit — {{rate}} to {{place}}', {
+                      {t('kpi_board.transit_open_sr', 'in transit — {{rate}} to {{place}} — open load details', {
                         rate: `$${Math.round(info.load.total_rate).toLocaleString()}`,
                         place: place(info.load.delivery_location) || info.load.load_number,
                       })}
                     </span>
-                  </span>
+                  </button>
                 </Tip>
               );
             })()}
@@ -240,11 +254,15 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
           seamless ? '' : 'border-r'} border-border last:border-r-0`;
         if (!clickable || !inside) return <div key={d} className={wrapCls}>{cell}</div>;
         return (
-          /* A plain button — the menu it opens is the board's ONE
-             shared AnchoredMenu (see board/menu.ts): a menu component
-             per cell priced large periods out (7 days × 69 trucks =
-             ~480 menus; 30 days ≈ 2,000). */
-          <button key={d} type="button" className={`${wrapCls} text-left`}
+          /* Two controls, no nesting: the DAY gesture is a background
+             button under the content layer, the LOADS are their own
+             buttons above it.  Clicking a load opened "mark this day
+             inactive" while the chip sat inside the cell's button —
+             illegal to fix by nesting, so the layers split.  The menu
+             is the board's ONE shared AnchoredMenu (board/menu.ts). */
+          <div key={d} className={`${wrapCls} group relative`}>
+          <button type="button"
+            className="absolute inset-0 z-0 cursor-pointer"
             aria-haspopup="menu"
             onClick={(e) => onOpenMenu(row, d, e.currentTarget)}
             aria-label={(reason != null
@@ -270,9 +288,9 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                   { day: dayLabel(d), unit: row.vehicle_unit,
                     stake: row.weekly_target != null
                       ? ` — ${t('kpi_board.aria_down', 'target −${{v}}',
-                          { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' }))}>
-            {cell}
-          </button>
+                          { v: Math.round(row.weekly_target / 7).toLocaleString() })}` : '' }))} />
+          {cell}
+          </div>
         );
       })}
     </div>

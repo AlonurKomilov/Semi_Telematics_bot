@@ -31,7 +31,7 @@ import { UnitCard } from './board/UnitCard';
 import { dayLabel, usd } from './board/shared';
 import {
   getIncentiveRunLoads, patchIncentiveRow,
-  type DaySuggestion, type InactiveDate, type RunDetail, type RunRow,
+  type DaySuggestion, type InactiveDate, type RunDetail, type RunLoad, type RunRow,
 } from '../api';
 
 // Frozen empties: `?? []` allocates a NEW array every render, which
@@ -39,10 +39,13 @@ import {
 const EMPTY_NAMES: string[] = [];
 const EMPTY_SUGGESTIONS: DaySuggestion[] = [];
 
-export default function RunBoard({ run, draft, onChanged, onRecreate }: {
+export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad }: {
   run: RunDetail;
   draft: boolean;
   onChanged: () => void;
+  /** Open one load's details — the page owns the surface that shows
+   *  them, the board only says WHICH load the user clicked. */
+  onOpenLoad: (row: RunRow, load: RunLoad) => void;
   /** Discard this draft and regenerate the same period from live loads
    *  (the stale banner's remedy) — parent owns the mutation + confirm. */
   onRecreate: () => void;
@@ -351,6 +354,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate }: {
                         suggestions={loadsQ.data?.suggestions[String(row.id)] ?? EMPTY_SUGGESTIONS}
                         clickable={draft && busyRow !== row.id}
                         onOpenMenu={openDayMenu}
+                        onOpenLoad={onOpenLoad}
                       />
                     ))}
                   </div>

@@ -54,12 +54,19 @@ import { FeatureConfigGear } from '../../_lib/FeatureConfigGear';
 import {
   createIncentiveRun, deleteIncentiveRun, downloadIncentiveRunCsv, finalizeIncentiveRun,
   getIncentiveRun, getIncentiveRunLoads, listIncentiveRuns,
-  type RunDetail, type RunRow, type RunSummary,
+  type RunDetail, type RunLoad, type RunRow, type RunSummary,
 } from '../api';
 
 
 /** Days a DRAFT has sat past its period end — money payroll cannot see
  *  yet.  0 for finalized or still-running periods. */
+/** A load's identity for cross-surface focus: the TMS number when it
+ *  exists, else the fields that make a load unique within one row. */
+function loadKey(l: RunLoad): string {
+  return l.load_number
+    || `${l.pickup_date}·${l.total_rate}·${l.delivery_location}`;
+}
+
 function draftOverdueDays(r: RunSummary): number {
   if (r.status !== 'draft') return 0;
   const end = new Date(`${r.period_end.slice(0, 10)}T00:00:00Z`).getTime();
@@ -99,6 +106,10 @@ export default function IncentiveRuns() {
   const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
   const [trailOpen, setTrailOpen] = useState(false);
   const [loadsRow, setLoadsRow] = useState<RunRow | null>(null);
+  // Which load the user clicked on the board — the dialog opens on it.
+  // load_number is the id when the TMS supplies one; the composite
+  // fallback keeps chips clickable on rows that came in without it.
+  const [focusLoad, setFocusLoad] = useState<string | null>(null);
   const [showAllRuns, setShowAllRuns] = useState(false);
   // Sheet = the numeric settlement (DataGrid); Board = the same run laid
   // out per dispatcher × day.  A synced preference — a reading style.
@@ -527,7 +538,11 @@ export default function IncentiveRuns() {
           <div className="mt-8">
             {viewMode === 'board' ? (
               <RunBoard run={run} draft={!!draft} onChanged={refresh}
-                onRecreate={() => setRecreateOpen(true)} />
+                onRecreate={() => setRecreateOpen(true)}
+                onOpenLoad={(row, load) => {
+                  setFocusLoad(loadKey(load));
+                  setLoadsRow(row);
+                }} />
             ) : (
             <DataGrid
             tableId="kpi-dispatch-settlement"
@@ -647,7 +662,7 @@ export default function IncentiveRuns() {
       </Dialog>
 
       {loadsRow && (
-        <Dialog open onOpenChange={(o) => { if (!o) setLoadsRow(null); }}>
+        <Dialog open onOpenChange={(o) => { if (!o) { setLoadsRow(null); setFocusLoad(null); } }}>
           <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>
@@ -676,8 +691,16 @@ export default function IncentiveRuns() {
             <ScrollRegion className="max-h-96"
               label={t('kpi_runs.loads_region', 'Loads in this row')}>
             <ul className="divide-y divide-border border-t border-border">
-              {(runLoadsQ.data?.rows[String(loadsRow.id)] ?? []).map((l, i) => (
-                <li key={i} className="py-2 text-sm flex items-center justify-between gap-3">
+              {(runLoadsQ.data?.rows[String(loadsRow.id)] ?? []).map((l, i) => {
+                const focused = focusLoad != null && loadKey(l) === focusLoad;
+                return (
+                <li key={i}
+                  /* Opened from a board chip: bring THAT load into view
+                     and mark it, so a 9-load row doesn't make the user
+                     hunt for the one they clicked. */
+                  ref={focused ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                  className={`py-2 text-sm flex items-center justify-between gap-3 ${
+                    focused ? 'bg-muted rounded px-2 -mx-2' : ''}`}>
                   <span className="min-w-0">
                     <span className="block truncate">
                       {l.pickup_location || '—'} → {l.delivery_location || '—'}
@@ -694,7 +717,8 @@ export default function IncentiveRuns() {
                     </span>
                   </span>
                 </li>
-              ))}
+                );
+              })}
             </ul>
             </ScrollRegion>
           </DialogContent>
