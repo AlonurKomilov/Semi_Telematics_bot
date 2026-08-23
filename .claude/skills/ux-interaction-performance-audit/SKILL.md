@@ -85,10 +85,11 @@ identical (the working tree is truth, git only locates scope):
   loopback-only, and a taken port means pick another, never fight for
   it.  If the owner explicitly asks to KEEP a per-project harness, it
   lives in the family's ONE workspace folder at the project root —
-  **`abc-lab/<harness-name>/`** — never scattered through the
+  **`abc-lab/skills/<skill-name>/<harness>/`** — never scattered through the
   project's own tree.  `abc-lab/` is the abc-skills family's
   designated lab: every kept tool, rig or script any family skill
-  creates goes there, each harness self-contained with its runtime
+  creates goes there, namespaced by its owning skill so ownership is
+  readable from the path, each harness self-contained with its runtime
   files git-ignored, and the whole lab carries a one-line README
   saying so.  The contract to the owner: `rm -rf abc-lab` removes
   every trace of the family's tooling from the project, always.

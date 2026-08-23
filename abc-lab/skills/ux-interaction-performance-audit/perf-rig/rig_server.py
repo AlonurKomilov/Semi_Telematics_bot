@@ -28,7 +28,10 @@ os.environ["JWT_SECRET"] = _secrets.token_hex(32)
 os.environ["OBJECT_STORE_ROOT"] = os.path.join(SCRATCH, "objstore")
 PG_URL = "postgresql://rig:rig@127.0.0.1:55439/rig"
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(SCRATCH)))
+_root = SCRATCH
+while _root != "/" and not os.path.isdir(os.path.join(_root, ".git")):
+    _root = os.path.dirname(_root)
+sys.path.insert(0, _root)
 
 
 def ensure_pg():
