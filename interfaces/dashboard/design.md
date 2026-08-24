@@ -652,3 +652,34 @@ Step 0b.  This project's kept harness:
 
 When unsure, grep for an existing screen that does the same thing and
 copy its tokens.
+
+### Which of these are GUARDED
+
+A rule that lives only in this file decays — twice in one session an
+audit found violations of rules written here for months. These now fail
+`npm test`, in `src/components/ui/chrome.test.ts` (plus
+`scrolling/backdrops.test.ts` for hand-rolled modals):
+
+| Rule | Guard |
+|---|---|
+| 24px pointer floor (§5.1) | computes each control's height from its classes; **validated against 728 elements measured in Chrome — 428/428 verdicts matched**, and it abstains on the 116 whose line-height is inherited |
+| never extend `spacing` (§5.1) | reads `tailwind.config.js` |
+| no `calc(100vh − Nrem)` (§5.1) | code lines only, comments excluded |
+| no arbitrary px/rem length (§5.1, §11) | viewport units and `var()` deliberately allowed |
+| no raw palette for meaning (§11) | prose mentions excluded |
+| no emoji as icons (§11) | explicit dingbat list — an arrow in "A → B" is typography, not an icon |
+| no native `title=` (§11) | `<iframe title>` exempt: there it is the required accessible name |
+| per-user state via the registry | allowlist mirrors `preferences/CLAUDE.md`'s exception table |
+| don't hand-roll a Button variant (§7) | a raw `<button>` wearing a variant's own dimensions |
+| don't override a Button variant (§7) | dimensions only — a call site may set colour |
+
+Three carry NAMED DEBT lists for migrations older than the guards
+(`title=`, arbitrary lengths, one Button override). A separate test
+fails if an entry on any list stops offending, so a list cannot outlive
+its reason.
+
+**Not guarded, and worth knowing:** heading ROLE combos (§4), the
+`font-mono` rule, icon step values, and whether two sibling surfaces
+agree on a legal value. The last is not a guard's job at all — a guard
+checks that a value is legal; only a primitive can make siblings
+agree.

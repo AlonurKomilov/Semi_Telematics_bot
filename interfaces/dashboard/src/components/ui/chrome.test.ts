@@ -13,14 +13,30 @@ import { join, relative } from 'node:path';
 
 const SRC = join(__dirname, '..', '..');
 
-function walk(dir: string, out: string[] = [], ext = /\.tsx?$/): string[] {
+function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) walk(path, out, ext);
-    else if (ext.test(name) && !/\.test\.tsx?$/.test(name)) out.push(path);
+    if (statSync(path).isDirectory()) walk(path, out);
+    else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(path);
   }
   return out;
 }
+
+/**
+ * The tree, walked and read ONCE at module load.
+ *
+ * The first version of this file gave every check its own `walk()` +
+ * `readFileSync()`, which meant six passes over 469 files — measured at
+ * 84 seconds on top of vitest's own 9, on a suite everyone runs. A guard
+ * that makes the test loop slower gets deleted, whatever it catches.
+ */
+const FILES: { rel: string; src: string }[] = walk(SRC).map((f) => ({
+  rel: relative(SRC, f),
+  src: readFileSync(f, 'utf8'),
+}));
+const TSX = FILES.filter((f) => f.rel.endsWith('.tsx'));
+const SRC_OF = new Map(FILES.map((f) => [f.rel, f.src]));
+const srcOf = (rel: string) => SRC_OF.get(rel) ?? '';
 
 /**
  * Emoji and icon-substitute dingbats used as UI CHROME — inside a JSX
@@ -134,11 +150,92 @@ const TITLE_NOT_YET_CONVERTED: string[] = [
   'pages/Profile.tsx',
 ];
 
+
+/**
+ * Does this file put `title=` on a lowercase DOM element?
+ *
+ * A scanner, not a regex, and that is not a style preference. The regex
+ * this replaced — `<(?!iframe)[a-z]\w*\b(?:[^>]|\{[^}]*\})*?\stitle=` —
+ * measured **82 seconds** across 469 files on its own, while every other
+ * check in this file finished in milliseconds. The alternation inside a
+ * lazy quantifier lets the engine try exponentially many ways to match
+ * the same text; on a 3,000-line component that is minutes, not
+ * milliseconds. A guard that costs 82s of everyone's test loop does not
+ * survive contact with a deadline.
+ *
+ * `<iframe title>` is skipped: there the attribute is the element's
+ * required accessible NAME, not a tooltip, and banning it would trade a
+ * style rule for an a11y regression.
+ */
+function hasNativeTitle(src: string): boolean {
+  for (const m of src.matchAll(/\stitle=/g)) {
+    const at = m.index ?? 0;
+    const open = src.lastIndexOf('<', at);
+    if (open === -1) continue;
+    const tag = /^<([a-z][a-z0-9]*)[\s/>]/.exec(src.slice(open, open + 16));
+    if (!tag || tag[1] === 'iframe') continue;
+    // Still inside that opening tag? A `>` between the two ends it —
+    // unless it is inside a JSX expression, where `=>` and comparisons
+    // live. Depth-count braces rather than banning `>` outright.
+    let depth = 0;
+    let closed = false;
+    for (let i = open; i < at; i += 1) {
+      const c = src[i];
+      if (c === '{') depth += 1;
+      else if (c === '}') depth -= 1;
+      else if (c === '>' && depth === 0) { closed = true; break; }
+    }
+    if (!closed) return true;
+  }
+  return false;
+}
+
+
+/**
+ * The rendered height of a control, from its class list alone, at Size 1.
+ * `null` means "not computable" — see the abstention note on the test.
+ */
+const SPACING = (n: string) => Number(n) * 4;
+const LINE_HEIGHT: Record<string, number> = {
+  xs: 16, sm: 20, base: 24, lg: 28, xl: 28,
+};
+
+export function tapHeight(cls: string): number | null {
+  const t = cls.split(/\s+/).filter(Boolean);
+  const find = (re: RegExp) => t.find((x) => re.test(x));
+  // The floor itself. Not a height — a minimum — which is exactly what
+  // is being asserted, so it answers the question directly.
+  if (t.includes('min-h-tap') || t.includes('h-tap')) return 24;
+
+  const explicit = find(/^h-[\d.]+$/) || find(/^size-[\d.]+$/);
+  if (explicit) return SPACING(explicit.split('-')[1]);
+
+  const py = find(/^py-[\d.]+$/);
+  const pt = find(/^pt-[\d.]+$/);
+  const pb = find(/^pb-[\d.]+$/);
+  const pAll = find(/^p-[\d.]+$/);
+  const padding = py ? SPACING(py.split('-')[1]) * 2
+    : (pt || pb)
+      ? SPACING((pt ?? 'pt-0').split('-')[1]) + SPACING((pb ?? 'pb-0').split('-')[1])
+      : pAll ? SPACING(pAll.split('-')[1]) * 2 : 0;
+
+  const type = find(/^text-(3xs|2xs|xs|sm|base|lg|xl)$/);
+  if (!type) return null;
+  const step = type.slice('text-'.length);
+  // `text-2xs` / `text-3xs` are size-only steps by design (see the
+  // fontSize note in tailwind.config.js) — no line-height of their own.
+  const line = LINE_HEIGHT[step];
+  if (line === undefined) return null;
+
+  const border = t.some((x) => /^border(-[trblxy])?$/.test(x)) ? 2 : 0;
+  return padding + line + border;
+}
+
 describe('UI chrome', () => {
   it('never uses emoji or dingbats where an icon belongs', () => {
-    const offenders = walk(SRC, [], /\.tsx$/)
-      .filter((f) => CHROME_GLYPH.test(readFileSync(f, 'utf8')))
-      .map((f) => relative(SRC, f))
+    const offenders = TSX
+      .filter((f) => CHROME_GLYPH.test(f.src))
+      .map((f) => f.rel)
       .filter((f) => !NOT_YET_CONVERTED.includes(f));
     // design.md §11: "lucide-react only… no emoji as UI icons."
     expect(offenders).toEqual([]);
@@ -149,15 +246,12 @@ describe('UI chrome', () => {
     // real one — so neither list may outlive its reason.
     const stale = [
       ...NOT_YET_CONVERTED.filter(
-        (f) => !CHROME_GLYPH.test(readFileSync(join(SRC, f), 'utf8')),
+        (f) => !CHROME_GLYPH.test(srcOf(f)),
       ),
-      ...TITLE_NOT_YET_CONVERTED.filter(
-        (f) => !/<(?!iframe\b)[a-z][a-z0-9]*\b(?:[^>]|\{[^}]*\})*?\stitle=/
-          .test(readFileSync(join(SRC, f), 'utf8')),
-      ),
+      ...TITLE_NOT_YET_CONVERTED.filter((f) => !hasNativeTitle(srcOf(f))),
       ...ARBITRARY_NOT_YET_CONVERTED.filter(
         (f) => !/\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/
-          .test(readFileSync(join(SRC, f), 'utf8')),
+          .test(srcOf(f)),
       ),
     ];
     expect(stale).toEqual([]);
@@ -187,12 +281,10 @@ describe('UI chrome', () => {
       'lib/safeReturnTo',                       // explicit-signout, session flow
       'router.tsx',                             // chunk-reload loop breaker
     ];
-    const offenders = walk(SRC)
-      .filter((f) => !ALLOWED.some((a) => f.includes(a)))
-      .filter((f) => /\b(localStorage|sessionStorage)\.(get|set|remove)Item\b/.test(
-        readFileSync(f, 'utf8'),
-      ))
-      .map((f) => relative(SRC, f));
+    const offenders = FILES
+      .filter((f) => !ALLOWED.some((a) => f.rel.includes(a)))
+      .filter((f) => /\b(localStorage|sessionStorage)\.(get|set|remove)Item\b/.test(f.src))
+      .map((f) => f.rel);
     expect(offenders).toEqual([]);
   });
 
@@ -205,15 +297,14 @@ describe('UI chrome', () => {
     // because it was the only class-shaped option.
     const PALETTE =
       /\b(?:text|bg|border|from|to|via|ring|divide)-(?:red|green|amber|yellow|blue|orange|emerald|rose|slate|gray|zinc|indigo|violet|purple|teal|cyan|lime|fuchsia|pink|sky|stone|neutral)-\d{2,3}\b/;
-    const offenders = walk(SRC)
-      .filter((f) => {
-        const src = readFileSync(f, 'utf8');
+    const offenders = FILES
+      .filter(({ src }) => {
         // A line that only MENTIONS the class in prose is not a use.
         return src.split('\n').some(
           (l) => PALETTE.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l),
         );
       })
-      .map((f) => relative(SRC, f));
+      .map((f) => f.rel);
     expect(offenders).toEqual([]);
   });
 
@@ -221,14 +312,9 @@ describe('UI chrome', () => {
     // Unthemed, delayed, and invisible on touch. `<Tip>` replaces it;
     // icon-only controls keep an aria-label. Component PROPS named
     // `title` (PageHeader, EmptyState, Dialog) are a different thing.
-    // NOT <iframe title>, where the attribute is the element's required
-    // accessible NAME, not a tooltip — banning it there would trade a
-    // style rule for an a11y regression.
-    const NATIVE_TITLE =
-      /<(?!iframe\b)[a-z][a-z0-9]*\b(?:[^>]|\{[^}]*\})*?\stitle=/;
-    const offenders = walk(SRC, [], /\.tsx$/)
-      .filter((f) => NATIVE_TITLE.test(readFileSync(f, 'utf8')))
-      .map((f) => relative(SRC, f))
+    const offenders = TSX
+      .filter((f) => hasNativeTitle(f.src))
+      .map((f) => f.rel)
       .filter((f) => !TITLE_NOT_YET_CONVERTED.includes(f));
     expect(offenders).toEqual([]);
   });
@@ -242,10 +328,121 @@ describe('UI chrome', () => {
     // wrong on them.
     const ARBITRARY =
       /\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/;
-    const offenders = walk(SRC)
-      .filter((f) => ARBITRARY.test(readFileSync(f, 'utf8')))
-      .map((f) => relative(SRC, f))
+    const offenders = FILES
+      .filter((f) => ARBITRARY.test(f.src))
+      .map((f) => f.rel)
       .filter((f) => !ARBITRARY_NOT_YET_CONVERTED.includes(f));
+    expect(offenders).toEqual([]);
+  });
+
+  it('never extends Tailwind\'s shared `spacing` key', () => {
+    // The quietest possible way to kill the Size engine. `spacing` is the
+    // default every dimension key derives from, so extending it collapses
+    // padding, margin, gap, width, height and size onto ONE multiplier —
+    // and nothing fails. No error, no visual break; the four axes simply
+    // stop being four, and the per-region sliders start doing something
+    // else. You would find out in an audit. design.md §5.1.
+    const cfg = readFileSync(join(SRC, '..', 'tailwind.config.js'), 'utf8');
+    const inExtend = cfg.slice(cfg.indexOf('extend:'));
+    expect(/^\s{6}spacing:/m.test(inExtend)).toBe(false);
+  });
+
+  it('never subtracts the shell frame in a viewport calc', () => {
+    // `calc(100vh - 14rem)` encodes today's header + padding, so it is
+    // wrong the moment Size moves any of it — and two of the three that
+    // existed were already wrong at 1x. `h-full`, or `flex-1 min-h-0`
+    // inside a flex column. design.md §5.1.
+    // `ui/dialog.tsx` caps itself at the viewport minus its OWN 1rem
+    // inset on each side. That is not the shell frame — nothing above it
+    // moves — and without the cap a tall dialog overflows both edges and
+    // its footer buttons become unreachable. One entry, named, so the
+    // exception cannot spread silently.
+    const OWN_INSET = ['components/ui/dialog.tsx'];
+    const offenders = FILES
+      .filter((f) => !OWN_INSET.includes(f.rel))
+      .filter((f) => f.src.split('\n').some(
+        (l) => /calc\(100d?vh\s*[-−]/.test(l)
+          && !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l.trim()),
+      ))
+      .map((f) => f.rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it('never hand-rolls a control the Button primitive already ships', () => {
+    // A raw <button> wearing a variant's own dimensions IS that variant,
+    // typed out. `size="sm"` is not the violation — it is the vocabulary,
+    // and 74 sites use it correctly. Spelling out `h-7 px-2.5 text-xs`
+    // instead is how the value escapes button.tsx and stops following it.
+    const VARIANTS: [string, RegExp][] = [
+      ['xs', /\bh-6\b(?=[^"]*\bpx-2\b)(?=[^"]*\btext-xs\b)/],
+      ['sm', /\bh-7\b(?=[^"]*\bpx-2\.5\b)(?=[^"]*\btext-xs\b)/],
+      ['lg', /\bh-9\b(?=[^"]*\bpx-2\.5\b)/],
+    ];
+    const offenders: string[] = [];
+    for (const { rel, src } of TSX) {
+      for (const m of src.matchAll(/<button\b[^>]*className="([^"]*)"/g)) {
+        const hit = VARIANTS.find(([, re]) => re.test(m[1]));
+        if (hit) offenders.push(`${rel} → <Button size="${hit[0]}">`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('never overrides a Button variant\'s own dimensions', () => {
+    // `<Button className="h-9">` moves the height back to the call site,
+    // where it stops following button.tsx. Pick the variant that is that
+    // height, or add the variant. Measured at 0 when this guard landed —
+    // nobody was fighting the primitive, and this keeps it that way.
+    // One entry, and it belongs to another developer's open file:
+    // DataGrid strips a button's horizontal padding to sit flush in a
+    // header cell. Whether that wants an `unpadded` variant or a `px-0`
+    // escape is their call to make, not mine to make inside their diff.
+    const OVERRIDE_DEBT = ['components/datagrid/DataGrid.tsx'];
+    const offenders: string[] = [];
+    for (const { rel, src } of TSX) {
+      if (OVERRIDE_DEBT.includes(rel)) continue;
+      for (const m of src.matchAll(/<Button\b[^>]*className="([^"]*)"/g)) {
+        // DIMENSIONS only. The first version matched `text-[\w.]+` and
+        // flagged `text-muted-foreground` — a colour, which a call site
+        // is entitled to set. Type SIZE is a dimension; type COLOUR is
+        // not.
+        const bad = m[1].match(
+          /\b(?:h|size|px|py)-[\d.]+\b|\btext-(?:3xs|2xs|xs|sm|base|lg|xl)\b/g,
+        );
+        if (bad) offenders.push(`${rel} → ${bad.join(' ')}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('never ships a pointer target under the 24px floor', () => {
+    // The floor 193 controls were repaired to reach, guarded so a 194th
+    // cannot land quietly. WCAG 2.5.8 AA; design.md §5.1.
+    //
+    // VALIDATED, not assumed. `tapHeight` was run against 728 elements
+    // measured in headless Chrome against the built CSS: on the 428 it
+    // can compute, its VERDICT (>=24 or not) matched the browser 428/428
+    // — no false alarms, nothing missed.
+    //
+    // It ABSTAINS on 116 more, and that limitation is deliberate. A
+    // control with no type class inherits its line-height from a parent
+    // this scanner cannot see, so the class list genuinely does not
+    // determine the height. All 116 measure >= 24 today; demanding a
+    // token from them would have meant 116 false alarms, and a guard
+    // that cries wolf is a guard someone deletes. The hole is real — a
+    // NEW control that inherits its line-height and carries too little
+    // padding slips through — and the Chrome harness is how it gets
+    // closed, periodically, not by guessing here.
+    const offenders: string[] = [];
+    for (const { rel, src } of TSX) {
+      for (const m of src.matchAll(/<(?:button|a|summary)\b[^>]*className="([^"]*)"/g)) {
+        const h = tapHeight(m[1]);
+        if (h !== null && h < 24) {
+          const line = src.slice(0, m.index ?? 0).split('\n').length;
+          offenders.push(`${rel}:${line} computes ${h}px — add min-h-tap`);
+        }
+      }
+    }
     expect(offenders).toEqual([]);
   });
 });

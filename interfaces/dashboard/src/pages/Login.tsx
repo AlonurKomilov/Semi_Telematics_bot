@@ -608,7 +608,8 @@ export default function Login() {
               <Button
                 type="button"
                 onClick={handleRefreshWidget}
-                className="flex-1 text-xs h-8"
+                size="sm"
+                className="flex-1"
               >
                 {t('login_tg.refresh_widget')}
               </Button>
@@ -616,7 +617,8 @@ export default function Login() {
                 type="button"
                 variant="outline"
                 onClick={() => setShowDisconnect(false)}
-                className="flex-1 text-xs h-8"
+                size="sm"
+                className="flex-1"
               >
                 {t('common.cancel')}
               </Button>
