@@ -40,8 +40,14 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
       {/* Per-metric ``ts`` — each reading carries its OWN Samsara clock
           (fuel can be days staler than GPS on the same truck); the Row
           wraps the value in the Freshness tooltip + staleness cue. */}
+      {/* NOT `|| 'Off'`.  The backend deliberately refuses to guess:
+          resolve_engine_state returns UNKNOWN ("") for a truck with no
+          engine feed, precisely so silence is never counted as parked.
+          Falling back to "Off" here re-told that lie on screen — this
+          truck's engine badge read "Off" while nothing could see the
+          engine at all. */}
       <Row label="Engine" ts={v.location?.time}>
-        <StatusBadge status={v.engineState || v.engine_state || 'Off'} />
+        <StatusBadge status={v.engineState || v.engine_state || 'unknown'} />
       </Row>
       <Row label="Fuel" ts={v.fuel?.time}>
         {fuel != null ? (

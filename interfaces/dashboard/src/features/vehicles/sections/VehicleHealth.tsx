@@ -15,6 +15,8 @@ import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import type { HealthData, HealthResponse } from '../../../types';
 import { toneClasses } from '../../../lib/status';
 import { Row } from './_shared/Row';
+import { CalloutInline } from '../../../components/callouts';
+import { useVehicleCallouts } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
 
@@ -40,6 +42,7 @@ interface FleetWeatherResponse {
 }
 
 export default function VehicleHealth({ vehicleName, company }: VehicleSectionProps) {
+  const engineCallouts = useVehicleCallouts(vehicleName, company);
   const { has } = useViewPermissions();
   const hasHealthPerm = has('can_health');
 
@@ -82,6 +85,16 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
   if (!health?.health) return null;
 
   const h: HealthData = health.health;
+  // Every row below except Battery rides the engine bus, so when the
+  // device cannot read it they are ALL empty for one reason.  Six
+  // bare dashes invite six guesses; the callout answers once.
+  const blind = engineCallouts.find(
+    (c) => c.key === 'vehicle.no_engine_data',
+  ) ?? null;
+  const busValue = (
+    ready: boolean, rendered: React.ReactNode,
+  ): React.ReactNode =>
+    ready ? rendered : blind ? <CalloutInline callout={blind} /> : <span>—</span>;
   const healthAlerts: string[] = health.alerts || [];
 
   return (
@@ -90,12 +103,24 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
       {/* Each sensor carries its OWN Samsara clock — a dead oil-pressure
           sensor freezes independently of the rest of the card. */}
       <Row label="Battery" ts={h.battery_time} value={h.battery_v != null ? `${h.battery_v.toFixed(1)} V` : '—'} />
-      <Row label="Oil Pressure" ts={h.oil_time} value={h.oil_psi != null ? `${h.oil_psi.toFixed(1)} PSI` : '—'} />
-      <Row label="Coolant Temp" ts={h.coolant_time} value={h.coolant_c != null ? `${h.coolant_c.toFixed(0)}°C` : '—'} />
-      <Row label="DEF Level" ts={h.def_time} value={h.def_pct != null ? `${h.def_pct.toFixed(0)}%` : '—'} />
-      <Row label="Engine Load" ts={h.load_time} value={h.load_pct != null ? `${h.load_pct.toFixed(0)}%` : '—'} />
-      <Row label="RPM" ts={h.rpm_time} value={h.rpm != null ? Math.round(h.rpm) : '—'} />
-      <Row label="Seatbelt" ts={h.seatbelt_time} value={h.seatbelt ?? '—'} />
+      <Row label="Oil Pressure" ts={h.oil_time}>
+        {busValue(h.oil_psi != null, <span>{`${h.oil_psi!.toFixed(1)} PSI`}</span>)}
+      </Row>
+      <Row label="Coolant Temp" ts={h.coolant_time}>
+        {busValue(h.coolant_c != null, <span>{`${h.coolant_c!.toFixed(0)}°C`}</span>)}
+      </Row>
+      <Row label="DEF Level" ts={h.def_time}>
+        {busValue(h.def_pct != null, <span>{`${h.def_pct!.toFixed(0)}%`}</span>)}
+      </Row>
+      <Row label="Engine Load" ts={h.load_time}>
+        {busValue(h.load_pct != null, <span>{`${h.load_pct!.toFixed(0)}%`}</span>)}
+      </Row>
+      <Row label="RPM" ts={h.rpm_time}>
+        {busValue(h.rpm != null, <span>{String(Math.round(h.rpm!))}</span>)}
+      </Row>
+      <Row label="Seatbelt" ts={h.seatbelt_time}>
+        {busValue(h.seatbelt != null, <span>{String(h.seatbelt)}</span>)}
+      </Row>
       {weather && (weather.temp_f != null || weather.baro_inhg != null) && (
         <>
           <Row
