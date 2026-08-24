@@ -176,15 +176,24 @@
     --info-bg:   color-mix(in oklab, var(--info) 15%, transparent);
     --info-bd:   color-mix(in oklab, var(--info) 30%, transparent);
 
-    --chart-1: oklch(0.87 0 0);
+    /* Categorical series — five DISTINCT hues, not five greys.
+       These shipped as a chroma-0 ramp (0.87 → 0.269 lightness), which
+       is a fine SEQUENTIAL scale and a broken CATEGORICAL one: any
+       chart with more than two series rendered as bars of grey
+       separable only by brightness, and the two lightest were
+       indistinguishable on the near-white canvas.  Hues match the dark
+       theme one-for-one, so a series keeps its identity when the theme
+       flips; lightness is pulled down and chroma up because these sit
+       on white rather than near-black. */
+    --chart-1: oklch(0.55 0.20 264);
 
-    --chart-2: oklch(0.556 0 0);
+    --chart-2: oklch(0.55 0.15 142);
 
-    --chart-3: oklch(0.439 0 0);
+    --chart-3: oklch(0.65 0.14 95);
 
-    --chart-4: oklch(0.371 0 0);
+    --chart-4: oklch(0.58 0.19 30);
 
-    --chart-5: oklch(0.269 0 0);
+    --chart-5: oklch(0.55 0.12 200);
 
     --radius: 0.625rem;
 
