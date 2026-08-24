@@ -34,6 +34,7 @@ import type {
   AnyColumn,
 } from '../../types';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
+import { Card } from '@/components/ui/card';
 
 // ── Color helpers ───────────────────────────────────────────────────
 
@@ -988,13 +989,13 @@ export default function Scorecards() {
 
 function KpiCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
+    <Card>
       <p className="text-xs text-muted-foreground">{label}</p>
       <div className="flex items-baseline gap-2">
         <p className="text-2xl font-bold" style={color ? { color } : undefined}>{value}</p>
         {sub && <p className="text-sm font-semibold opacity-70" style={color ? { color } : undefined}>{sub}</p>}
       </div>
-    </div>
+    </Card>
   );
 }
 

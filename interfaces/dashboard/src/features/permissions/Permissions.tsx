@@ -33,6 +33,7 @@ import {
 } from './permRows';
 import type { ModulesData, PermFlag } from './permRows';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
+import { Card } from '@/components/ui/card';
 
 
 interface PermsData {
@@ -329,9 +330,9 @@ export default function Permissions() {
               </div>
             </div>
           )}
-          <div className="rounded-lg border border-border bg-card">
+          <Card padding="none">
             <RoleLens api={roleLensApi} />
-          </div>
+          </Card>
 
         </>
       )}

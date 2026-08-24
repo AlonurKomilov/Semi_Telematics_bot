@@ -22,6 +22,7 @@ import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { SECTIONS, mergeRows, safeHref } from './fields';
 import type { CarrierContent, FieldRow } from './fields';
 import FieldValueInput from './FieldValueInput';
+import { Card } from '@/components/ui/card';
 
 interface Profile {
   id: number; name: string; website: string; video_url: string;
@@ -242,7 +243,7 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
           <Link2 className="text-muted-foreground size-4" />
@@ -390,7 +391,7 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
           </p>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 

@@ -43,6 +43,7 @@ const WO_SEGMENTS: DataGridSegment[] = [
 import { toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
+import { Card } from '@/components/ui/card';
 
 // Status / payment → tone.  Matches the maintenance module's
 // StatusBadge styling family so the two modules read as siblings.
@@ -334,21 +335,21 @@ export default function WorkOrders() {
           weight as the maintenance summary cards so the two modules
           feel related. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <div className="bg-card border border-border rounded-lg p-3">
+        <Card padding="compact">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_count')}</p>
           <p className="text-xl font-bold tabular-nums">{workOrders.length}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-3">
+        </Card>
+        <Card padding="compact">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_total_spent')}</p>
           <p className="text-xl font-bold tabular-nums">
             ${totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-3">
+        </Card>
+        <Card padding="compact">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_open', { defaultValue: 'Open' })}</p>
           <p className="text-xl font-bold tabular-nums">{buckets.open.length}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-3">
+        </Card>
+        <Card padding="compact">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_unpaid')}</p>
           <p className="text-xl font-bold tabular-nums">
             ${buckets.unpaidTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -356,7 +357,7 @@ export default function WorkOrders() {
           <p className="text-2xs text-muted-foreground">
             {t('work_orders_page.card_unpaid_count', { defaultValue: '{{n}} orders', n: buckets.unpaid.length })}
           </p>
-        </div>
+        </Card>
       </div>
 
       {isLoading && workOrders.length === 0 ? (

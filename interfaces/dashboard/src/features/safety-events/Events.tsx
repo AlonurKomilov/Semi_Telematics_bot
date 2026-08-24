@@ -19,6 +19,7 @@ import {
 } from '../../components/shell';
 import type { SafetyEvent, SafetyEventsResponse, AnyColumn } from '../../types';
 import { iconSizeClass } from '@/lib/iconSize';
+import { Card } from '@/components/ui/card';
 
 const EVENT_TYPES = ['all', 'crash', 'braking', 'harshTurn', 'laneDeparture', 'followingDistance', 'rollingStop', 'acceleration'] as const;
 
@@ -273,10 +274,10 @@ export default function Events() {
             <p className="text-xl font-bold">{count}</p>
           </div>
         ))}
-        <div className="bg-card border border-border rounded-lg p-3">
+        <Card padding="compact">
           <p className="text-xs text-muted-foreground">Total</p>
           <p className="text-xl font-bold">{events.length}</p>
-        </div>
+        </Card>
       </div>
 
       {/* Event type summary bar */}

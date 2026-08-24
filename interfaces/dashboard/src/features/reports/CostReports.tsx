@@ -18,6 +18,7 @@ import { chartColor } from '../../lib/status';
 import DataGrid from '../../components/datagrid';
 import { Tip } from '../../components/tooltip';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
+import { Card } from '@/components/ui/card';
 
 // Backend response envelopes for each /reports/* endpoint.
 interface SystemRow {
@@ -744,14 +745,14 @@ function SummaryCard({
   higherIsBad?: boolean;
 }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-3">
+    <Card padding="compact">
       <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
         {icon}
         {label}
       </p>
       <p className="text-xl font-bold tabular-nums mt-1 text-foreground">{value}</p>
       <DeltaChip pct={deltaPct} priorLabel={priorLabel} higherIsBad={higherIsBad} />
-    </div>
+    </Card>
   );
 }
 

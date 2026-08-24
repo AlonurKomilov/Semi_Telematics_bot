@@ -16,6 +16,7 @@ import type {
   FuelSummaryVehicle, FuelSummaryResponse,
   AnyColumn,
 } from '../../types';
+import { Card } from '@/components/ui/card';
 
 const entryCols: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true, pivotable: true },
@@ -233,20 +234,20 @@ export default function FuelCosts() {
       {/* Summary cards (summary tab) */}
       {tab === 'summary' && summaryData.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-card border border-border rounded-lg p-4">
+          <Card>
             <p className="text-xs text-muted-foreground">Total Spent</p>
             <p className="text-xl font-bold">${aggregateCost.toLocaleString()}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">Total Gallons</p>
             <p className="text-xl font-bold">{aggregateGallons.toLocaleString()}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">Avg $/Gallon</p>
             <p className="text-xl font-bold">
               ${aggregateGallons > 0 ? (aggregateCost / aggregateGallons).toFixed(3) : '—'}
             </p>
-          </div>
+          </Card>
         </div>
       )}
 

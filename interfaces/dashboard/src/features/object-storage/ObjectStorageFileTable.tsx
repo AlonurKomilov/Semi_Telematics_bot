@@ -10,6 +10,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
+import { Card } from '@/components/ui/card';
 
 /**
  * Storage file-manager — the "needs sync" queue.
@@ -132,7 +133,7 @@ export default function ObjectStorageFileTable() {
   const isDiskBackend = health?.backend === 'disk';
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <Card padding="none">
       {/* Header: title + filters + bulk action */}
       <div className="px-4 py-3 border-b border-border">
         <div className="flex flex-wrap items-center gap-2">
@@ -263,7 +264,7 @@ export default function ObjectStorageFileTable() {
           enablePagination={false}
         />
       )}
-    </div>
+    </Card>
   );
 }
 

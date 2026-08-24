@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useRoleView } from '../../../context/RoleViewContext';
+import { Card } from '@/components/ui/card';
 
 // alert_type → lucide icon.  Keep in sync with FORUM_TOPIC_SPEC in
 // capabilities/alerting/forum_topics.py.  An unknown key falls back
@@ -292,7 +293,7 @@ export default function ForumRoutingSection() {
               always fire on top of group routing, so there's no
               admin-level "DM mode" toggle — connecting a group only
               adds the topic-channel surface, it never replaces DMs. */}
-          <div className="p-3 rounded-lg border border-border bg-card">
+          <Card padding="compact">
             <p className="text-sm font-medium">{t('forum_routing.mode_group_title')}</p>
 
             {!state.connected && (
@@ -363,7 +364,7 @@ export default function ForumRoutingSection() {
                 </p>
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Per-topic mapping + disconnect (connected only) */}
           {state.connected && (

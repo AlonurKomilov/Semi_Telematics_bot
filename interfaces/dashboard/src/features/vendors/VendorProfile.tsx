@@ -30,6 +30,7 @@ import { formatDay } from '../../utils/datetime';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { Vendor, WorkOrder, AnyColumn, DirectoryEntry, MarketRollupRow } from '../../types';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
 
 const PAYMENT_TONE: Record<string, Tone> = {
   unpaid: 'warn', paid: 'ok', partial: 'warn', void: 'neutral',
@@ -306,20 +307,20 @@ export default function VendorProfile() {
         <>
           {/* Contact + rollups */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <div className="bg-card border border-border rounded-lg p-3">
+            <Card padding="compact">
               <p className="text-xs text-muted-foreground">Contact</p>
               <p className="text-sm mt-1">{vendor.phone || '—'}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{vendor.email || ''}</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3">
+            </Card>
+            <Card padding="compact">
               <p className="text-xs text-muted-foreground">Address</p>
               <p className="text-sm mt-1">{vendor.address || '—'}</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3">
+            </Card>
+            <Card padding="compact">
               <p className="text-xs text-muted-foreground">Work Orders</p>
               <p className="text-xl font-bold tabular-nums">{totals.count}</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3">
+            </Card>
+            <Card padding="compact">
               <p className="text-xs text-muted-foreground">Total Spent</p>
               <p className="text-xl font-bold tabular-nums">{money(totals.spent, 0)}</p>
               {totals.unpaid > 0 && (
@@ -327,7 +328,7 @@ export default function VendorProfile() {
                   {money(totals.unpaid, 0)} unpaid
                 </p>
               )}
-            </div>
+            </Card>
           </div>
 
           {/* Global directory status: the pipeline is fully automatic

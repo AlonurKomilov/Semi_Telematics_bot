@@ -10,6 +10,7 @@ import {
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
 
 /**
  * Storage settings card — backend chooser + Google Drive connection.
@@ -156,23 +157,23 @@ export default function ObjectStorageBackendCard() {
 
   if (isLoading) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4">
+      <Card>
         <p className="text-sm text-muted-foreground inline-flex items-center gap-2">
           <Loader2 className="animate-spin size-3.5" />
           {t('storage.loading')}
         </p>
-      </div>
+      </Card>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4">
+      <Card>
         <div className="inline-flex items-center gap-2 text-sm text-destructive">
           <AlertTriangle className="size-3.5" />
           {error instanceof Error ? error.message : 'Could not load storage settings'}
         </div>
-      </div>
+      </Card>
     );
   }
 

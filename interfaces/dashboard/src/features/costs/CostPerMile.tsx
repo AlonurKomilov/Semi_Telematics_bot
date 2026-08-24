@@ -11,6 +11,7 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import type { CPMVehicle, CPMResponse, AnyColumn } from '../../types';
+import { Card } from '@/components/ui/card';
 
 // recharts is ~120 KB gzipped — defer it so the table paints first.
 const CpmChart = lazy(() => import('@/features/costs/CpmChart'));
@@ -103,22 +104,22 @@ export default function CostPerMile() {
       {/* Fleet summary cards */}
       {fleet && (
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-card border border-border rounded-lg p-4">
+          <Card>
             <p className="text-xs text-muted-foreground">Fleet Avg CPM</p>
             <p className="text-xl font-bold">${fleet.avg_cpm.toFixed(3)}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">Fleet Avg MPG</p>
             <p className="text-xl font-bold">{fleet.avg_mpg.toFixed(1)}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">Total Miles</p>
             <p className="text-xl font-bold">{fleet.total_miles.toLocaleString()}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">Total Fuel Cost</p>
             <p className="text-xl font-bold">${fleet.total_cost.toLocaleString()}</p>
-          </div>
+          </Card>
         </div>
       )}
 

@@ -12,6 +12,7 @@ import type L from 'leaflet';
 import { MAP_STATUS } from '../../config/mapColors';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone, formatTime } from '../../utils/datetime';
+import { Card } from '@/components/ui/card';
 
 function speedColor(mph: number): string {
   if (mph > 70) return MAP_STATUS.danger;  // over 70
@@ -164,18 +165,18 @@ export default function Routes() {
       {/* Summary card */}
       {route && (
         <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-card border border-border rounded-lg p-4">
+          <Card>
             <p className="text-xs text-muted-foreground">Total Distance</p>
             <p className="text-xl font-bold">{route.total_miles?.toFixed(1) ?? '—'} mi</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">Max Speed</p>
             <p className="text-xl font-bold">{route.max_speed_mph?.toFixed(0) ?? '—'} mph</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
+          </Card>
+          <Card>
             <p className="text-xs text-muted-foreground">GPS Points</p>
             <p className="text-xl font-bold">{route.point_count ?? 0}</p>
-          </div>
+          </Card>
         </div>
       )}
 

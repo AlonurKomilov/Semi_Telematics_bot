@@ -8,6 +8,7 @@ import {
   CardSkeleton,
   EmptyState,
 } from '../../components/shell';
+import { Card } from '@/components/ui/card';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -295,10 +296,10 @@ export default function ScorecardRules() {
 
 function Kpi({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
+    <Card>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold" style={color ? { color } : undefined}>{value}</p>
-    </div>
+    </Card>
   );
 }
 

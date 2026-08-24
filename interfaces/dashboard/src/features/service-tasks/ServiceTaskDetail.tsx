@@ -33,6 +33,7 @@ import {
   SERVICE_TASKS_KEY, SYSTEMS_KEY, deleteServiceTask, fetchServiceTasks,
   fetchTaskParts, fetchTaskSystems, updateServiceTask, type ServiceTask,
 } from './api';
+import { Card } from '@/components/ui/card';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -256,7 +257,7 @@ export default function ServiceTaskDetail() {
 
       {/* ── Lifecycle ────────────────────────────────────────────── */}
       {canManage && (
-        <div className="rounded-lg border border-border bg-card p-4">
+        <Card>
           <h2 className="text-base font-semibold text-foreground mb-1">Lifecycle</h2>
           <p className="text-sm text-muted-foreground mb-3">
             {shared
@@ -292,7 +293,7 @@ export default function ServiceTaskDetail() {
               </>
             )}
           </div>
-        </div>
+        </Card>
       )}
 
       <Dialog open={confirmDelete} onOpenChange={(o) => { if (!o) setConfirmDelete(false); }}>

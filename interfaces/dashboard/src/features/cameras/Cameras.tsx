@@ -16,6 +16,7 @@ import {
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import type { CameraCheck, CameraChecksResponse, AnyColumn } from '../../types';
+import { Card } from '@/components/ui/card';
 
 // Camera health vocabulary → semantic tone.  Camera-check specific
 // strings (not in the shared statusTone map), mapped here once.
@@ -202,27 +203,27 @@ export default function Cameras() {
 
       {/* Status summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-card border border-border rounded-lg p-4">
+        <Card>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-ok inline-block" />
             <p className="text-xs text-muted-foreground">OK</p>
           </div>
           <p className="text-xl font-bold mt-1">{statusCounts.OK}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
+        </Card>
+        <Card>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-warn inline-block" />
             <p className="text-xs text-muted-foreground">Warning</p>
           </div>
           <p className="text-xl font-bold mt-1">{statusCounts.WARNING}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
+        </Card>
+        <Card>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-danger inline-block" />
             <p className="text-xs text-muted-foreground">Problem</p>
           </div>
           <p className="text-xl font-bold mt-1">{statusCounts.PROBLEM}</p>
-        </div>
+        </Card>
       </div>
 
       {loading ? (
