@@ -228,6 +228,11 @@ export default function Vendors() {
           />
         ) : (
           <DataGrid
+          // A failed REFETCH keeps these rows up, so the
+          // ``length === 0`` guard above never fires — the operator
+          // reads a stale table as current.  The band says so without
+          // removing the rows or the controls.
+          error={fetchError || undefined}
             tableId="vendors"
             columns={vendorColumns(tz)}
             data={vendors as unknown as Record<string, unknown>[]}

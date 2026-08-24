@@ -135,6 +135,21 @@ export default function Parking() {
         />
       ) : (
         <DataGrid
+          // ``displayError`` reaches the DOM through exactly one branch
+          // above — gated on ``rows.length === 0``.  That fixed nothing
+          // for the two failures that actually happen here:
+          //   * a failed REFETCH, which leaves the previous rows up, so
+          //     the operator reads a stale board as current;
+          //   * a failed BULK RESOLVE, which happens on a populated page
+          //     by definition.  Select eight events, hit resolve, the
+          //     third returns 400 (the case the loop's own comment
+          //     anticipates), the loop aborts — and absolutely nothing
+          //     appeared on screen.  Five stayed unresolved with no way
+          //     to know which.  There is no toast on this page either;
+          //     the error state existed, was assigned, and was never
+          //     rendered.
+          error={displayError || undefined}
+          onRetry={() => refetch()}
           tableId="parking"
           columns={columns}
           data={rows as unknown as Record<string, unknown>[]}

@@ -235,6 +235,12 @@ export default function Mileage() {
         />
       ) : (
         <DataGrid
+          // A failed REFETCH leaves these rows on screen, so the
+          // ``length === 0`` branch above never fires and the operator
+          // reads a stale table as current.  The band says so without
+          // taking the rows or the controls away.
+          error={error || undefined}
+          onRetry={() => refetch()}
           tableId="vehicle-mileage"
           columns={columns}
           data={rows as unknown as Record<string, unknown>[]}

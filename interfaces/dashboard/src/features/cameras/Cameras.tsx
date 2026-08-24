@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Camera, Filter } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
@@ -115,18 +115,24 @@ export default function Cameras() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
 
-  useEffect(() => {
+  // Extracted so Retry has something to call.  Two fixes ride along:
+  // the error is CLEARED on success (it never was, so one transient blip
+  // left a permanent message), and ``checks`` is left alone on failure —
+  // which is why the ``checks.length === 0`` branch below could not
+  // report a failed reload, and why the band on the grid is needed.
+  const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (vehicleFilter) params.set('vehicle', vehicleFilter);
-    if (!showHistory) params.set('latest_only', 'true');
-    else params.set('latest_only', 'false');
+    params.set('latest_only', showHistory ? 'false' : 'true');
 
     apiJSON<CameraChecksResponse>(`/safety/cameras?${params}`)
-      .then((d) => setChecks(d.checks || []))
+      .then((d) => { setChecks(d.checks || []); setError(''); })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, [vehicleFilter, showHistory]);
+
+  useEffect(() => { load(); }, [load]);
 
   // Load camera image when detail changes
   useEffect(() => {
@@ -229,6 +235,10 @@ export default function Cameras() {
         />
       ) : (
         <DataGrid
+          // Reachable only when rows exist — the no-rows case is handled
+          // by the full ErrorState above.
+          error={error || undefined}
+          onRetry={load}
           tableId="camera-checks"
           columns={makeColumns(tz)}
           data={checks as unknown as Record<string, unknown>[]}

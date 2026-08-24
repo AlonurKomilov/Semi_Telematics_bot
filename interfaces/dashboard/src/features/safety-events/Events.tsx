@@ -343,6 +343,12 @@ export default function Events() {
         />
       ) : (
         <DataGrid
+          // A failed REFETCH leaves these rows on screen, so the
+          // ``length === 0`` branch above never fires and the operator
+          // reads a stale table as current.  The band says so without
+          // taking the rows or the controls away.
+          error={error || undefined}
+          onRetry={() => refetch()}
           tableId="safety-events"
           columns={columns}
           data={events as unknown as Record<string, unknown>[]}

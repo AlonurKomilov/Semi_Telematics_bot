@@ -580,6 +580,12 @@ export default function AlertsResults() {
   return (
     <div>
       <DataGrid
+          // A failed REFETCH keeps these rows up, so the
+          // ``length === 0`` guard above never fires — the operator
+          // reads a stale table as current.  The band says so without
+          // removing the rows or the controls.
+          error={fetchError || undefined}
+          onRetry={() => { void refetch(); }}
         // One table, one set of per-user prefs.  Grouping is the
         // operator's choice via any column's ⋮ "Group rows by this" (it
         // shows as a removable "Grouped by …" chip), which replaced the

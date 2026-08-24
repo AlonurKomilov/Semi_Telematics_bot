@@ -225,7 +225,7 @@ export default function WorkOrders() {
   const taskTypeFilter = params.get('task_type') || '';
   const hasFilter = !!(vehicleFilter || vendorFilter || taskTypeFilter);
 
-  const { data, isLoading, error: queryError } = useQuery<WorkOrdersResponse>({
+  const { data, isLoading, error: queryError, refetch } = useQuery<WorkOrdersResponse>({
     // Include vehicle in the key so the server-side filter actually
     // takes effect via re-fetch; client-side filters (vendor / type)
     // narrow the cached result so they don't need a key bump.
@@ -378,6 +378,12 @@ export default function WorkOrders() {
         />
       ) : (
         <DataGrid
+          // A failed REFETCH leaves these rows on screen, so the
+          // ``length === 0`` branch above never fires and the operator
+          // reads a stale table as current.  The band says so without
+          // taking the rows or the controls away.
+          error={fetchError || undefined}
+          onRetry={() => refetch()}
           tableId="work-orders"
           // Repair spend by vendor x month is the question this data
           // exists to answer.  Service Date generates its own Year/

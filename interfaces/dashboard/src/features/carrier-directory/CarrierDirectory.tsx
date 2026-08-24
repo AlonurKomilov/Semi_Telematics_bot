@@ -318,6 +318,12 @@ export default function CarrierDirectory() {
         />
       ) : (
         <DataGrid
+          // A failed REFETCH keeps these rows up, so the
+          // ``length === 0`` guard above never fires — the operator
+          // reads a stale table as current.  The band says so without
+          // removing the rows or the controls.
+          error={error || undefined}
+          onRetry={() => { void load(); }}
           columns={columns}
           data={gridRows as unknown as Record<string, unknown>[]}
           searchKey={SEARCH_KEYS}
