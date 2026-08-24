@@ -1,11 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
-// Shell selection: instead of a single hardcoded Layout, the router
-// resolves which shell to render based on the active persona via
-// :func:`pickShell` from shells/index.  Phase 0 of the migration has
-// every role mapped to DefaultShell so behavior is identical to the
-// pre-refactor world.  Subsequent phases will introduce FleetShell,
-// DispatchShell, SafetyShell etc. without touching this file.
+// Shell selection: rather than one hardcoded Layout, the router asks
+// :func:`pickShell` (shells/index) which shell the active persona
+// renders in. Adding or retiring a persona shell never touches this
+// file — the registry is the only place that mapping lives.
 import { pickShell } from './shells';
 import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -171,10 +169,8 @@ function L(node: ReactNode) {
 }
 
 export default function AppRouter() {
-  // pickShell looks up the right top-level wrapper for the active
-  // persona (Owner/Admin → DefaultShell; future phases override per
-  // role).  Resolved once per render of AppRouter; switching persona
-  // re-renders this component because RoleViewContext updates.
+  // Resolved once per render of AppRouter; switching persona re-renders
+  // this component because RoleViewContext updates.
   const { activeView } = useRoleView();
   const Shell = pickShell(activeView);
   return (

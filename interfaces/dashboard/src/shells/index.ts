@@ -1,17 +1,11 @@
 /**
- * Shell registry — picks the right shell component for the active
- * persona.  Each entry is keyed by the role string used in the JWT and
- * the RoleViewContext's ``activeView``.
+ * Shell registry — picks the shell component for the active persona.
+ * Each entry is keyed by the role string used in the JWT and by
+ * RoleViewContext's ``activeView``.
  *
- * Phase 0 of the role-shell migration has every role mapped to
- * DefaultShell so the UI is identical to the pre-refactor Layout.
- * Subsequent phases will add FleetShell, DispatchShell, SafetyShell
- * etc. — at which point each role's mapping flips to its tuned shell.
- *
- * Roles without an entry (or unknown values) fall back to
- * DefaultShell via :func:`pickShell`.  This keeps the system safe
- * against new roles being added on the backend before a shell is
- * built for them.
+ * Roles without an entry, and unknown values, fall back to
+ * DefaultShell via :func:`pickShell` — so a role added on the backend
+ * before anyone builds a shell for it still renders a dashboard.
  */
 import { type ComponentType } from 'react';
 import DefaultShell from './DefaultShell';
@@ -32,12 +26,14 @@ export type ShellKey =
   | 'accounting'
   | 'recruiter';
 
-// Each non-Owner/Admin persona renders through its dedicated shell
-// file.  Editing FleetShell.tsx / DispatchShell.tsx / SafetyShell.tsx
-// / HRShell.tsx / AccountingShell.tsx is the way to introduce
-// per-role behaviour without touching the others — shell chrome
-// (sidebar nav + topbar hero) is the only persona-level difference;
-// the page content is the same for every persona.
+// Every persona renders the same chrome (AppShell) and the same page
+// content. The ONE thing that varies today is the topbar hero, which
+// each shell file names. Editing FleetShell.tsx is how a Fleet-only
+// change lands without touching the other five — that seam is why the
+// files exist separately, now that none of the duplication does.
+//
+// The sidebar is NOT part of it: no shell has ever passed it a nav
+// config. It derives its own from the active persona.
 export const SHELLS: Partial<Record<ShellKey, ComponentType>> = {
   owner:      DefaultShell,
   admin:      DefaultShell,
