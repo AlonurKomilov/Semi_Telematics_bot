@@ -8,7 +8,7 @@ import { AlertTriangle, Check, CreditCard, ExternalLink, FileText, FlaskConical,
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
-import { PageHeader, CardSkeleton } from '../../components/shell';
+import { CardSkeleton, PageHeader, SectionHeader } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import DataGrid from '../../components/datagrid';
@@ -332,7 +332,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
   return (
     <Card className="mb-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">AI Usage</h2>
+        <SectionHeader>AI Usage</SectionHeader>
         <span className="text-xs text-muted-foreground">Last {ai.days} days</span>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
@@ -744,7 +744,7 @@ export default function Billing() {
       {(invoices.length > 0 || summary?.provider === 'stripe') && (
         <Card className="mb-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Invoices</h2>
+            <SectionHeader>Invoices</SectionHeader>
             <span className="text-xs text-muted-foreground">Last 24</span>
           </div>
           <InvoicesTable items={invoices} />
@@ -756,7 +756,7 @@ export default function Billing() {
           provider where invoices don't exist. */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-foreground">Usage History</h2>
+          <SectionHeader>Usage History</SectionHeader>
           <span className="text-xs text-muted-foreground">Last 12 periods</span>
         </div>
         <UsageTable items={usage} />

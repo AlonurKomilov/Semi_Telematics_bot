@@ -31,6 +31,7 @@ import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
 import { useSavedFlash } from './_shared/useSavedFlash';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 /** Small uppercase source divider — the per-source rhythm of the page. */
 function SourceLabel({ children }: { children: React.ReactNode }) {
@@ -148,9 +149,9 @@ export default function MyNotifications() {
       <div className="grid gap-4 lg:grid-cols-3 items-start">
         {/* Telegram — master switch + resolve receipts */}
         <Card render={<section />}>
-          <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
-            <Send className="size-4" /> Telegram
-          </p>
+          <SectionHeader size="card" icon={<Send className="size-4" />} className="mb-1">
+            Telegram
+          </SectionHeader>
           <p className="text-xs text-muted-foreground mb-3">
             Direct messages from the bot to your personal chat.
           </p>

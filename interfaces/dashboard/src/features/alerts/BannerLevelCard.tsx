@@ -8,6 +8,7 @@ import {
   setBannerLevel, useBannerLevel, type BannerLevel,
 } from './bannerLevel';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 const OPTIONS: { value: BannerLevel; label: string; hint: string }[] = [
   {
@@ -32,9 +33,9 @@ export default function BannerLevelCard() {
 
   return (
     <Card render={<section />}>
-      <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
-        <BellRing className="size-4" /> On-screen alerts
-      </p>
+      <SectionHeader size="card" icon={<BellRing className="size-4" />} className="mb-1">
+            On-screen alerts
+          </SectionHeader>
       <p className="text-xs text-muted-foreground mb-3">
         Which alerts pop up while you have the dashboard open.
       </p>

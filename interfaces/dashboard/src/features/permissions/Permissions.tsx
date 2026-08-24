@@ -34,6 +34,7 @@ import {
 import type { ModulesData, PermFlag } from './permRows';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 
 interface PermsData {
@@ -364,7 +365,7 @@ export default function Permissions() {
           {confirmOpen && (
           <>
             <div className="px-5 py-4 border-b border-border">
-              <h2 className="text-lg font-semibold">Confirm permission changes</h2>
+              <SectionHeader>Confirm permission changes</SectionHeader>
               <p className="text-sm text-muted-foreground mt-0.5">{totalPending} change{totalPending === 1 ? '' : 's'} will take effect immediately.</p>
             </div>
             <div className="px-5 py-3 overflow-y-auto space-y-3">

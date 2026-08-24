@@ -51,6 +51,13 @@ vi.mock('../../api/client', () => ({
 // --- shell primitives → testid stubs so "no error / no skeleton" is exact
 vi.mock('../../components/shell', () => ({
   PageHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
+  // Renders a real heading so the queries below still find sections by
+  // role — the point of the primitive is that a section title IS a
+  // heading, and a stub that dropped that would hide the regression it
+  // exists to catch.
+  SectionHeader: ({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) => (
+    <div><h2>{children}</h2>{action}</div>
+  ),
   ErrorState: ({ message }: { message?: string }) => (
     <div data-testid="error-state">{message}</div>
   ),

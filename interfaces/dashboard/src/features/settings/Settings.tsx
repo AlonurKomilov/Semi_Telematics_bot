@@ -27,6 +27,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { Input } from '../../components/ui/input';
 import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -741,7 +742,7 @@ export default function Settings() {
       {canManageAccount && (
       <Card render={<section />}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Working Hours</h2>
+          <SectionHeader>Working Hours</SectionHeader>
           <button onClick={() => setShowSchedule(!showSchedule)} className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded text-xs font-medium transition min-h-tap">
             {showSchedule ? 'Cancel' : '+ Add Schedule'}
           </button>

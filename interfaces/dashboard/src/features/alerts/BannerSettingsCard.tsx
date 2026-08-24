@@ -15,6 +15,7 @@ import {
   setNotifPosition, useNotifPosition, type NotifPosition,
 } from '@/components/banners';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 const OPTIONS: { value: NotifPosition; label: string }[] = [
   { value: 'top-right', label: 'Top right' },
@@ -41,9 +42,9 @@ export default function BannerSettingsCard() {
 
   return (
     <Card render={<section />}>
-      <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
-        <PanelTopClose className="size-4" /> Notification position
-      </p>
+      <SectionHeader size="card" icon={<PanelTopClose className="size-4" />} className="mb-1">
+            Notification position
+          </SectionHeader>
       <p className="text-xs text-muted-foreground mb-3">
         Where in-app notifications appear on this device.
       </p>

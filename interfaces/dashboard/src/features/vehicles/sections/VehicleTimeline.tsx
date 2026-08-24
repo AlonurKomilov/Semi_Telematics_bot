@@ -19,6 +19,7 @@ import {
 import { apiJSON } from '../../../api/client';
 import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 interface TimelinePoint {
   hour_utc: string;
@@ -57,7 +58,7 @@ export default function VehicleTimeline({ vehicleName, company }: VehicleSection
   return (
     <Card className="mt-6 lg:col-span-2">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">7-Day Activity</h2>
+        <SectionHeader>7-Day Activity</SectionHeader>
         <span className="text-xs text-muted-foreground">hourly roll-up</span>
       </div>
       {isLoading && <p className="text-sm text-muted-foreground">Loading timeline…</p>}

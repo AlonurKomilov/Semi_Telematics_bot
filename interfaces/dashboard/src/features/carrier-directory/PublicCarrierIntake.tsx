@@ -22,6 +22,7 @@ import type { CarrierContent, FieldRow } from './fields';
 import FieldValueInput from './FieldValueInput';
 import { toneClasses } from '../../lib/status';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -410,7 +411,7 @@ export default function PublicCarrierIntake() {
           field labels visually identical to group headers 300px later. */}
       <div className="mb-8 flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-lg font-semibold text-foreground">About your company</p>
+          <SectionHeader>About your company</SectionHeader>
           <span className="text-xs text-muted-foreground">
             {progress.per.basics.filled} of {progress.per.basics.total}
           </span>
@@ -455,7 +456,7 @@ export default function PublicCarrierIntake() {
 
       {/* How to submit drivers */}
       <div className="mb-8 flex flex-col gap-2">
-        <p className="text-lg font-semibold text-foreground">How should drivers be submitted to you?</p>
+        <SectionHeader>How should drivers be submitted to you?</SectionHeader>
         <Textarea rows={5} value={draft.application_process}
           onChange={(e) => update({ application_process: e.target.value })}
           placeholder="Where recruiters send applications, who to contact, turnaround expectations, next steps for the driver…" />

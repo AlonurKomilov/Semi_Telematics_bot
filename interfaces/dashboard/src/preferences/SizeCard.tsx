@@ -26,6 +26,7 @@ import { undoableAction } from '../components/banners/stagedAction';
 import { SIZE_MIN, SIZE_MAX, SIZE_DEFAULT } from './registry';
 import type { SizeRegion as SizeRegionKey } from './registry';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -158,7 +159,7 @@ export default function SizeCard() {
   return (
     <Card className="scroll-mt-20" render={<section />} id="appearance" style={pinned}>
       <div className="flex items-start justify-between gap-4 mb-1">
-        <h2 className="text-lg font-semibold">Interface size</h2>
+        <SectionHeader>Interface size</SectionHeader>
         <button
           type="button"
           onClick={resetAll}

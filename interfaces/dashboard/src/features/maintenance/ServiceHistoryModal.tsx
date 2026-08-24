@@ -10,6 +10,7 @@ import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
+import { SectionHeader } from '@/components/shell';
 
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
@@ -138,7 +139,7 @@ export function ServiceHistoryModal({
       <DialogContent showCloseButton={false} className="sm:max-w-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold">Service History</h2>
+            <SectionHeader>Service History</SectionHeader>
             <p className="text-sm text-muted-foreground">Vehicle #{vehicleName}</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 min-h-tap">

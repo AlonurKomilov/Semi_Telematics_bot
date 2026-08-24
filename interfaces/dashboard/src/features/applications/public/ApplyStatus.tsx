@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Truck, Search, CheckCircle2 } from 'lucide-react';
 import { statusClasses } from '../../../lib/status';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -78,7 +79,7 @@ export default function ApplyStatus() {
         <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
           <div className="flex items-center gap-2 text-primary">
             <Truck className="size-6" />
-            <span className="text-base font-semibold text-foreground">Application Status</span>
+            <SectionHeader size="card">Application Status</SectionHeader>
           </div>
         </div>
       </header>

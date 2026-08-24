@@ -29,6 +29,7 @@ import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
 import { useInbox, useInboxActions, type InboxNotice } from './useInbox';
 import { ScrollRegion } from '../../components/scrolling';
 import { cn } from '@/lib/utils';
+import { SectionHeader } from '@/components/shell';
 
 const SEVERITY_TONE: Record<AlertSeverity, Tone> = {
   critical: 'danger',
@@ -212,7 +213,7 @@ export function NotificationsPanel(
         {/* The bell is the Notifications door; this panel is its glance.
             Alerts are one source shown here — "Open Alerts" leads to the
             board, the gear leads to all notification preferences. */}
-        <p className="text-base font-semibold">Notifications</p>
+        <SectionHeader size="card">Notifications</SectionHeader>
         <div className="flex items-center gap-0.5">
           {canAlerts && (
             <button

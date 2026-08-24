@@ -23,6 +23,7 @@ import type { InventoryItem } from './useInventory';
 import { categoryMeta, STATUS_LABELS } from './categories';
 import { AddItemDialog, ItemDialog } from './ItemDialog';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 export default function InventoryCard({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
@@ -40,7 +41,7 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
     <Card>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-semibold">Inventory</h2>
+          <SectionHeader>Inventory</SectionHeader>
           {summary.total > 0 && (
             <span className="text-2xs text-muted-foreground">
               {summary.total} item{summary.total === 1 ? '' : 's'}

@@ -19,6 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 interface EmailPrefs {
   relevant_types: string[];
@@ -126,9 +127,9 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
     <Card render={<section />}>
       {/* Channel header + status */}
       <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-base font-semibold inline-flex items-center gap-2">
-          <Mail className="size-4" /> Email
-        </p>
+        <SectionHeader size="card" icon={<Mail className="size-4" />}>
+            Email
+          </SectionHeader>
         {email.connected && (
           email.verified
             ? <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">

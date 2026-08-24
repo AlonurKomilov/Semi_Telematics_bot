@@ -49,6 +49,7 @@ import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../utils/timezones';
 import { useNow } from '../hooks/useNow';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
 import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/shell';
 
 // HOURS array removed in the migration-100 cleanup — the user no
 // longer picks shift hours from Profile (admin-managed in Team
@@ -1012,7 +1013,7 @@ function ActiveSessions() {
     <Card render={<section />}>
       <div className="flex items-center gap-2 mb-1">
         <ShieldCheck className="text-muted-foreground size-4.5" />
-        <h2 className="text-lg font-semibold">Active sessions</h2>
+        <SectionHeader>Active sessions</SectionHeader>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
         Every device currently signed in to your account. Sessions stay

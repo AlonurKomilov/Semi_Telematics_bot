@@ -9,6 +9,7 @@ import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
+import { SectionHeader } from '@/components/shell';
 
 // Priority options carry lowercase wire values; title-case the display
 // label so the picker reads "Low / Medium / …" (matches the old
@@ -146,7 +147,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
       <DialogContent showCloseButton={false} className="sm:max-w-xl p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold">Task Templates</h2>
+            <SectionHeader>Task Templates</SectionHeader>
             <p className="text-xs text-muted-foreground mt-0.5">
               Re-usable defaults for the common service intervals.
             </p>
