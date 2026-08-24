@@ -276,7 +276,7 @@ export default function EditTaskDialog({
           </label>
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={save} disabled={saving || !name.trim()}>
             {saving ? 'Saving…' : 'Save changes'}

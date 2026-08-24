@@ -252,7 +252,7 @@ export default function ObjectStorageUsageCard() {
               </ul>
             </div>
           )}
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <button
               onClick={() => setReviewing(null)}
               className="px-3 py-1.5 border border-border bg-background hover:bg-muted rounded-lg text-sm font-medium text-foreground transition"

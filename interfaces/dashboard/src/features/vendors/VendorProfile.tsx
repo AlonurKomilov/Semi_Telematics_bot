@@ -521,7 +521,7 @@ export default function VendorProfile() {
               />
             </label>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={saveEdit} disabled={editBusy || !editForm.name.trim()}>
               {editBusy ? 'Saving…' : 'Save'}
@@ -560,7 +560,7 @@ export default function VendorProfile() {
             placeholder="Optional — what should other fleets know about this shop?"
             className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
           />
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" onClick={() => setRateOpen(false)}>Cancel</Button>
             <Button onClick={submitReview} disabled={dirBusy}>
               {dirBusy ? 'Submitting…' : 'Submit review'}
@@ -644,7 +644,7 @@ export default function VendorProfile() {
               )}
             </div>
           )}
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" onClick={() => setMergeOpen(false)}>Cancel</Button>
             {mergeScope === 'mine' ? (
               <Button onClick={doMerge} disabled={!mergeTarget || merging}>

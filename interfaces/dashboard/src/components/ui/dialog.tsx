@@ -122,16 +122,30 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 function DialogFooter({
   className,
   showCloseButton = false,
+  justify = "end",
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
+  /**
+   * Where the actions sit. `end` is the default and what almost every
+   * dialog wants. `between` exists because two call sites needed a
+   * destructive action opposite the confirm pair and got there by
+   * passing `className="flex items-center justify-between gap-2"` —
+   * overriding the footer's own layout from outside, which is how a
+   * primitive's value leaks back to the call site. The need was real;
+   * the variant was missing.
+   */
+  justify?: "end" | "between"
 }) {
   return (
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row",
+        justify === "between"
+          ? "sm:items-center sm:justify-between"
+          : "sm:justify-end",
         className
       )}
       {...props}

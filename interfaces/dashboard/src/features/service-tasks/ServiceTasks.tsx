@@ -374,7 +374,7 @@ export default function ServiceTasks() {
               it, so no history is touched — but there is no undo.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setDeleteFor(null)}>
               Cancel
             </Button>
@@ -465,7 +465,7 @@ export default function ServiceTasks() {
               />
             </label>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setAddOpen(false)}>
               Cancel
             </Button>

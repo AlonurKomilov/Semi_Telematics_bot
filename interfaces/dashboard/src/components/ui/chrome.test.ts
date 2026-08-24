@@ -445,4 +445,30 @@ describe('UI chrome', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('never restates what a primitive already ships', () => {
+    // Different from the override guard above: this is not a call site
+    // FIGHTING the primitive, it is a call site repeating it. Eleven
+    // `<DialogFooter className="gap-2">` when `gap-2` is already in the
+    // footer's base, and `<Button size="icon" className="h-8 w-8">` when
+    // `size="icon"` IS `size-8`. Harmless today, and that is the danger:
+    // the day the primitive's value changes, every restatement silently
+    // keeps the old one.
+    const BASE: Record<string, string[]> = {
+      DialogFooter: ['gap-2', 'flex', 'flex-col-reverse', 'border-t', 'p-4',
+        'sm:flex-row', 'sm:justify-end', 'rounded-b-xl'],
+      DialogHeader: ['flex', 'flex-col', 'gap-2'],
+    };
+    const offenders: string[] = [];
+    for (const { rel, src } of TSX) {
+      for (const [name, base] of Object.entries(BASE)) {
+        const re = new RegExp(`<${name}\\b[^>]*className="([^"]*)"`, 'g');
+        for (const m of src.matchAll(re)) {
+          const echoed = m[1].split(/\s+/).filter((c) => c && base.includes(c));
+          if (echoed.length) offenders.push(`${rel} → <${name}> restates ${echoed.join(' ')}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });

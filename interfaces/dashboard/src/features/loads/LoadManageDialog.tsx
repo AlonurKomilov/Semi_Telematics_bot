@@ -491,7 +491,7 @@ export default function LoadManageDialog({
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
-        <DialogFooter className="flex items-center justify-between gap-2">
+        <DialogFooter justify="between">
           {isEdit ? (
             <Button
               variant="outline"

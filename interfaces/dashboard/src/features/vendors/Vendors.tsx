@@ -312,7 +312,7 @@ export default function Vendors() {
               />
             </label>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button onClick={createVendor} disabled={addBusy || !addForm.name.trim()}>
               {addBusy ? 'Creating…' : 'Create vendor'}

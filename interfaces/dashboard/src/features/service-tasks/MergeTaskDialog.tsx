@@ -116,7 +116,7 @@ export default function MergeTaskDialog({
           </p>
         )}
 
-        <DialogFooter className="gap-2">
+        <DialogFooter>
           <Button variant="ghost" size="sm" onClick={close}>Cancel</Button>
           <Button size="sm" onClick={merge} disabled={busy || !winner}>
             <Merge />

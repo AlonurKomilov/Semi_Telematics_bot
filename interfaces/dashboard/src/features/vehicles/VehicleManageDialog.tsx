@@ -296,7 +296,7 @@ export default function VehicleManageDialog({
             </div>
           )}
 
-          <DialogFooter className="flex items-center justify-between gap-2">
+          <DialogFooter justify="between">
             {isEdit ? (
               <Button type="button" variant="ghost" size="sm" onClick={handleRemove} disabled={removing} className="text-danger">
                 {removing ? <Loader2 className="animate-spin" /> : <Trash2 />}

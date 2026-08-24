@@ -305,7 +305,7 @@ export default function ServiceTaskDetail() {
               it, so no history is touched — but there is no undo.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
               Cancel
             </Button>

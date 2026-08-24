@@ -82,7 +82,7 @@ export function useWorkOrderBridge() {
             same issue. Open the existing one, or create another anyway?
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2">
+        <DialogFooter>
           <Button variant="ghost" onClick={() => setPending(null)}>Cancel</Button>
           <Button
             variant="outline"

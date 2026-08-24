@@ -244,7 +244,7 @@ export default function Parking() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <button
               onClick={() => setConfirming(null)}
               className="px-3 py-1.5 border border-border bg-background hover:bg-muted rounded-lg text-sm font-medium text-foreground transition"
