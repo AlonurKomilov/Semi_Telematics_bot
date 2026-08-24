@@ -73,7 +73,7 @@ docs/*
 !docs/SERVICES.md
 # UX psychology audit reports stay LOCAL-ONLY (docs/* already ignores
 # them): they are point-in-time working papers, not source.  The
-# ux-psychology-audit skill still writes them here and aggregates them
+# ux-audit-psychology skill still writes them here and aggregates them
 # across sessions from disk — they just never enter git.
 
 # abc-lab (the skills-family workspace): harness CODE is tracked and

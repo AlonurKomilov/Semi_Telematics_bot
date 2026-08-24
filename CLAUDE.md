@@ -106,14 +106,14 @@ Rules and the incident behind each: [scripts/githooks/README.md](scripts/githook
     [interfaces/dashboard/design.md](interfaces/dashboard/design.md) and
     [interfaces/dashboard/CLAUDE.md](interfaces/dashboard/CLAUDE.md)
     (tokens, radius via `--radius`, icon scale, DataTable, primitives).
-  2. **UX audit pass** — invoke the `ux-psychology-audit` skill (v2:
+  2. **UX audit pass** — invoke the `ux-audit-psychology` skill (v2:
     psychology principles + clarity passes) on the surfaces you built/changed.
     Deliver the report IN CHAT per the skill's Step 6 — do not write report
     files unless the user explicitly asks to save.
   3. **Layout-composition pass** — when the work built or RESTRUCTURED a
     layout (a new page, panel, multi-zone or drag-and-drop surface — not
     copy-only or single-control changes), also invoke the
-    `ux-layout-composition-audit` skill (S1 regions/enclosure, S2 spacing
+    `ux-audit-composition-layout` skill (S1 regions/enclosure, S2 spacing
     hierarchy, S3 weight/affordance, S4 stability). Same chat-only report
     rule. The three audits route findings to each other by the boundary
     tables in the two skills — never double-report one finding.

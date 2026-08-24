@@ -1,6 +1,10 @@
 ---
-name: ux-psychology-audit
-version: 2.0.0
+name: ux-audit-psychology
+version: 2.1.0
+family: abc
+domain: ux
+kind: audit
+method: psychology
 source: https://github.com/AlonurKomilov/skills
 description: Full UX audit of any user-facing feature, flow, screen, or service — TWO parts in one run. Part P audits behavioral psychology (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect + ethics gate). Part C audits clarity for a NEW user (C1 object map/OOUX, C2 component grammar, C3 cognitive walkthrough). On explicit request ("deep audit", "component by component", "tree audit", "audit every word/element") switch to Part T — audit every node of the component tree (wording, control choice, visual form, behavior, sibling consistency), then synthesize the whole image. Use when the user asks for a "UX audit", "psychology review", "clarity audit", "UX check", says a screen is confusing / not understandable / components look alike, or when wrapping up a user-facing feature and project instructions call for a UX pass. Works on ANY surface in any product domain; can audit the live rendered UI when browser/screenshot tools exist. Report delivered IN CHAT (no files by default).
 ---
@@ -22,7 +26,7 @@ feel obvious, valuable, and worth completing.
 
 > **Boundary:** neither part audits visual design-system compliance. Tokens,
 > spacing, radius, icon scale, and component reuse belong to the
-> `ux-design-system-audit` skill, which discovers the project's own
+> `ux-audit-compliance-design-system` skill, which discovers the project's own
 > design docs and token sources and audits against those.
 > Part C's "grammar" findings are about MEANING collisions (a status label
 > shaped like a button), not token values — if a finding is fixable by
@@ -31,7 +35,7 @@ feel obvious, valuable, and worth completing.
 > communicates structure — regions enclosed, between-group air exceeding
 > within-group, source vs destination legible without reading, drop targets
 > visible before a drag, layouts that hold still — belongs to
-> `ux-layout-composition-audit`, not here. Route those findings there.
+> `ux-audit-composition-layout`, not here. Route those findings there.
 > (One deliberate difference: that skill's S3 overrides Part T's T5 for
 > regions — sibling REGIONS playing OPPOSITE interaction roles must look
 > different, even though sibling ELEMENTS share one grammar.)
@@ -211,7 +215,7 @@ whole image.
      exist in the project yet (a raw URL doing a button's job, an
      inline paragraph that belongs in an info-tip), propose it anyway
      and let the `Build` tag carry the cost: `new-component` /
-     `new-dependency` findings hand off to `ux-component-sourcing`.
+     `new-dependency` findings hand off to `ux-sourcing-component`.
      "Current is correct" is a valid verdict — justify it, don't
      invent change.
    - **T3 Visual form** — would an icon add recognition or just
@@ -301,9 +305,9 @@ Produce ONE merged report in this structure so parallel-session reports stay com
 ```
 
 Rules for the report:
-- Every `OPPORTUNITY` and `CONFUSION` must include a change concrete enough to implement without further discussion, and carries an `Impact: high|med|low · Effort: S|M|L · Build: existing|compose|new-component|new-dependency` tag. Impact/Effort drive ranking and aggregation. Build states what the fix is made of: `existing` = components already in the project, `compose` = assembled from existing primitives, `new-component` = a new design-system component must be built, `new-dependency` = an external library is needed. The audit only classifies — it never picks a library; `new-component`/`new-dependency` items hand off to the `ux-component-sourcing` skill at implementation time.
-- Build tags are hypotheses with a lifecycle, not a growing backlog: the newest report for a surface supersedes its previous findings — fixed or no-longer-needed items simply don't reappear, taking their tags with them; `ux-component-sourcing` verifies every `new-*` tag against the real inventory and downgrades over-classified ones (R1/R2 pass = tag corrected, finding closed); never carry a `new-*` tag from an old report without re-verifying — the component may exist by now.
-- The `Build` tag lives in the report ONLY — it is never written into source code as a comment. `new-component`/`new-dependency` findings double as the note for the next session: repeat them at the end of Top actions as "→ ux-component-sourcing" items, so a later repo session can start from a pasted report — or simply from a re-run of this audit, which regenerates any still-unfixed items.
+- Every `OPPORTUNITY` and `CONFUSION` must include a change concrete enough to implement without further discussion, and carries an `Impact: high|med|low · Effort: S|M|L · Build: existing|compose|new-component|new-dependency` tag. Impact/Effort drive ranking and aggregation. Build states what the fix is made of: `existing` = components already in the project, `compose` = assembled from existing primitives, `new-component` = a new design-system component must be built, `new-dependency` = an external library is needed. The audit only classifies — it never picks a library; `new-component`/`new-dependency` items hand off to the `ux-sourcing-component` skill at implementation time.
+- Build tags are hypotheses with a lifecycle, not a growing backlog: the newest report for a surface supersedes its previous findings — fixed or no-longer-needed items simply don't reappear, taking their tags with them; `ux-sourcing-component` verifies every `new-*` tag against the real inventory and downgrades over-classified ones (R1/R2 pass = tag corrected, finding closed); never carry a `new-*` tag from an old report without re-verifying — the component may exist by now.
+- The `Build` tag lives in the report ONLY — it is never written into source code as a comment. `new-component`/`new-dependency` findings double as the note for the next session: repeat them at the end of Top actions as "→ ux-sourcing-component" items, so a later repo session can start from a pasted report — or simply from a re-run of this audit, which regenerates any still-unfixed items.
 - No principle and no clarity pass may be skipped for any surface — `N/A` with a reason is fine; silence is not.
 - Top actions merge Part P and Part C into ONE ranked list — the reader should not have to weigh two lists.
 - Keep findings terse. This is an engineering artifact, not an essay.

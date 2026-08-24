@@ -1,14 +1,19 @@
 ---
-name: ux-design-system-audit
-version: 1.0.0
+name: ux-audit-compliance-design-system
+version: 1.1.0
+family: abc
+domain: ux
+kind: audit
+method: compliance
+scope: design-system
 source: https://github.com/AlonurKomilov/skills
 description: Design-system compliance audit — fourth member of the ux audit family (psychology reads words/flows, layout reads geometry, sourcing obtains components). Audits whether every rendered value — colour, spacing, size, radius, type, icons, z-index, primitives, naming, per-user state — comes from the project OWN sanctioned system, not call-site improvisation. Step 0 discovers the project design docs, tokens, primitives and guardrails and audits against THOSE — never another project values; uncovered categories become SSOT-GAP findings with proposed rules. Use for "design system audit", "token audit", "consistency check", hardcoded colors/hex, arbitrary spacing, mixed fonts, duplicated primitives, or after any session that built or changed UI; also the routing target the siblings call the design-system audit. On explicit request ("full compliance sweep") run Part V — a grep-driven violation census with per-category counts. Report delivered IN CHAT (no files by default).
 ---
 
 # UX Audit — design-system compliance
 
-Fourth member of the family: `ux-psychology-audit` reads words and
-flows, `ux-layout-composition-audit` reads geometry, this skill reads
+Fourth member of the family: `ux-audit-psychology` reads words and
+flows, `ux-audit-composition-layout` reads geometry, this skill reads
 **conformity** — does every rendered value come from the project's own
 sanctioned system, or was it improvised at the call-site? It is the
 routing target the siblings call "the design-system audit".
@@ -27,10 +32,10 @@ CLAUDE.md), never in this skill — that is what keeps it universal.
 
 > **Boundary (mirror of the siblings' — route, don't double-report):**
 > - Meaning collisions (one word, two meanings; a status label shaped
->   like an action) → `ux-psychology-audit` C1/C2.
+>   like an action) → `ux-audit-psychology` C1/C2.
 > - Geometry agreement (zones reading as one, between-vs-within gaps,
->   drop targets, stability, proportion) → `ux-layout-composition-audit`.
-> - How to OBTAIN a missing primitive → `ux-component-sourcing`.
+>   drop targets, stability, proportion) → `ux-audit-composition-layout`.
+> - How to OBTAIN a missing primitive → `ux-sourcing-component`.
 > - Tie-breakers (must agree with the layout skill's): an off-ladder or
 >   illegal SINGLE value anywhere → **here**, even when it is also too
 >   small; ladder-legal values that fail a hit-area floor, invert
@@ -121,7 +126,7 @@ you haven't read; mark `NEEDS-CONTEXT` and name what's missing.
 Findings carry the family tags: `Impact: high|med|low · Effort: S|M|L
 · Build: existing|compose|new-component|new-dependency`. A missing
 primitive that forces screens to re-implement is `SSOT-GAP` +
-`Build: new-component` — it hands off to `ux-component-sourcing`.
+`Build: new-component` — it hands off to `ux-sourcing-component`.
 
 ## The eight categories
 
@@ -293,7 +298,7 @@ vocabulary (its tokens, its helper names) as discovered in Step 0;
 meaning/geometry findings go under "Routed", never scored here; the
 `Build` tag lives in the report only — never written into source as a
 code comment — and `new-component`/`new-dependency` findings repeat at
-the end of Top actions as "→ ux-component-sourcing" items, the
+the end of Top actions as "→ ux-sourcing-component" items, the
 handoff note a later repo session starts from; report
 in the user's language on request, statuses and category names stay
 English so rollups merge.
@@ -311,6 +316,6 @@ the shared Impact · Effort · Build tags, reading reports the user
 provides plus the current conversation; the newest report per surface
 supersedes older ones; drop findings already fixed; `Build: new-*`
 items are verified (and downgraded when over-classified) by
-`ux-component-sourcing`.
+`ux-sourcing-component`.
 
 <!-- SSOT: github.com/AlonurKomilov/skills -->

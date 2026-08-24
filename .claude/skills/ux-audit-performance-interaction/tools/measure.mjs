@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Universal interaction-performance runner — the agentic-repro
- * instrument of the ux-interaction-performance-audit skill.  (v1.4.1)
+ * instrument of the ux-audit-performance-interaction skill.  (v1.6.0)
  *
  * NOT hardcoded to any page, project or stack: everything
  * target-specific arrives in a small JSON profile.  Prints the skill's

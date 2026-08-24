@@ -12,7 +12,7 @@ project-specific kept artifacts; other kinds of keeps may join later
 as `abc-lab/<name>/`.
 
 Current contents:
-- `skills/ux-interaction-performance-audit/perf-rig/` — the seeded
+- `skills/ux-audit-performance-interaction/perf-rig/` — the seeded
   Dispatch-KPI board for performance A/B runs.
 
 **Deleting this entire folder (`rm -rf abc-lab`) removes every trace

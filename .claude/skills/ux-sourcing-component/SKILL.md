@@ -1,6 +1,10 @@
 ---
-name: ux-component-sourcing
-version: 1.0.0
+name: ux-sourcing-component
+version: 1.1.0
+family: abc
+domain: ux
+kind: sourcing
+scope: component
 source: https://github.com/AlonurKomilov/skills
 description: Decide how to obtain any UI capability — reuse an existing component, compose it from existing primitives, build a new design-system component, or (last resort) add an external library. ALWAYS use this skill BEFORE suggesting or installing any UI dependency (npm install of a component/UI package, adding a CDN @require, vendoring code), when implementing a fix or feature that needs a component the project might not have, when the user asks "which library should we use", "build or install?", "do we have a component for this?", or when an audit finding carries a Build tag of compose, new-component, or new-dependency. Never name a library before reading the project's actual stack — Step 0 grounding is mandatory.
 ---
@@ -9,7 +13,7 @@ description: Decide how to obtain any UI capability — reuse an existing compon
 
 Purpose: pick the LOWEST rung that solves the need. "Cost" here is long-term — maintenance, bundle size, accessibility debt, lock-in — never today's minutes. The user does not need to know libraries; this skill's job is to apply the decision criteria to their real stack and bring back a grounded recommendation.
 
-This skill decides ONE need at a time — it is not an audit and never sweeps the project. It runs standalone (a direct "build or install?" question, or the moment any UI dependency is about to be added) just as well as from an audit's `Build: new-*` handoff. A project-wide "what is duplicated or re-implemented" question belongs to `ux-design-system-audit` (D5), whose findings then arrive here one at a time.
+This skill decides ONE need at a time — it is not an audit and never sweeps the project. It runs standalone (a direct "build or install?" question, or the moment any UI dependency is about to be added) just as well as from an audit's `Build: new-*` handoff. A project-wide "what is duplicated or re-implemented" question belongs to `ux-audit-compliance-design-system` (D5), whose findings then arrive here one at a time.
 
 ## Step 0 — Grounding (mandatory, before ANY suggestion)
 
@@ -20,7 +24,7 @@ Read, in this order. Never propose a component or library before finishing all f
 3. **Styling system** — Tailwind config, CSS variables, tokens file. Anything new must speak the same styling language.
 4. **Project rules** — CLAUDE.md, design.md, contribution docs. They may already mandate or ban specific libraries.
 
-Absence is an answer, not a blocker: an empty or missing component inventory means R1 fails legitimately; no styling system and no rules docs mean nothing is mandated or banned — record each absence in the Step 0 output (it is often `SSOT-GAP` material for `ux-design-system-audit`). The ONLY stop condition is a genuinely undeterminable stack: when the files present cannot tell you what the UI is built on, say so and ask — a rung-4 recommendation without a known stack is a guess.
+Absence is an answer, not a blocker: an empty or missing component inventory means R1 fails legitimately; no styling system and no rules docs mean nothing is mandated or banned — record each absence in the Step 0 output (it is often `SSOT-GAP` material for `ux-audit-compliance-design-system`). The ONLY stop condition is a genuinely undeterminable stack: when the files present cannot tell you what the UI is built on, say so and ask — a rung-4 recommendation without a known stack is a guess.
 
 Repo-less grounding is provisional. When Step 0 runs without source access — only the shipped bundle, the rendered app, or screenshots — say so and mark the grounding PROVISIONAL: a bundle census can miss lazy-loaded, tree-shaken, or simply-unused components, and rules docs are then UNREACHABLE, not absent. R1/R2 verdicts built on a provisional census are hypotheses, and an R3/R4 decision may be recommended but never executed until the inventory and rules are verified against the repo — write the condition into the Decision line ("awaiting approval + repo verification").
 
@@ -77,7 +81,7 @@ Routed to audits (optional): <off-need violations the census stumbled on — one
 
 Report rungs top-down until the first PASS; everything below it is `not reached`. A `FAIL` line must name the failed criterion, not restate the rung.
 
-The census exists to serve rung criteria, but don't waste what it saw: off-need violations it stumbled on (re-implemented primitives, improvised controls, drifted class strings) go on the `Routed to audits` line as CANDIDATES for `ux-design-system-audit` — one line each, no scoring, no report. This is the whole extent of this skill's audit surface: it routes what it happened to see; it never goes looking.
+The census exists to serve rung criteria, but don't waste what it saw: off-need violations it stumbled on (re-implemented primitives, improvised controls, drifted class strings) go on the `Routed to audits` line as CANDIDATES for `ux-audit-compliance-design-system` — one line each, no scoring, no report. This is the whole extent of this skill's audit surface: it routes what it happened to see; it never goes looking.
 
 Print this block BEFORE implementing, on every run — including R1/R2. Visibility is unconditional; only the approval gate (R3/R4) is conditional: the user always sees the ladder walk first, the same way audit findings are seen before fixes.
 

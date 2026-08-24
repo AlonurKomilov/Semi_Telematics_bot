@@ -591,15 +591,15 @@ numbers, never from scratch.
 | Frame budget | `1000 / refresh-rate` ms | 10 ms on a 100 Hz display — never assume 16.7 |
 
 **How to measure — the METHOD lives in exactly one place:** the
-`ux-interaction-performance-audit` skill
-([.claude/skills/ux-interaction-performance-audit/SKILL.md](../../.claude/skills/ux-interaction-performance-audit/SKILL.md))
+`ux-audit-performance-interaction` skill
+([.claude/skills/ux-audit-performance-interaction/SKILL.md](../../.claude/skills/ux-audit-performance-interaction/SKILL.md))
 owns the whole protocol — the DevTools passes, ×3-with-spread, the
 4×-throttle doctrine, the seeded-rig pattern, never-a-real-account,
 the disposable-measurement and workspace-isolation rules, and the
 bundled universal runner (`tools/measure.mjs`).  This section holds
 only THIS project's numbers — the values layer the skill reads in its
 Step 0b.  This project's kept harness:
-[abc-lab/skills/ux-interaction-performance-audit/perf-rig/](../../abc-lab/skills/ux-interaction-performance-audit/perf-rig/README.md) — the seeded
+[abc-lab/skills/ux-audit-performance-interaction/perf-rig/](../../abc-lab/skills/ux-audit-performance-interaction/perf-rig/README.md) — the seeded
 12-dispatcher / 69-truck board for A/B runs.
 
 ## 11. Hard rules (the enforcement checklist)

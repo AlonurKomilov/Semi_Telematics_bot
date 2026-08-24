@@ -1,13 +1,18 @@
 ---
-name: ux-layout-composition-audit
-version: 1.0.0
+name: ux-audit-composition-layout
+version: 1.1.0
+family: abc
+domain: ux
+kind: audit
+method: composition
+scope: layout
 source: https://github.com/AlonurKomilov/skills
-description: Layout-composition audit — sibling of ux-psychology-audit, aimed at its blind spot — does the ARRANGEMENT communicate structure before a word is read? Five passes — S1 regions & enclosure, S2 spacing hierarchy (between-group vs within-group air), S3 weight & affordance (source vs destination legible, drop targets visible BEFORE drag), S4 stability (layout holds still), S5 proportion & placement (size tracks importance — Fitts, WCAG 2.5.8; recurring controls hold one position). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census of every container, including hidden-state geometry in conditionals. Use when a surface "looks mixed", components "are not separated", users can't tell where a section ends, for any multi-zone panel (pivot/report/form builders, layer panels, dashboards, drag-and-drop surfaces), after restructuring a layout, or auditing against a mature reference (e.g. MUI) without cargo-culting. Report delivered IN CHAT (no files by default).
+description: Layout-composition audit — sibling of ux-audit-psychology, aimed at its blind spot — does the ARRANGEMENT communicate structure before a word is read? Five passes — S1 regions & enclosure, S2 spacing hierarchy (between-group vs within-group air), S3 weight & affordance (source vs destination legible, drop targets visible BEFORE drag), S4 stability (layout holds still), S5 proportion & placement (size tracks importance — Fitts, WCAG 2.5.8; recurring controls hold one position). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census of every container, including hidden-state geometry in conditionals. Use when a surface "looks mixed", components "are not separated", users can't tell where a section ends, for any multi-zone panel (pivot/report/form builders, layer panels, dashboards, drag-and-drop surfaces), after restructuring a layout, or auditing against a mature reference (e.g. MUI) without cargo-culting. Report delivered IN CHAT (no files by default).
 ---
 
 # UX Audit — layout composition
 
-Sibling of `ux-psychology-audit`. Same method — scope modes, statuses,
+Sibling of `ux-audit-psychology`. Same method — scope modes, statuses,
 mergeable report — different axis: that skill reads **words and flows**
 (names, copy, element meanings, task sequences); this one reads
 **geometry** (containers, gaps, weight, motion). A surface can pass
@@ -20,8 +25,8 @@ surface.
 >
 > | The finding sounds like… | It belongs to… |
 > |---|---|
-> | "this gap/radius/size isn't on the scale" · "this control isn't the shared primitive" (e.g. a native checkbox amid styled ones) | `ux-design-system-audit` (discovers and audits against the project's own design docs/tokens) |
-> | "this word means two things" · "one object, two faces" · "a region has no heading" · "offered then refused" · "flow starts at 0%" | `ux-psychology-audit` (C1/C2/C3/P) |
+> | "this gap/radius/size isn't on the scale" · "this control isn't the shared primitive" (e.g. a native checkbox amid styled ones) | `ux-audit-compliance-design-system` (discovers and audits against the project's own design docs/tokens) |
+> | "this word means two things" · "one object, two faces" · "a region has no heading" · "offered then refused" · "flow starts at 0%" | `ux-audit-psychology` (C1/C2/C3/P) |
 > | "these two zones read as one" · "between-gap equals within-gap" · "the empty zone has no drop area" · "source and destination look alike" · "the layout walks under the cursor" · "the page rebuilds on a mode switch" (the geometric fact; the comprehension cost stays with C3) · "too small to hit" · "bigger than its importance" · "this control moved between sibling pages" | **this skill** |
 >
 > The dividing rule for sizes mirrors the spacing one: the
@@ -29,7 +34,7 @@ surface.
 > step (`h-8`, `max-w-lg`); this skill owns whether the RESULTING hit
 > area is big enough, whether the size matches the element's
 > importance, and whether same-class components agree on a step.
-> Tie-breaker: an off-ladder size anywhere → `ux-design-system-audit`,
+> Tie-breaker: an off-ladder size anywhere → `ux-audit-compliance-design-system`,
 > even when it is also too small; a ladder-legal size that still fails
 > the 24px floor, inverts importance, or splits same-class siblings
 > across steps → here.
@@ -38,7 +43,7 @@ surface.
 > a SINGLE value is legal on the scale (is `gap-2` sanctioned); this
 > skill owns whether values AGREE across regions and what the spacing
 > *says* about grouping. An illegal value anywhere →
-> `ux-design-system-audit`. A
+> `ux-audit-compliance-design-system`. A
 > disagreement between sibling regions (pool rows `py-1`, zone rows
 > `py-1.5` — both legal) → here, even when the fix is a one-token
 > swap.
@@ -372,7 +377,7 @@ mouse+keyboard reference for a touch sheet).
   does / quoted evidence / the exact structural fix.> `Impact: high|med|low · Effort: S|M|L · Build: existing|compose|new-component|new-dependency`
 
 ## Routed to other audits
-- <finding that surfaced here but belongs to `ux-design-system-audit`
+- <finding that surfaced here but belongs to `ux-audit-compliance-design-system`
   or the sibling skill, with its destination — surfacing it is fine,
   double-reporting is not>
 
@@ -393,10 +398,10 @@ the sibling skill: `existing` = components already in the project,
 new design-system component must be built, `new-dependency` = an
 external library is needed — the audit classifies, never picks a
 library; `new-component`/`new-dependency` findings hand off to the
-`ux-component-sourcing` skill at implementation time, which matters
+`ux-sourcing-component` skill at implementation time, which matters
 here more than anywhere: drag-and-drop and virtualized lists are
 canonical rung-4 territory; tags self-clean — the newest report for a
-surface supersedes its old findings, and `ux-component-sourcing`
+surface supersedes its old findings, and `ux-sourcing-component`
 downgrades over-classified `new-*` tags after checking the real
 inventory); no pass skipped for any
 surface (`N/A` with a reason is fine, silence is not); quoted class
@@ -404,7 +409,7 @@ strings or screenshot references as evidence; findings that belong to
 the other two audits go under "Routed", never duplicated as findings.
 The `Build` tag lives in the report only — never written into source
 as a code comment; `new-component`/`new-dependency` findings repeat at
-the end of Top actions as "→ ux-component-sourcing" items — the
+the end of Top actions as "→ ux-sourcing-component" items — the
 handoff note a later repo session starts from.
 If the user asks for their language, write the prose in it but keep
 statuses and pass names in English so rollups stay comparable.

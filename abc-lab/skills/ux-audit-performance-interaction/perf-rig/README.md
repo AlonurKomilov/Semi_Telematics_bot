@@ -11,9 +11,9 @@ against it, and drives a headless Chromium through the budgets in
 ## Run it
 
 ```bash
-python3 abc-lab/skills/ux-interaction-performance-audit/perf-rig/rig_server.py     # scratch PG + seeded API :8010
-node abc-lab/skills/ux-interaction-performance-audit/perf-rig/rig_front.js         # dist/ + /api proxy    :8020
-node abc-lab/skills/ux-interaction-performance-audit/perf-rig/measure.js           # 3× at 1× CPU, 3× at 4× CPU
+python3 abc-lab/skills/ux-audit-performance-interaction/perf-rig/rig_server.py     # scratch PG + seeded API :8010
+node abc-lab/skills/ux-audit-performance-interaction/perf-rig/rig_front.js         # dist/ + /api proxy    :8020
+node abc-lab/skills/ux-audit-performance-interaction/perf-rig/measure.js           # 3× at 1× CPU, 3× at 4× CPU
 ```
 
 `measure.js` needs the playwright npm package and a Playwright Chromium

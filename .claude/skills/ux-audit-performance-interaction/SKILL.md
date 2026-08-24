@@ -1,8 +1,13 @@
 ---
-name: ux-interaction-performance-audit
-version: 1.5.0
+name: ux-audit-performance-interaction
+version: 1.6.0
+family: abc
+domain: ux
+kind: audit
+method: performance
+scope: interaction
 source: https://github.com/AlonurKomilov/skills
-description: Interaction-performance audit — fifth member of the ux audit family (psychology=words/flows, layout=geometry, design-system=tokens, sourcing=components). Reads TIME — whether the main thread stays responsive mid-gesture — drag, scroll, type, resize — against frame/input budgets. Use when a surface "freezes", "lags", "stutters", "hangs while dragging" (any language — "qotyapti"), when the user asks "is it my PC or the code?", for any drag-and-drop board, large grid, live dashboard or infinite list, or after changing interaction-heavy surfaces. Static pass (hot-path smells, M1–M9) always runs; deep pass (DevTools/Playwright trace) on request or when static can't explain the symptom. Part O headroom pass — nothing broken but the user wants more ("optimize", "make it faster", "10x") — baseline → SLO → Amdahl leverage ladder, plus sync/waterfall coherence. Never assumes the stack, never names a library — Build tags route to ux-component-sourcing. Report IN CHAT (no files by default).
+description: Interaction-performance audit — fifth member of the ux audit family (psychology=words/flows, layout=geometry, design-system=tokens, sourcing=components). Reads TIME — whether the main thread stays responsive mid-gesture — drag, scroll, type, resize — against frame/input budgets. Use when a surface "freezes", "lags", "stutters", "hangs while dragging" (any language — "qotyapti"), when the user asks "is it my PC or the code?", for any drag-and-drop board, large grid, live dashboard or infinite list, or after changing interaction-heavy surfaces. Static pass (hot-path smells, M1–M9) always runs; deep pass (DevTools/Playwright trace) on request or when static can't explain the symptom. Part O headroom pass — nothing broken but the user wants more ("optimize", "make it faster", "10x") — baseline → SLO → Amdahl leverage ladder, plus sync/waterfall coherence. Never assumes the stack, never names a library — Build tags route to ux-sourcing-component. Report IN CHAT (no files by default).
 ---
 
 # UX Audit — interaction performance
@@ -25,10 +30,10 @@ layer, discovered in Step 0b, never invented here. The frame budget is
 actual display (idle rAF interval) and restate the budget (100Hz → 10ms,
 120Hz → 8.3ms) before judging frames.
 
-> **Boundary:** wording/flow meaning → `ux-psychology-audit`;
-> arrangement/geometry → `ux-layout-composition-audit`; token/value
-> compliance → `ux-design-system-audit`; HOW to obtain a needed component
-> or library → `ux-component-sourcing` (this skill only tags the need).
+> **Boundary:** wording/flow meaning → `ux-audit-psychology`;
+> arrangement/geometry → `ux-audit-composition-layout`; token/value
+> compliance → `ux-audit-compliance-design-system`; HOW to obtain a needed component
+> or library → `ux-sourcing-component` (this skill only tags the need).
 > This skill changes *mechanisms*, never *meaning*.
 
 ## Scope modes
@@ -126,7 +131,7 @@ hand-rolled pointer events? HTML5 DnD?); virtualization present or
 absent (which?); animation approach (CSS transition, WAAPI, per-frame
 JS, motion lib); styling runtime (build-time CSS vs runtime CSS-in-JS);
 what the data layer does during interaction (poll cadence, websocket
-pushes, refetch triggers). Inherited rule from `ux-component-sourcing`:
+pushes, refetch triggers). Inherited rule from `ux-sourcing-component`:
 never recommend for or against a library you have not confirmed in the
 tree.
 
@@ -206,7 +211,7 @@ drivers × trucks × 7 days × cards — reaches thousands of nodes fast).
 Signature: first paint slow AND every interaction slow AND cost scales
 with N (Step 1.3). Fix shape: windowing or `content-visibility: auto` —
 but the HOW is a sourcing decision: tag `Build: compose` or
-`Build: new-dependency` and route to `ux-component-sourcing`; never name
+`Build: new-dependency` and route to `ux-sourcing-component`; never name
 a virtualization library here.
 
 ### M5. Per-render recomputation
@@ -392,7 +397,7 @@ it. Never one finding per file for the same mechanism.
 
 Scope guard: if a candidate fix would change flow or meaning (e.g.,
 replacing live drag with click-to-place), flag it and route the UX
-question to `ux-psychology-audit` / `ux-layout-composition-audit` — do
+question to `ux-audit-psychology` / `ux-audit-composition-layout` — do
 not decide it silently inside a perf fix.
 
 ## Step 5 — Output format (mergeable with the family)
@@ -409,7 +414,7 @@ not decide it silently inside a perf fix.
 
 ## Findings (by severity)
 - Finding lines in the Step 2/3 format; `Build:` tags quoted verbatim
-  for the `ux-component-sourcing` handoff
+  for the `ux-sourcing-component` handoff
 
 ## Acquitted mechanisms
 - Mechanism classes measured clean, each with its evidence (0 rect
@@ -430,7 +435,7 @@ not decide it silently inside a perf fix.
 ## Fix sequence (highest leverage first)
 - Typical order: M1 render scope → M2 thrash → M3 transform → M8
   data-vs-gesture → then the M4 windowing decision via
-  `ux-component-sourcing` → the rest. Justify deviations.
+  `ux-sourcing-component` → the rest. Justify deviations.
 
 ## Verification checklist
 - The exact re-measure that must pass: same gesture, same trace
@@ -449,7 +454,7 @@ ephemeral.
 
 - Blaming the machine or GPU without Step 1 evidence.
 - Naming libraries or proposing rewrites — Step 0a reads the stack;
-  `ux-component-sourcing` decides acquisition.
+  `ux-sourcing-component` decides acquisition.
 - Running the deep pass by default — static pass first; instrument only
   what reading can't explain.
 - Treating every smell as a finding — hot path only.

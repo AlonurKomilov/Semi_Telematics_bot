@@ -837,7 +837,7 @@ anything.
 
 ### Panel composition (layout-audit rules, 2026-07-29)
 
-The first `ux-layout-composition-audit` ran here and its fixes are
+The first `ux-audit-composition-layout` ran here and its fixes are
 load-bearing — don't regress them:
 
 - **Zones are boxed, the pool is bare.** Rows/Columns/Values each get
