@@ -91,10 +91,18 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
   const blind = engineCallouts.find(
     (c) => c.key === 'vehicle.no_engine_data',
   ) ?? null;
-  const busValue = (
-    ready: boolean, rendered: React.ReactNode,
-  ): React.ReactNode =>
-    ready ? rendered : blind ? <CalloutInline callout={blind} /> : <span>—</span>;
+  // Takes the VALUE and a formatter, never a pre-built element: an
+  // element argument is evaluated before the call, so a `ready` flag
+  // cannot protect the formatting inside it — `oil_psi!.toFixed(1)`
+  // ran on null and took the whole card down with it.  Passing the
+  // raw value makes the guard structural, and drops the non-null
+  // assertions that told the type-checker to look away.
+  function busValue<T>(
+    value: T | null | undefined, fmt: (v: T) => string,
+  ): React.ReactNode {
+    if (value != null) return <span>{fmt(value)}</span>;
+    return blind ? <CalloutInline callout={blind} /> : <span>—</span>;
+  }
   const healthAlerts: string[] = health.alerts || [];
 
   return (
@@ -104,22 +112,22 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
           sensor freezes independently of the rest of the card. */}
       <Row label="Battery" ts={h.battery_time} value={h.battery_v != null ? `${h.battery_v.toFixed(1)} V` : '—'} />
       <Row label="Oil Pressure" ts={h.oil_time}>
-        {busValue(h.oil_psi != null, <span>{`${h.oil_psi!.toFixed(1)} PSI`}</span>)}
+        {busValue(h.oil_psi, (v) => `${v.toFixed(1)} PSI`)}
       </Row>
       <Row label="Coolant Temp" ts={h.coolant_time}>
-        {busValue(h.coolant_c != null, <span>{`${h.coolant_c!.toFixed(0)}°C`}</span>)}
+        {busValue(h.coolant_c, (v) => `${v.toFixed(0)}°C`)}
       </Row>
       <Row label="DEF Level" ts={h.def_time}>
-        {busValue(h.def_pct != null, <span>{`${h.def_pct!.toFixed(0)}%`}</span>)}
+        {busValue(h.def_pct, (v) => `${v.toFixed(0)}%`)}
       </Row>
       <Row label="Engine Load" ts={h.load_time}>
-        {busValue(h.load_pct != null, <span>{`${h.load_pct!.toFixed(0)}%`}</span>)}
+        {busValue(h.load_pct, (v) => `${v.toFixed(0)}%`)}
       </Row>
       <Row label="RPM" ts={h.rpm_time}>
-        {busValue(h.rpm != null, <span>{String(Math.round(h.rpm!))}</span>)}
+        {busValue(h.rpm, (v) => String(Math.round(v)))}
       </Row>
       <Row label="Seatbelt" ts={h.seatbelt_time}>
-        {busValue(h.seatbelt != null, <span>{String(h.seatbelt)}</span>)}
+        {busValue(h.seatbelt, (v) => String(v))}
       </Row>
       {weather && (weather.temp_f != null || weather.baro_inhg != null) && (
         <>
