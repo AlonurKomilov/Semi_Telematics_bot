@@ -25,6 +25,11 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
   // The condition that explains an empty engine reading.  Only this
   // key qualifies: a caveat about mileage says nothing about why the
   // odometer field itself is blank.
+  // ``explained`` on every note below: VehicleHeader renders this
+  // same callout as a strip at the top of the page, so the rows are
+  // pointers to an explanation the reader already has.  Repeating
+  // the paragraph behind each empty field put it on screen nine
+  // times for one truck.
   const blindCallout =
     callouts.find((c) => c.key === 'vehicle.no_engine_data') ?? null;
   const defPct = v.defPercent ?? v.def_percent;
@@ -53,7 +58,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
         {fuel != null ? (
           <span>{`${Math.round(fuel)}%`}</span>
         ) : blindCallout ? (
-          <CalloutInline callout={blindCallout} />
+          <CalloutInline callout={blindCallout} explained />
         ) : (
           <span>—</span>
         )}
@@ -70,7 +75,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
         {v.odometer_miles != null ? (
           <span>{`${Math.round(v.odometer_miles).toLocaleString()} mi`}</span>
         ) : blindCallout ? (
-          <CalloutInline callout={blindCallout} />
+          <CalloutInline callout={blindCallout} explained />
         ) : (
           <span>—</span>
         )}
@@ -79,7 +84,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
         {v.engine_hours != null ? (
           <span>{`${Math.round(v.engine_hours).toLocaleString()} h`}</span>
         ) : blindCallout ? (
-          <CalloutInline callout={blindCallout} />
+          <CalloutInline callout={blindCallout} explained />
         ) : (
           <span>—</span>
         )}

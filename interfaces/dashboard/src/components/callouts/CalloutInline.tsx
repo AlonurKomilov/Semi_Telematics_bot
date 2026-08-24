@@ -14,17 +14,29 @@ export default function CalloutInline({
   callout,
   /** Shown before the note — usually the em dash it replaces. */
   prefix = '—',
+  /**
+   * The full explanation is ALREADY on this page (the same callout is
+   * rendered as a strip), so this note is a pointer, not the
+   * explanation — drop the tooltip.
+   *
+   * Without it, a truck whose engine bus is silent showed the same
+   * paragraph nine times on one screen: once in the strip, then again
+   * behind every empty field it explains.  Default is off, because
+   * where an inline note stands alone — a table cell, a row with no
+   * strip above it — the tooltip is the only explanation there is.
+   */
+  explained = false,
 }: {
   callout: CalloutData;
   prefix?: string;
+  explained?: boolean;
 }) {
   const { tone, title, body } = useCallout(callout);
-  return (
-    <Tip label={body || title}>
-      <span className={`inline-flex items-center gap-1 text-xs ${toneText(tone)}`}>
-        <span className="text-muted-foreground">{prefix}</span>
-        <span>{title}</span>
-      </span>
-    </Tip>
+  const note = (
+    <span className={`inline-flex items-center gap-1 text-xs ${toneText(tone)}`}>
+      <span className="text-muted-foreground">{prefix}</span>
+      <span>{title}</span>
+    </span>
   );
+  return explained ? note : <Tip label={body || title}>{note}</Tip>;
 }

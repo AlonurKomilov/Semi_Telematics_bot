@@ -101,7 +101,12 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
     value: T | null | undefined, fmt: (v: T) => string,
   ): React.ReactNode {
     if (value != null) return <span>{fmt(value)}</span>;
-    return blind ? <CalloutInline callout={blind} /> : <span>—</span>;
+    // ``explained``: the page's strip (VehicleHeader) already
+    // carries the paragraph — six more copies behind six empty
+    // sensors is noise, not help.
+    return blind
+      ? <CalloutInline callout={blind} explained />
+      : <span>—</span>;
   }
   const healthAlerts: string[] = health.alerts || [];
 
