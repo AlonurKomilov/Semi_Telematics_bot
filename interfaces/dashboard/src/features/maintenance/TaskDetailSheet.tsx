@@ -509,7 +509,7 @@ export default function TaskDetailSheet({
                 ``spawned_from_id`` is set (legacy or user-created tasks
                 show nothing here). */}
             {task.spawned_from_id && (
-              <div className={`mb-4 px-3 py-2 min-h-tap rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('info')}`}>
+              <div className={`mb-4 px-3 py-2 min-h-tap rounded-md text-xs inline-flex items-center gap-1.5 ${toneClasses('info')}`}>
                 <span aria-hidden>↻</span>
                 Auto-renewed from task #{task.spawned_from_id}
               </div>
@@ -523,7 +523,7 @@ export default function TaskDetailSheet({
             {task.work_order_id && (
               <a
                 href={`/work-orders/${task.work_order_id}`}
-                className={`mb-4 px-3 py-2 min-h-tap rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('ok')}`}
+                className={`mb-4 px-3 py-2 min-h-tap rounded-md text-xs inline-flex items-center gap-1.5 ${toneClasses('ok')}`}
               >
                 <span aria-hidden>📄</span>
                 Closed by Work Order #{task.work_order_id}
@@ -535,7 +535,7 @@ export default function TaskDetailSheet({
                 stop generating alerts.  One-click Resume clears it. */}
             {task.snoozed_until
               && new Date(task.snoozed_until).getTime() > Date.now() && (
-              <div className={`mb-4 px-3 py-2 rounded text-xs flex items-center gap-2 ${toneClasses('warn')}`}>
+              <div className={`mb-4 px-3 py-2 rounded-md text-xs flex items-center gap-2 ${toneClasses('warn')}`}>
                 <BellOff className="shrink-0 size-3.5" />
                 <span className="flex-1">
                   Snoozed until {formatDate(task.snoozed_until, { timeZone: tz })}
@@ -914,7 +914,7 @@ export default function TaskDetailSheet({
                   type="button"
                   onClick={handleMarkComplete}
                   disabled={saving}
-                  className={`mt-2 w-full py-1.5 min-h-tap rounded text-xs font-medium transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${toneClasses('ok')}`}
+                  className={`mt-2 w-full py-1.5 min-h-tap rounded-md text-xs font-medium transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${toneClasses('ok')}`}
                 >
                   <CheckSquare className="size-3" />
                   Mark complete

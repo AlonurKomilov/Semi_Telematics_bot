@@ -111,7 +111,7 @@ export const UnitCard = memo(function UnitCard({ row, loads, stale, clickable, a
           <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.company_code}</span>
           {stale && (
             <Tip label={t('kpi_board.stale_tip', 'This row’s loads changed after the run was generated — it still pays from the snapshot.')}>
-              <span tabIndex={0} className={`shrink-0 text-xs font-normal ${toneClasses('warn')} px-1.5 rounded`}>
+              <span tabIndex={0} className={`shrink-0 text-xs font-normal ${toneClasses('warn')} px-1.5 rounded-md`}>
                 {t('kpi_board.stale', 'stale')}
               </span>
             </Tip>

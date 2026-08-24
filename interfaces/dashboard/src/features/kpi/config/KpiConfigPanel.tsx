@@ -165,7 +165,7 @@ export default function KpiConfigPanel({ onSaved, onDirtyChange }: {
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
         {dirty && (
-          <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
+          <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
             Unsaved changes
           </span>
         )}

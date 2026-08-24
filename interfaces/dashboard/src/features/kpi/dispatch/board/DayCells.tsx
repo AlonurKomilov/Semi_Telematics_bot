@@ -19,6 +19,18 @@ import { boardGeometry, prevDay } from './geometry';
 import { CalendarOffGlyph } from './glyphs';
 import { ROW_CONTAIN, dayLabel, place, usd } from './shared';
 
+/**
+ * Keyboard focus for the chip buttons.  These are raw `<button>`s, not
+ * the Button primitive — a chip is a day-aligned segment of a bar, and
+ * the primitive's padding, min-width and inline-flex fight that — so
+ * the focus treatment has to be carried explicitly or the chips are the
+ * one control on this board a keyboard cannot see itself on.
+ * `relative` + `z-20` lift the focused segment above its neighbours so
+ * the ring is not covered where the bar's pieces overlap by -1.5.
+ */
+const CHIP_FOCUS = 'focus-visible:outline-none focus-visible:ring-3'
+  + ' focus-visible:ring-ring/50 focus-visible:relative focus-visible:z-20';
+
 export const DayCells = memo(function DayCells({ row, days, loads, suggestions, clickable, onOpenMenu, onOpenLoad }: {
   row: RunRow;
   days: string[];
@@ -61,8 +73,17 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
             } ${clickable && inside
               /* pointer-events-none: empty cell area belongs to the day
                  button UNDER this layer; the chips re-enable themselves.
-                 Hover moves to the wrapper's group for the same reason. */
-              ? 'pointer-events-none z-10 group-hover:bg-muted group-hover:ring-1 group-hover:ring-inset group-hover:ring-border'
+                 Hover moves to the wrapper's group for the same reason.
+
+                 focus-within:z-20 is load-bearing, not decoration.  This
+                 layer is `relative z-10`, which makes it a STACKING
+                 CONTEXT — so a focused chip's own z-20 (CHIP_FOCUS) can
+                 only out-rank things inside THIS cell.  Neighbouring
+                 cells are separate z-10 contexts that tie on z-index and
+                 break the tie by DOM order, so the next day would paint
+                 over the focus ring exactly where the bar's pieces
+                 overlap by -1.5.  Lifting the whole cell wins that tie. */
+              ? 'pointer-events-none z-10 focus-within:z-20 group-hover:bg-muted group-hover:ring-1 group-hover:ring-inset group-hover:ring-border'
               : ''}`}
           >
             {dayLoads.slice(0, 2).map((l, i) => {
@@ -96,7 +117,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                 <div key={i} className="relative">
                   <Tip label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
                     <button type="button"
-                      className="pointer-events-auto block w-full h-6 min-h-tap rounded-l rounded-r-none -mr-1.5 bg-ok-bg"
+                      className={`pointer-events-auto block w-full h-6 min-h-tap rounded-l-md rounded-r-none -mr-1.5 bg-ok-bg ${CHIP_FOCUS}`}
                       aria-label={loadOpenAria}
                       onClick={() => onOpenLoad(row, l)} />
                   </Tip>
@@ -119,7 +140,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                   <button type="button"
                     /* h-6 + leading-6 (not flex): truncate's ellipsis
                        needs a block formatting context. */
-                    className={`pointer-events-auto block w-full h-6 min-h-tap leading-6 rounded text-xs tabular-nums px-1.5 truncate text-left ${toneClasses('ok')}`}
+                    className={`pointer-events-auto block w-full h-6 min-h-tap leading-6 rounded-md text-xs tabular-nums px-1.5 truncate text-left ${toneClasses('ok', { border: false })} ${CHIP_FOCUS}`}
                     aria-label={loadOpenAria}
                     onClick={() => onOpenLoad(row, l)}
                   >
@@ -144,12 +165,12 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                           { v: `$${Math.round(row.weekly_target / 7).toLocaleString()}` })
                       : '',
                   })}>
-                  <div className={`rounded px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
+                  <div className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
                     {t('kpi_board.inactive', 'inactive')}{reason ? ` · ${reason}` : ''}
                   </div>
                 </Tip>
               ) : (
-                <div className={`rounded px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
+                <div className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${toneClasses('warn')} uppercase tracking-wide truncate`}>
                   {t('kpi_board.inactive', 'inactive')}{reason ? ` · ${reason}` : ''}
                 </div>
               )
@@ -159,7 +180,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                  service day SUGGESTS the mark; the manager confirms via
                  the menu.  Dashed = proposal, filled warn = decided. */
               <Tip label={`${suggested.get(d)!.source} — ${t('kpi_board.suggest_tip', 'click to confirm as inactive')}`}>
-                <span className={`block rounded border border-dashed border-warn-bd px-1.5 py-0.5 text-xs uppercase tracking-wide truncate bg-transparent ${toneText('warn')}`}>
+                <span className={`block rounded-md border border-dashed border-warn-bd px-1.5 py-0.5 text-xs uppercase tracking-wide truncate bg-transparent ${toneText('warn')}`}>
                   {suggested.get(d)!.reason}?
                 </span>
               </Tip>
@@ -168,7 +189,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
               /* Loaded cells hide their gesture behind a bare cursor
                  change — on hover a corner glyph names the action
                  without reflowing the cell (overlay, not in-flow). */
-              <span className="absolute bottom-1 right-1 hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center size-5 rounded border border-dashed border-border bg-card"
+              <span className="absolute bottom-1 right-1 hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center size-5 rounded-md border border-dashed border-border bg-card"
                 aria-hidden>
                 <CalendarOffGlyph className="text-muted-foreground" />
               </span>
@@ -210,10 +231,10 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                       painted a ~9% wash — invisible on white.  Same
                       fill as the chip = one unbroken bar. */}
                   <button type="button"
-                    className={`pointer-events-auto block w-full h-6 min-h-tap bg-ok-bg ${
+                    className={`pointer-events-auto block w-full h-6 min-h-tap bg-ok-bg ${CHIP_FOCUS} ${
                       lane === 1 ? 'mt-7' : ''} ${
-                      leftConnected ? '-ml-1.5 rounded-l-none' : 'rounded-l'} ${
-                      continues ? 'rounded-r-none -mr-1.5' : 'rounded-r'}`}
+                      leftConnected ? '-ml-1.5 rounded-l-none' : 'rounded-l-md'} ${
+                      continues ? 'rounded-r-none -mr-1.5' : 'rounded-r-md'}`}
                     onClick={() => onOpenLoad(row, info.load)}>
                     <span className="sr-only">
                       {t('kpi_board.transit_open_sr', 'in transit — {{rate}} to {{place}} — open load details', {
@@ -235,7 +256,7 @@ export const DayCells = memo(function DayCells({ row, days, loads, suggestions, 
                     { day: dayLabel(d),
                       v: `$${Math.round(row.weekly_target / 7).toLocaleString()}` })
                 : t('kpi_board.mark_tip', 'Mark {{day}} inactive', { day: dayLabel(d) })}>
-                <span className="flex h-6 items-center justify-center rounded border border-dashed border-border">
+                <span className="flex h-6 items-center justify-center rounded-md border border-dashed border-border">
                   <CalendarOffGlyph className="text-muted-foreground/60" />
                 </span>
               </Tip>

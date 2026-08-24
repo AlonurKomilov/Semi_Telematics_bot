@@ -182,7 +182,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
       {drift > 0 && (
         /* Instruction + the control for it in one block: prose that
            prescribes an action the reader cannot take is a dead end. */
-        <div className={`flex flex-wrap items-center gap-2 text-xs ${toneClasses('warn')} px-2 py-1.5 rounded`}>
+        <div className={`flex flex-wrap items-center gap-2 text-xs ${toneClasses('warn')} px-2 py-1.5 rounded-md`}>
           <TriangleAlert className="shrink-0 size-3" />
           <span>
             {t('kpi_board.drift_n',
@@ -203,13 +203,13 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-flex items-center" aria-hidden>
-            <span className={`h-6 leading-6 rounded-l rounded-r-none px-1.5 text-xs tabular-nums ${toneClasses('ok')}`}>$950</span>
+            <span className={`h-6 leading-6 rounded-l rounded-r-none px-1.5 text-xs tabular-nums ${toneClasses('ok', { border: false })}`}>$950</span>
             <span className="h-6 w-6 rounded-r bg-ok-bg" />
           </span>
           {t('kpi_board.leg_loads4', 'load (rate · place → delivers) — the bar spans its days')}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block h-6 leading-6 rounded px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn')}`}>{t('kpi_board.inactive', 'inactive')}</span>
+          <span className={`inline-block h-6 leading-6 rounded-md px-1.5 text-xs font-medium uppercase tracking-wide ${toneClasses('warn', { border: false })}`}>{t('kpi_board.inactive', 'inactive')}</span>
           {t('kpi_board.leg_inactive2', 'not counted')}
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -233,7 +233,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
             once scrolled past, leaving an amber pill with no definition
             anywhere on screen. */}
         <span className="inline-flex items-center gap-1.5">
-          <span className={`inline-block h-6 leading-6 rounded px-1.5 text-xs font-medium ${toneClasses('warn')}`}>{t('kpi_board.stale', 'stale')}</span>
+          <span className={`inline-block h-6 leading-6 rounded-md px-1.5 text-xs font-medium ${toneClasses('warn', { border: false })}`}>{t('kpi_board.stale', 'stale')}</span>
           {t('kpi_board.leg_stale', 'loads changed after generation — still pays from the snapshot')}
         </span>
       </div>

@@ -115,7 +115,7 @@ export function NewRunDialog({ open, onClose, onCreated, existing }: {
           </p>
         )}
         {overlap && (
-          <p className={`inline-flex items-center text-xs ${toneClasses('warn')} px-2 py-1 rounded`}>
+          <p className={`inline-flex items-center text-xs ${toneClasses('warn')} px-2 py-1 rounded-md`}>
             {t('kpi_runs.overlap_warn',
               'This period overlaps the {{status}} run {{a}} – {{b}} — creating it makes a second run over the same loads.',
               { status: overlap.status, a: overlap.period_start, b: overlap.period_end })}

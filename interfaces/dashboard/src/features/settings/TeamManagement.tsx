@@ -1325,7 +1325,7 @@ export default function TeamManagement() {
                             own role from this drawer (lockout-prevention
                             pattern already documented in MEMORY.md project_option_c_nav_permissions). */}
                         {isSelfEdit ? (
-                          <p className={`text-xs px-3 py-2 rounded ${toneClasses('warn')}`}>
+                          <p className={`text-xs px-3 py-2 rounded-md ${toneClasses('warn')}`}>
                             You can't change your own role here. Ask another Owner / Admin to make this change.
                           </p>
                         ) : (
@@ -1597,7 +1597,7 @@ export default function TeamManagement() {
                       <div className="border-t border-border pt-5">
                         <h3 className="text-sm font-semibold text-danger mb-3">Danger Zone</h3>
                         {isSelfEdit ? (
-                          <p className={`text-xs px-3 py-2 rounded ${toneClasses('warn')}`}>
+                          <p className={`text-xs px-3 py-2 rounded-md ${toneClasses('warn')}`}>
                             You can't deactivate your own account here. Ask another Owner / Admin if you need to suspend access.
                           </p>
                         ) : confirmAction !== 'deactivate' && confirmAction !== 'activate' ? (

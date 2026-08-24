@@ -531,7 +531,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           </label>
         </div>
         {((cfg.floor_weekly_gross == null) !== (cfg.floor_rpm == null)) && (
-          <p className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded inline-block`} role="status">
+          <p className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded-md inline-block`} role="status">
             {t('kpi_config.one_floor',
               'Only one floor is set — the 0% rule needs BOTH and is inactive until the other is filled.')}
           </p>
@@ -615,7 +615,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           {lint.length > 0 && (
             <ul className="space-y-1" role="status" aria-live="polite">
               {lint.map((w, i) => (
-                <li key={i} className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded`}>
+                <li key={i} className={`text-xs ${toneClasses('warn')} border px-2 py-1 rounded-md`}>
                   {w}
                 </li>
               ))}
@@ -689,7 +689,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
                     line away from the X. */}
                 <span className="ml-auto flex items-center gap-3">
                   {deadRows.has(i) && (
-                    <span className={`text-xs ${toneClasses('warn')} border px-1.5 py-0.5 rounded`}>
+                    <span className={`text-xs ${toneClasses('warn')} border px-1.5 py-0.5 rounded-md`}>
                       {t('kpi_config.never_applies', 'never applies')}
                     </span>
                   )}
@@ -795,7 +795,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             sub-region's — bounded by a rule, not by 16px of air. */}
         <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
           {rulesDirty && (
-            <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
+            <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {t('kpi_config.unsaved', 'Unsaved changes')}
             </span>
           )}
@@ -851,7 +851,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
                   </span>
                 )}
                 {(targets[co.id] ?? '').trim() === '' && (
-                  <span className={`ml-2 text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+                  <span className={`ml-2 text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded-md`}>
                     {t('kpi_config.no_target_flag', 'no target — trucks resolve 0%')}
                   </span>
                 )}
@@ -873,7 +873,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
         </ul>
         <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
           {targetsDirty && (
-            <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
+            <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded-md`}>
               {t('kpi_config.unsaved', 'Unsaved changes')}
             </span>
           )}

@@ -417,7 +417,7 @@ export default function IncentiveRuns() {
                     {t('kpi_runs.finalize', 'Finalize run')}
                   </Button>
                 ) : (
-                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
+                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md ${toneClasses('ok')}`}>
                     <Lock className="size-3" />
                     {t('kpi_runs.finalized', 'Finalized — the paid record')}
                   </span>
@@ -782,7 +782,7 @@ export default function IncentiveRuns() {
               })}
           </p>
           {staleCount > 0 && (
-            <p className={`text-xs ${toneClasses('warn')} px-2 py-1 rounded inline-block`}>
+            <p className={`text-xs ${toneClasses('warn')} px-2 py-1 rounded-md inline-block`}>
               {t('kpi_runs.finalize_stale_warn',
                 '{{n}} rows are STALE — their loads changed after generation. Consider “Recreate draft” on the board first.',
                 { n: staleCount })}

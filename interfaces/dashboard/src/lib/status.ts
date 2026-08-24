@@ -13,6 +13,27 @@
  *
  *   2.  `toneClasses(tone)` — the canonical "soft pill" recipe:
  *           bg-<hue>-bg (15% fill) + text-<hue> (solid) + border-<hue>-bd (30%)
+ *
+ *       THE BORDER WIDTH IS PART OF THE RECIPE — it did not used to be.
+ *       `border-<hue>-bd` sets border-COLOUR only, and Tailwind's
+ *       preflight zeroes border-width on every element, so for a long
+ *       time this helper painted a 30% colour onto a 0px edge: at 139
+ *       of 213 call-sites the documented border simply did not exist.
+ *       It went unnoticed for the obvious reason — a missing hairline
+ *       reads as a deliberate flat chip, not as a bug.  The width now
+ *       ships with the recipe so `toneClasses()` delivers what
+ *       design.md §3 promises.
+ *
+ *       The opt-OUT exists for one geometric reason: the pill is
+ *       border-box, so a hairline steals 2px of content height.  An
+ *       element with a FIXED height whose line-height fills it (the
+ *       board's `h-6 leading-6` chips) overflows its own box once a
+ *       border appears.  Those pass `{ border: false }` — a deliberate,
+ *       greppable exception, not an accident:
+ *
+ *           toneClasses('warn')                   → fill + text + 1px edge
+ *           toneClasses('warn', { border: false }) → fill + text, no edge
+ *
  *       This is the treatment that was hand-written ~900 times across
  *       the app as `bg-green-500/15 text-green-700 dark:text-green-400
  *       border-green-500/30`.  Now it lives once.  NB: the alpha is
@@ -42,9 +63,13 @@ const TONE_CLASSES: Record<Tone, string> = {
   neutral: 'bg-muted text-muted-foreground border-border',
 };
 
-/** Soft-pill class recipe for a tone (bg /15, solid text, border /30). */
-export function toneClasses(tone: Tone): string {
-  return TONE_CLASSES[tone];
+/**
+ * Soft-pill class recipe for a tone: bg /15 fill + solid text + the /30
+ * border, width included.  Pass `{ border: false }` only where a fixed
+ * height leaves no room for the hairline — see the header note.
+ */
+export function toneClasses(tone: Tone, opts?: { border?: boolean }): string {
+  return opts?.border === false ? TONE_CLASSES[tone] : `${TONE_CLASSES[tone]} border`;
 }
 
 /** Just the solid foreground colour class — for icons, dots, chart bars. */
@@ -122,8 +147,11 @@ export function statusTone(status: string | null | undefined): Tone {
 }
 
 /** Convenience: status string → soft-pill classes in one call. */
-export function statusClasses(status: string | null | undefined): string {
-  return toneClasses(statusTone(status));
+export function statusClasses(
+  status: string | null | undefined,
+  opts?: { border?: boolean },
+): string {
+  return toneClasses(statusTone(status), opts);
 }
 
 /**

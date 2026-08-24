@@ -93,7 +93,7 @@ export default function KpiConfiguration() {
            scroll position — the full-width strip covered Save 100% in
            a 65px scroll band no end-padding could fix. */
         <div className="sticky bottom-2 z-30 mt-6 inline-flex max-w-fit flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-md">
-          <span className={`text-xs ${toneClasses('warn')} border px-2 py-0.5 rounded`}>
+          <span className={`text-xs ${toneClasses('warn')} border px-2 py-0.5 rounded-md`}>
             {t('kpi_config.dirty_n', '{{n}} unsaved', { n: dirtyList.length })}
           </span>
           {dirtyList.map((d) => (
