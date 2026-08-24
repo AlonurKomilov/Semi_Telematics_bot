@@ -339,6 +339,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { cn } from '@/lib/utils';
 import { iconSizeClass } from '@/lib/iconSize';
+import { Card } from '@/components/ui/card';
 
 interface KBArticle {
   id: number;
@@ -779,7 +780,7 @@ export default function KnowledgeBase() {
 
       {/* Create / Edit Form */}
       {showForm && (
-        <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+        <Card className="space-y-4">
           <h2 className="text-lg font-semibold">
             {editing ? t('knowledge.form_title_edit') : t('knowledge.form_title_new')}
           </h2>
@@ -961,18 +962,18 @@ export default function KnowledgeBase() {
               </button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
       {/* Articles list */}
       {loading && !articlesData ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-card border border-border rounded-xl p-5 animate-pulse">
+            <Card className="animate-pulse" key={i}>
               <div className="h-4 w-1/3 bg-muted rounded mb-3" />
               <div className="h-3 w-2/3 bg-muted rounded mb-2" />
               <div className="h-3 w-1/2 bg-muted rounded" />
-            </div>
+            </Card>
           ))}
         </div>
       ) : articles.length === 0 ? (

@@ -17,6 +17,7 @@ import PoiIcon from '../../features/live-map/PoiIcon';
 import { Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
+import { Card } from '@/components/ui/card';
 
 const REFRESH_MS      = 30_000;   // full data refresh (fuel, DEF, status)
 const LIVE_REFRESH_MS =  5_000;   // position-only fast refresh
@@ -697,7 +698,7 @@ export default function LiveMap() {
       </div>
 
       {/* Side panel */}
-      <div className="w-80 bg-card border border-border rounded-xl overflow-y-auto shrink-0">
+      <Card padding="none" className="w-80 overflow-y-auto shrink-0">
         <div className="p-4 border-b border-border space-y-3">
           <h2 className="font-semibold">Vehicles ({filtered.length})</h2>
           <input
@@ -1019,7 +1020,7 @@ export default function LiveMap() {
             })}
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

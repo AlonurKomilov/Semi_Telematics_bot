@@ -12,6 +12,7 @@ import { CardSkeleton } from '../../../components/shell';
 import type { Vehicle, VehiclesResponse } from '../../../types';
 import { LocationRows } from './_shared/LocationRows';
 import type { VehicleSectionProps } from './_shared/types';
+import { Card } from '@/components/ui/card';
 
 export default function VehicleLocation({ vehicleName, company }: VehicleSectionProps) {
   const { data: v, isLoading } = useQuery<Vehicle | null>({
@@ -31,7 +32,7 @@ export default function VehicleLocation({ vehicleName, company }: VehicleSection
   const loc = v.location || {};
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+    <Card className="space-y-3">
       <h2 className="text-lg font-semibold mb-3">Location</h2>
       <LocationRows
         address={loc.reverseGeo?.formattedLocation || v.formattedAddress || v.address}
@@ -40,6 +41,6 @@ export default function VehicleLocation({ vehicleName, company }: VehicleSection
         speedMph={v.speed_mph ?? null}
         ts={loc.time ?? null}
       />
-    </div>
+    </Card>
   );
 }

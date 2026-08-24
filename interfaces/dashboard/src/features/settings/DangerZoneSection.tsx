@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { toneClasses } from '../../lib/status';
+import { Card } from '@/components/ui/card';
 
 interface Lifecycle {
   account_id: number;
@@ -107,7 +108,7 @@ export default function DangerZoneSection() {
   };
 
   return (
-    <section className="bg-card rounded-lg border border-destructive/40 p-6 mt-6">
+    <Card className="border-destructive/40 mt-6" render={<section />}>
       <h2 className="text-lg font-semibold flex items-center gap-2 text-destructive">
         <AlertTriangle className="size-4.5" />
         Danger zone
@@ -201,6 +202,6 @@ export default function DangerZoneSection() {
           </button>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

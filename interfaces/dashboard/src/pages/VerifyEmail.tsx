@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { apiJSON } from '../api/client';
+import { Card } from '@/components/ui/card';
 
 /**
  * Email-verification landing page.
@@ -55,7 +56,7 @@ export default function VerifyEmail() {
         <p className="text-muted-foreground">{t('auth.verify_title')}</p>
       </div>
 
-      <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm text-center space-y-4">
+      <Card padding="panel" className="shadow-lg w-full max-w-sm text-center space-y-4">
         {status === 'verifying' && (
           <>
             <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center">
@@ -96,7 +97,7 @@ export default function VerifyEmail() {
             </Link>
           </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

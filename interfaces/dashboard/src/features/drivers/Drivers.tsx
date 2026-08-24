@@ -40,6 +40,7 @@ import {
 import {
   tabsForPersona, showsExpiringBanner, type DriverDetailTab,
 } from '../../features/drivers/personaConfig';
+import { Card } from '@/components/ui/card';
 
 const DOC_TYPES: Array<{ key: string; label: string }> = [
   { key: 'cdl',              label: 'CDL' },
@@ -1150,7 +1151,7 @@ function SamsaraDriverPicker({
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 left-0 right-0 bg-card border border-border rounded shadow-lg max-h-80 overflow-hidden flex flex-col">
+        <Card padding="none" className="absolute z-20 mt-1 left-0 right-0 shadow-lg max-h-80 overflow-hidden flex flex-col">
           <div className="p-1.5 border-b border-border flex items-center gap-1.5">
             <Search className="text-muted-foreground size-3" />
             <input
@@ -1220,7 +1221,7 @@ function SamsaraDriverPicker({
               })
             )}
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

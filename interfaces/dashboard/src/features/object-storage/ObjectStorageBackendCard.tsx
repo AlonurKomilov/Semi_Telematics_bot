@@ -182,7 +182,7 @@ export default function ObjectStorageBackendCard() {
   const activeBackend = (cfg.backend as Backend) || 'disk';
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 space-y-5">
+    <Card className="space-y-5">
       <h3 className="text-sm font-semibold">{t('storage.settings.title')}</h3>
 
       {/* ── Drive connection block (single source) ───────────── */}
@@ -242,7 +242,7 @@ export default function ObjectStorageBackendCard() {
           two different permissions look like one setting. */}
       {/* ── Routing table ────────────────────────────────────── */}
       <RoutingTable connectedToDrive={driveConnected} />
-    </div>
+    </Card>
   );
 }
 

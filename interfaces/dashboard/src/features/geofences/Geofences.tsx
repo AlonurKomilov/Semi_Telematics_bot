@@ -15,6 +15,7 @@ import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';
 import { GEOFENCE } from '../../config/mapColors';
 import { toneClasses } from '../../lib/status';
+import { Card } from '@/components/ui/card';
 
 /** @deprecated — CSS injection is now handled by useLeafletMap */
 // function ensureLeafletCSS() { ... }  — removed
@@ -407,7 +408,7 @@ export default function Geofences() {
 
           {/* ── ADD ZONE PANEL ── */}
           {panelMode === 'add' && (
-            <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+            <Card className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold">New Zone</h2>
                 <button onClick={closeAddPanel} className="text-muted-foreground hover:text-foreground text-sm py-0.5 -my-0.5 min-h-tap">✕</button>
@@ -462,7 +463,7 @@ export default function Geofences() {
                     />
                     {geocoding && <span className="absolute right-2 top-2.5 text-muted-foreground text-xs animate-pulse">⟳</span>}
                     {geocodeResults.length > 0 && (
-                      <ul className="absolute z-[500] mt-1 w-full bg-card border border-border rounded-lg shadow-xl overflow-hidden text-sm">
+                      <Card padding="none" className="absolute z-[500] mt-1 w-full shadow-xl overflow-hidden text-sm" render={<ul />}>
                         {geocodeResults.map(r => (
                           <li key={r.place_id}>
                             <button type="button" onClick={() => pickGeocodeResult(r)}
@@ -471,7 +472,7 @@ export default function Geofences() {
                             </button>
                           </li>
                         ))}
-                      </ul>
+                      </Card>
                     )}
                   </div>
                   <button
@@ -571,12 +572,12 @@ export default function Geofences() {
                   {saving ? 'Saving…' : 'Create Zone'}
                 </button>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* ── DETAIL PANEL ── */}
           {panelMode === 'detail' && selected && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <Card>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold truncate pr-2">{selected.properties?.name || 'Zone'}</h2>
                 <button onClick={() => setPanelMode('list')} className="text-muted-foreground hover:text-foreground text-sm shrink-0 py-1 -my-1 min-h-tap">✕</button>
@@ -626,12 +627,12 @@ export default function Geofences() {
                   {deletingId === selected.properties?.id ? 'Deleting…' : '🗑 Delete Zone'}
                 </button>
               )}
-            </div>
+            </Card>
           )}
 
           {/* ── ZONE LIST ── */}
           {geofences.length > 0 && panelMode !== 'add' && (
-            <div className="bg-card border border-border rounded-xl p-3 flex-1 overflow-y-auto min-h-0">
+            <Card padding="compact" className="flex-1 overflow-y-auto min-h-0">
               <h3 className="text-xs text-muted-foreground uppercase tracking-wide mb-2">All Zones</h3>
               <ul className="space-y-0.5">
                 {geofences.map((f, i) => {
@@ -670,7 +671,7 @@ export default function Geofences() {
                   );
                 })}
               </ul>
-            </div>
+            </Card>
           )}
 
           {/* Empty state when no zones and not in add mode */}

@@ -24,6 +24,15 @@ import { cn } from "@/lib/utils"
  * `padding="none"` is for a card whose children own their own edges — a
  * DataGrid, a divided list, anything that must bleed to the border.
  *
+ * `padding="panel"` is a THIRD role design.md did not have a rule for,
+ * and finding it is why the p-6/p-8 sites were read before being
+ * rewritten. Seventeen of them are not page cards at all: the auth
+ * screens, the public-intake success panels, the maintenance blocker and
+ * ErrorState are a centred box that IS the page, with nothing behind it
+ * to be dense against. Forcing those to `p-4` would have been the
+ * refactor making the product worse. They collapse to one step instead
+ * of five (p-6 and p-8 both land here).
+ *
  * `cardVariants` is exported for the surfaces that cannot be a <Card>:
  * an element that already exists for another reason (a <label>, a
  * grid item with its own ref) still gets the one definition by calling
@@ -32,9 +41,14 @@ import { cn } from "@/lib/utils"
 const cardVariants = cva("bg-card border border-border rounded-lg", {
   variants: {
     padding: {
+      /** Children own their own edges (a DataGrid, a divided list). */
       none: "",
+      /** A dense in-page card. */
       compact: "p-3",
+      /** An in-page card. */
       default: "p-4",
+      /** A centred box that IS the page: auth, blockers, success. */
+      panel: "p-6",
     },
   },
   defaultVariants: { padding: "default" },

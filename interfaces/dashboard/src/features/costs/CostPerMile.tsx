@@ -138,12 +138,12 @@ export default function CostPerMile() {
           <p className="text-sm text-muted-foreground mb-2">{vehicles.length} vehicle{vehicles.length !== 1 && 's'} tracked</p>
 
           {/* CPM bar chart */}
-          <div className="bg-card border border-border rounded-xl p-5 mb-6">
+          <Card className="mb-6">
             <p className="text-sm text-muted-foreground mb-3 font-medium">Cost per Mile by Vehicle</p>
             <Suspense fallback={<div className="h-[220px] bg-muted/40 rounded animate-pulse" />}>
               <CpmChart vehicles={vehicles} avgCpm={fleet?.avg_cpm ?? null} />
             </Suspense>
-          </div>
+          </Card>
 
           <DataGrid
             tableId="cost-per-mile"

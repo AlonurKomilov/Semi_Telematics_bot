@@ -23,6 +23,7 @@ import { Switch } from '../../components/ui/switch';
 import { Input } from '../../components/ui/input';
 import { useAssemblies } from '../parts/useAssemblies';
 import type { SceneSelection } from './Scene';
+import { Card } from '@/components/ui/card';
 
 // The 3D chunk (three.js + r3f) loads only when this page opens.
 const Scene = lazy(() => import('./Scene'));
@@ -101,7 +102,7 @@ export default function TruckAnatomy() {
 
       <div className="flex-1 min-h-0 flex gap-4">
         {/* ── The taxonomy panel — the same language, browsable ── */}
-        <aside className="w-80 shrink-0 flex flex-col min-h-0 bg-card border border-border rounded-lg overflow-hidden">
+        <Card padding="none" className="w-80 shrink-0 flex flex-col min-h-0 overflow-hidden" render={<aside />}>
           <div className="p-2 border-b border-border">
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none size-3.5" />
@@ -160,10 +161,10 @@ export default function TruckAnatomy() {
               );
             })}
           </div>
-        </aside>
+        </Card>
 
         {/* ── The stage ── */}
-        <div className="relative flex-1 min-h-0 bg-card border border-border rounded-lg overflow-hidden">
+        <Card padding="none" className="relative flex-1 min-h-0 overflow-hidden">
           <Suspense fallback={(
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
               Loading the rig…
@@ -197,7 +198,7 @@ export default function TruckAnatomy() {
               </p>
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

@@ -30,6 +30,7 @@ import AccountActivitySection from './AccountActivitySection';
 import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
 import { useSavedFlash } from './_shared/useSavedFlash';
+import { Card } from '@/components/ui/card';
 
 /** Small uppercase source divider — the per-source rhythm of the page. */
 function SourceLabel({ children }: { children: React.ReactNode }) {
@@ -146,7 +147,7 @@ export default function MyNotifications() {
       <SourceLabel>Channels</SourceLabel>
       <div className="grid gap-4 lg:grid-cols-3 items-start">
         {/* Telegram — master switch + resolve receipts */}
-        <section className="bg-card border border-border rounded-xl p-4">
+        <Card render={<section />}>
           <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
             <Send className="size-4" /> Telegram
           </p>
@@ -190,7 +191,7 @@ export default function MyNotifications() {
               </span>
             </span>
           </label>
-        </section>
+        </Card>
 
         <EmailChannelCard onChanged={bump} />
         <PushChannelCard onChanged={bump} />

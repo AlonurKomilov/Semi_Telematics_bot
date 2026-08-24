@@ -7,6 +7,7 @@ import { BellRing } from 'lucide-react';
 import {
   setBannerLevel, useBannerLevel, type BannerLevel,
 } from './bannerLevel';
+import { Card } from '@/components/ui/card';
 
 const OPTIONS: { value: BannerLevel; label: string; hint: string }[] = [
   {
@@ -30,7 +31,7 @@ export default function BannerLevelCard() {
   const level = useBannerLevel();
 
   return (
-    <section className="bg-card border border-border rounded-xl p-4">
+    <Card render={<section />}>
       <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
         <BellRing className="size-4" /> On-screen alerts
       </p>
@@ -60,6 +61,6 @@ export default function BannerLevelCard() {
           );
         })}
       </div>
-    </section>
+    </Card>
   );
 }

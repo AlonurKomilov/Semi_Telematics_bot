@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import { apiJSON } from '../../../api/client';
 import type { VehicleSectionProps } from './_shared/types';
+import { Card } from '@/components/ui/card';
 
 interface UsageSummary {
   vehicle_id: string;
@@ -107,7 +108,7 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
   }));
 
   return (
-    <div className="mt-6 lg:col-span-2 bg-card border border-border rounded-xl p-5">
+    <Card className="mt-6 lg:col-span-2">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold">Usage Trends</h2>
         <span className="text-xs text-muted-foreground">last 30 days</span>
@@ -191,6 +192,6 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
           )}
         </>
       )}
-    </div>
+    </Card>
   );
 }

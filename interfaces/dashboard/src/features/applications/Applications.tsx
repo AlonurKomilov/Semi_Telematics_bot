@@ -32,6 +32,7 @@ import type { AnyColumn } from '../../types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApplicationsQuery, type AppRow } from './useApplications';
 import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
+import { Card } from '@/components/ui/card';
 
 // Lifecycle split for the grid's segment tabs: the working pipeline
 // vs the two terminal outcomes.  Finer stage slicing (Submitted /
@@ -857,7 +858,7 @@ export default function Applications() {
           applications yet there is nothing to look at and creating a link
           is the whole job, so it opens; once applications exist the table
           is the point and the tool folds away. */}
-      <section className="bg-card border border-border rounded-lg p-4">
+      <Card render={<section />}>
         <h2 className="text-base font-semibold flex items-center gap-2 mb-3">
           <button
             type="button"
@@ -1031,7 +1032,7 @@ export default function Applications() {
           </ul>
         )}
         </>)}
-      </section>
+      </Card>
 
       {/* ── In-progress drafts (save & resume funnel stage) ─────── */}
       <InProgressDrafts />
@@ -1078,9 +1079,9 @@ export default function Applications() {
             column filters, segment tab, sort and page index — their whole
             working set, with no warning and no way back. */}
         {view === 'board' && (
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <Card padding="none" className="overflow-hidden">
             <ApplicationsBoard rows={boardRows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
-          </div>
+          </Card>
         )}
         <div className={view === 'table' ? '' : 'hidden'}>
         {loading ? (
@@ -1278,7 +1279,7 @@ function InProgressDrafts() {
   ];
 
   return (
-    <section className="bg-card border border-border rounded-lg p-4">
+    <Card render={<section />}>
       <h2 className="text-base font-semibold flex items-center gap-2 mb-1">
         <Clock3 className="text-muted-foreground size-4" /> In progress ({rows.length})
       </h2>
@@ -1288,7 +1289,7 @@ function InProgressDrafts() {
       </p>
       <DataGrid columns={columns} data={rows as unknown as Record<string, unknown>[]}
         enableToolbar={false} enablePagination={rows.length > 25} />
-    </section>
+    </Card>
   );
 }
 
@@ -2100,7 +2101,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-border bg-card shadow-lg">
+          <Card padding="none" className="absolute right-0 z-50 mt-2 w-80 shadow-lg">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-sm font-medium">Notifications</span>
               {unread > 0 && (
@@ -2165,7 +2166,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
                   ? 'Connect a channel' : 'Manage in Notification preferences'}
               </Link>
             </div>
-          </div>
+          </Card>
         </>
       )}
     </div>

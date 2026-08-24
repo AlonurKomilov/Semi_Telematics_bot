@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { apiFetch } from '../../api/client';
 import { DateRangePresets } from '../../components/shell';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
+import { Card } from '@/components/ui/card';
 
 
 const WINDOW_OPTIONS = [
@@ -90,7 +91,7 @@ export default function DotBinder() {
 
   return (
     <div className="max-w-xl">
-      <div className="bg-card border border-border rounded-xl p-6">
+      <Card>
         <div className="mb-5">
           <h2 className="text-base font-semibold inline-flex items-center gap-2">
             <FileText className="text-muted-foreground size-4" />
@@ -153,7 +154,7 @@ export default function DotBinder() {
             seconds for large fleets.
           </p>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

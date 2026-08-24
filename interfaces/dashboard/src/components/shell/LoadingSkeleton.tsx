@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 
 interface SkeletonProps {
   className?: string;
@@ -41,13 +42,10 @@ export function KpiSkeleton({
       {showPill && <LoadingPill message={message} />}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: count }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-card border border-border rounded-xl p-5"
-          >
+          <Card key={i}>
             <Skeleton className="h-3 w-20 mb-3" />
             <Skeleton className="h-8 w-16" />
-          </div>
+          </Card>
         ))}
       </div>
     </div>
@@ -68,7 +66,7 @@ export function TableSkeleton({
   return (
     <div>
       {showPill && <LoadingPill message={message} />}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <Card padding="none" className="overflow-hidden">
         <div className="border-b border-border bg-card px-4 py-3 flex gap-4">
           {Array.from({ length: cols }).map((_, i) => (
             <Skeleton key={i} className="h-3 flex-1" />
@@ -81,7 +79,7 @@ export function TableSkeleton({
             ))}
           </div>
         ))}
-      </div>
+      </Card>
     </div>
   );
 }

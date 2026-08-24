@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Send, Mail, MonitorSmartphone, Check, Bell } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
+import { Card } from '@/components/ui/card';
 
 type ChannelKey = 'telegram_dm' | 'email' | 'web_push' | 'in_app';
 
@@ -99,26 +100,26 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
   // Load failed — offer a retry, never a false "all good" empty state.
   if (loaded && failed) {
     return (
-      <section className="bg-card border border-border rounded-xl p-4">
+      <Card render={<section />}>
         <p className="text-sm text-muted-foreground">
           Couldn’t load account-activity settings.{' '}
           <button onClick={() => void load()} className="text-primary hover:underline font-medium">
             Try again
           </button>
         </p>
-      </section>
+      </Card>
     );
   }
   // Nothing to configure yet — say so rather than render an empty grid.
   if (loaded && (!data || visible.length === 0)) {
     return (
-      <section className="bg-card border border-border rounded-xl p-4">
+      <Card render={<section />}>
         <p className="text-sm text-muted-foreground">
           {section === 'system'
             ? 'No system notices apply to your role yet.'
             : 'No account-activity notifications yet. As new ones arrive (like when someone accepts your invite), you\u2019ll be able to choose where they reach you here.'}
         </p>
-      </section>
+      </Card>
     );
   }
   if (!data) return null;
@@ -126,7 +127,7 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
   const notReady = (k: ChannelKey) => (data.channels[k]?.ready ? '' : COLUMNS.find(c => c.key === k)!.notReady);
 
   return (
-    <section className="bg-card border border-border rounded-xl p-4">
+    <Card render={<section />}>
       {/* Opt-OUT, unlike the opt-IN Alerts grid above.  Two signals carry
           the inverted polarity: the cells are On/Off SWITCHES (not
           checkboxes — see Cell), and this badge names the default in words.
@@ -177,7 +178,7 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
             .filter(Boolean).join(' · ')}
         </p>
       )}
-    </section>
+    </Card>
   );
 }
 

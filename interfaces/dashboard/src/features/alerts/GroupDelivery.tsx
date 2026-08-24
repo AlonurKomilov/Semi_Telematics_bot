@@ -26,6 +26,7 @@ import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { AlertsTabs } from './AlertsTabs';
 import AlertRoutingSection from './delivery/AlertRoutingSection';
 import ForumRoutingSection from './delivery/ForumRoutingSection';
+import { Card } from '@/components/ui/card';
 
 export default function GroupDelivery() {
   const { has, ready } = useViewPermissions();
@@ -91,7 +92,7 @@ export default function GroupDelivery() {
   return (
     <div>
       {header}
-      <section className="bg-card border border-border rounded-xl p-5">
+      <Card render={<section />}>
         {/* AlertRoutingSection is the mode-aware controller: the DELIVERY
             selector on top, then the single-forum table (singleBody) or
             the per-role roster.  The bot-identity block is NOT here — it
@@ -101,7 +102,7 @@ export default function GroupDelivery() {
           canManageAccount={canManageAccount}
           singleBody={<ForumRoutingSection />}
         />
-      </section>
+      </Card>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
 } from './controls';
 import { pspDisclosure, fcraDisclosure, employmentDisclosure } from './disclosures';
 import type { CarrierLegal, Disclosure, Block } from './disclosures';
+import { Card } from '@/components/ui/card';
 
 export interface StepDef {
   title: string;
@@ -527,7 +528,7 @@ function CarrierNameInput({ token, value, onChange, onPick, error }: {
     <div className="relative" onBlurCapture={() => setTimeout(() => setOpen(false), 120)}>
       <TextInput value={value} onChange={onInput} error={error} />
       {open && (
-        <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg">
+        <Card padding="none" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto shadow-lg" render={<ul />}>
           <li className="px-3 pt-1.5 pb-0.5 text-2xs uppercase tracking-wide text-muted-foreground/70">
             From the FMCSA registry
           </li>
@@ -547,7 +548,7 @@ function CarrierNameInput({ token, value, onChange, onPick, error }: {
               </button>
             </li>
           ))}
-        </ul>
+        </Card>
       )}
     </div>
   );
@@ -997,12 +998,12 @@ function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef
             <ShieldCheck className="mt-0.5 shrink-0 size-4.5" />
             <p>Federal law requires this authorization, and it must be presented on its own. Please read the full document below, then check the box to authorize.</p>
           </div>
-          <div className="rounded-md border border-border bg-card p-4">
+          <Card>
             <p className="mb-2 text-sm font-semibold text-foreground">{doc.title}</p>
             <div className="max-h-[26rem] overflow-y-auto rounded border border-border p-3">
               <DisclosureBody blocks={doc.blocks} />
             </div>
-          </div>
+          </Card>
           {id === 'fcra' && (
             <div className="rounded-md border border-border bg-card px-4 py-3">
               <div className="max-w-xs">

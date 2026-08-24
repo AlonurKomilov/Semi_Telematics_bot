@@ -18,6 +18,7 @@ import { useTimezone } from '../../../hooks/useTimezone';
 import { todayInTimeZone, formatDay } from '../../../utils/datetime';
 import type { VehicleSectionProps } from './_shared/types';
 import { FLAG_NOTE } from '../mileageFlags';
+import { Card } from '@/components/ui/card';
 
 interface DayMiles { day: string; miles: number }
 
@@ -60,7 +61,7 @@ export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
   const maxDay = Math.max(1, ...bars.map((b) => b.miles));
 
   return (
-    <div className="mt-6 lg:col-span-2 bg-card border border-border rounded-xl p-5">
+    <Card className="mt-6 lg:col-span-2">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-semibold">Mileage</h2>
         <DateRangePresets
@@ -118,6 +119,6 @@ export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
           )}
         </>
       )}
-    </div>
+    </Card>
   );
 }

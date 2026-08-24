@@ -9,6 +9,7 @@ import { usePreference } from './usePreference';
 import { resetAll } from './store';
 import { resetAppearanceDefault } from './appearance';
 import { measureUsage, formatBytes } from './usage';
+import { Card } from '@/components/ui/card';
 
 /**
  * "Your saved preferences" — the ONE place an operator can see what the
@@ -42,7 +43,7 @@ export default function StoredPreferencesCard() {
   };
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5">
+    <Card render={<section />}>
       <div className="flex items-start justify-between gap-4 mb-1">
         <h2 className="text-lg font-semibold inline-flex items-center gap-1.5">
           Saved preferences
@@ -99,6 +100,6 @@ export default function StoredPreferencesCard() {
           <RotateCcw /> Reset all
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }

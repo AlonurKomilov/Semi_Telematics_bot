@@ -14,6 +14,7 @@ import { CardSkeleton } from '../../../components/shell';
 import type { Vehicle, VehiclesResponse } from '../../../types';
 import { Row } from './_shared/Row';
 import type { VehicleSectionProps } from './_shared/types';
+import { Card } from '@/components/ui/card';
 
 export default function VehicleInfo({ vehicleName, company }: VehicleSectionProps) {
   const { data: v, isLoading } = useQuery<Vehicle | null>({
@@ -37,7 +38,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
   const defPct = v.defPercent ?? v.def_percent;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+    <Card className="space-y-3">
       <h2 className="text-lg font-semibold mb-3">Vehicle Info</h2>
       <Row label="VIN" value={v.vin} />
       <Row label="Make / Model" value={[v.make, v.model].filter(Boolean).join(' ') || '—'} />
@@ -76,6 +77,6 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
             : '—'
         }
       />
-    </div>
+    </Card>
   );
 }

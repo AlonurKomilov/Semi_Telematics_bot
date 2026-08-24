@@ -28,6 +28,7 @@ import type { LayoutMap, SectionRegistry } from './types';
 import { resolvePageLayout, sanitizeRoleLayout } from './pageLayoutConfig';
 import { useRolePageLayouts } from './useRolePageLayouts';
 import { PageSectionsGear } from './PageSectionsGear';
+import { Card } from '@/components/ui/card';
 
 interface PageLayoutHostProps<P extends object> {
   /** Section registry: id → lazy component. */
@@ -163,14 +164,14 @@ class SectionErrorBoundary extends Component<
     if (this.state.error) {
       const name = this.props.label || this.props.sectionId;
       return (
-        <div className="bg-card border border-destructive/40 rounded-xl p-4 text-sm">
+        <Card className="border-destructive/40 text-sm">
           <p className="font-medium text-destructive">
             "{name}" failed to render.
           </p>
           <p className="text-muted-foreground mt-1 text-xs">
             {this.state.error.message}
           </p>
-        </div>
+        </Card>
       );
     }
     return this.props.children;

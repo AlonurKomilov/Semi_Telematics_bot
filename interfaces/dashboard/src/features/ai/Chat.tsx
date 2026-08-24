@@ -26,6 +26,7 @@ import { renderArtifact, type Artifact } from './artifacts';
 import { ScrollRegion } from '../../components/scrolling';
 import { cn } from '@/lib/utils';
 import { sizeRegion } from '@/lib/sizeRegion';
+import { Card } from '@/components/ui/card';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -1304,7 +1305,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           </Button>
         </Tip>
         {historyOpen && (
-          <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl max-h-96 overflow-y-auto">
+          <Card padding="none" className="absolute right-0 top-full mt-1 z-50 w-80 shadow-xl max-h-96 overflow-y-auto">
             {conversations.length === 0 ? (
               <div className="px-3 py-4 text-xs text-muted-foreground text-center">
                 {t('chat.no_previous_chats')}
@@ -1375,7 +1376,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 </div>
               ))
             )}
-          </div>
+          </Card>
         )}
       </div>
     </>
@@ -2217,10 +2218,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       </button>
                     </Tip>
                     {tierOpen && (
-                      <div
-                        role="listbox"
-                        className="absolute right-0 bottom-full mb-1 z-50 w-64 rounded-lg border border-border bg-card shadow-xl"
-                      >
+                      <Card padding="none" className="absolute right-0 bottom-full mb-1 z-50 w-64 shadow-xl" role="listbox">
                         {tiers.map((tier) => {
                           const Icon = TIER_ICONS[tier.name];
                           const isActive = tier.name === currentTier;
@@ -2254,7 +2252,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             </button>
                           );
                         })}
-                      </div>
+                      </Card>
                     )}
                   </div>
                 );

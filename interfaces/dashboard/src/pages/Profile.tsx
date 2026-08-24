@@ -48,6 +48,7 @@ import { LANGUAGE_OPTIONS } from '../utils/languages';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../utils/timezones';
 import { useNow } from '../hooks/useNow';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
+import { Card } from '@/components/ui/card';
 
 // HOURS array removed in the migration-100 cleanup — the user no
 // longer picks shift hours from Profile (admin-managed in Team
@@ -169,7 +170,7 @@ export default function Profile() {
 
       {error && <ErrorState message={error} />}
 
-      <section className="bg-card border border-border rounded-xl p-5">
+      <Card render={<section />}>
         <h2 className="text-lg font-semibold mb-1">Personal preferences</h2>
         <p className="text-xs text-muted-foreground mb-4">
           These settings apply to your own dashboard, Telegram alerts, and
@@ -333,7 +334,7 @@ export default function Profile() {
         >
           {saving ? 'Saving…' : 'Save preferences'}
         </button>
-      </section>
+      </Card>
 
       <SizeCard />
       <StoredPreferencesCard />
@@ -513,7 +514,7 @@ function SignInMethods() {
   };
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5">
+    <Card render={<section />}>
       <div className="flex items-center gap-2 mb-1">
         <ShieldCheck className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">{t('profile.signin_title', 'Sign-in methods')}</h2>
@@ -731,7 +732,7 @@ function SignInMethods() {
           )}
         </p>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -784,7 +785,7 @@ function RecentActivity() {
   };
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5">
+    <Card render={<section />}>
       <div className="flex items-center gap-2 mb-1">
         <History className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">{t('profile.activity_title', 'Recent sign-in activity')}</h2>
@@ -833,7 +834,7 @@ function RecentActivity() {
           );
         })}
       </ul>
-    </section>
+    </Card>
   );
 }
 
@@ -871,7 +872,7 @@ function DataExport() {
   };
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5">
+    <Card render={<section />}>
       <div className="flex items-center gap-2 mb-1">
         <Download className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">{t('profile.export_title', 'Download my data')}</h2>
@@ -895,7 +896,7 @@ function DataExport() {
           ? t('profile.export_preparing', 'Preparing…')
           : t('profile.export_button', 'Download JSON')}
       </button>
-    </section>
+    </Card>
   );
 }
 
@@ -1008,7 +1009,7 @@ function ActiveSessions() {
   const otherCount = sorted.filter((s) => s.jti !== currentJti).length;
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5">
+    <Card render={<section />}>
       <div className="flex items-center gap-2 mb-1">
         <ShieldCheck className="text-muted-foreground size-4.5" />
         <h2 className="text-lg font-semibold">Active sessions</h2>
@@ -1086,6 +1087,6 @@ function ActiveSessions() {
         blocked within a few seconds — the other device sees a sign-in
         prompt on its next request.
       </p>
-    </section>
+    </Card>
   );
 }

@@ -24,6 +24,7 @@ import type L from 'leaflet';
 import { apiFetch, apiJSON } from '@/api/client';
 import type { PoiLayerDef } from '@/config/poiLayers';
 import { CUSTOM_LAYER_SWATCHES } from '@/config/mapColors';
+import { Card } from '@/components/ui/card';
 
 // The marker-icon picker below is USER content — the operator picks an
 // emoji that is stored on the layer row and shown on their map.  This is
@@ -356,10 +357,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
         role="dialog"
         aria-modal="true"
       >
-      <div
-        className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <Card padding="none" className="shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="font-semibold text-foreground">
@@ -637,7 +635,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
             {busy ? 'Saving…' : mode === 'edit' ? 'Save' : 'Create'}
           </button>
         </div>
-      </div>
+      </Card>
       </div>
     </>,
     document.body,

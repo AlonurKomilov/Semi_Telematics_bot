@@ -19,6 +19,7 @@ import { InfoTip } from '../../components/tooltip';
 import { toneClasses } from '../../lib/status';
 import { formatAgoShort } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
+import { Card } from '@/components/ui/card';
 
 interface Applicant {
   id: number;
@@ -65,7 +66,7 @@ export default function OnboardingQueue() {
   };
 
   return (
-    <div className="mb-4 rounded-lg border border-border bg-card p-4">
+    <Card className="mb-4">
       <div className="flex items-center gap-1.5 mb-1">
         <UserPlus className="text-primary shrink-0 size-4" aria-hidden />
         <span className="text-base font-semibold text-foreground">Onboarding</span>
@@ -121,6 +122,6 @@ export default function OnboardingQueue() {
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   );
 }

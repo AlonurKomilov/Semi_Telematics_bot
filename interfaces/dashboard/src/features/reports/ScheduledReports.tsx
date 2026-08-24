@@ -8,6 +8,7 @@ import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
 import { useAuth } from '../../context/AuthContext';
 import { REPORTS, type ReportKey } from '../../data/reports';
+import { Card } from '@/components/ui/card';
 
 const REPORT_LABEL: Record<string, string> = Object.fromEntries(
   REPORTS.map((r) => [r.key, `${r.emoji} ${r.labelFull}`]),
@@ -153,7 +154,7 @@ function ScheduleEditor({
     || availableTypes.length === 0;
 
   return (
-    <div className="space-y-4 bg-card border border-border rounded-lg p-4">
+    <Card className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-foreground">
           {initial.reportTypeLocked ? 'Edit schedule' : 'New schedule'}
@@ -278,7 +279,7 @@ function ScheduleEditor({
           {saving ? 'Saving…' : initial.reportTypeLocked ? 'Update Schedule' : 'Save Schedule'}
         </button>
       </div>
-    </div>
+    </Card>
   );
 }
 

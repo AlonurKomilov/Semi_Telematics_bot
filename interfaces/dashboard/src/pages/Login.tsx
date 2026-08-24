@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input';
 import TurnstileWidget from '../components/TurnstileWidget';
 import { toneClasses, toneText } from '../lib/status';
 import type { TelegramLoginData } from '../types';
+import { Card } from '@/components/ui/card';
 
 type Mode = 'login' | 'register';
 // Within the Register tab, the operator picks between two distinct flows:
@@ -349,7 +350,7 @@ export default function Login() {
         <p className="text-muted-foreground">{t('auth.tagline')}</p>
       </div>
 
-      <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm">
+      <Card padding="panel" className="shadow-lg w-full max-w-sm">
         {/* Tab switcher */}
         <div className="flex mb-6 border-b border-border">
           <button
@@ -714,7 +715,7 @@ export default function Login() {
           )}
           {mode === 'login' && 'Sign in with your email or Telegram account.'}
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

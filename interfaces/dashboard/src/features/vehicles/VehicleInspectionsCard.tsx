@@ -7,6 +7,7 @@ import { type Tone, toneClasses } from '../../lib/status';
 import type { PTIInspectionRow, PTIInspectionsResponse } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
+import { Card } from '@/components/ui/card';
 
 /**
  * "Last 5 inspections" mini-card embedded on the Vehicle Detail page.
@@ -60,7 +61,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
   const rows = data?.items ?? [];
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5">
+    <Card>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold inline-flex items-center gap-2">
           <ClipboardCheck className="text-primary size-4.5" />
@@ -117,6 +118,6 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
           ))}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }

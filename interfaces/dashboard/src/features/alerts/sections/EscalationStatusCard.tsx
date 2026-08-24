@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Clock, Bell } from 'lucide-react';
 import { apiJSON, ApiError } from '../../../api/client';
+import { Card } from '@/components/ui/card';
 
 interface EscalationSummary {
   past_due_count:           number;
@@ -64,7 +65,7 @@ export default function EscalationStatusCard() {
     .sort((a, b) => b[1] - a[1]);
 
   return (
-    <section className="mb-4 bg-card border border-border rounded-xl p-5">
+    <Card className="mb-4" render={<section />}>
       <header className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
           <Bell className="text-muted-foreground size-4" />
@@ -129,6 +130,6 @@ export default function EscalationStatusCard() {
           </div>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

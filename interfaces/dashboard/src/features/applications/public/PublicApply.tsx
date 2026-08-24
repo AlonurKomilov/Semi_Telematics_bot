@@ -12,6 +12,8 @@ import {
 } from './lib';
 import type { Data } from './lib';
 import { brandTintStyle, heroHeaderStyle, onColorStyle, surfaceThemeStyle } from './theme';
+import { Card, cardVariants } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -248,13 +250,13 @@ function Success({ data, reference, onReset }: { data: Data; reference: string; 
         <span className="font-medium text-foreground">{data.personal?.phone || 'the number you provided'}</span>.
         Have your CDL, DOT medical card, and employer info ready for the call.
       </p>
-      <div className="mt-5 rounded-md border border-border bg-card p-4">
+      <Card className="mt-5">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Your reference number</p>
         <p className="mt-1 font-mono text-lg font-semibold text-foreground">{reference}</p>
         <a href={`/status/${encodeURIComponent(reference)}`} className="mt-2 inline-block text-xs text-primary hover:underline py-1 -my-1 min-h-tap">
           Check your application status later →
         </a>
-      </div>
+      </Card>
       <button onClick={onReset} className="mt-6 inline-flex items-center py-0.5 min-h-tap text-sm text-primary hover:underline">Start a new application</button>
     </div>
   );
@@ -660,7 +662,11 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
         )}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
           <Stepper current={step} max={maxReached} onJump={jump} style={onColorStyle(brand?.bg_color)} />
-          <form ref={cardRef} onSubmit={next} noValidate className="rounded-lg border border-border bg-card">
+          {/* Stays a real <form> rather than <Card render={<form />}>: it
+              carries a RefObject<HTMLFormElement>, and the primitive types
+              its ref for the <div> it renders by default. cardVariants()
+              gives it the same one definition without the type fight. */}
+          <form className={cn(cardVariants({ padding: 'none' }))} ref={cardRef} onSubmit={next} noValidate>
             {/* Honeypot: off-screen + aria-hidden + not tabbable + a name no
                 autofiller targets, so a real applicant never fills it; a
                 form-filling bot does. */}

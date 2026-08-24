@@ -335,7 +335,7 @@ export default function VendorProfile() {
               (contribute-on-address-complete, link-on-approve); only the
               shop's name/contact ever travel.  The sole manual control
               here is Unlink — the wrong-auto-match escape hatch. */}
-          <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
+          <Card padding="compact" className="mb-4 flex flex-wrap items-center gap-3">
             <Globe className="text-muted-foreground shrink-0 size-4" />
             {data?.directory ? (
               <>
@@ -399,13 +399,13 @@ export default function VendorProfile() {
                 work order.
               </p>
             )}
-          </div>
+          </Card>
 
           {/* Market ranges (Phase D) — renders only when the platform
               flag is live.  'not_sharing' shows the give-to-get pitch;
               'disabled' renders nothing at all. */}
           {data?.directory && market && market.reason !== 'disabled' && (
-            <div className="bg-card border border-border rounded-lg p-3 mb-4">
+            <Card padding="compact" className="mb-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
                 <TrendingUp className="size-3.5" /> Market price ranges
               </p>
@@ -457,7 +457,7 @@ export default function VendorProfile() {
                   )}
                 </div>
               )}
-            </div>
+            </Card>
           )}
 
           {workOrders.length === 0 ? (

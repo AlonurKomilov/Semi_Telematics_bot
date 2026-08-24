@@ -17,6 +17,7 @@ import { BarChart3 } from 'lucide-react';
 import { apiJSON } from '../../../api/client';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import type { AlertType } from '../personaConfig';
+import { Card } from '@/components/ui/card';
 
 interface AggregateResponse {
   by_type: Record<string, number>;
@@ -103,7 +104,7 @@ export default function AccountAlertSummary() {
   const days = data?.days ?? 7;
 
   return (
-    <section className="mb-4 bg-card border border-border rounded-xl p-5">
+    <Card className="mb-4" render={<section />}>
       <header className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
           <BarChart3 className="text-muted-foreground size-4" />
@@ -147,6 +148,6 @@ export default function AccountAlertSummary() {
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

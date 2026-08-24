@@ -22,6 +22,7 @@ import { useInventory } from './useInventory';
 import type { InventoryItem } from './useInventory';
 import { categoryMeta, STATUS_LABELS } from './categories';
 import { AddItemDialog, ItemDialog } from './ItemDialog';
+import { Card } from '@/components/ui/card';
 
 export default function InventoryCard({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
@@ -36,7 +37,7 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
   const { items, summary } = data;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5">
+    <Card>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-semibold">Inventory</h2>
@@ -119,6 +120,6 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
           onClose={() => setSelected(null)}
         />
       )}
-    </div>
+    </Card>
   );
 }

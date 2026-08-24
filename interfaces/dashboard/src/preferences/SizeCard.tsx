@@ -24,6 +24,7 @@ import { usePreference } from './usePreference';
 import { publishAppearanceDefault, resetAppearanceDefault } from './appearance';
 import { SIZE_MIN, SIZE_MAX, SIZE_DEFAULT } from './registry';
 import type { SizeRegion as SizeRegionKey } from './registry';
+import { Card } from '@/components/ui/card';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -96,7 +97,7 @@ export default function SizeCard() {
   const atDefault = size.global === 1 && tuned === 0;
 
   return (
-    <section id="appearance" className="bg-card border border-border rounded-xl p-5 scroll-mt-20">
+    <Card className="scroll-mt-20" render={<section />} id="appearance">
       <div className="flex items-start justify-between gap-4 mb-1">
         <h2 className="text-lg font-semibold">Appearance size</h2>
         <button
@@ -200,6 +201,6 @@ export default function SizeCard() {
           )}
         </div>
       </div>
-    </section>
+    </Card>
   );
 }

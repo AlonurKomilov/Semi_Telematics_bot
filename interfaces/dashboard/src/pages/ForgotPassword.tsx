@@ -6,6 +6,7 @@ import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import TurnstileWidget from '../components/TurnstileWidget';
+import { Card } from '@/components/ui/card';
 
 /**
  * Password-reset request page.
@@ -71,7 +72,7 @@ export default function ForgotPassword() {
         <p className="text-muted-foreground">{t('auth.forgot_title')}</p>
       </div>
 
-      <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm">
+      <Card padding="panel" className="shadow-lg w-full max-w-sm">
         {submitted ? (
           <div className="space-y-4 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -138,7 +139,7 @@ export default function ForgotPassword() {
             </div>
           </form>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

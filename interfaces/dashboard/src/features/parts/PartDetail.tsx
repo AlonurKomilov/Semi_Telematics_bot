@@ -39,6 +39,7 @@ import { chartColor, toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import type { AnyColumn, CatalogPart, PartAnalytics, PublicPartEntry } from '../../types';
+import { Card } from '@/components/ui/card';
 
 function money(v: unknown, digits = 0): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, {
@@ -422,10 +423,10 @@ export default function PartDetail() {
               { label: 'Vehicles', value: String(totals.vehicles) },
               { label: 'Avg Unit Price', value: totals.avgPrice == null ? '—' : money(totals.avgPrice, 2) },
             ].map((s) => (
-              <div key={s.label} className="bg-card border border-border rounded-lg p-3">
+              <Card padding="compact" key={s.label}>
                 <p className="text-xs text-muted-foreground">{s.label}</p>
                 <p className="text-xl font-bold tabular-nums text-foreground">{s.value}</p>
-              </div>
+              </Card>
             ))}
           </div>
 
@@ -435,7 +436,7 @@ export default function PartDetail() {
               the sibling of the catalog strip on purpose: that strip
               answers "which product is this?" (identity), this one
               "what kind of thing is this?" (classification). */}
-          <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Card padding="compact" className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
             <Cog className="text-muted-foreground shrink-0 size-4" />
             <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">System</span>
             {(() => {
@@ -484,12 +485,12 @@ export default function PartDetail() {
             <span className="text-muted-foreground/60">→</span>
             <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Part</span>
             <span className="text-sm font-medium text-foreground min-w-0 truncate">{data.part.name}</span>
-          </div>
+          </Card>
 
           {/* Public-catalog link state: linking is automatic by name
               (or via Merge into… → Catalog); Unlink is the
               wrong-match escape hatch and it STICKS. */}
-          <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
+          <Card padding="compact" className="mb-4 flex flex-wrap items-center gap-3">
             <Globe className="text-muted-foreground shrink-0 size-4" />
             {data.public ? (
               <>
@@ -513,14 +514,14 @@ export default function PartDetail() {
                 Catalog.
               </p>
             )}
-          </div>
+          </Card>
 
           {/* Geographic market estimates — "what should this part
               cost around me?"  Hidden entirely while the platform
               switch is off or the part isn't catalog-linked; the
               give-to-get pitch shows the count when not sharing. */}
           {data.market && data.market.reason !== 'disabled' && data.market.reason !== 'not_linked' && (
-            <div className="bg-card border border-border rounded-lg p-3 mb-4">
+            <Card padding="compact" className="mb-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
                 Estimated market price
               </p>
@@ -561,7 +562,7 @@ export default function PartDetail() {
                     : 'Enable market sharing in Settings to see typical prices here as they become available (your data contributes anonymously in return).'}
                 </p>
               )}
-            </div>
+            </Card>
           )}
 
           {data.purchases.length === 0 ? (
@@ -600,7 +601,7 @@ export default function PartDetail() {
               {trend.length >= 2 && (
                 <section>
                   <h2 className="text-lg font-semibold text-foreground mb-2">Unit price over time</h2>
-                  <div className="bg-card border border-border rounded-lg p-3 h-56">
+                  <Card padding="compact" className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={trend} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -621,7 +622,7 @@ export default function PartDetail() {
                           strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
-                  </div>
+                  </Card>
                 </section>
               )}
 

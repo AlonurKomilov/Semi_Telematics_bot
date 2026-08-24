@@ -11,6 +11,7 @@
  */
 import { lazy, Suspense } from 'react';
 import type { OverviewSectionProps } from './_shared/types';
+import { Card } from '@/components/ui/card';
 
 const FleetStatusChart = lazy(() => import('@/features/overview/FleetStatusChart'));
 
@@ -30,7 +31,7 @@ export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
   if (moving === 0 && idle === 0 && stopped === 0) return null;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 mb-6">
+    <Card className="mb-6">
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-sm text-foreground font-medium">
@@ -51,6 +52,6 @@ export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
       >
         <FleetStatusChart moving={moving} idle={idle} stopped={stopped} />
       </Suspense>
-    </div>
+    </Card>
   );
 }

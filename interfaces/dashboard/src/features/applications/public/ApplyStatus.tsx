@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react';
 import { Truck, Search, CheckCircle2 } from 'lucide-react';
 import { statusClasses } from '../../../lib/status';
+import { Card } from '@/components/ui/card';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -83,7 +84,7 @@ export default function ApplyStatus() {
       </header>
 
       <main className="mx-auto max-w-md px-4 py-8">
-        <form onSubmit={check} className="rounded-lg border border-border bg-card p-5">
+        <Card render={<form />} onSubmit={check}>
           <h1 className="text-lg font-semibold text-foreground">Check your application</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Enter your reference number and the email you applied with.
@@ -127,7 +128,7 @@ export default function ApplyStatus() {
               )}
             </div>
           )}
-        </form>
+        </Card>
 
         {/* "/" on apply.<apex> resolves to an EMPTY first path segment, so
             resolveToken() returns '' and the driver lands on "This

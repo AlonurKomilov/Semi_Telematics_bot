@@ -19,6 +19,7 @@ import { toneText } from '../../lib/status';
 import { getConflicts, resolveConflict } from './api';
 import type { DataConflict } from './api';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
 
 const FIELD_LABEL: Record<string, string> = {
   vin: 'VIN',
@@ -52,7 +53,7 @@ export default function ConflictsPanel() {
   if (conflicts.length === 0) return null;
 
   return (
-    <div className="mt-4 rounded-lg border border-border bg-card p-4">
+    <Card className="mt-4">
       <div className="mb-1 flex items-center gap-2">
         <AlertTriangle className={cn(toneText('warn'), 'size-4')} />
         <h3 className="text-base font-semibold text-foreground">
@@ -95,7 +96,7 @@ export default function ConflictsPanel() {
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   );
 }
 

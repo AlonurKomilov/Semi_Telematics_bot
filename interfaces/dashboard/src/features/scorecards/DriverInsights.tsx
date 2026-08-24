@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { AlertTriangle, Sparkles, Lightbulb } from 'lucide-react';
 import { toneClasses, toneText, type Tone } from '@/lib/status';
 import type { CompositeScorecard, ScoreEventBreakdown } from '@/types';
+import { Card } from '@/components/ui/card';
 
 // ── Risk band ─────────────────────────────────────────────────
 //
@@ -368,7 +369,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
            screen" duplication.  Hardware/ops events get an inline
            "↳ Fleet action: …" note so the manager knows it's not a
            coaching matter. */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <Card padding="none" className="overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
           <p className="text-3xs uppercase tracking-wide text-muted-foreground font-semibold">
             Pillars · Your Events
@@ -459,7 +460,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {card.insufficient_data && (
         <div className={`flex items-start gap-2 text-2xs border rounded-lg px-2.5 py-1.5 ${toneClasses('warn')}`}>

@@ -10,6 +10,7 @@
 // JSON) never trigger any of this.
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -42,7 +43,7 @@ export default function MaintenanceOverlay() {
   if (state === 'hidden') return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 max-w-sm rounded-lg border border-border bg-card p-6 text-center shadow-xl">
+      <Card padding="panel" className="mx-4 max-w-sm text-center shadow-xl">
         <Loader2 className="mx-auto animate-spin text-primary size-6" />
         <h2 className="mt-4 text-base font-semibold text-foreground">
           {state === 'reloading' ? 'Back online' : 'Updating the platform'}
@@ -57,7 +58,7 @@ export default function MaintenanceOverlay() {
             Taking longer? Please try again in a couple of minutes.
           </p>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

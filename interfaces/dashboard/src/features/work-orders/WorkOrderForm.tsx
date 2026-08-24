@@ -38,6 +38,7 @@ import { VendorPicker } from '../vendors/VendorPicker';
 import { DIRECTORY_DISCLOSURE } from '../vendors/directoryCopy';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay, todayInTimeZone } from '../../utils/datetime';
+import { Card } from '@/components/ui/card';
 
 // ── Empty-state factories ────────────────────────────────────────
 //
@@ -1283,7 +1284,7 @@ export default function WorkOrderForm() {
       )}
 
       {/* ── Vehicle + status block ─────────────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+      <Card className="mb-5" render={<section />}>
         <h3 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
           <Receipt className="text-muted-foreground size-3.5" />
           {t('work_orders_page.section_shop_visit')}
@@ -1382,10 +1383,10 @@ export default function WorkOrderForm() {
             />
           </Field>
         </div>
-      </section>
+      </Card>
 
       {/* ── Vendor block ───────────────────────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+      <Card className="mb-5" render={<section />}>
         <h3 className="text-sm font-semibold mb-3">{t('work_orders_page.section_vendor')}</h3>
         {/* Contact fields feed the vendor REGISTRY (and, once complete,
             the public-directory review queue) — filling them here is
@@ -1439,7 +1440,7 @@ export default function WorkOrderForm() {
             />
           </Field>
         </div>
-      </section>
+      </Card>
 
       {/* ── Parts editor — grouped by service task ──────────────
           Task → parts hierarchy: each group header is a ServiceTaskPicker
@@ -1449,7 +1450,7 @@ export default function WorkOrderForm() {
           cost reports can sum per task while a mixed invoice still
           splits correctly.  Untagged lines live in the trailing
           General section. */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+      <Card className="mb-5" render={<section />}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-semibold">{t('work_orders_page.section_parts_labor', { defaultValue: 'Parts & labor' })}</h3>
@@ -1563,10 +1564,10 @@ export default function WorkOrderForm() {
               </div>
             )}
           </div>
-      </section>
+      </Card>
 
       {/* ── Cost summary block ─────────────────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+      <Card className="mb-5" render={<section />}>
         <h3 className="text-sm font-semibold mb-3">{t('work_orders_page.section_costs')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field label={t('work_orders_page.field_fee', { defaultValue: 'Fee $' })}
@@ -1595,14 +1596,14 @@ export default function WorkOrderForm() {
           <span className="text-muted-foreground">{t('work_orders_page.sum_tax')}: <span className="font-medium tabular-nums text-foreground">${(Number(wo.tax_amount) || 0).toFixed(2)}</span></span>
           <span className="text-foreground font-semibold ml-auto">{t('work_orders_page.sum_total')}: <span className="tabular-nums">${totalCostComputed.toFixed(2)}</span></span>
         </div>
-      </section>
+      </Card>
 
       {/* ── Repair documentation (3C) ──────────────────────────────
           The Complaint / Cause / Correction triplet — the DOT- and
           warranty-standard way to record a repair (reported → found →
           fixed).  All optional; a shop invoice with just costs stays
           valid, but filling these gives an audit-ready paper trail. */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+      <Card className="mb-5" render={<section />}>
         <h3 className="text-sm font-semibold mb-1">{t('work_orders_page.section_diagnosis', { defaultValue: 'Repair documentation' })}</h3>
         <p className="text-xs text-muted-foreground mb-3">{t('work_orders_page.diagnosis_hint', { defaultValue: 'The 3C format auditors and warranty claims expect. Optional.' })}</p>
         <div className="flex flex-col gap-3">
@@ -1634,10 +1635,10 @@ export default function WorkOrderForm() {
             />
           </Field>
         </div>
-      </section>
+      </Card>
 
       {/* ── Invoice / payment block ────────────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+      <Card className="mb-5" render={<section />}>
         <h3 className="text-sm font-semibold mb-3">{t('work_orders_page.section_invoice')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label={t('work_orders_page.field_invoice_number')}>
@@ -1680,7 +1681,7 @@ export default function WorkOrderForm() {
             />
           </Field>
         </div>
-      </section>
+      </Card>
 
       {/* In create mode the attachments section can't render yet (no
           work-order id → no folder path).  Show a prominent banner
@@ -1700,7 +1701,7 @@ export default function WorkOrderForm() {
 
       {/* ── Attachments (edit mode only) ──────────────────────── */}
       {isEdit && (
-        <section className="bg-card border border-border rounded-xl p-5 mb-5">
+        <Card className="mb-5" render={<section />}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
               <Paperclip className="text-muted-foreground size-3.5" />
@@ -1725,12 +1726,12 @@ export default function WorkOrderForm() {
               ))}
             </ul>
           )}
-        </section>
+        </Card>
       )}
 
       {/* ── Linked maintenance tasks (edit mode) ──────────────── */}
       {isEdit && linkedTasks.length > 0 && (
-        <section className="bg-card border border-border rounded-xl p-5 mb-5">
+        <Card className="mb-5" render={<section />}>
           <h3 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
             <LinkIcon className="text-muted-foreground size-3.5" />
             {t('work_orders_page.section_linked_tasks')}
@@ -1744,7 +1745,7 @@ export default function WorkOrderForm() {
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {!isEdit && (

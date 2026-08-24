@@ -15,6 +15,7 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
 import type { WorkSchedule } from '../../types';
+import { Card } from '@/components/ui/card';
 
 // Per-role tones used for the timeline bars.  ``all`` rides the
 // design system's primary; the rest hand-pick from the chart-color
@@ -201,7 +202,7 @@ export function WorkHoursPanel() {
       </div>
 
       {/* Timeline header */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <Card padding="none" className="overflow-hidden">
         <div className="flex border-b border-border">
           <div className="w-48 shrink-0 px-4 py-2 text-xs text-muted-foreground font-medium">Schedule</div>
           <div className="flex-1 flex">
@@ -278,7 +279,7 @@ export function WorkHoursPanel() {
             </div>
           );
         })}
-      </div>
+      </Card>
 
       {/* Create / Edit modal — base-ui Dialog matches the rest of the
           dashboard's primitives (Invites + Team Management already use

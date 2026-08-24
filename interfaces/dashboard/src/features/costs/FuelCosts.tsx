@@ -169,7 +169,7 @@ export default function FuelCosts() {
 
       {/* Add form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-5 gap-3">
+        <Card className="mb-6 grid grid-cols-5 gap-3" render={<form />} onSubmit={handleSubmit}>
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Vehicle</label>
             <input
@@ -213,7 +213,7 @@ export default function FuelCosts() {
               {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
-        </form>
+        </Card>
       )}
 
       {/* Tabs */}

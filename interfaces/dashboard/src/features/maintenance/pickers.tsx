@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Card } from '@/components/ui/card';
 
 export interface VehicleSummary {
   name: string;
@@ -100,7 +101,7 @@ export function VehiclePicker({
         className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-80 max-h-64 overflow-y-auto bg-card border border-border rounded-lg shadow-xl text-sm">
+        <Card padding="none" className="absolute z-50 mt-1 w-80 max-h-64 overflow-y-auto shadow-xl text-sm" render={<ul />}>
           {filtered.map((v) => (
             <li
               // Composite key — vehicle names can repeat across
@@ -123,7 +124,7 @@ export function VehiclePicker({
               )}
             </li>
           ))}
-        </ul>
+        </Card>
       )}
     </div>
   );

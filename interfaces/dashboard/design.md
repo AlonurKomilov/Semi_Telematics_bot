@@ -260,7 +260,11 @@ improvise (that's why some pages used to look heavier/lighter than others).
 
 Stay on Tailwind's 4px step scale. The house values, in order of
 frequency: **gap** `1 / 1.5 / 2 / 3`; **padding-x** `2 / 2.5 / 3 / 4`;
-**padding-y** `0.5 / 1 / 1.5 / 2`. Card padding `p-3`/`p-4`.
+**padding-y** `0.5 / 1 / 1.5 / 2`. Card padding is the `<Card>`
+primitive's, not a per-site choice: `compact` (p-3) · `default` (p-4)
+· `panel` (p-6, for a centred box that IS the page — auth, blockers,
+success screens) · `none` (children own their edges). Radius is not a
+variant — see §6.
 
 - **No arbitrary spacing** (`p-[13px]`, `h-[42px]`) for layout. If a
   value isn't on the scale, it's almost always wrong. (Exceptions:

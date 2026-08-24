@@ -14,6 +14,7 @@ import { PanelTopClose } from 'lucide-react';
 import {
   setNotifPosition, useNotifPosition, type NotifPosition,
 } from '@/components/banners';
+import { Card } from '@/components/ui/card';
 
 const OPTIONS: { value: NotifPosition; label: string }[] = [
   { value: 'top-right', label: 'Top right' },
@@ -39,7 +40,7 @@ export default function BannerSettingsCard() {
   };
 
   return (
-    <section className="bg-card border border-border rounded-xl p-4">
+    <Card render={<section />}>
       <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
         <PanelTopClose className="size-4" /> Notification position
       </p>
@@ -83,6 +84,6 @@ export default function BannerSettingsCard() {
           );
         })}
       </div>
-    </section>
+    </Card>
   );
 }

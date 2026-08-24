@@ -13,6 +13,7 @@ import { toneClasses } from '../../lib/status';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
+import { Card } from '@/components/ui/card';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
   const tz = useTimezone();
   const isOverLimit = summary.extra_vehicles > 0;
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-4">
+    <Card className="mb-4">
       <div className="flex items-start justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground">{summary.account_name || 'Current Plan'}</h2>
@@ -316,7 +317,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span className="text-primary">🧪 Test mode — no real charges</span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -329,7 +330,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
 function AiUsageCard({ ai }: { ai: AiUsage }) {
   const typeRows = rollupByDisplayLabel(ai.by_type);
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-4">
+    <Card className="mb-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">AI Usage</h2>
         <span className="text-xs text-muted-foreground">Last {ai.days} days</span>
@@ -373,7 +374,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -728,7 +729,7 @@ export default function Billing() {
       </div>
 
       {/* Pricing info */}
-      <div className="bg-card border border-border rounded-xl p-4 mb-6 text-sm text-muted-foreground">
+      <Card className="mb-6 text-sm text-muted-foreground">
         <p className="font-medium text-foreground/80 mb-1.5">💡 How pricing works</p>
         <ul className="space-y-1 list-disc list-inside text-xs">
           <li>Each plan includes 10 trucks. Additional <em>active</em> trucks: $2.99/truck/month.</li>
@@ -736,30 +737,30 @@ export default function Billing() {
           <li>AI usage (tokens) is included — no per-query fees on any plan.</li>
           <li>Invoices generated at the end of each billing period, with mid-cycle vehicle changes pro-rated automatically.</li>
         </ul>
-      </div>
+      </Card>
 
       {/* Invoices — Stripe-issued bills.  Hidden when empty AND on
           stub provider so test installs don't show a dead section. */}
       {(invoices.length > 0 || summary?.provider === 'stripe') && (
-        <div className="bg-card border border-border rounded-xl p-6 mb-4">
+        <Card className="mb-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-foreground">Invoices</h2>
             <span className="text-xs text-muted-foreground">Last 24</span>
           </div>
           <InvoicesTable items={invoices} />
-        </div>
+        </Card>
       )}
 
       {/* Billing history — internal monthly usage snapshots, separate
           from the Stripe invoices above.  Useful even on the stub
           provider where invoices don't exist. */}
-      <div className="bg-card border border-border rounded-xl p-6">
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">Usage History</h2>
           <span className="text-xs text-muted-foreground">Last 12 periods</span>
         </div>
         <UsageTable items={usage} />
-      </div>
+      </Card>
 
       <p className="text-xs text-muted-foreground mt-6 text-center">
         Questions?{' '}

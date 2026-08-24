@@ -16,6 +16,7 @@ import type { HealthData, HealthResponse } from '../../../types';
 import { toneClasses } from '../../../lib/status';
 import { Row } from './_shared/Row';
 import type { VehicleSectionProps } from './_shared/types';
+import { Card } from '@/components/ui/card';
 
 interface CabinWeather {
   temp_f: number | null;
@@ -84,7 +85,7 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
   const healthAlerts: string[] = health.alerts || [];
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+    <Card className="space-y-3">
       <h2 className="text-lg font-semibold mb-3">Vehicle Health</h2>
       {/* Each sensor carries its OWN Samsara clock — a dead oil-pressure
           sensor freezes independently of the rest of the card. */}
@@ -122,6 +123,6 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

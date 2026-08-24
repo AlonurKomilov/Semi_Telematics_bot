@@ -36,6 +36,7 @@ import {
   type TriggerMode,
 } from './taskFields';
 import type { MaintenanceTemplate } from '../../types';
+import { Card } from '@/components/ui/card';
 
 export interface AddTaskDialogProps {
   open: boolean;
@@ -261,7 +262,7 @@ export default function AddTaskDialog({
 
   return (
 
-        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+        <Card className="mb-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3" render={<form />} onSubmit={handleAdd}>
           {/* Apply-template dropdown — only shown when at least one
               template exists.  Selecting fills the rest of the form
               with the template's defaults; the user picks a vehicle
@@ -555,6 +556,6 @@ export default function AddTaskDialog({
               {saving ? 'Saving...' : 'Create'}
             </button>
           </div>
-        </form>
+        </Card>
   );
 }

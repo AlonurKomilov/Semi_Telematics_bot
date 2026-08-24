@@ -28,6 +28,7 @@ import {
 import { toneClasses, toneText } from '../../lib/status';
 import type { Vehicle } from '../../types';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
 
 export interface DeviceEvent {
   id: number;
@@ -92,7 +93,7 @@ export default function DeviceEventsCard({
   };
 
   return (
-    <div className="mb-4 rounded-lg border border-border bg-card p-4">
+    <Card className="mb-4">
       <div className="flex items-center gap-2 mb-2">
         <AlertTriangle className={cn(toneText('warn'), 'size-4')} />
         <h3 className="text-base font-semibold">
@@ -160,7 +161,7 @@ export default function DeviceEventsCard({
           }}
         />
       )}
-    </div>
+    </Card>
   );
 }
 

@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { Send, Mail, MonitorSmartphone } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
+import { Card } from '@/components/ui/card';
 
 // Every alert type the registry can hand us needs a row label here —
 // the fallback renders the RAW key ("maintenance"), which reads as a bug
@@ -112,7 +113,7 @@ export default function NotifyMatrix({
   };
 
   return (
-    <section className="bg-card border border-border rounded-xl p-4">
+    <Card render={<section />}>
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
         Notify me when
       </p>
@@ -183,7 +184,7 @@ export default function NotifyMatrix({
         Alerts always appear in the bell — these channels are the extra
         places they can reach you.
       </p>
-    </section>
+    </Card>
   );
 }
 

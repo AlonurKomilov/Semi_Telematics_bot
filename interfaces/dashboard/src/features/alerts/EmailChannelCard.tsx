@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { Card } from '@/components/ui/card';
 
 interface EmailPrefs {
   relevant_types: string[];
@@ -111,9 +112,9 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
 
   if (loading) {
     return (
-      <section className="bg-card border border-border rounded-xl p-4">
+      <Card render={<section />}>
         <p className="text-sm text-muted-foreground">Loading email settings…</p>
-      </section>
+      </Card>
     );
   }
   if (!prefs) return null;
@@ -122,7 +123,7 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
   const showForm = editing || !email.connected;
 
   return (
-    <section className="bg-card border border-border rounded-xl p-4">
+    <Card render={<section />}>
       {/* Channel header + status */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-base font-semibold inline-flex items-center gap-2">
@@ -230,6 +231,6 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
               and the delivery cadence. */}
         </div>
       )}
-    </section>
+    </Card>
   );
 }

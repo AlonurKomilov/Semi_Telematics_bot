@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import PublicApply, { type Brand } from './public/PublicApply';
 import { applyPublicFormTheme, surfaceContrastWeak } from './public/theme';
+import { Card } from '@/components/ui/card';
 
 // A staged (not-yet-saved) logo/hero change: a picked file (with its preview
 // object URL), an explicit removal, or null = no change.  Committed on Save.
@@ -373,7 +374,7 @@ export default function ApplyPreview() {
         onAsset={pickAsset} onClearAsset={clearAsset} onSave={saveTheme}
         onAiTheme={() => setAiOpen((o) => !o)} aiOpen={aiOpen} />
       {aiOpen && (
-        <div className="fixed bottom-20 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-foreground shadow-xl">
+        <Card className="fixed bottom-20 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-foreground shadow-xl">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-sm font-medium">
               <Sparkles className="text-primary size-3.5" /> AI theme
@@ -412,7 +413,7 @@ export default function ApplyPreview() {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
       )}
     </>
   );

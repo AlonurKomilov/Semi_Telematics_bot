@@ -21,6 +21,7 @@ import { PUBLIC_SECTIONS, mergeRows } from './fields';
 import type { CarrierContent, FieldRow } from './fields';
 import FieldValueInput from './FieldValueInput';
 import { toneClasses } from '../../lib/status';
+import { Card } from '@/components/ui/card';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -285,7 +286,7 @@ export default function PublicCarrierIntake() {
   if (state === 'invalid') {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
+        <Card padding="panel" className="max-w-md text-center shadow-sm">
           <Building2 className="mx-auto text-muted-foreground size-6" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">This link isn't available</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -293,7 +294,7 @@ export default function PublicCarrierIntake() {
             email that brought you here and the recruiter who sent it will
             get a fresh one to you.
           </p>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -303,7 +304,7 @@ export default function PublicCarrierIntake() {
   if (state === 'unreachable') {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
+        <Card padding="panel" className="max-w-md text-center shadow-sm">
           <Building2 className="mx-auto text-muted-foreground size-6" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">Couldn't load the form</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -312,7 +313,7 @@ export default function PublicCarrierIntake() {
             saved on this device.
           </p>
           <Button className="mt-4" onClick={() => setReloadKey((k) => k + 1)}>Try again</Button>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -320,14 +321,14 @@ export default function PublicCarrierIntake() {
   if (state === 'done') {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
+        <Card padding="panel" className="max-w-md text-center shadow-sm">
           <CheckCircle2 className="mx-auto text-ok size-6" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">Thank you!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your profile was sent to {agency || 'the recruiting team'}.
             You can reopen this link to revise your answers while it stays active.
           </p>
-        </div>
+        </Card>
       </div>
     );
   }

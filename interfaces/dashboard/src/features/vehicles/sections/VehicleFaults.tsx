@@ -28,6 +28,7 @@ import type {
   HealthResponse,
 } from '../../../types';
 import type { VehicleSectionProps } from './_shared/types';
+import { Card } from '@/components/ui/card';
 
 export default function VehicleFaults({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
@@ -103,17 +104,17 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
   if (faultList.length === 0) {
     if (!faults) return null;
     return (
-      <div className="bg-card border border-border rounded-xl p-5">
+      <Card>
         <h2 className="text-lg font-semibold mb-3">Fault Codes</h2>
         <p className="text-ok text-sm">
           No active fault codes
         </p>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5">
+    <Card>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold">
           Active Fault Codes ({faultList.length})
@@ -222,6 +223,6 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
         </div>
       )}
       {bridgeDialog}
-    </div>
+    </Card>
   );
 }

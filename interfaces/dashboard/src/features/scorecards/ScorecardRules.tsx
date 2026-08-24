@@ -251,7 +251,7 @@ export function ScorecardRulesPanel() {
                 </span>
                 <span className="text-xs text-muted-foreground">{rs.length} rule{rs.length === 1 ? '' : 's'}</span>
               </div>
-              <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
+              <Card padding="none" className="divide-y divide-border overflow-hidden">
                 {rs.map((r) => (
                   <RuleRow
                     key={r.id}
@@ -264,7 +264,7 @@ export function ScorecardRulesPanel() {
                     onReset={() => resetRule(r)}
                   />
                 ))}
-              </div>
+              </Card>
             </section>
           ))}
           {filtered.length === 0 && (

@@ -900,16 +900,16 @@ export default function Scorecards() {
           {cards.length > 0 && (blocks.includes('distribution') || blocks.includes('top_bottom')) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
               {blocks.includes('distribution') && (
-                <div className="bg-card border border-border rounded-xl p-5">
+                <Card>
                   <p className="text-sm font-medium mb-3">{t('scorecards.score_distribution')}</p>
                   <ScoreDistribution cards={cards} />
-                </div>
+                </Card>
               )}
               {blocks.includes('top_bottom') && (
-                <div className="bg-card border border-border rounded-xl p-5">
+                <Card>
                   <p className="text-sm font-medium mb-3">{t('scorecards.top_vs_bottom')}</p>
                   <TopBottomChart cards={cards} />
-                </div>
+                </Card>
               )}
             </div>
           )}

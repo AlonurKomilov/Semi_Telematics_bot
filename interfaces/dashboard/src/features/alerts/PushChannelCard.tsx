@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Tip } from '@/components/tooltip';
 import { formatAgoShort } from '@/utils/datetime';
 import { disablePush, enablePush, isPushSupported, thisDeviceEndpoint } from './push';
+import { Card } from '@/components/ui/card';
 
 interface Device {
   id: number;
@@ -89,7 +90,7 @@ export default function PushChannelCard({ onChanged }: { onChanged: () => void }
   const enabledHere = here !== null && devices.some(d => d.endpoint === here);
 
   return (
-    <section className="bg-card border border-border rounded-xl p-4">
+    <Card render={<section />}>
       <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-base font-semibold inline-flex items-center gap-2">
           <MonitorSmartphone className="size-4" /> Push
@@ -150,6 +151,6 @@ export default function PushChannelCard({ onChanged }: { onChanged: () => void }
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

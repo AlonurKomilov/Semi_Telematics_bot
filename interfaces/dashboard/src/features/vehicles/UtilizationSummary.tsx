@@ -10,6 +10,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Gauge } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { Card } from '@/components/ui/card';
 
 interface UtilizationRow {
   vehicle_id: string;
@@ -53,7 +54,7 @@ export default function UtilizationSummary() {
   const bottom = [...rows].reverse().slice(0, 3);
 
   return (
-    <div className="mb-4 bg-card border border-border rounded-xl p-4">
+    <Card className="mb-4">
       <div className="flex items-center gap-2 mb-3">
         <Gauge className="text-muted-foreground size-4" />
         <h2 className="text-base font-semibold">Utilization — last 30 days</h2>
@@ -120,6 +121,6 @@ export default function UtilizationSummary() {
           </ul>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

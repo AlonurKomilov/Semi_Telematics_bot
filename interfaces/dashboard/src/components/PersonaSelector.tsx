@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { useRoleView } from '../context/RoleViewContext';
+import { Card } from '@/components/ui/card';
 
 /**
  * Top-bar persona view selector.
@@ -165,10 +166,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
       )}
 
       {open && (
-        <ul
-          role="listbox"
-          className="absolute left-0 mt-1 w-64 bg-card border border-border rounded-lg shadow-xl text-sm z-50"
-        >
+        <Card padding="none" className="absolute left-0 mt-1 w-64 shadow-xl text-sm z-50" render={<ul />} role="listbox">
           <li className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
@@ -197,10 +195,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                     <ChevronRight className="opacity-50 size-3.5" />
                   </button>
                   {/* Flyout — flush to the right so hover bridges without a gap. */}
-                  <ul
-                    role="menu"
-                    className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden rounded-lg border border-border bg-card shadow-xl"
-                  >
+                  <Card padding="none" className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden shadow-xl" render={<ul />} role="menu">
                     {([[v.tier?.senior ?? 'Manager', true], [v.tier?.base ?? 'Employee', false]] as const).map(([label, wantManager]) => {
                       const tierActive = isActive && previewAsManager === wantManager;
                       return (
@@ -218,7 +213,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                         </li>
                       );
                     })}
-                  </ul>
+                  </Card>
                 </li>
               );
             }
@@ -244,7 +239,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           <li className="rounded-b-lg px-3 py-1.5 text-3xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
             Changes the dashboard UI only — data and permissions stay yours.
           </li>
-        </ul>
+        </Card>
       )}
     </div>
   );

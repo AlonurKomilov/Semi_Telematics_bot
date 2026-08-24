@@ -812,10 +812,10 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <Card>
       <h3 className="text-sm font-semibold mb-1">{title}</h3>
       {hint && <p className="text-2xs text-muted-foreground mb-3">{hint}</p>}
       {children}
-    </div>
+    </Card>
   );
 }

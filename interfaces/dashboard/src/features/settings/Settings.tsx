@@ -26,6 +26,7 @@ import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Input } from '../../components/ui/input';
 import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
+import { Card } from '@/components/ui/card';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -338,7 +339,7 @@ export default function Settings() {
           who haven't set a personal override.  Per-user override lives
           in "My Preferences" below. */}
       {canManageAccount && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-1">Account Timezone</h2>
           <p className="text-xs text-muted-foreground mb-3">
             Sets the company default. Cron jobs (driver-doc expiry, scorecards,
@@ -373,7 +374,7 @@ export default function Settings() {
               {accountTzSaving ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </section>
+        </Card>
       )}
 
       {/* Public identity — what an outside business sees on token-gated
@@ -381,7 +382,7 @@ export default function Settings() {
           stays the internal label everywhere.  Blank is a real choice:
           those forms name no one rather than falling back. */}
       {canManageAccount && publicNameLoaded && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-1">Public Company Name</h2>
           <p className="text-xs text-muted-foreground mb-3 max-w-xl">
             Shown to outside companies on forms you send them — today the
@@ -418,14 +419,14 @@ export default function Settings() {
               {publicNameSaving ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </section>
+        </Card>
       )}
 
       {/* Vendor directory contribution — consent visibility for the
           automatic pipeline.  Copy mirrors DIRECTORY_DISCLOSURE so the
           promise is identical everywhere it appears. */}
       {canManageAccount && dirSharing !== null && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-1">Vendor Directory</h2>
           <p className="text-xs text-muted-foreground mb-3 max-w-xl">
             When a shop's address completes its record, its name and contact
@@ -444,14 +445,14 @@ export default function Settings() {
             />
             Contribute vendor identities to the public directory
           </label>
-        </section>
+        </Card>
       )}
 
       {/* Market-data sharing (give-to-get) — the durable consent home:
           OFF is as reachable as ON here (the vendor-profile card only
           quick-enables).  Hidden while the platform feature is dark. */}
       {canManageAccount && marketSharing?.available && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-1">Market Price Data</h2>
           <p className="text-xs text-muted-foreground mb-3 max-w-xl">
             See what other fleets typically pay — per shop, and per part
@@ -471,12 +472,12 @@ export default function Settings() {
             />
             Share anonymized price data and see market ranges
           </label>
-        </section>
+        </Card>
       )}
 
       {/* Personal preferences have their own page now — keep a pointer
           here so admins coming to Settings can still find them. */}
-      <section className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
+      <Card className="flex items-center justify-between gap-4" render={<section />}>
         <div className="text-sm">
           <p className="font-medium">Looking for your personal preferences?</p>
           <p className="text-xs text-muted-foreground">
@@ -490,18 +491,18 @@ export default function Settings() {
         >
           Open My Profile →
         </a>
-      </section>
+      </Card>
 
       {/* Account Info */}
       {data?.account && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-3">Account</h2>
           <dl className="grid grid-cols-3 gap-4 text-sm">
             <div><dt className="text-muted-foreground">Name</dt><dd>{data.account.name || '—'}</dd></div>
             <div><dt className="text-muted-foreground">Tier</dt><dd className="capitalize">{data.account.tier || 'basic'}</dd></div>
             <div><dt className="text-muted-foreground">Status</dt><dd>{data.account.is_active ? <span className="text-ok">Active</span> : <span className="text-danger">Inactive</span>}</dd></div>
           </dl>
-        </section>
+        </Card>
       )}
 
       {/* Telegram Bot — the account bot CREDENTIAL only.  Gated on
@@ -511,7 +512,7 @@ export default function Settings() {
           role managers configure their own group there without needing
           Settings access. */}
       {(canManageAccount || canManageRoleBot) && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-3">{t('bot_card.title')}</h2>
           {/* Manager card has no account-bot identity — say what it IS
               for them (UX audit A/C1). */}
@@ -647,7 +648,7 @@ export default function Settings() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
       )}
 
       {/* Manager view: the OTHER Settings components their own flags
@@ -655,7 +656,7 @@ export default function Settings() {
           group; a manager's page lists just what they hold).  General
           settings stay owner-only and simply don't render. */}
       {!canManageAccount && (canInvite || canManageWorkHours) && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <div className="space-y-2">
             {canInvite && (
               <Link to="/invites" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 hover:border-ring transition">
@@ -678,7 +679,7 @@ export default function Settings() {
               </Link>
             )}
           </div>
-        </section>
+        </Card>
       )}
 
       {/* Editable Settings — every row here is an account_settings key,
@@ -691,7 +692,7 @@ export default function Settings() {
 
       {/* AI Usage */}
       {canManageAccount && data?.ai_usage && Object.keys(data.ai_usage).length > 0 && (
-        <section className="bg-card border border-border rounded-xl p-5">
+        <Card render={<section />}>
           <h2 className="text-lg font-semibold mb-3">AI Usage <span className="text-xs text-muted-foreground font-normal">(last {(data.ai_usage as any).days ?? 30} days)</span></h2>
           {/* Top-level stats */}
           <dl className="grid grid-cols-3 gap-4 text-sm mb-4">
@@ -733,12 +734,12 @@ export default function Settings() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
       )}
 
       {/* Working Hours */}
       {canManageAccount && (
-      <section className="bg-card border border-border rounded-xl p-5">
+      <Card render={<section />}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Working Hours</h2>
           <button onClick={() => setShowSchedule(!showSchedule)} className="px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded text-xs font-medium transition min-h-tap">
@@ -830,7 +831,7 @@ export default function Settings() {
         ) : (
           <p className="text-muted-foreground text-sm">No schedules configured.</p>
         )}
-      </section>
+      </Card>
       )}
 
       {/* Owner-only account deletion — renders nothing for other roles. */}

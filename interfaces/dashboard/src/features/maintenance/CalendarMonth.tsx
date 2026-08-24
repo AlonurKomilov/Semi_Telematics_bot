@@ -5,6 +5,7 @@ import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
+import { Card } from '@/components/ui/card';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -133,7 +134,7 @@ export function CalendarMonth({
   const monthLabel = viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
   return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
+    <Card padding="none" className="overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40">
         <h3 className="text-sm font-semibold">{monthLabel}</h3>
         <div className="inline-flex items-center gap-1">
@@ -366,6 +367,6 @@ export function CalendarMonth({
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }

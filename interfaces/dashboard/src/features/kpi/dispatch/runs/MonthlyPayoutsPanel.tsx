@@ -11,6 +11,7 @@ import {
 import { TableSkeleton } from '../../../../components/shell';
 import { getMonthlyPayouts, type RunSummary } from '../../api';
 import { usd } from './format';
+import { Card } from '@/components/ui/card';
 
 /** The last 12 months, newest first, as YYYY-MM + a human label. */
 function monthOptions(): { value: string; label: string }[] {
@@ -46,7 +47,7 @@ export function MonthlyPayoutsPanel({ allRuns, onSelectRun }: {
     .sort((a, b) => b[1] - a[1]);
 
   return (
-    <section className="mt-8 bg-card border border-border rounded-xl p-4 space-y-3">
+    <Card className="mt-8 space-y-3" render={<section />}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">
@@ -113,6 +114,6 @@ export function MonthlyPayoutsPanel({ allRuns, onSelectRun }: {
           </div>
         </>
       )}
-    </section>
+    </Card>
   );
 }

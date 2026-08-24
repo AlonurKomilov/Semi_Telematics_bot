@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { toneClasses, toneText, type Tone } from '../../lib/status';
+import { Card } from '@/components/ui/card';
 
 /**
  * Top-of-page status card.  Single source of truth for "what backend
@@ -52,10 +53,10 @@ export default function ObjectStorageHealthCard() {
 
   if (isLoading && !data) {
     return (
-      <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground inline-flex items-center gap-2">
+      <Card className="text-sm text-muted-foreground inline-flex items-center gap-2">
         <Loader2 className="animate-spin size-3.5" />
         {t('storage.status.loading')}
-      </div>
+      </Card>
     );
   }
   if (!data) return null;
@@ -67,7 +68,7 @@ export default function ObjectStorageHealthCard() {
   const isGDrive = backend === 'gdrive';
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+    <Card className="space-y-3">
       {/* ── Header: title + backend pill ───────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
         <h3 className="text-sm font-semibold">{t('storage.status.title')}</h3>
@@ -152,7 +153,7 @@ export default function ObjectStorageHealthCard() {
           )}
         </>
       )}
-    </div>
+    </Card>
   );
 }
 

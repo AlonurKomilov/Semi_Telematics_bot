@@ -10,6 +10,7 @@ import {
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import { InfoTip } from '../../components/tooltip';
+import { Card } from '@/components/ui/card';
 
 /**
  * What this account is actually STORING — the answer the page could not
@@ -122,10 +123,10 @@ export default function ObjectStorageUsageCard() {
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground inline-flex items-center gap-2">
+      <Card className="text-sm text-muted-foreground inline-flex items-center gap-2">
         <Loader2 className="animate-spin size-3.5" />
         Measuring stored files…
-      </div>
+      </Card>
     );
   }
   // A failed fetch used to return null, taking the entire card — the
@@ -157,7 +158,7 @@ export default function ObjectStorageUsageCard() {
   }));
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+    <Card className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <HardDrive className="text-muted-foreground size-4" />
         <h3 className="text-sm font-semibold">Stored files</h3>
@@ -269,6 +270,6 @@ export default function ObjectStorageUsageCard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }

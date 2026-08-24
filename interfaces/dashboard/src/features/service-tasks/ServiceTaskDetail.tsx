@@ -182,7 +182,7 @@ export default function ServiceTaskDetail() {
       />
 
       {/* ── Facts ────────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-border bg-card p-4 mb-4">
+      <Card className="mb-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Field label="System">
             {systemLabel || task.system_key || (
@@ -221,10 +221,10 @@ export default function ServiceTaskDetail() {
             <Field label="Description">{task.description}</Field>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* ── What a work order pre-fills from this task ───────────── */}
-      <div className="rounded-lg border border-border bg-card p-4 mb-4">
+      <Card className="mb-4">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-base font-semibold text-foreground">Usual parts</h2>
           {canManage && (
@@ -253,7 +253,7 @@ export default function ServiceTaskDetail() {
             enablePagination={false}
           />
         )}
-      </div>
+      </Card>
 
       {/* ── Lifecycle ────────────────────────────────────────────── */}
       {canManage && (

@@ -29,6 +29,7 @@ import {
 } from '../../components/shell';
 import { toneClasses, toneText } from '../../lib/status';
 import type { DashboardStats } from '../../types';
+import { Card } from '@/components/ui/card';
 
 interface DriverOverviewProps {
   stats: DashboardStats;
@@ -78,7 +79,7 @@ export default function DriverOverview({
         />
       ) : (
         <>
-          <div className="bg-card border border-border rounded-xl p-6 mb-6">
+          <Card className="mb-6">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">
@@ -143,7 +144,7 @@ export default function DriverOverview({
             {truck.location && (
               <p className="text-xs text-muted-foreground mt-3">{truck.location}</p>
             )}
-          </div>
+          </Card>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard

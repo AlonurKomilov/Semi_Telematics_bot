@@ -18,6 +18,7 @@ import { toneClasses } from '../../lib/status';
 import type { CompanyInfo, AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
+import { Card } from '@/components/ui/card';
 
 // Company logo (authed) — fetched as a blob since the serve endpoint
 // needs the Bearer token (an <img src> can't carry it).
@@ -199,7 +200,7 @@ export default function Companies() {
       )}
 
       {showAdd && (
-        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-3 gap-3">
+        <Card className="mb-6 grid grid-cols-3 gap-3" render={<form />} onSubmit={handleAdd}>
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Code</label>
             <input required value={code} onChange={e => setCode(e.target.value)} maxLength={20} placeholder="PTG" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
@@ -230,7 +231,7 @@ export default function Companies() {
               {saving ? 'Saving...' : 'Add'}
             </button>
           </div>
-        </form>
+        </Card>
       )}
 
       {loading && companies.length === 0 ? (

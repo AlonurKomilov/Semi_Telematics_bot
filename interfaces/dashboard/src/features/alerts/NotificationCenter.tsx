@@ -23,6 +23,7 @@ import { usePreference } from '../../preferences';
 import type { InboxNotice, InboxResponse } from './useInbox';
 import { INBOX_QUERY_KEY } from './useInbox';
 import { InboxRow } from './NotificationsPanel';
+import { Card } from '@/components/ui/card';
 
 const PAGE = 30;
 
@@ -178,7 +179,7 @@ export default function NotificationCenter() {
         </p>
       )}
 
-      <section className="bg-card border border-border rounded-xl overflow-hidden">
+      <Card padding="none" className="overflow-hidden" render={<section />}>
         {loading && notices.length === 0 ? (
           <div className="flex items-center justify-center py-14 text-muted-foreground">
             <Loader2 className="animate-spin size-4.5" aria-hidden />
@@ -216,7 +217,7 @@ export default function NotificationCenter() {
             </button>
           </div>
         )}
-      </section>
+      </Card>
     </div>
   );
 }
