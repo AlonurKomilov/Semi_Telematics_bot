@@ -29,6 +29,7 @@ import type {
 } from '../../../types';
 import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
+import { Sparkles } from 'lucide-react';
 
 export default function VehicleFaults({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
@@ -202,7 +203,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
       {diagnosis && (
         <div className="mt-4 bg-primary/5 border border-primary/20 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-primary">✨ AI Diagnosis</span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"><Sparkles className="size-3.5" aria-hidden />AI Diagnosis</span>
             <button
               onClick={() =>
                 navigate('/ai/chat', {

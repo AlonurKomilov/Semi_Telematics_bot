@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Mail, MessageSquare, Plus, Trash2, Pencil, X } from 'lucide-react';
+import { Mail, MessageSquare, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { CardSkeleton, ErrorState } from '../../components/shell';
@@ -40,7 +40,7 @@ function parseChannels(raw: string | undefined): Channel[] {
 }
 
 function channelLabel(raw: string | undefined) {
-  return parseChannels(raw).map((c) => (c === 'telegram' ? '📱 Telegram' : '📧 Email')).join(' + ');
+  return parseChannels(raw).map((c) => (c === 'telegram' ? 'Telegram' : 'Email')).join(' + ');
 }
 
 
@@ -258,8 +258,8 @@ function ScheduleEditor({
         </div>
         {(telegramHint || emailHint) && (
           <p className="text-xs text-muted-foreground mt-1.5">
-            {telegramHint && <span className="block">📱 {telegramHint}</span>}
-            {emailHint && <span className="block">📧 {emailHint}</span>}
+            {telegramHint && <span className="flex items-start gap-1.5"><Send className="size-3.5 shrink-0 mt-0.5" aria-hidden />{telegramHint}</span>}
+            {emailHint && <span className="flex items-start gap-1.5"><Mail className="size-3.5 shrink-0 mt-0.5" aria-hidden />{emailHint}</span>}
           </p>
         )}
       </div>

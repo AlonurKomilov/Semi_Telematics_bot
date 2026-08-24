@@ -282,7 +282,7 @@ export default function Cameras() {
                 />
               ) : (
                 <div className="flex items-center justify-center h-48 text-muted-foreground">
-                  <span>📷 No screenshot available</span>
+                  <span className="inline-flex items-center gap-1.5"><Camera className="size-4" aria-hidden />No screenshot available</span>
                 </div>
               )}
             </div>

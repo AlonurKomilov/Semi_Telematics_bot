@@ -52,6 +52,7 @@ import {
   formatCadence,
   formatSyncTimestamp as formatBackfillTimestamp,
 } from './labels';
+import { usePreference } from '../../preferences';
 
 interface Props {
   entry: CatalogEntry;
@@ -113,29 +114,18 @@ export default function IntegrationCard({
   // the densely-rendered toggles + companies + actions per card
   // become a focus sink.  Default open for the actively-connected
   // integration (operator probably came here to manage it), default
-  // closed for "coming soon" placeholders.  Persisted per-provider
-  // in localStorage so the choice survives a refresh.
-  const _storageKey = `integration-card-open:${entry.provider_id}`;
-  const [expanded, setExpanded] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(_storageKey);
-      if (saved !== null) return saved === '1';
-    } catch {
-      // localStorage unavailable (Safari private mode, etc.) —
-      // fall through to the default.
-    }
-    return Boolean(integration);  // open if connected, else collapsed
-  });
+  // closed for "coming soon" placeholders.
+  //
+  // Through the preferences service, not `localStorage` directly: this
+  // is per-user render state, which src/preferences/CLAUDE.md says
+  // belongs in the registry.  The service also brings the try/catch
+  // this used to hand-roll — a blocked store no longer needs handling
+  // here.
+  const { value: openMap, setValue: setOpenMap } = usePreference('integrations.cardOpen');
+  const stored = openMap[entry.provider_id];
+  const expanded = stored ?? Boolean(integration);  // open if connected, else collapsed
   const toggleExpanded = () => {
-    setExpanded((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(_storageKey, next ? '1' : '0');
-      } catch {
-        // ignore — visual state still flips
-      }
-      return next;
-    });
+    setOpenMap({ ...openMap, [entry.provider_id]: !expanded });
   };
 
   // QueryClient handle so ``handleTrigger`` can optimistically seed

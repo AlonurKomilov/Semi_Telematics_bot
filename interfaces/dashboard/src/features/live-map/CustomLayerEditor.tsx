@@ -19,12 +19,12 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, FileText, MapPin, Search, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, FileText, MapPin, Search, X, type LucideIcon } from 'lucide-react';
 import type L from 'leaflet';
 import { apiFetch, apiJSON } from '@/api/client';
 import type { PoiLayerDef } from '@/config/poiLayers';
 import { CUSTOM_LAYER_SWATCHES } from '@/config/mapColors';
-import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 // The marker-icon picker below is USER content — the operator picks an
 // emoji that is stored on the layer row and shown on their map.  This is
@@ -349,15 +349,16 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           >Cancel (Esc)</button>
         </div>
       )}
-      <div
-        className={`fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4 ${
-          picking ? 'hidden' : ''
-        }`}
-        onClick={onClose}
-        role="dialog"
-        aria-modal="true"
-      >
-      <Card padding="none" className="shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      {/* `open={!picking}` rather than unmounting: while the user places a
+          pin on the map the dialog must get out of the way, and every
+          field is controlled from this component's state, so the content
+          re-mounting costs nothing. Escape, the focus trap, the scroll
+          lock and the `overlays` Size region all come from DialogContent
+          — the hand-rolled `fixed inset-0` backdrop this replaces had
+          none of them, and slipped past backdrops.test.ts because that
+          guard only reads double-quoted classNames. */}
+      <Dialog open={!picking} onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent showCloseButton={false} className="max-w-lg p-0 gap-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="font-semibold text-foreground">
@@ -365,9 +366,9 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           </h2>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-lg leading-none min-h-tap"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center min-h-tap min-w-tap"
             aria-label="Close"
-          >×</button>
+          ><X className="size-4" /></button>
         </div>
 
         {/* Tabs (create mode only) */}
@@ -635,8 +636,8 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
             {busy ? 'Saving…' : mode === 'edit' ? 'Save' : 'Create'}
           </button>
         </div>
-      </Card>
-      </div>
+        </DialogContent>
+      </Dialog>
     </>,
     document.body,
   );

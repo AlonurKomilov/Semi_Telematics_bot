@@ -42,9 +42,21 @@ export default function Sidebar({ forceExpanded = false }: {
   useEffect(() => {
     // Expose the live width so the assistant's expanded overlay can start
     // at the content edge (right of the sidebar) instead of covering the
-    // rail.  Mirrors the --assistant-w pattern; matches w-14 / w-56.
+    // rail.  Mirrors the --assistant-w pattern.
+    //
+    // These are the FORMULAS `w-14` and `w-56` emit, not the raw rems
+    // they used to be. The raw values stopped matching the moment the
+    // Size engine landed: the <aside> wears the classes, so it grows with
+    // the user's setting and with the `navigation` region, while a
+    // literal `14rem` stayed put — and the assistant panel, which offsets
+    // by this variable, slid under the sidebar at any multiplier above 1.
+    // `--size-region-navigation` is read explicitly because this value is
+    // published on <html>, outside the region that scopes the sidebar.
     document.documentElement.style.setProperty(
-      '--sidebar-w', collapsed ? '3.5rem' : '14rem');
+      '--sidebar-w',
+      collapsed
+        ? 'calc(3.5rem * var(--size-layout, 1) * var(--size-region-navigation, 1))'
+        : 'calc(14rem * var(--size-panel, 1) * var(--size-region-navigation, 1))');
   }, [collapsed]);
   // ``viewHasAny`` is the active-persona-aware permission check from
   // RoleViewContext.  For non-switchable roles (Fleet/Safety/Dispatcher/

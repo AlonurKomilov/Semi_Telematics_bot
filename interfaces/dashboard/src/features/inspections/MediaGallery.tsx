@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, Download } from 'lucide-react';
+import { Download, FileText, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
@@ -131,7 +131,7 @@ export function MediaGallery({ inspection }: Props) {
                 >
                   {m.media_type === 'document' && (m.content_type || '').includes('pdf') ? (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground p-2">
-                      <span className="text-2xl">📄</span>
+                      <FileText className="size-6" aria-hidden />
                       <span className="text-3xs text-center break-all line-clamp-2">{m.file_name}</span>
                     </div>
                   ) : m.media_type === 'video' ? (

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, Download, X } from 'lucide-react';
+import { AlertTriangle, Download, Trophy, X } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, CartesianGrid, ReferenceLine,
@@ -35,6 +35,7 @@ import type {
 } from '../../types';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { Card } from '@/components/ui/card';
+import { Tip } from '../../components/tooltip';
 
 // ── Color helpers ───────────────────────────────────────────────────
 
@@ -578,7 +579,12 @@ function makeColumns(
             );
           })}
           {r.insufficient_data && (
-            <span className={`text-3xs ${toneText('warn')}`} title={t('scorecards.insufficient_drive_time')}>⚠</span>
+            <Tip label={t('scorecards.insufficient_drive_time')}>
+              <AlertTriangle
+                className={`size-3 shrink-0 ${toneText('warn')}`}
+                aria-label={t('scorecards.insufficient_drive_time')}
+              />
+            </Tip>
           )}
         </div>
       );

@@ -769,7 +769,7 @@ export default function LiveMap() {
             >
               <ArrowLeft className="size-3" /> Back
             </button>
-            <h3 className="font-bold text-lg leading-tight">{selected.name}</h3>
+            <h3 className="text-lg font-semibold leading-tight">{selected.name}</h3>
             <p className="text-muted-foreground text-xs">{selected.address || 'Unknown location'}</p>
 
             {/* Quick stats grid */}

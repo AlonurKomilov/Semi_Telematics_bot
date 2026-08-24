@@ -114,7 +114,7 @@ export function VehiclePicker({
               className="flex items-center gap-2 px-3 py-2 hover:bg-muted cursor-pointer"
             >
               <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${STATUS_DOT[v.status] || 'bg-muted-foreground/40'}`} />
-              <span className="font-mono font-semibold flex-shrink-0">{v.name}</span>
+              <span className="font-semibold flex-shrink-0">{v.name}</span>
               <span className="px-1.5 py-0.5 bg-muted rounded text-xs text-muted-foreground flex-shrink-0">{v.company}</span>
               <span className="text-xs text-muted-foreground capitalize flex-shrink-0">{v.status}</span>
               {v.fuel_percent != null && (

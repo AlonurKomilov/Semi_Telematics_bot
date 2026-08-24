@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Eye, Link2, Lock } from 'lucide-react';
+import { Check, Eye, Link2, Lock } from 'lucide-react';
 import { toneClasses } from '../../lib/status';
 import { InfoTip, Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
@@ -498,8 +498,10 @@ function DeltaChip() {
     </span>
   );
 }
+// The library already draws this. The hand-rolled 12x12 path it
+// replaces was a second icon set of exactly one glyph.
 function CheckMark() {
-  return <svg viewBox="0 0 12 12" className="w-3 h-3" aria-hidden><path d="M2 6.5 4.8 9 10 3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  return <Check className="size-3" strokeWidth={3} aria-hidden />;
 }
 
 // The view switcher's REAL contract (the one PersonaSelector uses):

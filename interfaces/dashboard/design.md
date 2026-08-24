@@ -547,6 +547,14 @@ them next to a comment saying so.
 
 ## 8. Charts & maps
 
+
+**Scope: any colour consumer CSS cannot reach** — charts, map markers,
+canvas, and 3D materials. All of them take tokens through a helper or a
+config constant, never an inline literal. The one sanctioned literal is
+a value that is not a colour at all: `new THREE.Color('#000000')` as a
+"no emissive" lerp target in `AssemblyNode`. Mark such a site with a
+comment saying why — an unmarked literal is indistinguishable from a
+forgotten one.
 These need literal colour strings (Recharts `fill`, Leaflet markers) —
 they can't take Tailwind classes. **Still don't hardcode hex:**
 

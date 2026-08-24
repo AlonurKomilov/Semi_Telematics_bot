@@ -208,6 +208,38 @@ export const DEFS = {
     note: 'Keep personal preferences on the account so they follow you to another browser.',
   }),
 
+  /**
+   * Which integration cards are expanded, keyed by provider id.
+   *
+   * ONE object rather than a key family: the value is a single boolean
+   * per provider and the family machinery (`TABLE_PARTS`, a key regex)
+   * buys nothing for that. It was `localStorage.setItem(
+   * `integration-card-open:${provider_id}`, …)` straight from the
+   * component — a per-user render preference written outside this
+   * service, which is exactly what the rule at the top of this file
+   * forbids.
+   *
+   * No `legacyKeys`: the old form was one key PER PROVIDER, which a
+   * fixed list cannot express, and what is lost is which disclosures
+   * were open. That is the mildest thing a preference can lose — the
+   * bar this file sets is "losing it is an annoyance", and reading the
+   * old keys would mean putting a raw storage call back into the
+   * component to delete one.
+   */
+  'integrations.cardOpen': def<Record<string, boolean>>({
+    default: {},
+    scope: 'device',
+    sanitize: (raw) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+      const out: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof v === 'boolean') out[k] = v;
+      }
+      return out;
+    },
+    note: 'Which integration cards are expanded on this device.',
+  }),
+
   // ── Appearance ────────────────────────────────────────────────────
   // device: tied to THIS screen's size and lighting, not to the person.
   'theme': def<ThemeSetting>({
@@ -453,6 +485,20 @@ export const DEFS = {
   // "I've seen this, stop showing it."  synced: having dismissed a
   // one-time explainer is a fact about the PERSON — being re-taught the
   // same thing on a second browser is the annoyance this prevents.
+  // The AI thought-log note. It was `localStorage.setItem(
+  // '4truck:ai-thoughts-note:v1', '1')` inside Chat.tsx — a dismissal
+  // written straight past this service, with the browser-storage
+  // try/catch hand-rolled at both ends. device, not synced: the note
+  // explains that thought logs stay on THIS browser, so having read it
+  // is a fact about this browser too.
+  'ai.thoughtNoteDismissed': def<boolean>({
+    default: false,
+    scope: 'device',
+    legacyKeys: ['4truck:ai-thoughts-note:v1'],
+    fromLegacy: legacyBool,
+    sanitize: asBool,
+    note: 'The "thought logs stay in this browser" note has been dismissed.',
+  }),
   'onboarding.dismissed': def<boolean>({
     default: false,
     scope: 'synced',

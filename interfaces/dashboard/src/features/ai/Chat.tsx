@@ -27,6 +27,7 @@ import { ScrollRegion } from '../../components/scrolling';
 import { cn } from '@/lib/utils';
 import { sizeRegion } from '@/lib/sizeRegion';
 import { Card } from '@/components/ui/card';
+import { usePreference } from '../../preferences';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -344,9 +345,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   const newChatConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** One-time "step logs are stored on this device" note — honest
    *  expectation-setting for the browser-local thought-log policy. */
-  const [thoughtNoteDismissed, setThoughtNoteDismissed] = useState(() => {
-    try { return localStorage.getItem('4truck:ai-thoughts-note:v1') === '1'; } catch { return true; }
-  });
+  const { value: thoughtNoteDismissed, setValue: setThoughtNoteDismissed } =
+    usePreference('ai.thoughtNoteDismissed');
   /** Two-step delete confirm inside the panel — id armed for deletion. */
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   /** Bubble indexes whose per-message Reasoning section is expanded. */
@@ -997,7 +997,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
 
   function dismissThoughtNote() {
     setThoughtNoteDismissed(true);
-    try { localStorage.setItem('4truck:ai-thoughts-note:v1', '1'); } catch { /* ignore */ }
   }
 
   /** Start a fresh thread: clean slate locally; the backend creates the

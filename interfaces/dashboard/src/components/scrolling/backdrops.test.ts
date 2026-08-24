@@ -20,8 +20,18 @@ import { join, relative } from 'node:path';
 
 const SRC = join(__dirname, '..', '..');
 
-/** `fixed inset-0` anywhere in a className, with a black scrim after it. */
-const BACKDROP = /className="[^"]*fixed inset-0[^"]*bg-black\//;
+/**
+ * `fixed inset-0` anywhere in a className, with a black scrim after it.
+ *
+ * BOTH quoting styles. The first version of this read `className="…"`
+ * only, and a ninth backdrop did appear quietly — CustomLayerEditor's
+ * POI-layer editor wrote the same four classes inside a TEMPLATE
+ * literal, so the guard that says "Zero, and the build says so" was
+ * reporting zero while a keyboard-trapping modal shipped. A guard that
+ * only sees one of two ways to write the same thing is worse than no
+ * guard: it is a guard everyone trusts.
+ */
+const BACKDROP = /className=(?:"[^"]*|\{`[^`]*)fixed inset-0[\s\S]{0,200}?bg-black\//;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

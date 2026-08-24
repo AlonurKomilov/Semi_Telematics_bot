@@ -9,6 +9,7 @@ import TurnstileWidget from '../components/TurnstileWidget';
 import { toneClasses, toneText } from '../lib/status';
 import type { TelegramLoginData } from '../types';
 import { Card } from '@/components/ui/card';
+import { Bot, Check } from 'lucide-react';
 
 type Mode = 'login' | 'register';
 // Within the Register tab, the operator picks between two distinct flows:
@@ -637,7 +638,7 @@ export default function Login() {
             onClick={startBotLogin}
             className="w-full py-2.5 bg-muted hover:bg-muted/80 border border-border text-foreground text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 min-h-tap"
           >
-            <span>🤖</span>
+            <Bot className="size-4" aria-hidden />
             <span>{t('login_tg.login_via_bot')}</span>
           </button>
         )}
@@ -699,7 +700,7 @@ export default function Login() {
         {botLoginStatus === 'approved' && (
           <div className="p-4 bg-muted border border-ok-bd rounded-lg">
             <p className="text-sm text-ok flex items-center gap-2">
-              <span>✅</span> Login approved — redirecting...
+              <Check className="size-4 inline-block align-text-bottom" aria-hidden /> Login approved — redirecting...
             </p>
           </div>
         )}

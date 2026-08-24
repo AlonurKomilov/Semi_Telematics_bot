@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trophy } from 'lucide-react';
+import { ShieldAlert, Trophy, Wrench, Zap, type LucideIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import {
   PageHeader,
@@ -9,6 +9,7 @@ import {
   EmptyState,
 } from '../../components/shell';
 import { Card } from '@/components/ui/card';
+import { toneClasses, type Tone } from '@/lib/status';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -60,10 +61,16 @@ function draftFromRule(r: ScoreRule): RuleDraft {
 
 // ── Category meta ────────────────────────────────────────────────
 
-const CAT_META: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  safety:     { color: '#ef4444', bg: '#ef444422', icon: '🛡', label: 'Safety' },
-  fleet:      { color: '#3b82f6', bg: '#3b82f622', icon: '🛠', label: 'Fleet' },
-  efficiency: { color: '#22c55e', bg: '#22c55e22', icon: '⚡', label: 'Efficiency' },
+// A tone and a lucide icon, not a hex and an emoji. The three colours
+// this replaced were `#ef4444` / `#3b82f6` / `#22c55e` — Tailwind's
+// red-500, blue-500 and green-500 — carrying MEANING straight from a
+// call site, which design.md §11 bans twice over (no hex in .tsx, no
+// raw palette for meaning). Being literals they also could not follow
+// the theme picker: the same three hues rendered on light and dark.
+const CAT_META: Record<string, { tone: Tone; Icon: LucideIcon; label: string }> = {
+  safety:     { tone: 'danger', Icon: ShieldAlert, label: 'Safety' },
+  fleet:      { tone: 'info',   Icon: Wrench,      label: 'Fleet' },
+  efficiency: { tone: 'ok',     Icon: Zap,         label: 'Efficiency' },
 };
 
 const CATEGORIES = ['all', 'safety', 'fleet', 'efficiency'] as const;
@@ -243,12 +250,16 @@ export function ScorecardRulesPanel() {
           {Object.entries(grouped).map(([cat, rs]) => (
             <section key={cat}>
               <div className="flex items-center gap-2 mb-2">
-                <span
-                  className="text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded"
-                  style={{ background: CAT_META[cat]?.bg, color: CAT_META[cat]?.color }}
-                >
-                  {CAT_META[cat]?.icon} {CAT_META[cat]?.label ?? cat}
-                </span>
+                {(() => {
+                  const meta = CAT_META[cat];
+                  const Icon = meta?.Icon;
+                  return (
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded ${toneClasses(meta?.tone ?? 'neutral', { border: false })}`}>
+                      {Icon ? <Icon className="size-3" aria-hidden /> : null}
+                      {meta?.label ?? cat}
+                    </span>
+                  );
+                })()}
                 <span className="text-xs text-muted-foreground">{rs.length} rule{rs.length === 1 ? '' : 's'}</span>
               </div>
               <Card padding="none" className="divide-y divide-border overflow-hidden">

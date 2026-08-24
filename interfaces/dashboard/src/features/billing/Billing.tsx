@@ -4,7 +4,7 @@
 // SSOT: docs/FEATURES.md "Money domains".
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CreditCard, ExternalLink, FileText, AlertTriangle, Gift } from 'lucide-react';
+import { AlertTriangle, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -314,7 +314,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span className="text-warn">⚠️ Trial ends {formatDay(summary.trial_ends_at, { timeZone: tz })}</span>
         )}
         {summary.provider === 'stub' && (
-          <span className="text-primary">🧪 Test mode — no real charges</span>
+          <span className="inline-flex items-center gap-1.5 text-primary"><FlaskConical className="size-3.5" aria-hidden />Test mode — no real charges</span>
         )}
       </div>
     </Card>
@@ -403,7 +403,7 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
       <ul className="text-sm text-foreground/80 space-y-1.5 mb-5 flex-1">
         {features.map((f) => (
           <li key={f} className="flex items-start gap-1.5">
-            <span className="text-ok mt-0.5 shrink-0">✓</span> {f}
+            <Check className="size-3.5 text-ok mt-0.5 shrink-0" aria-hidden /> {f}
           </li>
         ))}
       </ul>
@@ -730,7 +730,7 @@ export default function Billing() {
 
       {/* Pricing info */}
       <Card className="mb-6 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground/80 mb-1.5">💡 How pricing works</p>
+        <p className="inline-flex items-center gap-1.5 font-medium text-foreground/80 mb-1.5"><Lightbulb className="size-3.5" aria-hidden />How pricing works</p>
         <ul className="space-y-1 list-disc list-inside text-xs">
           <li>Each plan includes 10 trucks. Additional <em>active</em> trucks: $2.99/truck/month.</li>
           <li>A truck is "active" if it sent any telemetry signal in the last 3 days — parked trucks are automatically excluded.</li>

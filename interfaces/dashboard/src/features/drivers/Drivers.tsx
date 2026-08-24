@@ -779,7 +779,7 @@ function VehiclesTab({
     queryKey: ['drivers-vehicles'],
     queryFn: () => apiJSON<{ vehicles: Array<{ name: string }> }>('/vehicles'),
   });
-  const fleetNames = (vehiclesData?.vehicles ?? []).map((v) => v.name);
+  const vehicleNames = (vehiclesData?.vehicles ?? []).map((v) => v.name);
 
   const add = async () => {
     if (!vehicleName.trim()) return;
@@ -851,7 +851,7 @@ function VehiclesTab({
               placeholder="e.g. 107"
             />
             <datalist id="fleet-vehicle-names">
-              {fleetNames.map((n) => <option key={n} value={n} />)}
+              {vehicleNames.map((n) => <option key={n} value={n} />)}
             </datalist>
           </Field>
           <label className="inline-flex items-center gap-1.5 text-xs">

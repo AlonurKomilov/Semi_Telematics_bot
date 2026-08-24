@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Plus, Eye, Trash2 } from 'lucide-react';
+import { Check, Eye, Map, MapPin, Plus, Trash2, X } from 'lucide-react';
 import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import { apiJSON, apiFetch } from '../../api/client';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
@@ -411,7 +411,7 @@ export default function Geofences() {
             <Card className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold">New Zone</h2>
-                <button onClick={closeAddPanel} className="text-muted-foreground hover:text-foreground text-sm py-0.5 -my-0.5 min-h-tap">✕</button>
+                <button onClick={closeAddPanel} aria-label="Close" className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap inline-flex items-center justify-center min-w-tap"><X className="size-3.5" /></button>
               </div>
 
               {/* Name */}
@@ -485,23 +485,23 @@ export default function Geofences() {
                         : 'border-border bg-background hover:bg-muted'
                     }`}
                   >
-                    🗺
+                    <Map className="size-3.5" aria-hidden />
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {pickingFromMap ? '👆 Click on the map to place the zone center' : 'Type an address, or click 🗺 and tap the map'}
+                  {pickingFromMap ? 'Click on the map to place the zone center' : 'Type an address, or use the map button and tap the map'}
                 </p>
 
                 {coordsSet ? (
                   <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs mt-2 ${toneClasses('ok')}`}>
-                    <span>✓</span>
+                    <Check className="size-3.5 shrink-0" aria-hidden />
                     <span className="font-mono flex-1 truncate">
                       {parseFloat(form.latitude).toFixed(4)}, {parseFloat(form.longitude).toFixed(4)}
                     </span>
                     <button type="button"
                       onClick={() => setForm(f => ({ ...f, latitude: '', longitude: '', address: '' }))}
-                      className="text-danger ml-1 shrink-0" title="Clear location">
-                      ✕
+                      className="text-danger ml-1 shrink-0 inline-flex items-center justify-center min-h-tap min-w-tap" aria-label="Clear location">
+                      <X className="size-3.5" />
                     </button>
                   </div>
                 ) : (
@@ -580,7 +580,7 @@ export default function Geofences() {
             <Card>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold truncate pr-2">{selected.properties?.name || 'Zone'}</h2>
-                <button onClick={() => setPanelMode('list')} className="text-muted-foreground hover:text-foreground text-sm shrink-0 py-1 -my-1 min-h-tap">✕</button>
+                <button onClick={() => setPanelMode('list')} aria-label="Close" className="text-muted-foreground hover:text-foreground shrink-0 py-1 -my-1 min-h-tap inline-flex items-center justify-center min-w-tap"><X className="size-3.5" /></button>
               </div>
               <dl className="space-y-2 text-sm">
                 <div><dt className="text-xs text-muted-foreground uppercase tracking-wide">Shape</dt><dd className="capitalize">{selected.geometry.type === 'Point' ? 'Circle' : 'Polygon'}</dd></div>
@@ -610,7 +610,7 @@ export default function Geofences() {
                         ? toneClasses('ok')
                         : toneClasses('info')
                     }`}>
-                      {selected.properties?.source === 'platform' ? '🟢 Platform' : '🔵 Samsara'}
+                      {selected.properties?.source === 'platform' ? 'Platform' : 'Samsara'}
                     </span>
                   </dd>
                 </div>
@@ -624,7 +624,7 @@ export default function Geofences() {
                   disabled={deletingId === selected.properties?.id}
                   className="mt-4 w-full text-sm text-destructive hover:bg-destructive/10 rounded-lg py-1.5 transition border border-destructive/30"
                 >
-                  {deletingId === selected.properties?.id ? 'Deleting…' : '🗑 Delete Zone'}
+                  {deletingId === selected.properties?.id ? 'Deleting…' : <span className="inline-flex items-center justify-center gap-1.5"><Trash2 className="size-3.5" aria-hidden /> Delete Zone</span>}
                 </button>
               )}
             </Card>
@@ -662,9 +662,9 @@ export default function Geofences() {
                         onClick={() => handleDelete(f.properties!.id as number)}
                         disabled={deletingId === f.properties?.id}
                         className="text-destructive/70 hover:text-destructive text-xs px-1 shrink-0 py-1 -my-1 min-h-tap"
-                        title="Delete zone"
+                        aria-label="Delete zone"
                       >
-                        {deletingId === f.properties?.id ? '…' : '✕'}
+                        {deletingId === f.properties?.id ? '…' : <X className="size-3.5" />}
                       </button>
                     )}
                   </ContextMenu>

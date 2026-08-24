@@ -75,6 +75,8 @@
 
     /* Live sidebar width (Sidebar.tsx keeps it in sync w-14/w-56) — the
        assistant's expanded overlay anchors to the content edge with it. */
+    /* Sidebar.tsx overwrites this with the same calc() `w-56` emits.
+       The literal is only the pre-mount fallback. */
     --sidebar-w: 14rem;
 
     --background: oklch(1 0 0);

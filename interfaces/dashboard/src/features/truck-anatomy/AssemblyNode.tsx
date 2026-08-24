@@ -88,6 +88,9 @@ export default function AssemblyNode({
     primary: new THREE.Color(tokens.primary),
     positioned: new THREE.Color(tokens.mutedForeground),
     shelf: new THREE.Color(tokens.border),
+    // Not a design colour and deliberately not a token: this is the
+    // lerp target for "no emissive", i.e. mathematical black. Every
+    // colour above it comes from `tokens` (design.md §8).
     black: new THREE.Color('#000000'),
   }), [tokens]);
 
