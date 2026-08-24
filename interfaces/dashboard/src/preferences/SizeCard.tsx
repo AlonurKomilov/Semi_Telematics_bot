@@ -13,7 +13,7 @@
  * cascade, in `tailwind.config.js`, not by this page. Each region is
  * claimed by the surface that already owns it (`lib/sizeRegion.ts`).
  */
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { RotateCcw, ChevronRight } from 'lucide-react';
 
 import { Slider } from '../components/ui/slider';
@@ -32,12 +32,15 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
  *  committed value becomes a preference — a drag is ~60 frames and each
  *  one would otherwise be a synchronous localStorage write. */
 function SizeRow({
-  label, value, onPreview, onCommit, ariaLabel,
+  label, value, onPreview, onCommit, onDragState, ariaLabel,
 }: {
   label: string;
   value: number;
   onPreview: (v: number) => void;
   onCommit: (v: number) => void;
+  /** Raised while the thumb is held. The panel uses it to pin its OWN
+   *  scale — see the note on `dragging` in SizeCard. */
+  onDragState: (dragging: boolean) => void;
   ariaLabel: string;
 }) {
   const [drag, setDrag] = useState<number | null>(null);
@@ -55,8 +58,8 @@ function SizeRow({
         step={0.05}
         aria-label={ariaLabel}
         formatValue={pct}
-        onValueChange={(v) => { setDrag(v); onPreview(v); }}
-        onValueCommitted={(v) => { setDrag(null); onCommit(v); }}
+        onValueChange={(v) => { setDrag(v); onDragState(true); onPreview(v); }}
+        onValueCommitted={(v) => { setDrag(null); onDragState(false); onCommit(v); }}
         className="max-w-xs"
       />
       <span className="text-xs tabular-nums text-muted-foreground sm:w-12 sm:text-right sm:shrink-0">
@@ -81,6 +84,7 @@ const REGION_ROWS: { key: SizeRegionKey; label: string }[] = [
 export default function SizeCard() {
   const { size, setSize } = useTheme();
   const [open, setOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const { value: followMe, setValue: setFollowMe } = usePreference('appearance.followMe');
   const { value: syncEnabled } = usePreference('prefs.syncEnabled');
 
@@ -96,8 +100,30 @@ export default function SizeCard() {
   ).length;
   const atDefault = size.global === 1 && tuned === 0;
 
+  // A control must not sit in the layout it is changing. Every row
+  // previews live against <html>, and this panel renders inside
+  // <main style={sizeRegion('text')}> — so dragging "Main content"
+  // rescaled the very slider being dragged. Measured at 1 -> 1.5: the
+  // track grew 320px -> 480px and its row moved 91px down the screen
+  // while the pointer held still, and the rows below it moved up to
+  // 171px. The thumb ran away from the cursor.
+  //
+  // While a thumb is held the panel is pinned to the COMMITTED size —
+  // `size` only updates on commit, so these are last-saved values, not
+  // the preview. The page BEHIND the panel still previews, which is the
+  // whole point of previewing; only the instrument holds still.
+  const pinned = dragging
+    ? ({
+      '--size-region': 1,
+      '--size-text': size.text * size.global,
+      '--size-control': size.control * size.global,
+      '--size-layout': size.layout * size.global,
+      '--size-panel': size.panel * size.global,
+    } as CSSProperties)
+    : undefined;
+
   return (
-    <Card className="scroll-mt-20" render={<section />} id="appearance">
+    <Card className="scroll-mt-20" render={<section />} id="appearance" style={pinned}>
       <div className="flex items-start justify-between gap-4 mb-1">
         <h2 className="text-lg font-semibold">Appearance size</h2>
         <button
@@ -121,6 +147,7 @@ export default function SizeCard() {
           value={size.global}
           onPreview={(v) => applySize({ ...size, global: v })}
           onCommit={(v) => setSize({ global: v })}
+          onDragState={setDragging}
         />
 
         {/* Per-area sliders are BEHIND a disclosure, not stacked under
@@ -129,12 +156,19 @@ export default function SizeCard() {
             page read as six equal decisions and bury the one that
             matters. Open, they show what they are worth — each one
             multiplies the global rather than replacing it. */}
-        <div className="pt-1">
+        {/* `pt-4`, not `pt-1`: this button OWNS the six rows below it, and
+            at pt-1 the gap above it measured 14px against a 12px rhythm
+            between the rows — 1.17x, which says nothing. The indent rail
+            was carrying the whole grouping alone. And the weight is
+            `text-foreground font-medium`, not `text-xs
+            text-muted-foreground`: a bar that governs a group should not
+            be quieter than the group's members. */}
+        <div className="pt-4">
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1 -my-1 min-h-tap"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground/80 py-1 -my-1 min-h-tap"
           >
             <ChevronRight
               className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
@@ -166,6 +200,7 @@ export default function SizeCard() {
                   onCommit={(v) => setSize({
                     regions: { ...size.regions, [key]: v },
                   })}
+                  onDragState={setDragging}
                 />
               ))}
             </div>
