@@ -210,6 +210,15 @@ export default {
       // ``rounded-full`` (circles, pills) and ``rounded-none`` (intentional
       // squares) are deliberately left at their Tailwind defaults — they
       // describe a shape, not a degree of softness.
+      // The UI primitives in components/ui were vendored from a
+      // Tailwind v4 edition of shadcn, where `ring-<number>` is a
+      // dynamic utility.  This project is on v3, whose ringWidth scale
+      // is 0/1/2/4/8 + DEFAULT — so the primitives' authored
+      // `focus-visible:ring-3` compiled to NOTHING and every focus halo
+      // was silently missing.  Defining the step revives them.
+      ringWidth: {
+        3: '3px',
+      },
       borderRadius: {
         DEFAULT: 'max(0px, calc(var(--radius) - 3px))',
         sm: 'max(0px, calc(var(--radius) - 4px))',

@@ -9,19 +9,18 @@ export default function StatusBadge({ status }: { status: string }) {
   // change a colour) in ``lib/status.ts`` — never invent a colour
   // here.  See dashboard/CLAUDE.md.
   const classes = statusClasses(status);
-  // The base Badge component hard-codes ``rounded-4xl`` (fixed
-  // 32px) which ignores the user's Corners theme setting (Sharp /
-  // Rounded / Pill).  Overriding to ``rounded-md`` here maps the
-  // badge corners onto the ``--radius`` CSS variable so the Status
-  // badge matches the rest of the themed surface — sharp goes sharp,
-  // pill goes pill.
+  // Corners come from the base Badge, which carries the themed
+  // ``rounded-md`` (``--radius``) so Sharp / Rounded / Pill all reach
+  // this badge.  It used to hard-code ``rounded-4xl`` — a step this
+  // project's radius scale never defined, so the class compiled to
+  // nothing and the corners silently fell back to square.
   // Snake-case statuses (``in_progress``, ``due_soon``) become two
   // words when rendered — otherwise the badge reads as a slug rather
   // than English ("due_soon" → "due soon").  Case is preserved as the
   // caller passed it so the existing lowercase styling carries through.
   const label = status.replace(/_/g, ' ');
   return (
-    <Badge variant="outline" className={cn('text-xs font-medium rounded-md', classes)}>
+    <Badge variant="outline" className={cn('text-xs font-medium', classes)}>
       {label}
     </Badge>
   );
