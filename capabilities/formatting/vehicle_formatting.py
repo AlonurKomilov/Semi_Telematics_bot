@@ -25,6 +25,13 @@ def format_vehicle_detail(v: dict, show_company: bool = False,
     no_device = ""
     if not v.get("has_gateway", True):
         no_device = f"\n  ⚠️  <i>{_t('vehicle.no_device')}</i>"
+    # A gateway that has power and a fix but is not on the engine bus:
+    # the fuel bar and odometer below will be blank, and without this
+    # line the driver reads that as the bot being broken.  Set by the
+    # caller from the vehicle's open conditions — the formatter stays
+    # pure and never touches the database.
+    elif v.get("no_engine_data"):
+        no_device = f"\n  ⚠️  <i>{_t('vehicle.no_engine_data')}</i>"
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",

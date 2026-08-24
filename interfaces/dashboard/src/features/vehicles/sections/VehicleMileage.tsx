@@ -13,11 +13,11 @@ import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../../api/client';
 import { DateRangePresets } from '../../../components/shell';
 import { Tip } from '../../../components/tooltip';
-import { toneClasses } from '../../../lib/status';
 import { useTimezone } from '../../../hooks/useTimezone';
 import { todayInTimeZone, formatDay } from '../../../utils/datetime';
 import type { VehicleSectionProps } from './_shared/types';
-import { FLAG_NOTE } from '../mileageFlags';
+import { flagCallout } from '../mileageFlags';
+import { CalloutChip } from '../../../components/callouts';
 import { Card } from '@/components/ui/card';
 
 interface DayMiles { day: string; miles: number }
@@ -96,12 +96,8 @@ export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
               odometer {Math.round(data.start_odo ?? 0).toLocaleString()} →{' '}
               {Math.round(data.end_odo ?? 0).toLocaleString()}
             </span>
-            {data.flag && FLAG_NOTE[data.flag] && (
-              <Tip label={FLAG_NOTE[data.flag].tip}>
-                <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
-                  {FLAG_NOTE[data.flag].label}
-                </span>
-              </Tip>
+            {flagCallout(data.flag) && (
+              <CalloutChip callout={flagCallout(data.flag)!} />
             )}
           </div>
 

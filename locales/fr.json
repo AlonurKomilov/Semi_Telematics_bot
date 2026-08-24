@@ -66,6 +66,7 @@
     "plate": "Plaque",
     "dash": "💡 Tableau",
     "no_device": "Aucun appareil Samsara — données en direct limitées",
+    "no_engine_data": "Aucune donnée moteur — l'appareil est en ligne mais ne lit pas le bus moteur. Faites vérifier sa connexion au port de diagnostic.",
     "no_faults": "Aucun code de défaut actif",
     "no_faults_note": "Le camion fonctionne sans problème !",
     "active_faults": "Défaut(s) actif(s)",

@@ -66,6 +66,7 @@
     "plate": "Placa",
     "dash": "💡 Tablero",
     "no_device": "Sin dispositivo Samsara — datos en vivo limitados",
+    "no_engine_data": "Sin datos del motor — el dispositivo está en línea pero no lee el bus del motor. Revise su conexión al puerto de diagnóstico.",
     "no_faults": "Sin códigos de fallo activos",
     "no_faults_note": "¡El camión funciona sin problemas!",
     "active_faults": "Fallo(s) Activo(s)",

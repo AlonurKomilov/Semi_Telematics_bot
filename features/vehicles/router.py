@@ -368,12 +368,20 @@ async def vehicles_list(
         result.sort(key=lambda v: (v.get(sort) is None, v.get(sort, "")), reverse=reverse)
 
     paged = paginate(result, page, page_size)
+    # Scoped to the PAGE, not the account: the list renders 50 rows, so
+    # asking for the other 137 vehicles' callouts would be work nobody
+    # can see.
+    callouts = await _vehicle_callouts(
+        user["account_id"], tenant_reg,
+        [v.get("id") for v in paged["items"]],
+    )
     return {
         "vehicles": paged["items"],
         "count": paged["total"],
         "page": paged["page"],
         "page_size": paged["page_size"],
         "total_pages": paged["total_pages"],
+        "callouts": callouts,
     }
 
 
@@ -689,6 +697,15 @@ async def account_period_mileage(
             f"{nm} ({co})" if name_counts[nm] > 1 and co else nm
             for nm, co in hits
         )
+    # Conditions belong on THIS surface most of all: a truck whose
+    # device stopped reading the engine reports 0 miles here while it
+    # is genuinely driving, and a zero in a mileage report is read as
+    # an idle asset rather than a blind one.  The vehicle page can
+    # explain it all it likes — this is where the number misleads.
+    callouts = await _vehicle_callouts(
+        user["account_id"], tenant_db,
+        [v.get("vehicle_id") or v.get("id") for v in vehicles],
+    )
     return {
         "start": start, "end": end,
         "vehicles": vehicles,
@@ -697,6 +714,7 @@ async def account_period_mileage(
         "data_through": data_through,
         "time_requested": bool(s_ts or e_ts),
         "imprecise_time_for": imprecise,
+        "callouts": callouts,
     }
 
 
@@ -1067,6 +1085,40 @@ async def resolve_device_event(
     }
 
 
+async def _vehicle_callouts(account_id: int, tenant, vehicle_ids) -> list[dict]:
+    """Live callouts for the vehicles a response is about.
+
+    Returned TOP-LEVEL and keyed by entity rather than stamped on each
+    row: a 500-row list where one truck is blind should carry one
+    entry, not 499 empty arrays, and a page-scoped callout (one that
+    belongs to the screen rather than to a row) has nowhere to live in
+    a per-row field.
+
+    Never raises — a callout is a courtesy on top of the data; failing
+    to fetch one must not take the vehicle list down with it.
+    """
+    from capabilities.callouts import Callout, callout_wire
+
+    if tenant is None:
+        return []
+    try:
+        rows = await tenant.get_open_conditions(
+            account_id, vehicle_ids=[str(v) for v in vehicle_ids if v],
+        )
+    except Exception:
+        logger.debug("callout read failed acct=%d", account_id, exc_info=True)
+        return []
+    return callout_wire([
+        Callout(
+            key=str(r.get("key") or ""),
+            entity=f"vehicle:{r.get('vehicle_id')}",
+            since=str(r.get("opened_at") or ""),
+            params=r.get("params") or {},
+        )
+        for r in rows if r.get("key")
+    ])
+
+
 @router.get("/{vehicle_name}")
 async def vehicle_detail(
     vehicle_name: str,
@@ -1129,7 +1181,15 @@ async def vehicle_detail(
                 match["engine_hours_reading"] = e_hit
 
     normalized = [_normalize_detail(m) for m in matches]
-    return {"vehicles": normalized, "count": len(normalized)}
+    callouts = await _vehicle_callouts(
+        user["account_id"], tenant,
+        [m.get("id") for m in matches],
+    )
+    return {
+        "vehicles": normalized,
+        "count": len(normalized),
+        "callouts": callouts,
+    }
 
 
 @router.get("/{vehicle_name}/health")

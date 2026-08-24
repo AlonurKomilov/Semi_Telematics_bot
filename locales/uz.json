@@ -66,6 +66,7 @@
     "plate": "Raqam",
     "dash": "💡 Tablo",
     "no_device": "Samsara qurilmasi yo'q — jonli ma'lumot cheklangan",
+    "no_engine_data": "Dvigatel ma'lumoti yo'q — qurilma tarmoqda, lekin dvigatel shinasini o'qimayapti. Diagnostika portiga ulanishini tekshiring.",
     "no_faults": "Faol nosozlik kodlari yo'q",
     "no_faults_note": "Yuk mashinasi yaxshi ishlamoqda!",
     "active_faults": "Faol nosozlik(lar)",

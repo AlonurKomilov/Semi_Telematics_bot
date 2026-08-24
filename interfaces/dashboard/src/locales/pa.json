@@ -817,5 +817,36 @@
     "fix_topic": "ਇਹ ਟੌਪਿਕ ਮਿਟਾਇਆ ਜਾਂ ਬੰਦ ਹੋ ਗਿਆ — ਅਲਰਟ ਰੂਟਿੰਗ ਖੋਲ੍ਹ ਕੇ ਦੁਬਾਰਾ ਬਣਾਓ।",
     "fix_renamed": "ਸਿਰਫ਼ ਜਾਣਕਾਰੀ ਲਈ — ਡਿਲੀਵਰੀ ਚੱਲ ਰਹੀ ਹੈ।",
     "fix_bindings": "ਰੂਟਿੰਗ ਸੰਰਚਨਾ ਪੜ੍ਹੀ ਨਹੀਂ ਜਾ ਸਕੀ — ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
+  },
+  "callout": {
+    "vehicle.no_engine_data": {
+      "title": "No engine data",
+      "body": "This truck's device is online — location and battery arrive — but it is not reading the engine. Odometer, fuel and engine hours stay empty, and mileage for this truck will read low or zero until it is reconnected.",
+      "fix": "Have the device's diagnostic-port connection checked on the truck. 4truck shows what the device sends."
+    },
+    "mileage.device_change": {
+      "title": "Device change",
+      "body": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+    },
+    "mileage.estimated": {
+      "title": "Estimated",
+      "body": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+    },
+    "mileage.catchup": {
+      "title": "Catch-up days",
+      "body": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+    },
+    "mileage.partial": {
+      "title": "Partial",
+      "body": "Odometer history starts inside this range — real miles are at least the number shown."
+    },
+    "mileage.reset": {
+      "title": "Odometer reset",
+      "body": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+    },
+    "mileage.rebase": {
+      "title": "Odometer changed scale",
+      "body": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+    }
   }
 }

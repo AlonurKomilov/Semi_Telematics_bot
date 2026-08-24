@@ -177,3 +177,114 @@ class WarehouseLedgersMixin(_MixinBase):
         )
         await self._db.commit()
 
+
+    # ── Standing vehicle conditions (the state behind a callout) ─────
+    #
+    # An event log answers "what happened"; these answer "what is true
+    # right now".  Kept apart from ``device_event_log`` on purpose —
+    # its UNIQUE(kind, old_value, new_value) would swallow a
+    # recurrence, and a condition that comes back IS news.
+
+    async def open_or_touch_condition(
+        self, account_id: int, *, key: str, vehicle_id: str,
+        vehicle_name: str = "", registry_id: int | None = None,
+        params: dict | None = None,
+    ) -> bool:
+        """Record that ``key`` is true for this vehicle right now.
+
+        Returns True when this OPENED a condition (first observation,
+        or a recurrence after a resolve), False when it merely bumped
+        an already-open one.  Callers use that to notify once per
+        occurrence instead of once per tick.
+
+        The partial unique index (open rows only) makes the upsert the
+        concurrency guard: two ingest workers racing the same tick
+        produce one open row, not two.
+        """
+        import json as _json
+
+        ts = _now_iso()
+        payload = _json.dumps(params or {}, ensure_ascii=False)
+        # Was it already open?  Asked BEFORE the write, because an
+        # upsert cannot tell us afterwards which branch it took (both
+        # report one affected row) and stamp-comparison ties the answer
+        # to clock granularity.
+        cur = await self._db.execute(
+            "SELECT 1 FROM vehicle_conditions "
+            "WHERE account_id = ? AND vehicle_id = ? AND key = ? "
+            "  AND resolved_at IS NULL",
+            (account_id, str(vehicle_id), str(key)),
+        )
+        was_open = await cur.fetchone() is not None
+        # ON CONFLICT still guards the race: two workers on the same
+        # tick both read "not open", and the partial unique index folds
+        # their inserts into one row instead of raising.
+        await self._db.execute(
+            "INSERT INTO vehicle_conditions "
+            "  (account_id, registry_id, vehicle_id, vehicle_name, key, "
+            "   opened_at, last_true_at, resolved_at, params) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?) "
+            "ON CONFLICT (account_id, vehicle_id, key) "
+            "  WHERE resolved_at IS NULL "
+            "DO UPDATE SET last_true_at = excluded.last_true_at, "
+            "              params = excluded.params, "
+            "              vehicle_name = excluded.vehicle_name",
+            (account_id, registry_id, str(vehicle_id), str(vehicle_name),
+             str(key), ts, ts, payload),
+        )
+        await self._db.commit()
+        return not was_open
+
+    async def resolve_condition(
+        self, account_id: int, *, key: str, vehicle_id: str,
+    ) -> bool:
+        """The world fixed itself — close the open row (history kept).
+
+        Returns True only when an OPEN row was closed, so a caller can
+        announce a recovery exactly once however often it re-checks.
+        """
+        cur = await self._db.execute(
+            "UPDATE vehicle_conditions SET resolved_at = ? "
+            "WHERE account_id = ? AND vehicle_id = ? AND key = ? "
+            "  AND resolved_at IS NULL",
+            (_now_iso(), account_id, str(vehicle_id), str(key)),
+        )
+        ok = getattr(cur, "rowcount", 0) > 0
+        await self._db.commit()
+        return ok
+
+    async def get_open_conditions(
+        self, account_id: int, *, vehicle_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """Every live condition for the account, newest first.
+
+        ``vehicle_ids`` narrows to the rows a page is actually showing;
+        omitted, it returns the account-wide set (the vehicle list and
+        the Telegram formatter both read it that way).
+        """
+        import json as _json
+
+        sql = (
+            "SELECT id, registry_id, vehicle_id, vehicle_name, key, "
+            "       opened_at, last_true_at, params "
+            "  FROM vehicle_conditions "
+            " WHERE account_id = ? AND resolved_at IS NULL"
+        )
+        args: list = [account_id]
+        ids = [str(v) for v in (vehicle_ids or []) if str(v)]
+        if ids:
+            sql += " AND vehicle_id IN (" + ",".join("?" * len(ids)) + ")"
+            args.extend(ids)
+        sql += " ORDER BY opened_at DESC"
+        cur = await self._db.execute(sql, tuple(args))
+        cols = ("id", "registry_id", "vehicle_id", "vehicle_name", "key",
+                "opened_at", "last_true_at", "params")
+        out: list[dict] = []
+        for r in await cur.fetchall():
+            d = dict(zip(cols, r))
+            try:
+                d["params"] = _json.loads(d.get("params") or "{}")
+            except Exception:
+                d["params"] = {}
+            out.append(d)
+        return out

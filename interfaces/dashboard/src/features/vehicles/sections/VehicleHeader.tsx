@@ -6,25 +6,18 @@
  * shared vehicle query once it lands — no loading-state needed since
  * the title is always known.
  */
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { apiJSON } from '../../../api/client';
-import type { Vehicle, VehiclesResponse } from '../../../types';
+import { Callout } from '../../../components/callouts';
+import { useVehicle, useVehicleCallouts } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';
 
 export default function VehicleHeader({ vehicleName, company }: VehicleSectionProps) {
-  const { data } = useQuery<Vehicle | null>({
-    queryKey: ['vehicle', vehicleName, company ?? ''],
-    queryFn: async () => {
-      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
-      const res = await apiJSON<VehiclesResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}${qs}`,
-      );
-      return res.vehicles?.[0] ?? null;
-    },
-    staleTime: 30_000,
-  });
+  const { vehicle: data } = useVehicle(vehicleName, company);
+  // Conditions standing against this truck — rendered here, above
+  // the cards, because they explain fields the reader is about to
+  // find empty further down the page.
+  const callouts = useVehicleCallouts(vehicleName, company);
 
   // Spans the full grid width so the page heading sits above the
   // 2-col card grid on lg, even when this section is rendered as part
@@ -44,6 +37,13 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
           <span className="text-sm text-muted-foreground">{data.company}</span>
         )}
       </div>
+      {callouts.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {callouts.map((c) => (
+            <Callout key={c.key} callout={c} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

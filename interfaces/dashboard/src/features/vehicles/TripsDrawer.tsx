@@ -23,12 +23,11 @@ import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { formatDate, todayInTimeZone } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
-import { Tip } from '../../components/tooltip';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody, SheetClose,
 } from '../../components/ui/sheet';
-import { toneClasses } from '../../lib/status';
-import { FLAG_NOTE } from './mileageFlags';
+import { flagCallout } from './mileageFlags';
+import { CalloutChip } from '../../components/callouts';
 
 interface TripRow {
   start_ms: number;
@@ -210,12 +209,8 @@ export default function TripsDrawer({
           <div className="flex-1 min-w-0">
             <SheetTitle className="text-base font-semibold flex items-center gap-2">
               Trips — {vehicleName}{company ? ` · ${company}` : ''}
-              {rowFlag && FLAG_NOTE[rowFlag] && (
-                <Tip label={FLAG_NOTE[rowFlag].tip}>
-                  <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
-                    {FLAG_NOTE[rowFlag].label}
-                  </span>
-                </Tip>
+              {flagCallout(rowFlag) && (
+                <CalloutChip callout={flagCallout(rowFlag)!} />
               )}
             </SheetTitle>
             <p className="text-xs text-muted-foreground mt-0.5">

@@ -34,6 +34,38 @@ from interfaces.bot.reports import _skipped_warning
 
 
 @_require_registered
+async def _mark_vehicle_conditions(account_id: int, matches: list) -> None:
+    """Flag any matched vehicle that has an open standing condition.
+
+    Best-effort and silent on failure: a lookup that cannot read the
+    conditions should still show the truck, just without the line
+    explaining its empty fields.
+    """
+    try:
+        from features.vehicles.callouts import NO_ENGINE_DATA
+        from infra.services import get_tenant_db
+
+        tenant = await get_tenant_db(account_id)
+        if tenant is None:
+            return
+        ids = [str(m.get("id") or "") for m in matches if m.get("id")]
+        if not ids:
+            return
+        open_rows = await tenant.get_open_conditions(
+            account_id, vehicle_ids=ids,
+        )
+        blind = {
+            str(r.get("vehicle_id"))
+            for r in open_rows if r.get("key") == NO_ENGINE_DATA
+        }
+        for m in matches:
+            if str(m.get("id") or "") in blind:
+                m["no_engine_data"] = True
+    except Exception:
+        logger.debug("vehicle conditions lookup failed acct=%d",
+                     account_id, exc_info=True)
+
+
 async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     vehicle_name: str | None = None, company: str | None = None,
                     ack_id: int | None = None):
@@ -92,6 +124,11 @@ async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         [t('vehicle.not_found').format(name=vehicle_name)],
                         keyboard=back_kb())
             return
+
+        # Stamp standing conditions onto the match before formatting —
+        # one read for the whole reply, and the same computed fact the
+        # dashboard shows, never a second derivation of the rule.
+        await _mark_vehicle_conditions(user.account_id, matches)
 
         if len(matches) == 1:
             vehicle = matches[0]

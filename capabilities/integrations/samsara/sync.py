@@ -306,10 +306,16 @@ async def ingest_vehicle_state(account_id: int) -> int:
     # data mysteries (128's odometer scale change went unseen for a
     # day; a VIN change means the ID now points at a DIFFERENT truck).
     identity_events: list[dict] = []
+    # Previous live rows, shared by the identity watch and the condition
+    # sweep.  Declared out here because the watch's read is inside a
+    # try/except: if it fails the sweep still runs, just without an
+    # odometer age to compare against.
+    _prev_state: dict[str, dict] = {}
     try:
         _ident = await tenant.get_identity_map(account_id)
         _prev = {str(r.get("vehicle_id") or ""): r
                  for r in await tenant.get_vehicle_state(account_id)}
+        _prev_state = _prev
         _odo_by_ref = {str(r.get("vehicle_id") or ""): r.get("odometer_mi")
                        for r in rows}
         identity_events = _detect_identity_events(
@@ -388,6 +394,18 @@ async def ingest_vehicle_state(account_id: int) -> int:
             "registry upsert from ingest FAILED acct=%d (%d vehicles) — "
             "registry now stale", account_id, len(registry_rows),
         )
+    # ── Standing conditions: what is TRUE about a vehicle right now.
+    # The identity watch above records CHANGES; this records a state
+    # that persists until the world fixes it, so the dashboard and the
+    # bot can say why a truck's fields are empty instead of leaving
+    # "\u2014" to read like our bug.  Best-effort: a condition write must
+    # never poison live-state ingest.
+    try:
+        await _sweep_vehicle_conditions(account_id, tenant, rows, _prev_state)
+    except Exception:
+        logger.debug("condition sweep skipped acct=%d", account_id,
+                     exc_info=True)
+
     if identity_events:
         try:
             new_events = await tenant.record_device_events(
@@ -424,6 +442,77 @@ async def ingest_vehicle_state(account_id: int) -> int:
             account_id,
         )
     return n
+
+
+async def _sweep_vehicle_conditions(account_id, tenant, rows, prev_live):
+    """Open, refresh and close the standing conditions this tick proves.
+
+    Runs over the rows already built for ``vehicle_state``, so it costs
+    no extra provider call and no extra query per vehicle.  Only
+    vehicles the provider returned are considered — a trailer or a
+    manually-added truck has no telematics id and never appears here,
+    which is why they cannot be flagged (``test_callouts`` asserts it
+    rather than trusting this sentence).
+
+    Every tick either opens the condition, bumps its ``last_true_at``,
+    or resolves it, so "still true" and "fixed itself" are both
+    recorded without anyone clicking anything.
+    """
+    from datetime import datetime, timezone
+
+    from features.vehicles.callouts import (
+        NO_ENGINE_DATA, detect_no_engine_data,
+    )
+
+    now = datetime.now(timezone.utc)
+
+    def _age_hours(stamp) -> float | None:
+        """Hours since a provider timestamp; None when never seen."""
+        if not stamp:
+            return None
+        try:
+            t = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return max(0.0, (now - t).total_seconds() / 3600.0)
+
+    opened = 0
+    for row in rows:
+        vid = str(row.get("vehicle_id") or "")
+        if not vid:
+            continue
+        has_gps = row.get("lat") is not None and row.get("lon") is not None
+        odo_now = row.get("odometer_mi") is not None
+        # Age of the newest odometer we have ever stored for this
+        # vehicle — this tick's reading when one arrived, otherwise the
+        # live row's.  A truck that reported yesterday is not blind.
+        prior = prev_live.get(vid) or {}
+        age = _age_hours(row.get("odometer_time") or prior.get("odometer_time"))
+        if odo_now:
+            age = 0.0
+
+        if detect_no_engine_data(
+            has_gps=has_gps, odometer_present=odo_now,
+            odometer_age_hours=age,
+        ):
+            is_new = await tenant.open_or_touch_condition(
+                account_id, key=NO_ENGINE_DATA, vehicle_id=vid,
+                vehicle_name=str(row.get("vehicle_name") or ""),
+                registry_id=row.get("registry_id"),
+                params={"gateway": str(row.get("gateway_serial") or "")},
+            )
+            opened += 1 if is_new else 0
+        else:
+            await tenant.resolve_condition(
+                account_id, key=NO_ENGINE_DATA, vehicle_id=vid,
+            )
+    if opened:
+        logger.info(
+            "vehicle conditions acct=%d newly_open=%d key=%s",
+            account_id, opened, NO_ENGINE_DATA,
+        )
 
 
 def _detect_identity_events(fleet, ident, prev_live, odo_by_ref, now_iso):

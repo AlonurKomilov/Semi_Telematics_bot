@@ -9058,3 +9058,84 @@ async def migrate_kpi_run_note(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 199: kpi run note")
+
+
+@_register("200_vehicle_conditions")
+async def migrate_vehicle_conditions(conn) -> None:
+    """Standing per-vehicle conditions — the state behind a callout.
+
+    Deliberately NOT ``device_event_log``: that table records discrete
+    identity CHANGES and carries ``UNIQUE (account_id, vehicle_id,
+    kind, old_value, new_value)``, which would silently swallow the
+    second occurrence of a recurring condition (truck goes blind →
+    fixed → goes blind again reads as one row).  An event log answers
+    "what happened"; this answers "what is true right now", so it gets
+    its own table with an explicit lifecycle:
+
+        opened_at    first tick the condition was observed
+        last_true_at bumped on every tick it is still observed
+        resolved_at  stamped when the world fixed itself (NULL = live)
+
+    The partial unique index enforces "at most one OPEN row per
+    (account, vehicle, key)" while leaving history: a resolved row
+    stays, and a recurrence opens a fresh one.  ``params`` carries the
+    render substitutions (gateway serial, last reading) so the UI and
+    the Telegram formatter read one computed fact instead of each
+    re-deriving it.
+    """
+    await conn.execute(
+        """CREATE TABLE IF NOT EXISTS warehouse.vehicle_conditions (
+               id BIGSERIAL PRIMARY KEY,
+               account_id INTEGER NOT NULL,
+               registry_id INTEGER,
+               vehicle_id TEXT NOT NULL DEFAULT '',
+               vehicle_name TEXT NOT NULL DEFAULT '',
+               key TEXT NOT NULL,
+               opened_at TEXT NOT NULL,
+               last_true_at TEXT NOT NULL DEFAULT '',
+               resolved_at TEXT,
+               params TEXT NOT NULL DEFAULT '{}'
+           )"""
+    )
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS vehicle_conditions_open_uniq "
+        "ON warehouse.vehicle_conditions (account_id, vehicle_id, key) "
+        "WHERE resolved_at IS NULL"
+    )
+    # Read path is "every open condition for this account" — the
+    # partial index above already serves it, so no second index.
+    await conn.commit()
+    logger.info("Migration 200: vehicle_conditions ready")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 200: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute(
+            "ALTER TABLE warehouse.vehicle_conditions "
+            "ENABLE ROW LEVEL SECURITY"
+        )
+        await conn.execute(
+            "ALTER TABLE warehouse.vehicle_conditions "
+            "FORCE ROW LEVEL SECURITY"
+        )
+        await conn.execute(
+            "DROP POLICY IF EXISTS tenant_isolation "
+            "ON warehouse.vehicle_conditions"
+        )
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON warehouse.vehicle_conditions
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 200: tenant_isolation RLS applied")
+    except Exception as e:
+        logger.error("Migration 200: RLS apply failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

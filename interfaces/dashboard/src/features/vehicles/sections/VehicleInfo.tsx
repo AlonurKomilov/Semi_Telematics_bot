@@ -7,34 +7,26 @@
  * TanStack Query dedupes so the /vehicles/{name} endpoint is hit once
  * regardless of how many sections need it.
  */
-import { useQuery } from '@tanstack/react-query';
-import { apiJSON } from '../../../api/client';
 import StatusBadge from '../../../components/StatusBadge';
 import { CardSkeleton } from '../../../components/shell';
-import type { Vehicle, VehiclesResponse } from '../../../types';
 import { Row } from './_shared/Row';
+import { CalloutInline } from '../../../components/callouts';
+import { useVehicle, useVehicleCallouts } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
 
 export default function VehicleInfo({ vehicleName, company }: VehicleSectionProps) {
-  const { data: v, isLoading } = useQuery<Vehicle | null>({
-    // ``company`` is part of the query key so the cache keeps a
-    // separate entry for each (name, company) pair — opening a
-    // different "103" never recycles the previous one's data.
-    queryKey: ['vehicle', vehicleName, company ?? ''],
-    queryFn: async () => {
-      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
-      const res = await apiJSON<VehiclesResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}${qs}`,
-      );
-      return res.vehicles?.[0] ?? null;
-    },
-    staleTime: 30_000,
-  });
+  const { vehicle: v, isLoading } = useVehicle(vehicleName, company);
+  const callouts = useVehicleCallouts(vehicleName, company);
 
   if (isLoading || !v) return <CardSkeleton height="h-64" />;
 
   const fuel = v.fuelPercent ?? v.fuel_percent;
+  // The condition that explains an empty engine reading.  Only this
+  // key qualifies: a caveat about mileage says nothing about why the
+  // odometer field itself is blank.
+  const blindCallout =
+    callouts.find((c) => c.key === 'vehicle.no_engine_data') ?? null;
   const defPct = v.defPercent ?? v.def_percent;
 
   return (
@@ -51,32 +43,41 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
       <Row label="Engine" ts={v.location?.time}>
         <StatusBadge status={v.engineState || v.engine_state || 'Off'} />
       </Row>
-      <Row label="Fuel" ts={v.fuel?.time} value={fuel != null ? `${Math.round(fuel)}%` : '—'} />
+      <Row label="Fuel" ts={v.fuel?.time}>
+        {fuel != null ? (
+          <span>{`${Math.round(fuel)}%`}</span>
+        ) : blindCallout ? (
+          <CalloutInline callout={blindCallout} />
+        ) : (
+          <span>—</span>
+        )}
+      </Row>
       {defPct != null && <Row label="DEF" ts={v.def_level?.time} value={`${Math.round(defPct)}%`} />}
       {/* Odometer + engine hours both come from the warehouse via
           /api/vehicles/{name}, refreshed every 60s by
-          ingest_vehicle_state.  Always rendered (with "—" when the
-          vehicle has no CAN bus gateway / Samsara plan doesn't
-          expose the signal yet) so users can see the field is
-          tracked even before the first reading lands. */}
-      <Row
-        label="Odometer"
-        ts={v.odometer_time}
-        value={
-          v.odometer_miles != null
-            ? `${Math.round(v.odometer_miles).toLocaleString()} mi`
-            : '—'
-        }
-      />
-      <Row
-        label="Engine Hours"
-        ts={v.engine_hours_time}
-        value={
-          v.engine_hours != null
-            ? `${Math.round(v.engine_hours).toLocaleString()} h`
-            : '—'
-        }
-      />
+          ingest_vehicle_state.  Always rendered so users can see the
+          field is tracked even before the first reading lands — and
+          when the device is the reason it is empty, the bare "—" is
+          replaced by the callout that says so, because an unexplained
+          dash reads as OUR bug rather than a truck's wiring. */}
+      <Row label="Odometer" ts={v.odometer_time}>
+        {v.odometer_miles != null ? (
+          <span>{`${Math.round(v.odometer_miles).toLocaleString()} mi`}</span>
+        ) : blindCallout ? (
+          <CalloutInline callout={blindCallout} />
+        ) : (
+          <span>—</span>
+        )}
+      </Row>
+      <Row label="Engine Hours" ts={v.engine_hours_time}>
+        {v.engine_hours != null ? (
+          <span>{`${Math.round(v.engine_hours).toLocaleString()} h`}</span>
+        ) : blindCallout ? (
+          <CalloutInline callout={blindCallout} />
+        ) : (
+          <span>—</span>
+        )}
+      </Row>
     </Card>
   );
 }

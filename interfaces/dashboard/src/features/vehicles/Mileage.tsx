@@ -26,12 +26,13 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
-import { Tip } from '../../components/tooltip';
-import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone, formatClock } from '../../utils/datetime';
 import TripsDrawer from './TripsDrawer';
-import { FLAG_NOTE } from './mileageFlags';
+import { flagCallout } from './mileageFlags';
+import {
+  CalloutChip, byEntity, type CalloutData,
+} from '../../components/callouts';
 
 interface MileageRow {
   vehicle_id: string;
@@ -61,6 +62,10 @@ interface MileageResponse {
   /** Vehicles whose stored tiers couldn't answer at the requested
    *  time-of-day precision (their rows fell back to whole days). */
   imprecise_time_for?: string[];
+  /** Standing conditions about these trucks — chiefly the one
+   *  that explains a 0 here: a device that stopped reading the
+   *  engine still drives, it just cannot say so. */
+  callouts?: CalloutData[];
 }
 
 /** Range start for the picker's convention: DateRangePresets computes
@@ -113,6 +118,7 @@ export default function Mileage() {
     });
 
   const rows = data?.vehicles ?? [];
+  const conditions = byEntity(data?.callouts);
 
   const columns = [
     { key: 'vehicle_name', label: 'Vehicle', sortable: true },
@@ -144,15 +150,22 @@ export default function Mileage() {
     { key: 'days_covered', label: 'Days', sortable: true },
     {
       key: 'flag', label: 'Coverage', sortable: true,
-      render: (v: unknown) => {
-        const note = FLAG_NOTE[String(v ?? '')];
-        if (!note) return null;
+      // Two sources feed one column: the row's own coverage flag, and
+      // any standing condition on that truck.  A blind device shows no
+      // flag at all — its row is simply 0 miles — so without the
+      // second source the column would be empty exactly where the
+      // number is least trustworthy.
+      render: (v: unknown, row: MileageRow) => {
+        const flag = flagCallout(v as string);
+        const conds = conditions.get(
+          `vehicle:${(row as { vehicle_id?: string }).vehicle_id ?? ''}`,
+        ) ?? [];
+        if (!flag && conds.length === 0) return null;
         return (
-          <Tip label={note.tip}>
-            <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
-              {note.label}
-            </span>
-          </Tip>
+          <span className="inline-flex flex-wrap items-center gap-1">
+            {flag && <CalloutChip callout={flag} />}
+            {conds.map((c) => <CalloutChip key={c.key} callout={c} />)}
+          </span>
         );
       },
     },

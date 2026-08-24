@@ -14,20 +14,12 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import {
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, X, XCircle,
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import type { Tone } from '@/lib/status';
-import { toneText } from '@/lib/status';
+// TONE_ICON moved to lib/status so this lane and the pinned callout
+// lane cannot show different icons for the same meaning.
+import { TONE_ICON, toneText } from '@/lib/status';
 import { formatAgoShort } from '@/utils/datetime';
-
-const TONE_ICON: Record<Tone, typeof Info> = {
-  ok: CheckCircle2,
-  warn: AlertTriangle,
-  danger: XCircle,
-  info: Info,
-  neutral: Info,
-};
 
 // Progress underline per tone (solid foreground colours, token-based).
 const TONE_BAR: Record<Tone, string> = {
@@ -125,7 +117,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
     toast.dismiss(id);
   };
 
-  const Icon = TONE_ICON[tone] ?? Info;
+  const Icon = TONE_ICON[tone];
   const leftSec = Math.ceil(leftMs / 1000);
   const pct = total > 0 ? Math.max(0, Math.min(100, (leftMs / total) * 100)) : 0;
 

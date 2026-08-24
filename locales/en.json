@@ -66,6 +66,7 @@
     "plate": "Plate",
     "dash": "💡 Dash",
     "no_device": "No Samsara device — live data limited",
+    "no_engine_data": "No engine data — the device is online but not reading the truck's engine bus. Have its diagnostic-port connection checked.",
     "no_faults": "No active fault codes",
     "no_faults_note": "Truck is running clean!",
     "active_faults": "Active Fault(s)",

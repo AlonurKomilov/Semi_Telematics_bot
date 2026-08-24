@@ -52,6 +52,10 @@
  * a new colour at the call-site.  If a genuinely new meaning is needed,
  * add a token in index.css first, then a Tone here.
  */
+import {
+  AlertTriangle, CheckCircle2, Info, XCircle, type LucideIcon,
+} from 'lucide-react';
+
 
 export type Tone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral';
 
@@ -75,6 +79,27 @@ export function toneClasses(tone: Tone, opts?: { border?: boolean }): string {
 /** Just the solid foreground colour class — for icons, dots, chart bars. */
 export function toneText(tone: Tone): string {
   return tone === 'neutral' ? 'text-muted-foreground' : `text-${tone}`;
+}
+
+/**
+ * The ICON that means a tone.  Lives here, beside the colours, because
+ * a tone is a meaning and its icon is half of how that meaning reads —
+ * this map was previously a private const inside AppBanner, so a
+ * warning in a toast and a warning pinned to a card could drift apart
+ * with nobody noticing.  Both lanes import it now, which makes them
+ * consistent by construction rather than by discipline.
+ */
+export const TONE_ICON: Record<Tone, LucideIcon> = {
+  ok:      CheckCircle2,
+  warn:    AlertTriangle,
+  danger:  XCircle,
+  info:    Info,
+  neutral: Info,
+};
+
+/** The icon component for a tone — `toneText`'s counterpart. */
+export function toneIcon(tone: Tone): LucideIcon {
+  return TONE_ICON[tone];
 }
 
 /**
