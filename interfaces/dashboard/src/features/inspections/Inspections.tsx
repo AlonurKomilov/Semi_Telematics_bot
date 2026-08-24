@@ -213,6 +213,17 @@ export default function Inspections() {
     placeholderData: (prev) => prev,
   });
 
+  // What the SERVER withheld, which is not the same as what a client-side
+  // chip narrowed.  ``page_size=200`` above is a hard cap with no page 2
+  // wired, so an account running daily PTIs across a 90-day window can
+  // hold thousands and see the newest 200 — while ``total`` sat unread in
+  // the same response, already typed.
+  //
+  // Undefined when the server sent everything, so filtering by a chip
+  // (a deliberate narrowing) never reads as a slice and never gates.
+  const sliced = data && data.total > data.items.length ? data.total : undefined;
+
+
   // Honour ?id=NNN from the bot's submission-ping deep-link.
   // The fleet receives a Telegram message with a "Review" button that
   // points at /inspections?id=42 — landing there should auto-open the
@@ -429,11 +440,20 @@ export default function Inspections() {
             columns={columns}
             data={rows as unknown as Record<string, unknown>[]}
             searchKey="vehicle_name"
+            // Declares the slice.  Pivot is the one that mattered most
+            // here: a cross-tab over the newest 200 shows no rows to
+            // notice the shortfall by, and it was the page's most
+            // authoritative-looking output.
+            totalRows={sliced}
             pivot
             onRowClick={(row) => setSelected(row as unknown as PTIInspectionRow)}
           />
           <p className="text-xs text-muted-foreground mt-2">
             {rows.length} inspection{rows.length !== 1 ? 's' : ''}
+            {/* Name the real total when one is being withheld — this
+                caption was the only count on the page, so "200
+                inspections" read as the period's record. */}
+            {sliced ? ` of ${sliced.toLocaleString()}` : ''}
             {filter && data && data.items.length !== rows.length
               ? ` · ${data.items.length - rows.length} hidden by filter`
               : ''}

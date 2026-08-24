@@ -1058,11 +1058,18 @@ export default function Applications() {
         </div>
         {/* Bulk-action bar is rendered by DataGrid from ``bulkActions``. */}
         {err && <div className="p-3 text-sm text-destructive">{err}</div>}
+        {/* Narrowed, not deleted, now that ``totalRows`` is passed.  The
+            grid disables the five whole-set operations itself and says
+            why, so repeating that here would be a second voice on the
+            same fact.  What it CANNOT speak for is what stays local:
+            these segments carry ``match`` predicates, so the tab badges
+            tally the loaded rows, and the column filters and search do
+            too.  That is the part with no other disclosure. */}
         {truncated && (
           <div className={`mx-3 mb-2 rounded-md border px-3 py-2 text-xs ${toneClasses('warn')}`}>
-            Showing the newest {rows.length} of {appsData?.total} applications —
-            every count and filter on this page covers only those. Use search
-            or a status filter to reach older ones.
+            The newest {rows.length} of {appsData?.total} applications are
+            loaded — the tab counts, filters and search cover only those.
+            Search or pick a status to reach older ones.
           </div>
         )}
         {/* Both views stay MOUNTED and one is hidden. Conditionally
@@ -1085,6 +1092,17 @@ export default function Applications() {
         ) : (
           <DataGrid
             tableId="applications"
+            // Declares the slice.  Undefined-vs-number is what the grid
+            // reads, so passing the true total always is right: it only
+            // gates once the total EXCEEDS the rows in hand.
+            //
+            // Without it every whole-set control stayed live over the
+            // newest 500 — most damagingly Export, whose "All rows" item
+            // wrote a file suffixed ``-all`` containing 500 of N.  A
+            // recruiter hands that to compliance as the full applicant
+            // set.  Now: sort, group and aggregate disable with a reason,
+            // and the export says "All loaded rows" with both numbers.
+            totalRows={appsData?.total}
             segments={APP_SEGMENTS}
             segmentKey={tab ? TAB_PREFIX + tab.id : segment}
             onSegmentChange={(k, saved) => {

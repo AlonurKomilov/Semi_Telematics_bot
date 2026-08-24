@@ -95,12 +95,18 @@ export default function FuelCosts() {
   const [fDate, setFDate] = useState(today);
   const [saving, setSaving] = useState(false);
 
+  // How many fill-ups the account holds, when the server can say.  The
+  // endpoint returns the newest 50 by default, so on a 30-truck fleet the
+  // "fuel spend by truck x month" pivot was summarising roughly two days
+  // and presenting it as the month.
+  const [entryTotal, setEntryTotal] = useState<number | undefined>(undefined);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError('');
     if (tab === 'entries') {
       apiJSON<FuelEntriesResponse>('/costs/fuel')
-        .then((d) => setEntries(d.entries || []))
+        .then((d) => { setEntries(d.entries || []); setEntryTotal(d.total); })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed'))
         .finally(() => setLoading(false));
     } else {
@@ -278,6 +284,12 @@ export default function FuelCosts() {
           // is already one row per vehicle, so pivoting it would
           // re-aggregate an aggregate and quietly produce averages of
           // averages.
+          // Declares the slice, so pivot and the footer totals disable
+          // with the reason instead of answering for the account from
+          // two days of data.  Undefined on the summary tab (already one
+          // row per vehicle) and whenever the server withheld a total it
+          // could not compute honestly for this caller.
+          totalRows={tab === 'entries' ? entryTotal : undefined}
           pivot={tab === 'entries'}
         />
       )}

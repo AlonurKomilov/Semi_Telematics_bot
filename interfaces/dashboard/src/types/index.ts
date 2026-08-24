@@ -1027,7 +1027,13 @@ export interface FuelEntry {
 
 export interface FuelEntriesResponse {
   entries: FuelEntry[];
+  /** How many entries came back — NOT how many exist. */
   count: number;
+  /** How many the account holds.  Absent when the caller is scoped (a
+   *  driver, a company restriction, a vehicle filter), because the
+   *  server's aggregate would then describe more than they can reach —
+   *  treat missing as "no claim", never as zero. */
+  total?: number;
 }
 
 export interface FuelSummaryVehicle {

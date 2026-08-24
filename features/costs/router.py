@@ -32,15 +32,39 @@ async def fuel_entries(
     user: dict = Depends(require_permission("can_fuel_cost")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Get fuel fill-up entries, optionally filtered by vehicle."""
+    """Get fuel fill-up entries, optionally filtered by vehicle.
+
+    ``count`` is the number of entries RETURNED.  ``total`` is how many
+    the account actually holds — present only when this caller sees the
+    account unrestricted, because the two permission filters below run in
+    Python AFTER the SQL limit, so an account-wide count would overstate
+    what a scoped caller can reach.  Omitted rather than approximated: a
+    consumer treats a missing total as "no claim", and a wrong one as
+    truth.
+
+    The distinction is not cosmetic.  With ``limit`` defaulting to 50, a
+    30-truck fleet's fuel page was pivoting roughly two days of fill-ups
+    and presenting it as the account's fuel spend — a cross-tab shows no
+    rows, so there was nothing on screen to notice the shortfall by.
+    """
+    allowed = await get_user_company_codes(user)
     entries = await tenant_db.get_fuel_entries(
         user["account_id"],
         vehicle_name=vehicle,
         limit=limit,
     )
     entries = await filter_by_assigned_trucks(entries, user, name_key="vehicle_name")
-    entries = filter_by_allowed_companies(entries, await get_user_company_codes(user), key="company_code")
-    return {"entries": entries, "count": len(entries)}
+    entries = filter_by_allowed_companies(entries, allowed, key="company_code")
+    out: dict = {"entries": entries, "count": len(entries)}
+    # A driver is scoped to assigned trucks; company codes scope everyone
+    # else.  Either one makes the account-wide aggregate the wrong number
+    # for this caller.  ``vehicle`` narrows too, and by the same rule the
+    # account total would not describe it.
+    unrestricted = not allowed and str(user.get("role")) != "driver" and not vehicle
+    if unrestricted:
+        stats = await tenant_db.get_fuel_entry_stats(user["account_id"])
+        out["total"] = int(stats.get("count") or 0)
+    return out
 
 
 @router.post("/fuel")
