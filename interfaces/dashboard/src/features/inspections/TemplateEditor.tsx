@@ -360,8 +360,8 @@ function ItemRow({
 
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate flex items-center gap-1.5">
-          {itemType === 'photo' && <Camera className="text-blue-500 flex-shrink-0 size-3.5" />}
-          {itemType === 'document' && <FileText className="text-violet-500 flex-shrink-0 size-3.5" />}
+          {itemType === 'photo' && <Camera className="text-chart-1 flex-shrink-0 size-3.5" />}
+          {itemType === 'document' && <FileText className="text-chart-1 flex-shrink-0 size-3.5" />}
           {itemType === 'check' && <CheckSquare className="text-muted-foreground flex-shrink-0 size-3.5" />}
           <span className="truncate">{item.label}</span>
         </div>

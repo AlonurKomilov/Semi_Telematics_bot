@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Download, FileText, X } from 'lucide-react';
+import { Download, FileText, Pencil, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
 import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
 import { parseVerdict, VERDICT_EMOJI, verdictTone } from './aiVerdict';
+import { toneClasses } from '../../lib/status';
 
 // Solid-fill class for the AI verdict dot on a thumbnail.  Derives from
 // the shared verdict→tone map so the dot can't drift from the item-list
@@ -145,16 +146,16 @@ export function MediaGallery({ inspection }: Props) {
                     </span>
                   )}
                   {m.media_type === 'document' && (
-                    <span className="absolute bottom-1 right-1 bg-violet-500/80 text-white text-3xs px-1.5 py-0.5 rounded">
+                    <span className="absolute bottom-1 right-1 bg-foreground/70 text-background text-3xs px-1.5 py-0.5 rounded">
                       doc
                     </span>
                   )}
                   {m.annotated_at && (
                     <span
-                      className="absolute top-1 right-1 bg-red-500 text-white text-3xs font-semibold px-1.5 py-0.5 rounded"
-                      title={`Annotated by driver · ${formatDate(m.annotated_at, { timeZone: tz })}`}
+                      className={`absolute top-1 right-1 inline-flex items-center gap-1 text-3xs font-semibold px-1.5 py-0.5 rounded ${toneClasses('info', { border: false })}`}
+                      aria-label={`Annotated by driver on ${formatDate(m.annotated_at, { timeZone: tz })}`}
                     >
-                      ✎ Annotated
+                      <Pencil className="size-2.5" aria-hidden /> Annotated
                     </span>
                   )}
                   {(() => {

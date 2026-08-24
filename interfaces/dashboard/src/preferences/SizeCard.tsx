@@ -18,10 +18,11 @@ import { RotateCcw, ChevronRight } from 'lucide-react';
 
 import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
-import { InfoTip } from '../components/tooltip';
+import { InfoTip, Tip } from '../components/tooltip';
 import { useTheme, applySize } from '../context/ThemeContext';
 import { usePreference } from './usePreference';
 import { publishAppearanceDefault, resetAppearanceDefault } from './appearance';
+import { undoableAction } from '../components/banners/stagedAction';
 import { SIZE_MIN, SIZE_MAX, SIZE_DEFAULT } from './registry';
 import type { SizeRegion as SizeRegionKey } from './registry';
 import { Card } from '@/components/ui/card';
@@ -32,10 +33,12 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
  *  committed value becomes a preference — a drag is ~60 frames and each
  *  one would otherwise be a synchronous localStorage write. */
 function SizeRow({
-  label, value, onPreview, onCommit, onDragState, ariaLabel,
+  label, value, onPreview, onCommit, onDragState, onReset, ariaLabel,
 }: {
   label: string;
   value: number;
+  /** Omitted on the global row — "Reset all" already covers it. */
+  onReset?: () => void;
   onPreview: (v: number) => void;
   onCommit: (v: number) => void;
   /** Raised while the thumb is held. The panel uses it to pin its OWN
@@ -65,6 +68,21 @@ function SizeRow({
       <span className="text-xs tabular-nums text-muted-foreground sm:w-12 sm:text-right sm:shrink-0">
         {pct(shown)}
       </span>
+      {/* Only when this row is off 100%: otherwise every row carries a
+          dead control. Without it, undoing ONE area meant dragging back
+          to exactly 100 or throwing away all six. */}
+      {onReset && value !== 1 && (
+        <Tip label={`Reset ${label.toLowerCase()} to 100%`}>
+          <button
+            type="button"
+            onClick={onReset}
+            aria-label={`Reset ${label.toLowerCase()} to 100%`}
+            className="inline-flex items-center justify-center min-h-tap min-w-tap shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <RotateCcw className="size-3.5" />
+          </button>
+        </Tip>
+      )}
     </div>
   );
 }
@@ -73,7 +91,11 @@ function SizeRow({
  *  the way the eye moves through the app, not alphabetically. The keys
  *  are frozen (registry.ts); only these labels are editable. */
 const REGION_ROWS: { key: SizeRegionKey; label: string }[] = [
-  { key: 'text',       label: 'Main content' },
+  // 'Pages', not 'Main content': every other label here points at
+  // something on screen, and that one named the leftover — everything
+  // that is none of the others. A label that names an absence cannot be
+  // pointed at. Keys are frozen (registry.ts); labels are free.
+  { key: 'text',       label: 'Pages' },
   { key: 'tables',     label: 'Tables' },
   { key: 'controls',   label: 'Top bar' },
   { key: 'navigation', label: 'Sidebar' },
@@ -89,10 +111,21 @@ export default function SizeCard() {
   const { value: syncEnabled } = usePreference('prefs.syncEnabled');
 
   const resetAll = () => {
+    // Snapshot BEFORE the write: this is the user's own configuration,
+    // which is the whole point of the feature, and one click threw away
+    // six tuned areas plus the account copy with nothing to catch it.
+    const previous = size;
     setSize(SIZE_DEFAULT);
     // Reset has to reach the synced copy too, or the next browser the
     // user signs in on restores exactly what they just discarded.
     resetAppearanceDefault();
+    undoableAction({
+      label: 'Size reset to 100%',
+      undo: async () => {
+        setSize(previous);
+        publishAppearanceDefault();
+      },
+    });
   };
 
   const tuned = REGION_ROWS.filter(
@@ -125,7 +158,7 @@ export default function SizeCard() {
   return (
     <Card className="scroll-mt-20" render={<section />} id="appearance" style={pinned}>
       <div className="flex items-start justify-between gap-4 mb-1">
-        <h2 className="text-lg font-semibold">Appearance size</h2>
+        <h2 className="text-lg font-semibold">Interface size</h2>
         <button
           type="button"
           onClick={resetAll}
@@ -175,9 +208,15 @@ export default function SizeCard() {
               aria-hidden
             />
             Fine-tune by area
+            {/* A muted PHRASE, not a coloured numeric badge. This repo has
+                already ruled on the shape once — datagrid/CLAUDE.md
+                records that hidden columns were given neither a chip nor
+                a count badge because either "reads as an unresolved
+                notification to clear". A tuned area is a state to report,
+                not a task to finish. */}
             {tuned > 0 && (
-              <span className="text-2xs tabular-nums text-primary">
-                {tuned} adjusted
+              <span className="text-2xs font-normal text-muted-foreground">
+                · {tuned} {tuned === 1 ? 'area' : 'areas'} changed
               </span>
             )}
           </button>
@@ -201,6 +240,12 @@ export default function SizeCard() {
                     regions: { ...size.regions, [key]: v },
                   })}
                   onDragState={setDragging}
+                  onReset={() => {
+                    const next = { ...size.regions };
+                    delete next[key];
+                    applySize({ ...size, regions: next });
+                    setSize({ regions: next });
+                  }}
                 />
               ))}
             </div>

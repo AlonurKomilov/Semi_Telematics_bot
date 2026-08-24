@@ -91,10 +91,12 @@ export function Slider({
               // this pseudo-element centres on it. Growing the thumb
               // itself would make the control look clumsy, and padding
               // is inert on a `size-*` box (border-box eats it), so the
-              // hit area is drawn separately and invisibly. `size-[24px]`
+              // hit area is drawn separately and invisibly. `size-tap`
               // rather than a scale step: a floor must not shrink with
-              // the very control it belongs to.
-              'relative after:absolute after:left-1/2 after:top-1/2 after:size-[24px]',
+              // the very control it belongs to — and rather than a bare
+              // `[24px]`, because a named step is greppable and an
+              // arbitrary one emits nothing if the scanner misses it.
+              'relative after:absolute after:left-1/2 after:top-1/2 after:size-tap',
               "after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']",
               // focus-WITHIN, not focus-visible: the primitive renders the
               // real focusable input inside this element, so a

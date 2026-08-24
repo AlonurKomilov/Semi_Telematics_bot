@@ -340,6 +340,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { cn } from '@/lib/utils';
 import { iconSizeClass } from '@/lib/iconSize';
 import { Card } from '@/components/ui/card';
+import { Tip } from '@/components/tooltip';
 
 interface KBArticle {
   id: number;
@@ -1223,16 +1224,15 @@ function ArticleCard({
                 {a.target_role && a.target_role !== 'all' ? ` · ${a.target_role}` : ''}
               </span>
             )}
-            <span title={formatDate(a.created_at, { timeZone: tz })}>
-              {formatRelative(a.created_at, { timeZone: tz })}
-            </span>
+            <Tip label={formatDate(a.created_at, { timeZone: tz })}>
+              <span>{formatRelative(a.created_at, { timeZone: tz })}</span>
+            </Tip>
             {a.updated_at && a.updated_at !== a.created_at && (
-              <span
-                title={formatDate(a.updated_at, { timeZone: tz })}
-                className="opacity-75"
-              >
-                {t('knowledge.edited_at', 'edited')} {formatRelative(a.updated_at, { timeZone: tz })}
-              </span>
+              <Tip label={formatDate(a.updated_at, { timeZone: tz })}>
+                <span className="opacity-75">
+                  {t('knowledge.edited_at', 'edited')} {formatRelative(a.updated_at, { timeZone: tz })}
+                </span>
+              </Tip>
             )}
             {a.creator_name && (
               <span>{t('knowledge.by_creator', { name: a.creator_name })}</span>
@@ -1261,9 +1261,9 @@ function ArticleCard({
           }
           className={`shrink-0 inline-flex size-7 items-center justify-center rounded-md transition-colors ${
             bookmarked
-              ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+              ? 'text-primary hover:bg-primary/10'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          } min-h-tap min-w-tap min-h-tap min-w-tap`}
+          } min-h-tap min-w-tap`}
         >
           <Pin className={cn(bookmarked ? 'fill-current' : '', 'size-3.5')} />
         </button>

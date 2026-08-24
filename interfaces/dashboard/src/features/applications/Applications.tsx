@@ -357,7 +357,7 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
     <div className="mt-2 rounded-md border border-border bg-background/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} className="max-w-xs" />
-        <Input placeholder="Source" value={source} onChange={(e) => setSource(e.target.value)} className="max-w-[10rem]" />
+        <Input placeholder="Source" value={source} onChange={(e) => setSource(e.target.value)} className="max-w-40" />
         {companies.length > 0 && (
           <Select value={companyId} onValueChange={(v) => setCompanyId(String(v))} items={editCompanyItems}>
             <SelectTrigger title="Carrier this link brands for" aria-label="Carrier brand">
@@ -883,7 +883,7 @@ export default function Applications() {
           <Input placeholder="Label (e.g. Indeed campaign)" value={label}
             onChange={(e) => setLabel(e.target.value)} className="max-w-xs" />
           <Input placeholder="Source (optional)" value={source}
-            onChange={(e) => setSource(e.target.value)} className="max-w-[10rem]" />
+            onChange={(e) => setSource(e.target.value)} className="max-w-40" />
           {companies.length > 0 && (
             <Select value={companyId} onValueChange={(v) => setCompanyId(String(v))} items={createCompanyItems}>
               <SelectTrigger title="Brand the application form for this carrier" aria-label="Carrier brand">
@@ -994,7 +994,7 @@ export default function Applications() {
                   </span>
                   <div className="ml-auto flex items-center gap-1">
                     {live && (
-                      <button onClick={() => copyLink(l)} title="Copy link"
+                      <button onClick={() => copyLink(l)} aria-label="Copy link"
                         className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
                         {copied === l.id ? <Check className="text-ok size-3.5" /> : <Copy className="size-3.5" />}
                       </button>
@@ -1007,13 +1007,13 @@ export default function Applications() {
                       </button>
                     )}
                     {live && (
-                      <button onClick={() => revokeLink(l.id)} title="Revoke"
+                      <button onClick={() => revokeLink(l.id)} aria-label="Revoke"
                         className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
                         <Ban className="size-3.5" />
                       </button>
                     )}
                     {!live && (
-                      <button onClick={() => deleteLink(l.id)} title="Delete link permanently"
+                      <button onClick={() => deleteLink(l.id)} aria-label="Delete link permanently"
                         className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted min-h-tap min-w-tap">
                         <Trash2 className="size-3.5" />
                       </button>
@@ -1501,7 +1501,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
           </SheetTitle>
           <div className="flex items-center gap-1">
             {app && (
-              <button onClick={downloadPacket} title="Download application packet (PDF)"
+              <button onClick={downloadPacket} aria-label="Download application packet (PDF)"
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground min-h-tap">
                 <Download className="size-3.5" /> Download packet (PDF)
               </button>
@@ -2089,7 +2089,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} title="Notifications"
+      <button onClick={() => setOpen((o) => !o)} aria-label="Notifications"
         className="relative rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
         <Bell className="size-4" />
         {unread > 0 && (

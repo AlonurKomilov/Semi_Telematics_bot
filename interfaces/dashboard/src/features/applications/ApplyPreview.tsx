@@ -28,7 +28,7 @@ function Swatch({ label, value, onChange }: { label: string; value: string; onCh
       {label}
       <input type="color" value={value || '#000000'} onChange={(e) => onChange(e.target.value)}
         title={label} className="h-7 w-8 cursor-pointer rounded border border-border bg-card" />
-      {value && <button type="button" onClick={() => onChange('')} title="clear" className="text-2xs hover:text-danger py-1 -my-1 min-h-tap">×</button>}
+      {value && <button type="button" onClick={() => onChange('')} aria-label="Clear" className="text-2xs hover:text-danger py-1 -my-1 min-h-tap">×</button>}
     </span>
   );
 }
@@ -43,13 +43,13 @@ function AssetControl({ label, url, present, busy, onPick, onClear }: {
   return (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
       {label}
-      <label title={`${present ? 'Replace' : 'Upload'} ${label.toLowerCase()}`}
+      <label aria-label={`${present ? 'Replace' : 'Upload'} ${label.toLowerCase()}`}
         className={`inline-flex h-7 w-9 items-center justify-center overflow-hidden rounded border border-border bg-card ${busy ? 'opacity-50' : 'cursor-pointer hover:border-primary'}`}>
         <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={busy}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.currentTarget.value = ''; }} />
         {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <ImagePlus className="size-3.5" />}
       </label>
-      {present && <button type="button" onClick={onClear} disabled={busy} title="remove" className="text-2xs hover:text-danger disabled:opacity-50 py-1 -my-1 min-h-tap">×</button>}
+      {present && <button type="button" onClick={onClear} disabled={busy} aria-label="remove" className="text-2xs hover:text-danger disabled:opacity-50 py-1 -my-1 min-h-tap">×</button>}
     </span>
   );
 }
@@ -76,7 +76,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
         <span className="font-medium">View</span>
         <span className="inline-flex overflow-hidden rounded-md border border-border">
           {([['desktop', Monitor], ['mobile', Smartphone]] as const).map(([d, Icon]) => (
-            <button key={d} type="button" onClick={() => onDevice(d)} title={d}
+            <button key={d} type="button" onClick={() => onDevice(d)} aria-label={`Preview on ${d}`}
               className={`px-2 py-1 ${device === d ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
               <Icon className="size-3.5" />
             </button>
@@ -96,7 +96,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
       <Swatch label="Header" value={brand.header_color} onChange={(c) => onColor('header_color', c)} />
       <Swatch label="Background" value={brand.bg_color} onChange={(c) => onColor('bg_color', c)} />
       <Swatch label="Heading" value={brand.heading_color} onChange={(c) => onColor('heading_color', c)} />
-      <button type="button" onClick={onAiTheme} title="Generate palettes from the logo"
+      <button type="button" onClick={onAiTheme} aria-label="Generate palettes from the logo"
         className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 min-h-tap text-xs transition-colors ${
           aiOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-foreground hover:bg-muted/70'
         }`}>

@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/button';
 import { getBackfillStatus, resetBackfillStatus } from './api';
 import { backfillProgressLabel } from './labels';
 import type { BackfillStatus } from './types';
+import { Tip } from '@/components/tooltip';
 
 export default function BackfillStatusBadge({
   providerId,
@@ -104,7 +105,7 @@ export default function BackfillStatusBadge({
     // is the operator-visible recovery surface for that path.
     return (
       <div className="flex items-center gap-2 text-2xs text-danger">
-        <span title={data.reason || undefined}>Backfill failed</span>
+        <Tip label={data.reason || ''}><span>Backfill failed</span></Tip>
         <Button
           type="button"
           variant="outline"
@@ -129,7 +130,7 @@ export default function BackfillStatusBadge({
     // accidentally clicking Reset on a fresh completion is safe.
     return (
       <div className="flex items-center gap-2 text-2xs text-muted-foreground">
-        <span title={data.reason || undefined}>Skipped: {data.reason}</span>
+        <Tip label={data.reason || ''}><span>Skipped: {data.reason}</span></Tip>
         <Button
           type="button"
           variant="outline"

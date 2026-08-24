@@ -47,13 +47,13 @@ const TYPE_ICON_COMPONENTS: Record<EventIconKey, ElementType> = {
 };
 
 const TYPE_ICON_COLORS: Record<EventIconKey, string> = {
-  crash:           'text-red-500',
-  braking:         'text-orange-500',
-  harshTurn:       'text-yellow-500',
-  laneDeparture:   'text-blue-500',
-  followingDistance: 'text-purple-500',
-  rollingStop:     'text-cyan-500',
-  acceleration:    'text-green-500',
+  crash:           'text-danger',
+  braking:         'text-chart-4',
+  harshTurn:       'text-chart-3',
+  laneDeparture:   'text-chart-1',
+  followingDistance: 'text-chart-1',
+  rollingStop:     'text-chart-5',
+  acceleration:    'text-chart-2',
 };
 
 function EventIcon({ type, size = 14 }: { type: string; size?: number }) {

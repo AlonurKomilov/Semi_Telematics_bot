@@ -130,16 +130,23 @@ const TYPE_ICON_COMPONENTS: Record<string, ElementType> = {
   def_refill:     Droplets,
   custom:         Wrench,
 };
+// The CATEGORICAL ramp, not nine hand-picked palette hues. These are
+// icon tints beside a unique lucide icon AND the type's label, so the
+// colour is a third signal — which is why the ramp repeating after five
+// costs nothing here, and why the raw palette's near-duplicates
+// (amber-600 vs yellow-600, blue-600 vs cyan-600) were never doing the
+// work they looked like they were doing. Measured: every chart token
+// clears 3:1 against --card in both themes.
 const TYPE_ICON_COLORS: Record<string, string> = {
-  oil:            'text-amber-600 dark:text-amber-400',
-  tires:          'text-slate-600 dark:text-slate-300',
-  brakes:         'text-red-600 dark:text-red-400',
-  inspection:     'text-blue-600 dark:text-blue-400',
-  transmission:   'text-purple-600 dark:text-purple-400',
-  electrical:     'text-yellow-600 dark:text-yellow-400',
-  dot_inspection: 'text-cyan-600 dark:text-cyan-400',
-  dpf_regen:      'text-orange-600 dark:text-orange-400',
-  def_refill:     'text-emerald-600 dark:text-emerald-400',
+  oil:            'text-chart-3',
+  tires:          'text-chart-5',
+  brakes:         'text-chart-4',
+  inspection:     'text-chart-1',
+  transmission:   'text-chart-1',
+  electrical:     'text-chart-3',
+  dot_inspection: 'text-chart-5',
+  dpf_regen:      'text-chart-4',
+  def_refill:     'text-chart-2',
   custom:         'text-muted-foreground',
 };
 export function TaskTypeCell({

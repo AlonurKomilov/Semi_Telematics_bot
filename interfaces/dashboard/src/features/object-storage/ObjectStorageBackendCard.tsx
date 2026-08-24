@@ -11,6 +11,7 @@ import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
+import { toneClasses } from '../../lib/status';
 
 /**
  * Storage settings card — backend chooser + Google Drive connection.
@@ -188,7 +189,7 @@ export default function ObjectStorageBackendCard() {
       {/* ── Drive connection block (single source) ───────────── */}
       <section>
         <div className="flex items-start gap-3">
-          <Cloud className={cn(driveConnected ? 'text-blue-500 mt-0.5' : 'text-muted-foreground mt-0.5', 'size-4.5')} />
+          <Cloud className={cn(driveConnected ? 'text-info mt-0.5' : 'text-muted-foreground mt-0.5', 'size-4.5')} />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">{t('storage.settings.drive_section')}</p>
             {driveConnected ? (
@@ -273,7 +274,7 @@ export function BackendOption({
             {title}
             {active && <CheckCircle2 className="text-primary size-3" />}
             {recommended && !active && (
-              <span className="text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+              <span className={`text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded ${toneClasses('ok', { border: false })}`}>
                 ★
               </span>
             )}
@@ -325,7 +326,7 @@ function RoutingTable({ connectedToDrive }: { connectedToDrive: boolean }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="p-3 rounded-lg border border-border bg-muted/30">
           <p className="text-xs font-medium inline-flex items-center gap-1.5 mb-2">
-            <Cloud className={cn(connectedToDrive ? 'text-blue-500' : 'text-muted-foreground', 'size-3')} />
+            <Cloud className={cn(connectedToDrive ? 'text-info' : 'text-muted-foreground', 'size-3')} />
             {connectedToDrive
               ? t('storage.settings.routing_drive_header_connected')
               : t('storage.settings.routing_drive_header_disconnected')}

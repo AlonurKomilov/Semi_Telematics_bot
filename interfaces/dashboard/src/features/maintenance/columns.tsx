@@ -34,6 +34,7 @@ import {
   PriorityBadge, EngineHoursProgress, TaskTypeCell, DueDateChip,
   MileageProgress, type Priority,
 } from './badges';
+import { Tip } from '@/components/tooltip';
 
 const baseColumns: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
@@ -83,7 +84,7 @@ const baseColumns: AnyColumn[] = [
     render: (v) => <TaskTypeCell type={String(v || 'custom')} /> },
   { key: 'description', label: 'Description', render: (v) => {
     const s = String(v || '');
-    return s.length > 60 ? <span title={s}>{s.slice(0, 60)}…</span> : s;
+    return s.length > 60 ? <Tip label={s}><span>{s.slice(0, 60)}…</span></Tip> : s;
   }},
   { key: 'due_date', label: 'Due Date', sortable: true,
     // Date-range filter — From / To date pickers.  Bounds auto-

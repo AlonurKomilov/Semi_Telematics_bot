@@ -157,7 +157,7 @@ export function ThemeToggle() {
                 users would have met the confusing state first. */}
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('theme.group_size', 'Size')}
+                {t('theme.group_size', 'Interface size')}
               </p>
               <div className="flex items-center gap-1.5">
                 <span className="text-2xs tabular-nums text-muted-foreground">

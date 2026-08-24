@@ -378,7 +378,7 @@ function RuleRow({
           )}
           {rule.curve_kind && (
             <span
-              className="ml-1 text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-500"
+              className="ml-1 text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-chart-1/20 text-chart-1"
               title={`Curve: ${rule.curve_kind}`}
             >
               curve

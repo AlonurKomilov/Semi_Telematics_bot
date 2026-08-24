@@ -182,7 +182,7 @@ export default function Routes() {
 
       {/* Speed legend */}
       <div className="flex items-center gap-4 mb-2 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-500 inline-block" /> &lt;10 mph</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: MAP_STATUS.neutral }} /> &lt;10 mph</span>
         {/* Legend swatches reference the same MAP_STATUS colours the
             speed-coloured polyline uses (config/mapColors.ts) so the key
             can't drift from the route it describes. */}

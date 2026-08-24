@@ -218,9 +218,9 @@ type PillarKey = 'safety' | 'compliance' | 'efficiency';
 // Compliance / Efficiency), NOT a value-driven status signal, so they stay
 // on the categorical palette rather than the ok/warn/danger tones.
 const PILLAR_META: Record<PillarKey, { label: string; cls: string }> = {
-  safety:     { label: 'Safety',     cls: 'text-red-600 dark:text-red-400' },
-  compliance: { label: 'Compliance', cls: 'text-blue-600 dark:text-blue-400' },
-  efficiency: { label: 'Efficiency', cls: 'text-green-600 dark:text-green-400' },
+  safety:     { label: 'Safety',     cls: 'text-chart-4' },
+  compliance: { label: 'Compliance', cls: 'text-chart-1' },
+  efficiency: { label: 'Efficiency', cls: 'text-chart-2' },
 };
 
 // Hardware / vehicle-state rules that aren't a driver-behavior habit

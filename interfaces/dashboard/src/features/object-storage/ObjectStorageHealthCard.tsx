@@ -166,12 +166,12 @@ function BackendPill({ backend }: { backend: string }) {
       label: t('storage.badge_disk'),
     },
     gdrive: {
-      cls: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30',
+      cls: toneClasses('info'),
       icon: <Cloud className="size-3" />,
       label: t('storage.badge_gdrive'),
     },
     hybrid: {
-      cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
+      cls: toneClasses('ok'),
       icon: <RefreshCcw className="size-3" />,
       label: t('storage.badge_hybrid'),
     },

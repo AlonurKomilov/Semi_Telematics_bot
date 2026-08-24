@@ -39,7 +39,8 @@ function walk(dir: string, out: string[] = [], ext = /\.tsx?$/): string[] {
  * a tick, a cross, a warning triangle.
  */
 const ICON_SUBSTITUTES = '\u2713\u2714\u2715\u2716\u2717\u2718'  // tick / cross
-  + '\u2705\u274C\u26A0\u2728\u2B50\u21BB\u21A9';               // check / x / warn / sparkle / star / refresh
+  + '\u2705\u274C\u26A0\u2728\u2B50\u21BB\u21A9'                 // check / x / warn / sparkle / star / refresh
+  + '\u270E\u270F\u2712\u2709\u260E\u2699';                       // pencil / pen / envelope / phone / gear
 const CHROME_GLYPH = new RegExp(
   `>[^<>{}\n]*[\u{1F300}-\u{1FAFF}${ICON_SUBSTITUTES}][^<>{}\n]*<`,
   'u',
@@ -54,6 +55,85 @@ const CHROME_GLYPH = new RegExp(
  */
 const NOT_YET_CONVERTED = ['features/maintenance/TaskDetailSheet.tsx'];
 
+/**
+ * The `title=` -> `<Tip>` migration, which predates this guard by a long
+ * way — CLAUDE.md describes it as live and unfinished, and it is why the
+ * ESLint rule that flags it cannot be raised above a warning. Eleven
+ * sites were converted when this guard landed; these are what is left.
+ * The list exists so the guard can be ON while the migration finishes:
+ * nothing NEW can appear, and every entry removed is progress the build
+ * can see. The staleness test below deletes the list's right to linger.
+ */
+/**
+ * Arbitrary lengths with NO exact step on the 4px scale. Two of the
+ * thirty had one (`min-w-[6rem]` -> `min-w-24`, `max-w-[10rem]` ->
+ * `max-w-40`) and were converted; the rest — `w-[220px]`,
+ * `min-h-[400px]`, `max-h-[32rem]` and friends — sit between steps, so
+ * clearing them means choosing a nearby step and accepting the pixels
+ * that move. That is a design decision per site, not a rename, which is
+ * exactly why it is a list and not a sweep.
+ */
+const ARBITRARY_NOT_YET_CONVERTED: string[] = [
+  'components/datagrid/DataGrid.tsx',
+  'components/datagrid/pivot/PivotPanel.tsx',
+  'components/ui/sheet.tsx',
+  'features/alerts/NotificationsPanel.tsx',
+  'features/applications/Applications.tsx',
+  'features/applications/ApplyPreview.tsx',
+  'features/applications/public/steps.tsx',
+  'features/costs/CostPerMile.tsx',
+  'features/drivers/Drivers.tsx',
+  'features/geofences/Geofences.tsx',
+  'features/maintenance/CalendarMonth.tsx',
+  'features/maintenance/badges.tsx',
+  'features/object-storage/ObjectStorageFileTable.tsx',
+  'features/overview/sections/OverviewStatusChart.tsx',
+  'features/routes/Routes.tsx',
+  'features/scorecards/ScorecardRules.tsx',
+  'features/settings/Invites.tsx',
+  'features/settings/TeamManagement.tsx',
+  'features/work-orders/WorkOrderForm.tsx',
+  'pages/Profile.tsx',
+  'shells/AppShell.tsx',
+];
+
+const TITLE_NOT_YET_CONVERTED: string[] = [
+  'components/datagrid/ColumnFilterMenu.tsx',
+  'components/datagrid/ManageColumnsMenu.tsx',
+  'components/datagrid/pivot/PivotView.tsx',
+  'components/shell/LastUpdated.tsx',
+  'features/applications/Applications.tsx',
+  'features/applications/ApplyPreview.tsx',
+  'features/drivers/Drivers.tsx',
+  'features/inspections/InspectionDetail.tsx',
+  'features/inspections/MediaGallery.tsx',
+  'features/inspections/TemplateEditor.tsx',
+  'features/integrations/ConflictsPanel.tsx',
+  'features/integrations/FeedsTable.tsx',
+  'features/integrations/IntegrationCard.tsx',
+  'features/knowledge/KnowledgeBase.tsx',
+  'features/loads/Loads.tsx',
+  'features/maintenance/AddTaskDialog.tsx',
+  'features/maintenance/CalendarMonth.tsx',
+  'features/maintenance/TaskDetailSheet.tsx',
+  'features/maintenance/Tasks.tsx',
+  'features/maintenance/badges.tsx',
+  'features/maintenance/columns.tsx',
+  'features/maintenance/pickers.tsx',
+  'features/object-storage/ObjectStorageBackendCard.tsx',
+  'features/object-storage/ObjectStorageFileTable.tsx',
+  'features/reports/ScheduledReports.tsx',
+  'features/safety-events/EventVideoModal.tsx',
+  'features/scorecards/DriverInsights.tsx',
+  'features/scorecards/ScorecardRules.tsx',
+  'features/scorecards/Scorecards.tsx',
+  'features/settings/Companies.tsx',
+  'features/settings/Invites.tsx',
+  'features/settings/TeamManagement.tsx',
+  'features/settings/WorkHours.tsx',
+  'pages/Profile.tsx',
+];
+
 describe('UI chrome', () => {
   it('never uses emoji or dingbats where an icon belongs', () => {
     const offenders = walk(SRC, [], /\.tsx$/)
@@ -64,12 +144,22 @@ describe('UI chrome', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('keeps the not-yet-converted list honest', () => {
+  it('keeps the not-yet-converted lists honest', () => {
     // An entry that no longer offends is dead weight that hides the next
-    // real one — so the list must not outlive its reason.
-    const stale = NOT_YET_CONVERTED.filter(
-      (f) => !CHROME_GLYPH.test(readFileSync(join(SRC, f), 'utf8')),
-    );
+    // real one — so neither list may outlive its reason.
+    const stale = [
+      ...NOT_YET_CONVERTED.filter(
+        (f) => !CHROME_GLYPH.test(readFileSync(join(SRC, f), 'utf8')),
+      ),
+      ...TITLE_NOT_YET_CONVERTED.filter(
+        (f) => !/<(?!iframe\b)[a-z][a-z0-9]*\b(?:[^>]|\{[^}]*\})*?\stitle=/
+          .test(readFileSync(join(SRC, f), 'utf8')),
+      ),
+      ...ARBITRARY_NOT_YET_CONVERTED.filter(
+        (f) => !/\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/
+          .test(readFileSync(join(SRC, f), 'utf8')),
+      ),
+    ];
     expect(stale).toEqual([]);
   });
 
@@ -103,6 +193,59 @@ describe('UI chrome', () => {
         readFileSync(f, 'utf8'),
       ))
       .map((f) => relative(SRC, f));
+    expect(offenders).toEqual([]);
+  });
+
+  it('never picks a raw palette colour to carry meaning', () => {
+    // design.md §11: colour that MEANS something comes from the tone
+    // layer (`toneClasses`/`toneText`) or, for a set whose members are
+    // merely different, the categorical ramp (`text-chart-1..5`). The
+    // ramp existed as `--chart-*` tokens for a long time and was not
+    // exposed as classes, so 25 call sites reached for the palette
+    // because it was the only class-shaped option.
+    const PALETTE =
+      /\b(?:text|bg|border|from|to|via|ring|divide)-(?:red|green|amber|yellow|blue|orange|emerald|rose|slate|gray|zinc|indigo|violet|purple|teal|cyan|lime|fuchsia|pink|sky|stone|neutral)-\d{2,3}\b/;
+    const offenders = walk(SRC)
+      .filter((f) => {
+        const src = readFileSync(f, 'utf8');
+        // A line that only MENTIONS the class in prose is not a use.
+        return src.split('\n').some(
+          (l) => PALETTE.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l),
+        );
+      })
+      .map((f) => relative(SRC, f));
+    expect(offenders).toEqual([]);
+  });
+
+  it('never uses a native title= tooltip on a DOM element', () => {
+    // Unthemed, delayed, and invisible on touch. `<Tip>` replaces it;
+    // icon-only controls keep an aria-label. Component PROPS named
+    // `title` (PageHeader, EmptyState, Dialog) are a different thing.
+    // NOT <iframe title>, where the attribute is the element's required
+    // accessible NAME, not a tooltip — banning it there would trade a
+    // style rule for an a11y regression.
+    const NATIVE_TITLE =
+      /<(?!iframe\b)[a-z][a-z0-9]*\b(?:[^>]|\{[^}]*\})*?\stitle=/;
+    const offenders = walk(SRC, [], /\.tsx$/)
+      .filter((f) => NATIVE_TITLE.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(SRC, f))
+      .filter((f) => !TITLE_NOT_YET_CONVERTED.includes(f));
+    expect(offenders).toEqual([]);
+  });
+
+  it('never writes an arbitrary px/rem length for layout', () => {
+    // design.md §5.1: an arbitrary length is the one thing the Size
+    // multipliers cannot reach — a promise that the element will never
+    // follow the user's setting. Viewport units (`max-h-[60vh]`) and
+    // token references (`w-[var(--assistant-w)]`) are deliberately NOT
+    // matched: those are relative by design and a multiplier would be
+    // wrong on them.
+    const ARBITRARY =
+      /\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/;
+    const offenders = walk(SRC)
+      .filter((f) => ARBITRARY.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(SRC, f))
+      .filter((f) => !ARBITRARY_NOT_YET_CONVERTED.includes(f));
     expect(offenders).toEqual([]);
   });
 });

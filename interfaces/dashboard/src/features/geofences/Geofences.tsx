@@ -16,6 +16,7 @@ import type L from 'leaflet';
 import { GEOFENCE } from '../../config/mapColors';
 import { toneClasses } from '../../lib/status';
 import { Card } from '@/components/ui/card';
+import { Tip } from '../../components/tooltip';
 
 /** @deprecated — CSS injection is now handled by useLeafletMap */
 // function ensureLeafletCSS() { ... }  — removed
@@ -475,21 +476,27 @@ export default function Geofences() {
                       </Card>
                     )}
                   </div>
+                  {/* The sentence below points at this button by name, so the
+                      button has to carry one. It used to print the same map
+                      glyph the sentence did, which made the mapping literal;
+                      once that became an icon the hint pointed at nothing. */}
+                  <Tip label={pickingFromMap ? 'Cancel map pick' : 'Pick on the map'}>
                   <button
                     type="button"
                     onClick={pickingFromMap ? cancelMapPick : startMapPick}
-                    title={pickingFromMap ? 'Cancel map pick' : 'Click on map to set location'}
+                    aria-label={pickingFromMap ? 'Cancel map pick' : 'Pick on the map'}
                     className={`shrink-0 px-2.5 py-2 min-h-tap rounded-lg border text-sm transition ${
                       pickingFromMap
-                        ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
+                        ? `${toneClasses('warn')} animate-pulse`
                         : 'border-border bg-background hover:bg-muted'
                     }`}
                   >
                     <Map className="size-3.5" aria-hidden />
                   </button>
+                  </Tip>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {pickingFromMap ? 'Click on the map to place the zone center' : 'Type an address, or use the map button and tap the map'}
+                  {pickingFromMap ? 'Click on the map to place the zone center' : 'Type an address, or pick it on the map'}
                 </p>
 
                 {coordsSet ? (

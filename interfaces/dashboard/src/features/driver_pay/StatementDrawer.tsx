@@ -283,7 +283,7 @@ export default function StatementDrawer({
                   </optgroup>
                 </select>
                 <input className={`${selectCls} w-24`} type="number" min="0" placeholder="Amount $" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Amount" />
-                <input className={`${selectCls} flex-1 min-w-[6rem]`} placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+                <input className={`${selectCls} flex-1 min-w-24`} placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
                 <Button type="button" variant="outline" size="xs" disabled={busy || !Number(amount)} onClick={() => { void addEntry(); }}>
                   <Plus className="mr-1" /> Add
                 </Button>

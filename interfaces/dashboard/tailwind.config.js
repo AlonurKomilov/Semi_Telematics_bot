@@ -153,6 +153,23 @@ export default {
         secondary: { DEFAULT: tokenColor('--secondary'), foreground: tokenColor('--secondary-foreground') },
         muted: { DEFAULT: tokenColor('--muted'), foreground: tokenColor('--muted-foreground') },
         accent: { DEFAULT: tokenColor('--accent'), foreground: tokenColor('--accent-foreground') },
+        // The CATEGORICAL ramp, as classes. `--chart-1..5` have existed as
+        // tokens since the theme work and were reachable only through
+        // `chartColor(n)`, which returns a CSS VALUE — fine for a chart
+        // fill, useless for a badge that needs bg + text + border. So
+        // every surface that had to colour a CATEGORY rather than a
+        // STATUS reached for the raw Tailwind palette instead: 8 service
+        // types, 6 safety-event types, 3 scorecard categories, 2 media
+        // types, 2 plan tiers. Twenty-five call sites picking a hue by
+        // hand, none of which could follow the theme picker.
+        //
+        // Tones stay the answer for good/bad/warn/info. This is for sets
+        // whose members are merely DIFFERENT from each other.
+        chart: {
+          1: tokenColor('--chart-1'), 2: tokenColor('--chart-2'),
+          3: tokenColor('--chart-3'), 4: tokenColor('--chart-4'),
+          5: tokenColor('--chart-5'),
+        },
         // The fill and its on-colour travel together, same as `primary`
         // and `card`.  Without the `foreground` key Tailwind had nothing
         // to look up for `text-destructive-foreground`, so that class
@@ -263,7 +280,18 @@ export default {
       // it the 52 `size={18}` icons have no class to migrate to. Adding a
       // step to a DERIVED key costs nothing; adding one to `spacing` would
       // fuse the four axes, which is why it does not go there.
-      size: { ...dimensionScale(defaultTheme.spacing), '4.5': scaled('1.125rem', 'control') },
+      // `size-tap` joins `min-h-tap` / `h-tap`: the same literal 24px,
+      // for a SQUARE floor. slider.tsx drew its thumb's invisible hit
+      // area as `after:size-[24px]` — right reasoning (a floor must not
+      // shrink with the control it protects), wrong spelling. §5.1 says
+      // an arbitrary value emits no rule at all if the scanner never
+      // sees the literal, and it is not greppable when the next person
+      // audits the floor.
+      size: {
+        ...dimensionScale(defaultTheme.spacing),
+        '4.5': scaled('1.125rem', 'control'),
+        tap: '24px',
+      },
       maxHeight: dimensionScale(defaultTheme.spacing),
 
       // `min-h-tap` / `min-w-tap` — the pointer-target floor, and the ONE

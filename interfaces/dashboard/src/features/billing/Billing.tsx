@@ -117,15 +117,15 @@ function fmtNum(n: number): string {
 }
 
 function tierColor(tier: string): string {
-  if (tier === 'pro') return 'text-purple-600 dark:text-purple-400';
-  if (tier === 'enterprise') return 'text-yellow-600 dark:text-yellow-400';
+  if (tier === 'pro') return 'text-chart-1';
+  if (tier === 'enterprise') return 'text-chart-4';
   if (tier === 'starter') return 'text-primary';
   return 'text-muted-foreground';
 }
 
 function tierBadge(tier: string): string {
-  if (tier === 'pro') return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40';
-  if (tier === 'enterprise') return 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/40';
+  if (tier === 'pro') return 'bg-chart-1/15 text-chart-1 border-chart-1/40';
+  if (tier === 'enterprise') return 'bg-chart-4/15 text-chart-4 border-chart-4/40';
   if (tier === 'starter') return 'bg-primary/15 text-primary border-primary/30';
   return 'bg-muted text-muted-foreground border-border';
 }
@@ -337,7 +337,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
         <Stat label="Total Requests" value={fmtNum(ai.total_requests)} accent="text-primary" />
-        <Stat label="Total Tokens" value={fmtNum(ai.total_tokens)} accent="text-indigo-400"
+        <Stat label="Total Tokens" value={fmtNum(ai.total_tokens)} accent="text-chart-1"
               sub="included in plan" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
