@@ -81,7 +81,13 @@ export default function ObjectStorageFileTable() {
     placeholderData: (prev) => prev,
   });
 
-  const { data, isLoading } = useQuery<FilesResponse>({
+  // ``error`` and ``refetch`` were both dropped, and this table POLLS —
+  // so the likely failure was a failed poll with rows already on screen.
+  // It renders the upload QUEUE, which made the silence worse than
+  // elsewhere: "no files pending upload" is the exact inverse of the
+  // truth, printed on the surface an operator checks to confirm their
+  // documents reached Drive.
+  const { data, isLoading, error, refetch } = useQuery<FilesResponse>({
     queryKey: ['storage-files', filter],
     queryFn: () => apiJSON<FilesResponse>(`/object-storage/files?only=${filter}&limit=200`),
     refetchInterval: POLL_MS,
@@ -170,16 +176,19 @@ export default function ObjectStorageFileTable() {
           <Loader2 className="animate-spin size-3.5" />
           {t('common.loading')}
         </div>
-      ) : items.length === 0 ? (
-        <div className="p-6 text-center text-sm text-muted-foreground">
-          {isDiskBackend && filter === 'all'
+      ) : (
+        <DataGrid
+          // The empty state is the GRID's to render, and routing it here
+          // is what fixes the error: the hand-rolled branch above used to
+          // short-circuit before the grid, so a failure had nowhere to
+          // appear and came out as "no files".
+          emptyMessage={isDiskBackend && filter === 'all'
             ? t('storage.files.empty_disk')
             : filter === 'stuck'
               ? t('storage.files.empty_stuck')
               : t('storage.files.empty')}
-        </div>
-      ) : (
-        <DataGrid
+          error={error}
+          onRetry={() => { void refetch(); }}
           columns={[
             {
               key: 'filename', label: t('storage.files.col_file'), sortable: true,

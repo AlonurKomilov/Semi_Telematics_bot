@@ -153,7 +153,10 @@ function AssignmentsTab() {
   const [severity, setSeverity] = useState<'low' | 'medium' | 'high'>('medium');
   const [reason, setReason] = useState('');
 
-  const { data: itemsData, isLoading: loading } = useQuery({
+  // ``Array.isArray(x) ? x : []`` below converts the ERROR state
+  // (``undefined``) into an empty list, so an outage read "No
+  // assignments." and a manager concluded coaching was clear.
+  const { data: itemsData, isLoading: loading, error, refetch } = useQuery({
     queryKey: ['coaching-assignments', statusFilter, driverFilter],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -281,10 +284,14 @@ function AssignmentsTab() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No assignments.</p>
       ) : (
         <DataGrid
+          // Empty state and error both belong to the grid now — the
+          // hand-rolled empty branch was what swallowed the failure, by
+          // short-circuiting before the grid could speak.
+          emptyMessage="No assignments."
+          error={error}
+          onRetry={() => { void refetch(); }}
           columns={[
             {
               key: 'severity', label: 'Severity', sortable: true,
@@ -344,7 +351,10 @@ function RulesTab() {
   const [severity, setSeverity] = useState<'low' | 'medium' | 'high'>('medium');
   const [message, setMessage] = useState('');
 
-  const { data: rulesData, isLoading: rulesLoading } = useQuery({
+  const {
+    data: rulesData, isLoading: rulesLoading,
+    error: rulesError, refetch: refetchRules,
+  } = useQuery({
     queryKey: ['coaching-rules'],
     queryFn: () => apiJSON<CoachingRule[]>('/coaching/config/rules'),
   });
@@ -508,10 +518,11 @@ function RulesTab() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : rules.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No rules configured.</p>
       ) : (
         <DataGrid
+          emptyMessage="No rules configured."
+          error={rulesError}
+          onRetry={() => { void refetchRules(); }}
           columns={[
             { key: 'name', label: 'Name', sortable: true },
             { key: 'kind', label: 'Kind', sortable: true },
@@ -573,7 +584,8 @@ function RulesTab() {
 // ── Topics Tab ───────────────────────────────────────────────────
 
 function TopicsTab() {
-  const { data, isLoading: loading } = useQuery({
+  // This tab rendered an EMPTY GRID on failure — no message at all.
+  const { data, isLoading: loading, error, refetch } = useQuery({
     queryKey: ['coaching-topics'],
     queryFn: () => apiJSON<CoachingTopic[]>('/coaching/topics'),
   });
@@ -583,6 +595,8 @@ function TopicsTab() {
 
   return (
     <DataGrid
+      error={error}
+      onRetry={() => { void refetch(); }}
       columns={[
         {
           key: 'key', label: 'Key', sortable: true,

@@ -14,7 +14,7 @@ import { Clock, Package, Plus } from 'lucide-react';
 import DataGrid, { TAB_PREFIX, type DataGridSegment } from '../../components/datagrid';
 import { loadRowMenu } from './contextMenu';
 import {
-  PageHeader, EmptyState, ErrorState, TableSkeleton, DateRangePresets,
+  PageHeader, EmptyState, TableSkeleton, DateRangePresets,
 } from '../../components/shell';
 import { Button } from '../../components/ui/button';
 import { useRoleView } from '../../context/RoleViewContext';
@@ -326,9 +326,13 @@ export default function Loads() {
 
 
       {isLoading && <TableSkeleton />}
-      {!isLoading && error != null && (
-        <ErrorState message={error instanceof Error ? error.message : String(error)} />
-      )}
+      {/* The error is NOT a page-level branch any more.  Replacing the
+          grid with an ErrorState deleted the tab strip, the saved tabs
+          and the open pivot along with the rows — the exact dead end the
+          DataGrid rules forbid for an empty tab, reproduced on the error
+          path, and with no Retry the only way back was a page reload.
+          It rides inside the card now (``error`` on the grid below), so
+          the controls that could recover survive the failure. */}
       {!isLoading && error == null && accountEmpty && (
         <EmptyState
           icon={Package}
@@ -343,8 +347,18 @@ export default function Loads() {
       {/* Rendered whenever the account HAS loads, empty tab or not — the
           grid draws its own "no rows" line and, crucially, keeps the tab
           strip on screen so the operator can leave. */}
-      {!isLoading && error == null && !accountEmpty && (
+      {/* ``error != null ||`` is load-bearing: on a FIRST-load failure
+          there are no rows, so ``accountEmpty`` is true — and the
+          account-empty branch above correctly declines to claim "no
+          loads yet" when we simply don't know.  Without this the page
+          would render nothing at all.  The grid is what carries the
+          message, so on an error it must mount even with zero rows. */}
+      {!isLoading && (error != null || !accountEmpty) && (
         <DataGrid
+          // Said inside the card, above the rows, with the page's own
+          // refetch wired — it existed already and reached only dialogs.
+          error={error}
+          onRetry={refetch}
           // ``tableId`` opts into the column-controls layer (3-dot
           // menu / pin / hide / reorder / Export / per-user layout).
           // Also what makes the ``filterable`` columns below actually

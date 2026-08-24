@@ -12,7 +12,7 @@
  *      quietly narrowing a capped page and calling that the answer.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import type { AnyColumn } from '../../types';
 
 // jsdom has no ResizeObserver; DataGrid measures column widths with one.
@@ -539,5 +539,87 @@ describe('DataGrid — manualSorting means the server already ordered these', ()
         onSortingChange={() => {}} />,
     );
     expect(names()).toEqual(['Truck 1', 'Truck 2', 'Truck 3']);
+  });
+});
+
+
+describe('DataGrid — a failed fetch is said inside the card', () => {
+  /**
+   * Two opposite bugs across ~17 pages, one prop set.
+   *
+   * Pages that dropped `error` turned a failure into an empty state —
+   * the upload queue read "No files pending upload" during an outage,
+   * the exact inverse of the truth. Pages that DID render it swapped the
+   * whole grid for a bare box, deleting the tab strip that got the
+   * operator there.
+   */
+  const SEGMENTS = [
+    { key: 'all', label: 'All' },
+    { key: 'faults', label: 'Faults', match: (r: Record<string, unknown>) => r.type === 'fault' },
+  ];
+
+  it('shows the message and keeps the grid mounted', () => {
+    render(
+      <DataGrid columns={COLUMNS} data={ROWS} tableId="err"
+        segments={SEGMENTS} error={new Error('Network request failed')} />,
+    );
+    expect(document.body.textContent).toContain('Network request failed');
+    // The controls that could recover must survive the error, not vanish
+    // with the rows: the tab strip lives INSIDE the grid.
+    expect(document.body.textContent).toContain('Faults');
+    expect(document.querySelector('tbody')).not.toBeNull();
+  });
+
+  // The case every page got wrong, in both directions.
+  it('still speaks when rows are already on screen', () => {
+    render(
+      <DataGrid columns={COLUMNS} data={ROWS} tableId="err-rows"
+        error={new Error('Refresh failed')} />,
+    );
+    expect(document.body.textContent).toContain('Refresh failed');
+    // ...and says what the rows still are: something, just not current.
+    expect(document.body.textContent).toContain('last successful load');
+    expect(bodyText()).toContain('Truck 1');
+  });
+
+  it('omits the staleness note when there are no rows to qualify', () => {
+    render(
+      <DataGrid columns={COLUMNS} data={[]} tableId="err-empty"
+        error={new Error('Boom')} />,
+    );
+    expect(document.body.textContent).toContain('Boom');
+    expect(document.body.textContent).not.toContain('last successful load');
+  });
+
+  it('offers Retry only when the page passes a way to retry', () => {
+    const onRetry = vi.fn();
+    const { unmount } = render(
+      <DataGrid columns={COLUMNS} data={ROWS} tableId="err-retry"
+        error={new Error('x')} onRetry={onRetry} />,
+    );
+    const btn = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('Retry'));
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn as HTMLButtonElement);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    unmount();
+
+    // A button that does nothing is worse than no button.
+    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="err-noretry"
+      error={new Error('x')} />);
+    expect(Array.from(document.querySelectorAll('button'))
+      .some((b) => b.textContent?.includes('Retry'))).toBe(false);
+  });
+
+  it('stringifies a non-Error rather than dropping it', () => {
+    // `throw 'nope'` is legal JS and reaches react-query intact.
+    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="err-str"
+      error="upstream said no" />);
+    expect(document.body.textContent).toContain('upstream said no');
+  });
+
+  it('renders nothing when there is no error', () => {
+    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="err-none" />);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
   });
 });

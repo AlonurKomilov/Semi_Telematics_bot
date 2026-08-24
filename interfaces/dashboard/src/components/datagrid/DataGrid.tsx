@@ -26,6 +26,7 @@ import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
   CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, Table2, EyeOff,
+  AlertTriangle, RotateCw,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -309,6 +310,26 @@ interface DataGridProps {
    *  search-miss render their own copy plus a clear action, so this is
    *  only ever the genuine starting state. Defaults to "No data". */
   emptyMessage?: React.ReactNode;
+  /** The page's fetch failed.  Rendered as a band INSIDE the card, above
+   *  the rows, so the toolbar, the tab strip and the saved tabs all stay
+   *  mounted — and so it still appears when rows are already on screen,
+   *  which is the state react-query guarantees on a failed REFETCH.
+   *
+   *  Two opposite bugs this exists to end.  Pages that dropped `error`
+   *  entirely turned a failure into an empty state — the upload queue
+   *  read "No files pending upload" during an outage, the exact inverse
+   *  of the truth.  Pages that DID render it swapped the whole grid for
+   *  a bare box, deleting the tab strip that got the operator there:
+   *  the same dead end this file's rules already forbid for an empty
+   *  tab, reproduced on the error path.
+   *
+   *  Accepts anything thrown; a non-Error is stringified rather than
+   *  swallowed, because "something failed" beats silence. */
+  error?: unknown;
+  /** Puts a Retry button in the error band.  Pass react-query's
+   *  `refetch` — without it the band states a problem and offers no way
+   *  out, and a page reload becomes the only recovery. */
+  onRetry?: () => void;
   segments?: DataGridSegment[];
   /** Enable user-managed saved tabs — personal tabs an operator
    *  builds from the current filters (a "+ New tab" affordance beside
@@ -706,6 +727,7 @@ export default function DataGrid({
   columnFilters: controlledColumnFilters, onColumnFiltersChange,
   globalFilter: controlledGlobalFilter, onGlobalFilterChange,
   totalRows, onExportAllRows,
+  error: fetchError, onRetry,
   sorting: controlledSorting, defaultSorting, onSortingChange, manualSorting = false,
   pageIndex: controlledPageIndex, pageSize: controlledPageSize,
   onPaginationChange, pageCount: controlledPageCount, manualPagination = false,
@@ -3661,6 +3683,56 @@ export default function DataGrid({
           pivoting ON.  The two bodies then swap inside the left column
           without the panel unmounting. */}
       <div className={cn('flex flex-col', fills && 'flex-1 min-h-0')}>
+      {/* A failed fetch, said INSIDE the card.
+          Two rules decide everything about this band:
+
+          1. It never replaces the grid.  The tab strip, saved tabs and
+             toolbar live inside the grid, so swapping the whole thing
+             for an error box deletes the controls the operator would
+             use to recover — the dead end this file's own rules already
+             forbid for an empty tab.
+          2. It renders REGARDLESS of whether rows are present.  A failed
+             REFETCH leaves the previous rows on screen (react-query
+             flags them invalidated but keeps them), and that is exactly
+             when a page most looks fine and is most wrong: the operator
+             reads a stale queue believing it is current.  Every page
+             that gated its error on ``rows.length === 0`` had this hole.
+
+          Placed above the rows, not below: it has to be read BEFORE the
+          data it qualifies. */}
+      {fetchError != null && (
+        <div
+          role="alert"
+          className={cn(
+            'mx-3 mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs',
+            toneClasses('danger'),
+          )}
+        >
+          <AlertTriangle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+          <span className="flex-1 min-w-0">
+            {fetchError instanceof Error
+              ? fetchError.message
+              /* Not every throw is an Error.  Stringify rather than drop
+                 it — "something failed" beats a silent success. */
+              : String(fetchError)}
+            {rowCount > 0 && (
+              <span className="block opacity-80">
+                The rows below are from the last successful load.
+              </span>
+            )}
+          </span>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="shrink-0 inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:opacity-80"
+            >
+              <RotateCw className="size-3" aria-hidden="true" />
+              Retry
+            </button>
+          )}
+        </div>
+      )}
       {/* Search hits the operator cannot see.  The live region is
           mounted whenever the row list is, and only its CONTENTS are
           conditional — a region that appears at the same moment as its

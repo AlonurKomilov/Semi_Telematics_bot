@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { HardDrive, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { HardDrive, Loader2, Trash2, AlertTriangle, RotateCw } from 'lucide-react';
+import { toneClasses } from '../../lib/status';
 
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
@@ -82,7 +83,10 @@ export default function ObjectStorageUsageCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const { data, isLoading } = useQuery({
+  // ``fetchError`` rather than reusing the ``error`` state above — that
+  // one belongs to the purge mutation, and one name for two failures
+  // means whichever wrote last is the only one the operator ever sees.
+  const { data, isLoading, error: fetchError, refetch } = useQuery({
     queryKey: ['storage', 'usage'],
     queryFn: () => apiJSON<UsageResponse>('/object-storage/usage'),
   });
@@ -121,6 +125,27 @@ export default function ObjectStorageUsageCard() {
       <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground inline-flex items-center gap-2">
         <Loader2 className="animate-spin size-3.5" />
         Measuring stored files…
+      </div>
+    );
+  }
+  // A failed fetch used to return null, taking the entire card — the
+  // orphan-purge control included — off the page with no trace.  A
+  // control that vanishes teaches nothing, and here it also removed the
+  // only way to act on what the card is for.
+  if (fetchError) {
+    return (
+      <div className={`rounded-lg border p-4 text-sm ${toneClasses('danger')}`}>
+        <p className="font-medium">Could not measure stored files.</p>
+        <p className="mt-1 text-xs opacity-90">
+          {fetchError instanceof Error ? fetchError.message : String(fetchError)}
+        </p>
+        <button
+          type="button"
+          onClick={() => { void refetch(); }}
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 hover:opacity-80"
+        >
+          <RotateCw className="size-3" aria-hidden="true" /> Retry
+        </button>
       </div>
     );
   }
