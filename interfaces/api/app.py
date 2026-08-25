@@ -460,6 +460,8 @@ def create_api() -> FastAPI:
         app.include_router(geofences.router, prefix=prefix)
         app.include_router(alerts.router, prefix=prefix)
         app.include_router(alerts.user_router, prefix=prefix)
+        from capabilities.alerting.triggers.router import router as alert_triggers_router
+        app.include_router(alert_triggers_router, prefix=prefix)
         app.include_router(notifications_routes.router, prefix=prefix)
         app.include_router(parking_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)

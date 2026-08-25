@@ -415,6 +415,31 @@ async def create_tables(conn) -> None:
         -- channel = new rows, never new columns.  Phase 2a: table +
         -- backfill only; readers still use the legacy alert_* columns
         -- until the reader-switch step (2b).
+        -- One person's watch on one vehicle metric: "tell me when DEF
+        -- drops below 10%".  No comparator and no schedule here — the
+        -- metric owns its direction and its check cadence
+        -- (capabilities/alerting/triggers/catalog.py), so this row holds
+        -- only WHO, WHICH metric, and AT WHAT NUMBER.
+        --
+        -- ``scope`` is 'personal' today and the API refuses 'account';
+        -- ``origin`` is 'user' and nothing seeds yet.  Both exist now so
+        -- that letting a built-in checker's env threshold become an
+        -- ordinary account trigger is a data migration later, not a
+        -- schema change.
+        CREATE TABLE IF NOT EXISTS alert_triggers (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id     INTEGER NOT NULL,
+            owner_user_id  INTEGER NOT NULL,
+            metric         TEXT    NOT NULL,           -- a catalog key, never a column name
+            threshold      REAL    NOT NULL,
+            scope          TEXT    NOT NULL DEFAULT 'personal',
+            origin         TEXT    NOT NULL DEFAULT 'user',
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            severity       TEXT    NOT NULL DEFAULT 'warning',
+            created_at     TEXT    NOT NULL DEFAULT '',
+            updated_at     TEXT    NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS notification_pref (
             account_id     INTEGER NOT NULL,
             recipient_type TEXT    NOT NULL,             -- 'user' | 'account' | 'topic'

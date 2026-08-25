@@ -150,6 +150,9 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     import features.drivers.onboarding.alert     # noqa: F401  driver_onboarding_stale_check
     import interfaces.bot.driver_samsara_sync    # noqa: F401  driver_samsara_sync
     import capabilities.scorecards.jobs             # noqa: F401  scorecard_drop_alerts
+    # One source for EVERY personal trigger and every metric — the
+    # catalog is what grows, not this list.
+    import capabilities.alerting.triggers.evaluator  # noqa: F401  alert_triggers_sweep
 
     for src in alert_sources():
         scheduler.add_job(

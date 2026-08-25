@@ -216,6 +216,8 @@ async def run_all(conn) -> None:
     # Recruiting notices moved onto the notification capability — seed the
     # connections its existing audience already had reach through.
     await migrate_seed_application_notification_channels(conn)
+    # Personal alert triggers — "tell me when DEF drops below 10%".
+    await migrate_alert_triggers(conn)
     await migrate_account_test_flag(conn)
 
 
@@ -4616,3 +4618,48 @@ async def migrate_seed_application_notification_channels(conn) -> None:
         except Exception:
             pass
         logger.error("application notification channel backfill failed: %s", e)
+
+
+async def migrate_alert_triggers(conn) -> None:
+    """``alert_triggers`` — a person's own watch on a vehicle metric.
+
+    Idempotent mirror of platform_schema.  The index is created HERE and
+    not there: an index on a table platform_schema only just created is
+    fine, but the habit of putting them in the schema file is what makes
+    an upgrade crash on a column that does not exist yet.
+
+    The index matches the two reads that exist: the evaluator sweeping
+    every enabled trigger, and one person listing their own.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS alert_triggers (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id     INTEGER NOT NULL,
+                owner_user_id  INTEGER NOT NULL,
+                metric         TEXT    NOT NULL,
+                threshold      REAL    NOT NULL,
+                scope          TEXT    NOT NULL DEFAULT 'personal',
+                origin         TEXT    NOT NULL DEFAULT 'user',
+                enabled        INTEGER NOT NULL DEFAULT 1,
+                severity       TEXT    NOT NULL DEFAULT 'warning',
+                created_at     TEXT    NOT NULL DEFAULT '',
+                updated_at     TEXT    NOT NULL DEFAULT ''
+            );
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_triggers_owner "
+            "ON alert_triggers(account_id, owner_user_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_triggers_enabled "
+            "ON alert_triggers(enabled, account_id)"
+        )
+        await conn.commit()
+        logger.info("Migration: alert_triggers ready")
+    except Exception as e:
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        logger.error("alert_triggers migration failed: %s", e)
