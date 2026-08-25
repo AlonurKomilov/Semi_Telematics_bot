@@ -241,6 +241,128 @@ export function tapHeight(cls: string): number | null {
   return padding + line + border;
 }
 
+
+/* ── The exemption lists, each paired with the offence it exempts ──
+ *
+ * All eight live here, at module scope, next to the predicate that
+ * decides whether an entry still has a reason to exist. That pairing is
+ * the whole point. Five of these used to be declared inside their own
+ * `it()`, out of the staleness check's reach — and they rotted there,
+ * unseen, while the suite stayed green. An exemption nobody can audit
+ * is not an exemption; it is a hole with a comment next to it.
+ */
+const ARBITRARY_LEN =
+  /\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/;
+
+const usesWebStorage = (src: string) =>
+  /\b(localStorage|sessionStorage)\.(get|set|remove)Item\b/.test(src);
+
+const hasOwnInset = (src: string) =>
+  src.split('\n').some(
+    (l) => /calc\(100d?vh\s*[-\u2212]/.test(l)
+      && !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l.trim()),
+  );
+
+/** Type SIZE a call site imposed on <Button>. Colour is not a size. */
+const buttonSizeOverrides = (src: string): string[] => {
+  const out: string[] = [];
+  for (const m of src.matchAll(/<Button\b[^>]*className="([^"]*)"/g)) {
+    const bad = m[1].match(
+      /\b(?:h|size|px|py)-[\d.]+\b|\btext-(?:3xs|2xs|xs|sm|base|lg|xl)\b/g,
+    );
+    if (bad) out.push(bad.join(' '));
+  }
+  return out;
+};
+
+/** A <span> that has re-drawn a Badge: a status colour plus its geometry.
+ *  Both doors count. `statusClasses` was invisible to this for as long as
+ *  the list below has existed, which is why every entry in it read as
+ *  dead — the detector could not see the door they were walking through. */
+const statusDoorSites = (src: string): number[] => {
+  const out: number[] = [];
+  for (const m of src.matchAll(/<span\s+className=\{`([^`]*)`\}/g)) {
+    const cls = m[1];
+    if (!/\$\{(?:toneClasses|statusClasses)\(/.test(cls)) continue;
+    const t = cls.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/);
+    const geometry = t.filter((c) =>
+      /^(rounded|px-|py-|text-(3xs|2xs|xs)$|font-medium$)/.test(c),
+    );
+    if (geometry.length >= 3) out.push(src.slice(0, m.index ?? 0).split('\n').length);
+  }
+  return out;
+};
+
+/** A dialog width written the way tailwind-merge cannot honour. */
+const dialogWidthSites = (src: string): string[] =>
+  [...src.matchAll(/<DialogContent\b[^>]*className="([^"]*)"/g)]
+    .filter((m) => /\bmax-w-/.test(m[1]))
+    .map((m) => m[1]);
+
+const STORAGE_ALLOWED = [
+  'preferences/',              // the service itself
+  'api/client',                // session token
+  'App.tsx',                   // logout clears the session token
+  'features/ai/attachmentStore',
+  'features/ai/thoughtStore',
+  'hooks/usePoiLayers',        // map-tile cache with a TTL
+  'features/carrier-directory/PublicCarrierIntake', // public draft
+  'features/applications/public/',                  // public draft
+  // Named individually because each was checked against the test in
+  // preferences/CLAUDE.md — "a preference has a default, a user
+  // CHOOSES it, and losing it is an annoyance" — and each fails it.
+  'features/alerts/sections/LiveAckPanel',  // "what's new since" timestamp
+  'features/knowledge/KnowledgeBase',       // 30s view-ping debounce
+  'lib/safeReturnTo',                       // explicit-signout, session flow
+  'router.tsx',                             // chunk-reload loop breaker
+];
+
+
+const OWN_INSET = ['components/ui/dialog.tsx'];
+
+
+const OVERRIDE_DEBT = ['components/datagrid/DataGrid.tsx'];
+
+
+const STATUS_DOOR_DEBT = [
+  'features/loads/Loads.tsx',
+  'features/vehicles/inventory/InventoryCard.tsx',
+  'features/vehicles/inventory/InventoryPage.tsx',
+  'features/vehicles/inventory/ItemDialog.tsx',
+  'features/parking/badges.tsx',
+  'features/applications/Applications.tsx',
+];
+
+
+const SIZE_DEBT = [
+  'features/kpi/config/IncentiveEditor.tsx',
+  'features/kpi/dispatch/IncentiveRuns.tsx',
+  'features/kpi/dispatch/runs/EditRowDialog.tsx',
+  'features/kpi/dispatch/runs/ExceptionDialog.tsx',
+  'features/kpi/dispatch/runs/NewRunDialog.tsx',
+];
+
+
+type DebtList = {
+  name: string;
+  entries: string[];
+  /** How an entry names a file: its exact rel, or a substring of one. */
+  match: 'exact' | 'substring';
+  scope: { rel: string; src: string }[];
+  offends: (f: { rel: string; src: string }) => boolean;
+};
+
+const DEBT: DebtList[] = [
+  { name: 'NOT_YET_CONVERTED',           entries: NOT_YET_CONVERTED,           match: 'exact',     scope: TSX,   offends: (f) => CHROME_GLYPH.test(f.src) },
+  { name: 'TITLE_NOT_YET_CONVERTED',     entries: TITLE_NOT_YET_CONVERTED,     match: 'exact',     scope: TSX,   offends: (f) => hasNativeTitle(f.src) },
+  { name: 'ARBITRARY_NOT_YET_CONVERTED', entries: ARBITRARY_NOT_YET_CONVERTED, match: 'exact',     scope: FILES, offends: (f) => ARBITRARY_LEN.test(f.src) },
+  { name: 'STORAGE_ALLOWED',             entries: STORAGE_ALLOWED,             match: 'substring', scope: FILES, offends: (f) => usesWebStorage(f.src) },
+  { name: 'OWN_INSET',                   entries: OWN_INSET,                   match: 'exact',     scope: FILES, offends: (f) => hasOwnInset(f.src) },
+  { name: 'OVERRIDE_DEBT',               entries: OVERRIDE_DEBT,               match: 'exact',     scope: TSX,   offends: (f) => buttonSizeOverrides(f.src).length > 0 },
+  { name: 'STATUS_DOOR_DEBT',            entries: STATUS_DOOR_DEBT,            match: 'exact',     scope: TSX,   offends: (f) => statusDoorSites(f.src).length > 0 },
+  { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
+];
+
 describe('UI chrome', () => {
 
   /**
@@ -271,20 +393,31 @@ describe('UI chrome', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('keeps the not-yet-converted lists honest', () => {
+  it('keeps every exemption list honest', () => {
     // An entry that no longer offends is dead weight that hides the next
-    // real one — so neither list may outlive its reason.
-    const stale = [
-      ...NOT_YET_CONVERTED.filter(
-        (f) => !CHROME_GLYPH.test(srcOf(f)),
-      ),
-      ...TITLE_NOT_YET_CONVERTED.filter((f) => !hasNativeTitle(srcOf(f))),
-      ...ARBITRARY_NOT_YET_CONVERTED.filter(
-        (f) => !/\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/
-          .test(srcOf(f)),
-      ),
-    ];
-    expect(stale).toEqual([]);
+    // real one — so no list may outlive its reason. This used to check
+    // three of the eight, because the other five were declared inside
+    // their own `it()` where it could not see them. STATUS_DOOR_DEBT had
+    // gone entirely dead in that blind spot: every one of its six entries
+    // read as stale, not because the debt was paid but because the
+    // detector was looking through one door and the code was walking
+    // through the other.
+    const stale: string[] = [];
+    for (const { name, entries, match, scope, offends } of DEBT) {
+      for (const e of entries) {
+        const covered = match === 'exact'
+          ? scope.filter((f) => f.rel === e)
+          : scope.filter((f) => f.rel.includes(e));
+        if (!covered.some(offends)) {
+          stale.push(`${name}: ${e}${covered.length ? '' : ' (file is gone)'}`);
+        }
+      }
+    }
+    expect(
+      stale,
+      'these exemptions no longer exempt anything — delete the entry, or ' +
+        'the detector beside it has stopped seeing what the file does',
+    ).toEqual([]);
   });
 
   it('routes per-user UI state through the preferences service', () => {
@@ -292,27 +425,8 @@ describe('UI chrome', () => {
     // documented non-preferences: session/auth, data caches with a TTL,
     // an operational timestamp, drafts with no logged-in user, and the
     // i18n library's own key. Everything else is a preference.
-    const ALLOWED = [
-      'preferences/',              // the service itself
-      'api/client',                // session token
-      'context/AuthContext',       // session
-      'App.tsx',                   // logout clears the session token
-      'features/ai/attachmentStore',
-      'features/ai/thoughtStore',
-      'hooks/usePoiLayers',        // map-tile cache with a TTL
-      'features/carrier-directory/PublicCarrierIntake', // public draft
-      'features/applications/public/',                  // public draft
-      'i18n',
-      // Named individually because each was checked against the test in
-      // preferences/CLAUDE.md — "a preference has a default, a user
-      // CHOOSES it, and losing it is an annoyance" — and each fails it.
-      'features/alerts/sections/LiveAckPanel',  // "what's new since" timestamp
-      'features/knowledge/KnowledgeBase',       // 30s view-ping debounce
-      'lib/safeReturnTo',                       // explicit-signout, session flow
-      'router.tsx',                             // chunk-reload loop breaker
-    ];
     const offenders = FILES
-      .filter((f) => !ALLOWED.some((a) => f.rel.includes(a)))
+      .filter((f) => !STORAGE_ALLOWED.some((a) => f.rel.includes(a)))
       .filter((f) => /\b(localStorage|sessionStorage)\.(get|set|remove)Item\b/.test(f.src))
       .map((f) => f.rel);
     expect(offenders).toEqual([]);
@@ -356,10 +470,8 @@ describe('UI chrome', () => {
     // token references (`w-[var(--assistant-w)]`) are deliberately NOT
     // matched: those are relative by design and a multiplier would be
     // wrong on them.
-    const ARBITRARY =
-      /\b(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-[xy]|w|h|min-w|min-h|max-w|max-h|size|top|left|right|bottom|inset|translate-[xy])-\[\d[\d.]*(?:px|rem)\]/;
     const offenders = FILES
-      .filter((f) => ARBITRARY.test(f.src))
+      .filter((f) => ARBITRARY_LEN.test(f.src))
       .map((f) => f.rel)
       .filter((f) => !ARBITRARY_NOT_YET_CONVERTED.includes(f));
     expect(offenders).toEqual([]);
@@ -387,7 +499,6 @@ describe('UI chrome', () => {
     // moves — and without the cap a tall dialog overflows both edges and
     // its footer buttons become unreachable. One entry, named, so the
     // exception cannot spread silently.
-    const OWN_INSET = ['components/ui/dialog.tsx'];
     const offenders = FILES
       .filter((f) => !OWN_INSET.includes(f.rel))
       .filter((f) => f.src.split('\n').some(
@@ -427,21 +538,13 @@ describe('UI chrome', () => {
     // DataGrid strips a button's horizontal padding to sit flush in a
     // header cell. Whether that wants an `unpadded` variant or a `px-0`
     // escape is their call to make, not mine to make inside their diff.
-    const OVERRIDE_DEBT = ['components/datagrid/DataGrid.tsx'];
-    const offenders: string[] = [];
-    for (const { rel, src } of TSX) {
-      if (OVERRIDE_DEBT.includes(rel)) continue;
-      for (const m of src.matchAll(/<Button\b[^>]*className="([^"]*)"/g)) {
-        // DIMENSIONS only. The first version matched `text-[\w.]+` and
-        // flagged `text-muted-foreground` — a colour, which a call site
-        // is entitled to set. Type SIZE is a dimension; type COLOUR is
-        // not.
-        const bad = m[1].match(
-          /\b(?:h|size|px|py)-[\d.]+\b|\btext-(?:3xs|2xs|xs|sm|base|lg|xl)\b/g,
-        );
-        if (bad) offenders.push(`${rel} → ${bad.join(' ')}`);
-      }
-    }
+    // DIMENSIONS only. The first version of the detector matched
+    // `text-[\w.]+` and flagged `text-muted-foreground` — a colour, which
+    // a call site is entitled to set. Type SIZE is a dimension; type
+    // COLOUR is not.
+    const offenders = TSX
+      .filter((f) => !OVERRIDE_DEBT.includes(f.rel))
+      .flatMap((f) => buttonSizeOverrides(f.src).map((b) => `${f.rel} → ${b}`));
     expect(offenders).toEqual([]);
   });
 
@@ -515,14 +618,6 @@ describe('UI chrome', () => {
     // label their own way (`v.replace('_','-')`), so swapping them is a
     // per-site judgement about wording, not a mechanical rename. Ten of
     // those are named below rather than silently swept in here.
-    const STATUS_DOOR_DEBT = [
-      'features/loads/Loads.tsx',
-      'features/vehicles/inventory/InventoryCard.tsx',
-      'features/vehicles/inventory/InventoryPage.tsx',
-      'features/vehicles/inventory/ItemDialog.tsx',
-      'features/parking/badges.tsx',
-      'features/applications/Applications.tsx',
-    ];
     const offenders: string[] = [];
     for (const { rel, src } of TSX) {
       if (rel === 'components/StatusBadge.tsx' || rel.startsWith('components/ui/')) continue;
@@ -530,15 +625,8 @@ describe('UI chrome', () => {
       // own diff, not mine to rewrite from outside it.
       if (rel.startsWith('features/kpi/') || rel.startsWith('components/callouts/')) continue;
       if (STATUS_DOOR_DEBT.includes(rel)) continue;
-      for (const m of src.matchAll(/<span\s+className=\{`([^`]*)`\}/g)) {
-        const cls = m[1];
-        if (!/\$\{toneClasses\(/.test(cls)) continue;
-        const t = cls.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/);
-        const geometry = t.filter((c) => /^(rounded|px-|py-|text-(3xs|2xs|xs)$|font-medium$)/.test(c));
-        if (geometry.length >= 3) {
-          const line = src.slice(0, m.index ?? 0).split('\n').length;
-          offenders.push(`${rel}:${line} → <Badge tone={…}>`);
-        }
+      for (const line of statusDoorSites(src)) {
+        offenders.push(`${rel}:${line} → <Badge tone={…}>`);
       }
     }
     expect(offenders).toEqual([]);
@@ -553,18 +641,11 @@ describe('UI chrome', () => {
     // desktop and had done for a long time. Nobody noticed until a
     // dialog whose content needed 460px started eating its own labels.
     // `size="lg"` cannot be written the not-taking way.
-    const SIZE_DEBT = [
-      'features/kpi/config/IncentiveEditor.tsx',
-      'features/kpi/dispatch/IncentiveRuns.tsx',
-      'features/kpi/dispatch/runs/EditRowDialog.tsx',
-      'features/kpi/dispatch/runs/ExceptionDialog.tsx',
-      'features/kpi/dispatch/runs/NewRunDialog.tsx',
-    ];
     const offenders: string[] = [];
     for (const { rel, src } of TSX) {
       if (SIZE_DEBT.includes(rel)) continue;
-      for (const m of src.matchAll(/<DialogContent\b[^>]*className="([^"]*)"/g)) {
-        if (/\bmax-w-/.test(m[1])) offenders.push(`${rel} → use size="…" instead`);
+      if (dialogWidthSites(src).length) {
+        offenders.push(`${rel} → use size="…" instead`);
       }
     }
     expect(offenders).toEqual([]);

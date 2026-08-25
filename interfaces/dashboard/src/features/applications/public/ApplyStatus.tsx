@@ -3,7 +3,8 @@
 // email and sees their application status — nothing else.
 import { useMemo, useState } from 'react';
 import { Truck, Search, CheckCircle2 } from 'lucide-react';
-import { statusClasses } from '../../../lib/status';
+import { statusTone } from '../../../lib/status';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
@@ -119,9 +120,12 @@ export default function ApplyStatus() {
             <div className="mt-4 rounded-md border border-border p-4">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="text-muted-foreground size-4.5" />
-                <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(result.status)}`}>
+                {/* The applicant's own status chip. It hand-rolled the
+                    Badge geometry through the `statusClasses` door, which
+                    the guard could not see for as long as it existed. */}
+                <Badge tone={statusTone(result.status)} className="capitalize">
                   {view?.label ?? result.status}
-                </span>
+                </Badge>
               </div>
               <p className="mt-2 text-sm text-foreground">{view?.msg ?? 'Your application is on file.'}</p>
               {result.submitted_at && (
