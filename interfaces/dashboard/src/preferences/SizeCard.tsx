@@ -13,7 +13,7 @@
  * cascade, in `tailwind.config.js`, not by this page. Each region is
  * claimed by the surface that already owns it (`lib/sizeRegion.ts`).
  */
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { RotateCcw, ChevronRight } from 'lucide-react';
 
 import { Slider } from '../components/ui/slider';
@@ -34,7 +34,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
  *  committed value becomes a preference — a drag is ~60 frames and each
  *  one would otherwise be a synchronous localStorage write. */
 function SizeRow({
-  label, value, onPreview, onCommit, onDragState, onReset, ariaLabel,
+  label, value, onPreview, onCommit, onReset, ariaLabel,
 }: {
   label: string;
   value: number;
@@ -42,18 +42,49 @@ function SizeRow({
   onReset?: () => void;
   onPreview: (v: number) => void;
   onCommit: (v: number) => void;
-  /** Raised while the thumb is held. The panel uses it to pin its OWN
-   *  scale — see the note on `dragging` in SizeCard. */
-  onDragState: (dragging: boolean) => void;
   ariaLabel: string;
 }) {
   const [drag, setDrag] = useState<number | null>(null);
   const shown = drag ?? value;
+  const row = useRef<HTMLDivElement>(null);
+  const anchor = useRef<number | null>(null);
+
+  /**
+   * Keep this row where the pointer left it.
+   *
+   * Pinning the panel's own scale stops the TRACK from changing length,
+   * but not the row from moving: everything above it on the page is
+   * previewing, so the panel slides down as the page grows. Measured in
+   * a browser: an 80px drag put the thumb 74px BELOW the cursor, and a
+   * long one 172px below — far enough that the pointer leaves the row
+   * entirely and the drag reads as broken.
+   *
+   * So on each preview frame, measure how far the row moved and give
+   * that back to the scroll container. The page still previews; the row
+   * the finger is on does not move.
+   */
+  const holdStill = () => {
+    const el = row.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    if (anchor.current === null) { anchor.current = top; return; }
+    const delta = top - anchor.current;
+    if (Math.abs(delta) < 0.5) return;
+    let sc: HTMLElement | null = el.parentElement;
+    while (sc) {
+      const oy = getComputedStyle(sc).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && sc.scrollHeight > sc.clientHeight) break;
+      sc = sc.parentElement;
+    }
+    if (sc) sc.scrollTop += delta;
+    else window.scrollBy(0, delta);
+  };
+
   return (
     // Stacks below `sm`: the label rides --size-text, so at a large Size
     // on a phone a fixed-width label and value would leave the track no
     // travel at all.
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+    <div ref={row} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
       <span className="text-sm text-foreground sm:w-40 sm:shrink-0">{label}</span>
       <Slider
         value={shown}
@@ -62,8 +93,16 @@ function SizeRow({
         step={0.05}
         aria-label={ariaLabel}
         formatValue={pct}
-        onValueChange={(v) => { setDrag(v); onDragState(true); onPreview(v); }}
-        onValueCommitted={(v) => { setDrag(null); onDragState(false); onCommit(v); }}
+        onValueChange={(v) => {
+          setDrag(v);
+          onPreview(v);
+          holdStill();
+        }}
+        onValueCommitted={(v) => {
+          setDrag(null);
+          anchor.current = null;
+          onCommit(v);
+        }}
         className="max-w-xs"
       />
       <span className="text-xs tabular-nums text-muted-foreground sm:w-12 sm:text-right sm:shrink-0">
@@ -107,7 +146,6 @@ const REGION_ROWS: { key: SizeRegionKey; label: string }[] = [
 export default function SizeCard() {
   const { size, setSize } = useTheme();
   const [open, setOpen] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const { value: followMe, setValue: setFollowMe } = usePreference('appearance.followMe');
   const { value: syncEnabled } = usePreference('prefs.syncEnabled');
 
@@ -134,27 +172,27 @@ export default function SizeCard() {
   ).length;
   const atDefault = size.global === 1 && tuned === 0;
 
-  // A control must not sit in the layout it is changing. Every row
-  // previews live against <html>, and this panel renders inside
-  // <main style={sizeRegion('text')}> — so dragging "Main content"
-  // rescaled the very slider being dragged. Measured at 1 -> 1.5: the
-  // track grew 320px -> 480px and its row moved 91px down the screen
-  // while the pointer held still, and the rows below it moved up to
-  // 171px. The thumb ran away from the cursor.
+  // A control must not sit in the layout it is changing — and the first
+  // attempt at this only pinned the panel WHILE a thumb was held, which a
+  // browser audit found still running away: 80px of drag put the thumb
+  // 25px right and 74px BELOW the pointer, a long drag 114/172px, and the
+  // reverse direction overshot 89px left.
   //
-  // While a thumb is held the panel is pinned to the COMMITTED size —
-  // `size` only updates on commit, so these are last-saved values, not
-  // the preview. The page BEHIND the panel still previews, which is the
-  // whole point of previewing; only the instrument holds still.
-  const pinned = dragging
-    ? ({
-      '--size-region': 1,
-      '--size-text': size.text * size.global,
-      '--size-control': size.control * size.global,
-      '--size-layout': size.layout * size.global,
-      '--size-panel': size.panel * size.global,
-    } as CSSProperties)
-    : undefined;
+  // So the instrument does not resize AT ALL. Not "not while dragging" —
+  // never. A ruler you are adjusting has to hold still to be read, and
+  // the preview belongs on the page around it, which is where the user
+  // is looking to judge the setting anyway.
+  //
+  // `--size-region: 1` escapes the `text` region this panel renders
+  // inside; the four axes hold at the COMMITTED size, which is what
+  // `size` carries because it only updates on commit.
+  const pinned = {
+    '--size-region': 1,
+    '--size-text': size.text * size.global,
+    '--size-control': size.control * size.global,
+    '--size-layout': size.layout * size.global,
+    '--size-panel': size.panel * size.global,
+  } as CSSProperties;
 
   return (
     <Card className="scroll-mt-20" render={<section />} id="appearance" style={pinned}>
@@ -181,7 +219,6 @@ export default function SizeCard() {
           value={size.global}
           onPreview={(v) => applySize({ ...size, global: v })}
           onCommit={(v) => setSize({ global: v })}
-          onDragState={setDragging}
         />
 
         {/* Per-area sliders are BEHIND a disclosure, not stacked under
@@ -240,7 +277,6 @@ export default function SizeCard() {
                   onCommit={(v) => setSize({
                     regions: { ...size.regions, [key]: v },
                   })}
-                  onDragState={setDragging}
                   onReset={() => {
                     const next = { ...size.regions };
                     delete next[key];

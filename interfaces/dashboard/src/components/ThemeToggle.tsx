@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Palette, RotateCcw, SlidersHorizontal } from 'lucide-react';
@@ -124,7 +124,21 @@ export function ThemeToggle() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-56 bg-popover border border-border rounded-xl shadow-xl p-3 space-y-3">
+        <div
+          // The picker holds its OWN size, like the /profile panel: it
+          // lives in the `controls` region AND drives the global, so
+          // without this the slider grows and slides under the pointer
+          // mid-drag. A browser audit measured the same runaway here as
+          // on /profile. The page behind the popover still previews.
+          style={{
+            '--size-region': 1,
+            '--size-text': size.text * size.global,
+            '--size-control': size.control * size.global,
+            '--size-layout': size.layout * size.global,
+            '--size-panel': size.panel * size.global,
+          } as CSSProperties}
+          className="absolute right-0 top-10 z-50 w-56 bg-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
+        >
 
           {/* Color theme */}
           <div>
