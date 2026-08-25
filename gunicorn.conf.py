@@ -60,11 +60,19 @@ keepalive = int(os.getenv("GUNICORN_KEEPALIVE", "75"))
 loglevel = os.getenv("GUNICORN_LOG_LEVEL", "info")
 accesslog = os.getenv("GUNICORN_ACCESS_LOG", "-")  # stdout
 errorlog = os.getenv("GUNICORN_ERROR_LOG", "-")    # stderr
-# %h client | %l ident | %u user | %t time | %r request line |
-# %s status | %b bytes | %{X-Request-ID}i — useful for correlating
-# with the API's RequestIDMiddleware.
+# %t time | %h client | %r request line | %s status | %b bytes |
+# %L request seconds | %{X-Request-ID}i — for correlating with the
+# API's RequestIDMiddleware.
+#
+# %(t)s leads deliberately.  Without it these lines carry no timestamp
+# at all, so they cannot be placed in time against the arbiter's own
+# timestamped lines ("Booting worker", "Application startup complete").
+# That made a real question unanswerable: during a SIGHUP reload, is
+# there a window where the old workers have exited and no new one is
+# serving yet?  Comparing access lines to worker lifecycle events is
+# how you answer that, and it needs a clock on both sides.
 access_log_format = (
-    '%(h)s "%(r)s" %(s)s %(b)s %(L)s "%({X-Request-ID}i)s"'
+    '%(t)s %(h)s "%(r)s" %(s)s %(b)s %(L)s "%({X-Request-ID}i)s"'
 )
 
 # ── Worker recycling (defends against memory leaks) ───────────

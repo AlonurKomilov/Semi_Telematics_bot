@@ -34,7 +34,7 @@ lever here, not the status filter, because 63% of checks are already
 non-OK.
 
 Server-local only: ``prune_camera_images`` removes files from OUR disk
-and never through ``ObjectStore.delete``, which on the hybrid backend
+and never through ``ObjectStorage.delete``, which on the hybrid backend
 would reach into the customer's Google Drive.
 """
 

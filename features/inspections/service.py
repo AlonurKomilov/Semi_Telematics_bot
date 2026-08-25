@@ -631,7 +631,7 @@ def _validate_signature_payload(data: str) -> None:
 
 
 # Driver-baked defect annotations live in ``pti_inspection_media`` —
-# the route re-uses the same ObjectStore path and just rewrites the
+# the route re-uses the same ObjectStorage path and just rewrites the
 # blob.  Annotated PNGs can be substantially larger than signatures
 # (the underlying photo is multi-megapixel) so the cap is wider, but
 # we still refuse anything that exceeds the per-upload media limit

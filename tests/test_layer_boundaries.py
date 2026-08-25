@@ -153,7 +153,7 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
     # (a scripts/ file once hid one exactly this way).
     retired = re.compile(
         r"(FROM|INTO|UPDATE|JOIN)\s+"
-        r"(warehouse\.)?vehicle_(state_snapshot|telemetry)\b"
+        r"(warehouse\.)?(vehicle_(state_snapshot|telemetry|health_snapshot|fault_snapshot|fault_detail)|weather_snapshot|efficiency_snapshot)\b"
         r"|(FROM|INTO|UPDATE|JOIN)\s+(warehouse\.)?vehicle_state\b(?!_)"
     )
     offenders = []
