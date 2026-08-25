@@ -136,12 +136,28 @@ def test_every_backend_key_is_renderable():
     assert not missing, f"catalog is missing: {sorted(missing)}"
 
 
-# The FIELD names a callout may declare.  Kept here rather than in the
-# frontend because the drift guard below is the only thing that reads
-# them, and a locale entry using a name the resolver does not read is
-# invisible copy — which is exactly how the six mileage explanations
-# went dark for one commit when ``body`` was split into why/affects/do.
-CALLOUT_FIELDS = {"title", "short", "why", "affects", "do"}
+def _line_vocabulary() -> set[str]:
+    """The line names the resolver actually renders, read from it.
+
+    Parsed rather than restated because this list is now the OPEN half
+    of the contract: a callout answers only the lines that fit it, so
+    the set grows, and a copy of it here would drift the first time it
+    did.  ``CALLOUT_LINES`` in useCallout.ts is the source.
+    """
+    src = (REPO / "interfaces/dashboard/src/components/callouts/useCallout.ts").read_text()
+    m = re.search(r"export const CALLOUT_LINES = \[(.*?)\] as const", src, re.S)
+    assert m, "CALLOUT_LINES not found — did the resolver's vocabulary move?"
+    names = set(re.findall(r"'([a-z_]+)'", m.group(1)))
+    assert names, "CALLOUT_LINES parsed empty"
+    return names
+
+
+# The FIELD names a callout may declare: the two standalone strings
+# plus every labelled line the resolver knows.  A locale entry using a
+# name the resolver does not read is invisible copy — which is exactly
+# how the six mileage explanations went dark for one commit when
+# ``body`` was split into why/affects/do.
+CALLOUT_FIELDS = {"title", "short"} | _line_vocabulary()
 
 
 def test_no_locale_entry_carries_a_field_nothing_reads():
@@ -159,6 +175,19 @@ def test_no_locale_entry_carries_a_field_nothing_reads():
             continue
         stray = set(block) - CALLOUT_FIELDS
         assert not stray, f"{key} declares unread field(s): {sorted(stray)}"
+
+
+def test_every_line_name_has_a_label_in_every_locale():
+    """The resolver translates ``callout.labels.<name>`` for whatever
+    line it renders, so a vocabulary word with no label string reaches
+    the user as the raw key next to real copy.  Adding a line name is
+    the moment this fires."""
+    for lang in ("en", "ru", "uz", "es", "fr", "uk", "am", "pa", "so"):
+        labels = json.loads(
+            (REPO / f"interfaces/dashboard/src/locales/{lang}.json").read_text()
+        )["callout"]["labels"]
+        missing = _line_vocabulary() - set(labels)
+        assert not missing, f"{lang}: no label for line(s) {sorted(missing)}"
 
 
 def test_every_locale_declares_the_same_callout_fields():

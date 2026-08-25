@@ -712,21 +712,27 @@
     "vehicle.vin_changed": {
       "title": "VIN o'zgardi: bu boshqa yuk mashinasimi?",
       "short": "VIN o'zgardi",
-      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "VIN bitta jismoniy yuk mashinasini bildiradi, shuning uchun yo bu birlik boshqa mashinaga biriktirilgan, yo qurilma ko'chirilgan.",
       "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
-      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+      "do": "Mashinaga mos javobni tanlang — «o'sha mashina» bitta tarixni saqlaydi, «boshqa mashina» yangisini alohida yozuvga ajratadi."
     },
     "vehicle.gateway_swapped": {
       "title": "Telematika qurilmasi almashtirildi",
       "short": "Qurilma almashtirildi",
-      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Ushbu birlik ortidagi shlyuz seriya raqami o'zgardi — mashinadagi uskuna almashtirilgan.",
       "affects": "Odometer readings, which may restart from a different number",
       "do": "Confirm below if the swap was planned."
     },
     "vehicle.odometer_rebased": {
       "title": "Odometr shkalasi o'zgardi",
       "short": "Odometr qayta hisoblandi",
-      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Odometr mashina oldingi ko'rsatkichdan beri bosib o'tishi mumkin bo'lganidan uzoqroqqa sakradi — demak mashina emas, ko'rsatkich manbai o'zgargan.",
       "affects": "Mileage totals for the period around the jump",
       "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
     },
@@ -736,7 +742,9 @@
       "do": "Nima qilish",
       "collapse": "Xabarnomani yig'ish",
       "dismiss": "Xabarnomani yopish",
-      "dismiss_failed": "Yozib bo'lmadi — ekranda qoladi."
+      "dismiss_failed": "Yozib bo'lmadi — ekranda qoladi.",
+      "where": "Qayerda",
+      "changed": "O'zgarish"
     }
   }
 }

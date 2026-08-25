@@ -1373,21 +1373,27 @@
     "vehicle.vin_changed": {
       "title": "VIN changed: is this a different truck?",
       "short": "VIN changed",
-      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
       "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
-      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+      "do": "Pick the answer that matches the truck — same truck keeps one history, different truck splits the new one onto its own record."
     },
     "vehicle.gateway_swapped": {
       "title": "Telematics device replaced",
       "short": "Device swapped",
-      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "The gateway serial behind this unit changed — the hardware in the truck was replaced.",
       "affects": "Odometer readings, which may restart from a different number",
       "do": "Confirm below if the swap was planned."
     },
     "vehicle.odometer_rebased": {
       "title": "Odometer changed scale",
       "short": "Odometer re-based",
-      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "The odometer jumped further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
       "affects": "Mileage totals for the period around the jump",
       "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
     },
@@ -1397,7 +1403,9 @@
       "do": "Do",
       "collapse": "Collapse this notice",
       "dismiss": "Dismiss this notice",
-      "dismiss_failed": "Could not be recorded — still showing."
+      "dismiss_failed": "Could not be recorded — still showing.",
+      "where": "Where",
+      "changed": "Changed"
     }
   }
 }

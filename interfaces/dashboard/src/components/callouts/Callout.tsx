@@ -6,16 +6,20 @@
  * callout survives a reload because the thing it describes is still
  * true.
  *
- * The body is THREE ANSWERS, not a paragraph.  A reader arriving at a
- * degraded truck has the same three questions every time — what is
- * happening, what does it cost me, what do I do — and a flat sentence
- * makes them mine it for all three.  Labelled lines let the eye jump
- * straight to the one they care about, and give every future callout
- * the same shape to fill instead of re-inventing prose per fault.
+ * The body is LABELLED ANSWERS, not a paragraph.  A reader arriving
+ * at a statement has a handful of standing questions — which record,
+ * what changed, what does it mean, what does it cost me, what do I do
+ * — and a flat sentence makes them mine it for every one.  Labelled
+ * lines let the eye jump straight to the one they care about, and
+ * give every future callout the same shape to fill instead of
+ * re-inventing prose per fault.
  *
- * Any line may be absent: a caveat that qualifies a number has no
- * action, so its row is simply not rendered rather than printed with
- * an empty value.
+ * Which lines appear is the CALLOUT's choice, not this component's:
+ * it renders whatever `useCallout` resolved, in that vocabulary's
+ * fixed order.  A caveat qualifying a number has no action and no
+ * change; an identity question has both and needs no remedy.  Forcing
+ * one fixed set on both is what makes a strip print "Answer below"
+ * directly above the answer buttons.
  */
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,16 +52,10 @@ export default function Callout({
   actions?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const { tone, title, why, affects, act, Icon } = useCallout(callout);
+  const { tone, title, lines, Icon } = useCallout(callout);
   const { dismissed, collapsed, behaviour, close, expand } =
     useDismissal(callout, entity);
   const [failed, setFailed] = useState(false);
-  const lines: [string, string][] = [
-    [t('callout.labels.why'), why],
-    [t('callout.labels.affects'), affects],
-    [t('callout.labels.do'), act],
-  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
-
   // Removed by this person, and the server has the record.  Nothing
   // renders — but note this is per-USER: a colleague opening the same
   // truck still sees it.
@@ -100,9 +98,9 @@ export default function Callout({
         <p className="text-sm font-medium">{title}</p>
         {lines.length > 0 && (
           <dl className="space-y-0.5">
-            {lines.map(([label, value]) => (
-              <div key={label} className="flex gap-2 text-xs">
-                {/* Fixed label column so three answers line up and the
+            {lines.map(({ name, label, value }) => (
+              <div key={name} className="flex gap-2 text-xs">
+                {/* Fixed label column so the answers line up and the
                     eye can scan down them; it wraps to its own row on
                     narrow screens rather than squeezing the value. */}
                 <dt className="shrink-0 w-16 opacity-70">{label}</dt>

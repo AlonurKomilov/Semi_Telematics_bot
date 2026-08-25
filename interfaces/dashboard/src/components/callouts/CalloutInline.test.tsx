@@ -31,7 +31,7 @@ vi.mock('./useCallout', () => ({
     tone: 'warn' as const,
     title: 'No engine data',
     short: 'No data',
-    why: 'The device is online but not reading the engine.',
+    explanation: 'The device is online but not reading the engine.',
     affects: '',
     act: '',
     Icon: () => null,

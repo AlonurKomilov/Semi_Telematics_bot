@@ -853,21 +853,27 @@
     "vehicle.vin_changed": {
       "title": "VIN wuu beddelay: ma gaari kale baa?",
       "short": "VIN beddelay",
-      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "VIN wuxuu magacaabaa hal gaari oo jireed, markaa ama unugkan waxaa loo wareejiyay gaari kale, ama qalabkii waa la rogay.",
       "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
-      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+      "do": "Dooro jawaabta ku habboon gaariga — \"gaari isku mid ah\" wuxuu hayaa hal taariikh, \"gaari kale\" ayaa kan cusub u kala saara diiwaan u gaar ah."
     },
     "vehicle.gateway_swapped": {
       "title": "Qalabka telematics waa la beddelay",
       "short": "Qalab la beddelay",
-      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Lambarka taxanaha ee gateway-ga unugkan wuu beddelmay — qalabka gaariga waa la beddelay.",
       "affects": "Odometer readings, which may restart from a different number",
       "do": "Confirm below if the swap was planned."
     },
     "vehicle.odometer_rebased": {
       "title": "Odomitarku miisaan buu beddelay",
       "short": "Odomitar dib loo dhigay",
-      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Odometer-ku wuxuu boodtay in ka badan intii uu gaarigu socon karay tan iyo akhriskii hore, markaa waxaa beddelmay isha akhriska ee ma aha gaariga.",
       "affects": "Mileage totals for the period around the jump",
       "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
     },
@@ -877,7 +883,9 @@
       "do": "Samee",
       "collapse": "Ogeysiiskan laablaab",
       "dismiss": "Ogeysiiskan qari",
-      "dismiss_failed": "Lama diiwaangelin karin — weli wuu muuqdaa."
+      "dismiss_failed": "Lama diiwaangelin karin — weli wuu muuqdaa.",
+      "where": "Halka",
+      "changed": "Isbeddel"
     }
   }
 }

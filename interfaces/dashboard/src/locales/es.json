@@ -1082,21 +1082,27 @@
     "vehicle.vin_changed": {
       "title": "El VIN cambió: ¿es otro camión?",
       "short": "VIN cambiado",
-      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Un VIN identifica a un solo camión físico, así que o esta unidad se reasignó a otro camión, o el dispositivo se cambió de sitio.",
       "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
-      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+      "do": "Elija la respuesta que corresponda al camión: «mismo camión» conserva un solo historial, «otro camión» separa el nuevo en su propio registro."
     },
     "vehicle.gateway_swapped": {
       "title": "Dispositivo telemático reemplazado",
       "short": "Dispositivo cambiado",
-      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "El número de serie del gateway de esta unidad cambió: se reemplazó el hardware del camión.",
       "affects": "Odometer readings, which may restart from a different number",
       "do": "Confirm below if the swap was planned."
     },
     "vehicle.odometer_rebased": {
       "title": "El odómetro cambió de escala",
       "short": "Odómetro rebasado",
-      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "El odómetro saltó más de lo que el camión pudo recorrer desde su lectura anterior, así que cambió la fuente de lectura, no el camión.",
       "affects": "Mileage totals for the period around the jump",
       "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
     },
@@ -1106,7 +1112,9 @@
       "do": "Acción",
       "collapse": "Contraer este aviso",
       "dismiss": "Descartar este aviso",
-      "dismiss_failed": "No se pudo registrar — sigue visible."
+      "dismiss_failed": "No se pudo registrar — sigue visible.",
+      "where": "Dónde",
+      "changed": "Cambio"
     }
   }
 }

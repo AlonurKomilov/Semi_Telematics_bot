@@ -1,14 +1,16 @@
 /**
- * Callout — the strip answers three questions, separately.
+ * Callout — the strip renders labelled answers, separately.
  *
- * A reader arriving at a degraded truck asks the same three things
- * every time: what is happening, what does it cost me, what do I do.
- * A flat paragraph makes them mine it for all three and buries the
- * impact at the end of a sentence; labelled lines let the eye jump to
- * the one they need, and give every future callout one shape to fill.
+ * A reader arriving at a statement asks the same standing questions:
+ * which record, what changed, what does it mean, what does it cost me,
+ * what do I do.  A flat paragraph makes them mine it for every one and
+ * buries the impact at the end of a sentence; labelled lines let the
+ * eye jump to the one they need.
  *
- * The lines are optional on purpose — a caveat that merely qualifies a
- * number has no action, and an empty label is worse than no row.
+ * WHICH lines appear is the callout's choice, resolved upstream — see
+ * useCallout.test.tsx, which proves the selection against the real
+ * copy.  This file only proves the strip renders what it is handed and
+ * prints nothing for what it is not.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -18,6 +20,8 @@ afterEach(cleanup);
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => ({
+      'callout.labels.where': 'Where',
+      'callout.labels.changed': 'Changed',
       'callout.labels.why': 'Why',
       'callout.labels.affects': 'Affects',
       'callout.labels.do': 'Do',
@@ -35,9 +39,14 @@ const FULL = {
   tone: 'warn' as const,
   title: 'No data: Engine',
   short: 'No data',
-  why: 'The device is online but not reading the engine.',
-  affects: 'Odometer · Fuel · Engine hours · Mileage totals',
-  act: 'Have the diagnostic-port connection checked.',
+  lines: [
+    { name: 'why' as const, label: 'Why',
+      value: 'The device is online but not reading the engine.' },
+    { name: 'affects' as const, label: 'Affects',
+      value: 'Odometer · Fuel · Engine hours · Mileage totals' },
+    { name: 'do' as const, label: 'Do',
+      value: 'Have the diagnostic-port connection checked.' },
+  ],
   Icon: () => null,
   dismissible: false,
 };
@@ -64,7 +73,7 @@ describe('Callout strip', () => {
 
   it('omits a line the callout does not answer', () => {
     resolved.mockReturnValue({
-      ...FULL, title: 'Device change', affects: '', act: '',
+      ...FULL, title: 'Device change', lines: [FULL.lines[0]],
     });
     render(<Callout callout={{ key: 'mileage.device_change' }} />);
     expect(screen.getByText('Why')).toBeTruthy();
@@ -73,9 +82,7 @@ describe('Callout strip', () => {
   });
 
   it('renders a bare title when it answers nothing else', () => {
-    resolved.mockReturnValue({
-      ...FULL, title: 'Partial', why: '', affects: '', act: '',
-    });
+    resolved.mockReturnValue({ ...FULL, title: 'Partial', lines: [] });
     render(<Callout callout={{ key: 'mileage.partial' }} />);
     expect(screen.getByText('Partial')).toBeTruthy();
     expect(screen.queryByText('Why')).toBeNull();

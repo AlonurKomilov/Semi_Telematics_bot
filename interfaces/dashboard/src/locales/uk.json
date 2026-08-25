@@ -926,21 +926,27 @@
     "vehicle.vin_changed": {
       "title": "VIN змінився: це інша вантажівка?",
       "short": "VIN змінився",
-      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "VIN належить одній фізичній вантажівці, тож або цей юніт перепризначено на іншу вантажівку, або пристрій переставили.",
       "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
-      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+      "do": "Виберіть відповідь, що відповідає вантажівці — «та сама вантажівка» зберігає одну історію, «інша вантажівка» виносить нову на окремий запис."
     },
     "vehicle.gateway_swapped": {
       "title": "Телематичний пристрій замінено",
       "short": "Пристрій замінено",
-      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Серійний номер шлюзу за цим юнітом змінився — обладнання у вантажівці замінили.",
       "affects": "Odometer readings, which may restart from a different number",
       "do": "Confirm below if the swap was planned."
     },
     "vehicle.odometer_rebased": {
       "title": "Одометр змінив шкалу",
       "short": "Одометр перебазовано",
-      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Одометр стрибнув далі, ніж вантажівка могла проїхати від попереднього показання, отже змінилося джерело показань, а не вантажівка поїхала.",
       "affects": "Mileage totals for the period around the jump",
       "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
     },
@@ -950,7 +956,9 @@
       "do": "Дія",
       "collapse": "Згорнути сповіщення",
       "dismiss": "Приховати сповіщення",
-      "dismiss_failed": "Не вдалося записати — залишається на екрані."
+      "dismiss_failed": "Не вдалося записати — залишається на екрані.",
+      "where": "Де",
+      "changed": "Зміна"
     }
   }
 }

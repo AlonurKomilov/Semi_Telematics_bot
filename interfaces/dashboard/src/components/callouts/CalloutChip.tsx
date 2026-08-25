@@ -17,9 +17,9 @@ export default function CalloutChip({
   callout: CalloutData;
   className?: string;
 }) {
-  const { title, why, tone } = useCallout(callout);
+  const { title, explanation, tone } = useCallout(callout);
   return (
-    <Tip label={why || title}>
+    <Tip label={explanation}>
       <span
         className={`inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-medium ${toneClasses(tone)} ${className}`}
       >

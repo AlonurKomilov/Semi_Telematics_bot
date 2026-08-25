@@ -63,7 +63,7 @@ const EVENT_CALLOUT_KEY: Record<string, string> = {
 /** One event as the callouts lane wants it.  ``params`` feed the copy
  *  ("{{old}} → {{new}}"), so the values a person needs to judge the
  *  change stay in the sentence rather than in a separate mono column. */
-function eventCallout(e: DeviceEvent): CalloutData | null {
+function eventCallout(e: DeviceEvent, scoped: boolean): CalloutData | null {
   const key = EVENT_CALLOUT_KEY[e.kind];
   if (!key) return null;
   return {
@@ -76,7 +76,11 @@ function eventCallout(e: DeviceEvent): CalloutData | null {
     params: {
       old: e.old_value,
       new: e.new_value,
-      unit: e.vehicle_name || e.vehicle_id,
+      // The `where` line answers "which truck?" — a question the
+      // account-wide list leaves open and a truck's own page has
+      // already answered.  Empty resolves the line to nothing and the
+      // strip omits it, so the copy needs no scoped variant.
+      unit: scoped ? '' : e.vehicle_name || e.vehicle_id,
     },
   };
 }
@@ -150,7 +154,7 @@ export default function DeviceEventsCard({
           lane must never learn about, so they ride its actions slot. */}
       <ul className="space-y-2">
         {open.map((e) => {
-          const c = eventCallout(e);
+          const c = eventCallout(e, Boolean(vehicleName));
           if (!c) return null;
           return (
             <li key={e.id}>

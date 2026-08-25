@@ -1082,21 +1082,27 @@
     "vehicle.vin_changed": {
       "title": "VIN изменился: это другой грузовик?",
       "short": "VIN изменился",
-      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "VIN принадлежит одному физическому грузовику, поэтому либо этот юнит переназначен на другой грузовик, либо устройство переставили.",
       "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
-      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+      "do": "Выберите ответ, который соответствует грузовику — «тот же грузовик» сохраняет одну историю, «другой грузовик» выносит новый на отдельную запись."
     },
     "vehicle.gateway_swapped": {
       "title": "Телематическое устройство заменено",
       "short": "Устройство заменено",
-      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Серийный номер шлюза за этим юнитом изменился — оборудование в грузовике заменили.",
       "affects": "Odometer readings, which may restart from a different number",
       "do": "Confirm below if the swap was planned."
     },
     "vehicle.odometer_rebased": {
       "title": "Одометр сменил шкалу",
       "short": "Одометр перебазирован",
-      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "where": "{{unit}}",
+      "changed": "{{old}} → {{new}}",
+      "why": "Одометр скакнул дальше, чем грузовик мог проехать с прошлого показания, значит изменился источник показаний, а не грузовик поехал.",
       "affects": "Mileage totals for the period around the jump",
       "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
     },
@@ -1106,7 +1112,9 @@
       "do": "Действие",
       "collapse": "Свернуть уведомление",
       "dismiss": "Скрыть уведомление",
-      "dismiss_failed": "Не удалось записать — остаётся на экране."
+      "dismiss_failed": "Не удалось записать — остаётся на экране.",
+      "where": "Где",
+      "changed": "Изменение"
     }
   }
 }
