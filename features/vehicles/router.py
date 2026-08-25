@@ -110,8 +110,36 @@ def _extract_speed(v: dict) -> float:
     return float(speed or 0)
 
 
-def _derive_engine_state(status: str) -> str:
-    """Derive a human-readable engine state from classified status."""
+def _derive_engine_state(status: str, reported: str | None = None) -> str:
+    """The engine state to SHOW.
+
+    ``reported`` is what the truck actually told us — the value the
+    ingest resolved and stored, surfaced by the warehouse reader as
+    ``location.engineStates.value``.  When we have it, it WINS:
+    ``status`` is only a speed inference here, because
+    ``classify_vehicle_status`` looks for an ``engineState`` key while
+    the warehouse supplies ``engineStates``, so its authoritative
+    branch never matches.  Speed and engine are different facts, and
+    inferring one from the other was wrong in both directions — 28
+    trucks idling with wheels still read "Off", and a truck parked six
+    days with its engine off read "Idle" off 1 mph of GPS jitter.
+
+    ``""`` (present but empty) means the ingest looked and found
+    nothing — a device that cannot read the engine bus.  That renders
+    as UNKNOWN, never "Off": ``resolve_engine_state`` refuses to guess
+    there precisely so the roll-ups never count silence as parked, and
+    restating the guess here would undo that.
+
+    ``None`` (absent) is different from empty: the payload carries no
+    engine field at all, which is the live-Samsara fallback used on a
+    cold cache.  There the old speed heuristic still applies — showing
+    every truck as "unknown" because our own cache is cold would be a
+    worse lie than the one this fixes.
+    """
+    if reported is not None:
+        return {"moving": "On", "idle": "Idle", "off": "Off"}.get(
+            reported.strip().lower(), "",
+        )
     if status == "moving":
         return "On"
     if status == "idle":
@@ -160,7 +188,14 @@ def _simplify(v: dict) -> dict:
     # as "stopped" — they get an explicit "no_telemetry" status.
     no_telemetry = bool(v.get("_no_telemetry"))
     status = "no_telemetry" if no_telemetry else classify_vehicle_status(v)
-    engine_state = "" if no_telemetry else _derive_engine_state(status)
+    # Absent key vs empty value are different answers — see
+    # ``_derive_engine_state``.  Only the warehouse reader emits this
+    # field; the live fallback has none, and keeps the old heuristic.
+    _eng = loc.get("engineStates")
+    _reported = _eng.get("value") or "" if isinstance(_eng, dict) else None
+    engine_state = "" if no_telemetry else _derive_engine_state(
+        status, _reported,
+    )
     address = (
         loc.get("reverseGeo", {}).get("formattedLocation")
         or loc.get("address")
@@ -214,7 +249,14 @@ def _normalize_detail(v: dict) -> dict:
     # telematics is "no_telemetry", never mis-read as "stopped".
     no_telemetry = bool(v.get("_no_telemetry"))
     status = "no_telemetry" if no_telemetry else classify_vehicle_status(v)
-    engine_state = "" if no_telemetry else _derive_engine_state(status)
+    # Absent key vs empty value are different answers — see
+    # ``_derive_engine_state``.  Only the warehouse reader emits this
+    # field; the live fallback has none, and keeps the old heuristic.
+    _eng = loc.get("engineStates")
+    _reported = _eng.get("value") or "" if isinstance(_eng, dict) else None
+    engine_state = "" if no_telemetry else _derive_engine_state(
+        status, _reported,
+    )
     address = (
         loc.get("reverseGeo", {}).get("formattedLocation")
         or loc.get("address")
