@@ -34,12 +34,12 @@ export default function CalloutInline({
   prefix?: string;
   explained?: boolean;
 }) {
-  const { tone, short, title, body } = useCallout(callout);
+  const { tone, short, title, why } = useCallout(callout);
   const note = (
     <span className={`inline-flex items-center gap-1 text-xs ${toneText(tone)}`}>
       <span className="text-muted-foreground">{prefix}</span>
       <span>{short}</span>
     </span>
   );
-  return explained ? note : <Tip label={body || title}>{note}</Tip>;
+  return explained ? note : <Tip label={why || title}>{note}</Tip>;
 }

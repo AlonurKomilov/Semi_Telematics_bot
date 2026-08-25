@@ -1049,10 +1049,11 @@
   },
   "callout": {
     "vehicle.no_engine_data": {
-      "title": "No engine data",
+      "title": "Aucune donnée : Moteur",
       "short": "Aucune donnée",
-      "body": "This truck's device is online — location and battery arrive — but it is not reading the engine. Odometer, fuel and engine hours stay empty, and mileage for this truck will read low or zero until it is reconnected.",
-      "fix": "Have the device's diagnostic-port connection checked on the truck. 4truck shows what the device sends."
+      "why": "L'appareil est en ligne — position et batterie arrivent — mais il ne lit pas le moteur.",
+      "affects": "Odomètre · Carburant · Heures moteur · Kilométrage",
+      "do": "Faites vérifier la connexion au port de diagnostic. 4truck affiche ce que l'appareil envoie."
     },
     "mileage.device_change": {
       "title": "Device change",
@@ -1077,6 +1078,11 @@
     "mileage.rebase": {
       "title": "Odometer changed scale",
       "body": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+    },
+    "labels": {
+      "why": "Cause",
+      "affects": "Affecte",
+      "do": "Action"
     }
   }
 }

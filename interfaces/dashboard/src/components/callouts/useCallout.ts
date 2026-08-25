@@ -29,9 +29,20 @@ export interface ResolvedCallout {
    * (the mileage caveats are chips), so declaring it is optional.
    */
   short: string;
-  body: string;
-  /** What the reader can do about it; empty when nothing applies. */
-  fix: string;
+  /**
+   * The three questions a reader has, as separate answers rather than
+   * one paragraph they must mine.  Any may be empty — a caveat that
+   * qualifies a number has no action, and the strip simply omits the
+   * line rather than printing an empty label.
+   *
+   *   why      what is happening, and why the value is missing
+   *   affects  which readings this costs them — the impact, stated
+   *            rather than buried at the end of a sentence
+   *   act      what to do about it
+   */
+  why: string;
+  affects: string;
+  act: string;
   Icon: ReturnType<typeof toneIcon>;
   /** Only `guidance` may ever be dismissed — see calloutCatalog. */
   dismissible: boolean;
@@ -45,10 +56,16 @@ export function useCallout(c: CalloutData): ResolvedCallout {
   // bag so copy can say "since {{since}}" or "gateway {{gateway}}"
   // without the component knowing which callout it is rendering.
   const vars = { ...(c.params ?? {}), since: c.since ?? '' };
-  const fixKey = `callout.${c.key}.fix`;
-  const fix = t(fixKey, vars);
   const shortKey = `callout.${c.key}.short`;
   const short = t(shortKey, vars);
+  // i18next echoes the key back when a string is missing; treat that
+  // as "this callout does not answer that question" and let the strip
+  // omit the line.
+  const line = (name: string): string => {
+    const key = `callout.${c.key}.${name}`;
+    const v = t(key, vars);
+    return v === key ? '' : v;
+  };
   return {
     key: c.key,
     tone,
@@ -56,10 +73,9 @@ export function useCallout(c: CalloutData): ResolvedCallout {
     // i18next echoes the key back when a string is missing — that is
     // the "not declared" signal, so fall back to the title.
     short: short === shortKey ? t(`callout.${c.key}.title`, vars) : short,
-    body: t(`callout.${c.key}.body`, vars),
-    // i18next echoes the key back when a string is missing; treat that
-    // as "this callout has no fix line" instead of printing the key.
-    fix: fix === fixKey ? '' : fix,
+    why: line('why'),
+    affects: line('affects'),
+    act: line('do'),
     Icon: toneIcon(tone),
     dismissible: spec?.kind === 'guidance',
   };
