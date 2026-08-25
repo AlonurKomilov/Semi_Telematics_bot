@@ -719,29 +719,41 @@ class TestRetention:
             assert still.status_code == 200 and still.json()["status"] == "rejected"
         assert any(a["id"] == app_id for a in await db.list_driver_applications(acct.id))
 
-    async def test_notification_fk_cascades_on_app_delete(self, api):
+    async def test_child_row_fk_cascades_on_app_delete(self, api):
+        """Deleting an application must not be BLOCKED by a child row's
+        foreign key — the account purge would then leave applicant PII
+        behind.  Pinned on the employer-verification table, which is the
+        child that survives: the retired notice table declared the same
+        rule and was dropped with the store (migration 190)."""
         app, db = api
         acct = await db.create_account("Cascade Co")
-        rec = await db.create_user(882200, acct.id, role=Role.RECRUITER)
+        await db.create_user(882200, acct.id, role=Role.RECRUITER)
         link = await db.create_application_link(acct.id)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             r = await c.post("/api/applications/apply",
                              data={"link_token": link["token"], "application": _app_payload()},
                              files=_GOOD_FILES)
             app_id = r.json()["application_id"]
-        # A row in the retired notice table references the application.
-        # Nothing writes it any more (recruiting notices ride the shared
-        # notification_inbox), so seed one here: the FK it declares is
-        # what this test exists to pin, until the table is dropped.
-        await db.create_application_notification(
-            acct.id, rec.id, application_id=app_id,
-            reference="REF", title="New driver application")
-        assert len(await db.list_application_notifications(acct.id, rec.id)) == 1
-        # Deleting the application must NOT be blocked by that FK (CASCADE),
-        # else the account purge would leave applicant PII behind.
+
+        now = "2026-01-01T00:00:00Z"
+        await db._db.execute(
+            "INSERT INTO application_employer_verifications "
+            "(account_id, application_id, employer_index, employer_name, "
+            " status, created_at, updated_at) VALUES (?, ?, 0, ?, 'pending', ?, ?)",
+            (acct.id, app_id, "Prior Carrier", now, now),
+        )
+        await db._db.commit()
+        cur = await db._db.execute(
+            "SELECT count(*) FROM application_employer_verifications "
+            " WHERE application_id = ?", (app_id,))
+        assert (await cur.fetchone())[0] == 1
+
         await db._db.execute("DELETE FROM driver_applications WHERE id = ?", (app_id,))
         await db._db.commit()
-        assert await db.list_application_notifications(acct.id, rec.id) == []
+        cur = await db._db.execute(
+            "SELECT count(*) FROM application_employer_verifications "
+            " WHERE application_id = ?", (app_id,))
+        assert (await cur.fetchone())[0] == 0, "the child row must cascade away"
 
 
 class TestDQPacket:

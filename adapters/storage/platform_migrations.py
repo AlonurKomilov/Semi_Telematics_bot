@@ -4534,10 +4534,17 @@ async def migrate_seed_application_notification_channels(conn) -> None:
         users = await cur.fetchall()
 
         # The feature's own per-user channel choice (no row = all three).
-        cur = await conn.execute(
-            "SELECT user_id, channels FROM application_notify_prefs")
-        chosen = {int(r[0]): {c.strip() for c in (r[1] or "").split(",") if c.strip()}
-                  for r in await cur.fetchall()}
+        # The table is dropped once the cutover is done (migration 190),
+        # so this only finds rows on a database that hasn't crossed yet —
+        # a restore from a pre-cutover backup.  Absent table = nobody
+        # recorded a choice, which is exactly what the default expresses.
+        chosen: dict[int, set[str]] = {}
+        cur = await conn.execute("SELECT to_regclass('application_notify_prefs')")
+        if (await cur.fetchone())[0] is not None:
+            cur = await conn.execute(
+                "SELECT user_id, channels FROM application_notify_prefs")
+            chosen = {int(r[0]): {c.strip() for c in (r[1] or "").split(",") if c.strip()}
+                      for r in await cur.fetchall()}
 
         now = __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc).isoformat(timespec="seconds")

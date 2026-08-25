@@ -9139,3 +9139,40 @@ async def migrate_vehicle_conditions(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("190_drop_retired_application_notice_tables")
+async def migrate_drop_retired_application_notice_tables(conn) -> None:
+    """Drop recruiting's two private notice tables.
+
+    ``application_notifications`` held one row per recipient behind the
+    Applications page's own bell; ``application_notify_prefs`` held that
+    page's three-way channel choice.  Both were replaced: notices live in
+    the shared ``notification_inbox`` (one read-state for every bell) and
+    the channel choice lives in the notification matrix (one preference
+    for every surface).  Nothing has written or read either since
+    features/applications/notifications.py recorded the cutover.
+
+    They are dropped rather than left dormant because a table named
+    ``application_notifications`` reads like the live notice store to
+    anyone meeting the schema for the first time — and a name that lets a
+    reader reconstruct a retired world is the same debt the warehouse
+    vocabulary sweep just cleared.
+
+    What actually dies is read/unread markers on notices whose
+    applications are untouched in ``driver_applications``.  The FK
+    cascade the dropped table used to pin is still pinned by
+    ``application_employer_verifications``, which declares the same rule.
+    """
+    for table in ("application_notifications", "application_notify_prefs"):
+        try:
+            await conn.execute(f"DROP TABLE IF EXISTS {table}")
+        except Exception as e:
+            logger.error("Migration 190: dropping %s failed: %s", table, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            return
+    await conn.commit()
+    logger.info("Migration 190: retired application notice tables dropped")

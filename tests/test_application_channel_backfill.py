@@ -15,6 +15,11 @@ audience that already had reach, and nothing wider.  Pins:
     plus one ON row for ``applications.received``, so the address can't
     be inherited by a future category,
   • running it twice changes nothing.
+
+The two opt-out tests re-create the retired ``application_notify_prefs``
+table themselves: it is dropped once the cutover lands (migration 190),
+so the only database that still holds those rows is one restored from a
+pre-cutover backup — the one case the read still exists for.
 """
 
 from __future__ import annotations
@@ -46,6 +51,30 @@ async def _user(pg_db, acct_id, role, *, email, telegram_id=None, manager=False)
             "UPDATE users SET is_manager = 1 WHERE id = ?", (u.id,))
     await pg_db._db.commit()
     return u
+
+
+async def _legacy_prefs(pg_db, acct_id, uid, channels):
+    """Re-create the retired ``application_notify_prefs`` row this
+    migration still reads on a PRE-CUTOVER database.
+
+    The table is dropped once the cutover lands (migration 190), so the
+    only database that still carries a row is one restored from a backup
+    taken before it — which is exactly the case worth testing, since
+    honouring those opt-outs is the whole point of the seed.
+    """
+    await pg_db._db.execute("""
+        CREATE TABLE IF NOT EXISTS application_notify_prefs (
+            user_id     INTEGER PRIMARY KEY,
+            account_id  INTEGER NOT NULL,
+            channels    TEXT    NOT NULL DEFAULT 'telegram,email,dashboard',
+            updated_at  TEXT    NOT NULL
+        )""")
+    await pg_db._db.execute(
+        "INSERT INTO application_notify_prefs (user_id, account_id, channels, updated_at) "
+        "VALUES (?, ?, ?, '2026-01-01T00:00:00Z') "
+        "ON CONFLICT(user_id) DO UPDATE SET channels = excluded.channels",
+        (uid, acct_id, ",".join(channels)))
+    await pg_db._db.commit()
 
 
 async def _conn_row(pg_db, acct_id, uid, channel):
@@ -92,8 +121,7 @@ async def test_honours_the_users_own_channel_opt_out(pg_db):
     rec = await _user(pg_db, acct.id, Role.RECRUITER,
                       email=f"o.{acct.id}@x.com", telegram_id=90010003)
     # They already turned recruiting email off in the feature's own panel.
-    await pg_db.set_application_notify_channels(
-        acct.id, rec.id, ["telegram", "dashboard"])
+    await _legacy_prefs(pg_db, acct.id, rec.id, ["telegram", "dashboard"])
 
     await backfill(pg_db._db)
 
@@ -107,7 +135,7 @@ async def test_dashboard_opt_out_survives_as_an_in_app_mute(pg_db):
     an explicit mute or the move would switch it back on for them."""
     acct = await pg_db.create_account("NoDash Co")
     rec = await _user(pg_db, acct.id, Role.RECRUITER, email=f"n.{acct.id}@x.com")
-    await pg_db.set_application_notify_channels(acct.id, rec.id, ["email"])
+    await _legacy_prefs(pg_db, acct.id, rec.id, ["email"])
 
     await backfill(pg_db._db)
 

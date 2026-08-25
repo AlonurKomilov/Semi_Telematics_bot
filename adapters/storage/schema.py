@@ -47,9 +47,11 @@ async def create_tables(conn) -> None:
     # only fires when the old table exists and the new one does not, so it
     # never collides with the CREATE TABLE IF NOT EXISTS below.
     for _old, _new in (
+        # recruitment_notifications / recruitment_notify_prefs used to
+        # ride along here; both were dropped in migration 190 (recruiting
+        # notices moved to the shared inbox), so renaming into them would
+        # only resurrect a retired store.
         ("recruitment_links", "application_links"),
-        ("recruitment_notifications", "application_notifications"),
-        ("recruitment_notify_prefs", "application_notify_prefs"),
     ):
         try:
             has_old = await (await conn.execute(
@@ -589,29 +591,6 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_emp_verif_account
             ON application_employer_verifications(account_id, application_id);
-
-        CREATE TABLE IF NOT EXISTS application_notifications (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            user_id         INTEGER NOT NULL REFERENCES users(id),
-            application_id  INTEGER REFERENCES driver_applications(id) ON DELETE CASCADE,
-            reference       TEXT    NOT NULL DEFAULT '',
-            kind            TEXT    NOT NULL DEFAULT 'application_submitted',
-            title           TEXT    NOT NULL DEFAULT '',
-            body            TEXT    NOT NULL DEFAULT '',
-            is_read         INTEGER NOT NULL DEFAULT 0,
-            created_at      TEXT    NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_app_notif_inbox
-            ON application_notifications(account_id, user_id, is_read, id);
-
-        CREATE TABLE IF NOT EXISTS application_notify_prefs (
-            user_id     INTEGER PRIMARY KEY REFERENCES users(id),
-            account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            channels    TEXT    NOT NULL DEFAULT 'telegram,email,dashboard',
-            updated_at  TEXT    NOT NULL
-        );
 
         CREATE TABLE IF NOT EXISTS audit_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,

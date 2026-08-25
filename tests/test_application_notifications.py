@@ -10,7 +10,6 @@ features/applications/notifications.py).  Pins:
     (the source string is what the panel's tab filters on — a rename
     silently empties the tab),
   • recipients are resolved by the PERMISSION, never a role list,
-  • the retired store is not written any more,
   • the notice deep-links to the application (the legacy table could not),
   • DELIVERY is the capability's: one call names all three personal
     channels and no feature-side channel gate remains, so connection
@@ -30,27 +29,22 @@ from capabilities.notifications.categories import TARGETED, get_category
 
 
 class _FakeDB:
-    """Enough platform DB for the fan-out: users, channel prefs, account."""
+    """Enough platform DB for the fan-out: users and the account.
 
-    def __init__(self, users, channels=None):
+    Deliberately carries NO stand-in for the two retired stores (dropped
+    in migration 190): if a feature-side notice write or channel gate ever
+    creeps back, this fake raises AttributeError rather than quietly
+    absorbing the call.
+    """
+
+    def __init__(self, users):
         self._users = users
-        self._channels = channels or {}
-        self.page_notices: list[dict] = []
-        self.channel_pref_reads: list[int] = []
 
     async def list_account_users(self, account_id):
         return self._users
 
-    async def get_application_notify_channels(self, user_id):
-        self.channel_pref_reads.append(user_id)
-        return self._channels.get(user_id, ["dashboard"])
-
     async def get_account(self, account_id):
         return SimpleNamespace(name="Blue Line Carriers")
-
-    async def create_application_notification(self, account_id, user_id, **kw):
-        # Retired: recorded only so a test can prove it is NOT called.
-        self.page_notices.append({"user_id": user_id, **kw})
 
 
 class _RecordingNotify:
@@ -121,7 +115,6 @@ class TestFanOut:
                       _user(3, "recruiter")])
         await svc.notify_new_application(db, 42, 77, "APP-77", "Dana Driver")
         assert [c["user_id"] for c in notify.calls] == [1, 3]
-        assert db.page_notices == [], "the retired store must stay unwritten"
 
     @pytest.mark.asyncio
     async def test_manager_tier_is_audience_but_the_base_role_is_not(self, notify):
@@ -171,11 +164,14 @@ class TestFanOut:
     async def test_no_feature_side_channel_gate_remains(self, notify):
         """The feature's own 3-way channel pref is gone: muting belongs to
         the notification matrix, which the capability reads.  A second
-        gate here would mean two stores disagreeing about one event."""
-        db = _FakeDB([_user(1, "recruiter")], channels={1: []})
+        gate here would mean two stores disagreeing about one event.
+
+        The fake exposes no ``get_application_notify_channels`` at all, so
+        a surviving gate raises AttributeError instead of quietly reading
+        a store that no longer exists."""
+        db = _FakeDB([_user(1, "recruiter")])
         await svc.notify_new_application(db, 42, 77, "APP-77", "Dana")
         assert len(notify.calls) == 1
-        assert db.channel_pref_reads == [], "the feature pref store is not consulted"
 
     @pytest.mark.asyncio
     async def test_inbox_failure_is_swallowed(self, monkeypatch):
