@@ -96,15 +96,36 @@ export default function Callout({
       <Icon className="size-4 shrink-0 mt-0.5" />
       <div className="min-w-0 space-y-1">
         <p className="text-sm font-medium">{title}</p>
+        {/* Capped measure: the strip spans the page, and a line of text
+            running the full width of a wide monitor is read by sweeping,
+            not scanning — which defeats the point of splitting the
+            statement into labelled answers. */}
         {lines.length > 0 && (
-          <dl className="space-y-0.5">
+          <dl className="space-y-0.5 max-w-prose">
             {lines.map(({ name, label, value }) => (
               <div key={name} className="flex gap-2 text-xs">
                 {/* Fixed label column so the answers line up and the
                     eye can scan down them; it wraps to its own row on
                     narrow screens rather than squeezing the value. */}
                 <dt className="shrink-0 w-16 opacity-70">{label}</dt>
-                <dd className="min-w-0 opacity-90">{value}</dd>
+                {/* `changed` carries MACHINE values, by definition —
+                    that is what the line is for, and the reader's task
+                    on it is a character-by-character comparison of two
+                    of them.  Two 17-character VINs in a proportional
+                    font do not align, so spotting where they diverge
+                    means counting; mono is the design system's answer
+                    for identifiers and it is the one line here that
+                    earns it.  A change of human-readable WORDS (a
+                    status, a name) would belong in `why` — if one ever
+                    wants its own line, that is the moment to make this
+                    per-callout rather than per-line. */}
+                <dd
+                  className={`min-w-0 opacity-90 ${
+                    name === 'changed' ? 'font-mono' : ''
+                  }`}
+                >
+                  {value}
+                </dd>
               </div>
             ))}
           </dl>

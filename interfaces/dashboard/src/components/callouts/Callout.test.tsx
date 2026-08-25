@@ -62,6 +62,29 @@ describe('Callout strip', () => {
     expect(screen.getByText(/Odometer · Fuel/)).toBeTruthy();
   });
 
+  it('sets two machine identifiers in mono so they can be compared', () => {
+    // The whole decision on an identity question is "do these two
+    // strings differ, and where" — 17 proportional characters do not
+    // align, so the reader ends up counting.  design.md reserves
+    // font-mono for exactly this.
+    resolved.mockReturnValue({
+      ...FULL,
+      lines: [{
+        name: 'changed' as const, label: 'Changed',
+        value: '4V4NC9EH8KN196862 → 3AKJGLDV5GSGZ4085',
+      }],
+    });
+    render(<Callout callout={{ key: 'vehicle.vin_changed' }} />);
+    const dd = screen.getByText(/4V4NC9EH8KN196862/);
+    expect(dd.className).toContain('font-mono');
+    // ...and prose does NOT get it.
+    cleanup();
+    resolved.mockReturnValue(FULL);
+    render(<Callout callout={{ key: FULL.key }} />);
+    expect(screen.getByText(/not reading the engine/).className)
+      .not.toContain('font-mono');
+  });
+
   it('states the impact instead of burying it', () => {
     // The cost of this fault is a mileage total that reads zero — the
     // reason the feature exists — so it gets its own line.
