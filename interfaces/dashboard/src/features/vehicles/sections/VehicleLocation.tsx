@@ -7,7 +7,6 @@
  * when Info is also in the layout.
  */
 import { CardSkeleton } from '../../../components/shell';
-import type { Vehicle } from '../../../types';
 import { LocationRows } from './_shared/LocationRows';
 import { useVehicle } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';

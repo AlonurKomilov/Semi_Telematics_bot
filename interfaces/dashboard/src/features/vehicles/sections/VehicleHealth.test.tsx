@@ -65,13 +65,13 @@ describe('VehicleHealth with a silent engine bus', () => {
     arrange(ALL_NULL, [{ key: 'vehicle.no_engine_data' }]);
     render(<VehicleHealth vehicleName="548640" company="OSY" />);
     // One explanation per silent bus row (6), never on Battery.
-    expect(screen.getAllByText(/No engine data/i).length).toBe(6);
+    expect(screen.getAllByText(/No data/i).length).toBe(6);
   });
 
   it('falls back to a plain dash when there is no callout', () => {
     arrange(ALL_NULL);
     render(<VehicleHealth vehicleName="123" company="OSY" />);
-    expect(screen.queryByText(/No engine data/i)).toBeNull();
+    expect(screen.queryByText(/No data/i)).toBeNull();
   });
 
   it('still formats real readings', () => {

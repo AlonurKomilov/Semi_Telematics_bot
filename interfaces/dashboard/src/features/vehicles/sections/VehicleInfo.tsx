@@ -45,14 +45,21 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
       {/* Per-metric ``ts`` — each reading carries its OWN Samsara clock
           (fuel can be days staler than GPS on the same truck); the Row
           wraps the value in the Freshness tooltip + staleness cue. */}
-      {/* NOT `|| 'Off'`.  The backend deliberately refuses to guess:
-          resolve_engine_state returns UNKNOWN ("") for a truck with no
-          engine feed, precisely so silence is never counted as parked.
-          Falling back to "Off" here re-told that lie on screen — this
-          truck's engine badge read "Off" while nothing could see the
-          engine at all. */}
+      {/* Three answers, never "Off" by default.  The backend refuses
+          to guess (resolve_engine_state returns empty for a truck with
+          no engine feed, so the roll-ups never count silence as
+          parked); this row must not re-tell that guess.
+          When the callout is present the row reads exactly like Fuel,
+          Odometer and Engine Hours below it — one fact, one wording,
+          four rows.  Without a callout an empty state still says "No
+          data" rather than "unknown": we are not confused about the
+          engine, we know nothing arrived. */}
       <Row label="Engine" ts={v.location?.time}>
-        <StatusBadge status={v.engineState || v.engine_state || 'unknown'} />
+        {(v.engineState || v.engine_state)
+          ? <StatusBadge status={v.engineState || v.engine_state || ''} />
+          : blindCallout
+            ? <CalloutInline callout={blindCallout} explained />
+            : <StatusBadge status="no data" />}
       </Row>
       <Row label="Fuel" ts={v.fuel?.time}>
         {fuel != null ? (

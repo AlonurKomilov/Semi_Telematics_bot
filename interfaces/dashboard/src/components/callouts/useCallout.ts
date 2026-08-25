@@ -14,6 +14,21 @@ export interface ResolvedCallout {
   key: string;
   tone: Tone;
   title: string;
+  /**
+   * The INLINE form — what a row shows where its value would be.
+   *
+   * Separate from ``title`` because the two answer different
+   * questions.  A strip says WHAT is wrong ("No engine data"); a note
+   * sits inside a row already labelled "Fuel" or "Oil Pressure" and
+   * only needs to say the value is absent for a known reason.
+   * Repeating the category there is redundant AND locks the wording
+   * to one kind of fault — the next callout would need "No GPS data",
+   * "No camera data", and so on down a list nobody maintains.
+   *
+   * Falls back to ``title`` for callouts that never render inline
+   * (the mileage caveats are chips), so declaring it is optional.
+   */
+  short: string;
   body: string;
   /** What the reader can do about it; empty when nothing applies. */
   fix: string;
@@ -32,10 +47,15 @@ export function useCallout(c: CalloutData): ResolvedCallout {
   const vars = { ...(c.params ?? {}), since: c.since ?? '' };
   const fixKey = `callout.${c.key}.fix`;
   const fix = t(fixKey, vars);
+  const shortKey = `callout.${c.key}.short`;
+  const short = t(shortKey, vars);
   return {
     key: c.key,
     tone,
     title: t(`callout.${c.key}.title`, vars),
+    // i18next echoes the key back when a string is missing — that is
+    // the "not declared" signal, so fall back to the title.
+    short: short === shortKey ? t(`callout.${c.key}.title`, vars) : short,
     body: t(`callout.${c.key}.body`, vars),
     // i18next echoes the key back when a string is missing; treat that
     // as "this callout has no fix line" instead of printing the key.

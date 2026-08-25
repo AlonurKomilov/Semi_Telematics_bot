@@ -13,7 +13,7 @@ import { apiJSON } from '../../../api/client';
 import { CardSkeleton } from '../../../components/shell';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import type { HealthData, HealthResponse } from '../../../types';
-import { toneClasses } from '../../../lib/status';
+
 import { Row } from './_shared/Row';
 import { CalloutInline } from '../../../components/callouts';
 import { useVehicleCallouts } from './_shared/useVehicle';

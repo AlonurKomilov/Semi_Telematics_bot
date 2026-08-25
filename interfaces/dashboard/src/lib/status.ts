@@ -114,6 +114,11 @@ const STATUS_TONE: Record<string, Tone> = {
   idle: 'warn',
   stopped: 'danger', inactive: 'danger', offline: 'danger',
   off: 'neutral', unknown: 'neutral',
+  // Not the same claim as 'unknown': we KNOW what happened —
+  // the device sent nothing.  Stating the fact beats confessing
+  // confusion, and it matches the words the rest of the page
+  // already uses for it.
+  'no data': 'neutral',
   // Registry vehicle with no telematics match (trailer / not-yet-
   // equipped truck) — neutral, not red: it's a deliberate state, not
   // a fault.

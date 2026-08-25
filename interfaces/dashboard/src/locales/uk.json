@@ -894,6 +894,7 @@
   "callout": {
     "vehicle.no_engine_data": {
       "title": "No engine data",
+      "short": "Немає даних",
       "body": "This truck's device is online — location and battery arrive — but it is not reading the engine. Odometer, fuel and engine hours stay empty, and mileage for this truck will read low or zero until it is reconnected.",
       "fix": "Have the device's diagnostic-port connection checked on the truck. 4truck shows what the device sends."
     },

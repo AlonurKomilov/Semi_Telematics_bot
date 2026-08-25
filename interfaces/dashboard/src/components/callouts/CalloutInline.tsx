@@ -1,9 +1,12 @@
 /**
  * CalloutInline — the note that stands in for an empty value.
  *
- * Exists because a bare "—" reads as OUR bug.  Rendered where the
- * value would have been ("— not sent by device"), with the full
- * explanation on hover via the tooltip family.
+ * Exists because a bare "—" reads as OUR bug.  Renders the callout's
+ * SHORT form, not its title: this note lives inside a row that already
+ * names the field, so "— No data" is the whole job.  Putting the
+ * title here ("— No engine data" in a row labelled Oil Pressure)
+ * repeated the category nine times per page and would have needed new
+ * wording for every future kind of gap.
  */
 import type { CalloutData } from './calloutCatalog';
 import { useCallout } from './useCallout';
@@ -31,11 +34,11 @@ export default function CalloutInline({
   prefix?: string;
   explained?: boolean;
 }) {
-  const { tone, title, body } = useCallout(callout);
+  const { tone, short, title, body } = useCallout(callout);
   const note = (
     <span className={`inline-flex items-center gap-1 text-xs ${toneText(tone)}`}>
       <span className="text-muted-foreground">{prefix}</span>
-      <span>{title}</span>
+      <span>{short}</span>
     </span>
   );
   return explained ? note : <Tip label={body || title}>{note}</Tip>;

@@ -30,6 +30,7 @@ vi.mock('./useCallout', () => ({
     key: 'vehicle.no_engine_data',
     tone: 'warn' as const,
     title: 'No engine data',
+    short: 'No data',
     body: 'The device is online but not reading the engine.',
     fix: '',
     Icon: () => null,
@@ -42,16 +43,25 @@ import CalloutInline from './CalloutInline';
 const CALLOUT = { key: 'vehicle.no_engine_data' };
 
 describe('CalloutInline', () => {
+  it('shows the SHORT form, not the title', () => {
+    // The row already says "Fuel" / "Oil Pressure"; repeating the
+    // category is redundant and would need new wording for every
+    // future kind of gap.
+    render(<CalloutInline callout={CALLOUT} explained />);
+    expect(screen.getByText('No data')).toBeTruthy();
+    expect(screen.queryByText('No engine data')).toBeNull();
+  });
+
   it('carries the explanation when it stands alone', () => {
     render(<CalloutInline callout={CALLOUT} />);
-    expect(screen.getByText('No engine data')).toBeTruthy();
+    expect(screen.getByText('No data')).toBeTruthy();
     const tip = screen.getByTestId('tip');
     expect(tip.getAttribute('data-label')).toContain('not reading the engine');
   });
 
   it('drops the tooltip when the page already explains it', () => {
     render(<CalloutInline callout={CALLOUT} explained />);
-    expect(screen.getByText('No engine data')).toBeTruthy();
+    expect(screen.getByText('No data')).toBeTruthy();
     expect(screen.queryByTestId('tip')).toBeNull();
   });
 
