@@ -37,6 +37,8 @@ def test_samsara_feeds_read_ingest_time_freshness():
     assert feeds["vehicle_health"].ts_col == "updated_at"
     assert feeds["vehicle_faults"].ts_col == "updated_at"
     assert feeds["safety_events"].ts_col == "ingested_at"
+    # "driver_efficiency" is the capability WIRE key; the table behind it
+    # is driver_efficiency_day (adapters/telematics/catalog.py:206).
     assert feeds["driver_efficiency"].ts_col == "ingested_at"
 
     # The roll-up tiers are NOT customer feeds — they're warehouse plumbing
