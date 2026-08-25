@@ -25,7 +25,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
-import { toneClasses, toneText } from '../../lib/status';
+import { toneText } from '../../lib/status';
 import type { Vehicle } from '../../types';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
@@ -78,7 +78,7 @@ export default function DeviceEventsCard({
   const open = (data?.events ?? []).filter((e) => e.status === 'open');
   if (!canManage || open.length === 0) return null;
 
-  const resolveSimple = async (e: DeviceEvent, action: 'same_truck' | 'acknowledge') => {
+  const resolveSimple = async (e: DeviceEvent, action: 'same_truck' | 'dismissed') => {
     setBusyId(e.id); setError('');
     try {
       await apiJSON(`/vehicles/device-events/${e.id}/resolve`, {
@@ -133,13 +133,20 @@ export default function DeviceEventsCard({
                   </Button>
                 </>
               ) : (
+                /* "Dismiss", not "Acknowledge".  Acknowledging is the
+                   ALERTS workspace action — a person accepting a work
+                   item that was routed to them.  Nothing is routed
+                   here and nothing is accepted: this row asks for no
+                   decision, so the button only takes it off the list.
+                   Using the alerts verb made a passive notice look
+                   like assigned work. */
                 <Button
                   type="button" variant="outline" size="sm"
                   disabled={busyId === e.id}
-                  onClick={() => resolveSimple(e, 'acknowledge')}
+                  onClick={() => resolveSimple(e, 'dismissed')}
                 >
                   {busyId === e.id && <Loader2 className="animate-spin" />}
-                  Acknowledge
+                  Dismiss
                 </Button>
               )}
             </span>

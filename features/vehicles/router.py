@@ -1021,7 +1021,15 @@ _manage_vehicles = require_permission("can_manage_vehicles")
 
 
 class DeviceEventResolve(BaseModel):
-    action: str = Field(..., pattern="^(same_truck|different_truck|acknowledge)$")
+    # ``dismissed`` replaced ``acknowledge``: acknowledging is the
+    # ALERTS workspace verb (accepting a work item routed to you), and
+    # these rows route nothing.  The old value stays accepted so a
+    # browser tab left open across the deploy still resolves instead of
+    # 422-ing, and so historical rows keep meaning what they said.
+    action: str = Field(
+        ...,
+        pattern="^(same_truck|different_truck|dismissed|acknowledge)$",
+    )
     # different_truck only: identity of the NEW unit to create.
     company_code: str = Field("", max_length=64)
     unit_number: str = Field("", max_length=64)

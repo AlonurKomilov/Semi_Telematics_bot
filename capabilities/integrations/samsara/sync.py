@@ -316,8 +316,16 @@ async def ingest_vehicle_state(account_id: int) -> int:
         _prev = {str(r.get("vehicle_id") or ""): r
                  for r in await tenant.get_vehicle_state(account_id)}
         _prev_state = _prev
-        _odo_by_ref = {str(r.get("vehicle_id") or ""): r.get("odometer_mi")
-                       for r in rows}
+        # The reading's own clock travels with it: the rebase test needs
+        # the gap between two ODOMETER readings, and the row's general
+        # freshness is not that (see _detect_identity_events).
+        _odo_by_ref = {
+            str(r.get("vehicle_id") or ""): {
+                "miles": r.get("odometer_mi"),
+                "time": r.get("odometer_time"),
+            }
+            for r in rows
+        }
         identity_events = _detect_identity_events(
             fleet, _ident, _prev, _odo_by_ref,
             datetime.now(timezone.utc).isoformat(timespec="seconds"))
@@ -508,14 +516,40 @@ async def _sweep_vehicle_conditions(account_id, tenant, rows, prev_live):
         )
 
 
+# What a truck could drive in a WEEK at the plausible-speed ceiling.
+# Used only when neither side carries a reading time, where any smaller
+# number would be a guess dressed as physics.
+_UNTIMED_REBASE_CEILING_MI = 7 * 24 * 90.0
+
+
+def _minutes_between(earlier: Any, later: Any) -> float | None:
+    """Minutes between two provider timestamps, or None when either is
+    missing or unparseable.  None means "cannot measure" — callers must
+    not silently substitute a small number, which is exactly how the
+    rebase threshold collapsed to a constant."""
+    from datetime import datetime
+
+    def _p(v):
+        if not v:
+            return None
+        try:
+            t = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+    a, b = _p(earlier), _p(later)
+    if a is None or b is None:
+        return None
+    return abs((b - a).total_seconds()) / 60.0
+
+
 def _detect_identity_events(fleet, ident, prev_live, odo_by_ref, now_iso):
     """Pure diff: incoming fleet vs stored identity anchors + previous
     live odometers.  Returns device_event_log rows.  The odometer test
     is gap-aware (same physics as the step guard): a jump is plausible
     only if the truck could have driven it since its previous reading.
     """
-    from capabilities.data_lifecycle.staleness import data_age_minutes
-
     events = []
     for v in fleet:
         ref = str(v.get("id") or "")
@@ -543,13 +577,33 @@ def _detect_identity_events(fleet, ident, prev_live, odo_by_ref, now_iso):
                 "observed_at": now_iso,
             })
         prev = prev_live.get(ref)
-        odo_new = odo_by_ref.get(ref)
+        odo = odo_by_ref.get(ref) or {}
+        odo_new = odo.get("miles") if isinstance(odo, dict) else odo
         if prev and prev.get("odometer_mi") is not None \
                 and odo_new is not None:
             delta = float(odo_new) - float(prev["odometer_mi"])
-            gap_min = data_age_minutes(str(prev.get("source_ts") or
-                                           prev.get("captured_at") or ""))
-            plausible = max((gap_min or 1.0) / 60.0 * 90.0 + 2.0, 50.0)
+            # The gap between the two ODOMETER readings — not how fresh
+            # the row is.  ``data_age_minutes(prev.source_ts)`` measured
+            # the latter, and since the live row refreshes every minute
+            # from GPS it was always ~1, collapsing the threshold to a
+            # flat 50 miles.  Any truck whose odometer reports
+            # sporadically then had every ordinary day's driving flagged
+            # as a scale change: unit 130 filed nine of them, 69 to 400
+            # miles apart, and a card full of false alarms is a card
+            # nobody reads.
+            gap_min = _minutes_between(
+                prev.get("odometer_time"),
+                odo.get("time") if isinstance(odo, dict) else None,
+            )
+            if gap_min is None:
+                # No timing on either side: refuse to guess a threshold
+                # and flag only a jump no gap could ever excuse.  A real
+                # re-base is six figures; missing a subtle one costs
+                # less than crying wolf, and the mileage guard catches
+                # it downstream anyway.
+                plausible = _UNTIMED_REBASE_CEILING_MI
+            else:
+                plausible = max(gap_min / 60.0 * 90.0 + 2.0, 50.0)
             if abs(delta) > plausible:
                 events.append({
                     "registry_id": anchor["registry_id"],

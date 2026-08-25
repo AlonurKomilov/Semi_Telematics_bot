@@ -23,9 +23,11 @@ NOW = "2026-08-07T10:00:00+00:00"
 
 def test_no_change_no_events():
     prev = {"ref1": {"odometer_mi": 567781.0,
-                     "source_ts": "2026-08-07T09:59:00Z"}}
-    assert _detect_identity_events(FLEET, IDENT, prev,
-                                   {"ref1": 567782.0}, NOW) == []
+                     "odometer_time": "2026-08-07T09:59:00Z"}}
+    assert _detect_identity_events(
+        FLEET, IDENT, prev,
+        {"ref1": {"miles": 567782.0, "time": "2026-08-07T10:00:00Z"}}, NOW,
+    ) == []
 
 
 def test_vin_change_is_a_different_truck():
@@ -45,15 +47,53 @@ def test_odometer_rebase_gap_aware():
     """+336k in one minute = scale change; +200 after a 3h silence is
     plausible catch-up and stays silent."""
     prev = {"ref1": {"odometer_mi": 567781.0,
-                     "source_ts": "2026-08-07T09:59:00Z"}}
-    ev = _detect_identity_events(FLEET, IDENT, prev,
-                                 {"ref1": 904200.0}, NOW)
+                     "odometer_time": "2026-08-07T09:59:00Z"}}
+    ev = _detect_identity_events(
+        FLEET, IDENT, prev,
+        {"ref1": {"miles": 904200.0, "time": "2026-08-07T10:00:00Z"}}, NOW,
+    )
     assert [e["kind"] for e in ev] == ["odo_rebase"]
 
     prev_gap = {"ref1": {"odometer_mi": 567781.0,
-                         "source_ts": "2026-08-07T07:00:00Z"}}
-    assert _detect_identity_events(FLEET, IDENT, prev_gap,
-                                   {"ref1": 567981.0}, NOW) == []
+                         "odometer_time": "2026-08-07T07:00:00Z"}}
+    assert _detect_identity_events(
+        FLEET, IDENT, prev_gap,
+        {"ref1": {"miles": 567981.0, "time": "2026-08-07T10:00:00Z"}}, NOW,
+    ) == []
+
+
+def test_ordinary_driving_is_not_a_scale_change():
+    """The production false positive this rule shipped with.
+
+    Unit 130 reports its odometer only every few hours.  The gap was
+    read from the row's ``source_ts`` — refreshed every minute by GPS —
+    so the threshold collapsed to a flat 50 miles and nine ordinary
+    days' driving (69 to 400 miles) were each filed as "Odometer
+    changed scale".  Ten rows on the review card, nine of them wrong.
+    """
+    prev = {"ref1": {"odometer_mi": 769273.0,
+                     # Last odometer six hours ago...
+                     "odometer_time": "2026-08-13T10:00:00Z",
+                     # ...while the ROW itself was refreshed seconds ago.
+                     "source_ts": "2026-08-13T15:59:00Z"}}
+    assert _detect_identity_events(
+        FLEET, IDENT, prev,
+        {"ref1": {"miles": 769673.0, "time": "2026-08-13T16:00:00Z"}},
+        "2026-08-13T16:00:00+00:00",
+    ) == [], "400 miles in six hours is a truck driving, not a re-base"
+
+
+def test_untimed_readings_flag_only_the_impossible():
+    """With no reading times we cannot measure a gap, so we refuse to
+    invent a threshold: only a jump no elapsed time could excuse."""
+    prev = {"ref1": {"odometer_mi": 769273.0}}
+    assert _detect_identity_events(
+        FLEET, IDENT, prev, {"ref1": {"miles": 769673.0}}, NOW,
+    ) == []
+    ev = _detect_identity_events(
+        FLEET, IDENT, prev, {"ref1": {"miles": 1_107_000.0}}, NOW,
+    )
+    assert [e["kind"] for e in ev] == ["odo_rebase"]
 
 
 @pytest.mark.asyncio
