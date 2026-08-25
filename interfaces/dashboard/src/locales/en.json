@@ -1373,7 +1373,10 @@
     "labels": {
       "why": "Why",
       "affects": "Affects",
-      "do": "Do"
+      "do": "Do",
+      "collapse": "Collapse this notice",
+      "dismiss": "Dismiss this notice",
+      "dismiss_failed": "Could not be recorded — still showing."
     }
   }
 }

@@ -85,6 +85,22 @@ const def = <T,>(d: PrefDef<T>): PrefDef<T> => d;
 
 /** ``'1'``/``'0'`` (and ``'true'``) legacy booleans. */
 const legacyBool = (raw: string): boolean => raw === '1' || raw === 'true';
+/** ``{ "<callout id>": epochMs }`` — rebuilt field by field so a
+ *  corrupted or hand-edited value can never reach a component.  Ids are
+ *  opaque strings the server minted; we validate shape, never meaning. */
+const asIdMap = (v: unknown): Record<string, number> => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const src = (v as { entries?: unknown }).entries ?? v;
+  if (!src || typeof src !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [k, ts] of Object.entries(src as Record<string, unknown>)) {
+    if (typeof k === 'string' && k && typeof ts === 'number' && ts > 0) {
+      out[k] = ts;
+    }
+  }
+  return out;
+};
+
 const asBool = (v: unknown): boolean | undefined =>
   typeof v === 'boolean' ? v : undefined;
 /** Enum guard from a whitelist. */
@@ -498,6 +514,31 @@ export const DEFS = {
     fromLegacy: legacyBool,
     sanitize: asBool,
     note: 'The "thought logs stay in this browser" note has been dismissed.',
+  }),
+  // ── Callouts ──────────────────────────────────────────────────────
+  // Two keys because they are two different acts with two different
+  // owners, and one writer each is what keeps them honest.
+  //
+  // COLLAPSED — the strip shrank to one line.  The statement is still
+  // on screen, so nothing left the reader's view and there is nothing
+  // to audit; the client writes this like any other display setting.
+  'callout.collapsed': def<Record<string, number>>({
+    default: {},
+    scope: 'synced',
+    sanitize: asIdMap,
+    note: 'Callouts you have collapsed to a single line.',
+  }),
+  // DISMISSED — the callout was removed from this person's view.  That
+  // is the act an owner may need to reconstruct later, so the SERVER
+  // owns this key: POST /callouts/dismiss writes the trail entry and
+  // this value together.  The client only READS it.  A client-written
+  // copy plus a separate audit call could disagree, and a dismissal
+  // with no record is the gap the record exists to close.
+  'callout.dismissed': def<Record<string, number>>({
+    default: {},
+    scope: 'synced',
+    sanitize: asIdMap,
+    note: 'Callouts you have dismissed. Written by the server so each one is recorded.',
   }),
   'onboarding.dismissed': def<boolean>({
     default: false,

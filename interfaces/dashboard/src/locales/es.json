@@ -1082,7 +1082,10 @@
     "labels": {
       "why": "Motivo",
       "affects": "Afecta a",
-      "do": "Acción"
+      "do": "Acción",
+      "collapse": "Contraer este aviso",
+      "dismiss": "Descartar este aviso",
+      "dismiss_failed": "No se pudo registrar — sigue visible."
     }
   }
 }

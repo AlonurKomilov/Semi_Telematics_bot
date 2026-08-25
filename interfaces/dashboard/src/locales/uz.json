@@ -712,7 +712,10 @@
     "labels": {
       "why": "Sabab",
       "affects": "Ta'sir qiladi",
-      "do": "Nima qilish"
+      "do": "Nima qilish",
+      "collapse": "Xabarnomani yig'ish",
+      "dismiss": "Xabarnomani yopish",
+      "dismiss_failed": "Yozib bo'lmadi — ekranda qoladi."
     }
   }
 }

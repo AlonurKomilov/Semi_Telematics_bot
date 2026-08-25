@@ -853,7 +853,10 @@
     "labels": {
       "why": "Sababta",
       "affects": "Saameeya",
-      "do": "Samee"
+      "do": "Samee",
+      "collapse": "Ogeysiiskan laablaab",
+      "dismiss": "Ogeysiiskan qari",
+      "dismiss_failed": "Lama diiwaangelin karin — weli wuu muuqdaa."
     }
   }
 }

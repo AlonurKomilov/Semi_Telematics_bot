@@ -25,9 +25,19 @@ lifecycle, which is the whole reason it has its own name:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from typing import Any, Callable
 
 KINDS = ("caveat", "condition", "guidance")
+
+# ``<feature>.<name>`` — enforced, not merely conventional.  A callout's
+# public identity (``callout_id``) is built from its key, so two
+# features minting the same bare key would mint the SAME dismissal id
+# for unrelated faults: silencing one would silence the other.  The
+# namespace is what makes ids collision-free across every feature and
+# integration that ever emits a callout.
+KEY_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 SEVERITIES = ("info", "warn", "danger")
 
 
@@ -52,6 +62,12 @@ def register_callout(
     module imported twice is harmless; re-registering a DIFFERENT shape
     raises, because that means two features are fighting over one key.
     """
+    if not KEY_RE.match(key or ""):
+        raise ValueError(
+            f"callout key {key!r} must be '<feature>.<name>' "
+            f"(lowercase, digits, underscores) — the namespace is what "
+            f"keeps dismissal ids from colliding across features"
+        )
     if kind not in KINDS:
         raise ValueError(f"callout {key!r}: unknown kind {kind!r} (of {KINDS})")
     if severity not in SEVERITIES:
@@ -79,3 +95,46 @@ def known_keys() -> tuple[str, ...]:
     the dashboard's ``calloutCatalog.ts`` so a key the backend can emit
     can always be rendered."""
     return tuple(sorted(_REGISTRY))
+
+
+# ── Condition detectors ──────────────────────────────────────────
+#
+# A capability may not import a feature, but the ingest tick — which
+# lives in a capability — is the cheapest place to notice that a
+# vehicle's condition is true: it already holds the row.  So the
+# feature REGISTERS how to decide, and the capability calls through
+# here without ever naming it.  Exactly the arrangement the
+# data-lifecycle hubs use, and the reason ``discover()`` exists.
+#
+# A detector answers one question about one row:
+#     (row, prior) -> params dict when the condition holds, else None
+# ``params`` becomes the callout's render substitutions, so returning
+# ``{}`` means "true, nothing to substitute" — distinct from ``None``.
+
+DetectFn = Callable[[dict, dict], "dict[str, Any] | None"]
+
+
+@dataclass(frozen=True)
+class ConditionDetector:
+    key: str
+    detect: DetectFn
+
+
+_DETECTORS: dict[str, ConditionDetector] = {}
+
+
+def register_detector(key: str, detect: DetectFn) -> None:
+    """Declare how to decide one condition.  The key must already be
+    registered — a detector for an unknown callout would open rows
+    nothing can ever render."""
+    if key not in _REGISTRY:
+        raise ValueError(
+            f"detector for unregistered callout {key!r} — call "
+            f"register_callout first"
+        )
+    _DETECTORS[key] = ConditionDetector(key=key, detect=detect)
+
+
+def condition_detectors() -> tuple[ConditionDetector, ...]:
+    """Every registered detector.  Call ``discover()`` first."""
+    return tuple(_DETECTORS.values())

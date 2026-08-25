@@ -35,6 +35,37 @@ class Callout:
     params: dict[str, Any] = field(default_factory=dict)
 
 
+def callout_id(key: str, entity: str = "", since: str = "") -> str:
+    """The identity a user dismisses, owned by THIS capability.
+
+    Built from the three contract fields every callout already
+    carries, so it works for any feature or integration that ever
+    emits one — no per-feature table, no wire field to add, nothing
+    for a new detector to supply.  An earlier draft used the row id of
+    ``vehicle_conditions``; that was the vehicles feature's table, so a
+    future ``loads``/``billing`` callout with the same row number would
+    have dismissed the wrong fault.
+
+    Two properties earn their keep:
+
+      * ``key`` is namespaced ``<feature>.<name>`` (enforced in the
+        registry), so ids cannot collide across features.
+      * ``since`` is the occurrence's ``opened_at`` — stable while a
+        fault is open, NEW when it clears and returns.  A recurrence
+        therefore reappears instead of inheriting the old dismissal,
+        which is the whole reason a truck going blind twice is news.
+
+    Guidance has no ``since``, so its id is stable and a dismissal is
+    permanent — correct for a suggestion.
+
+    OPAQUE by contract: nothing downstream parses this.  The client
+    receives it and hands it back, so the composition can change later
+    without touching a single consumer.
+    """
+    ident = f"{key}@{entity}" if entity else key
+    return f"{ident}#{since}" if since else ident
+
+
 def callout_wire(callouts: list[Callout]) -> list[dict]:
     """Serialize for the API.
 
@@ -44,7 +75,10 @@ def callout_wire(callouts: list[Callout]) -> list[dict]:
     """
     out: list[dict] = []
     for c in callouts:
-        item: dict[str, Any] = {"key": c.key}
+        item: dict[str, Any] = {
+            "key": c.key,
+            "callout_id": callout_id(c.key, c.entity, c.since),
+        }
         if c.entity:
             item["entity"] = c.entity
         if c.since:

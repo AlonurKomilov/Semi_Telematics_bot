@@ -17,25 +17,63 @@
  * action, so its row is simply not rendered rather than printed with
  * an empty value.
  */
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown, X } from 'lucide-react';
 import type { CalloutData } from './calloutCatalog';
 import { useCallout } from './useCallout';
+import { useDismissal } from './useDismissal';
 import { toneClasses } from '../../lib/status';
 
 export default function Callout({
   callout,
   className = '',
+  entity,
 }: {
   callout: CalloutData;
   className?: string;
+  /** What the dismissal is recorded against, e.g. the truck it is on. */
+  entity?: { type: string; id: string };
 }) {
   const { t } = useTranslation();
   const { tone, title, why, affects, act, Icon } = useCallout(callout);
+  const { dismissed, collapsed, behaviour, close, expand } =
+    useDismissal(callout, entity);
+  const [failed, setFailed] = useState(false);
   const lines: [string, string][] = [
     [t('callout.labels.why'), why],
     [t('callout.labels.affects'), affects],
     [t('callout.labels.do'), act],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+
+  // Removed by this person, and the server has the record.  Nothing
+  // renders — but note this is per-USER: a colleague opening the same
+  // truck still sees it.
+  if (dismissed) return null;
+
+  const onClose = async () => {
+    setFailed(false);
+    // A dismissal that could not be recorded must not hide anything —
+    // the endpoint writes the trail entry first and refuses on failure.
+    if (!(await close())) setFailed(true);
+  };
+
+  // Collapsed: the statement stays on screen as one line.  This is what
+  // keeps a 0-mile truck from reading as a real zero once the strip is
+  // out of the way.
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={expand}
+        className={`flex items-center gap-2 w-full rounded-lg px-3 py-1.5 text-left min-h-tap ${toneClasses(tone)} ${className}`}
+      >
+        <Icon className="size-3.5 shrink-0" />
+        <span className="text-xs font-medium min-w-0 truncate">{title}</span>
+        <ChevronDown className="size-3.5 shrink-0 ml-auto opacity-70" />
+      </button>
+    );
+  }
 
   return (
     <div
@@ -61,7 +99,26 @@ export default function Callout({
             ))}
           </dl>
         )}
+        {failed && (
+          <p role="alert" className="text-xs font-medium">
+            {t('callout.labels.dismiss_failed')}
+          </p>
+        )}
       </div>
+      {behaviour !== 'none' && callout.callout_id && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t(
+            behaviour === 'collapse'
+              ? 'callout.labels.collapse'
+              : 'callout.labels.dismiss',
+          )}
+          className="ml-auto shrink-0 rounded p-1 opacity-70 hover:opacity-100 min-h-tap min-w-tap"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }

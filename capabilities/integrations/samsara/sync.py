@@ -454,64 +454,57 @@ async def _sweep_vehicle_conditions(account_id, tenant, rows, prev_live):
     which is why they cannot be flagged (``test_callouts`` asserts it
     rather than trusting this sentence).
 
-    Every tick either opens the condition, bumps its ``last_true_at``,
-    or resolves it, so "still true" and "fixed itself" are both
-    recorded without anyone clicking anything.
+    WHAT decides a condition lives in the feature that owns it: this
+    module may not import ``features`` (the layer rule the boundary
+    test enforces), so detectors register themselves and are called
+    through the callouts registry.  A second feature — loads, billing —
+    starts emitting conditions by adding a contributor line, with no
+    change here.
+
+    Every tick either opens a condition, bumps its ``last_true_at``, or
+    resolves it, so "still true" and "fixed itself" are both recorded
+    without anyone clicking anything.
     """
-    from datetime import datetime, timezone
+    from capabilities.callouts import condition_detectors, discover
 
-    from features.vehicles.callouts import (
-        NO_ENGINE_DATA, detect_no_engine_data,
-    )
-
-    now = datetime.now(timezone.utc)
-
-    def _age_hours(stamp) -> float | None:
-        """Hours since a provider timestamp; None when never seen."""
-        if not stamp:
-            return None
-        try:
-            t = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if t.tzinfo is None:
-            t = t.replace(tzinfo=timezone.utc)
-        return max(0.0, (now - t).total_seconds() / 3600.0)
+    # Idempotent; a cold worker may not have loaded the contributors.
+    discover()
+    detectors = condition_detectors()
+    if not detectors:
+        return
 
     opened = 0
     for row in rows:
         vid = str(row.get("vehicle_id") or "")
         if not vid:
             continue
-        has_gps = row.get("lat") is not None and row.get("lon") is not None
-        odo_now = row.get("odometer_mi") is not None
-        # Age of the newest odometer we have ever stored for this
-        # vehicle — this tick's reading when one arrived, otherwise the
-        # live row's.  A truck that reported yesterday is not blind.
         prior = prev_live.get(vid) or {}
-        age = _age_hours(row.get("odometer_time") or prior.get("odometer_time"))
-        if odo_now:
-            age = 0.0
-
-        if detect_no_engine_data(
-            has_gps=has_gps, odometer_present=odo_now,
-            odometer_age_hours=age,
-        ):
+        for det in detectors:
+            try:
+                params = det.detect(row, prior)
+            except Exception:
+                # One misbehaving detector must not stop the others, or
+                # stall the ingest it is riding on.
+                logger.exception(
+                    "condition detector %s failed acct=%d vehicle=%s",
+                    det.key, account_id, vid,
+                )
+                continue
+            if params is None:
+                await tenant.resolve_condition(
+                    account_id, key=det.key, vehicle_id=vid,
+                )
+                continue
             is_new = await tenant.open_or_touch_condition(
-                account_id, key=NO_ENGINE_DATA, vehicle_id=vid,
+                account_id, key=det.key, vehicle_id=vid,
                 vehicle_name=str(row.get("vehicle_name") or ""),
                 registry_id=row.get("registry_id"),
-                params={"gateway": str(row.get("gateway_serial") or "")},
+                params=params,
             )
             opened += 1 if is_new else 0
-        else:
-            await tenant.resolve_condition(
-                account_id, key=NO_ENGINE_DATA, vehicle_id=vid,
-            )
     if opened:
         logger.info(
-            "vehicle conditions acct=%d newly_open=%d key=%s",
-            account_id, opened, NO_ENGINE_DATA,
+            "vehicle conditions acct=%d newly_open=%d", account_id, opened,
         )
 
 

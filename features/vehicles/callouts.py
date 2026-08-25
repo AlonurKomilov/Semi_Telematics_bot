@@ -29,7 +29,7 @@ so they cannot be flagged — asserted by a test rather than trusted.
 
 from __future__ import annotations
 
-from capabilities.callouts import register_callout
+from capabilities.callouts import register_callout, register_detector
 
 _OWNER = "vehicles"
 
@@ -95,3 +95,41 @@ def detect_no_engine_data(
     if odometer_age_hours is None:
         return True
     return odometer_age_hours >= ENGINE_DATA_GAP_HOURS
+
+
+def _detect_from_row(row: dict, prior: dict) -> dict | None:
+    """The ingest's per-vehicle question, answered with vehicle
+    knowledge that belongs to this feature rather than to the tick.
+
+    ``row`` is the live-state row being written this tick; ``prior`` is
+    what the warehouse held for that vehicle before it.  Returns the
+    callout's params when the bus is silent, else ``None``.
+    """
+    from datetime import datetime, timezone
+
+    has_gps = row.get("lat") is not None and row.get("lon") is not None
+    odo_now = row.get("odometer_mi") is not None
+
+    age: float | None = 0.0 if odo_now else None
+    if not odo_now:
+        stamp = row.get("odometer_time") or prior.get("odometer_time")
+        if stamp:
+            try:
+                t = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                age = max(
+                    0.0,
+                    (datetime.now(timezone.utc) - t).total_seconds() / 3600.0,
+                )
+            except ValueError:
+                age = None
+
+    if not detect_no_engine_data(
+        has_gps=has_gps, odometer_present=odo_now, odometer_age_hours=age,
+    ):
+        return None
+    return {"gateway": str(row.get("gateway_serial") or "")}
+
+
+register_detector(NO_ENGINE_DATA, _detect_from_row)

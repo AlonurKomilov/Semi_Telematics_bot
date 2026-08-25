@@ -278,3 +278,96 @@ def test_sweep_only_sees_provider_rows():
         assert forbidden not in body, (
             f"sweep must not consult {forbidden} — trailers would be flagged"
         )
+
+
+# ── Dismissal ────────────────────────────────────────────────────
+
+def test_callout_id_is_stable_while_a_fault_is_open():
+    """``since`` is the occurrence's opened_at, which does not move
+    while the fault is open — so a dismissal survives a page reload."""
+    from capabilities.callouts.models import callout_id
+    a = callout_id("vehicle.no_engine_data", "vehicle:281", "2026-05-12T09:14:00")
+    b = callout_id("vehicle.no_engine_data", "vehicle:281", "2026-05-12T09:14:00")
+    assert a == b
+
+
+def test_callout_id_changes_when_a_fault_recurs():
+    """The property the whole design turns on.
+
+    A truck that goes blind, gets fixed, and goes blind again opens a
+    NEW ``vehicle_conditions`` row with a new ``opened_at``.  If the id
+    did not move with it, the first dismissal would silence the second
+    outage forever.
+    """
+    from capabilities.callouts.models import callout_id
+    first = callout_id("vehicle.no_engine_data", "vehicle:281", "2026-05-12T09:14:00")
+    again = callout_id("vehicle.no_engine_data", "vehicle:281", "2026-08-01T04:02:00")
+    assert first != again
+
+
+def test_callout_id_never_collides_across_features():
+    """Two features emitting a callout about the SAME entity must not
+    produce one identity — dismissing a stalled load sync cannot be
+    allowed to silence a blind engine bus."""
+    from capabilities.callouts.models import callout_id
+    veh = callout_id("vehicle.no_engine_data", "vehicle:281", "T")
+    load = callout_id("loads.sync_stalled", "vehicle:281", "T")
+    assert veh != load
+
+
+def test_guidance_id_is_permanent():
+    """No occurrence, so no ``since``: a suggestion dismissed once
+    stays dismissed, which is what a suggestion deserves."""
+    from capabilities.callouts.models import callout_id
+    assert "#" not in callout_id("alerts.routing_nudge", "account:1", "")
+
+
+def test_wire_carries_the_id_for_every_callout():
+    """Not a nullable extra: the capability mints one for each, so the
+    client never has to compose an identity itself."""
+    from capabilities.callouts.models import Callout, callout_wire
+    wire = callout_wire([
+        Callout(key="vehicle.no_engine_data", entity="vehicle:281", since="T"),
+        Callout(key="mileage.partial"),
+    ])
+    assert all(item.get("callout_id") for item in wire)
+
+
+# ── Detector registry (the layer inversion) ──────────────────────
+
+def test_detector_must_name_a_registered_callout():
+    """A detector for an unknown key would open condition rows nothing
+    can ever render — the reader would see empty fields with no
+    explanation, which is the bug this whole lane exists to prevent."""
+    from capabilities.callouts import register_detector
+    with pytest.raises(ValueError, match="unregistered callout"):
+        register_detector("nope.nothing", lambda row, prior: None)
+
+
+def test_discover_finds_the_feature_detector():
+    """The capability may not import a feature, so contributors are
+    imported BY NAME and register themselves.  Without this the ingest
+    sweep would find nothing and no condition would ever open.
+    """
+    from capabilities.callouts import condition_detectors, discover
+    discover()
+    assert NO_ENGINE_DATA in {d.key for d in condition_detectors()}
+
+
+def test_detector_reads_a_row_the_ingest_already_has():
+    """The detector's whole contract: (row, prior) -> params or None,
+    computed from what the tick holds — no extra query, no provider
+    call."""
+    from capabilities.callouts import condition_detectors, discover
+    discover()
+    det = next(d for d in condition_detectors() if d.key == NO_ENGINE_DATA)
+
+    blind = {"lat": 43.1, "lon": -89.3, "odometer_mi": None,
+             "gateway_serial": "GY4P"}
+    assert det.detect(blind, {}) == {"gateway": "GY4P"}
+
+    healthy = {"lat": 43.1, "lon": -89.3, "odometer_mi": 389_542.0}
+    assert det.detect(healthy, {}) is None
+
+    parked_no_gps = {"lat": None, "lon": None, "odometer_mi": None}
+    assert det.detect(parked_no_gps, {}) is None

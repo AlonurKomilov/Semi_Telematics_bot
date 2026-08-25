@@ -22,6 +22,29 @@ import type { Tone } from '../../lib/status';
 
 export type CalloutKind = 'caveat' | 'condition' | 'guidance';
 
+/**
+ * What the X does — declared per callout, because `kind` is too coarse
+ * to decide it.
+ *
+ *   none      no X at all.
+ *   collapse  shrinks to one line, still on screen.  For anything that
+ *             qualifies a NUMBER the reader is about to act on: the
+ *             line is what stops a 0-mile truck reading as a real zero,
+ *             and an audit entry only assigns blame afterwards.
+ *   remove    gone from this person's view.  For statements worth
+ *             knowing once that cost nothing to lose.
+ *
+ * `remove` is the only one that writes to the activity trail, because
+ * it is the only one where something left the reader's screen.
+ */
+export type CalloutDismiss = 'none' | 'collapse' | 'remove';
+
+/** The default when a callout does not declare one — kind decides. */
+export function defaultDismiss(kind: CalloutKind): CalloutDismiss {
+  if (kind === 'caveat') return 'none';
+  return kind === 'guidance' ? 'remove' : 'collapse';
+}
+
 export interface CalloutSpec {
   kind: CalloutKind;
   /** Maps to the shared tone vocabulary — colour AND icon. */
@@ -32,6 +55,12 @@ export interface CalloutSpec {
    * user choice.  Only read for `guidance`.
    */
   dismissScope?: 'key' | 'entity';
+  /**
+   * Overrides `defaultDismiss(kind)`.  A condition that is genuinely
+   * good-to-know rather than protective declares `'remove'` here and
+   * gets a real X instead of a collapse.
+   */
+  dismiss?: CalloutDismiss;
 }
 
 export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
@@ -55,6 +84,14 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
 /** One callout as it arrives on the wire. */
 export interface CalloutData {
   key: string;
+  /**
+   * The identity a dismissal is stored against — minted by the
+   * callouts capability from key + entity + occurrence start.  OPAQUE:
+   * never parse it, never build one client-side.  It changes when a
+   * fault clears and returns, which is what makes a second outage
+   * reappear instead of inheriting the first one's dismissal.
+   */
+  callout_id?: string;
   /** `""` = the surface itself; `vehicle:<id>` = one record. */
   entity?: string;
   since?: string;
@@ -63,6 +100,14 @@ export interface CalloutData {
 
 export function calloutSpec(key: string): CalloutSpec | undefined {
   return CALLOUT_CATALOG[key];
+}
+
+/** What the X should do for this callout — its declaration, else the
+ *  kind's default, else nothing for a key we do not know. */
+export function dismissBehaviour(key: string): CalloutDismiss {
+  const spec = CALLOUT_CATALOG[key];
+  if (!spec) return 'none';
+  return spec.dismiss ?? defaultDismiss(spec.kind);
 }
 
 /**

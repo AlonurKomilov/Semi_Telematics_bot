@@ -1082,7 +1082,10 @@
     "labels": {
       "why": "Cause",
       "affects": "Affecte",
-      "do": "Action"
+      "do": "Action",
+      "collapse": "Réduire cet avis",
+      "dismiss": "Masquer cet avis",
+      "dismiss_failed": "Enregistrement impossible — toujours affiché."
     }
   }
 }

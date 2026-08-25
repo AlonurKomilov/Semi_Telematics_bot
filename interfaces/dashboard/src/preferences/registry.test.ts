@@ -38,6 +38,11 @@ const FROZEN_KEYS: readonly string[] = [
   'maintenance.viewMode',
   'table.density',
   'datagrid.savedTabCoachSeen',
+  // Two keys, one act each: collapsed = still on screen (client
+  // writes it), dismissed = removed from view (SERVER writes it, with
+  // a trail entry, so a dismissal cannot happen unrecorded).
+  'callout.collapsed',
+  'callout.dismissed',
   'onboarding.dismissed',
   'alerts.routingNudgeDismissed',
   'invites.lastChannel',

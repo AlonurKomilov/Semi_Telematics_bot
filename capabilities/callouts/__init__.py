@@ -21,19 +21,39 @@ its own facts in ``features/<x>/callouts.py``.  Capabilities never
 import features — the feature registers itself when its module loads.
 """
 
-from .models import Callout, callout_wire
+from capabilities.data_lifecycle._common import make_discover
+
+from .models import Callout, callout_id, callout_wire
 from .registry import (
     CalloutSpec,
+    ConditionDetector,
+    condition_detectors,
     get_spec,
     known_keys,
     register_callout,
+    register_detector,
 )
+
+# Modules that declare callout keys and how to detect them.  Imported
+# by NAME so this capability never imports a feature — the layer rule
+# the boundary test enforces.  Add a line when a feature starts
+# emitting callouts; a missing module is logged, never fatal.
+_CONTRIBUTORS = (
+    "features.vehicles.callouts",   # no-engine-data + the mileage caveats
+)
+
+discover = make_discover(_CONTRIBUTORS)
 
 __all__ = [
     "Callout",
     "CalloutSpec",
+    "ConditionDetector",
+    "callout_id",
     "callout_wire",
+    "condition_detectors",
+    "discover",
     "get_spec",
     "known_keys",
     "register_callout",
+    "register_detector",
 ]
