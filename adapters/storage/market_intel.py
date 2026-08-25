@@ -104,21 +104,36 @@ class MarketIntelMixin:
         passes now − 12 months).  Returns rows written."""
         # Points per (shop, task): one point = one WO's parts total
         # for that task at that shop.
+        # The task tag comes from the service_tasks REFERENCE, with the
+        # legacy column only as a fallback.  add_work_order_part stores
+        # ``p.service_task`` ONLY when resolution failed, so a filter of
+        # ``p.service_task <> ''`` silently excluded every part whose
+        # task resolved — which is nearly all of them, leaving market
+        # benchmarking to aggregate the failures and ignore the data.
+        # Slug form matches the maintenance read (canonical_key, else
+        # the normalised name with spaces as underscores) so both lenses
+        # key market data the same way.
+        task_key = (
+            "COALESCE(NULLIF(st.canonical_key, ''), "
+            "         NULLIF(REPLACE(st.name_key, ' ', '_'), ''), "
+            "         p.service_task)"
+        )
         cur = await self._db.execute(
             "SELECT v.global_vendor_id AS entry_id, "
-            "       p.service_task     AS dim_key, "
+            f"       {task_key}        AS dim_key, "
             "       w.account_id       AS account_id, "
             "       w.id               AS wo_id, "
             "       SUM(p.total_cost)  AS point "
             "FROM work_order_parts p "
             "JOIN work_orders w ON w.id = p.work_order_id "
             "JOIN vendors v ON v.id = w.vendor_id AND v.account_id = w.account_id "
+            "LEFT JOIN service_tasks st ON st.id = p.service_task_id "
             "JOIN accounts a ON a.id = w.account_id "
             "WHERE a.share_market_data = 1 "
             "  AND v.global_vendor_id IS NOT NULL "
             "  AND w.service_date IS NOT NULL AND w.service_date >= ? "
-            "  AND p.service_task <> '' AND p.total_cost > 0 "
-            "GROUP BY v.global_vendor_id, p.service_task, w.account_id, w.id",
+            f"  AND COALESCE({task_key}, '') <> '' AND p.total_cost > 0 "
+            f"GROUP BY v.global_vendor_id, {task_key}, w.account_id, w.id",
             (since_iso,),
         )
         task_rows = [dict(r) for r in await cur.fetchall()]

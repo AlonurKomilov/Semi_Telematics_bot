@@ -184,8 +184,18 @@ class MaintenanceMixin(_MixinBase):
     _TASK_TYPE_JOIN = (
         " LEFT JOIN service_tasks st ON st.id = m.service_task_id "
     )
+    # ``task_type`` on the wire is a machine KEY, not a label: the FMCSA
+    # binder selects on ``== 'dot_inspection'``, the CSV export and both
+    # report PDFs group on it.  Standard tasks answer with their
+    # canonical_key; an account's own task has none, and answering with
+    # ``st.name`` returned a DISPLAY string ("Oil Change", and before the
+    # resolver fix "Oil_Change") where every consumer expected a slug.
+    # ``name_key`` is already the normalised form (trimmed, collapsed,
+    # casefolded), so spaces to underscores makes the round-trip exact:
+    # oil_change -> "Oil Change" -> "oil change" -> oil_change.
     _TASK_TYPE_SELECT = (
-        ", COALESCE(NULLIF(st.canonical_key, ''), st.name) "
+        ", COALESCE(NULLIF(st.canonical_key, ''), "
+        "           REPLACE(st.name_key, ' ', '_')) "
         "  AS _resolved_task_type "
     )
 
@@ -458,6 +468,38 @@ class MaintenanceMixin(_MixinBase):
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
+        # Retyping a task has to move the REFERENCE, not just the legacy
+        # column.  The read resolves task_type through service_task_id
+        # (see _TASK_TYPE_SELECT); this path only ever wrote the old
+        # ``task_type`` column, so an edit returned True and changed
+        # nothing a reader could see — and a task retyped to
+        # 'dot_inspection' never reached the FMCSA binder.  Mirrors
+        # add_maintenance_task: resolve, and keep the legacy tag ONLY
+        # when resolution failed, so the value is never lost.
+        if "task_type" in updates:
+            acct = account_id
+            if not acct:
+                cur = await self._db.execute(
+                    "SELECT account_id FROM maintenance_tasks WHERE id = ?",
+                    (task_id,),
+                )
+                r = await cur.fetchone()
+                acct = int(r[0]) if r else 0
+            if acct:
+                resolved = None
+                raw_type = updates["task_type"]
+                if raw_type:
+                    try:
+                        resolved = await self.resolve_service_task_id(
+                            acct, raw_type, created_by=actor_user_id or 0,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "service_task resolve failed for %r (account %s)",
+                            raw_type, acct, exc_info=True,
+                        )
+                updates["service_task_id"] = resolved
+                updates["task_type"] = "" if resolved else raw_type
         async with self.transaction():
             # Trail: the pre-edit values — the audit log used to record
             # only field NAMES here, which is what made the 2026-07-30

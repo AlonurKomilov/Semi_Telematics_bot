@@ -515,6 +515,26 @@ class ServiceTasksMixin:
             if row:
                 return dict(row)
 
+        # 3b) a bare slug ('oil_change') is a MACHINE value, not a
+        # label.  Only the 'custom_' form was un-escored above, so a
+        # plain slug fell straight through to creation, where
+        # ``.title()`` capitalises after the underscore too and produced
+        # "Oil_Change" — the string every reader then saw as the task's
+        # type.  Un-escore first, and look again before creating: the
+        # account may already own "Oil Change".
+        if "_" in label:
+            spaced = " ".join(label.replace("_", " ").split())
+            if spaced and spaced != label:
+                cur = await self._db.execute(
+                    "SELECT * FROM service_tasks "
+                    "WHERE account_id = ? AND name_key = ?",
+                    (account_id, service_task_name_key(spaced)),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return dict(row)
+                label = spaced
+
         # 4) never seen → archived custom row, so the write survives
         created = await self.create_service_task(
             account_id, label.title() if label.islower() else label,
