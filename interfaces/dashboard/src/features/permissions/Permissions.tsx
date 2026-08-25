@@ -32,6 +32,7 @@ import {
   GROUP_MODULE, OWNER_PROTECTED, contextLabel, isHeader, isScoped,
 } from './permRows';
 import type { ModulesData, PermFlag } from './permRows';
+import { DRIVER_KEY } from './verbGrid';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
@@ -47,6 +48,10 @@ interface PermsData {
   /** role → its senior tier (labels + grants).  Drives the two-level
    *  Role→Tier columns.  A role absent here has no tier (single column). */
   tiers?: Record<string, { senior_label: string; base_label: string; grants: string[] }>;
+  /** role → how many ACTIVE people hold it.  A role with nobody is absent
+   *  from the map; the tab renders the zero.  Counts only — this page has
+   *  no business knowing who. */
+  people?: Record<string, number>;
 }
 
 // role -> flag -> pending boolean
@@ -272,6 +277,16 @@ export default function Permissions() {
     // every role's flags are already in this page's payload.
     heldBy: (f) => ROLES.filter((r) =>
       roleColumns(r).some((c) => isGranted(c.key, f))).map((r) => ROLE_LABELS[r] ?? r),
+    // Headcount per tab.  Two states must stay apart: a role the server
+    // OMITTED from the map really has nobody, so fill its zero — but a
+    // MISSING map means the count itself failed (the server drops the key
+    // rather than sending {}), and then no tab shows a number at all.
+    // Printing 0 there would tell an owner a toggle affects nobody at the
+    // one moment nobody knows.
+    people: data?.people
+      ? Object.fromEntries([...ROLES, DRIVER_KEY].map(
+          (r) => [r, data.people?.[r] ?? 0]))
+      : undefined,
   };
 
   return (

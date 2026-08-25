@@ -659,6 +659,28 @@ class UsersMixin:
         await self.update_user(user.id, alerts_on=new_val)
         return new_val
 
+    async def count_users_by_role(self, account_id: int) -> dict[str, int]:
+        """``{role: how many ACTIVE people hold it}`` for one account.
+
+        The Permissions page shows this on each role tab, so an owner can
+        see the blast radius before toggling: the same switch flipped on a
+        role with seven people and on a role with none look identical
+        otherwise.  Counts only, never names — the page has no business
+        knowing WHO, and a count carries no personal data.
+
+        Active only: a deactivated account holds no permissions today, and
+        counting it would overstate what a change reaches.  Roles with
+        nobody in them are absent from the map, not zero — the caller
+        renders the zero, which keeps "no row" and "0 people" the same
+        thing here.
+        """
+        cur = await self._db.execute(
+            "SELECT role, COUNT(*) FROM users "
+            " WHERE account_id = ? AND is_active = 1 GROUP BY role",
+            (account_id,),
+        )
+        return {str(r[0]): int(r[1]) for r in await cur.fetchall() if r[0]}
+
     async def get_alert_subscribers(self, account_id: int) -> list[User]:
         """Users with alerts enabled for an account."""
         cur = await self._db.execute(

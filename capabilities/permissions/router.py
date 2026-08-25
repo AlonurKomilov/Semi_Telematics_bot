@@ -135,12 +135,34 @@ async def get_all_roles(
         for role, t in TIER_GRANTS.items()
     }
 
-    return {
+    # How many ACTIVE people each role holds — the blast radius of a
+    # toggle.  Counts only, no names: the page shows a number on the tab
+    # so "turn this off for Fleet" reads as seven people, and a role with
+    # nobody in it visibly recedes instead of looking like the others.
+    # Folded into this payload rather than a second endpoint — the page
+    # already fetches it, and one GROUP BY costs less than a route with
+    # its own permission question.
+    payload = {
         "current": current, "defaults": defaults,
         "fields": sorted(VALID_FIELDS),
         "manager_grants": manager_grants,
         "tiers": tiers,
     }
+    try:
+        payload["people"] = await platform_db.count_users_by_role(account_id)
+    except Exception as e:
+        # A count is decoration; the matrix is the page.  Never let it
+        # take the permissions grid down with it.
+        #
+        # OMIT the key rather than sending {}: the caller of this endpoint
+        # is themselves an active user of this account, so an empty map is
+        # never a real answer — it could only mean the count failed.  Sent
+        # as {}, the page would fill every tab with a confident "0" and dim
+        # them, telling an owner that a toggle affects nobody at the one
+        # moment nobody actually knows.  Absent means unknown, and the page
+        # shows no number at all.
+        logger.warning("role people-count failed for account %s: %s", account_id, e)
+    return payload
 
 
 @router.get("/roles/overrides")

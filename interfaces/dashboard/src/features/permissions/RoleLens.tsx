@@ -40,6 +40,9 @@ export interface RoleLensApi {
   /** Every role label that holds this flag — the cross-role question the
    *  matrix used to answer by column-scanning. */
   heldBy: (f: PermFlag) => string[];
+  /** How many ACTIVE people hold each role.  Undefined while the payload
+   *  is still loading — a tab shows no number rather than a wrong 0. */
+  people?: Record<string, number>;
 }
 
 export function RoleLens({ api }: { api: RoleLensApi }) {
@@ -252,20 +255,40 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     <div>
       {/* Role tabs + preview */}
       <div className="flex items-center gap-1.5 flex-wrap px-4 pt-3">
-        {[...api.roles, DRIVER_KEY].map((r) => (
+        {[...api.roles, DRIVER_KEY].map((r) => {
+          // The blast radius of everything below: a toggle on a role
+          // seven people hold is a different act from the same toggle on
+          // a role nobody holds, and the two used to look identical.
+          const count = api.people?.[r];
+          const empty = count === 0;
+          return (
           <button
             key={r}
             type="button"
             onClick={() => setRole(r)}
+            // The digit is a headcount, not part of the role's name —
+            // say so, or a screen reader reads "Fleet 7" as one label.
+            aria-label={count === undefined
+              ? api.roleLabel(r)
+              : `${api.roleLabel(r)} — ${count} ${count === 1 ? 'person' : 'people'}`}
             className={`text-xs px-3 py-1 rounded-full border transition ${
               r === role
                 ? 'bg-primary text-primary-foreground border-primary font-medium'
-                : 'border-border text-muted-foreground hover:text-foreground'
+                : `border-border hover:text-foreground ${
+                    // A role with nobody in it recedes rather than
+                    // hiding — an owner still configures it for the
+                    // people they are about to invite.
+                    empty ? 'text-muted-foreground/60' : 'text-muted-foreground'}`
             } min-h-tap`}
           >
             {api.roleLabel(r)}
+            {count !== undefined && (
+              <span className={`ml-1.5 tabular-nums ${
+                r === role ? 'opacity-80' : 'opacity-70'}`}>{count}</span>
+            )}
           </button>
-        ))}
+          );
+        })}
         <span className="flex-1" />
         {canSwitchView && !isDriver && (
           <button
