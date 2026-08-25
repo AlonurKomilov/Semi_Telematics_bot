@@ -64,7 +64,7 @@ async def _in_company_scope(
     return await _company_allows(user, row_from_event(event).get("company_code"))
 
 
-async def _history_in_company_scope(
+async def history_in_company_scope(
     d: EntityDescriptor, entity_id: str, events: list[dict],
     user: dict, tenant_db, account_id: int,
 ) -> bool:
@@ -130,7 +130,7 @@ async def entity_history(
     # for company-scoped entities: their own by-id routes 404 a
     # restricted caller, and a history lens that didn't would re-open
     # the id-guessing path those guards exist to close.
-    if not await _history_in_company_scope(
+    if not await history_in_company_scope(
         d, str(entity_id), events, user, tenant_db, user["account_id"],
     ):
         raise HTTPException(status_code=404, detail="Not found")

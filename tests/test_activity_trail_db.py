@@ -195,7 +195,10 @@ class TestMaintenanceAdoption:
         await db.delete_maintenance_tasks_bulk(
             acct.id, ids, actor_user_id=owner.id, trail_group_id=group,
         )
-        feed = await account_activity(db, acct.id, limit=50)
+        feed = await account_activity(
+            db, acct.id, limit=50,
+            viewer_can_see={"maintenance_task": True},
+        )
         groups = [e for e in feed if e.get("is_group")]
         assert len(groups) == 1
         assert groups[0]["count"] == 2
@@ -356,7 +359,7 @@ class TestHistoryCompanyWall:
             orig = trail_router.get_user_company_codes
             trail_router.get_user_company_codes = _codes
             try:
-                return await trail_router._history_in_company_scope(
+                return await trail_router.history_in_company_scope(
                     d, str(tid), events, {"role": "fleet"}, db, acct.id,
                 )
             finally:
@@ -392,7 +395,7 @@ class TestHistoryCompanyWall:
             orig = trail_router.get_user_company_codes
             trail_router.get_user_company_codes = _codes
             try:
-                return await trail_router._history_in_company_scope(
+                return await trail_router.history_in_company_scope(
                     d, str(tid), events, {"role": "fleet"}, db, acct.id,
                 )
             finally:

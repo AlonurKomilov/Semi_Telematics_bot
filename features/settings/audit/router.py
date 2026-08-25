@@ -66,26 +66,6 @@ async def _resolve_actor_names(
         e["actor_name"] = space.get(uid, f"#{uid}")
 
 
-async def _viewer_flags(user: dict) -> dict:
-    """Which entity-types THIS viewer may read values for — driven by
-    each feature's own declaration (registry view_permissions), so the
-    trail can't become a side door around per-feature gates."""
-    from capabilities.activity_trail.registry import (
-        _ENTITIES, ensure_declarations_loaded,
-    )
-    from capabilities.permissions.roles import Role, get_user_permissions
-    ensure_declarations_loaded()
-    perms = await get_user_permissions(
-        Role(user["role"]), user["account_id"],
-        is_manager=bool(user.get("is_manager")),
-        is_primary_owner=bool(user.get("is_primary_owner")),
-    )
-    return {
-        et: any(getattr(perms, p, False) for p in d.view_permissions)
-        for et, d in _ENTITIES.items()
-    }
-
-
 @router.get("/activity")
 async def get_activity(
     limit: int = Query(100, ge=1, le=200),
@@ -99,10 +79,11 @@ async def get_activity(
     human rows, one shape, newest first, bulk actions collapsed into
     groups (expand via ``/admin/activity/group/{group_id}``)."""
     from capabilities.activity_trail.facade import account_activity
+    from capabilities.activity_trail.registry import viewer_entity_flags
     events = await account_activity(
         tenant_db, user["account_id"],
         limit=limit, before_ts=before, entity_type=entity_type,
-        viewer_can_see=await _viewer_flags(user),
+        viewer_can_see=await viewer_entity_flags(user),
     )
     await _resolve_actor_names(tenant_db, user["account_id"], events)
     return {"events": events, "count": len(events)}
@@ -118,7 +99,7 @@ async def get_activity_group(
     per-entity recovery record; never truncated)."""
     from capabilities.activity_trail.facade import normalize_trail
     from capabilities.activity_trail.registry import (
-        ensure_declarations_loaded, entity_descriptor,
+        ensure_declarations_loaded, entity_descriptor, viewer_entity_flags,
     )
     from capabilities.activity_trail.restore import restorable
     from capabilities.activity_trail.sensitive import mask_changes
@@ -132,8 +113,15 @@ async def get_activity_group(
         is_manager=bool(user.get("is_manager")),
         is_primary_owner=bool(user.get("is_primary_owner")),
     )
+    # The same gate the feed applies.  A group is reached FROM the feed,
+    # so masking members here while the feed drops them would hand back
+    # through the expand link exactly what the feed withheld — and this
+    # route returns full, never-truncated bodies.
+    flags = await viewer_entity_flags(user)
     events = []
     for raw, e in zip(rows, [normalize_trail(r) for r in rows]):
+        if not flags.get(e["entity_type"], False):
+            continue
         d = entity_descriptor(e["entity_type"])
         # Restore is offered only when the viewer holds the OWNING
         # feature's manage permission — the audit page's broad audience
@@ -146,7 +134,7 @@ async def get_activity_group(
         # facade's prefixed wire id.
         e["event_id"] = raw["id"]
         events.append(e)
-    flags = await _viewer_flags(user)
+    # Defense in depth behind the drop above (no-op for rows that got here).
     for e in events:
         e["changes"] = mask_changes(
             e["entity_type"], e["changes"],

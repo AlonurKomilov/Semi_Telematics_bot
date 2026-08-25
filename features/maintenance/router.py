@@ -743,15 +743,40 @@ async def get_task_history(
     for DELETED tasks are still returned — that is the point: the
     History dialog answers "where did it go" after the row is gone.
     """
-    if not has_maintenance_access(user["role"]):
+    # The gate is the REGISTRY's, not a local role check.  This route
+    # used to ask has_maintenance_access(), which passes on
+    # can_maintenance_vehicle — driver grade — while the entity declares
+    # can_maintenance_all and the generic history endpoint enforces
+    # exactly that.  Two doors onto one trail must not have two locks.
+    from capabilities.activity_trail.registry import (
+        ensure_declarations_loaded, entity_descriptor,
+    )
+    from capabilities.activity_trail.router import history_in_company_scope
+    from capabilities.permissions.roles import Role, get_user_permissions
+    ensure_declarations_loaded()
+    d = entity_descriptor("maintenance_task")
+    perms = await get_user_permissions(
+        Role(user["role"]), user["account_id"],
+        is_manager=bool(user.get("is_manager")),
+        is_primary_owner=bool(user.get("is_primary_owner")),
+    )
+    if not (d and any(getattr(perms, p, False) for p in d.view_permissions)):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
-    if task:
-        await _require_company_visible_task(task, user)
     events = await tenant_db.list_activity_events(
         user["account_id"],
         entity_type="maintenance_task", entity_id=str(task_id),
     )
+    # The company wall runs UNCONDITIONALLY.  It used to hang off
+    # ``if task:`` — so a DELETED task skipped it entirely, and a delete
+    # event carries the whole row by contract (recorder.delete_changes).
+    # That handed any restricted caller the full body of any deleted
+    # task in any company, by guessing an id: precisely the hole the
+    # generic endpoint's wall was written to close.
+    if not await history_in_company_scope(
+        d, str(task_id), events, user, tenant_db, user["account_id"],
+    ):
+        raise HTTPException(status_code=404, detail="Task not found")
     if not task and not events:
         raise HTTPException(status_code=404, detail="Task not found")
     names: dict[int, str] = {}

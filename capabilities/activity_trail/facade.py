@@ -128,7 +128,7 @@ async def account_activity(
     limit: int = 100,
     before_ts: Optional[str] = None,
     entity_type: Optional[str] = None,
-    viewer_can_see: Optional[dict[str, bool]] = None,
+    viewer_can_see: dict[str, bool],
     collapse: bool = True,
 ) -> list[dict]:
     """The account-wide lens: all four arms, merged newest-first.
@@ -136,25 +136,56 @@ async def account_activity(
     Each arm is fetched up to ``limit`` so the merged page is always
     complete down to its cut-off timestamp; keyset pagination continues
     with ``before_ts`` = the last row's ``created_at``.
+
+    ``viewer_can_see`` is the GATE, not a hint, and it is REQUIRED —
+    build it with ``registry.viewer_entity_flags(user)``.  An entity the
+    viewer may not open on its own page is DROPPED here, whole: this
+    lens once passed the same map to field-masking instead, which meant
+    an entity that declared no ``sensitive_fields`` (23 of 26 of them)
+    printed its values in full to anyone holding can_manage_users.
+    Dropping the row is what the registry always promised — "the view
+    gate is the OWNING feature's permission, so the trail can never
+    become a side door around a feature gate" — and unlike masking it
+    also covers ``context``, ``note``, ``entity_id`` and ``action``,
+    which no field allowlist can reach.
+
+    Unregistered entity types are absent from the map and therefore
+    dropped (``.get(et, False)``) — deliberately, so a writer that
+    emits an unknown or empty entity_type fails closed.
+
+    The keyword is positional-order-free and has NO default on purpose:
+    a caller that forgets it gets a TypeError, never a silent leak.
     """
     fetch = limit
-    trail = [normalize_trail(e) for e in await db.list_activity_events(
-        account_id, before_ts=before_ts, limit=fetch,
-        entity_type=entity_type,
-    )]
-    if entity_type is None or entity_type == "load":
+    flags = viewer_can_see
+    # Filter each arm BEFORE the merge so ``limit`` counts rows the
+    # viewer will actually receive, and so arms they cannot see are
+    # never fetched at all.
+    trail = [
+        ev for ev in (
+            normalize_trail(e) for e in await db.list_activity_events(
+                account_id, before_ts=before_ts, limit=fetch,
+                entity_type=entity_type,
+            )
+        )
+        if flags.get(ev["entity_type"], False)
+    ]
+    if (entity_type is None or entity_type == "load") and flags.get("load", False):
         loads = [normalize_load(e) for e in await db.list_trail_legacy_loads(
             account_id, before_ts=before_ts, limit=fetch)]
     else:
         loads = []
-    if entity_type is None or entity_type == "inventory_item":
+    if ((entity_type is None or entity_type == "inventory_item")
+            and flags.get("inventory_item", False)):
         inv = [normalize_inventory(e) for e in
                await db.list_trail_legacy_inventory(
                    account_id, before_ts=before_ts, limit=fetch)]
     else:
         inv = []
     merged = merge_arms(trail, loads, inv, limit=limit)
-    flags = viewer_can_see or {}
+    # Field masking stays as defense in depth behind the filter: every
+    # row here already passed the gate, so this is a no-op unless a
+    # future bug lets one through.
     for ev in merged:
         ev["changes"] = mask_changes(
             ev["entity_type"], ev["changes"],

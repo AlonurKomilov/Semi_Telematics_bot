@@ -391,3 +391,218 @@ def test_scope_exemptions_stay_honest():
         assert not d.company_scoped, (
             f"{et} now declares the wall — drop its exemption"
         )
+
+
+# ── the account-wide feed's GATE (security review, 2026-08-24) ──────
+#
+# /admin/activity is gated on can_manage_users alone.  It computed the
+# right per-entity answer and then spent it on FIELD MASKING instead of
+# access: `viewer_can_see` reached mask_changes, never a row filter.
+# 23 of 26 entities declare no sensitive_fields, so that mask was a
+# no-op — an HR user (can_manage_users yes, can_kpi no) read dispatcher
+# payouts, load rates, work-order invoices and vendor contacts straight
+# off the audit page.  Masking also only ever covered `changes`: never
+# `context`, `note`, `entity_id` or `action`.
+#
+# These pin the fix: an entity you cannot open on its own page is
+# ABSENT from the feed, whole.
+
+class _FakeTrailDB:
+    """The three arms account_activity fetches, with no database."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def list_activity_events(self, account_id, *, before_ts=None,
+                                   limit=100, entity_type=None, group_id=None):
+        return [r for r in self._rows
+                if entity_type is None or r["entity_type"] == entity_type]
+
+    async def list_trail_legacy_loads(self, *a, **k):
+        return []
+
+    async def list_trail_legacy_inventory(self, *a, **k):
+        return []
+
+
+def _trail_row(i, entity_type, marker="x"):
+    """Every wire field carries the marker, so a test can prove the whole
+    event left — not just its `changes`, the one field masking covered."""
+    return {
+        "id": i, "entity_type": entity_type, "entity_id": f"id-{marker}",
+        "action": "update", "actor_user_id": 7, "group_id": None,
+        "changes": {f"dollars_{marker}": {"from": 900, "to": 1200}},
+        "context": {"dispatcher": f"person-{marker}"},
+        "note": f"note-{marker}",
+        "created_at": f"2026-08-24T10:0{i}:00+00:00",
+    }
+
+
+def test_feed_gate_has_no_default_so_a_forgetful_caller_cannot_leak():
+    import inspect
+    from capabilities.activity_trail.facade import account_activity
+    p = inspect.signature(account_activity).parameters["viewer_can_see"]
+    assert p.default is inspect.Parameter.empty, (
+        "viewer_can_see must stay REQUIRED — a caller that omits the gate "
+        "has to get a TypeError, never a silently unfiltered feed"
+    )
+
+
+async def test_feed_drops_entities_the_viewer_cannot_open():
+    from capabilities.activity_trail.facade import account_activity
+    db = _FakeTrailDB([_trail_row(1, "kpi_run", "GATED"),
+                       _trail_row(2, "vehicle", "OPEN")])
+    # HR-shaped: holds can_manage_users (so it reached this feed at all)
+    # but not can_kpi.
+    feed = await account_activity(
+        db, 1, viewer_can_see={"kpi_run": False, "vehicle": True},
+    )
+    kinds = [e["entity_type"] for e in feed]
+    assert "kpi_run" not in kinds, "a gated entity must not reach the feed"
+    assert "vehicle" in kinds, "the viewer's own entities must still arrive"
+    # and it leaves with NOTHING attached — including the four wire
+    # fields no field-mask ever covered: context, note, entity_id, action.
+    blob = repr(feed)
+    assert "GATED" not in blob, (
+        "the gated event's payload survived the drop somewhere in "
+        f"changes/context/note/entity_id: {blob}"
+    )
+    assert "OPEN" in blob, "the visible event lost its payload"
+
+
+async def test_feed_fails_closed_on_unregistered_entity_types():
+    """The AI write path (capabilities/ai/actions.py) sets entity_type to
+    whatever the executor returned — often "" — and dumps the whole
+    approved tool payload into `note`, which no mask has ever covered.
+    An unknown type is absent from the flag map, so `.get(et, False)`
+    must drop it rather than wave it through."""
+    from capabilities.activity_trail.facade import account_activity
+    db = _FakeTrailDB([_trail_row(1, ""), _trail_row(2, "not_a_real_entity")])
+    feed = await account_activity(db, 1, viewer_can_see={"vehicle": True})
+    assert feed == [], "unregistered entity types must fail closed"
+
+
+async def test_company_restricted_viewer_loses_company_scoped_entities():
+    """Team Management's data scope is the second axis of one access
+    model.  The aggregate feed cannot test a row's company (create and
+    update events record only what CHANGED, and the company almost
+    never does), so a restricted viewer is refused company_scoped
+    entities wholesale and reads them through the per-record endpoint,
+    which resolves the owning row."""
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded, viewer_entity_flags,
+    )
+    import capabilities.activity_trail.registry as reg
+    ensure_declarations_loaded()
+    scoped = [et for et, d in _ENTITIES.items() if d.company_scoped]
+    assert scoped, "expected at least one company_scoped entity"
+
+    class _Perms:
+        def __getattr__(self, _name):      # holds every feature flag
+            return True
+
+    async def _all_perms(*a, **k):
+        return _Perms()
+
+    import capabilities.permissions.roles as roles
+    import interfaces.api.deps as deps
+    real_perms, real_codes = roles.get_user_permissions, deps.get_user_company_codes
+    try:
+        roles.get_user_permissions = _all_perms
+
+        async def _restricted(_user):
+            return ["ALPHA"]
+        deps.get_user_company_codes = _restricted
+        flags = await viewer_entity_flags(
+            {"role": "owner", "account_id": 1})
+        for et in scoped:
+            assert flags[et] is False, (
+                f"{et} is company_scoped and must be withheld from a "
+                "company-restricted viewer's aggregate feed"
+            )
+
+        async def _unrestricted(_user):
+            return []
+        deps.get_user_company_codes = _unrestricted
+        flags = await viewer_entity_flags(
+            {"role": "owner", "account_id": 1})
+        for et in scoped:
+            assert flags[et] is True, (
+                f"{et} must stay visible to an unrestricted viewer"
+            )
+    finally:
+        roles.get_user_permissions = real_perms
+        deps.get_user_company_codes = real_codes
+
+
+def test_registry_restore_permissions_are_real_featureset_flags_too():
+    """getattr(perms, p, False) swallows a typo silently — a misspelled
+    flag reads as 'denied' for view (safe) but the same pattern gates
+    restore, so both directions of the SSOT join get pinned."""
+    from dataclasses import fields
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded,
+    )
+    from capabilities.permissions.roles import FeatureSet
+    ensure_declarations_loaded()
+    real_flags = {f.name for f in fields(FeatureSet)}
+    for et, d in _ENTITIES.items():
+        for p in d.restore_permissions:
+            assert p in real_flags, (
+                f"{et} declares unknown restore permission {p!r}"
+            )
+
+
+# ── the AI write path speaks the registry's vocabulary ─────────────
+#
+# capabilities/ai/actions.py serialises the WHOLE approved tool payload
+# into `note`, which no field-mask has ever covered.  Post-fix the feed
+# gates on entity type, so the payload now rides the target feature's
+# own permission — but only if the executor names a type the registry
+# knows.  It didn't: executors return "vehicle_inventory" while the
+# registry calls it "inventory_item", and "alert" has no trail entity
+# at all.  Unmapped names are invisible to EVERY reader (fail-closed),
+# which would have deleted AI writes from the audit log instead.
+
+def test_ai_trail_entity_resolves_or_falls_back_to_a_registered_type():
+    from capabilities.ai.actions import _trail_entity_type
+    assert _trail_entity_type({"target_type": "work_order"}) == "work_order"
+    # the registry's name for the same thing
+    assert _trail_entity_type({"target_type": "vehicle_inventory"}) == "inventory_item"
+    # nothing named, nothing owning it → the account's own gate
+    assert _trail_entity_type({"target_type": ""}) == "account"
+    assert _trail_entity_type(None) == "account"
+    assert _trail_entity_type({"target_type": "not_a_feature"}) == "account"
+
+
+def test_ai_write_target_types_are_registered_trail_entities():
+    """Pins the executor vocabulary against the registry, in both
+    directions — a new AI tool that invents a target_type fails here
+    rather than quietly vanishing from the audit log."""
+    import pathlib
+    import re
+    from capabilities.activity_trail.registry import (
+        ensure_declarations_loaded, registered_entity_types,
+    )
+    from capabilities.ai.actions import _AI_TRAIL_ENTITY
+    ensure_declarations_loaded()
+    reg = registered_entity_types()
+    root = pathlib.Path(__file__).resolve().parent.parent
+    found: set[str] = set()
+    for py in (list((root / "features").rglob("*.py"))
+               + list((root / "capabilities").rglob("*.py"))):
+        for m in re.finditer(r'"target_type":\s*"([a-z_]+)"', py.read_text()):
+            found.add(m.group(1))
+    assert found, "no executor target_type literals found — pattern changed?"
+    # Deliberately filed against the account: the trail owns no entity
+    # for these, so can_manage_account is their honest home.
+    account_filed = {"alert"}
+    for t in sorted(found):
+        mapped = _AI_TRAIL_ENTITY.get(t, t)
+        assert mapped in reg or t in account_filed, (
+            f"AI executors return target_type {t!r}, which is neither a "
+            f"registered trail entity, nor mapped in _AI_TRAIL_ENTITY, nor "
+            f"listed as deliberately account-filed. The trail gates on the "
+            f"entity type, so an unknown one makes that AI write invisible "
+            f"to every reader."
+        )

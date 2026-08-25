@@ -41,6 +41,32 @@ logger = logging.getLogger(__name__)
 HIGH_RISK_WRITES_ENABLED = False
 
 
+# Executors name their target in their OWN vocabulary; the trail's gate
+# IS the entity type, resolved through the registry.  A type the registry
+# does not know is invisible to every reader (fail-closed by design), so
+# an unmapped name would silently delete AI writes from the audit log
+# rather than leak them.  Two names differ today — the registry calls
+# vehicle inventory ``inventory_item``, and alerts have no trail entity —
+# and ``test_ai_write_target_types_are_registered_trail_entities`` fails
+# the moment a new executor invents a third.
+_AI_TRAIL_ENTITY: dict[str, str] = {
+    "vehicle_inventory": "inventory_item",
+}
+
+
+def _trail_entity_type(result) -> str:
+    from capabilities.activity_trail.registry import (
+        ensure_declarations_loaded, registered_entity_types,
+    )
+    ensure_declarations_loaded()
+    raw = str(result.get("target_type", "")) if isinstance(result, dict) else ""
+    et = _AI_TRAIL_ENTITY.get(raw, raw)
+    # No owning feature (or none named): file it against the account, whose
+    # can_manage_account gate is the right home for "the AI wrote something
+    # under your name" when no feature owns the row.
+    return et if et in registered_entity_types() else "account"
+
+
 async def execute_approved_action(
     proposal_id: str,
     *,
@@ -144,7 +170,7 @@ async def execute_approved_action(
         await record_simple(
             tenant_db, account_id, await _resolve_uid(user),
             f"ai_write:{tool}",
-            str(result.get("target_type", "")) if isinstance(result, dict) else "",
+            _trail_entity_type(result),
             str(result.get("target_id", "")) if isinstance(result, dict) else "",
             context={"proposal_id": proposal_id},
             note=json.dumps({"payload": payload}, default=str)[:1500],
@@ -276,7 +302,7 @@ async def undo_approved_action(
         await record_simple(
             tenant_db, account_id, await _resolve_uid(user),
             f"ai_undo:{tool}",
-            str(result.get("target_type", "")) if isinstance(result, dict) else "",
+            _trail_entity_type(result),
             str(result.get("target_id", "")) if isinstance(result, dict) else "",
             context={"proposal_id": proposal_id,
                      "approved_by": prop.get("user_id")},
