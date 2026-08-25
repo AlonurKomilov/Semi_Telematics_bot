@@ -124,7 +124,7 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
       )}
       {!isLoading && !error && summary && summary.days_with_data > 0 && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-fit-36 gap-2">
             <StatTile
               label="Miles"
               value={summary.total_miles.toLocaleString()}

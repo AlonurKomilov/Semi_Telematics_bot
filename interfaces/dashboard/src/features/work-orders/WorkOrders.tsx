@@ -335,7 +335,7 @@ export default function WorkOrders() {
       {/* Summary strip — total count + total spend.  Same visual
           weight as the maintenance summary cards so the two modules
           feel related. */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-fit-36 gap-3 mb-6">
         <Card padding="compact">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_count')}</p>
           <p className="text-xl font-bold tabular-nums">{workOrders.length}</p>

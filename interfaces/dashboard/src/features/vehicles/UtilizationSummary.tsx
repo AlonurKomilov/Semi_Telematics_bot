@@ -63,7 +63,7 @@ export default function UtilizationSummary() {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-fit-36 gap-3 mb-4">
         <div className="bg-muted/40 border border-border rounded-md p-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Fleet utilization</div>
           <div className="mt-1 text-lg font-semibold tabular-nums">{pct(fleetUtilPct)}</div>

@@ -236,6 +236,16 @@ export default {
       ringWidth: {
         3: '3px',
       },
+      // Container-relative stat grids. `md:grid-cols-4` asks the
+      // VIEWPORT, and the assistant panel narrows the CONTAINER without
+      // touching it — so a four-up strip held four columns at ~70px each
+      // and a currency value painted outside its own card. `auto-fit`
+      // wraps on the space actually available, and the minimum rides the
+      // layout axis so the wrap point moves with the content inside it.
+      gridTemplateColumns: {
+        'fit-36': `repeat(auto-fit, minmax(${scaled('9rem', 'layout')}, 1fr))`,
+        'fit-48': `repeat(auto-fit, minmax(${scaled('12rem', 'layout')}, 1fr))`,
+      },
       borderRadius: {
         DEFAULT: 'max(0px, calc(var(--radius) - 3px))',
         sm: 'max(0px, calc(var(--radius) - 4px))',

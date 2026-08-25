@@ -370,11 +370,11 @@ export default function Reports() {
         <>
           {/* ── Summary cards ───────────────────────────────────── */}
           {loading || !s ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-fit-36 gap-3 mb-6">
               {[0, 1, 2, 3].map(i => <CardSkeleton key={i} />)}
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-fit-36 gap-3 mb-6">
               {/* Cost-sensitive metrics: "spend went up" reads as bad,
                   so higherIsBad=true.  Vendor count is neutral —
                   more vendors isn't inherently good or bad. */}

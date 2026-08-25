@@ -101,7 +101,7 @@ export default function DriverOverview({
                 {truck.status}
               </span>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-fit-36 gap-4">
               <div>
                 <p className="text-xs text-muted-foreground">Speed</p>
                 <p className="text-xl font-bold text-foreground mt-1">
@@ -146,7 +146,7 @@ export default function DriverOverview({
             )}
           </Card>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-fit-36 gap-4">
             <KpiCard
               label="My alerts"
               value={stats.my_alerts ?? 0}

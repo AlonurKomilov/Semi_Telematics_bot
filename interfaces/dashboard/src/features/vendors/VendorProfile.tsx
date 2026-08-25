@@ -307,7 +307,7 @@ export default function VendorProfile() {
       ) : vendor && (
         <>
           {/* Contact + rollups */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-fit-36 gap-3 mb-4">
             <Card padding="compact">
               <p className="text-xs text-muted-foreground">Contact</p>
               <p className="text-sm mt-1">{vendor.phone || '—'}</p>

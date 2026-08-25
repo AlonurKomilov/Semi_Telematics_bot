@@ -38,7 +38,7 @@ export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSec
   const vehiclesHref = has('can_vehicle_all') ? '/vehicles' : undefined;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-fit-36 gap-4 mb-6">
       <KpiCard
         label="Total vehicles"
         value={total}

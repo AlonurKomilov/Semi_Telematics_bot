@@ -26,8 +26,19 @@ export default function PageHeader({
   const isExternal = helpHref?.startsWith('http');
   return (
     <div className="mb-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
+      {/* `flex-wrap` + a floor under the title, because the shortfall used
+          to land entirely on the title. The actions are `shrink-0` and the
+          title side was `min-w-0 flex-1` — allowed to shrink to nothing —
+          so at 150% with the assistant panel open a browser audit measured
+          <h1>Vehicles</h1> at width 0: scrollWidth 152, overflow hidden,
+          not even room for the ellipsis. The icon and the ⓘ were all that
+          was left of the page's name.
+          Breakpoints cannot fix this. The assistant narrows the CONTAINER
+          without changing the viewport, so `md:` never fires. `min-w-64`
+          is container-relative: when the row cannot give the title 16rem
+          AND fit the actions, the actions wrap to their own line. */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-64 grow">
           <div className="flex items-center gap-2.5">
             {Icon && (
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">

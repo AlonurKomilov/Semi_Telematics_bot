@@ -134,10 +134,15 @@ function tierBadge(tier: string): string {
 
 function Stat({ label, value, accent, sub }: { label: string; value: string; accent?: string; sub?: string }) {
   return (
+    // `truncate` on all three lines: "$341.19" painted 59px outside its
+    // tile and 35px outside the card, onto the page background —
+    // `overflow: visible`, and nothing to stop it. The grid that let the
+    // tile get that narrow is fixed separately (grid-cols-fit-36); this
+    // is the backstop that means a number can never escape again.
     <div className="bg-muted rounded-lg p-3">
-      <p className="text-xs text-muted-foreground mb-1">{label}</p>
-      <p className={`text-xl font-bold ${accent ?? 'text-foreground'}`}>{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      <p className="text-xs text-muted-foreground mb-1 truncate">{label}</p>
+      <p className={`text-xl font-bold truncate ${accent ?? 'text-foreground'}`}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-0.5 truncate">{sub}</p>}
     </div>
   );
 }
@@ -245,7 +250,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-fit-36 gap-3 mb-5">
         <Stat label="Active Vehicles" value={String(summary.active_vehicles)}
               sub={summary.inactive_vehicles > 0 ? `${summary.inactive_vehicles} parked` : 'last 3 days'} />
         <Stat label="Included" value={String(summary.base_vehicles)} sub="per plan" />
@@ -335,7 +340,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
         <SectionHeader>AI Usage</SectionHeader>
         <span className="text-xs text-muted-foreground">Last {ai.days} days</span>
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-fit-36 gap-3 mb-5">
         <Stat label="Total Requests" value={fmtNum(ai.total_requests)} accent="text-primary" />
         <Stat label="Total Tokens" value={fmtNum(ai.total_tokens)} accent="text-chart-1"
               sub="included in plan" />
