@@ -198,6 +198,7 @@ class TestMaintenanceAdoption:
         feed = await account_activity(
             db, acct.id, limit=50,
             viewer_can_see={"maintenance_task": True},
+            allowed_companies=[],
         )
         groups = [e for e in feed if e.get("is_group")]
         assert len(groups) == 1

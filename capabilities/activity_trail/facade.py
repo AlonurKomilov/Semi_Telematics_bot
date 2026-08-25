@@ -121,6 +121,86 @@ def collapse_groups(events: list[dict]) -> list[dict]:
     return out
 
 
+# The delete-shaped actions whose event body carries the whole row —
+# the same list the per-record wall uses (activity_trail/router.py).
+_BODY_BEARING_ACTIONS = ("delete", "merge_away", "deactivate")
+
+
+async def filter_company_scoped(
+    db: Any, account_id: int, events: list[dict], allowed: list[str],
+) -> list[dict]:
+    """Team Management's data scope, applied to an aggregate page.
+
+    A company-scoped event carries no company of its own: create and
+    update diffs record only what CHANGED, and the company almost never
+    does.  The owning ROW is the source of truth — which the per-record
+    wall reads one row at a time.  Here that would be N+1, so this
+    resolves per TABLE instead: there are only ever two owning tables,
+    so the whole wall costs at most two queries for a page, and none at
+    all for an unrestricted viewer (the common case, and always the
+    owner).
+
+    Deleted records are absent from their table, so they fall back to
+    their own delete body, which does carry ``company_code`` — exactly
+    the fallback ``history_in_company_scope`` uses.
+
+    Unresolvable means WITHHELD: blank/unknown fails closed for a
+    restricted caller, matching ``_company_allows``.  One asymmetry is
+    deliberate: a create/update event of a DELETED own-company record
+    stays withheld here, because only its delete event self-resolves.
+    The per-record endpoint still shows it (it scans all of an entity's
+    events and resolves once); closing that in the feed is the N+1 this
+    design exists to avoid.
+    """
+    if not allowed:
+        return events                      # unrestricted: nothing to do
+    from interfaces.api.deps import filter_by_allowed_companies
+    from .registry import ensure_declarations_loaded, entity_descriptor
+    from .restore import row_from_event
+    ensure_declarations_loaded()
+
+    def _scoped(ev):
+        d = entity_descriptor(ev["entity_type"])
+        return d if (d and d.company_scoped) else None
+
+    # One id-set per owning table.
+    need: dict[str, set[int]] = {}
+    for ev in events:
+        d = _scoped(ev)
+        if not (d and d.restore_table):
+            continue
+        try:
+            need.setdefault(d.restore_table, set()).add(int(ev["entity_id"]))
+        except (TypeError, ValueError):
+            continue                       # non-numeric id: unresolvable
+    resolved: dict[str, dict[int, str]] = {}
+    for table, ids in need.items():
+        resolved[table] = await db.get_rows_company_codes(
+            account_id, table, sorted(ids),
+        )
+
+    out: list[dict] = []
+    for ev in events:
+        d = _scoped(ev)
+        if d is None:
+            out.append(ev)                 # not company-scoped
+            continue
+        company = None
+        if d.restore_table:
+            try:
+                company = resolved.get(d.restore_table, {}).get(int(ev["entity_id"]))
+            except (TypeError, ValueError):
+                company = None
+        if company is None and ev.get("action") in _BODY_BEARING_ACTIONS:
+            company = row_from_event(ev).get("company_code")
+        # ONE matching rule, shared with the per-record wall.
+        if filter_by_allowed_companies(
+            [{"company_code": company or ""}], allowed, key="company_code",
+        ):
+            out.append(ev)
+    return out
+
+
 async def account_activity(
     db: Any,
     account_id: int,
@@ -129,6 +209,7 @@ async def account_activity(
     before_ts: Optional[str] = None,
     entity_type: Optional[str] = None,
     viewer_can_see: dict[str, bool],
+    allowed_companies: list[str],
     collapse: bool = True,
 ) -> list[dict]:
     """The account-wide lens: all four arms, merged newest-first.
@@ -170,6 +251,8 @@ async def account_activity(
         )
         if flags.get(ev["entity_type"], False)
     ]
+    # …then the company wall, on the arm that carries scoped entities.
+    trail = await filter_company_scoped(db, account_id, trail, allowed_companies)
     if (entity_type is None or entity_type == "load") and flags.get("load", False):
         loads = [normalize_load(e) for e in await db.list_trail_legacy_loads(
             account_id, before_ts=before_ts, limit=fetch)]

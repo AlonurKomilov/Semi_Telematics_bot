@@ -289,6 +289,42 @@ class ActivityTrailMixin(_MixinBase):
         r = await cur.fetchone()
         return (r[0] or "") if r else None
 
+    async def get_rows_company_codes(
+        self, account_id: int, table: str, ids: list[int],
+    ) -> dict[int, str]:
+        """Batched ``get_row_company_code`` — one query per TABLE, not per row.
+
+        The aggregate feed needs the company of every company-scoped row
+        on the page.  Row-at-a-time would be N+1; there are only ever
+        two owning tables (maintenance_tasks, work_orders), so the whole
+        wall costs at most two queries per page, and none at all for an
+        unrestricted viewer.
+
+        Missing ids are simply absent from the result — the caller
+        decides what an unresolvable row means (for a restricted viewer:
+        withheld).  Same allowlist discipline as the single-row reader
+        and the restore writer: the table name is never caller-supplied
+        from the wire.
+        """
+        allowed = self.RESTORABLE_COLUMNS.get(table)
+        if allowed is None or "company_code" not in allowed:
+            raise ValueError(f"table {table!r} carries no company scope")
+        if not ids:
+            return {}
+        out: dict[int, str] = {}
+        # Chunked so a huge page cannot build an unbounded IN list.
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ",".join("?" for _ in chunk)
+            cur = await self._db.execute(
+                f"SELECT id, company_code FROM {table} "
+                f"WHERE account_id = ? AND id IN ({marks})",
+                (account_id, *chunk),
+            )
+            for r in await cur.fetchall():
+                out[int(r[0])] = r[1] or ""
+        return out
+
     async def restore_trail_row(
         self, account_id: int, table: str, entity_id: int,
         row: dict[str, Any],

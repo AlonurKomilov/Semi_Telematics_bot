@@ -80,10 +80,12 @@ async def get_activity(
     groups (expand via ``/admin/activity/group/{group_id}``)."""
     from capabilities.activity_trail.facade import account_activity
     from capabilities.activity_trail.registry import viewer_entity_flags
+    from interfaces.api.deps import get_user_company_codes
     events = await account_activity(
         tenant_db, user["account_id"],
         limit=limit, before_ts=before, entity_type=entity_type,
         viewer_can_see=await viewer_entity_flags(user),
+        allowed_companies=await get_user_company_codes(user),
     )
     await _resolve_actor_names(tenant_db, user["account_id"], events)
     return {"events": events, "count": len(events)}
@@ -98,15 +100,24 @@ async def get_activity_group(
     """Every member event of one bulk action — full changes each (the
     per-entity recovery record; never truncated)."""
     from capabilities.activity_trail.facade import normalize_trail
+    from capabilities.activity_trail.facade import filter_company_scoped
     from capabilities.activity_trail.registry import (
         ensure_declarations_loaded, entity_descriptor, viewer_entity_flags,
     )
+    from interfaces.api.deps import get_user_company_codes
     from capabilities.activity_trail.restore import restorable
     from capabilities.activity_trail.sensitive import mask_changes
     from capabilities.permissions.roles import Role, get_user_permissions
     ensure_declarations_loaded()
     rows = await tenant_db.list_activity_events(
         user["account_id"], group_id=group_id, limit=500,
+    )
+    # The company wall, before anything is shaped for the wire.  This
+    # route hands back FULL bodies, so a member of another company
+    # reached through the expand link would leak every field of it.
+    rows = await filter_company_scoped(
+        tenant_db, user["account_id"], rows,
+        await get_user_company_codes(user),
     )
     perms = await get_user_permissions(
         Role(user["role"]), user["account_id"],

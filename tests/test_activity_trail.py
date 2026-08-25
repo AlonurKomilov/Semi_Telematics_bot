@@ -424,6 +424,13 @@ class _FakeTrailDB:
     async def list_trail_legacy_inventory(self, *a, **k):
         return []
 
+    # The owning-table lookup the company wall batches.  Keyed by table.
+    companies: dict[str, dict[int, str]] = {}
+
+    async def get_rows_company_codes(self, account_id, table, ids):
+        known = self.companies.get(table, {})
+        return {i: known[i] for i in ids if i in known}
+
 
 def _trail_row(i, entity_type, marker="x"):
     """Every wire field carries the marker, so a test can prove the whole
@@ -456,6 +463,7 @@ async def test_feed_drops_entities_the_viewer_cannot_open():
     # but not can_kpi.
     feed = await account_activity(
         db, 1, viewer_can_see={"kpi_run": False, "vehicle": True},
+        allowed_companies=[],
     )
     kinds = [e["entity_type"] for e in feed]
     assert "kpi_run" not in kinds, "a gated entity must not reach the feed"
@@ -478,61 +486,42 @@ async def test_feed_fails_closed_on_unregistered_entity_types():
     must drop it rather than wave it through."""
     from capabilities.activity_trail.facade import account_activity
     db = _FakeTrailDB([_trail_row(1, ""), _trail_row(2, "not_a_real_entity")])
-    feed = await account_activity(db, 1, viewer_can_see={"vehicle": True})
+    feed = await account_activity(
+        db, 1, viewer_can_see={"vehicle": True}, allowed_companies=[])
     assert feed == [], "unregistered entity types must fail closed"
 
 
-async def test_company_restricted_viewer_loses_company_scoped_entities():
-    """Team Management's data scope is the second axis of one access
-    model.  The aggregate feed cannot test a row's company (create and
-    update events record only what CHANGED, and the company almost
-    never does), so a restricted viewer is refused company_scoped
-    entities wholesale and reads them through the per-record endpoint,
-    which resolves the owning row."""
+async def test_feed_gate_no_longer_clamps_company_scoped_entities():
+    """The FEATURE axis is all this map answers.  It used to also clamp
+    company_scoped types off wholesale for a restricted viewer, which
+    withheld their OWN companies' rows too; the real per-row wall now
+    lives in the facade, so the flag map must not pre-empt it."""
     from capabilities.activity_trail.registry import (
         _ENTITIES, ensure_declarations_loaded, viewer_entity_flags,
     )
-    import capabilities.activity_trail.registry as reg
     ensure_declarations_loaded()
     scoped = [et for et, d in _ENTITIES.items() if d.company_scoped]
     assert scoped, "expected at least one company_scoped entity"
 
     class _Perms:
-        def __getattr__(self, _name):      # holds every feature flag
+        def __getattr__(self, _name):
             return True
 
     async def _all_perms(*a, **k):
         return _Perms()
 
     import capabilities.permissions.roles as roles
-    import interfaces.api.deps as deps
-    real_perms, real_codes = roles.get_user_permissions, deps.get_user_company_codes
+    real = roles.get_user_permissions
     try:
         roles.get_user_permissions = _all_perms
-
-        async def _restricted(_user):
-            return ["ALPHA"]
-        deps.get_user_company_codes = _restricted
-        flags = await viewer_entity_flags(
-            {"role": "owner", "account_id": 1})
-        for et in scoped:
-            assert flags[et] is False, (
-                f"{et} is company_scoped and must be withheld from a "
-                "company-restricted viewer's aggregate feed"
-            )
-
-        async def _unrestricted(_user):
-            return []
-        deps.get_user_company_codes = _unrestricted
-        flags = await viewer_entity_flags(
-            {"role": "owner", "account_id": 1})
+        flags = await viewer_entity_flags({"role": "owner", "account_id": 1})
         for et in scoped:
             assert flags[et] is True, (
-                f"{et} must stay visible to an unrestricted viewer"
+                f"{et} must stay in the flag map — the company wall is "
+                "per-row, in the facade, not per-type here"
             )
     finally:
-        roles.get_user_permissions = real_perms
-        deps.get_user_company_codes = real_codes
+        roles.get_user_permissions = real
 
 
 def test_registry_restore_permissions_are_real_featureset_flags_too():
@@ -606,3 +595,75 @@ def test_ai_write_target_types_are_registered_trail_entities():
             f"entity type, so an unknown one makes that AI write invisible "
             f"to every reader."
         )
+
+
+# ── the company wall on the aggregate feed ─────────────────────────
+#
+# Team Management's data scope is the second axis of one access model.
+# The feed honoured neither: first not at all, then (interim) by
+# withholding company_scoped entities WHOLESALE, which also hid a
+# restricted viewer's OWN companies' rows.  The real wall resolves the
+# owning row in batch — two tables, so two queries a page, none for an
+# unrestricted viewer.
+
+def _scoped_row(i, entity_id, action="update", changes=None):
+    return {
+        "id": i, "entity_type": "work_order", "entity_id": str(entity_id),
+        "action": action, "actor_user_id": 7, "group_id": None,
+        "changes": changes if changes is not None else {"total_cost": {"from": 1, "to": 2}},
+        "context": {}, "note": "",
+        "created_at": f"2026-08-24T10:0{i}:00+00:00",
+    }
+
+
+async def test_company_wall_keeps_own_rows_and_drops_other_companies():
+    from capabilities.activity_trail.facade import filter_company_scoped
+    db = _FakeTrailDB([])
+    db.companies = {"work_orders": {1: "ALPHA", 2: "BETA"}}
+    events = [_scoped_row(1, 1), _scoped_row(2, 2)]
+    kept = await filter_company_scoped(db, 1, events, ["ALPHA"])
+    assert [e["entity_id"] for e in kept] == ["1"], (
+        "a restricted viewer must see their OWN company's rows and only those"
+    )
+    # unrestricted viewer: the wall is a no-op and costs no query
+    assert await filter_company_scoped(db, 1, events, []) == events
+
+
+async def test_company_wall_falls_back_to_the_delete_body():
+    """A deleted record is absent from its table, so its company comes
+    from its own delete event — which carries the whole row by
+    contract."""
+    from capabilities.activity_trail.facade import filter_company_scoped
+    db = _FakeTrailDB([])
+    db.companies = {"work_orders": {}}          # row is gone
+    mine = _scoped_row(1, 9, action="delete",
+                       changes={"company_code": {"from": "ALPHA", "to": None}})
+    theirs = _scoped_row(2, 8, action="delete",
+                         changes={"company_code": {"from": "BETA", "to": None}})
+    kept = await filter_company_scoped(db, 1, [mine, theirs], ["ALPHA"])
+    assert [e["entity_id"] for e in kept] == ["9"]
+
+
+async def test_company_wall_fails_closed_when_it_cannot_resolve():
+    """Blank/unknown is DENIED for a restricted caller — the same ruling
+    _company_allows makes on the per-record path."""
+    from capabilities.activity_trail.facade import filter_company_scoped
+    db = _FakeTrailDB([])
+    db.companies = {"work_orders": {}}
+    # live row gone AND not a delete event -> nothing can answer
+    orphan = _scoped_row(1, 42, action="update")
+    # non-numeric id -> unresolvable by construction
+    weird = _scoped_row(2, "not-an-id", action="update")
+    kept = await filter_company_scoped(db, 1, [orphan, weird], ["ALPHA"])
+    assert kept == [], "unresolvable company_scoped rows must be withheld"
+
+
+async def test_company_wall_leaves_unscoped_entities_alone():
+    """Only company_scoped entities are walled; the rest ride the
+    feature gate alone."""
+    from capabilities.activity_trail.facade import filter_company_scoped
+    db = _FakeTrailDB([])
+    db.companies = {"work_orders": {}}
+    vehicle = _trail_row(1, "vehicle", "OPEN")
+    kept = await filter_company_scoped(db, 1, [vehicle], ["ALPHA"])
+    assert kept == [vehicle]

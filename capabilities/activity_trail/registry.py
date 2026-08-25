@@ -74,27 +74,27 @@ async def viewer_entity_flags(user: dict) -> dict[str, bool]:
     """Which entity types THIS viewer may see AT ALL — one answer, one
     place, for every reader of the trail.
 
-    Two axes, exactly as the product models access (docs: the
+    This is the FEATURE axis only — the owning feature's
+    ``view_permissions``, any-of, the same predicate the per-record
+    endpoint uses to 403.  (The product models access on two axes: the
     Permissions matrix grants WHICH FEATURES a role holds; Team
-    Management sets WHOSE DATA a user sees):
+    Management sets WHOSE DATA a user sees.)
 
-      1. FEATURE — the owning feature's ``view_permissions``, any-of.
-         Same predicate the per-record endpoint uses to 403.
-      2. COMPANY — a viewer restricted to a subset of companies is
-         refused ``company_scoped`` entities wholesale here.  The
-         aggregate feed has no per-row company to test (create/update
-         events record only what CHANGED, and the company almost never
-         does), and resolving each row's owning table would be N+1 at
-         feed scale.  So the aggregate lens fails closed: a restricted
-         viewer reads those entities through the per-record endpoint,
-         which resolves the owning row and applies the real wall.
+    The COMPANY axis is deliberately NOT answered here.  This map is
+    keyed by entity TYPE, while company scope is a property of each
+    ROW — so it belongs where the rows are, in
+    ``facade.filter_company_scoped``.  An earlier edition clamped
+    ``company_scoped`` types off wholesale at this level, because a
+    per-row owning-table lookup read as N+1; with only two owning
+    tables it is two queries per page, so the clamp gave way to the
+    real wall and a restricted viewer now sees their own companies'
+    rows instead of none.
 
     A type absent from the map reads as False at every call site, so an
     UNREGISTERED entity_type — including the empty string the AI write
     path can emit — is invisible rather than exposed.  That is the
     whole reason callers must look flags up with ``.get(et, False)``.
     """
-    from interfaces.api.deps import get_user_company_codes
     from capabilities.permissions.roles import Role, get_user_permissions
     ensure_declarations_loaded()
     perms = await get_user_permissions(
@@ -102,12 +102,8 @@ async def viewer_entity_flags(user: dict) -> dict[str, bool]:
         is_manager=bool(user.get("is_manager")),
         is_primary_owner=bool(user.get("is_primary_owner")),
     )
-    restricted = bool(await get_user_company_codes(user))
     return {
-        et: (
-            any(getattr(perms, p, False) for p in d.view_permissions)
-            and not (restricted and d.company_scoped)
-        )
+        et: any(getattr(perms, p, False) for p in d.view_permissions)
         for et, d in _ENTITIES.items()
     }
 
