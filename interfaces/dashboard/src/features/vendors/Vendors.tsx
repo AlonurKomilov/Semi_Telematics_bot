@@ -31,6 +31,7 @@ import type { Vendor, DirectoryEntry, AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { toneClasses } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 function money(v: unknown): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -116,9 +117,9 @@ const directoryColumns: AnyColumn[] = [
   {
     key: 'linked_vendor_name', label: 'Your Vendor', sortable: true,
     render: (v) => (v ? (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('ok')}`}>
+      <Badge tone="ok">
         {String(v)}
-      </span>
+      </Badge>
     ) : <span className="text-muted-foreground">—</span>),
   },
 ];

@@ -3,15 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import {
-  HardDrive, Cloud, RefreshCcw, ExternalLink, Unlink, CheckCircle2,
-  AlertTriangle, Loader2,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Cloud, ExternalLink, HardDrive, Loader2, RefreshCcw, Star, Unlink } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { toneClasses } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 /**
  * Storage settings card — backend chooser + Google Drive connection.
@@ -274,9 +272,9 @@ export function BackendOption({
             {title}
             {active && <CheckCircle2 className="text-primary size-3" />}
             {recommended && !active && (
-              <span className={`text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded ${toneClasses('ok', { border: false })}`}>
-                ★
-              </span>
+              <Badge tone="ok" className="text-3xs uppercase tracking-wide">
+                <Star className="size-2.5" aria-hidden /> Recommended
+              </Badge>
             )}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">

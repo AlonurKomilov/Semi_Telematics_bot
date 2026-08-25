@@ -11,6 +11,7 @@ import { Switch } from '../../../components/ui/switch';
 import { ErrorState } from '../../../components/shell';
 import { useRoleView } from '../../../context/RoleViewContext';
 import { ROLE_ORDER, TYPE_LABELS, FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
+import { Badge } from '@/components/ui/badge';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
 // at the TOP of the card (it's the bot-topology decision, not an
@@ -348,20 +349,20 @@ export default function AlertRoutingSection({
           {/* Status chips render FLAT (no border) — border + hover is
               reserved for actions so state vs click-me reads at a
               glance (component-grammar rule from the UX audit). */}
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${toneClasses('ok')}`}>
+          <Badge tone="ok" className="gap-1.5">
             <Check className="size-3" />
             {bound.chat_title || bound.chat_id}
-          </span>
+          </Badge>
           {bound.last_error && (
             /* Delivery-health warning: posts to this group are failing
                (bot kicked / group deleted / lost admin) and per-persona
                routing never self-disables — surface it instead of the
                silent-forever failure the audit flagged. */
             <Tip label={bound.last_error}>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs ${toneClasses('warn')}`}>
+              <Badge tone="warn">
                 <AlertTriangle className="size-3" />
                 {t('alert_routing.delivery_failing')}
-              </span>
+              </Badge>
             </Tip>
           )}
           {editable && (
@@ -894,9 +895,9 @@ export default function AlertRoutingSection({
                         @{sub.bot_username}
                       </span>
                     ) : (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
+                      <Badge tone="neutral">
                         {t('alert_routing.main_sends')}
-                      </span>
+                      </Badge>
                     )}
                   </span>
                 </div>

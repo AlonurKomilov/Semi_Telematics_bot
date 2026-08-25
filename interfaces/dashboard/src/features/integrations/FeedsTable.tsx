@@ -18,6 +18,7 @@ import { Fragment, type ReactNode } from 'react';
 import { Database, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 export type FeedTone = 'info' | 'danger' | 'warn';
 
@@ -122,12 +123,9 @@ export default function FeedsTable({
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">{r.freshness}</span>
         {r.badge && (
-          <span
-            className={`${toneClasses(r.badge.tone)} shrink-0 max-w-44 truncate rounded-md px-1.5 py-0.5 text-2xs`}
-            title={r.badge.title}
-          >
+          <Badge tone={r.badge.tone} className="shrink-0 max-w-44 truncate" title={r.badge.title}>
             {r.badge.text}
-          </span>
+          </Badge>
         )}
         {r.cadence && (
           <span className="shrink-0 w-20 text-right text-2xs text-muted-foreground">

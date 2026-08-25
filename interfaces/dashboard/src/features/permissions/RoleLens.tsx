@@ -17,6 +17,7 @@ import { DRIVER_KEY, buildVerbGrid, driverBands, serviceRows } from './verbGrid'
 import type { TickRow, VerbFamily } from './verbGrid';
 import { isScoped } from './permRows';
 import type { PermFlag } from './permRows';
+import { Badge } from '@/components/ui/badge';
 
 const GRID = buildVerbGrid();
 const HEAD_COLS = 'grid grid-cols-[1fr_84px_84px_76px_84px]';
@@ -303,7 +304,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               </button>
             ))}
           </div>
-          <span className={`inline-flex items-baseline gap-1 min-w-0 px-2 py-0.5 rounded-md text-2xs ${toneClasses(deltaNames.length ? 'ok' : 'neutral')}`}>
+          <Badge tone={deltaNames.length ? 'ok' : 'neutral'} className="items-baseline min-w-0">
             {deltaNames.length ? (
               <>
                 <span className="font-semibold shrink-0">
@@ -323,7 +324,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 <span className="shrink-0 underline decoration-dotted cursor-help">+ Owner powers</span>
               </Tip>
             )}
-          </span>
+          </Badge>
         </div>
       )}
 

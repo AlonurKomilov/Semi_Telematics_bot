@@ -341,6 +341,7 @@ import { cn } from '@/lib/utils';
 import { iconSizeClass } from '@/lib/iconSize';
 import { Card } from '@/components/ui/card';
 import { Tip } from '@/components/tooltip';
+import { Badge } from '@/components/ui/badge';
 
 interface KBArticle {
   id: number;
@@ -1206,13 +1207,13 @@ function ArticleCard({
             </span>
             {a.visibility === 'public' ? (
               a.approved ? (
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ${toneClasses('ok')}`}>
+                <Badge tone="ok">
                   {t('knowledge.chip_public')}{a.target_role && a.target_role !== 'all' ? ` · ${a.target_role}` : ''}
-                </span>
+                </Badge>
               ) : (
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ${toneClasses('warn')}`}>
+                <Badge tone="warn">
                   {t('knowledge.chip_pending')}
-                </span>
+                </Badge>
               )
             ) : (
               // Private chip now also surfaces the role scope so a

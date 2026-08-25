@@ -33,6 +33,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useApplicationsQuery, type AppRow } from './useApplications';
 import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 // Lifecycle split for the grid's segment tabs: the working pipeline
 // vs the two terminal outcomes.  Finer stage slicing (Submitted /
@@ -445,9 +446,9 @@ const makeAppColumns = (tz: string): AnyColumn[] => [
             {r.first_name} {r.last_name}
             {r.duplicate && (
               <Tip label="Another application in this account shares an SSN, email, or phone">
-                <span className={`ml-1.5 rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>
+                <Badge tone="warn" className="ml-1.5">
                   re-applicant
-                </span>
+                </Badge>
               </Tip>
             )}
           </span>
@@ -958,10 +959,9 @@ export default function Applications() {
                     {l.is_active !== 1 ? 'revoked' : expired ? 'expired' : 'active'}
                   </span>
                   {(l.company_name || l.company_code) && (
-                    <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('info')}`}
-                      title="This link brands the application form for this carrier">
+                    <Badge tone="info" title="This link brands the application form for this carrier">
                       {l.company_name || l.company_code}
-                    </span>
+                    </Badge>
                   )}
                   <span className="font-medium">{l.label || '(no label)'}</span>
                   {l.source && <span className="text-muted-foreground text-xs">· {l.source}</span>}
@@ -1385,7 +1385,7 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
                   </p>
                   <div className="flex items-center justify-between">
                     <p className="text-2xs text-muted-foreground tabular-nums">{r.submitted_at ? formatDay(r.submitted_at, { timeZone: tz }) : '—'}</p>
-                    {r.duplicate && <span className={`rounded-md px-1 py-0.5 text-3xs ${toneClasses('warn')}`}>re-applicant</span>}
+                    {r.duplicate && <Badge tone="warn" className="px-1">re-applicant</Badge>}
                   </div>
                 </div>
               ))}
@@ -1876,9 +1876,9 @@ function VerificationsPanel({ appId }: { appId: number }) {
                 {r.mc ? <span className="ml-1.5 font-mono">MC {r.mc}</span> : null}
                 {r.phone ? <span className="ml-1.5">· {r.phone}</span> : null}
               </span>
-              {r.contact_ok === 'later' && <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>driver: after interview</span>}
-              {r.contact_ok === 'no' && <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('danger')}`}>driver: do not contact</span>}
-              <span className={`ml-auto rounded-md px-1.5 py-0.5 text-2xs ${toneClasses(tone)}`}>{statusLabel}</span>
+              {r.contact_ok === 'later' && <Badge tone="warn">driver: after interview</Badge>}
+              {r.contact_ok === 'no' && <Badge tone="danger">driver: do not contact</Badge>}
+              <Badge tone={tone} className="ml-auto">{statusLabel}</Badge>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Input placeholder="safety@employer.com" value={emails[r.employer_index] ?? ''}

@@ -22,6 +22,7 @@ import { ROLE_ORDER } // Alert-routing VOCABULARY (personas, family labels), not
 // roster only renders those names. A shared constant crossing features is
 // a far milder coupling than the shared COMPONENTS that were just undone.
 from '../../alerts/delivery/alertRoutingConstants';
+import { Badge } from '@/components/ui/badge';
 
 interface SubBotRow { persona: string; bot_username: string; is_running: boolean; }
 interface SubBotsResponse { personas: Record<string, SubBotRow | null>; manageable: string[]; }
@@ -142,14 +143,14 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
                   ))}
                 </>
               ) : !editable ? (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
+                <Badge tone="neutral">
                   {t('alert_routing.main_sends')}
-                </span>
+                </Badge>
               ) : openInput !== `token-${persona}` ? (
                 <>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
+                  <Badge tone="neutral">
                     {t('alert_routing.main_sends')}
-                  </span>
+                  </Badge>
                   <button type="button" onClick={() => setOpenInput(`token-${persona}`)}
                     className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap">
                     {t('alert_routing.subbot_attach')}

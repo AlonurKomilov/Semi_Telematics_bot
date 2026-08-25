@@ -36,6 +36,7 @@ import type {
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { Card } from '@/components/ui/card';
 import { Tip } from '../../components/tooltip';
+import { Badge } from '@/components/ui/badge';
 
 // ── Color helpers ───────────────────────────────────────────────────
 
@@ -79,13 +80,11 @@ function scoreVar(score: number): string {
 
 function ScoreBadge({ score, tierLabel }: { score: number; tierLabel: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border ${toneClasses(scoreTone(score))}`}
-    >
+    <Badge tone={scoreTone(score)} className="font-bold">
       <span>{score}</span>
       <span className="opacity-70">·</span>
       <span>{tierLabel}</span>
-    </span>
+    </Badge>
   );
 }
 

@@ -7,6 +7,7 @@
  * depends on.
  */
 import { toneClasses, statusClasses, type Tone } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 // Parking classification → tone: safe/geofence read as good (ok),
 // unsafe is the danger signal, unknown carries no signal (neutral).
@@ -42,7 +43,7 @@ export function ConfidenceBadge({ value }: { value: string }) {
     : v.startsWith('med') ? 'warn'
     : v.startsWith('low') ? 'danger'
     : 'neutral';
-  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium uppercase ${toneClasses(tone)}`}>{value}</span>;
+  return <Badge tone={tone} className="uppercase">{value}</Badge>;
 }
 
 /** Active vs Resolved — the column that replaced the Active/History tabs.

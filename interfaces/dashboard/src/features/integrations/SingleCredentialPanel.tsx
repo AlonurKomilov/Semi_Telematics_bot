@@ -13,6 +13,7 @@ import CredentialsSection from './CredentialsSection';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import { Pencil } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export default function SingleCredentialPanel({
   authKind,
@@ -31,11 +32,9 @@ export default function SingleCredentialPanel({
     <CredentialsSection
       title="Credentials"
       headerRight={
-        <span
-          className={`${toneClasses(hasCredentials ? 'ok' : 'warn')} rounded-md px-1.5 py-0.5 text-2xs`}
-        >
+        <Badge tone={hasCredentials ? 'ok' : 'warn'}>
           {hasCredentials ? 'configured' : 'not set'}
-        </span>
+        </Badge>
       }
     >
       <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">

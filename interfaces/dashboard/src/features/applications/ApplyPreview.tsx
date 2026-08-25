@@ -13,6 +13,7 @@ import { toneClasses } from '../../lib/status';
 import PublicApply, { type Brand } from './public/PublicApply';
 import { applyPublicFormTheme, surfaceContrastWeak } from './public/theme';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 // A staged (not-yet-saved) logo/hero change: a picked file (with its preview
 // object URL), an explicit removal, or null = no change.  Committed on Save.
@@ -103,7 +104,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
         <Sparkles className="size-3" /> AI theme
       </button>
       {surfaceContrastWeak(brand.surface_color) && (
-        <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
+        <Badge tone="warn">Surface is mid-tone — text may be low-contrast</Badge>
       )}
       <Button size="sm" onClick={onSave} disabled={saving}>{saving ? '…' : 'Save'}</Button>
     </div>

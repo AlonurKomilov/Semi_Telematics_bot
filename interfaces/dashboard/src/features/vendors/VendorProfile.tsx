@@ -31,6 +31,7 @@ import { toneClasses, type Tone } from '../../lib/status';
 import type { Vendor, WorkOrder, AnyColumn, DirectoryEntry, MarketRollupRow } from '../../types';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 const PAYMENT_TONE: Record<string, Tone> = {
   unpaid: 'warn', paid: 'ok', partial: 'warn', void: 'neutral',
@@ -231,9 +232,9 @@ export default function VendorProfile() {
       render: (v) => {
         const s = String(v || '').toLowerCase();
         return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${toneClasses(PAYMENT_TONE[s] ?? 'neutral')}`}>
+          <Badge tone={PAYMENT_TONE[s] ?? 'neutral'} className="capitalize">
             {s || '—'}
-          </span>
+          </Badge>
         );
       } },
   ];

@@ -7,6 +7,7 @@ import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
 import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
 import { parseVerdict, VERDICT_EMOJI, verdictTone } from './aiVerdict';
 import { toneClasses } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 // Solid-fill class for the AI verdict dot on a thumbnail.  Derives from
 // the shared verdict→tone map so the dot can't drift from the item-list
@@ -151,12 +152,13 @@ export function MediaGallery({ inspection }: Props) {
                     </span>
                   )}
                   {m.annotated_at && (
-                    <span
-                      className={`absolute top-1 right-1 inline-flex items-center gap-1 text-3xs font-semibold px-1.5 py-0.5 rounded ${toneClasses('info', { border: false })}`}
+                    <Badge
+                      tone="info"
+                      className="absolute top-1 right-1 text-3xs font-semibold"
                       aria-label={`Annotated by driver on ${formatDate(m.annotated_at, { timeZone: tz })}`}
                     >
                       <Pencil className="size-2.5" aria-hidden /> Annotated
-                    </span>
+                    </Badge>
                   )}
                   {(() => {
                     const v = parseVerdict(m);

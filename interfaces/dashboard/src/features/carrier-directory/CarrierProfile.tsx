@@ -23,6 +23,7 @@ import { SECTIONS, mergeRows, safeHref } from './fields';
 import type { CarrierContent, FieldRow } from './fields';
 import FieldValueInput from './FieldValueInput';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface Profile {
   id: number; name: string; website: string; video_url: string;
@@ -725,9 +726,9 @@ export default function CarrierProfile() {
                 {/* The backend wall around recruiter_only is real but was
                     invisible to the manager relying on it. */}
                 {s.internal && (
-                  <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-2xs font-medium ${toneClasses('neutral')}`}>
+                  <Badge tone="neutral">
                     <Lock className="size-3" /> Internal
-                  </span>
+                  </Badge>
                 )}
               </div>
               <div className="flex items-center gap-2">

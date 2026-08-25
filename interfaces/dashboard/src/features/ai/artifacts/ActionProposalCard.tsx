@@ -19,6 +19,7 @@ import { toneClasses } from '../../../lib/status';
 import { uploadSourceFilesToWorkOrder } from '../sourceFileUpload';
 import { registerArtifact } from './registry';
 import type { Artifact } from './types';
+import { Badge } from '@/components/ui/badge';
 
 type Phase = 'pending' | 'working' | 'done' | 'declined' | 'failed' | 'expired' | 'undoing' | 'undone';
 
@@ -162,9 +163,9 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       <div className="flex items-start gap-2">
         <span className="text-2xs font-medium text-foreground">{a.summary}</span>
         {a.risk && a.risk !== 'low' && (
-          <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-3xs font-medium ${toneClasses('warn')}`}>
+          <Badge tone="warn">
             <ShieldAlert className="size-3" aria-hidden /> {a.risk}
-          </span>
+          </Badge>
         )}
       </div>
 

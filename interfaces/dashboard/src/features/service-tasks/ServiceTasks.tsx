@@ -37,6 +37,7 @@ import {
   fetchServiceTasks, fetchTaskSystems, updateServiceTask,
   type ServiceTask,
 } from './api';
+import { Badge } from '@/components/ui/badge';
 
 // My tasks / Shared are PAGE tabs, the same My-vs-Shared binary
 // every cross-account feature uses (owner call: one vocabulary, not
@@ -215,9 +216,9 @@ export default function ServiceTasks() {
     {
       key: 'status', label: 'Status', sortable: true, filterable: true,
       render: (v) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(v === 'archived' ? 'neutral' : 'ok')}`}>
+        <Badge tone={v === 'archived' ? 'neutral' : 'ok'}>
           {v === 'archived' ? 'Archived' : 'Active'}
-        </span>
+        </Badge>
       ),
     },
   ];

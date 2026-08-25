@@ -8,6 +8,7 @@ import { statusTone, toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { dueSoonHoursFor, dueSoonMilesFor } from './useMaintenanceTasks';
+import { Badge } from '@/components/ui/badge';
 
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'] as const;
 export type Priority = typeof PRIORITY_OPTIONS[number];
@@ -21,9 +22,9 @@ export function PriorityBadge({ value }: { value: unknown }) {
   // raw text.
   const known = (PRIORITY_OPTIONS as readonly string[]).includes(v) ? v : 'medium';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize ${toneClasses(statusTone(known))}`}>
+    <Badge tone={statusTone(known)} className="capitalize">
       {v}
-    </span>
+    </Badge>
   );
 }
 
@@ -218,9 +219,9 @@ export function DueDateChip({
   // Closed ticket → frozen pill, no urgency arithmetic.
   if (isClosed(status)) {
     return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses('neutral')}`}>
+      <Badge tone="neutral">
         {dateStr}
-      </span>
+      </Badge>
     );
   }
 
@@ -261,9 +262,9 @@ export function DueDateChip({
       : 'bg-ok';
     return (
       <div className="flex flex-col gap-1.5 min-w-[140px]">
-        <span className={`inline-flex items-center self-start px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(tone)}`}>
+        <Badge tone={tone} className="self-start">
           {dateStr}{suffix}
-        </span>
+        </Badge>
         <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
           <div
             className={`h-full ${barTone}`}
@@ -275,9 +276,9 @@ export function DueDateChip({
   }
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(tone)}`}>
+    <Badge tone={tone}>
       {dateStr}{suffix}
-    </span>
+    </Badge>
   );
 }
 

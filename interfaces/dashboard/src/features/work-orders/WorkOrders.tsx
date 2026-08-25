@@ -44,6 +44,7 @@ import { toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 // Status / payment → tone.  Matches the maintenance module's
 // StatusBadge styling family so the two modules read as siblings.
@@ -92,9 +93,9 @@ function PriorityCell({ value }: { value: unknown }) {
   const v = String(value || '').toLowerCase();
   if (!v) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(PRIORITY_TONE[v] ?? 'neutral')}`}>
+    <Badge tone={PRIORITY_TONE[v] ?? 'neutral'}>
       {PRIORITY_LABEL[v] ?? v}
-    </span>
+    </Badge>
   );
 }
 
@@ -132,9 +133,9 @@ function SourceCell({ value, externalNumber }: { value: unknown; externalNumber?
   if (v === 'manual') return <span className="text-muted-foreground">—</span>;
   const label = v.charAt(0).toUpperCase() + v.slice(1);
   const pill = (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses('info')}`}>
+    <Badge tone="info">
       {label}
-    </span>
+    </Badge>
   );
   const ref = (externalNumber || '').trim();
   return ref

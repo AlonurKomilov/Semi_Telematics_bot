@@ -24,6 +24,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import type { CatalogPart, PublicPartEntry, AnyColumn } from '../../types';
+import { Badge } from '@/components/ui/badge';
 
 function money(v: unknown): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -115,9 +116,9 @@ const publicColumns: AnyColumn[] = [
   {
     key: 'linked_part_name', label: 'Your Part', sortable: true,
     render: (v) => (v ? (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('ok')}`}>
+      <Badge tone="ok">
         {String(v)}
-      </span>
+      </Badge>
     ) : <span className="text-muted-foreground">—</span>),
   },
 ];

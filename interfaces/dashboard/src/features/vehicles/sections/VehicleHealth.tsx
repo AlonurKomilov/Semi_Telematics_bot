@@ -19,6 +19,7 @@ import { CalloutInline } from '../../../components/callouts';
 import { useVehicleCallouts } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface CabinWeather {
   temp_f: number | null;
@@ -152,12 +153,9 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
         <div className="mt-2">
           <p className="text-sm text-muted-foreground mb-1">Health Alerts:</p>
           {healthAlerts.map((a, i) => (
-            <span
-              key={i}
-              className={`inline-block text-xs rounded-md px-2 py-0.5 mr-1 mb-1 ${toneClasses('danger')}`}
-            >
+            <Badge tone="danger" className="inline-block mr-1 mb-1" key={i}>
               {a}
-            </span>
+            </Badge>
           ))}
         </div>
       )}

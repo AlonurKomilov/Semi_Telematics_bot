@@ -34,6 +34,7 @@ import {
   fetchTaskParts, fetchTaskSystems, updateServiceTask, type ServiceTask,
 } from './api';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -154,12 +155,12 @@ export default function ServiceTaskDetail() {
           : 'Your own task. Rename, retune or delete it freely — delete only while nothing references it, so history never loses its label.'}
         meta={(
           <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(shared ? 'info' : 'neutral')}`}>
+            <Badge tone={shared ? 'info' : 'neutral'}>
               {shared ? 'Shared' : 'Mine'}
-            </span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(task.status === 'archived' ? 'neutral' : 'ok')}`}>
+            </Badge>
+            <Badge tone={task.status === 'archived' ? 'neutral' : 'ok'}>
               {task.status === 'archived' ? 'Archived' : 'Active'}
-            </span>
+            </Badge>
           </div>
         )}
         actions={(

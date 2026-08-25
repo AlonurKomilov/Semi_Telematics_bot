@@ -8,6 +8,7 @@
 import type { ReactNode } from 'react';
 import { Tip } from '../../components/tooltip';
 import { toneClasses, type Tone } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 type ChipTone = 'neutral' | 'positive' | 'warning' | 'critical' | 'info';
 
@@ -68,7 +69,8 @@ export const HERO_STRIP =
 
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   const chip = (
-    <span
+    <Badge
+      tone={CHIP_TONE[tone]}
       // ``shrink-0 whitespace-nowrap`` is load-bearing, not cosmetic.
       // Without it a chip in a full strip COMPRESSES below its natural
       // width and wraps to two or three lines — "On the road" measured
@@ -77,11 +79,11 @@ export default function HeroChip({ label, value, tone = 'neutral', title }: Hero
       // well, so it became a 66px scroll box inside a 48px header whose
       // parent clips: ~9px sliced off the top and bottom of every chip.
       // Refusing to shrink lets the intended horizontal scroll do its job.
-      className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 px-2 py-0.5 text-2xs border rounded-md ${toneClasses(CHIP_TONE[tone])}`}
+      className="shrink-0 whitespace-nowrap gap-1.5 text-2xs"
     >
       <span className="opacity-70">{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>
-    </span>
+    </Badge>
   );
   return title ? <Tip label={title}>{chip}</Tip> : chip;
 }

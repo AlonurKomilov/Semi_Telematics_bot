@@ -28,6 +28,7 @@ import UtilizationSummary from './UtilizationSummary';
 import Mileage from './Mileage';
 import VehicleManageDialog from './VehicleManageDialog';
 import DeviceEventsCard from './DeviceEventsCard';
+import { Badge } from '@/components/ui/badge';
 
 const TYPE_LABEL: Record<string, string> = {
   truck: 'Truck', trailer: 'Trailer', other: 'Other',
@@ -322,10 +323,10 @@ export default function Vehicles() {
               <span>{String(v ?? '')}</span>
               {inv && inv.attention > 0 && (
                 <Tip label={`Inventory: ${inv.attention} item${inv.attention === 1 ? '' : 's'} need attention`}>
-                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-2xs border ${toneClasses('danger')}`}>
+                  <Badge tone="danger" className="gap-0.5">
                     <PackageX className="size-3" />
                     {inv.attention}
-                  </span>
+                  </Badge>
                 </Tip>
               )}
             </span>

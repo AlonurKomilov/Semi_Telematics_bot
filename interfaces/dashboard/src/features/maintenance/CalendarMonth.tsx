@@ -6,6 +6,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -347,9 +348,9 @@ export function CalendarMonth({
                             {(task.task_type || '').replace(/_/g, ' ')}
                           </span>
                           {task.status === 'overdue' && (
-                            <span className={`text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded-md ${toneClasses('danger')}`}>
+                            <Badge tone="danger" className="uppercase tracking-wide">
                               Overdue
-                            </span>
+                            </Badge>
                           )}
                         </div>
                         {task.description && (

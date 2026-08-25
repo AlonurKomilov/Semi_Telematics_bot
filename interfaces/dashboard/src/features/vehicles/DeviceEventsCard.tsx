@@ -29,6 +29,7 @@ import { toneClasses, toneText } from '../../lib/status';
 import type { Vehicle } from '../../types';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 export interface DeviceEvent {
   id: number;
@@ -103,9 +104,9 @@ export default function DeviceEventsCard({
       <ul className="space-y-3">
         {open.map((e) => (
           <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
+            <Badge tone="warn">
               {e.vehicle_name || e.vehicle_id}
-            </span>
+            </Badge>
             <span className="text-sm">
               {KIND_LABEL[e.kind] ?? e.kind}
             </span>

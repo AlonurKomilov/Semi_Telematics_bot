@@ -53,6 +53,7 @@ import {
   formatSyncTimestamp as formatBackfillTimestamp,
 } from './labels';
 import { usePreference } from '../../preferences';
+import { Badge } from '@/components/ui/badge';
 
 interface Props {
   entry: CatalogEntry;
@@ -831,20 +832,18 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
               operator see "4 of 5 healthy" instead of a binary
               connected/error chip. */}
           {summary && summary.status !== 'unknown' && (
-            <span className={`${toneClasses(
-              summary.status === 'healthy'
+            <Badge tone={summary.status === 'healthy'
                 ? 'ok'
                 : summary.status === 'degraded'
                 ? 'warn'
-                : 'danger',
-            )} text-2xs px-1.5 py-0.5 rounded`}>
+                : 'danger'}>
               {summary.healthy} of {summary.total} healthy
-            </span>
+            </Badge>
           )}
           {missingKeys > 0 && (
-            <span className={`${toneClasses('warn')} text-2xs px-1.5 py-0.5 rounded-md`}>
+            <Badge tone="warn">
               {missingKeys} need a key
-            </span>
+            </Badge>
           )}
           {/* Companies are CREATED on the Companies page (code, name,
               active window); their Samsara keys are managed here.
@@ -938,8 +937,9 @@ function CompanyKeyRow({
           <>
             {/* Per-company /me probe result.  Title tooltip carries
                 the full message when the badge gets ellipsised. */}
-            <span
-              className={`${toneClasses(healthTone)} text-2xs px-1.5 py-0.5 rounded-md max-w-44 truncate`}
+            <Badge
+                              tone={healthTone}
+                              className="text-2xs max-w-44 truncate"
               title={
                 company.health
                   ? `${company.health.ok ? 'reachable' : 'failed'} — ${company.health.message}`
@@ -947,7 +947,7 @@ function CompanyKeyRow({
               }
             >
               {healthText}
-            </span>
+            </Badge>
             <Button
               type="button" variant="ghost" size="sm"
               onClick={onTest} disabled={testing}

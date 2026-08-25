@@ -71,6 +71,7 @@ import { familyText,
   isAckable,
   truncate,
 } from '../_shared/components';
+import { Badge } from '@/components/ui/badge';
 
 const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
@@ -424,11 +425,9 @@ export default function AlertsResults() {
                   alert has fired multiple times without being cleared. */}
               {(a.occurrence_count ?? 1) > 1 && (
                 <Tip label={t('alerts.total_occurrences')}>
-                  <span
-                    className={`ml-2 inline-block px-2 py-0.5 rounded-md text-xs font-bold ${toneClasses('warn')}`}
-                  >
+                  <Badge tone="warn" className="ml-2 inline-block font-bold">
                     × {a.occurrence_count}
-                  </span>
+                  </Badge>
                 </Tip>
               )}
             </span>
@@ -721,19 +720,19 @@ export default function AlertsResults() {
               </span>
               <span className="text-xs text-muted-foreground">({as_.length})</span>
               {counts.critical > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-md border text-2xs font-medium ${toneClasses('danger')}`}>
+                <Badge tone="danger">
                   {counts.critical} critical
-                </span>
+                </Badge>
               )}
               {counts.warning > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-md border text-2xs font-medium ${toneClasses('warn')}`}>
+                <Badge tone="warn">
                   {counts.warning} warning
-                </span>
+                </Badge>
               )}
               {counts.info > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-md border text-2xs font-medium ${toneClasses('info')}`}>
+                <Badge tone="info">
                   {counts.info} info
-                </span>
+                </Badge>
               )}
               {latest && (
                 <span className="text-xs text-muted-foreground">

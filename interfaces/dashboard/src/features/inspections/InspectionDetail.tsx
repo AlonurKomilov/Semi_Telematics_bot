@@ -20,6 +20,7 @@ import { StatusTimeline } from './StatusTimeline';
 import { SignaturesPanel } from './SignaturesPanel';
 import { AIReviewRollup } from './AIReviewRollup';
 import { parseVerdict, isFlagged, VERDICT_EMOJI, verdictClasses } from './aiVerdict';
+import { Badge } from '@/components/ui/badge';
 
 interface Props {
   inspectionId: number;
@@ -232,9 +233,9 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 <p className="text-xl font-bold tabular-nums">
                   {ins.defects_count}
                   {ins.has_oos_defect ? (
-                    <span className={`ml-2 text-xs font-medium px-1.5 py-0.5 rounded-md border ${toneClasses('danger')}`}>
+                    <Badge tone="danger" className="ml-2">
                       OOS
-                    </span>
+                    </Badge>
                   ) : null}
                 </p>
               </div>

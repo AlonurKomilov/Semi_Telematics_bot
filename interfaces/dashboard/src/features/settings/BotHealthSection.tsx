@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { toneClasses, toneText } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 interface HealthCheck {
   id: string;
@@ -137,7 +138,7 @@ export default function BotHealthSection({ hasBot }: { hasBot: boolean }) {
         {t('bot_health.title')}
       </div>
       <div className="flex items-center gap-3 flex-wrap mb-2">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${toneClasses(tone)}`}>
+        <Badge tone={tone} className="gap-1.5">
           {report == null
             ? t('bot_health.never_checked')
             : report.summary === 'ok'
@@ -145,7 +146,7 @@ export default function BotHealthSection({ hasBot }: { hasBot: boolean }) {
               : report.summary === 'fail'
                 ? t('bot_health.summary_fail')
                 : t('bot_health.summary_warn')}
-        </span>
+        </Badge>
         <button
           type="button"
           onClick={runCheck}

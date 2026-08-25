@@ -50,6 +50,7 @@ import { useNow } from '../hooks/useNow';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
+import { Badge } from '@/components/ui/badge';
 
 // HOURS array removed in the migration-100 cleanup — the user no
 // longer picks shift hours from Profile (admin-managed in Team
@@ -542,15 +543,12 @@ function SignInMethods() {
             <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
               {t('profile.signin_email_label', 'Email + password')}
               {me?.email && me.email_verified === false && (
-                <span
-                  title={t(
+                <Badge tone="warn" className="uppercase tracking-wider font-semibold" title={t(
                     'profile.signin_verify_hint',
                     "We sent a verification link.  Until you click it, this email can't be used to sign in.",
-                  )}
-                  className={`text-3xs uppercase tracking-wider px-1.5 py-0.5 rounded-md border font-semibold ${toneClasses('warn')}`}
-                >
+                  )}>
                   {t('profile.signin_unverified_chip', 'Unverified')}
-                </span>
+                </Badge>
               )}
             </div>
             <div className="text-xs text-muted-foreground mt-0.5 truncate">

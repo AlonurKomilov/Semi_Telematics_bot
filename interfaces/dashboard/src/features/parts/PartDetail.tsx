@@ -40,6 +40,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import type { AnyColumn, CatalogPart, PartAnalytics, PublicPartEntry } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 function money(v: unknown, digits = 0): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, {
@@ -160,9 +161,9 @@ export default function PartDetail() {
             <span className="tabular-nums">{days} d</span>
             {fast && (
               <Tip label={`Replaced about every ${days} days — worth checking for a failing component or a repair that isn't holding.`}>
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-2xs font-medium ${toneClasses('warn')}`}>
+                <Badge tone="warn">
                   <TriangleAlert className="size-3" /> repeating fast
-                </span>
+                </Badge>
               </Tip>
             )}
           </span>

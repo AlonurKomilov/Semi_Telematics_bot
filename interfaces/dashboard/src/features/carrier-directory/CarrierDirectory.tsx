@@ -24,6 +24,7 @@ import { toneClasses } from '../../lib/status';
 import { FIELD_COLUMNS, valueOf } from './fields';
 import type { CarrierContent } from './fields';
 import { intakeStateOf, INTAKE_LABEL, INTAKE_TONE, INTAKE_FILTER } from './intakeState';
+import { Badge } from '@/components/ui/badge';
 
 interface CarrierRow {
   id: number; name: string; website: string; experience_summary: string;
@@ -164,9 +165,9 @@ export default function CarrierDirectory() {
         // only — never identity.
         return (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            <span className={`rounded-md border px-2 py-0.5 text-2xs font-medium ${toneClasses(soon ? 'warn' : INTAKE_TONE[st])}`}>
+            <Badge tone={soon ? 'warn' : INTAKE_TONE[st]}>
               {INTAKE_LABEL[st]}
-            </span>
+            </Badge>
             {expires && (st === 'awaiting' || st === 'lapsed') && (
               <span className="text-2xs text-muted-foreground">
                 {st === 'lapsed' ? 'expired ' : 'expires '}

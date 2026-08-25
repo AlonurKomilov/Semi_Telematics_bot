@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, formatDay, formatTime } from '@/utils/datetime';
 import { useTimezone } from '@/hooks/useTimezone';
 import type { SafetyEvent } from '@/types';
+import { Badge } from '@/components/ui/badge';
 
 interface VideoUrlResponse {
   event_id: string;
@@ -212,9 +213,9 @@ export default function EventVideoModal({
             {eventTitle}
           </span>
           {event.severity && (
-            <span className={`px-2 py-0.5 rounded-md text-xs font-medium border capitalize ${toneClasses('warn')}`}>
+            <Badge tone="warn" className="capitalize">
               {event.severity}
-            </span>
+            </Badge>
           )}
           {event.g_force > 0 && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

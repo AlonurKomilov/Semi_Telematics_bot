@@ -32,6 +32,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import { usePreference } from '../../preferences';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 // Role choices for the create-invite form — the shared assignable-role
 // list (owner excluded; the server rank-check forbids inviting peers /
@@ -820,12 +821,10 @@ export function InvitesPanel() {
             )}
             {badgeFor && (
               <Tip label={inv.email_bounce_reason || badgeFor.label}>
-                <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-2xs font-medium ${toneClasses(badgeFor.tone)}`}
-                >
+                <Badge tone={badgeFor.tone}>
                   <badgeFor.icon size={12} />
                   {badgeFor.label}
-                </span>
+                </Badge>
               </Tip>
             )}
             {canCopy && (

@@ -10,6 +10,7 @@ import {
 } from '../../components/shell';
 import { Card } from '@/components/ui/card';
 import { toneClasses, type Tone } from '@/lib/status';
+import { Badge } from '@/components/ui/badge';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -254,10 +255,10 @@ export function ScorecardRulesPanel() {
                   const meta = CAT_META[cat];
                   const Icon = meta?.Icon;
                   return (
-                    <span className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded ${toneClasses(meta?.tone ?? 'neutral', { border: false })}`}>
+                    <Badge tone={meta?.tone ?? 'neutral'} className="text-xs font-bold uppercase tracking-wide">
                       {Icon ? <Icon className="size-3" aria-hidden /> : null}
                       {meta?.label ?? cat}
-                    </span>
+                    </Badge>
                   );
                 })()}
                 <span className="text-xs text-muted-foreground">{rs.length} rule{rs.length === 1 ? '' : 's'}</span>

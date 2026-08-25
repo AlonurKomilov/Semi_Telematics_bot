@@ -21,6 +21,7 @@ import { formatAgoShort } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
+import { Badge } from '@/components/ui/badge';
 
 interface Applicant {
   id: number;
@@ -71,9 +72,9 @@ export default function OnboardingQueue() {
       <div className="flex items-center gap-1.5 mb-1">
         <UserPlus className="text-primary shrink-0 size-4" aria-hidden />
         <SectionHeader size="card">Onboarding</SectionHeader>
-        <span className={`text-2xs px-1.5 py-0.5 rounded-md ${toneClasses('warn')}`}>
+        <Badge tone="warn">
           {queue.length} waiting
-        </span>
+        </Badge>
         <InfoTip size={12} label="Applicants the recruiter approved. Hiring creates their driver invite — the last step of recruiting, done by whoever administers drivers." />
       </div>
 

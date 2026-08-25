@@ -23,6 +23,7 @@ import type {
 } from '../../types';
 import { REPORTS } from '../../data/reports';
 import { statusTone, toneClasses } from '../../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 // Tabs on this page = the API-exportable reports (excludes Camera
 // Check which is bot-delivery-only).  Sourced from the canonical
@@ -58,7 +59,7 @@ function SeverityBadge({ severity }: { severity: string }) {
   // ``caution`` isn't in the shared status map (it's a fault-report
   // specific step between ok and warning); treat it as attention/warn.
   const tone = severity === 'caution' ? 'warn' : statusTone(severity);
-  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium capitalize ${toneClasses(tone)}`}>{severity}</span>;
+  return <Badge tone={tone} className="capitalize">{severity}</Badge>;
 }
 
 function FuelBadge({ pct }: { pct: number | null }) {

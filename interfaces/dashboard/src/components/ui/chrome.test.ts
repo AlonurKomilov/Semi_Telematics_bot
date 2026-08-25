@@ -471,4 +471,46 @@ describe('UI chrome', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('never hand-rolls a Badge that the tone layer already describes', () => {
+    // design.md's soft-pill recipe IS the Badge primitive's base class:
+    // `rounded-md px-2 py-0.5 text-xs font-medium` plus a tone. A <span>
+    // typing that out beside `toneClasses(...)` is <Badge tone="…">
+    // spelled long-hand — 52 of them were, because the primitive's
+    // variants are brand colours and had no door for a tone. It has one
+    // now; this keeps the door the only way in.
+    // `statusClasses` is a DIFFERENT door: it takes a domain status, not
+    // a tone, and `<StatusBadge>` — which owns it — renders the label
+    // itself, de-snake-casing as it goes. Several call sites format the
+    // label their own way (`v.replace('_','-')`), so swapping them is a
+    // per-site judgement about wording, not a mechanical rename. Ten of
+    // those are named below rather than silently swept in here.
+    const STATUS_DOOR_DEBT = [
+      'features/loads/Loads.tsx',
+      'features/vehicles/inventory/InventoryCard.tsx',
+      'features/vehicles/inventory/InventoryPage.tsx',
+      'features/vehicles/inventory/ItemDialog.tsx',
+      'features/parking/badges.tsx',
+      'features/applications/Applications.tsx',
+    ];
+    const offenders: string[] = [];
+    for (const { rel, src } of TSX) {
+      if (rel === 'components/StatusBadge.tsx' || rel.startsWith('components/ui/')) continue;
+      // Another developer's open area — theirs to convert inside their
+      // own diff, not mine to rewrite from outside it.
+      if (rel.startsWith('features/kpi/') || rel.startsWith('components/callouts/')) continue;
+      if (STATUS_DOOR_DEBT.includes(rel)) continue;
+      for (const m of src.matchAll(/<span\s+className=\{`([^`]*)`\}/g)) {
+        const cls = m[1];
+        if (!/\$\{toneClasses\(/.test(cls)) continue;
+        const t = cls.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/);
+        const geometry = t.filter((c) => /^(rounded|px-|py-|text-(3xs|2xs|xs)$|font-medium$)/.test(c));
+        if (geometry.length >= 3) {
+          const line = src.slice(0, m.index ?? 0).split('\n').length;
+          offenders.push(`${rel}:${line} → <Badge tone={…}>`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });

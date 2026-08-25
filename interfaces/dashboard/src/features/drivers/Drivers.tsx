@@ -41,6 +41,7 @@ import {
   tabsForPersona, showsExpiringBanner, type DriverDetailTab,
 } from '../../features/drivers/personaConfig';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 const DOC_TYPES: Array<{ key: string; label: string }> = [
   { key: 'cdl',              label: 'CDL' },
@@ -153,7 +154,7 @@ const driverColumns: AnyColumn[] = [
     render: (v) =>
       v
         ? <span className="px-2 py-0.5 rounded-md text-xs bg-muted text-muted-foreground border border-border">Terminated</span>
-        : <span className={`px-2 py-0.5 rounded-md text-xs border ${toneClasses('ok')}`}>Active</span>,
+        : <Badge tone="ok">Active</Badge>,
   },
 ];
 
@@ -454,12 +455,9 @@ function DriverDrawer({
                     tg:{p.telegram_id}
                   </span>
                 ) : (
-                  <span
-                    title="No Telegram linked yet — invite the driver via Telegram or share the bot deep-link"
-                    className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-md border ${toneClasses('warn')}`}
-                  >
+                  <Badge tone="warn" title="No Telegram linked yet — invite the driver via Telegram or share the bot deep-link">
                     Not linked
-                  </span>
+                  </Badge>
                 )}
                 <SamsaraIdentityCard samsaraDriverId={p.samsara_driver_id} />
               </div>
@@ -1247,13 +1245,10 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   const match = data?.drivers.find((d) => d.samsara_driver_id === samsaraDriverId);
   if (!match) {
     return (
-      <span
-        title="This Samsara driver ID is not in the fleet roster — possibly stale or wrong."
-        className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-md border ${toneClasses('warn')}`}
-      >
+      <Badge tone="warn" title="This Samsara driver ID is not in the fleet roster — possibly stale or wrong.">
         <AlertTriangle className="size-3" />
         ID {samsaraDriverId} — not in Samsara
-      </span>
+      </Badge>
     );
   }
   return (

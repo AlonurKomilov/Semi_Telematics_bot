@@ -16,6 +16,7 @@ import {
 import type { AnyColumn, PTIInspectionRow, PTIInspectionsResponse } from '../../types';
 import { InspectionDetail } from './InspectionDetail';
 import { NewInspectionDialog } from './NewInspectionDialog';
+import { Badge } from '@/components/ui/badge';
 
 // Template editor is lazy-loaded so the default "Submissions" tab
 // doesn't pay for the editor's JS (forms, modal, dnd) until the
@@ -81,9 +82,9 @@ function DefectsCell({ row }: { row: PTIInspectionRow }) {
     return <span className="text-muted-foreground">0</span>;
   }
   const oosBadge = row.has_oos_defect ? (
-    <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-md border text-3xs font-medium ${toneClasses('danger')}`}>
+    <Badge tone="danger" className="ml-1.5">
       OOS
-    </span>
+    </Badge>
   ) : null;
   return (
     <span className="font-medium tabular-nums">

@@ -8,6 +8,7 @@ import type { PTIInspectionRow, PTIInspectionsResponse } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 /**
  * "Last 5 inspections" mini-card embedded on the Vehicle Detail page.
@@ -110,9 +111,9 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
                     {r.has_oos_defect ? ' · OOS' : ''}
                   </p>
                 </div>
-                <span className={`text-2xs font-medium px-2 py-0.5 rounded-md border whitespace-nowrap ${toneClasses(STATUS_TONE[r.status])}`}>
+                <Badge tone={STATUS_TONE[r.status]}>
                   {STATUS_LABEL[r.status]}
-                </span>
+                </Badge>
               </Link>
             </li>
           ))}

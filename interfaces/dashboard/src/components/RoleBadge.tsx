@@ -19,6 +19,7 @@
  * call-site (design.md §2 hard rule).
  */
 import { toneClasses, type Tone } from '../lib/status';
+import { Badge } from '@/components/ui/badge';
 
 /** Display label for each role.  Single source of truth — both the
  *  Team Management members table and the Invites table read this. */
@@ -82,10 +83,8 @@ export function roleTone(role: string | null | undefined): Tone {
 export default function RoleBadge({ role, label }: { role: string; label?: string }) {
   const text = label ?? (ROLE_LABEL[role.toLowerCase()] ?? role);
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${toneClasses(roleTone(role))}`}
-    >
+    <Badge tone={roleTone(role)}>
       {text}
-    </span>
+    </Badge>
   );
 }
