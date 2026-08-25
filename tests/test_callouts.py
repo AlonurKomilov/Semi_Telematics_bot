@@ -136,6 +136,49 @@ def test_every_backend_key_is_renderable():
     assert not missing, f"catalog is missing: {sorted(missing)}"
 
 
+# The FIELD names a callout may declare.  Kept here rather than in the
+# frontend because the drift guard below is the only thing that reads
+# them, and a locale entry using a name the resolver does not read is
+# invisible copy — which is exactly how the six mileage explanations
+# went dark for one commit when ``body`` was split into why/affects/do.
+CALLOUT_FIELDS = {"title", "short", "why", "affects", "do"}
+
+
+def test_no_locale_entry_carries_a_field_nothing_reads():
+    """An unread field is worse than a missing one.
+
+    A missing string shows the key and someone notices; a field the
+    resolver stopped reading keeps looking correct in the JSON while
+    rendering nothing at all.
+    """
+    strings = json.loads(
+        (REPO / "interfaces/dashboard/src/locales/en.json").read_text()
+    ).get("callout", {})
+    for key, block in strings.items():
+        if key == "labels":
+            continue
+        stray = set(block) - CALLOUT_FIELDS
+        assert not stray, f"{key} declares unread field(s): {sorted(stray)}"
+
+
+def test_every_locale_declares_the_same_callout_fields():
+    """A translation that answers fewer questions than English is a
+    silently thinner card in that language, not an error anyone sees."""
+    base = json.loads(
+        (REPO / "interfaces/dashboard/src/locales/en.json").read_text()
+    )["callout"]
+    for lang in ("ru", "uz", "es", "fr", "uk", "am", "pa", "so"):
+        other = json.loads(
+            (REPO / f"interfaces/dashboard/src/locales/{lang}.json").read_text()
+        ).get("callout", {})
+        for key, block in base.items():
+            assert key in other, f"{lang}: missing callout {key}"
+            missing = set(block) - set(other[key])
+            assert not missing, (
+                f"{lang}/{key} is missing {sorted(missing)}"
+            )
+
+
 def test_every_key_has_english_copy():
     strings = json.loads(
         (REPO / "interfaces/dashboard/src/locales/en.json").read_text()
