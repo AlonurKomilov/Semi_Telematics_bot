@@ -366,8 +366,18 @@ async def test_capacity_endpoints_are_operator_only(capacity_app):
 async def test_capacity_overview_and_series_shapes(capacity_app):
     s = capacity_app
     db = s["db"]
-    # Seed a week of hourly peaks (cpu climbing 40→52%) + one minute row.
-    for d in range(10, 17):
+    # Seed a week of hourly peaks (cpu climbing 50→56%) + one minute row.
+    #
+    # RELATIVE to now, deliberately.  These were hardcoded July-2026
+    # stamps: inside the endpoints' 24h/30d windows on the day they were
+    # written, and silently outside them a month later.  The endpoints
+    # then correctly returned nothing, and the test read as a capacity
+    # regression instead of a calendar one.  Anchoring to `now` keeps
+    # the data inside the window whenever the suite runs.
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    for i in range(7):                       # today-7 … today-1
+        day = now - timedelta(days=7 - i)
         for h in (9, 15):
             await db._db.execute(
                 """INSERT INTO system_metrics_hourly
@@ -375,18 +385,20 @@ async def test_capacity_overview_and_series_shapes(capacity_app):
                     vehicles_active, accounts_active)
                    VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT (hour) DO NOTHING""",
-                (f"2026-07-{d}T{h:02d}:00", 40.0 + d, 35.0, 50.0 + d * 0.5, 26.0, 180, 4),
+                (day.strftime("%Y-%m-%d") + f"T{h:02d}:00",
+                 50.0 + i, 35.0, 55.0 + i * 0.5, 26.0, 180, 4),
             )
     await db._db.commit()
+    latest_ts = (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M")
     await db.insert_system_metrics_minute({
-        "ts": "2026-07-17T08:30", "cpu_pct": 44.0, "mem_pct": 36.0,
+        "ts": latest_ts, "cpu_pct": 44.0, "mem_pct": 36.0,
         "vehicles_active": 180, "accounts_active": 4,
     })
 
     r = await s["client"].get("/api/system/capacity/overview", headers=s["op"])
     assert r.status_code == 200
     body = r.json()
-    assert body["latest"]["ts"] == "2026-07-17T08:30"
+    assert body["latest"]["ts"] == latest_ts
     hr = body["headroom"]
     assert hr["watch_pct"] == 70.0 and hr["act_pct"] == 85.0
     # Headroom math sanity when the 7d window catches seeded peaks: the
@@ -409,7 +421,11 @@ async def test_capacity_accounts_labels_and_filter(capacity_app):
     s = capacity_app
     db = s["db"]
     acct = s["acct"]
-    await db.upsert_account_usage_daily("2026-07-15", {acct.id: 1200, 999999: 5})
+    # Relative for the same reason as the series seed above: a fixed
+    # date drops out of the ?days=30 window as the calendar moves.
+    from datetime import datetime, timedelta, timezone
+    day = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+    await db.upsert_account_usage_daily(day, {acct.id: 1200, 999999: 5})
     r = await s["client"].get(
         f"/api/system/capacity/accounts?days=30&account_id={acct.id}",
         headers=s["op"],

@@ -194,7 +194,12 @@ class TestInventoryGates:
                                   json={"status": "missing"})).status_code == 403
             assert (await c.post(f"/api/vehicles/inventory/{item_id}/verify", headers=hd)).status_code == 403
 
-    async def test_unknown_vehicle_404_and_bad_category_400(self, api):
+    async def test_unknown_vehicle_404_and_custom_category_normalized(self, api):
+        """CATEGORY is an OPEN vocabulary — a custom value is accepted
+        and normalized, not rejected (the router says so in as many
+        words; STATUS is the fixed lifecycle enum).  This test asserted
+        a 400 from the era when the list was closed, so it failed on the
+        design rather than on a defect."""
         app, db = api
         acct = await db.create_account("Edge Co")
         fleet = await db.create_user(800006, acct.id, role=Role.FLEET)
@@ -203,9 +208,14 @@ class TestInventoryGates:
             assert (await c.get("/api/vehicles/999/inventory", headers=hf)).status_code == 404
             await _seed(db, acct, unit="115")
             r = await c.post("/api/vehicles/115/inventory", headers=hf, json={
-                "category": "spaceship", "label": "X",
+                "category": "Safety Equipment", "label": "X",
             })
-            assert r.status_code == 400
+            assert r.status_code == 200
+            items = (await c.get("/api/vehicles/115/inventory",
+                                 headers=hf)).json()["items"]
+            assert any(i["category"] == "safety_equipment" for i in items), (
+                f"custom category should normalize, got {[i['category'] for i in items]}"
+            )
 
 
 class TestFleetWideInventory:

@@ -113,7 +113,16 @@ class TestAuth:
             assert r.status_code == 200
             data = r.json()
             assert data["role"] == "owner"
-            assert data["payroll_enabled"] is False
+            # Driver Pay is an Accounting FEATURE now, so this field is
+            # derived — "accounting" not in the account's disabled
+            # modules — and modules are on unless switched off.  It
+            # therefore defaults True, where the retired one-off
+            # payroll_enabled flag defaulted False.  Field name kept for
+            # frontend compat (interfaces/api/routes/user.py).
+            assert data["payroll_enabled"] is True
+            assert "accounting" in data["enabled_modules"]
+            # coaching_enabled is still a real per-account column, and
+            # still defaults off.
             assert data["coaching_enabled"] is False
 
     async def test_refresh_token(self, db_and_app):

@@ -243,12 +243,20 @@ class TestSchedulerJob:
         # doesn't depend on wall-clock time.  ``is_local_hour`` is now
         # consulted to skip 23/24 hourly ticks per account; we simulate
         # the one hour where it does fire.
+        notified: list[tuple] = []
+
+        async def _record_notify(pdb, account_id, user_id, content, **kw):
+            notified.append((account_id, user_id))
+
         with patch(
             "features.drivers.documents.alert.get_app_for_account",
             return_value=fake_app,
         ), patch(
             "features.drivers.documents.alert.is_local_hour",
             new=AsyncMock(return_value=True),
+        ), patch(
+            "capabilities.notifications.notify_user",
+            new=AsyncMock(side_effect=_record_notify),
         ):
             from features.drivers.documents.alert import check_document_expirations
             await check_document_expirations(None)
@@ -261,14 +269,17 @@ class TestSchedulerJob:
         row = await cur.fetchone()
         assert row[0] == "expired"
 
-        # T-7 alert went to one driver + one admin (= 2 messages).
-        # The past-due doc was flipped (no alert — it's expired now,
-        # not in the "T-N advance" window).
-        assert fake_bot.send_message.call_count == 2
-        recipients = sorted(
-            call.kwargs["chat_id"] for call in fake_bot.send_message.call_args_list
+        # T-7 reaches the driver AND the admin view — but no longer on
+        # one transport.  The driver's personal notice moved to the
+        # spine (notify_user: DM + email + web_push, muteable, recorded),
+        # leaving the admin side on the bot.  Counting bot calls
+        # therefore read as "an alert went missing" when both halves
+        # were delivered — so assert each half at its own door.
+        assert notified, "the driver's spine notice never went out"
+        assert [uid for _acct, uid in notified] == [ctx["driver"].id]
+        assert fake_bot.send_message.call_count >= 1, (
+            "the admin view never went out"
         )
-        assert recipients == sorted([ctx["admin"].telegram_id, ctx["driver"].telegram_id])
 
         # Dedup row recorded for the T-7 bucket on the soon-doc.
         buckets = await ctx["db"].get_doc_notification_buckets(ctx["doc_soon"].id)
