@@ -55,6 +55,15 @@ def _isolate(monkeypatch):
         return True
 
     monkeypatch.setattr(ev, "_deliver", fake_deliver)
+
+    # Unrestricted owner by default: these tests are about the CROSSING
+    # logic, and scope has its own class below.  Left unstubbed the
+    # resolver would fail closed (no platform DB here) and silence
+    # everything — which is the guard working, not the subject.
+    async def unrestricted(tenant, account_id, owner_user_id):
+        return None
+
+    monkeypatch.setattr(ev, "_owner_scope", unrestricted)
     return sent
 
 
@@ -305,3 +314,56 @@ class TestLongBreach:
 
 async def _noop():
     return object()
+
+
+class TestOwnerScope:
+    """A trigger is one person's, so it sees one person's fleet."""
+
+    def test_a_restricted_owner_hears_only_about_their_own_trucks(
+            self, monkeypatch, _isolate):
+        """Without this a driver assigned one truck would be DM'd about
+        all 102 — vehicles they cannot even open in the dashboard, which
+        is a disclosure and not merely noise."""
+        class _Scope:
+            def allows_row(self, row, **kw):
+                return str(row.get("vehicle_name")) == "Truck 1"
+
+        async def scoped(tenant, account_id, owner_user_id):
+            return _Scope()
+
+        monkeypatch.setattr(ev, "_owner_scope", scoped)
+        trig = [_trigger()]
+        rows = [_row("v1", name="Truck 1", fuel_pct=40),
+                _row("v2", name="Truck 2", fuel_pct=40)]
+        _sweep(monkeypatch, rows, trig)                       # seed
+        _isolate.clear()
+        low = [_row("v1", name="Truck 1", fuel_pct=24),
+               _row("v2", name="Truck 2", fuel_pct=24)]
+        stats = _sweep(monkeypatch, low, trig)
+        assert stats["fired"] == 1
+        assert [s["vehicle"] for s in _isolate] == ["v1"]
+
+    def test_an_unresolvable_scope_stays_silent_rather_than_guessing(
+            self, monkeypatch, _isolate):
+        """We cannot prove the person may see these trucks, so we say
+        nothing.  Widening on failure is how a scope becomes a leak."""
+        async def boom(tenant, account_id, owner_user_id):
+            return ev._DENY_ALL
+
+        monkeypatch.setattr(ev, "_owner_scope", boom)
+        stats = _sweep(monkeypatch, [_row("v1", fuel_pct=10)], [_trigger()])
+        assert stats["fired"] == 0 and stats["seeded"] == 0
+
+    def test_the_scope_is_resolved_once_per_owner_not_per_trigger(
+            self, monkeypatch, _isolate):
+        calls: list[int] = []
+
+        async def counting(tenant, account_id, owner_user_id):
+            calls.append(owner_user_id)
+            return None
+
+        monkeypatch.setattr(ev, "_owner_scope", counting)
+        mine = [_trigger(tid=1, owner=7), _trigger(tid=2, owner=7, threshold=15.0),
+                _trigger(tid=3, owner=8)]
+        _sweep(monkeypatch, [_row("v1", fuel_pct=40)], mine)
+        assert sorted(calls) == [7, 8], calls

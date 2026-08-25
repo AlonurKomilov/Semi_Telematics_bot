@@ -114,6 +114,55 @@ async def _latest_per_vehicle(tenant, account_id: int, columns: list[str]) -> li
     return [dict(r) for r in await cur.fetchall()]
 
 
+async def _owner_scope(tenant, account_id: int, owner_user_id: int):
+    """The trigger owner's vehicle scope, or None when unrestricted.
+
+    A trigger is one person's, so it must see one person's fleet.  Without
+    this a driver assigned to a single truck would be DM'd about all 102
+    — vehicles they cannot open in the dashboard, which is a disclosure,
+    not merely noise.  The board already scopes this way
+    (``adapters/storage/alerts.py`` allowed_vehicle_names); the sweep now
+    matches it, using the same identity ladder rather than a name
+    comparison that once let 230 match 2303.
+    """
+    try:
+        db = get_platform_db()
+        user = await db.get_user_by_id(owner_user_id)
+        role = str(getattr(getattr(user, "role", ""), "value", "")
+                   or getattr(user, "role", "") or "")
+        if role != "driver":
+            return None
+        trucks = await db.get_user_vehicle_nums(owner_user_id)
+        if not trucks:
+            # Legacy behaviour, kept deliberately and matching
+            # deps.get_user_vehicle_scope: a driver with NO assignment at
+            # all is unrestricted rather than blind.
+            trucks = [getattr(user, "truck_num", "")] if getattr(user, "truck_num", "") else []
+        if not trucks:
+            return None
+        from capabilities.permissions.vehicle_scope import build_vehicle_scope
+        return await build_vehicle_scope(tenant, account_id, trucks)
+    except Exception as e:
+        # Fail CLOSED for a restricted owner is not possible without
+        # knowing they are restricted — so an unresolvable scope means we
+        # cannot prove the person may see these trucks, and the trigger
+        # stays silent this sweep rather than guessing.
+        logger.warning("trigger scope unresolved for user %s: %s",
+                       owner_user_id, e)
+        return _DENY_ALL
+
+
+class _DenyAll:
+    """Sentinel scope: allows nothing.  Used only when a scope could not
+    be resolved, so a failure never widens what somebody sees."""
+
+    def allows_row(self, row, **kw) -> bool:
+        return False
+
+
+_DENY_ALL = _DenyAll()
+
+
 async def evaluate_account(
     account_id: int, triggers: list[AlertTrigger], tick: int,
 ) -> dict[str, int]:
@@ -131,14 +180,24 @@ async def evaluate_account(
     if not rows:
         return stats
 
+    scopes: dict[int, Any] = {}
     for trig in due:
         metric = trig.spec
         seeding = not await _trigger_seen(account_id, trig.id)
+        # One resolve per distinct owner, not per trigger — a person with
+        # five triggers resolves their scope once.
+        if trig.owner_user_id not in scopes:
+            scopes[trig.owner_user_id] = await _owner_scope(
+                tenant, account_id, trig.owner_user_id)
+        scope = scopes[trig.owner_user_id]
         judged = 0
         for row in rows:
             vid = str(row.get("vehicle_id") or "")
             if not vid:
                 continue
+            if scope is not None and not scope.allows_row(
+                    row, name_key="vehicle_name", external_key="vehicle_id"):
+                continue        # not this person's truck — not their news
             reading = row.get(metric.column)
             if not cat.reading_usable(metric, reading, row.get("engine_state") or ""):
                 stats["skipped"] += 1

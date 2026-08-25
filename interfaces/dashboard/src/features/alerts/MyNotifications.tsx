@@ -7,7 +7,9 @@
  *
  * Structured by SOURCE so each kind of notification has a home:
  *   • Channels        — connect Telegram / Email / Push (the "where").
- *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where).
+ *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where),
+ *                        plus "Alert me when…": personal thresholds that
+ *                        decide WHETHER there is an alert at all.
  *   • Account activity — TARGETED + opt-OUT notices (invite accepted …).
  *   • System           — platform notices (placeholder until a source
  *                        registers system.* categories).
@@ -27,6 +29,7 @@ import EmailChannelCard from './EmailChannelCard';
 import PushChannelCard from './PushChannelCard';
 import NotifyMatrix from './NotifyMatrix';
 import AccountActivitySection from './AccountActivitySection';
+import AlertTriggersSection from './AlertTriggersSection';
 import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
 import { useSavedFlash } from './_shared/useSavedFlash';
@@ -198,7 +201,13 @@ export default function MyNotifications() {
         <PushChannelCard onChanged={bump} />
       </div>
 
-      <SourceLabel>Alerts</SourceLabel>
+      {/* Two labels, not one.  Both cards used to sit under a single
+          "Alerts" heading with no gap between them and near-identical
+          titles ("Notify me when" / "Alert me when…"), so the pair read
+          as one object — and the matrix, which answers WHERE, was the
+          first thing a person met when their question was WHETHER.
+          SourceLabel's mt-6 is also what puts air between the cards. */}
+      <SourceLabel>Alerts — where they reach you</SourceLabel>
       <NotifyMatrix
         onSaved={flashSaved}
         relevantTypes={prefs.relevant_types}
@@ -207,6 +216,9 @@ export default function MyNotifications() {
         onTelegramToggle={setField}
         refreshKey={refreshKey}
       />
+
+      <SourceLabel>Alerts — my own thresholds</SourceLabel>
+      <AlertTriggersSection onSaved={flashSaved} />
 
       <SourceLabel>Account activity</SourceLabel>
       <AccountActivitySection refreshKey={refreshKey} section="personal" onSaved={flashSaved} />
