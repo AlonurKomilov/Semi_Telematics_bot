@@ -6,7 +6,7 @@ import { useWorkOrderBridge } from '../work-orders/useWorkOrderBridge';
 import { toast } from 'sonner';
 import { X, BellRing, MapPin, FileDown } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
-import { toneClasses, toneText } from '../../lib/status';
+import { toneText } from '../../lib/status';
 import { ErrorState } from '../../components/shell';
 import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { useTimezone } from '../../hooks/useTimezone';

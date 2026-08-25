@@ -27,7 +27,7 @@ import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
-import { toneClasses, type Tone } from '../../lib/status';
+import { type Tone } from '../../lib/status';
 import type { Vendor, WorkOrder, AnyColumn, DirectoryEntry, MarketRollupRow } from '../../types';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';

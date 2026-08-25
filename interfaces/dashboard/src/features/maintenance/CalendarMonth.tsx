@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
-import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Dialog, DialogContent } from '../../components/ui/dialog';

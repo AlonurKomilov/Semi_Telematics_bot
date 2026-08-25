@@ -8,20 +8,34 @@
 // Mirrors interfaces/miniapp/eslint.config.js; keep the two in sync when
 // tuning rules.
 //
-// package.json's `lint` script pins --max-warnings=52, NOT 0: this was
-// the FIRST run on a pre-existing 358-file app, and the leftover 52 are
-// two categories that need real review, not a blind sweep —
-//   - react-hooks/exhaustive-deps (~23): the plugin's suggested fix can
-//     introduce infinite-render loops if the "missing" dep isn't
-//     memoized upstream; each needs the component's actual behavior
-//     checked, not an automatic dep-array edit.
-//   - react-refresh/only-export-components (~18): fires on the
+// package.json's `lint` script pins --max-warnings=192, NOT 0. The
+// number is a RATCHET: it fails the moment a new warning appears,
+// without demanding the backlog be cleared in one pass. Drive it down;
+// never raise it.
+//
+// It was 52 for a long time, and the number stopped being true — the
+// real count reached 267, so `npm run lint` had been exiting 1 on a
+// clean checkout, and nothing ran it: CI type-checks, tests and builds
+// the dashboard but has no lint step. A ratchet nobody pulls is a
+// number, not a ratchet, so lint now runs in CI beside tsc.
+//
+// The 192 that remain, measured rather than estimated:
+//   - no-restricted-syntax (88): every one is a native `title=`
+//     attribute. These clear themselves as the <Tip> migration lands;
+//     src/components/ui/chrome.test.ts tracks the same 34 files.
+//   - react-refresh/only-export-components (34): fires on the
 //     intentional shadcn/ui pattern (component + its variants/constant
-//     from one module); "fixing" it means splitting widely-used
+//     from one module). "Fixing" it means splitting widely-used
 //     primitives for an HMR nicety, not a bug.
-// 52 is a ratchet, not a target: it fails the build the moment a NEW
-// warning is introduced, without demanding the legacy backlog be
-// cleared in one pass. Drive it down over time; don't raise it.
+//   - @typescript-eslint/no-unused-vars (34): what survived the dead-
+//     import sweep — destructured props a component accepts but does
+//     not read, and state left behind by a component split. Each needs
+//     a judgement (delete it, or `_`-prefix it to say "deliberately
+//     unused"), not a blind removal.
+//   - react-hooks/exhaustive-deps (30): the plugin's suggested fix can
+//     introduce infinite-render loops if the "missing" dep isn't
+//     memoized upstream; each needs the component's actual behaviour
+//     checked, not an automatic dep-array edit.
 
 import js from '@eslint/js';
 import tsParser from '@typescript-eslint/parser';

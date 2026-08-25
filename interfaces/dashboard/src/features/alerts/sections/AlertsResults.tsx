@@ -51,7 +51,6 @@ import type {
 import { formatAlertDescription } from '../../../utils/alertDescription';
 import { formatDate } from '../../../utils/datetime';
 import { useTimezone } from '../../../hooks/useTimezone';
-import { toneClasses } from '../../../lib/status';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery, buildAlertsFilterParams } from '../_shared/useAlertsQuery';

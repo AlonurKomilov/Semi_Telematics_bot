@@ -28,7 +28,6 @@ import type {
   DriverDetail,
   DriverVehicleAssignment,
   DriverDocument,
-  SamsaraDriver,
   SamsaraDriversResponse,
   AnyColumn,
 } from '../../types';

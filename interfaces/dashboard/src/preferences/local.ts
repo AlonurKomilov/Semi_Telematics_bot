@@ -15,7 +15,7 @@
  * rolling the release back doesn't lose it.
  */
 
-import { DEFS, type PrefKey, type PrefDef, defFor } from './registry';
+import { type PrefKey, type PrefDef, defFor } from './registry';
 
 /** Canonical prefix — shared with the legacy useUserPreference cache. */
 export const LS_PREFIX = '4truck.pref.';

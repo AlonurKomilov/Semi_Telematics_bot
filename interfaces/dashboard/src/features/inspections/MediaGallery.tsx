@@ -6,7 +6,6 @@ import { formatDate } from '../../utils/datetime';
 import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
 import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
 import { parseVerdict, VERDICT_EMOJI, verdictTone } from './aiVerdict';
-import { toneClasses } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 // Solid-fill class for the AI verdict dot on a thumbnail.  Derives from

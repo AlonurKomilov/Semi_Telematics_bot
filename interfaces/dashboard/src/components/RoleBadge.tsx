@@ -18,7 +18,7 @@
  * once and every page picks it up — never invent a colour at the
  * call-site (design.md §2 hard rule).
  */
-import { toneClasses, type Tone } from '../lib/status';
+import { type Tone } from '../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 /** Display label for each role.  Single source of truth — both the

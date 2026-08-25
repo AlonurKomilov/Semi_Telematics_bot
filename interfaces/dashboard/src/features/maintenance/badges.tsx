@@ -4,7 +4,7 @@ import {
   ClipboardCheck, Landmark, OctagonAlert,
 } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
-import { statusTone, toneClasses, type Tone } from '../../lib/status';
+import { statusTone, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { dueSoonHoursFor, dueSoonMilesFor } from './useMaintenanceTasks';

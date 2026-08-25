@@ -10,7 +10,6 @@ import StatusBadge from '../../components/StatusBadge';
 import { Freshness, InfoTip, Tip } from '../../components/tooltip';
 import { useInventoryAlerts } from './inventory/useInventory';
 import { PackageX } from 'lucide-react';
-import { toneClasses } from '../../lib/status';
 import { Button } from '../../components/ui/button';
 import {
   PageHeader,

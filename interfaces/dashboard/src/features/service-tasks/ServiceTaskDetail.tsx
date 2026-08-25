@@ -25,7 +25,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
-import { toneClasses } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useAssemblies } from '../parts/useAssemblies';
 import type { AnyColumn } from '../../types';

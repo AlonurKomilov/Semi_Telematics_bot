@@ -13,7 +13,6 @@ import {
   type ColumnFiltersState,
   type SortingState,
   type VisibilityState,
-  type ColumnOrderState,
   type ColumnPinningState,
   type ColumnSizingState,
   type GroupingState,

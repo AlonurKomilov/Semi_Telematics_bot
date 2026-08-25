@@ -20,7 +20,7 @@
  * existing call site keeps working untouched.
  */
 
-import { DEFS, defFor, type PrefKey, type PrefValue, type PrefDef } from './registry';
+import { DEFS, defFor, type PrefKey, type PrefValue } from './registry';
 import {
   readPref, writePref, removePref, prefKeyFromStorageEvent, sanitize, LS_PREFIX,
 } from './local';

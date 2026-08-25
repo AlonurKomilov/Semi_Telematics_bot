@@ -4,7 +4,10 @@ import { usePreference } from '../preferences';
 import { SIZE_REGIONS } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import type {
-  ThemeColor, ThemeRadius, ThemeSetting, SizeSetting, SizeRegion,
+  ThemeColor,
+  ThemeRadius,
+  ThemeSetting,
+  SizeSetting,
 } from '../preferences';
 
 // The stored SHAPE is owned by the preferences registry (it's the single

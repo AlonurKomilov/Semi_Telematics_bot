@@ -15,7 +15,7 @@
  *     Firefox reports LINES for a physical mouse wheel, so a notch moved
  *     the grid 3px.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 
 globalThis.ResizeObserver = class {

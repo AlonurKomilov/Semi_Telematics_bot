@@ -9,7 +9,7 @@ import {
   EmptyState,
 } from '../../components/shell';
 import { Card } from '@/components/ui/card';
-import { toneClasses, type Tone } from '@/lib/status';
+import { type Tone } from '@/lib/status';
 import { Badge } from '@/components/ui/badge';
 
 // ── Types ─────────────────────────────────────────────────────────

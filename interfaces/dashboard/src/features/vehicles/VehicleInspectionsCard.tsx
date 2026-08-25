@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ClipboardCheck, ChevronRight } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { type Tone, toneClasses } from '../../lib/status';
+import { type Tone } from '../../lib/status';
 import type { PTIInspectionRow, PTIInspectionsResponse } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';

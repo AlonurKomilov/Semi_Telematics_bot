@@ -31,8 +31,11 @@ import type { AnyColumn, MaintenanceTask } from '../../types';
 import StatusBadge from '../../components/StatusBadge';
 import { formatDate } from '../../utils/datetime';
 import {
-  PriorityBadge, EngineHoursProgress, TaskTypeCell, DueDateChip,
-  MileageProgress, type Priority,
+  PriorityBadge,
+  EngineHoursProgress,
+  TaskTypeCell,
+  DueDateChip,
+  MileageProgress,
 } from './badges';
 import { Tip } from '@/components/tooltip';
 

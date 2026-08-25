@@ -3,12 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, Cloud, ExternalLink, HardDrive, Loader2, RefreshCcw, Star, Unlink } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Cloud, ExternalLink, HardDrive, Loader2, Star, Unlink } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
-import { toneClasses } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 /**

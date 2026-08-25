@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import { Monitor, Smartphone, ImagePlus, Sparkles, Loader2 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { Button } from '../../components/ui/button';
-import { toneClasses } from '../../lib/status';
 import PublicApply, { type Brand } from './public/PublicApply';
 import { applyPublicFormTheme, surfaceContrastWeak } from './public/theme';
 import { Card } from '@/components/ui/card';

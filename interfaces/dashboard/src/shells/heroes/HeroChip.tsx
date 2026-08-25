@@ -7,7 +7,7 @@
  */
 import type { ReactNode } from 'react';
 import { Tip } from '../../components/tooltip';
-import { toneClasses, type Tone } from '../../lib/status';
+import { type Tone } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 type ChipTone = 'neutral' | 'positive' | 'warning' | 'critical' | 'info';

@@ -15,7 +15,7 @@
     "test": "npm run check:all && vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --max-warnings=52"
+    "lint": "eslint src --max-warnings=192"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

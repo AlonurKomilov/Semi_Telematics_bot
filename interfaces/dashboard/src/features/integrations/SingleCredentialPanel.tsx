@@ -11,7 +11,6 @@
 
 import CredentialsSection from './CredentialsSection';
 import { Button } from '../../components/ui/button';
-import { toneClasses } from '../../lib/status';
 import { Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 

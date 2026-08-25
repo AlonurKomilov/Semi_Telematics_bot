@@ -49,6 +49,12 @@ jobs:
       - name: Dashboard — type check
         run: cd interfaces/dashboard && npx tsc --noEmit
 
+      # The lint ratchet only ratchets if something pulls it. It had sat
+      # at --max-warnings=52 against a real count of 267, so the script
+      # exited 1 on a clean checkout and no one noticed — nothing ran it.
+      - name: Dashboard — lint ratchet
+        run: cd interfaces/dashboard && npm run lint
+
       - name: Dashboard — Vitest smoke
         run: cd interfaces/dashboard && npm test
 

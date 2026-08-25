@@ -4,18 +4,22 @@ import { usePreference } from '../../preferences';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Wrench, Plus, X, History, FileText,
-  List, CalendarDays, Trash2, CheckSquare, BellOff, Bell, Archive, RefreshCw,
-  Paperclip, Image as ImageIcon, Upload, ClipboardList,
+  Wrench,
+  Plus,
+  List,
+  CalendarDays,
+  Trash2,
+  CheckSquare,
+  Archive,
+  RefreshCw,
+  ClipboardList,
 } from 'lucide-react';
-import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
-import { apiJSON, apiFetch } from '../../api/client';
+import { apiJSON } from '../../api/client';
 import { usePublishContext } from '../ai/PageContext';
 import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';
 import {
   useMaintenanceTasksQuery, makeUrgencyClassifier, classifyTaskBuckets,
 } from './useMaintenanceTasks';
-import StatusBadge from '../../components/StatusBadge';
 import {
   PageHeader,
   EmptyState,
@@ -23,33 +27,27 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import type { MaintenanceTask, AnyColumn } from '../../types';
-import {
-  PriorityBadge, EngineHoursProgress, TaskTypeCell, DueDateChip, MileageProgress,
-  PRIORITY_OPTIONS,
-  type Priority,
-} from './badges';
-import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type VehicleSummary } from './pickers';
+import { type VehicleSummary } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
-import { toneClasses } from '@/lib/status';
 import { undoableToast } from '../../lib/undoable';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
 import { TaskActivityDialog } from './TaskActivityDialog';
 import { TemplatesModal } from './TemplatesModal';
 import type { MaintenanceTemplate } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
-import { formatDate, formatDay } from '../../utils/datetime';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { makeColumns } from './columns';
 import AddTaskDialog from './AddTaskDialog';
 import TaskDetailSheet from './TaskDetailSheet';
 import {
-  STATUS_OPTIONS, STATUS_LABELS, PRIORITY_ITEMS, STATUS_ITEMS, CLOSED_STATUSES,
-  initialTriggerMode, centsToDollars, remainingFrom,
-  type TriggerMode,
-  _periodDaysToDueDate, _dueDateToPeriodDays, _formatDate, _todayLabel,
+  STATUS_OPTIONS,
+  STATUS_LABELS,
+  CLOSED_STATUSES,
+  _periodDaysToDueDate,
+  _dueDateToPeriodDays,
+  _formatDate,
+  _todayLabel,
   _isOverdueOrApproaching,
 } from './taskFields';
 

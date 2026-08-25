@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Plus, Search, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import DataGrid from '../../components/datagrid';

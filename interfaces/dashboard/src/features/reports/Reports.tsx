@@ -22,7 +22,7 @@ import type {
   AnyColumn,
 } from '../../types';
 import { REPORTS } from '../../data/reports';
-import { statusTone, toneClasses } from '../../lib/status';
+import { statusTone } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 // Tabs on this page = the API-exportable reports (excludes Camera

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
 import { apiJSON } from '@/api/client';
-import { toneClasses } from '@/lib/status';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, formatDay, formatTime } from '@/utils/datetime';
 import { useTimezone } from '@/hooks/useTimezone';

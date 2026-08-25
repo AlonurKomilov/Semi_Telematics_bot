@@ -30,7 +30,6 @@ import { DIRECTORY_DISCLOSURE } from './directoryCopy';
 import type { Vendor, DirectoryEntry, AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
-import { toneClasses } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 function money(v: unknown): string {

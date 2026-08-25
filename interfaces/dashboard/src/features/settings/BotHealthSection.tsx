@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { toneClasses, toneText } from '../../lib/status';
+import { toneText } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';
 
 interface HealthCheck {
