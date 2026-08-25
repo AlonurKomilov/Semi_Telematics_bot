@@ -1,15 +1,18 @@
 """Notification preference matrix — the multi-channel prefs store.
 
 ONE row per rule (docs/architecture/notifications.md §6): "recipient
-wants alert_type on channel (+ cadence)".  Replaces the per-channel
-column explosion the legacy ``users.alert_*`` booleans would have become
-once Email/SMS/Push arrive.
+wants CATEGORY on channel (+ cadence)".  Replaces the per-channel column
+explosion the legacy ``users.alert_*`` booleans would have become once
+Email/Push arrived.  The column shipped as ``alert_type`` and was renamed
+to ``category`` by ``migrate_notification_category_rename``; a key is
+``<source>.<key>`` and six source namespaces register today — ``alert``,
+``system``, ``team``, ``applications``, ``ai``, ``kpi``.
 
-Phase 2a: this mixin + the tables exist and are backfilled, but NOTHING
-reads them for live delivery yet — the reader/writer switch
-(``get_typed_alert_subscribers`` + the My-Notifications API) is the
-separate, tested 2b step.  So this layer is additive and cannot change
-current delivery.
+This mixin is LIVE: the alert seam reads it for real delivery.  What is
+still owed is the flip of the remaining senders — events, geofences and
+scorecards continue to read the legacy ``users.alert_*`` columns through
+``get_typed_alert_subscribers`` until ``NOTIFICATIONS_MATRIX_READER`` is
+turned on by default.
 
 Scope note: personal (``recipient_type='user'``) rows are the phase-2a
 focus (the bot→user DM prefs).  The shared side (per-role Telegram

@@ -7,11 +7,14 @@ keypair a persist-forever artifact — exactly the kind of thing this
 deployment prefers NOT to manage as an env var — so it is generated on
 first use and stored in ``platform_settings``:
 
-  ``webpush_vapid_private``  the private key PEM, encrypted at rest via
-                             ``infra.crypto`` when ENCRYPTION_KEY is set
-                             (same posture as bot tokens)
-  ``webpush_vapid_public``   the b64url application-server key the
-                             browser needs (public by definition)
+  ``webpush_vapid_keypair``  ONE platform_settings row holding a JSON
+                             object with both halves: the private key PEM
+                             (encrypted at rest via ``infra.crypto`` when
+                             ENCRYPTION_KEY is set, same posture as bot
+                             tokens) and the b64url application-server key
+                             the browser needs (public by definition).
+                             One row, because a half-written pair is a
+                             pair that kills every live subscription.
 
 Regenerating (deleting the rows) is possible but invalidates every
 subscribed device — they'd each need to re-enable.  The claims ``sub``

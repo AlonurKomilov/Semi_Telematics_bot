@@ -419,7 +419,7 @@ async def create_tables(conn) -> None:
             account_id     INTEGER NOT NULL,
             recipient_type TEXT    NOT NULL,             -- 'user' | 'account' | 'topic'
             recipient_id   TEXT    NOT NULL,             -- user_id / topic id / distro id
-            channel        TEXT    NOT NULL,             -- 'telegram_dm' | 'email' | 'web_push' | 'sms' | 'telegram_topic'
+            channel        TEXT    NOT NULL,             -- 'telegram_dm' | 'telegram_topic' | 'email' | 'web_push' | 'in_app' ('sms' reserved, unbuilt)
             category       TEXT    NOT NULL,             -- 'alert.faults' | 'team.invite_accepted' | '*'
             enabled        INTEGER NOT NULL DEFAULT 1,
             cadence        TEXT    NOT NULL DEFAULT 'immediate',  -- 'immediate' | 'hourly' | 'daily'
@@ -439,6 +439,13 @@ async def create_tables(conn) -> None:
             verified_at    TEXT    NOT NULL DEFAULT '',   -- '' = unverified
             enabled_master INTEGER NOT NULL DEFAULT 1,    -- per-channel master switch
             updated_at     TEXT    NOT NULL DEFAULT '',
+            -- Seeded rows the user never asked for (recruiting notices)
+            -- are marked here so they can be told apart from a real
+            -- connection.  Upgrades got this via ADD COLUMN in
+            -- migrate_seed_application_notification_channels; fresh
+            -- installs only had it because that same migration ran after
+            -- this CREATE.  Now both start the same shape.
+            provenance     TEXT    NOT NULL DEFAULT '',
             PRIMARY KEY (account_id, recipient_type, recipient_id, channel)
         );
 
@@ -494,7 +501,7 @@ async def create_tables(conn) -> None:
             account_id INTEGER NOT NULL,
             user_id    INTEGER NOT NULL,
             category   TEXT    NOT NULL,               -- 'team.invite_accepted'
-            source     TEXT    NOT NULL DEFAULT '',    -- namespace: 'team' | 'system'
+            source     TEXT    NOT NULL DEFAULT '',    -- namespace: 'alert' | 'system' | 'team' | 'applications' | 'ai' | 'kpi'
             severity   TEXT    NOT NULL DEFAULT 'info',
             title      TEXT    NOT NULL,
             body       TEXT    NOT NULL DEFAULT '',
