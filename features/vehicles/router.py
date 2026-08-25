@@ -1193,6 +1193,15 @@ async def vehicle_detail(
     odometer_by_name: dict[str, dict] = {}
     engine_hours_by_id: dict[str, dict] = {}
     engine_hours_by_name: dict[str, dict] = {}
+    # Engine state travels with them.  This endpoint reads LIVE Samsara,
+    # whose payload carries no engine state at all — so without this
+    # overlay ``_derive_engine_state`` sees an absent field, falls back
+    # to its speed heuristic, and a truck standing still reads "Off".
+    # On 548640 that put a confident "Off" directly beneath a banner
+    # saying the device cannot read the engine.  The warehouse already
+    # holds the resolved value; the list has been using it all along.
+    engine_state_by_id: dict[str, str] = {}
+    engine_state_by_name: dict[str, str] = {}
     for row in warehouse_rows:
         rid = str(row.get("vehicle_id") or "")
         rname = (row.get("vehicle_name") or "").lower()
@@ -1203,6 +1212,15 @@ async def vehicle_detail(
                 odometer_by_id[rid] = odometer
             if rname:
                 odometer_by_name[rname] = odometer
+        state = row.get("engine_state")
+        # "" is a real answer here — the ingest looked and found no
+        # engine feed — so it must reach the overlay rather than being
+        # skipped as missing.
+        if state is not None:
+            if rid:
+                engine_state_by_id[rid] = state
+            if rname:
+                engine_state_by_name[rname] = state
         hours = row.get("engine_hours")
         if hours is not None:
             eng = {"hours": hours, "time": row.get("engine_hours_time")}
@@ -1221,6 +1239,15 @@ async def vehicle_detail(
             e_hit = engine_hours_by_id.get(match_id) or engine_hours_by_name.get(match_name)
             if e_hit:
                 match["engine_hours_reading"] = e_hit
+        if match_id in engine_state_by_id or match_name in engine_state_by_name:
+            s_hit = engine_state_by_id.get(match_id)
+            if s_hit is None:
+                s_hit = engine_state_by_name.get(match_name, "")
+            # Same shape the warehouse reader emits, so ONE derivation
+            # path serves both the list and this page.
+            loc = match.setdefault("location", {})
+            if isinstance(loc, dict):
+                loc["engineStates"] = {"value": s_hit}
 
     normalized = [_normalize_detail(m) for m in matches]
     callouts = await _vehicle_callouts(

@@ -40,7 +40,16 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
       {callouts.length > 0 && (
         <div className="mt-3 space-y-2">
           {callouts.map((c) => (
-            <Callout key={c.key} callout={c} />
+            // ``entity``: a dismissal is recorded against the TRUCK, so
+            // it lands on that vehicle's activity trail — where an
+            // owner asking "was anyone told about this?" would actually
+            // look.  Without it the entry files under a callout id
+            // nobody browses.
+            <Callout
+              key={c.key}
+              callout={c}
+              entity={{ type: 'vehicle', id: vehicleName }}
+            />
           ))}
         </div>
       )}

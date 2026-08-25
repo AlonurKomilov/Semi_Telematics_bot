@@ -76,3 +76,39 @@ def test_empty_and_absent_disagree_on_purpose():
     'we have no field to look at'."""
     assert _derive_engine_state("stopped", "") == ""       # looked → unknown
     assert _derive_engine_state("stopped", None) == "Off"  # no field → legacy
+
+
+def test_detail_page_overlay_reaches_the_derivation():
+    """The detail endpoint reads LIVE Samsara, whose payload carries no
+    engine state — so the warehouse value has to be overlaid onto the
+    match before ``_normalize_detail`` runs, or the absent-field branch
+    fires and a standing truck reads "Off".
+
+    That is what put a confident "Off" directly beneath a banner saying
+    the device cannot read the engine.  Asserted structurally: the
+    overlay must write the SAME key the warehouse reader emits, so one
+    derivation path serves the list and the page.
+    """
+    import inspect
+
+    from features.vehicles import router
+
+    src = inspect.getsource(router.vehicle_detail)
+    assert "engine_state_by_id" in src, "detail page must overlay engine state"
+    assert '"engineStates"' in src, (
+        "overlay must use the warehouse reader's key, not a second shape"
+    )
+
+
+def test_empty_engine_state_survives_the_overlay():
+    """"" is an ANSWER — the ingest looked and found no engine feed.
+    Skipping it as missing would drop the page back to the speed
+    heuristic and re-invent the bug."""
+    import inspect
+
+    from features.vehicles import router
+
+    src = inspect.getsource(router.vehicle_detail)
+    assert "if state is not None:" in src, (
+        'empty string must reach the overlay; a truthiness check drops it'
+    )
