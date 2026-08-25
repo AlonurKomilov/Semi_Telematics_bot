@@ -822,7 +822,7 @@ export function InvitesPanel() {
             {badgeFor && (
               <Tip label={inv.email_bounce_reason || badgeFor.label}>
                 <Badge tone={badgeFor.tone}>
-                  <badgeFor.icon size={12} />
+                  <badgeFor.icon className="size-3" />
                   {badgeFor.label}
                 </Badge>
               </Tip>

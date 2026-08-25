@@ -33,6 +33,7 @@ import { useApplicationsQuery, type AppRow } from './useApplications';
 import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { iconSizeClass } from '@/lib/iconSize';
 
 // Lifecycle split for the grid's segment tabs: the working pipeline
 // vs the two terminal outcomes.  Finer stage slicing (Submitted /
@@ -113,7 +114,7 @@ function LinkCompanyLogo({ id, hasLogo, version = 0, size = 48 }: {
   if (url) return <img src={url} alt="" style={{ width: size, height: size }} className="rounded object-contain border border-border bg-card" />;
   return (
     <span style={{ width: size, height: size }} className="inline-flex items-center justify-center rounded border border-border bg-muted text-muted-foreground">
-      <Building2 size={Math.round(size * 0.5)} />
+      <Building2 className={iconSizeClass(Math.round(size * 0.5))} />
     </span>
   );
 }

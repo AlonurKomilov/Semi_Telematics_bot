@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { ActionMenu } from '../../components/ui/context-menu';
 import { ActivityTrailDialog, ActivityTrailTrigger } from '../../components/activity-trail/ActivityTrailDialog';
-import { useTeamMembersQuery } from './useTeamMembers';
+import { useTeamMembersQuery } from '../../hooks/useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
 import { useAuth } from '../../context/AuthContext';

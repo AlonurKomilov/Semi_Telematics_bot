@@ -19,6 +19,7 @@ import type { CompanyInfo, AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Card } from '@/components/ui/card';
+import { iconSizeClass } from '@/lib/iconSize';
 
 // Company logo (authed) — fetched as a blob since the serve endpoint
 // needs the Bearer token (an <img src> can't carry it).
@@ -40,7 +41,7 @@ function CompanyLogo({ id, hasLogo, version = 0, size = 28 }: {
   if (url) return <img src={url} alt="" style={{ width: size, height: size }} className="rounded object-cover border border-border" />;
   return (
     <span style={{ width: size, height: size }} className="inline-flex items-center justify-center rounded border border-border bg-muted text-muted-foreground">
-      <Building2 size={Math.round(size * 0.5)} />
+      <Building2 className={iconSizeClass(Math.round(size * 0.5))} />
     </span>
   );
 }

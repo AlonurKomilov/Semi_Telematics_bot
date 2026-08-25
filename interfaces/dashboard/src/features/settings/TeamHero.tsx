@@ -13,7 +13,7 @@
  */
 import HeroChip, { HERO_STRIP } from '../../shells/heroes/HeroChip';
 import { ROLE_LABEL } from '../../components/RoleBadge';
-import { useTeamMembersQuery, memberLifecycleOf } from './useTeamMembers';
+import { useTeamMembersQuery, memberLifecycleOf } from '../../hooks/useTeamMembers';
 
 export default function TeamHero() {
   const { data, isLoading, isError } = useTeamMembersQuery();

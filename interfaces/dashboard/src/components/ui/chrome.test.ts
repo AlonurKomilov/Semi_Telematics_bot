@@ -426,10 +426,19 @@ describe('UI chrome', () => {
    * the engine, which is exactly what a guard is for.
    */
   it('has no chart font size that opted out of the text axis', () => {
-    const offenders = FILES.filter(({ src }) => /fontSize:\s*\d/.test(src)).map(
-      ({ rel, src }) =>
-        `${rel}: ${(src.match(/fontSize:\s*\d+/g) ?? []).join(', ')}`,
-    );
+    // `\\d` alone was too narrow twice over. It walked past a `fontSize: 9`
+    // during the original sweep — the census regex read `1[0-2]` — and it
+    // walked past `fontSize: '10px'` entirely, because a quote is not a
+    // digit. Both forms reach the SVG the same way.
+    // A fresh regex per file, deliberately. A /g regex carries lastIndex
+    // between calls, so a shared one would start the NEXT file wherever
+    // it stopped in the last — quietly skipping matches near the top.
+    const frozen = (src: string) =>
+      src.match(/fontSize:\s*(?:\d|['"`]\s*\d)/g) ?? [];
+    const offenders = FILES
+      .map(({ rel, src }) => ({ rel, hits: frozen(src) }))
+      .filter(({ hits }) => hits.length)
+      .map(({ rel, hits }) => `${rel}: ${hits.join(', ')}`);
     expect(
       offenders,
       'use CHART_FONT_XS / _SM / _MD from lib/chartText.ts — a bare number ' +

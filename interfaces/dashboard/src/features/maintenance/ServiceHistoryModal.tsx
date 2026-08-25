@@ -13,6 +13,7 @@ import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { SectionHeader } from '@/components/shell';
 
 import { CHART_FONT_MD } from "@/lib/chartText";
+import { CHART_FONT_XS } from "@/lib/chartText";
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
 // and we backfill empty months with zero so the gap pattern is honest
@@ -204,7 +205,7 @@ export function ServiceHistoryModal({
                       <XAxis
                         dataKey="label"
                         stroke="currentColor"
-                        style={{ fontSize: '10px', opacity: 0.6 }}
+                        style={{ fontSize: CHART_FONT_XS, opacity: 0.6 }}
                         axisLine={false}
                         tickLine={false}
                       />
