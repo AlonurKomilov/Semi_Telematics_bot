@@ -121,18 +121,36 @@ async def test_flag_on_dispatches_broadcast_content_to_new_channels(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_unregistered_alert_type_stays_telegram_only(monkeypatch):
-    """doc-expiry / scorecard / system have no registered category — they
-    must not fan out ungated over the new channels."""
+    """An alert type with NO registered category must not fan out
+    ungated over the new channels.
+
+    Membership is DERIVED, never listed.  The hardcoded list here read
+    "doc_expiry / scorecard / system" and rotted the day those two
+    gained real categories (features/drivers/documents/alert.py registers
+    alert.documents) — the test then failed for having the wrong
+    membership, not for the rule being broken.  Deriving it means the
+    rule keeps holding as categories are added."""
     disp = _RecordingDispatch()
     _patch(monkeypatch, flag=True, dispatch=disp)
 
-    for atype in ("doc_expiry", "scorecard", "samsara_sync", "system"):
-        assert get_category(f"alert.{pipeline._PIPELINE_TO_ROUTE_KEY.get(atype, atype)}") is None
+    candidates = ("doc_expiry", "scorecard", "samsara_sync", "system")
+    unregistered = [
+        a for a in candidates
+        if get_category(
+            f"alert.{pipeline._PIPELINE_TO_ROUTE_KEY.get(a, a)}") is None
+    ]
+    assert unregistered, (
+        "expected at least one uncategorised alert type to exercise the "
+        "rule — if every type now has a category, delete this test"
+    )
+    for atype in unregistered:
         await dispatch_new_channels(
             account_id=1, alert_type=atype, severity=AlertSeverity.INFO,
             vehicle_name="Truck 1", alert_text="x",
         )
-    assert disp.calls == []
+    assert disp.calls == [], (
+        f"uncategorised types fanned out ungated: {unregistered}"
+    )
 
 
 @pytest.mark.asyncio

@@ -499,13 +499,19 @@ class TestStorageQuotaInRoute:
 
 
 class TestStorageQuotaAdmin:
-    """`/admin/storage/quota` lets owners inspect and adjust the local-disk
-    fallback cap. Drive-connected accounts ignore this value at upload time."""
+    """`/admin/object-storage/quota` lets owners inspect and adjust the
+    local-disk fallback cap. Drive-connected accounts ignore this value
+    at upload time.
+
+    The route moved out of the drivers surface into the object-storage
+    capability (gate: can_manage_storage); these tests kept calling the
+    retired path and 404'd, which read as three failures rather than one
+    rename."""
 
     async def test_get_returns_default_quota(self, app_and_db):
         ctx = app_and_db
         async with AsyncClient(transport=ASGITransport(app=ctx["app"]), base_url="http://t") as c:
-            r = await c.get("/api/admin/storage/quota", headers=_h(ctx["tok_admin"]))
+            r = await c.get("/api/admin/object-storage/quota", headers=_h(ctx["tok_admin"]))
             assert r.status_code == 200
             body = r.json()
             assert body["used_bytes"] == 0
@@ -515,10 +521,10 @@ class TestStorageQuotaAdmin:
     async def test_driver_cannot_read_or_change_quota(self, app_and_db):
         ctx = app_and_db
         async with AsyncClient(transport=ASGITransport(app=ctx["app"]), base_url="http://t") as c:
-            r = await c.get("/api/admin/storage/quota", headers=_h(ctx["tok_drv1"]))
+            r = await c.get("/api/admin/object-storage/quota", headers=_h(ctx["tok_drv1"]))
             assert r.status_code == 403
             r = await c.put(
-                "/api/admin/storage/quota",
+                "/api/admin/object-storage/quota",
                 headers=_h(ctx["tok_drv1"]),
                 json={"quota_bytes": 1024},
             )
@@ -528,14 +534,14 @@ class TestStorageQuotaAdmin:
         ctx = app_and_db
         async with AsyncClient(transport=ASGITransport(app=ctx["app"]), base_url="http://t") as c:
             r = await c.put(
-                "/api/admin/storage/quota",
+                "/api/admin/object-storage/quota",
                 headers=_h(ctx["tok_admin"]),
                 json={"quota_bytes": 1024 * 1024},  # 1 MB
             )
             assert r.status_code == 200
             assert r.json()["quota_bytes"] == 1024 * 1024
             # Read-back reflects the change.
-            r2 = await c.get("/api/admin/storage/quota", headers=_h(ctx["tok_admin"]))
+            r2 = await c.get("/api/admin/object-storage/quota", headers=_h(ctx["tok_admin"]))
             assert r2.json()["quota_bytes"] == 1024 * 1024
 
 

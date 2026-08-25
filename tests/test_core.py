@@ -294,6 +294,11 @@ class TestPlatformInit:
             conn = await asyncpg.connect(_pg_container_url)
             try:
                 await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+                # The telemetry warehouse lives in its own schema (migration
+                # 183) — reset it too, or the previous run's warehouse tables
+                # survive and migration 183 collides on vehicle_state_pkey.
+                # conftest.py already did this; these three copies did not.
+                await conn.execute("DROP SCHEMA IF EXISTS warehouse CASCADE")
                 await conn.execute("CREATE SCHEMA public")
             finally:
                 await conn.close()
@@ -352,6 +357,11 @@ class TestPlatformInit:
             conn = await asyncpg.connect(_pg_container_url)
             try:
                 await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+                # The telemetry warehouse lives in its own schema (migration
+                # 183) — reset it too, or the previous run's warehouse tables
+                # survive and migration 183 collides on vehicle_state_pkey.
+                # conftest.py already did this; these three copies did not.
+                await conn.execute("DROP SCHEMA IF EXISTS warehouse CASCADE")
                 await conn.execute("CREATE SCHEMA public")
             finally:
                 await conn.close()
@@ -515,6 +525,11 @@ class TestStartup:
         conn = await asyncpg.connect(_pg_container_url)
         try:
             await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+            # The telemetry warehouse lives in its own schema (migration
+            # 183) — reset it too, or the previous run's warehouse tables
+            # survive and migration 183 collides on vehicle_state_pkey.
+            # conftest.py already did this; these three copies did not.
+            await conn.execute("DROP SCHEMA IF EXISTS warehouse CASCADE")
             await conn.execute("CREATE SCHEMA public")
         finally:
             await conn.close()

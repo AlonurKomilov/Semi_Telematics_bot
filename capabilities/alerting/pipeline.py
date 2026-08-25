@@ -572,6 +572,40 @@ def build_alert_button_specs(
     return rows
 
 
+async def _stamp_persona_delivery(account_id: int, orig, res) -> None:
+    """Delivery-health stamp for per-persona group posting.
+
+    Per-persona group posting never auto-disables — a kicked bot, a
+    deleted group or lost admin rights all need a human — so the Group
+    delivery roster leans entirely on this stamp: a failure records it,
+    and the next success CLEARS it.  Without the clear, a group that
+    failed once wears the failure forever and the roster lies about a
+    healthy group.
+
+    Legacy single-group targets carry no persona and are skipped: they
+    have their own auto-disable drift handling, and stamping them would
+    double-report one fault.
+
+    A stamp write must NEVER change the post's outcome, so every failure
+    here is swallowed.  Both delivery paths call this, so the policy
+    cannot drift between them — the heal half was previously written at
+    one path only and then lost entirely in the transport-wall refactor,
+    while the test that pinned it could not even import.
+    """
+    persona = getattr(orig, "persona", "")
+    if not persona:
+        return
+    try:
+        db = get_platform_db()
+        if res.ok:
+            await db.clear_persona_group_failure(account_id, persona)
+        else:
+            await db.record_persona_group_failure(
+                account_id, persona, res.error or "send failed")
+    except Exception:
+        logger.debug("persona delivery stamp write failed", exc_info=True)
+
+
 async def post_alert_to_topic(
     bot_app,   # unused transport handle — kept for caller compatibility
     *,
@@ -749,6 +783,7 @@ async def post_alert_to_topic(
     for orig, (_pt, res) in zip(targets, result.shared):
         if res.ok:
             any_success = True
+            await _stamp_persona_delivery(account_id, orig, res)
             continue
         err = (res.error or "").lower()
         is_legacy = (getattr(orig, "message_thread_id", None) is not None
@@ -765,11 +800,7 @@ async def post_alert_to_topic(
             except Exception:
                 logger.exception("Failed to disable broken route")
         elif getattr(orig, "persona", ""):
-            try:
-                await get_platform_db().record_persona_group_failure(
-                    account_id, orig.persona, res.error or "send failed")
-            except Exception:
-                pass
+            await _stamp_persona_delivery(account_id, orig, res)
             logger.warning("Forum post (lite) failed acct=%d type=%s "
                            "persona=%s — %s",
                            account_id, alert_type, orig.persona, res.error)
@@ -900,6 +931,7 @@ async def _deliver_groups_via_plan(
     for orig, (_ptarget, res) in zip(targets, result.shared):
         if res.ok:
             any_ok = True
+            await _stamp_persona_delivery(account_id, orig, res)
             logger.info(
                 "forum alert posted acct=%d type=%s severity=%s chat=%s "
                 "thread=%s%s route=plan",
@@ -944,11 +976,7 @@ async def _deliver_groups_via_plan(
             except Exception:
                 logger.exception("Failed to disable broken route")
         elif getattr(orig, "persona", ""):
-            try:
-                await get_platform_db().record_persona_group_failure(
-                    account_id, orig.persona, res.error or "send failed")
-            except Exception:
-                pass
+            await _stamp_persona_delivery(account_id, orig, res)
             logger.warning(
                 "Forum post failed acct=%d type=%s persona=%s — %s",
                 account_id, alert_type, orig.persona, res.error,

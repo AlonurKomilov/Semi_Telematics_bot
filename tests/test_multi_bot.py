@@ -248,6 +248,28 @@ class TestHandlerRegistration:
 #  Bot scoping tests
 # ═══════════════════════════════════════════════════════════════════
 
+class _ChainingBuilder:
+    """Stands in for telegram.ext.ApplicationBuilder.
+
+    Every step returns the builder and only ``build()`` returns the app —
+    mirrored GENERICALLY on purpose.  The previous mock stubbed the
+    chain step by step, so when the real chain gained
+    ``.rate_limiter(AIORateLimiter())`` the unstubbed step handed
+    ``.build()`` a different MagicMock, and the test died on "MagicMock
+    can't be used in 'await'" instead of on anything it was written to
+    check.  A generic stand-in cannot rot that way.
+    """
+
+    def __init__(self, app):
+        self._app = app
+
+    def build(self):
+        return self._app
+
+    def __getattr__(self, _name):
+        return lambda *a, **kw: self
+
+
 class TestBotScoping:
     """Handlers can resolve account_id via bot_data."""
 
@@ -273,11 +295,7 @@ class TestBotScoping:
             mock_app.handlers = {}
             mock_app.add_handler = MagicMock()
 
-            builder = MagicMock()
-            builder.token.return_value = builder
-            builder.concurrent_updates.return_value = builder
-            builder.build.return_value = mock_app
-            MockAppClass.builder.return_value = builder
+            MockAppClass.builder.return_value = _ChainingBuilder(mock_app)
 
             app = await _build_bot_app(token="123:FAKE", account_id=42)
 

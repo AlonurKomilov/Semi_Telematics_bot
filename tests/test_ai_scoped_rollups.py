@@ -137,10 +137,24 @@ class TestGateBatch2:
 
 
 class _FakeAlertDB:
+    """Stands in for the alert-history read the AI tool performs.
+
+    The tool moved to the PAGED reader
+    (``get_active_alert_history_for_account_paged``) and this fake was
+    left speaking the retired ``get_alert_history`` — so both tests died
+    on AttributeError rather than on anything they were written to
+    check.  ``calls`` records the kwargs so the next signature drift
+    shows up as a readable assertion instead of a missing attribute.
+    """
+
     def __init__(self, rows):
         self._rows = rows
+        self.calls: list[dict] = []
 
-    async def get_alert_history(self, account_id, **kw):
+    async def get_active_alert_history_for_account_paged(
+        self, account_id, **kw,
+    ):
+        self.calls.append({"account_id": account_id, **kw})
         return list(self._rows)
 
 

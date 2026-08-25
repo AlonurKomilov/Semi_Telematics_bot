@@ -26,6 +26,28 @@ from capabilities.permissions.roles import Role
 from features.vehicles.inventory.ai_actions import _build_rows
 
 
+@pytest.fixture(autouse=True)
+def _platform_singleton(pg_db):
+    """Point the platform singleton at the test database.
+
+    ``execute_approved_action`` takes ``platform_db``/``tenant_db``
+    explicitly, but its TRAIL write resolves the actor through
+    ``interfaces.api.deps.resolve_user_id``, which reaches for the
+    GLOBAL ``infra.platform`` singleton instead of the injected db.  In
+    a test that only injects, that raises "infra.platform not
+    initialized" — swallowed by the trail's own try/except, so the
+    action succeeds and its audit rows silently never appear.  The test
+    then fails on an empty audit log, several layers from the cause.
+    """
+    import infra.platform as _cp
+    saved = _cp._db
+    _cp._db = pg_db
+    try:
+        yield pg_db
+    finally:
+        _cp._db = saved
+
+
 async def _seed(pg_db):
     from interfaces.api.auth import _hash_password
     acct = await pg_db.create_account("Undo Fleet Co")
@@ -45,7 +67,12 @@ async def _seed(pg_db):
 
 
 def _user(acct: int, uid: int, role: str) -> dict:
-    return {"account_id": acct, "sub": str(uid), "role": role}
+    # ``uid`` is the claim every token minted since the user-id rollout
+    # carries, and the one resolve_user_id prefers.  With only the
+    # legacy ``sub``, resolution falls back to a telegram_id lookup that
+    # these seeded users do not have — so the trail recorded actor 0 and
+    # the attribution assertion failed for the wrong reason.
+    return {"account_id": acct, "uid": uid, "sub": str(uid), "role": role}
 
 
 async def _approve_import(pg_db, acct: int, uid: int, *, role="fleet"):
@@ -98,9 +125,12 @@ async def test_full_undo_loop_removes_exactly_the_change_set(pg_db):
     prop = await pg_db.get_action_proposal_for_account(pid, acct)
     assert prop["status"] == "undone"
     assert prop["undone_by"] == uid and prop["undone_at"]
-    # Both audit rows, in order, with the right actors.
-    log = await pg_db.get_audit_log(acct, limit=10)
-    actions = [(r["action"], r["user_id"]) for r in log]
+    # Both trail rows, with the right actors.  These moved off the
+    # legacy audit_log table in the activity-trail sweep (8c8b452e);
+    # the test kept reading audit_log, so it saw an empty list and
+    # blamed the write rather than the lens.
+    events = await pg_db.list_activity_events(acct, limit=10)
+    actions = [(e["action"], e["actor_user_id"]) for e in events]
     assert ("ai_write:import_inventory_items", uid) in actions
     assert ("ai_undo:import_inventory_items", uid) in actions
 
