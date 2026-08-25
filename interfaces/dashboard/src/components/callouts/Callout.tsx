@@ -19,7 +19,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import type { CalloutData } from './calloutCatalog';
 import { useCallout } from './useCallout';
 import { useDismissal } from './useDismissal';
@@ -116,7 +116,13 @@ export default function Callout({
           )}
           className="ml-auto shrink-0 rounded p-1 opacity-70 hover:opacity-100 min-h-tap min-w-tap"
         >
-          <X className="size-3.5" />
+          {/* The icon has to mean what the control does.  An X says
+              "gone", which is a promise collapse does not keep — and
+              the collapsed row already expands with a chevron, so
+              folding it back up is that chevron's mirror. */}
+          {behaviour === 'collapse'
+            ? <ChevronUp className="size-3.5" />
+            : <X className="size-3.5" />}
         </button>
       )}
     </div>

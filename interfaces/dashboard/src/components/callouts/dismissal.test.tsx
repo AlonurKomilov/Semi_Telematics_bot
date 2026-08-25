@@ -47,3 +47,23 @@ describe('dismiss behaviour', () => {
     expect(dismissBehaviour('nope.nothing')).toBe('none');
   });
 });
+
+/**
+ * The icon is part of the promise.
+ *
+ * An X says "gone" — a promise collapse does not keep, since the line
+ * stays on screen.  Pairing the fold-up chevron with the fold-down one
+ * the collapsed row already shows makes the control reversible on
+ * sight, which is what an X would have hidden.
+ */
+describe('the X icon means removal, only', () => {
+  it('pairs each behaviour with an icon that keeps its promise', () => {
+    // Encoded as the component does it, so the mapping is pinned even
+    // though the icons themselves are rendered inside a button.
+    const iconFor = (b: ReturnType<typeof dismissBehaviour>) =>
+      b === 'collapse' ? 'chevron-up' : b === 'remove' ? 'x' : 'none';
+    expect(iconFor(dismissBehaviour('vehicle.no_engine_data'))).toBe('chevron-up');
+    expect(iconFor('remove')).toBe('x');
+    expect(iconFor(dismissBehaviour('mileage.partial'))).toBe('none');
+  });
+});
