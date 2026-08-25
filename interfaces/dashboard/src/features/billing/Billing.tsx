@@ -4,7 +4,7 @@
 // SSOT: docs/FEATURES.md "Money domains".
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -14,6 +14,7 @@ import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -310,16 +311,16 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
 
       <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-border text-xs text-muted-foreground">
         {summary.user_count > 0 && (
-          <span>👥 {summary.user_count} team member{summary.user_count !== 1 ? 's' : ''}</span>
+          <span className="inline-flex items-center gap-1.5"><Users className="size-3.5" aria-hidden />{summary.user_count} team member{summary.user_count !== 1 ? 's' : ''}</span>
         )}
         {summary.current_period_end && (
-          <span>📅 Period ends {formatDay(summary.current_period_end, { timeZone: tz })}</span>
+          <span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5" aria-hidden />Period ends {formatDay(summary.current_period_end, { timeZone: tz })}</span>
         )}
         {summary.trial_ends_at && (
-          <span className="text-warn">⚠️ Trial ends {formatDay(summary.trial_ends_at, { timeZone: tz })}</span>
+          <span className="inline-flex items-center gap-1.5 text-warn"><AlertTriangle className="size-3.5" aria-hidden />Trial ends {formatDay(summary.trial_ends_at, { timeZone: tz })}</span>
         )}
         {summary.provider === 'stub' && (
-          <span className="inline-flex items-center gap-1.5 text-primary"><FlaskConical className="size-3.5" aria-hidden />Test mode — no real charges</span>
+          <Badge tone="warn"><FlaskConical className="size-3" aria-hidden />No real charges — billing provider is the stub</Badge>
         )}
       </div>
     </Card>

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { GraduationCap } from 'lucide-react';
+import { Check, GraduationCap } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import DataGrid from '../../components/datagrid';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import type { Tone } from '@/lib/status';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -50,10 +52,13 @@ interface CoachingAssignment {
 
 type Tab = 'assignments' | 'rules' | 'topics';
 
-const SEVERITY_ICON: Record<string, string> = {
-  low: '🟢',
-  medium: '🟡',
-  high: '🔴',
+// A tone and a word, not a coloured circle. The emoji carried the
+// meaning in the glyph, so it could not follow the theme and said
+// nothing to a screen reader.
+const SEVERITY_TONE: Record<string, Tone> = {
+  low: 'ok',
+  medium: 'warn',
+  high: 'danger',
 };
 
 const SEVERITY_ITEMS = [
@@ -295,7 +300,7 @@ function AssignmentsTab() {
           columns={[
             {
               key: 'severity', label: 'Severity', sortable: true,
-              render: (v) => <span>{SEVERITY_ICON[String(v)] || '🟡'}</span>,
+              render: (v) => <Badge tone={SEVERITY_TONE[String(v)] ?? 'warn'}>{String(v)}</Badge>,
             },
             {
               key: 'driver_id', label: 'Driver', sortable: true,
@@ -542,7 +547,7 @@ function RulesTab() {
             },
             {
               key: 'severity', label: 'Severity', sortable: true,
-              render: (v) => <span>{SEVERITY_ICON[String(v)] || '🟡'}</span>,
+              render: (v) => <Badge tone={SEVERITY_TONE[String(v)] ?? 'warn'}>{String(v)}</Badge>,
             },
             {
               key: 'active', label: 'Active', sortable: true,
@@ -609,7 +614,7 @@ function TopicsTab() {
         },
         {
           key: 'active', label: 'Active', sortable: true,
-          render: (v) => <span>{v ? '✓' : '—'}</span>,
+          render: (v) => (v ? <Check className="size-4 text-ok" aria-label="Yes" /> : <span className="text-muted-foreground" aria-label="No">—</span>),
         },
       ]}
       data={topics as unknown as Record<string, unknown>[]}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DollarSign, FileText } from 'lucide-react';
+import { Check, DollarSign, FileText } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
@@ -791,7 +791,7 @@ function SettingsTab() {
           {
             key: 'opt_in', label: 'Opted In', sortable: true,
             render: (v) => (
-              <span className="inline-flex justify-center w-full">{v ? '✓' : '—'}</span>
+              <span className="inline-flex justify-center w-full">{v ? <Check className="size-4 text-ok" aria-label="Yes" /> : <span className="text-muted-foreground" aria-label="No">—</span>}</span>
             ),
           },
           {

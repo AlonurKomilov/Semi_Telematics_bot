@@ -91,7 +91,15 @@
 
     --popover-foreground: oklch(0.145 0 0);
 
-    --primary: oklch(0.205 0 0);
+    /* The brand hue, at a lightness that clears AA in BOTH roles on a
+       white ground: 5.76:1 as text, 5.52:1 behind the near-white
+       --primary-foreground. It was oklch(.205 0 0) — the vendored
+       shadcn default, achromatic near-black — while all three DARK
+       themes were given a chromatic accent. That is an oversight, not a
+       decision: anything painted with the accent lost its meaning on
+       Light rather than changing shade, and a browser audit found a
+       billing safety line reading as ordinary body text because of it. */
+    --primary: oklch(0.52 0.2 264);
 
     --primary-foreground: oklch(0.985 0 0);
 
@@ -126,7 +134,10 @@
 
     --input: oklch(0.922 0 0);
 
-    --ring: oklch(0.708 0 0);
+    /* Matches the dark themes' pattern — the accent hue at 50%. A
+       neutral grey focus ring on the one theme where the ring is
+       hardest to see is backwards. */
+    --ring: oklch(0.52 0.2 264 / 50%);
 
     /* Pin-boundary shadow — paints a soft drop-shadow off the freeze
        edge of the pinned column cluster (DataGrid).  Tight offset +
@@ -152,7 +163,15 @@
        border /30) — see lib/status.ts and design.md. */
     --ok:     oklch(0.52 0.15 150);
 
-    --warn:   oklch(0.55 0.13 70);
+    /* 0.11, not 0.13 — sRGB caps chroma near 0.12 at this hue and
+       lightness, so the old value CLIPPED, and clipping desaturates:
+       the browser painted rgb(161,97,0), a brown-tan. A browser audit
+       read it as "tan on cream" and noticed the idle chip looking
+       fainter than the stopped chip beside it, which is backwards for
+       peers. In gamut at L .50 it is 6.15:1 on white — level with
+       danger's 6.12 — so the two amber-and-red steps now carry the
+       same weight instead of one looking half-off. */
+    --warn:   oklch(0.50 0.11 70);
 
     --danger: oklch(0.52 0.20 25);
 

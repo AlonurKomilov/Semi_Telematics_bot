@@ -43,14 +43,42 @@ const badgeVariants = cva(
  * With a tone set it wins over `variant` — the two answer the same
  * question and a call site passing both means the tone.
  */
+/**
+ * Written out, not built as `text-${tone}`. Tailwind's scanner reads
+ * source text: a class assembled at runtime is invisible to it, and
+ * only exists in the bundle while some OTHER file happens to use the
+ * same literal. That is the same hazard design.md §5.1 names for
+ * arbitrary values — it works until the unrelated usage goes away.
+ */
+const SUBTLE_TONE: Record<Tone, string> = {
+  ok: "text-ok border-ok-bd",
+  warn: "text-warn border-warn-bd",
+  danger: "text-danger border-danger-bd",
+  info: "text-info border-info-bd",
+  neutral: "text-muted-foreground border-border",
+}
+
 function Badge({
   className,
   variant = "default",
   tone,
+  subtle = false,
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & {
   tone?: Tone
+  /**
+   * Same hue, no fill — a second step INSIDE one tone.
+   *
+   * Fault severity runs ok → caution → warning → critical: four steps
+   * against a tone layer that has three. `caution` and `warning` both
+   * resolved to `warn`, so a browser audit found them rendering as one
+   * chip, and a dispatcher triaging a fault list could not tell the
+   * lesser amber from the greater. Weight carries the step that hue
+   * cannot: outline reads as the lighter of the two in either theme,
+   * where two neighbouring ambers do not.
+   */
+  subtle?: boolean
 }) {
   return useRender({
     defaultTagName: "span",
@@ -58,7 +86,7 @@ function Badge({
       {
         className: cn(
           badgeVariants({ variant: tone ? "outline" : variant }),
-          tone && toneClasses(tone),
+          tone && (subtle ? SUBTLE_TONE[tone] : toneClasses(tone)),
           className,
         ),
       },
@@ -69,6 +97,7 @@ function Badge({
       slot: "badge",
       variant,
       tone,
+      subtle,
     },
   })
 }

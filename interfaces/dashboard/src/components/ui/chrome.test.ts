@@ -57,8 +57,18 @@ const srcOf = (rel: string) => SRC_OF.get(rel) ?? '';
 const ICON_SUBSTITUTES = '\u2713\u2714\u2715\u2716\u2717\u2718'  // tick / cross
   + '\u2705\u274C\u26A0\u2728\u2B50\u21BB\u21A9'                 // check / x / warn / sparkle / star / refresh
   + '\u270E\u270F\u2712\u2709\u260E\u2699';                       // pencil / pen / envelope / phone / gear
+/**
+ * A JSX text node holding one of those glyphs.
+ *
+ * `{` and `}` used to be excluded from the surrounding class, which
+ * quietly exempted every text node containing an interpolation — and
+ * that is most of them. `<span>📅 Period ends {formatDay(x)}</span>`
+ * was invisible to this guard while `<span>📅 Period ends</span>` was
+ * caught. Braces are allowed through now; what still bounds the match is
+ * the tag delimiters and the newline.
+ */
 const CHROME_GLYPH = new RegExp(
-  `>[^<>{}\n]*[\u{1F300}-\u{1FAFF}${ICON_SUBSTITUTES}][^<>{}\n]*<`,
+  `>[^<>\n]*[\u{1F300}-\u{1FAFF}${ICON_SUBSTITUTES}][^<>\n]*<`,
   'u',
 );
 

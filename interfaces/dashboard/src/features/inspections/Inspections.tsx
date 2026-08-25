@@ -17,6 +17,7 @@ import type { AnyColumn, PTIInspectionRow, PTIInspectionsResponse } from '../../
 import { InspectionDetail } from './InspectionDetail';
 import { NewInspectionDialog } from './NewInspectionDialog';
 import { Badge } from '@/components/ui/badge';
+import type { Tone } from '@/lib/status';
 
 // Template editor is lazy-loaded so the default "Submissions" tab
 // doesn't pay for the editor's JS (forms, modal, dnd) until the
@@ -58,20 +59,18 @@ function StatusChip({ row }: { row: PTIInspectionRow }) {
   // row shows "Approved" not "Reviewed".
   if (row.review_status) {
     const label = REVIEW_STATUS_LABELS[row.review_status] ?? row.review_status;
-    const cls = toneClasses(
+    const tone: Tone =
       row.review_status === 'approved' ? 'ok'     :
       row.review_status === 'rejected' ? 'danger' :
-                                         'warn'   // needs_service / revision_required
-    );
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${cls}`}>{label}</span>;
+                                         'warn';  // needs_service / revision_required
+    return <Badge tone={tone}>{label}</Badge>;
   }
   const wf = WORKFLOW_STATUS_LABELS[row.status] ?? row.status;
-  const cls = toneClasses(
+  const tone: Tone =
     row.status === 'submitted'         ? 'info' :
     row.status === 'revision_required' ? 'warn' :
-                                         'neutral'
-  );
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${cls}`}>{wf}</span>;
+                                         'neutral';
+  return <Badge tone={tone}>{wf}</Badge>;
 }
 
 
@@ -397,7 +396,13 @@ export default function Inspections() {
           { key: 'approved',      label: 'Approved',       count: counts.approved,      dot: 'bg-ok' },
           { key: 'needs_service', label: 'Needs Service',  count: counts.needs_service, dot: 'bg-warn' },
           { key: 'rejected',      label: 'Rejected',       count: counts.rejected,      dot: 'bg-danger' },
-          { key: 'overdue',       label: 'Overdue',        count: counts.overdue,       dot: 'bg-warn' },
+          // `bg-danger`, from statusTone('overdue') — it was `bg-warn`,
+          // which put the same dot on Overdue as on Needs Service AND
+          // contradicted the shared status map, where overdue is danger
+          // everywhere else in the app. The dot is a tone KEY back to
+          // the table, so it drifting from the table is the defect; two
+          // statuses that genuinely share a tone sharing a dot is not.
+          { key: 'overdue',       label: 'Overdue',        count: counts.overdue,       dot: 'bg-danger' },
         ] as const).map(chip => {
           const active = filter === chip.key;
           return (

@@ -56,10 +56,18 @@ const TABS_FOR_VIEW: Record<string, ReadonlyArray<TabKey>> = {
 };
 
 function SeverityBadge({ severity }: { severity: string }) {
-  // ``caution`` isn't in the shared status map (it's a fault-report
-  // specific step between ok and warning); treat it as attention/warn.
-  const tone = severity === 'caution' ? 'warn' : statusTone(severity);
-  return <Badge tone={tone} className="capitalize">{severity}</Badge>;
+  // Fault severity runs ok -> caution -> warning -> critical: four steps
+  // against a tone layer with three. `caution` and `warning` BOTH landed
+  // on `warn`, so they rendered as one chip and a browser audit found
+  // them inseparable at a glance — which is the whole job of a severity
+  // column. Same hue, lighter weight: outline reads as the lesser of the
+  // two amber steps in either theme, where two neighbouring ambers do
+  // not.
+  const caution = severity === 'caution';
+  const tone = caution ? 'warn' : statusTone(severity);
+  return (
+    <Badge tone={tone} subtle={caution} className="capitalize">{severity}</Badge>
+  );
 }
 
 function FuelBadge({ pct }: { pct: number | null }) {
