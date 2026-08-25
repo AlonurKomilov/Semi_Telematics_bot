@@ -1939,7 +1939,7 @@ function AttachmentRow({
         <button
           type="button"
           onClick={onDelete}
-          className="text-muted-foreground hover:text-destructive p-1 min-h-tap"
+          className="inline-flex items-center justify-center min-w-tap text-muted-foreground hover:text-destructive p-1 min-h-tap"
           aria-label={t('work_orders_page.delete_attachment')}
         >
           <X className="size-3.5" />

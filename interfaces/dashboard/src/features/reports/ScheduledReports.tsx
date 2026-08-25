@@ -159,7 +159,7 @@ function ScheduleEditor({
         <h3 className="text-sm font-medium text-foreground">
           {initial.reportTypeLocked ? 'Edit schedule' : 'New schedule'}
         </h3>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
+        <button onClick={onCancel} className="inline-flex items-center justify-center min-w-tap text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
           <X className="size-4" />
         </button>
       </div>

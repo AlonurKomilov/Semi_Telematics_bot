@@ -21,8 +21,8 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Bell, BellOff, CheckSquare, FileText, Image as ImageIcon, Paperclip,
-  Upload, X, History, Trash2,
+  Bell, BellOff, Check, CheckSquare, FileText, Image as ImageIcon, Paperclip,
+  RefreshCw, Upload, X, History, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -510,7 +510,7 @@ export default function TaskDetailSheet({
                 show nothing here). */}
             {task.spawned_from_id && (
               <div className={`mb-4 px-3 py-2 min-h-tap rounded-md text-xs inline-flex items-center gap-1.5 ${toneClasses('info')}`}>
-                <span aria-hidden>↻</span>
+                <RefreshCw className="size-3 shrink-0" aria-hidden />
                 Auto-renewed from task #{task.spawned_from_id}
               </div>
             )}
@@ -525,7 +525,7 @@ export default function TaskDetailSheet({
                 href={`/work-orders/${task.work_order_id}`}
                 className={`mb-4 px-3 py-2 min-h-tap rounded-md text-xs inline-flex items-center gap-1.5 ${toneClasses('ok')}`}
               >
-                <span aria-hidden>📄</span>
+                <FileText className="size-3 shrink-0" aria-hidden />
                 Closed by Work Order #{task.work_order_id}
               </a>
             )}
@@ -586,7 +586,7 @@ export default function TaskDetailSheet({
                 <div className="pt-2 border-t border-border">
                   <dt className="text-muted-foreground text-xs mb-1">Attestation</dt>
                   <dd className="text-xs text-ok">
-                    <span aria-hidden>✓</span>{' '}
+                    <Check className="size-3 inline-block align-[-1px]" aria-hidden />{' '}
                     <span className="font-medium">
                       {task.attested_by_name || `user ${task.attested_by}`}
                     </span>
@@ -825,7 +825,7 @@ export default function TaskDetailSheet({
                       <button
                         type="button"
                         onClick={handleAttachmentDelete}
-                        className="text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
+                        className="inline-flex items-center justify-center min-w-tap text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
                         aria-label="Remove attachment"
                       >
                         <X className="size-3.5" />

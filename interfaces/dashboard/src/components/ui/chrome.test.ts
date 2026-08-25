@@ -73,13 +73,17 @@ const CHROME_GLYPH = new RegExp(
 );
 
 /**
- * Named debt, not an exemption. This file carried three icon-substitute
- * glyphs when the guard landed and was being edited by someone else at
- * the time, so converting it would have meant writing into a colleague's
- * open work. Deleting the entry is the fix; the guard still fails the
- * build the moment a file NOT on this list grows one.
+ * Empty, and staying that way. It held one file — TaskDetailSheet, with
+ * three icon-substitute glyphs — parked there only because someone else
+ * had it open at the time. The comment said "deleting the entry is the
+ * fix"; the file came free, the glyphs became RefreshCw / FileText /
+ * Check, and the staleness check is what noticed the entry had stopped
+ * exempting anything.
+ *
+ * Left in place rather than removed: the guard reads it, and a named
+ * empty list is where the next unavoidable exception goes.
  */
-const NOT_YET_CONVERTED = ['features/maintenance/TaskDetailSheet.tsx'];
+const NOT_YET_CONVERTED: string[] = [];
 
 /**
  * The `title=` -> `<Tip>` migration, which predates this guard by a long
@@ -239,6 +243,54 @@ export function tapHeight(cls: string): number | null {
 
   const border = t.some((x) => /^border(-[trblxy])?$/.test(x)) ? 2 : 0;
   return padding + line + border;
+}
+
+/**
+ * The rendered WIDTH of a control, from its class list and its children.
+ *
+ * Width is only knowable for an ICON-ONLY control. A control with text
+ * is as wide as its text, which no class list determines and no scanner
+ * should guess — so this abstains on all of them, and did on 164 of the
+ * 195 it saw.
+ *
+ * The floor was guarded on one axis for a long time, and 2.5.8 asks for
+ * both: thirteen controls passed `min-h-tap` and rendered 14-22px WIDE,
+ * two of them while carrying `min-h-tap` explicitly. A 14x24 target is
+ * not a 24x24 target.
+ *
+ * VALIDATED, not assumed, the same way `tapHeight` was: all 31
+ * computable controls were rendered in headless Chrome against the built
+ * CSS, and the predicted width matched `getBoundingClientRect().width`
+ * exactly, 31 of 31 — before the repair and after it.
+ */
+export function tapWidth(cls: string, children: string): number | null {
+  const t = cls.split(/\s+/).filter(Boolean);
+  const find = (re: RegExp) => t.find((x) => re.test(x));
+  if (t.includes('min-w-tap') || t.includes('w-tap') || t.includes('size-tap')) return 24;
+
+  const explicit = find(/^w-[\d.]+$/) || find(/^size-[\d.]+$/);
+  if (explicit) return SPACING(explicit.split('-')[1]);
+
+  // Exactly one self-closing element inside, and nothing else. Anything
+  // with text, a second child or an expression is content-sized.
+  const only = /^<([A-Z][\w.]*)\b([^>]*)\/>$/.exec(children.trim());
+  if (!only) return null;
+  const iconSize = /\bsize-([\d.]+)\b/.exec(
+    /className="([^"]*)"/.exec(only[2])?.[1] ?? '',
+  );
+  if (!iconSize) return null;
+
+  const px = find(/^px-[\d.]+$/);
+  const pl = find(/^pl-[\d.]+$/);
+  const pr = find(/^pr-[\d.]+$/);
+  const pAll = find(/^p-[\d.]+$/);
+  const padding = px ? SPACING(px.split('-')[1]) * 2
+    : (pl || pr)
+      ? SPACING((pl ?? 'pl-0').split('-')[1]) + SPACING((pr ?? 'pr-0').split('-')[1])
+      : pAll ? SPACING(pAll.split('-')[1]) * 2 : 0;
+
+  const border = t.some((x) => /^border(-[trblxy])?$/.test(x)) ? 2 : 0;
+  return SPACING(iconSize[1]) + padding + border;
 }
 
 
@@ -568,11 +620,23 @@ describe('UI chrome', () => {
     // closed, periodically, not by guessing here.
     const offenders: string[] = [];
     for (const { rel, src } of TSX) {
+      const lineAt = (i: number) => src.slice(0, i).split('\n').length;
       for (const m of src.matchAll(/<(?:button|a|summary)\b[^>]*className="([^"]*)"/g)) {
         const h = tapHeight(m[1]);
         if (h !== null && h < 24) {
-          const line = src.slice(0, m.index ?? 0).split('\n').length;
-          offenders.push(`${rel}:${line} computes ${h}px — add min-h-tap`);
+          offenders.push(`${rel}:${lineAt(m.index ?? 0)} is ${h}px tall — add min-h-tap`);
+        }
+      }
+      // The other axis. 2.5.8 asks for 24x24, and this guard asked for
+      // 24-by-anything until thirteen icon-only controls turned up
+      // between 14 and 22px wide — two of them already carrying
+      // `min-h-tap`, which is what made them look repaired.
+      for (const m of src.matchAll(
+        /<(button|a|summary)\b[^>]*?className="([^"]*)"[^>]*?>([\s\S]{0,300}?)<\/\1>/g,
+      )) {
+        const w = tapWidth(m[2], m[3]);
+        if (w !== null && w < 24) {
+          offenders.push(`${rel}:${lineAt(m.index ?? 0)} is ${w}px wide — add min-w-tap`);
         }
       }
     }

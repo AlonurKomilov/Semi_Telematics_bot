@@ -129,7 +129,7 @@ function AddItemDialog({
           <h3 className="text-base font-semibold">
             {t('inspections.add_item_title', { vehicleType })}
           </h3>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
+          <button onClick={onClose} aria-label="Close" className="inline-flex items-center justify-center min-w-tap text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap">
             <X className="size-4" />
           </button>
         </div>
@@ -343,7 +343,7 @@ function ItemRow({
           aria-label="Move up"
           disabled={isFirst || saving}
           onClick={onMoveUp}
-          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
+          className="inline-flex items-center justify-center min-w-tap p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
         >
           <ChevronUp className="size-3.5" />
         </button>
@@ -352,7 +352,7 @@ function ItemRow({
           aria-label="Move down"
           disabled={isLast || saving}
           onClick={onMoveDown}
-          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
+          className="inline-flex items-center justify-center min-w-tap p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 min-h-tap"
         >
           <ChevronDown className="size-3.5" />
         </button>
@@ -398,7 +398,7 @@ function ItemRow({
             onClick={clearReference}
             disabled={saving}
             title={t('inspections.ref_image_clear')}
-            className="p-1 text-muted-foreground hover:text-destructive min-h-tap"
+            className="inline-flex items-center justify-center min-w-tap p-1 text-muted-foreground hover:text-destructive min-h-tap"
           >
             <X className="size-3" />
           </button>

@@ -1605,7 +1605,7 @@ function MediaInput({
             <button
               type="button"
               onClick={onClearUpload}
-              className="text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
+              className="inline-flex items-center justify-center min-w-tap text-muted-foreground hover:text-destructive py-0.5 -my-0.5 min-h-tap"
               title={t('knowledge.upload_remove', 'Remove attached file')}
             >
               <X className="size-3.5" />
