@@ -358,7 +358,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           none of them, and slipped past backdrops.test.ts because that
           guard only reads double-quoted classNames. */}
       <Dialog open={!picking} onOpenChange={(o) => { if (!o) onClose(); }}>
-        <DialogContent showCloseButton={false} className="max-w-lg p-0 gap-0">
+        <DialogContent showCloseButton={false} size="lg" className="p-0 gap-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="font-semibold text-foreground">

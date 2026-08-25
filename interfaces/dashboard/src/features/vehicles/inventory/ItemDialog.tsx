@@ -105,7 +105,7 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader><DialogTitle>Add inventory item</DialogTitle></DialogHeader>
         <div className="space-y-3">
           {vehicleName == null && (
@@ -216,7 +216,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>
             <span className="inline-flex items-center gap-2 min-w-0">

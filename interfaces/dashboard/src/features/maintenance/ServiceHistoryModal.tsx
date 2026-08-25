@@ -136,7 +136,7 @@ export function ServiceHistoryModal({
     // and (since this pass) ``overscroll-contain``, so the modal no
     // longer scrolls the page behind it.
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent showCloseButton={false} className="sm:max-w-2xl p-6">
+      <DialogContent showCloseButton={false} size="2xl" className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <SectionHeader>Service History</SectionHeader>

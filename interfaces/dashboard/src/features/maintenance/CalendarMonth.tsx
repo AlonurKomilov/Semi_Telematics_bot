@@ -303,7 +303,7 @@ export function CalendarMonth({
           trap, no Escape, no ``aria-modal``, no background scroll lock.
           <Dialog> brings all four and does the scrolling too. */}
       <Dialog open={!!dayDetail} onOpenChange={(o) => { if (!o) setDayDetail(null); }}>
-        <DialogContent showCloseButton={false} className="sm:max-w-lg p-5">
+        <DialogContent showCloseButton={false} size="lg" className="p-5">
           {dayDetail && (
           <>
             <div className="flex items-start justify-between mb-3">

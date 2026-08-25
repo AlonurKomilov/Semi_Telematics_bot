@@ -202,7 +202,7 @@ export default function AuditLog() {
 
       {/* Bulk-action expansion: every member event, full values each. */}
       <Dialog open={!!group} onOpenChange={(open) => { if (!open) setGroup(null); }}>
-        <DialogContent className="max-w-xl">
+        <DialogContent size="xl">
           <DialogHeader>
             <DialogTitle>
               {group ? `${actionLabel(group.action)} · ${group.count} ${entityLabel(group.entity_type).toLowerCase()}s` : ''}

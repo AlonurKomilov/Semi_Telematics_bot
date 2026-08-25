@@ -513,4 +513,30 @@ describe('UI chrome', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('never sets a dialog width with a class that cannot take', () => {
+    // `tailwind-merge` cannot replace a `sm:`-prefixed class with an
+    // unprefixed one — they are different variants, so both survive and
+    // the prefixed one wins from 640px up. DialogContent's base carried
+    // `sm:max-w-sm`, so `className="max-w-lg"` — the obvious spelling,
+    // and what 31 of 43 call sites used — rendered at 384px on every
+    // desktop and had done for a long time. Nobody noticed until a
+    // dialog whose content needed 460px started eating its own labels.
+    // `size="lg"` cannot be written the not-taking way.
+    const SIZE_DEBT = [
+      'features/kpi/config/IncentiveEditor.tsx',
+      'features/kpi/dispatch/IncentiveRuns.tsx',
+      'features/kpi/dispatch/runs/EditRowDialog.tsx',
+      'features/kpi/dispatch/runs/ExceptionDialog.tsx',
+      'features/kpi/dispatch/runs/NewRunDialog.tsx',
+    ];
+    const offenders: string[] = [];
+    for (const { rel, src } of TSX) {
+      if (SIZE_DEBT.includes(rel)) continue;
+      for (const m of src.matchAll(/<DialogContent\b[^>]*className="([^"]*)"/g)) {
+        if (/\bmax-w-/.test(m[1])) offenders.push(`${rel} → use size="…" instead`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });

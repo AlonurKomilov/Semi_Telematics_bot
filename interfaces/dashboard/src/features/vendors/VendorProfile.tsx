@@ -479,7 +479,7 @@ export default function VendorProfile() {
       {/* Edit dialog — registry contact/identity.  Historical invoices
           keep their snapshots; only the master record changes. */}
       <Dialog open={editOpen} onOpenChange={(o) => { if (!o) setEditOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Edit vendor</DialogTitle>
             <DialogDescription>
@@ -534,7 +534,7 @@ export default function VendorProfile() {
       {/* Rate dialog — anonymous, moderated.  Verified-usage enforced
           server-side (only shops your work orders actually used). */}
       <Dialog open={rateOpen} onOpenChange={(o) => { if (!o) setRateOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Rate {data?.directory?.name}</DialogTitle>
             <DialogDescription>
@@ -576,7 +576,7 @@ export default function VendorProfile() {
           public-directory entry the auto name-match missed
           (non-destructive, reversible via Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Resolve “{vendor?.name}” as a duplicate</DialogTitle>
             <DialogDescription>

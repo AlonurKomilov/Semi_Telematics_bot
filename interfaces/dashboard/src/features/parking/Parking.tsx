@@ -220,7 +220,7 @@ export default function Parking() {
           so the consequence is named before it runs.  The bulk path uses
           DataGrid's own confirm above. */}
       <Dialog open={!!confirming} onOpenChange={(o) => { if (!o) setConfirming(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Resolve parking event?</DialogTitle>
             {/* Names the EVENT, not just the vehicle.  The detail sheet

@@ -73,7 +73,7 @@ export function useWorkOrderBridge() {
 
   const bridgeDialog = pending ? (
     <Dialog open onOpenChange={(o) => { if (!o) setPending(null); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Work order already open</DialogTitle>
           <DialogDescription>

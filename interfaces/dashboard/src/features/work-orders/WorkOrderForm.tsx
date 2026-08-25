@@ -1758,7 +1758,7 @@ export default function WorkOrderForm() {
           Owner contract: the scan NEVER silently replaces a value the
           user already typed — each disagreement is a checkbox here. */}
       <Dialog open={!!scanConflicts} onOpenChange={(o) => { if (!o) setScanConflicts(null); }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>
               {t('work_orders_page.scan_conflicts_title', { defaultValue: 'Overwrite existing values?' })}

@@ -121,7 +121,7 @@ export default function EditTaskDialog({
 
   return (
     <Dialog open={!!task} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Edit service task</DialogTitle>
           <DialogDescription>

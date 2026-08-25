@@ -144,7 +144,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
     // and (since this pass) ``overscroll-contain``, so the modal no
     // longer scrolls the page behind it.
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent showCloseButton={false} className="sm:max-w-xl p-6">
+      <DialogContent showCloseButton={false} size="xl" className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
             <SectionHeader>Task Templates</SectionHeader>

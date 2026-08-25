@@ -131,7 +131,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     // double-fire is a no-op.
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
-        className="z-[60] w-full max-w-xl overflow-hidden p-0 gap-0 top-[15vh] translate-y-0"
+        size="xl" className="z-[60] w-full overflow-hidden p-0 gap-0 top-[15vh] translate-y-0"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>

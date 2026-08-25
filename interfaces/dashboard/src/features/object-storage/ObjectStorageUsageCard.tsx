@@ -225,7 +225,7 @@ export default function ObjectStorageUsageCard() {
       {/* Two-step by design: this dialog IS the dry run's result, so the
           user reads real paths before the destructive call is possible. */}
       <Dialog open={!!reviewing} onOpenChange={(o) => { if (!o) setReviewing(null); }}>
-        <DialogContent className="max-w-xl">
+        <DialogContent size="xl">
           <DialogHeader>
             <DialogTitle>Delete unreferenced files?</DialogTitle>
             <DialogDescription>

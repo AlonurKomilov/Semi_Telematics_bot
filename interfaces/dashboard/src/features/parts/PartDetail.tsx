@@ -652,7 +652,7 @@ export default function PartDetail() {
 
       {/* Edit dialog — invoice snapshots stay untouched by renames. */}
       <Dialog open={editOpen} onOpenChange={(o) => { if (!o) setEditOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Edit part</DialogTitle>
             <DialogDescription>
@@ -697,7 +697,7 @@ export default function PartDetail() {
           canonical catalog entry (non-destructive, reversible via
           Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Resolve “{part?.name}” as a duplicate</DialogTitle>
             <DialogDescription>

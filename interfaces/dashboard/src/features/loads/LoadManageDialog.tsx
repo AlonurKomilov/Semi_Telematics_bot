@@ -262,7 +262,7 @@ export default function LoadManageDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent size="2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit load ${load?.load_number || `#${load?.id}`}` : 'Add load'}</DialogTitle>
           <DialogDescription>

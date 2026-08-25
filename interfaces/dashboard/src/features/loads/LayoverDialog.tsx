@@ -103,7 +103,7 @@ export default function LayoverDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Add off-load entry</DialogTitle>
           <DialogDescription>

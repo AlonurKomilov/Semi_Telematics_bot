@@ -122,7 +122,7 @@ export default function EventVideoModal({
     // centred dialog and takes the primitive's own chrome.
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
-        className="w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col p-0 gap-0"
+        size="5xl" className="w-full max-h-[92vh] overflow-hidden flex flex-col p-0 gap-0"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">

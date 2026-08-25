@@ -298,7 +298,7 @@ export default function ServiceTaskDetail() {
       )}
 
       <Dialog open={confirmDelete} onOpenChange={(o) => { if (!o) setConfirmDelete(false); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Delete “{task.name}”?</DialogTitle>
             <DialogDescription>

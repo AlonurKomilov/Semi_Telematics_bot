@@ -67,7 +67,7 @@ export default function SyncPreviewModal({
       onOpenChange={(o) => { if (!o && !applying) onClose(); }}
     >
       <DialogContent
-        className="z-[60] w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh] p-0"
+        size="2xl" className="z-[60] w-full overflow-hidden flex flex-col max-h-[80vh] p-0"
         showCloseButton={false}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">

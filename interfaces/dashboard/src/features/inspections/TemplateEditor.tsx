@@ -124,7 +124,7 @@ function AddItemDialog({
     // and (since this pass) ``overscroll-contain``, so the modal no
     // longer scrolls the page behind it.
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent showCloseButton={false} className="sm:max-w-lg p-5">
+      <DialogContent showCloseButton={false} size="lg" className="p-5">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">
             {t('inspections.add_item_title', { vehicleType })}

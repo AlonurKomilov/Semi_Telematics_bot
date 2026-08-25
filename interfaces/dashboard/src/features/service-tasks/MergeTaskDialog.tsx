@@ -80,7 +80,7 @@ export default function MergeTaskDialog({
 
   return (
     <Dialog open={!!task} onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Merge “{task?.name}” into another task</DialogTitle>
           <DialogDescription>

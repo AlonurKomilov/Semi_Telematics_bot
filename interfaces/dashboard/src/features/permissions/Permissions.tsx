@@ -361,7 +361,7 @@ export default function Permissions() {
         open={confirmOpen}
         onOpenChange={(o) => { if (!o && !saving) setConfirmOpen(false); }}
       >
-        <DialogContent showCloseButton={false} className="sm:max-w-md p-0 max-h-[80vh] flex flex-col">
+        <DialogContent showCloseButton={false} size="md" className="p-0 max-h-[80vh] flex flex-col">
           {confirmOpen && (
           <>
             <div className="px-5 py-4 border-b border-border">

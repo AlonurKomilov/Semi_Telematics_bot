@@ -30,7 +30,7 @@ export function TaskActivityDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Task activity history</DialogTitle>
         </DialogHeader>

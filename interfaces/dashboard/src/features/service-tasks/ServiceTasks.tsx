@@ -367,7 +367,7 @@ export default function ServiceTasks() {
       />
 
       <Dialog open={!!deleteFor} onOpenChange={(o) => { if (!o) setDeleteFor(null); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Delete “{deleteFor?.name}”?</DialogTitle>
             <DialogDescription>
@@ -394,7 +394,7 @@ export default function ServiceTasks() {
       </Dialog>
 
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Add service task</DialogTitle>
             <DialogDescription>

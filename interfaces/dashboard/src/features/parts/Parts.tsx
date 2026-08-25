@@ -349,7 +349,7 @@ export default function Parts() {
 
       {/* Add-part dialog — resolve semantics, same contract as Add vendor. */}
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Add part</DialogTitle>
             <DialogDescription>

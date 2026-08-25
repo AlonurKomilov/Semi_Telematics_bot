@@ -270,7 +270,7 @@ export default function Vendors() {
 
       {/* Add-vendor dialog — same field set as the profile Edit dialog. */}
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Add vendor</DialogTitle>
             <DialogDescription>

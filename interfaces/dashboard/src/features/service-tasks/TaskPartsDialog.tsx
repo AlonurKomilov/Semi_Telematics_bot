@@ -83,7 +83,7 @@ export default function TaskPartsDialog({
 
   return (
     <Dialog open={!!task} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>{task?.name} — usual parts</DialogTitle>
           <DialogDescription>

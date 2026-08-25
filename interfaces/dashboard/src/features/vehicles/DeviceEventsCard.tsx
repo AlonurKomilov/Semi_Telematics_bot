@@ -210,7 +210,7 @@ function SplitDialog({
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>A different truck is behind {oldName}</DialogTitle>
           <DialogDescription>

@@ -96,7 +96,7 @@ const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) setTarget(null); }}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent size="3xl">
         <DialogHeader>
           <DialogTitle>
             {rowTitle}

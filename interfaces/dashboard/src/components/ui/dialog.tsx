@@ -43,13 +43,45 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Dialog widths, as a prop — mirroring SHEET_SIZE next door.
+ *
+ * The base carries `sm:max-w-sm`, and `tailwind-merge` cannot replace a
+ * `sm:`-prefixed class with an unprefixed one: they are different
+ * variants, so BOTH survive and the prefixed one wins from 640px up. So
+ * `<DialogContent size="lg">` — the obvious way to write it,
+ * and what 31 of 43 call sites do — silently renders at 384px on every
+ * desktop. It has been that way for a long time; it only became visible
+ * when a dialog whose content genuinely needed 460px started clipping
+ * its own labels off the left edge.
+ *
+ * A prop cannot be written the not-taking way.
+ */
+const DIALOG_SIZE: Record<
+  "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl",
+  string
+> = {
+  sm: "sm:max-w-sm",
+  md: "sm:max-w-md",
+  lg: "sm:max-w-lg",
+  xl: "sm:max-w-xl",
+  "2xl": "sm:max-w-2xl",
+  "3xl": "sm:max-w-3xl",
+  // A video needs the room; design.md §7's dialog ladder stops at
+  // 2xl for FORMS, which is a different thing from a player.
+  "4xl": "sm:max-w-4xl",
+  "5xl": "sm:max-w-5xl",
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  size = "sm",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  size?: keyof typeof DIALOG_SIZE
 }) {
   return (
     <DialogPortal>
@@ -82,7 +114,8 @@ function DialogContent({
           // and a region landmark nested in a dialog is noise, not
           // navigation.  A primitive takes the parts of a contract that
           // fit it, not all of them.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          DIALOG_SIZE[size],
           className
         )}
         {...props}
