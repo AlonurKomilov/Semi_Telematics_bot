@@ -17,7 +17,7 @@
  * action, so its row is simply not rendered rather than printed with
  * an empty value.
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import type { CalloutData } from './calloutCatalog';
@@ -29,11 +29,23 @@ export default function Callout({
   callout,
   className = '',
   entity,
+  actions,
 }: {
   callout: CalloutData;
   className?: string;
   /** What the dismissal is recorded against, e.g. the truck it is on. */
   entity?: { type: string; id: string };
+  /**
+   * Feature-supplied controls, rendered in one consistent place.
+   *
+   * A SLOT, deliberately not a field on the wire.  The vehicle
+   * identity questions answer with "Same truck" / "Different truck…",
+   * and the second performs registry surgery — putting that in the
+   * callout contract would make this capability learn what splitting a
+   * truck means.  It renders whatever the feature hands it and never
+   * asks what the buttons do.
+   */
+  actions?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { tone, title, why, affects, act, Icon } = useCallout(callout);
@@ -103,6 +115,9 @@ export default function Callout({
           <p role="alert" className="text-xs font-medium">
             {t('callout.labels.dismiss_failed')}
           </p>
+        )}
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">{actions}</div>
         )}
       </div>
       {behaviour !== 'none' && callout.callout_id && (

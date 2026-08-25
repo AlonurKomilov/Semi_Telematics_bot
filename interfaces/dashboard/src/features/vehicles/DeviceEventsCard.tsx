@@ -25,11 +25,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
-import { toneText } from '../../lib/status';
+import { Callout, type CalloutData } from '../../components/callouts';
 import type { Vehicle } from '../../types';
-import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 
 export interface DeviceEvent {
   id: number;
@@ -50,20 +48,60 @@ interface EventsResponse {
   open_count: number;
 }
 
-const KIND_LABEL: Record<string, string> = {
-  vin_change: 'VIN changed — is a different truck behind this unit?',
-  gateway_swap: 'Telematics gateway swapped',
-  odo_rebase: 'Odometer changed scale',
+/** ``device_event_log.kind`` → the callout key that renders it.
+ *
+ *  The event vocabulary predates the callouts lane and is stored in
+ *  the log's rows, so it is MAPPED here rather than renamed — the
+ *  backend keeps saying ``vin_change`` and the reader sees one shape
+ *  of statement across the whole page.  Mirrors
+ *  ``EVENT_CALLOUT_KEYS`` in features/vehicles/callouts.py. */
+const EVENT_CALLOUT_KEY: Record<string, string> = {
+  vin_change: 'vehicle.vin_changed',
+  gateway_swap: 'vehicle.gateway_swapped',
+  odo_rebase: 'vehicle.odometer_rebased',
 };
 
+/** One event as the callouts lane wants it.  ``params`` feed the copy
+ *  ("{{old}} → {{new}}"), so the values a person needs to judge the
+ *  change stay in the sentence rather than in a separate mono column. */
+function eventCallout(e: DeviceEvent): CalloutData | null {
+  const key = EVENT_CALLOUT_KEY[e.kind];
+  if (!key) return null;
+  return {
+    key,
+    // Same entity shape the vehicles endpoints emit, so a dismissal or
+    // a trail entry lands on the truck either way.
+    entity: `vehicle:${e.vehicle_id}`,
+    since: e.observed_at,
+    callout_id: `${key}@vehicle:${e.vehicle_id}#${e.observed_at}`,
+    params: {
+      old: e.old_value,
+      new: e.new_value,
+      unit: e.vehicle_name || e.vehicle_id,
+    },
+  };
+}
+
 export default function DeviceEventsCard({
-  canManage, vehicles, onResolved,
+  canManage, vehicles, onResolved, vehicleName,
 }: {
   canManage: boolean;
   /** The page's vehicle list — powers the company datalist. */
   vehicles: Vehicle[];
   /** Refetch hook so the vehicle list reflects a split immediately. */
   onResolved: () => void;
+  /**
+   * Narrow to ONE truck's questions.
+   *
+   * Omitted on the vehicles list, where the card is the account-wide
+   * review queue.  Set on a vehicle's own page, because a question
+   * about THAT truck belongs where someone is already looking at it —
+   * finding it only by scrolling a fleet-wide list is how a VIN change
+   * sits unanswered for weeks.  Filtered client-side: the endpoint
+   * returns only open events (capped at 100) and the answer flow is
+   * shared, so a second query would buy nothing.
+   */
+  vehicleName?: string;
 }) {
   const { data, refetch } = useQuery<EventsResponse>({
     queryKey: ['device-events'],
@@ -75,7 +113,9 @@ export default function DeviceEventsCard({
   const [splitEvent, setSplitEvent] = useState<DeviceEvent | null>(null);
   const [error, setError] = useState('');
 
-  const open = (data?.events ?? []).filter((e) => e.status === 'open');
+  const open = (data?.events ?? [])
+    .filter((e) => e.status === 'open')
+    .filter((e) => !vehicleName || e.vehicle_name === vehicleName);
   if (!canManage || open.length === 0) return null;
 
   const resolveSimple = async (e: DeviceEvent, action: 'same_truck' | 'dismissed') => {
@@ -96,62 +136,59 @@ export default function DeviceEventsCard({
   return (
     <Card className="mb-4">
       <div className="flex items-center gap-2 mb-2">
-        <AlertTriangle className={cn(toneText('warn'), 'size-4')} />
+        <AlertTriangle className="size-4 text-warn" />
         <h3 className="text-base font-semibold">
           Device change{open.length === 1 ? '' : 's'} to review
         </h3>
       </div>
-      <ul className="space-y-3">
-        {open.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Badge tone="warn">
-              {e.vehicle_name || e.vehicle_id}
-            </Badge>
-            <span className="text-sm">
-              {KIND_LABEL[e.kind] ?? e.kind}
-            </span>
-            <span className="text-xs text-muted-foreground font-mono">
-              {e.old_value} → {e.new_value}
-            </span>
-            <span className="flex items-center gap-2 ml-auto">
-              {e.kind === 'vin_change' ? (
-                <>
-                  <Button
-                    type="button" variant="outline" size="sm"
-                    disabled={busyId === e.id}
-                    onClick={() => resolveSimple(e, 'same_truck')}
-                  >
-                    {busyId === e.id && <Loader2 className="animate-spin" />}
-                    Same truck
-                  </Button>
-                  <Button
-                    type="button" size="sm"
-                    disabled={busyId === e.id}
-                    onClick={() => { setError(''); setSplitEvent(e); }}
-                  >
-                    Different truck…
-                  </Button>
-                </>
-              ) : (
-                /* "Dismiss", not "Acknowledge".  Acknowledging is the
-                   ALERTS workspace action — a person accepting a work
-                   item that was routed to them.  Nothing is routed
-                   here and nothing is accepted: this row asks for no
-                   decision, so the button only takes it off the list.
-                   Using the alerts verb made a passive notice look
-                   like assigned work. */
-                <Button
-                  type="button" variant="outline" size="sm"
-                  disabled={busyId === e.id}
-                  onClick={() => resolveSimple(e, 'dismissed')}
-                >
-                  {busyId === e.id && <Loader2 className="animate-spin" />}
-                  Dismiss
-                </Button>
-              )}
-            </span>
-          </li>
-        ))}
+      {/* Rendered through the callouts lane so a device question wears
+          the same shape as every other statement on the page — one
+          vocabulary for the reader.  The DATA and the answer flow stay
+          here: the buttons below perform registry surgery, which the
+          lane must never learn about, so they ride its actions slot. */}
+      <ul className="space-y-2">
+        {open.map((e) => {
+          const c = eventCallout(e);
+          if (!c) return null;
+          return (
+            <li key={e.id}>
+              <Callout
+                callout={c}
+                entity={{ type: 'vehicle', id: e.vehicle_name || e.vehicle_id }}
+                actions={
+                  e.kind === 'vin_change' ? (
+                    <>
+                      <Button
+                        type="button" variant="outline" size="sm"
+                        disabled={busyId === e.id}
+                        onClick={() => resolveSimple(e, 'same_truck')}
+                      >
+                        {busyId === e.id && <Loader2 className="animate-spin" />}
+                        Same truck
+                      </Button>
+                      <Button
+                        type="button" size="sm"
+                        disabled={busyId === e.id}
+                        onClick={() => { setError(''); setSplitEvent(e); }}
+                      >
+                        Different truck…
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      disabled={busyId === e.id}
+                      onClick={() => resolveSimple(e, 'dismissed')}
+                    >
+                      {busyId === e.id && <Loader2 className="animate-spin" />}
+                      Dismiss
+                    </Button>
+                  )
+                }
+              />
+            </li>
+          );
+        })}
       </ul>
       {error && !splitEvent && (
         <p className="mt-2 text-xs text-destructive">{error}</p>

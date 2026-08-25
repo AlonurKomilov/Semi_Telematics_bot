@@ -9,6 +9,8 @@
 import { Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { Callout } from '../../../components/callouts';
+import DeviceEventsCard from '../DeviceEventsCard';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { useVehicle, useVehicleCallouts } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';
 
@@ -18,6 +20,7 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
   // the cards, because they explain fields the reader is about to
   // find empty further down the page.
   const callouts = useVehicleCallouts(vehicleName, company);
+  const { has } = useViewPermissions();
 
   // Spans the full grid width so the page heading sits above the
   // 2-col card grid on lg, even when this section is rendered as part
@@ -37,6 +40,17 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
           <span className="text-sm text-muted-foreground">{data.company}</span>
         )}
       </div>
+      {/* Identity questions about THIS truck, in the same lane as its
+          callouts.  They used to live only on the fleet-wide review
+          list, which is how a VIN change can sit unanswered for weeks:
+          nobody scrolls a list to find out why the truck they already
+          have open looks wrong. */}
+      <DeviceEventsCard
+        canManage={has('can_manage_vehicles')}
+        vehicles={[]}
+        vehicleName={vehicleName}
+        onResolved={() => { /* the page's own queries refetch on focus */ }}
+      />
       {callouts.length > 0 && (
         <div className="mt-3 space-y-2">
           {callouts.map((c) => (

@@ -850,6 +850,27 @@
       "title": "Odometer changed scale",
       "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
     },
+    "vehicle.vin_changed": {
+      "title": "VIN ਬਦਲ ਗਿਆ: ਕੀ ਇਹ ਵੱਖਰਾ ਟਰੱਕ ਹੈ?",
+      "short": "VIN ਬਦਲਿਆ",
+      "why": "The VIN behind this unit changed from {{old}} to {{new}}. A VIN names one physical truck, so either this unit was re-assigned to another truck, or the device moved.",
+      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "do": "Answer below. Same truck keeps one history; different truck splits the new one onto its own record."
+    },
+    "vehicle.gateway_swapped": {
+      "title": "ਟੈਲੀਮੈਟਿਕਸ ਡਿਵਾਈਸ ਬਦਲੀ ਗਈ",
+      "short": "ਡਿਵਾਈਸ ਬਦਲੀ",
+      "why": "The gateway serial behind this unit changed from {{old}} to {{new}} — the hardware in the truck was replaced.",
+      "affects": "Odometer readings, which may restart from a different number",
+      "do": "Confirm below if the swap was planned."
+    },
+    "vehicle.odometer_rebased": {
+      "title": "ਓਡੋਮੀਟਰ ਸਕੇਲ ਬਦਲਿਆ",
+      "short": "ਓਡੋਮੀਟਰ ਰੀਬੇਸ",
+      "why": "The odometer jumped from {{old}} to {{new}} — further than the truck could have driven since its previous reading, so its reading source changed rather than the truck moving.",
+      "affects": "Mileage totals for the period around the jump",
+      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+    },
     "labels": {
       "why": "ਕਾਰਨ",
       "affects": "ਪ੍ਰਭਾਵ",

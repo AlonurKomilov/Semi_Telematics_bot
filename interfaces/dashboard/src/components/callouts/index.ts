@@ -15,6 +15,8 @@ export { default as CalloutChip } from './CalloutChip';
 export { useCallout } from './useCallout';
 export type { ResolvedCallout } from './useCallout';
 export {
-  CALLOUT_CATALOG, byEntity, calloutSpec,
+  CALLOUT_CATALOG, byEntity, calloutSpec, defaultDismiss, dismissBehaviour,
 } from './calloutCatalog';
-export type { CalloutData, CalloutKind, CalloutSpec } from './calloutCatalog';
+export type {
+  CalloutData, CalloutDismiss, CalloutKind, CalloutSpec,
+} from './calloutCatalog';

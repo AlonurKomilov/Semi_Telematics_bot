@@ -67,6 +67,15 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
   // ── Vehicle conditions ──────────────────────────────────────
   'vehicle.no_engine_data': { kind: 'condition', severity: 'warn' },
 
+  // ── Device identity questions ───────────────────────────────
+  // Rendered through this lane but stored and resolved by the vehicles
+  // feature (device_event_log).  `dismiss: 'none'` on purpose: their
+  // answer edits the registry, so they are answered, never hidden —
+  // and the card supplies its own buttons through the actions slot.
+  'vehicle.vin_changed':      { kind: 'condition', severity: 'danger', dismiss: 'none' },
+  'vehicle.gateway_swapped':  { kind: 'condition', severity: 'warn',   dismiss: 'none' },
+  'vehicle.odometer_rebased': { kind: 'condition', severity: 'warn',   dismiss: 'none' },
+
   // ── Mileage caveats (previously mileageFlags' FLAG_NOTE) ────
   // All six are `warn` because all six render as a warn chip TODAY —
   // the fold is deliberately rendering-identical, so a visual diff

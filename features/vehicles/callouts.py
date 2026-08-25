@@ -63,6 +63,36 @@ for _flag, _sev in (
         f"mileage.{_flag}", kind="caveat", severity=_sev, owner=_OWNER,
     )
 
+# ── Device identity questions ────────────────────────────────────
+# The identity watch records a CHANGE behind a provider id — a VIN
+# that now names a different truck, a swapped gateway, an odometer
+# that re-based.  Those are questions for a human whose answer edits
+# the registry, so they keep their own store (``device_event_log``)
+# and their own resolution flow; only the DISPLAY comes through the
+# callouts lane, so one page does not carry two shapes of statement.
+#
+# Never dismissible: a question that changes data is ANSWERED, not
+# hidden.  The card supplies its own buttons through the strip's
+# actions slot.
+for _kind, _sev in (
+    ("vin_changed",       "danger"),
+    ("gateway_swapped",   "warn"),
+    ("odometer_rebased",  "warn"),
+):
+    register_callout(
+        f"vehicle.{_kind}", kind="condition", severity=_sev, owner=_OWNER,
+    )
+
+# ``device_event_log.kind`` → the callout key that renders it.  The
+# event vocabulary predates the lane and is stored in thousands of
+# rows, so it is mapped rather than renamed.
+EVENT_CALLOUT_KEYS = {
+    "vin_change":   "vehicle.vin_changed",
+    "gateway_swap": "vehicle.gateway_swapped",
+    "odo_rebase":   "vehicle.odometer_rebased",
+}
+
+
 # How long the odometer may stay silent on a truck whose GPS is live
 # before we call the engine bus lost.  Three days, because a truck can
 # legitimately sit a long weekend without the ECU waking; the gap that
