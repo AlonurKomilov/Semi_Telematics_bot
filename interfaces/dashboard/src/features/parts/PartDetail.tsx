@@ -42,6 +42,7 @@ import type { AnyColumn, CatalogPart, PartAnalytics, PublicPartEntry } from '../
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
+import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
 function money(v: unknown, digits = 0): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits, maximumFractionDigits: digits,
@@ -606,8 +607,8 @@ export default function PartDetail() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={trend} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                        <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)"
+                        <XAxis dataKey="date" tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
+                        <YAxis tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)"
                           tickFormatter={(v: number) => `$${v}`} width={52} />
                         <ChartTooltip
                           formatter={(value: unknown, _n: unknown, entry: { payload?: { vendor?: string } }) => [
@@ -616,7 +617,7 @@ export default function PartDetail() {
                           ]}
                           contentStyle={{
                             background: 'var(--card)', border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius)', color: 'var(--foreground)', fontSize: 12,
+                            borderRadius: 'var(--radius)', color: 'var(--foreground)', fontSize: CHART_FONT_MD,
                           }}
                         />
                         <Line type="monotone" dataKey="price" stroke={chartColor(0)}

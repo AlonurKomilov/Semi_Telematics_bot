@@ -628,7 +628,7 @@
       "backend_disk_desc": "Files saved to the platform server. Simplest setup. Counts against platform storage.",
       "backend_gdrive_title": "Google Drive only",
       "backend_gdrive_desc": "Uploads stream straight to your Drive. Slower per upload, no local cache.",
-      "backend_hybrid_title": "Hybrid (recommended)",
+      "backend_hybrid_title": "Hybrid",
       "backend_hybrid_desc": "Fast disk write, then background sync to Drive. Best of both — needs Drive connected.",
       "active": "Active",
       "switch_button": "Use this",

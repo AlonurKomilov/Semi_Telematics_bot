@@ -97,7 +97,7 @@ export default function StoredPreferencesCard() {
           appearance go back to their defaults.
         </p>
         <Button variant="outline" size="sm" onClick={handleReset} className="shrink-0">
-          <RotateCcw /> Reset all
+          <RotateCcw /> Reset every preference
         </Button>
       </div>
     </Card>

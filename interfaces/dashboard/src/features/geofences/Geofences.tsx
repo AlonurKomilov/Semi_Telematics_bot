@@ -387,13 +387,6 @@ export default function Geofences() {
         />
       </div>
 
-      {/* Map-pick tip banner (shown inside map area so map stays visible) */}
-      {pickingFromMap && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[400] bg-warn text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
-          <MapPin className="size-4" aria-hidden /> Click anywhere on the map to set zone center
-          <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs py-1 -my-1 min-h-tap">Cancel</button>
-        </div>
-      )}
 
       {/* Main content — map + side panel side by side */}
       <div className="flex gap-4 flex-1 min-h-0">
@@ -402,6 +395,15 @@ export default function Geofences() {
         <div className="flex-1 relative rounded-xl border border-border overflow-hidden z-0 min-h-[400px]">
           <div ref={mapRef} className="absolute inset-0" />
           <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
+      {/* Absolute against the MAP, not the page. This lived at the page
+                  root with top-20, which put it across the <h1> — the banner
+                  covered the page title it was meant to sit below. */}
+              {pickingFromMap && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-warn text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
+              <MapPin className="size-4" aria-hidden /> Click anywhere on the map to set zone center
+              <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs py-1 -my-1 min-h-tap">Cancel</button>
+            </div>
+          )}
         </div>
 
         {/* Right panel */}
@@ -586,7 +588,7 @@ export default function Geofences() {
           {panelMode === 'detail' && selected && (
             <Card>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-semibold truncate pr-2">{selected.properties?.name || 'Zone'}</h2>
+                <h2 className="text-base font-semibold break-words pr-2">{selected.properties?.name || 'Zone'}</h2>
                 <button onClick={() => setPanelMode('list')} aria-label="Close" className="text-muted-foreground hover:text-foreground shrink-0 py-1 -my-1 min-h-tap inline-flex items-center justify-center min-w-tap"><X className="size-3.5" /></button>
               </div>
               <dl className="space-y-2 text-sm">
@@ -652,10 +654,10 @@ export default function Geofences() {
                     ...(canDelete ? [{ key: 'delete', label: 'Delete zone', icon: <Trash2 className="size-3.5" />, danger: true, separatorBefore: true, onSelect: () => handleDelete(f.properties!.id as number) }] : []),
                   ];
                   return (
-                  <ContextMenu key={i} items={zoneMenu} render={<li className="flex items-center gap-1" />}>
+                  <ContextMenu key={i} items={zoneMenu} render={<li className="flex items-center gap-1 min-w-0" />}>
                     <button
                       onClick={() => { setSelected(f); setPanelMode('detail'); }}
-                      className={`flex-1 text-left px-2 py-1.5 rounded text-sm transition flex items-center gap-2 ${
+                      className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded text-sm transition flex items-center gap-2 ${
                         selected === f && panelMode === 'detail'
                           ? 'bg-primary/15 text-primary'
                           : 'text-foreground/80 hover:bg-muted'

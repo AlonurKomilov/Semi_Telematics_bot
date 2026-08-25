@@ -12,6 +12,7 @@ import { chartColor } from '../../../lib/status';
 import { registerArtifact } from './registry';
 import { isChart, type Artifact } from './types';
 
+import { CHART_FONT_SM } from "@/lib/chartText";
 function ChartArtifactView({ artifact }: { artifact: Artifact }) {
   if (!isChart(artifact)) return null;
   const { chart, data, xKey, series, title } = artifact;
@@ -24,8 +25,8 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
         {chart === 'line' ? (
           <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-            <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+            <XAxis dataKey={xKey} tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
+            <YAxis tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
             <Tooltip />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (
@@ -36,8 +37,8 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
         ) : (
           <BarChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-            <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+            <XAxis dataKey={xKey} tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
+            <YAxis tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
             <Tooltip />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (

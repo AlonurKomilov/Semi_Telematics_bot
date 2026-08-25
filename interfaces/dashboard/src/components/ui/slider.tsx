@@ -102,7 +102,11 @@ export function Slider({
               // real focusable input inside this element, so a
               // `focus-visible:` rule here can never match and the
               // keyboard focus state would never paint.
-              'focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1',
+              // ring-3 + /50 is the house focus treatment (five other controls in
+              // this folder use it). The slider had its own ring-2 at full
+              // alpha, which on a thumb this small read as the faintest ring
+              // on the page rather than the boldest.
+              'focus-within:outline-none focus-within:ring-3 focus-within:ring-ring/50 focus-within:ring-offset-1',
               // Disabled is a data attribute here, not the :disabled
               // pseudo-class — this is a div, which cannot be :disabled.
               'data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed',

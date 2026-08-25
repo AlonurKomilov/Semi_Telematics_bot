@@ -20,6 +20,7 @@ import { Tip } from '../../components/tooltip';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { Card } from '@/components/ui/card';
 
+import { CHART_FONT_SM } from "@/lib/chartText";
 // Backend response envelopes for each /reports/* endpoint.
 interface SystemRow {
   system_key: string;
@@ -440,8 +441,8 @@ export default function Reports() {
                     }) as React.ComponentProps<typeof BarChart>['onClick']}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
-                    <YAxis type="category" dataKey="vehicle_name" width={80} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
+                    <XAxis type="number" tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
+                    <YAxis type="category" dataKey="vehicle_name" width={80} tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} />
                     <Tooltip
                       formatter={(value) => [moneyDetail(Number(value)), 'Total']}
                       labelStyle={{ color: 'var(--foreground)' }}
@@ -504,7 +505,7 @@ export default function Reports() {
                       itemStyle={{ color: 'var(--foreground)' }}
                       contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Legend wrapperStyle={{ fontSize: CHART_FONT_SM }} />
                   </PieChart>
                 </ResponsiveContainer>
               )}
@@ -520,9 +521,9 @@ export default function Reports() {
               <ResponsiveContainer width="100%" height={Math.max(200, systemChart.length * 34)}>
                 <BarChart data={systemChart} layout="vertical"
                   margin={{ left: 8, right: 16 }}>
-                  <XAxis type="number" tickFormatter={money} tick={{ fontSize: 11 }} />
+                  <XAxis type="number" tickFormatter={money} tick={{ fontSize: CHART_FONT_SM }} />
                   <YAxis type="category" dataKey="system" width={170}
-                    tick={{ fontSize: 11 }} />
+                    tick={{ fontSize: CHART_FONT_SM }} />
                   <Tooltip
                     formatter={(value, _name, entry) => {
                       const p = entry?.payload as SystemRow | undefined;
@@ -652,8 +653,8 @@ export default function Reports() {
                 <ResponsiveContainer width="100%" height={260}>
                   <LineChart data={monthly.data!.rows} margin={{ top: 10, right: 20, left: 8, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
+                    <XAxis dataKey="month" tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} />
+                    <YAxis tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
                     <Tooltip
                       formatter={(value) => [moneyDetail(Number(value)), 'Spend']}
                       labelStyle={{ color: 'var(--foreground)' }}

@@ -21,7 +21,16 @@ import './index.css';
  * top-right: one-time visitors have no preferences). */
 function AppToaster() {
   const position = useNotifPosition();
-  return <Toaster richColors position={position} closeButton />;
+  // Sonner starts a top-positioned toast 32px down the viewport, which
+  // lands it squarely on the 48px topbar — the banner covered the
+  // navigation it was often reporting about. Clear the header instead,
+  // and clear it at whatever height the Size setting has given it: the
+  // header is h-12 on the `controls` region, so the offset reads the
+  // same two variables the header does.
+  const offset = position.startsWith('top')
+    ? 'calc(3rem * var(--size-control, 1) * var(--size-region-controls, 1) + 0.5rem)'
+    : undefined;
+  return <Toaster richColors position={position} closeButton offset={offset} />;
 }
 
 // Single shared QueryClient.  ``staleTime: 60s`` matches the server-side

@@ -21,6 +21,7 @@ import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
+import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
 interface TimelinePoint {
   hour_utc: string;
   miles?: number | null;
@@ -73,14 +74,14 @@ export default function VehicleTimeline({ vehicleName, company }: VehicleSection
           <ResponsiveContainer>
             <LineChart data={points} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="label" tick={{ fontSize: CHART_FONT_SM }} />
+              <YAxis tick={{ fontSize: CHART_FONT_SM }} />
               <Tooltip
                 contentStyle={{
                   background: 'var(--card)',
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--radius)',
-                  fontSize: 12,
+                  fontSize: CHART_FONT_MD,
                 }}
               />
               <Line type="monotone" dataKey="miles" stroke="var(--info)" strokeWidth={2} dot={false} name="Miles" />

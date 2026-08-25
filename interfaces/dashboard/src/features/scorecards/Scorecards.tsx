@@ -38,6 +38,7 @@ import { Card } from '@/components/ui/card';
 import { Tip } from '../../components/tooltip';
 import { Badge } from '@/components/ui/badge';
 
+import { CHART_FONT_2XS, CHART_FONT_MD, CHART_FONT_SM, CHART_FONT_XS } from "@/lib/chartText";
 // ── Color helpers ───────────────────────────────────────────────────
 
 // Single source of truth for score → bucket.  Thresholds are
@@ -136,15 +137,15 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
   return (
     <ResponsiveContainer width="100%" height={150}>
       <BarChart data={buckets} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
-        <XAxis dataKey="label" tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} />
-        <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} allowDecimals={false} />
+        <XAxis dataKey="label" tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} />
+        <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} allowDecimals={false} />
         <Tooltip
           formatter={(v, _name, props) => {
             const pct = cards.length > 0 ? Math.round((props.payload.count / cards.length) * 100) : 0;
             return [`${v} trucks (${pct}%)`, 'Count'];
           }}
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
-        <Bar dataKey="count" radius={[6, 6, 0, 0]} label={{ position: 'top', fontSize: 10, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
+        <Bar dataKey="count" radius={[6, 6, 0, 0]} label={{ position: 'top', fontSize: CHART_FONT_XS, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
           {buckets.map((b) => <Cell key={b.label} fill={b.color} />)}
         </Bar>
       </BarChart>
@@ -170,12 +171,12 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
       <ResponsiveContainer width="100%" height={items.length * 28 + 8}>
         <BarChart layout="vertical" data={items} margin={{ top: 0, right: 36, left: 0, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} hide />
-          <YAxis type="category" dataKey="name" width={56} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+          <YAxis type="category" dataKey="name" width={56} tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_MD }} />
           <Tooltip
             formatter={(v) => [`${v}`, 'Score']}
             contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
           <ReferenceLine x={70} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
-          <Bar dataKey="score" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--muted-foreground)' }}>
+          <Bar dataKey="score" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }}>
             {items.map((d, i) => <Cell key={i} fill={scoreVar(d.score)} />)}
           </Bar>
         </BarChart>
@@ -258,9 +259,9 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
     <ResponsiveContainer width="100%" height={160}>
       <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 0 }}>
         <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-        <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+        <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_XS }}
                tickFormatter={(d: string) => d.slice(5)} />
-        <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }} />
+        <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_XS }} />
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
         {/* Faded pillar lines underneath the bold total — categorical
@@ -282,7 +283,7 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
         {showPillarMarker && pillarStartDate && (
           <ReferenceLine x={pillarStartDate} stroke={chartColor(4)}
             strokeDasharray="2 4"
-            label={{ value: 'pillars', position: 'top', fontSize: 9, fill: chartColor(4) }}
+            label={{ value: 'pillars', position: 'top', fontSize: CHART_FONT_2XS, fill: chartColor(4) }}
           />
         )}
       </LineChart>

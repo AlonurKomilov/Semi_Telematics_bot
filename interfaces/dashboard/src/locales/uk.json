@@ -549,7 +549,7 @@
       "backend_disk_desc": "Файли на сервері платформи. Найпростіше налаштування. Враховується в квоті платформи.",
       "backend_gdrive_title": "Тільки Google Drive",
       "backend_gdrive_desc": "Завантаження йдуть напряму у ваш Drive. Повільніше, без кешу.",
-      "backend_hybrid_title": "Гібрид (рекомендовано)",
+      "backend_hybrid_title": "Гібрид",
       "backend_hybrid_desc": "Швидкий запис на диск, потім фонова синхронізація з Drive. Найкраще з обох — потрібен під'єднаний Drive.",
       "active": "Активно",
       "switch_button": "Використати",

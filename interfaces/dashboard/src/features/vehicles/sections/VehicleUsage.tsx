@@ -25,6 +25,7 @@ import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
+import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
 interface UsageSummary {
   vehicle_id: string;
   vehicle_name: string;
@@ -174,14 +175,14 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
               <ResponsiveContainer>
                 <BarChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="label" tick={{ fontSize: CHART_FONT_SM }} />
+                  <YAxis tick={{ fontSize: CHART_FONT_SM }} />
                   <Tooltip
                     contentStyle={{
                       background: 'var(--card)',
                       border: '1px solid var(--border)',
                       borderRadius: 'var(--radius)',
-                      fontSize: 12,
+                      fontSize: CHART_FONT_MD,
                     }}
                   />
                   <Bar dataKey="miles" fill="var(--info)" name="Miles" />

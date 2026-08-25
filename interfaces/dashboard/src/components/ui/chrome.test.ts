@@ -242,6 +242,26 @@ export function tapHeight(cls: string): number | null {
 }
 
 describe('UI chrome', () => {
+
+  /**
+   * Recharts takes `fontSize` as a number and writes it onto an SVG <text>
+   * as an attribute, so no Tailwind class reaches it — 31 axis, tick and
+   * legend sizes sat frozen at 10-12px while every heading beside them
+   * grew with the Size setting. lib/chartText.ts holds the three replacements.
+   * A number here is not a style choice; it is a value that opted out of
+   * the engine, which is exactly what a guard is for.
+   */
+  it('has no chart font size that opted out of the text axis', () => {
+    const offenders = FILES.filter(({ src }) => /fontSize:\s*\d/.test(src)).map(
+      ({ rel, src }) =>
+        `${rel}: ${(src.match(/fontSize:\s*\d+/g) ?? []).join(', ')}`,
+    );
+    expect(
+      offenders,
+      'use CHART_FONT_XS / _SM / _MD from lib/chartText.ts — a bare number ' +
+        'becomes an SVG attribute the Size engine cannot reach',
+    ).toEqual([]);
+  });
   it('never uses emoji or dingbats where an icon belongs', () => {
     const offenders = TSX
       .filter((f) => CHROME_GLYPH.test(f.src))

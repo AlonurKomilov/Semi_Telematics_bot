@@ -720,7 +720,7 @@
       "backend_disk_desc": "Fichiers sur le serveur. Configuration la plus simple. Compte sur le stockage de la plateforme.",
       "backend_gdrive_title": "Google Drive uniquement",
       "backend_gdrive_desc": "Les envois vont directement sur votre Drive. Plus lent par envoi, pas de cache.",
-      "backend_hybrid_title": "Hybride (recommandé)",
+      "backend_hybrid_title": "Hybride",
       "backend_hybrid_desc": "Écriture rapide sur disque, puis synchronisation Drive en arrière-plan. Le meilleur des deux — nécessite Drive connecté.",
       "active": "Actif",
       "switch_button": "Utiliser",

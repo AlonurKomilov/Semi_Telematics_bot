@@ -221,7 +221,11 @@ function Cell({ checked, disabled, hint, onChange }: {
           : 'bg-muted text-muted-foreground hover:bg-muted/80'
       } min-h-tap`}
     >
-      {checked ? 'On' : 'Off'}
+      {/* A disabled chip must not claim the channel is on. Push is
+          unavailable until a device registers, and the row said "On" at
+          0.6 opacity — the tooltip explained it, but the chip label is
+          the thing being read. */}
+      {disabled ? 'N/A' : checked ? 'On' : 'Off'}
     </button>
   );
   return (

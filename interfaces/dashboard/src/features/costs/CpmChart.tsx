@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
+import { CHART_FONT_SM } from "@/lib/chartText";
 interface Vehicle {
   vehicle_name: string;
   cpm: number;
@@ -18,13 +19,13 @@ export default function CpmChart({ vehicles, avgCpm }: Props) {
         data={top.map((v) => ({ name: v.vehicle_name, cpm: v.cpm }))}
         margin={{ top: 4, right: 20, left: 0, bottom: 40 }}
       >
-        <XAxis dataKey="name" tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
-        <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
+        <XAxis dataKey="name" tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} angle={-35} textAnchor="end" interval={0} />
+        <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
         <Tooltip
           formatter={(v) => [`$${(v as number).toFixed(3)}`, 'CPM']}
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }}
         />
-        {avgCpm != null && <ReferenceLine y={avgCpm} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: 'avg', fill: 'var(--muted-foreground)', fontSize: 11 }} />}
+        {avgCpm != null && <ReferenceLine y={avgCpm} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: 'avg', fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} />}
         <Bar dataKey="cpm" radius={[4, 4, 0, 0]}>
           {top.map((v) => (
             // Higher cost-per-mile is worse → danger/warn/ok status tokens.

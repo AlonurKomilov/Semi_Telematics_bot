@@ -720,7 +720,7 @@
       "backend_disk_desc": "Файлы на сервере платформы. Простейшая настройка. Учитывается в квоте платформы.",
       "backend_gdrive_title": "Только Google Drive",
       "backend_gdrive_desc": "Загрузки идут прямо в ваш Drive. Медленнее, без локального кеша.",
-      "backend_hybrid_title": "Гибрид (рекомендуется)",
+      "backend_hybrid_title": "Гибрид",
       "backend_hybrid_desc": "Быстрая запись на диск, затем фоновая синхронизация с Drive. Лучшее из двух — требуется подключённый Drive.",
       "active": "Активен",
       "switch_button": "Использовать",

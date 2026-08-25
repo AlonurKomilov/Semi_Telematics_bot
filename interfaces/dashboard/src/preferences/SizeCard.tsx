@@ -38,7 +38,9 @@ function SizeRow({
 }: {
   label: string;
   value: number;
-  /** Omitted on the global row — "Reset all" already covers it. */
+  /** Shown only when this row is off 100%. The global row has one too:
+   *  without it there was no way back to a plain 100% without also
+   *  discarding every per-area override. */
   onReset?: () => void;
   onPreview: (v: number) => void;
   onCommit: (v: number) => void;
@@ -111,18 +113,24 @@ function SizeRow({
       {/* Only when this row is off 100%: otherwise every row carries a
           dead control. Without it, undoing ONE area meant dragging back
           to exactly 100 or throwing away all six. */}
-      {onReset && value !== 1 && (
-        <Tip label={`Reset ${label.toLowerCase()} to 100%`}>
-          <button
-            type="button"
-            onClick={onReset}
-            aria-label={`Reset ${label.toLowerCase()} to 100%`}
-            className="inline-flex items-center justify-center min-h-tap min-w-tap shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            <RotateCcw className="size-3.5" />
-          </button>
-        </Tip>
-      )}
+      {/* The slot is always here, even when the button is not. It used
+          to mount and unmount with `value !== 1`, so the row grew a few
+          pixels taller the moment you moved a slider off 100% — every
+          row below it stepped down while you were still dragging. */}
+      <span className="inline-flex items-center justify-center min-h-tap min-w-tap shrink-0">
+        {onReset && value !== 1 && (
+          <Tip label={`Reset ${label.toLowerCase()} to 100%`}>
+            <button
+              type="button"
+              onClick={onReset}
+              aria-label={`Reset ${label.toLowerCase()} to 100%`}
+              className="inline-flex items-center justify-center min-h-tap min-w-tap shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcw className="size-3.5" />
+            </button>
+          </Tip>
+        )}
+      </span>
     </div>
   );
 }
@@ -131,11 +139,13 @@ function SizeRow({
  *  the way the eye moves through the app, not alphabetically. The keys
  *  are frozen (registry.ts); only these labels are editable. */
 const REGION_ROWS: { key: SizeRegionKey; label: string }[] = [
-  // 'Pages', not 'Main content': every other label here points at
-  // something on screen, and that one named the leftover — everything
-  // that is none of the others. A label that names an absence cannot be
-  // pointed at. Keys are frozen (registry.ts); labels are free.
-  { key: 'text',       label: 'Pages' },
+  // 'Page content', not 'Main content' and not 'Pages': every other
+  // label points at something on screen, and the original named the
+  // leftover — everything that is none of the others. A browser audit
+  // then found 'Pages' promising more than it delivers, since a table
+  // on a page takes the Tables setting, not this one. Keys are frozen
+  // (registry.ts); labels are free.
+  { key: 'text',       label: 'Page content' },
   { key: 'tables',     label: 'Tables' },
   { key: 'controls',   label: 'Top bar' },
   { key: 'navigation', label: 'Sidebar' },
@@ -205,11 +215,11 @@ export default function SizeCard() {
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground shrink-0 py-1 -my-1 min-h-tap"
         >
           <RotateCcw className="size-3.5" />
-          Reset all
+          Reset sizes
         </button>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Resize the interface. Applies to this browser; the switch below shares it with your other ones.
+        Resize the interface. This browser only, unless you turn on the switch below.
       </p>
 
       <div className="space-y-3">
@@ -219,6 +229,7 @@ export default function SizeCard() {
           value={size.global}
           onPreview={(v) => applySize({ ...size, global: v })}
           onCommit={(v) => setSize({ global: v })}
+          onReset={() => { applySize({ ...size, global: 1 }); setSize({ global: 1 }); }}
         />
 
         {/* Per-area sliders are BEHIND a disclosure, not stacked under
@@ -262,8 +273,9 @@ export default function SizeCard() {
           {open && (
             <div className="mt-3 space-y-3 border-l border-border pl-3">
               <p className="text-xs text-muted-foreground">
-                Each area multiplies the size above — 110% here on a 120%
-                interface renders at 132%.
+                These stack on top of the setting above, they don't replace
+                it — so an area at 110% inside a 120% interface ends up at
+                132%.
               </p>
               {REGION_ROWS.map(({ key, label }) => (
                 <SizeRow

@@ -12,6 +12,7 @@ import { formatDate, formatDay } from '../../utils/datetime';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { SectionHeader } from '@/components/shell';
 
+import { CHART_FONT_MD } from "@/lib/chartText";
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
 // and we backfill empty months with zero so the gap pattern is honest
@@ -214,7 +215,7 @@ export function ServiceHistoryModal({
                           background: 'var(--card)',
                           border: '1px solid var(--border)',
                           borderRadius: 6,
-                          fontSize: 12,
+                          fontSize: CHART_FONT_MD,
                         }}
                         formatter={(v: unknown) => [String(v), 'services']}
                       />

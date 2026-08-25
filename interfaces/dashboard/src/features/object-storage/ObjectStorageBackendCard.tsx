@@ -270,7 +270,16 @@ export function BackendOption({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium inline-flex items-center gap-1.5">
             {title}
-            {active && <CheckCircle2 className="text-primary size-3" />}
+            {/* A word, not a bare glyph. This sat beside the Recommended
+                badge as the same circle shape with `aria-hidden` and no
+                name, so the two markers — "we suggest this" and "this is
+                switched on" — were indistinguishable to the eye and
+                absent to a screen reader. */}
+            {active && (
+              <Badge tone="info" className="text-3xs uppercase tracking-wide">
+                <CheckCircle2 className="size-2.5" aria-hidden /> Active
+              </Badge>
+            )}
             {recommended && !active && (
               <Badge tone="ok" className="text-3xs uppercase tracking-wide">
                 <Star className="size-2.5" aria-hidden /> Recommended

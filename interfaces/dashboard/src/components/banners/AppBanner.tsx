@@ -4,7 +4,7 @@
  * ONE stacking lane + position with every other toast in the app.
  *
  * Two countdown modes, deliberately distinct:
- *   'dismiss' — a NOTICE: "This closes in Ns. Click to stop." — stopping
+ *   'dismiss' — a NOTICE: "This closes in Ns. Keep it open" — stopping
  *               just keeps it on screen (nothing else happens).
  *   'commit'  — a PENDING ACTION: "Applies in Ns" + a Cancel button —
  *               when the countdown ends `onExpire` fires (that's where
@@ -74,6 +74,16 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
   const total = (seconds ?? 0) * 1000;
   const [leftMs, setLeftMs] = useState(total);
   const [stopped, setStopped] = useState(seconds == null);
+  // A banner that expires while it is being read is a banner nobody
+  // finishes. Hover or keyboard focus holds the clock; leaving resumes it
+  // from where it stopped, not from the top.
+  //
+  // 'commit' never pauses: it is a promise that something WILL happen, and
+  // a promise you can freeze by resting the mouse on it is a lie. There
+  // the honest interventions stay Cancel, or let it apply.
+  const [paused, setPaused] = useState(false);
+  const holdable = countdown !== 'commit';
+  const remainingRef = useRef(total);
   const [expanded, setExpanded] = useState(false);
   const firedRef = useRef(false);
 
@@ -89,11 +99,15 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
   const meta = occurrence && occurrence > 1
     ? `×${occurrence} · ${ageLabel}` : ageLabel;
 
+  useEffect(() => { remainingRef.current = total; }, [total]);
+
   useEffect(() => {
-    if (stopped || total <= 0) return;
+    if (stopped || paused || total <= 0) return;
+    const budget = remainingRef.current;
     const startedAt = Date.now();
     const iv = setInterval(() => {
-      const left = total - (Date.now() - startedAt);
+      const left = budget - (Date.now() - startedAt);
+      remainingRef.current = Math.max(0, left);
       if (left > 0) {
         setLeftMs(left);
         return;
@@ -107,7 +121,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
       }
     }, TICK_MS);
     return () => clearInterval(iv);
-  }, [stopped, total, id, countdown, onExpire]);
+  }, [stopped, paused, total, id, countdown, onExpire]);
 
   const close = () => {
     if (!firedRef.current) {
@@ -122,7 +136,12 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
   const pct = total > 0 ? Math.max(0, Math.min(100, (leftMs / total) * 100)) : 0;
 
   return (
-    <div className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
+    <div className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden"
+      onMouseEnter={() => holdable && setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => holdable && setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
       <div className="px-3 pt-2.5 pb-2">
         <div className="flex items-start gap-2">
           <Icon className={`${toneText(tone)} mt-0.5 shrink-0 size-4`} aria-hidden />
@@ -193,12 +212,14 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
             <>Applies in <span className="font-semibold tabular-nums">{leftSec}</span>s.</>
           ) : (
             <>
-              This closes in <span className="font-semibold tabular-nums">{leftSec}</span>s.{' '}
+              {paused ? 'Paused while you read.' : (
+                <>This closes in <span className="font-semibold tabular-nums">{leftSec}</span>s.{' '}</>
+              )}
               <button
                 className="font-semibold text-foreground hover:underline py-0.5 -my-0.5 min-h-tap"
                 onClick={() => setStopped(true)}
               >
-                Click to stop.
+                Keep it open
               </button>
             </>
           )}
