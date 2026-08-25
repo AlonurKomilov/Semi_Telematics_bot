@@ -121,7 +121,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_storage',      kind: 'feature', label: 'Storage', description: 'Connecting Drive, retrying syncs, clearing orphans. Choosing the backend and the disk quota are settings — Config — account-wide.' },
 
       { key: 'can_manage_account',     kind: 'feature', label: 'General settings', description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
-      { key: 'can_manage_users',       kind: 'feature', label: 'Team Management', description: 'Members, roles, data scope — also gates the Audit Log' },
+      { key: 'can_manage_users',       kind: 'feature', label: 'Team Management', description: "Members, roles, data scope — also opens the Audit Log, which lists only the features this role can already see" },
       { key: 'can_invite',             kind: 'feature', label: 'Send Invites', description: 'Invite new members — the invite carries the role the sender picks' },
       { key: 'can_manage_companies',   kind: 'feature', label: 'Manage Companies', description: 'Sub-companies in the account — codes, names, per-company data scope' },
       { key: 'can_manage_work_hours',  kind: 'feature', label: 'Working Hours', description: 'Shift schedules — they also drive the alert do-not-disturb window' },
