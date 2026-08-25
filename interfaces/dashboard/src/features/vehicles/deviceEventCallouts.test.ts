@@ -34,10 +34,13 @@ describe('device-event callouts', () => {
     }
   });
 
-  it('treats a VIN change as the most serious of the three', () => {
-    // A changed VIN means the unit may now name a DIFFERENT TRUCK, so
-    // every mile and inspection filed under it is in question.
-    expect(CALLOUT_CATALOG['vehicle.vin_changed'].severity).toBe('danger');
-    expect(CALLOUT_CATALOG['vehicle.gateway_swapped'].severity).toBe('warn');
+  it('asks in warn, never danger', () => {
+    // Danger is reserved for states that are actively failing (overdue,
+    // past-due, error).  These are questions waiting on a person, and
+    // a full red strip both overstated them and made the body text
+    // hard to read against its own background.
+    for (const key of EVENT_KEYS) {
+      expect(CALLOUT_CATALOG[key].severity).toBe('warn');
+    }
   });
 });

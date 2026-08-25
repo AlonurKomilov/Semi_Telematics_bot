@@ -72,7 +72,12 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
   // feature (device_event_log).  `dismiss: 'none'` on purpose: their
   // answer edits the registry, so they are answered, never hidden —
   // and the card supplies its own buttons through the actions slot.
-  'vehicle.vin_changed':      { kind: 'condition', severity: 'danger', dismiss: 'none' },
+  // ``warn``, not ``danger``.  Danger is this system's colour for
+  // overdue / failed / past-due — states that are actively failing and
+  // want "act now".  A changed VIN is serious but it is a QUESTION
+  // waiting on a person, and painting the whole strip red (body text
+  // included) both overstated it and cost legibility.
+  'vehicle.vin_changed':      { kind: 'condition', severity: 'warn',   dismiss: 'none' },
   'vehicle.gateway_swapped':  { kind: 'condition', severity: 'warn',   dismiss: 'none' },
   'vehicle.odometer_rebased': { kind: 'condition', severity: 'warn',   dismiss: 'none' },
 

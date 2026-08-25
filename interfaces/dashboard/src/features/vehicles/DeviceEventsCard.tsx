@@ -16,7 +16,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
@@ -27,7 +27,6 @@ import {
 } from '../../components/ui/dialog';
 import { Callout, type CalloutData } from '../../components/callouts';
 import type { Vehicle } from '../../types';
-import { Card } from '@/components/ui/card';
 
 export interface DeviceEvent {
   id: number;
@@ -134,13 +133,16 @@ export default function DeviceEventsCard({
   };
 
   return (
-    <Card className="mb-4">
-      <div className="flex items-center gap-2 mb-2">
-        <AlertTriangle className="size-4 text-warn" />
-        <h3 className="text-base font-semibold">
-          Device change{open.length === 1 ? '' : 's'} to review
-        </h3>
-      </div>
+    <div className="mb-4">
+      {/* No card and no icon-plus-title of its own: each strip below
+          already carries both, and wrapping them repeated the warning
+          icon, the heading and the border around a single statement.
+          A plain label survives only to group several. */}
+      {open.length > 1 && (
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Device changes to review
+        </p>
+      )}
       {/* Rendered through the callouts lane so a device question wears
           the same shape as every other statement on the page — one
           vocabulary for the reader.  The DATA and the answer flow stay
@@ -166,8 +168,16 @@ export default function DeviceEventsCard({
                         {busyId === e.id && <Loader2 className="animate-spin" />}
                         Same truck
                       </Button>
+                      {/* Outline, NOT the filled primary it used to
+                          be.  Splitting mints a new unit, moves the
+                          telematics ref and forks the truck's history —
+                          the hard-to-reverse answer of the two.  Giving
+                          it the button that reads as "the default"
+                          nudged toward it; both answers now carry the
+                          same weight so the choice is made on the VIN
+                          evidence above, not on styling. */}
                       <Button
-                        type="button" size="sm"
+                        type="button" variant="outline" size="sm"
                         disabled={busyId === e.id}
                         onClick={() => { setError(''); setSplitEvent(e); }}
                       >
@@ -206,7 +216,7 @@ export default function DeviceEventsCard({
           }}
         />
       )}
-    </Card>
+    </div>
   );
 }
 
