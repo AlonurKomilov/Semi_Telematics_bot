@@ -22,8 +22,10 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import { resolveCallout, CALLOUT_LINES, type CalloutLineName } from './useCallout';
+import { useGroupDismissal } from './useDismissal';
 import type { CalloutData } from './calloutCatalog';
 import { toneClasses } from '../../lib/status';
 import { Button } from '../ui/button';
@@ -61,9 +63,14 @@ export default function CalloutGroup<T>({
 }) {
   const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
+  const data = items.map(callout);
+  // Hooks run unconditionally — the empty-group return is below them.
+  const { collapsed, behaviour, close, expand } = useGroupDismissal(
+    data[0]?.key ?? '', data.map((c) => c.callout_id ?? ''),
+  );
 
   if (items.length === 0) return null;
-  const resolved = items.map((i) => resolveCallout(t, callout(i)));
+  const resolved = data.map((c) => resolveCallout(t, c));
   const head = resolved[0];
 
   const valueOf = (r: (typeof resolved)[number], n: CalloutLineName) =>
@@ -75,6 +82,27 @@ export default function CalloutGroup<T>({
   const shared = present.filter((n) =>
     resolved.every((r) => valueOf(r, n) === valueOf(head, n)));
   const columns = present.filter((n) => !shared.includes(n));
+
+  // Folded: the statement stays on screen as one line, because the
+  // reason it was worth saying does not stop being true when someone
+  // is done reading it.  Same shape as a single `Callout`, with the
+  // count kept — the fold must not hide HOW MANY trucks are affected.
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={expand}
+        className={`flex items-center gap-2 w-full rounded-lg px-3 py-1.5 text-left min-h-tap ${toneClasses(head.tone)} ${className}`}
+      >
+        <head.Icon className="size-3.5 shrink-0" />
+        <span className="text-xs font-medium min-w-0 truncate">{head.title}</span>
+        {resolved.length > 1 && (
+          <span className="text-xs opacity-70 shrink-0">{resolved.length}</span>
+        )}
+        <ChevronDown className="size-3.5 shrink-0 ml-auto opacity-70" />
+      </button>
+    );
+  }
 
   const rows = showAll ? resolved : resolved.slice(0, ROW_CAP);
   const hidden = resolved.length - rows.length;
@@ -163,6 +191,19 @@ export default function CalloutGroup<T>({
           </Button>
         )}
       </div>
+      {/* The fold, when the callout declares one.  A group that lost
+          this by being grouped would be a callout whose control
+          depends on how many trucks happen to have it today. */}
+      {behaviour !== 'none' && data.some((c) => c.callout_id) && (
+        <button
+          type="button"
+          onClick={() => { void close(); }}
+          aria-label={t('callout.labels.collapse')}
+          className="ml-auto shrink-0 rounded p-1 opacity-70 hover:opacity-100 min-h-tap min-w-tap"
+        >
+          <ChevronUp className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }

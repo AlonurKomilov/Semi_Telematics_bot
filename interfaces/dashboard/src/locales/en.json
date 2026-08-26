@@ -1402,8 +1402,6 @@
       "affects": "Affects",
       "do": "Do",
       "collapse": "Collapse this notice",
-      "dismiss": "Dismiss this notice",
-      "dismiss_failed": "Could not be recorded — still showing.",
       "where": "Where",
       "changed": "Changed",
       "show_all": "Show all {{count}}"

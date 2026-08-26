@@ -741,8 +741,6 @@
       "affects": "Ta'sir qiladi",
       "do": "Nima qilish",
       "collapse": "Xabarnomani yig'ish",
-      "dismiss": "Xabarnomani yopish",
-      "dismiss_failed": "Yozib bo'lmadi — ekranda qoladi.",
       "where": "Qayerda",
       "changed": "O'zgarish",
       "show_all": "Barchasini ko‘rsatish ({{count}})"

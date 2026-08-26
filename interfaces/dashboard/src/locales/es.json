@@ -1111,8 +1111,6 @@
       "affects": "Afecta a",
       "do": "Acción",
       "collapse": "Contraer este aviso",
-      "dismiss": "Descartar este aviso",
-      "dismiss_failed": "No se pudo registrar — sigue visible.",
       "where": "Dónde",
       "changed": "Cambio",
       "show_all": "Ver los {{count}}"

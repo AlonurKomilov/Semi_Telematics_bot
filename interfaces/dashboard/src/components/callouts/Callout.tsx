@@ -21,9 +21,9 @@
  * one fixed set on both is what makes a strip print "Answer below"
  * directly above the answer buttons.
  */
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { CalloutData } from './calloutCatalog';
 import { useCallout } from './useCallout';
 import { useDismissal } from './useDismissal';
@@ -51,14 +51,6 @@ export default function Callout({
   const { t } = useTranslation();
   const { tone, title, lines, Icon } = useCallout(callout);
   const { collapsed, behaviour, close, expand } = useDismissal(callout);
-  const [failed, setFailed] = useState(false);
-
-  const onClose = async () => {
-    setFailed(false);
-    // A dismissal that could not be recorded must not hide anything —
-    // the endpoint writes the trail entry first and refuses on failure.
-    if (!(await close())) setFailed(true);
-  };
 
   // Collapsed: the statement stays on screen as one line.  This is what
   // keeps a 0-mile truck from reading as a real zero once the strip is
@@ -122,11 +114,6 @@ export default function Callout({
             ))}
           </dl>
         )}
-        {failed && (
-          <p role="alert" className="text-xs font-medium">
-            {t('callout.labels.dismiss_failed')}
-          </p>
-        )}
         {actions && (
           <div className="flex flex-wrap items-center gap-2 pt-1">{actions}</div>
         )}
@@ -134,21 +121,17 @@ export default function Callout({
       {behaviour !== 'none' && callout.callout_id && (
         <button
           type="button"
-          onClick={onClose}
-          aria-label={t(
-            behaviour === 'collapse'
-              ? 'callout.labels.collapse'
-              : 'callout.labels.dismiss',
-          )}
+          onClick={() => { void close(); }}
+          aria-label={t('callout.labels.collapse')}
           className="ml-auto shrink-0 rounded p-1 opacity-70 hover:opacity-100 min-h-tap min-w-tap"
         >
           {/* The icon has to mean what the control does.  An X says
               "gone", which is a promise collapse does not keep — and
               the collapsed row already expands with a chevron, so
-              folding it back up is that chevron's mirror. */}
-          {behaviour === 'collapse'
-            ? <ChevronUp className="size-3.5" />
-            : <X className="size-3.5" />}
+              folding it back up is that chevron's mirror.  There is no
+              longer an X branch to choose between: removal is gone,
+              and a dead branch offering it would invite it back. */}
+          <ChevronUp className="size-3.5" />
         </button>
       )}
     </div>

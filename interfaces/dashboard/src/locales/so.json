@@ -882,8 +882,6 @@
       "affects": "Saameeya",
       "do": "Samee",
       "collapse": "Ogeysiiskan laablaab",
-      "dismiss": "Ogeysiiskan qari",
-      "dismiss_failed": "Lama diiwaangelin karin — weli wuu muuqdaa.",
       "where": "Halka",
       "changed": "Isbeddel",
       "show_all": "Muuji dhammaan {{count}}"

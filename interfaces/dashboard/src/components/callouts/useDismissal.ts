@@ -38,30 +38,55 @@ export interface DismissalState {
   expand: () => void;
 }
 
-export function useDismissal(c: CalloutData): DismissalState {
+/**
+ * The MANY-occurrence form, and the only implementation.
+ *
+ * A group states one callout once and lists the trucks it is true of,
+ * so the fold belongs to the group: a row is already one line and has
+ * nothing to shrink to.  Collapsing therefore marks every occurrence's
+ * id, and the group counts as collapsed only when they ALL are.
+ *
+ * That last part is the load-bearing half.  A fourth truck developing
+ * the same condition tomorrow arrives with an id nobody has folded, so
+ * the group re-opens instead of inheriting a decision made about three
+ * other trucks — which is how a fold quietly becomes a mute button.
+ *
+ * No new preference key: `callout.collapsed` is already a map of ids,
+ * and a group is a set of ids.  One store, one meaning.
+ */
+export function useGroupDismissal(key: string, ids: string[]): DismissalState {
   const { value: collapsedMap, setValue: setCollapsed } =
     usePreference('callout.collapsed');
-  const id = c.callout_id ?? '';
-  const behaviour = dismissBehaviour(c.key);
+  const behaviour = dismissBehaviour(key);
+  const present = ids.filter(Boolean);
+  // A stable dep: the array is rebuilt every render, the string is not.
+  const fingerprint = present.join('\u0000');
 
   const close = useCallback(async (): Promise<boolean> => {
-    if (!id) return false;
-    if (behaviour !== 'collapse') return false;
-    setCollapsed({ ...collapsedMap, [id]: Date.now() });
+    if (behaviour !== 'collapse' || !fingerprint) return false;
+    const now = Date.now();
+    const next = { ...collapsedMap };
+    for (const id of fingerprint.split('\u0000')) next[id] = now;
+    setCollapsed(next);
     return true;
-  }, [id, behaviour, collapsedMap, setCollapsed]);
+  }, [behaviour, fingerprint, collapsedMap, setCollapsed]);
 
   const expand = useCallback(() => {
-    if (!id) return;
+    if (!fingerprint) return;
     const next = { ...collapsedMap };
-    delete next[id];
+    for (const id of fingerprint.split('\u0000')) delete next[id];
     setCollapsed(next);
-  }, [id, collapsedMap, setCollapsed]);
+  }, [fingerprint, collapsedMap, setCollapsed]);
 
   return {
-    collapsed: Boolean(id && collapsedMap[id]),
+    collapsed: present.length > 0 && present.every((id) => collapsedMap[id]),
     behaviour,
     close,
     expand,
   };
+}
+
+/** One occurrence — a group of one, so the two cannot drift apart. */
+export function useDismissal(c: CalloutData): DismissalState {
+  return useGroupDismissal(c.key, [c.callout_id ?? '']);
 }

@@ -15,7 +15,9 @@
  * what stops it going stale when a callout gains or loses a line.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import {
+  render, screen, cleanup, fireEvent, renderHook, act,
+} from '@testing-library/react';
 
 afterEach(cleanup);
 
@@ -25,6 +27,18 @@ const LABELS: Record<string, string> = {
   'callout.labels.why': 'Why',
   'callout.labels.affects': 'Affects',
 };
+
+// Per-viewer preference store, stubbed so the hook tests can watch
+// exactly which ids get written.  Hoisted with the other mocks: a
+// vi.doMock inside a describe runs after this file's static imports
+// have already pulled in the real module.
+const prefs: { value: Record<string, number> } = { value: {} };
+vi.mock('../../preferences', () => ({
+  usePreference: () => ({
+    value: prefs.value,
+    setValue: (v: Record<string, number>) => { prefs.value = v; },
+  }),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -60,6 +74,7 @@ vi.mock('./useCallout', async (importOriginal) => {
 });
 
 import CalloutGroup from './CalloutGroup';
+import { useGroupDismissal, useDismissal } from './useDismissal';
 
 const truck = (unit: string, vins: string) => ({ unit, vins });
 const asCallout = (t: { unit: string; vins: string }) => ({
@@ -180,5 +195,101 @@ describe('the answer never depends on what varies', () => {
       />,
     );
     expect(screen.getAllByRole('button', { name: /^Answer / })).toHaveLength(3);
+  });
+});
+
+/**
+ * The fold, which a group must not lose by being a group.
+ *
+ * `Callout` has always had it; `CalloutGroup` shipped without ever
+ * calling useDismissal, so a collapsible callout would have been
+ * collapsible alone and stuck open the moment a second truck developed
+ * the same condition.  A control that depends on how many trucks
+ * happen to be affected today is not a control.
+ *
+ * These use the REAL hook against a stubbed preference store, because
+ * the interesting behaviour is which ids get written and when the group
+ * counts as folded — a mocked hook would assert nothing.
+ */
+describe('folding a group', () => {
+  it('marks every occurrence, so a new truck re-opens the group', async () => {
+    prefs.value = {};
+    const ids = ['a', 'b', 'c'];
+    const { result, rerender } = renderHook(
+      ({ list }) => useGroupDismissal('vehicle.no_engine_data', list),
+      { initialProps: { list: ids } },
+    );
+    expect(result.current.collapsed).toBe(false);
+    await act(async () => { await result.current.close(); });
+    rerender({ list: ids });
+    expect(result.current.collapsed).toBe(true);
+    expect(Object.keys(prefs.value).sort()).toEqual(['a', 'b', 'c']);
+
+    // The fourth truck arrives with an id nobody folded.  The group must
+    // re-open rather than inherit a decision made about the other three
+    // — otherwise the fold is a mute button for a condition that is
+    // still spreading.
+    rerender({ list: [...ids, 'd'] });
+    expect(result.current.collapsed).toBe(false);
+  });
+
+  it('expanding clears only this group', () => {
+    prefs.value = { a: 1, b: 1, other: 1 };
+    const { result, rerender } = renderHook(
+      () => useGroupDismissal('vehicle.no_engine_data', ['a', 'b']),
+    );
+    expect(result.current.collapsed).toBe(true);
+    act(() => { result.current.expand(); });
+    rerender();
+    expect(Object.keys(prefs.value)).toEqual(['other']);
+  });
+
+  it('refuses to fold a callout that declares no control', async () => {
+    prefs.value = {};
+    // The identity questions: answered, never closed.
+    const { result } = renderHook(
+      () => useGroupDismissal('vehicle.vin_changed', ['a']),
+    );
+    expect(result.current.behaviour).toBe('none');
+    await act(async () => {
+      expect(await result.current.close()).toBe(false);
+    });
+    expect(prefs.value).toEqual({});
+  });
+
+  it('renders the control — the component must CALL the hook', () => {
+    // The hook tests above would all pass with CalloutGroup never
+    // touching it, which is precisely how the deleted dismissal
+    // endpoint stayed broken and green.  This one goes through the
+    // rendered component.
+    prefs.value = {};
+    const foldable = (t: { unit: string; vins: string }) => ({
+      key: 'vehicle.no_engine_data',
+      callout_id: `vehicle.no_engine_data@vehicle:${t.unit}`,
+      params: { unit: t.unit, vins: t.vins },
+    });
+    render(<CalloutGroup items={THREE} callout={foldable} />);
+    const fold = screen.getByRole('button', { name: 'callout.labels.collapse' });
+    fireEvent.click(fold);
+    expect(Object.keys(prefs.value)).toHaveLength(3);
+    cleanup();
+
+    // Folded, it is still a statement on screen — and still says how
+    // many trucks, which is the number a fold must not swallow.
+    render(<CalloutGroup items={THREE} callout={foldable} />);
+    expect(screen.queryByText(/A VIN names one physical truck/)).toBeNull();
+    expect(screen.getByText('3')).toBeTruthy();
+  });
+
+  it('a group of one folds exactly as the single strip does', async () => {
+    // useDismissal delegates to useGroupDismissal so the two cannot
+    // drift — a strip that folds alone must fold the same way once it
+    // has company.
+    prefs.value = {};
+    const { result } = renderHook(
+      () => useDismissal({ key: 'vehicle.no_engine_data', callout_id: 'solo' }),
+    );
+    await act(async () => { await result.current.close(); });
+    expect(prefs.value).toEqual({ solo: expect.any(Number) });
   });
 });

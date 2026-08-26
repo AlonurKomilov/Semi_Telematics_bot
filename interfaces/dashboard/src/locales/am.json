@@ -882,8 +882,6 @@
       "affects": "የሚነካው",
       "do": "ማድረግ",
       "collapse": "ይህን ማስታወቂያ አጠፍ",
-      "dismiss": "ይህን ማስታወቂያ አስወግድ",
-      "dismiss_failed": "መመዝገብ አልተቻለም — አሁንም ይታያል።",
       "where": "የት",
       "changed": "ለውጥ",
       "show_all": "ሁሉንም {{count}} አሳይ"
