@@ -38,14 +38,26 @@ describe('dismiss behaviour', () => {
     expect(dismissBehaviour('vehicle.no_engine_data')).toBe('collapse');
   });
 
-  it('lets a callout override its kind default', () => {
-    // The live case: a condition whose answer is a button, not a
-    // close — so it opts OUT of the collapse its kind would give it.
+  it('folds the identity questions rather than blocking the fold', () => {
+    // These once declared `dismiss: 'none'` to stop a pending question
+    // being closed.  That was right against REMOVAL and wrong against
+    // collapse, which leaves the statement on screen as one line with
+    // its count and re-opens when a new truck raises it.  Someone who
+    // is not answering them should not carry the queue all week.
     for (const key of ['vehicle.vin_changed', 'vehicle.gateway_swapped',
                        'vehicle.odometer_rebased']) {
-      expect(defaultDismiss(CALLOUT_CATALOG[key].kind)).toBe('collapse');
-      expect(dismissBehaviour(key)).toBe('none');
+      expect(dismissBehaviour(key)).toBe('collapse');
     }
+  });
+
+  it('still lets a callout override its kind default', () => {
+    // No callout needs this today.  It is the declared seam for the
+    // first one that must not fold — kept because `kind` is a default,
+    // not a verdict.
+    const spec = { kind: 'condition' as const, severity: 'warn' as const,
+                   dismiss: 'none' as const };
+    expect(spec.dismiss ?? defaultDismiss(spec.kind)).toBe('none');
+    expect(defaultDismiss(spec.kind)).toBe('collapse');
   });
 
   it('shows no X for a key it does not know', () => {
@@ -70,6 +82,6 @@ describe('the control icon keeps its promise', () => {
       b === 'collapse' ? 'chevron-up' : 'none';
     expect(iconFor(dismissBehaviour('vehicle.no_engine_data'))).toBe('chevron-up');
     expect(iconFor(dismissBehaviour('mileage.partial'))).toBe('none');
-    expect(iconFor(dismissBehaviour('vehicle.vin_changed'))).toBe('none');
+    expect(iconFor(dismissBehaviour('vehicle.vin_changed'))).toBe('chevron-up');
   });
 });

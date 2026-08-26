@@ -246,9 +246,10 @@ describe('folding a group', () => {
 
   it('refuses to fold a callout that declares no control', async () => {
     prefs.value = {};
-    // The identity questions: answered, never closed.
+    // An unknown key resolves to 'none' — offering to fold it would
+    // store an id nothing can ever clear.
     const { result } = renderHook(
-      () => useGroupDismissal('vehicle.vin_changed', ['a']),
+      () => useGroupDismissal('nope.nothing', ['a']),
     );
     expect(result.current.behaviour).toBe('none');
     await act(async () => {

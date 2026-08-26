@@ -61,8 +61,11 @@ const LEGACY_ACTION_LABEL: Record<string, string> = {
   // and "same truck" is the one that welds two histories together.
   'device_event.same_truck': 'Device change: answered same truck',
   'device_event.different_truck': 'Device change: split onto a new unit',
-  'device_event.dismissed': 'Device change: acknowledged',
-  'device_event.acknowledge': 'Device change: acknowledged',
+  // The stored resolution is still `dismissed`; the button that writes
+  // it now reads "Confirm", and the trail should say what the person
+  // did rather than what the column is called.
+  'device_event.dismissed': 'Device change: confirmed',
+  'device_event.acknowledge': 'Device change: confirmed',
 };
 
 function actionLabel(s: string): string {

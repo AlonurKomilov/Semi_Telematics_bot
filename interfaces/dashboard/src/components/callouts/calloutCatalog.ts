@@ -67,17 +67,28 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
 
   // ── Device identity questions ───────────────────────────────
   // Rendered through this lane but stored and resolved by the vehicles
-  // feature (device_event_log).  `dismiss: 'none'` on purpose: their
-  // answer edits the registry, so they are answered, never hidden —
-  // and the card supplies its own buttons through the actions slot.
+  // feature (device_event_log).  Their ANSWER edits the registry and
+  // closes the question for the whole account, which is why the card
+  // supplies its own buttons through the actions slot — those are not
+  // this lane's business and never were.
   // ``warn``, not ``danger``.  Danger is this system's colour for
   // overdue / failed / past-due — states that are actively failing and
   // want "act now".  A changed VIN is serious but it is a QUESTION
   // waiting on a person, and painting the whole strip red (body text
   // included) both overstated it and cost legibility.
-  'vehicle.vin_changed':      { kind: 'condition', severity: 'warn',   dismiss: 'none' },
-  'vehicle.gateway_swapped':  { kind: 'condition', severity: 'warn',   dismiss: 'none' },
-  'vehicle.odometer_rebased': { kind: 'condition', severity: 'warn',   dismiss: 'none' },
+  //
+  // They FOLD, like any condition.  They used to declare
+  // `dismiss: 'none'` to stop a pending question being closed — sound
+  // when the alternative was removal, and stale the moment removal
+  // was deleted.  Collapse is not closing: the statement stays on
+  // screen as one line carrying its count, it re-opens the moment a
+  // new truck raises the same question, and one click undoes it.  A
+  // dispatcher who is not the person answering identity questions
+  // should not carry someone else's queue at the top of the Vehicles
+  // page all week, and the answer buttons stay exactly where they are.
+  'vehicle.vin_changed':      { kind: 'condition', severity: 'warn' },
+  'vehicle.gateway_swapped':  { kind: 'condition', severity: 'warn' },
+  'vehicle.odometer_rebased': { kind: 'condition', severity: 'warn' },
 
   // ── Mileage caveats (previously mileageFlags' FLAG_NOTE) ────
   // All six are `warn` because all six render as a warn chip TODAY —

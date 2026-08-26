@@ -180,13 +180,21 @@ export default function DeviceEventsCard({
         </Button>
       </>
     ) : (
+      // "Confirm", not "Dismiss".  The copy above it says "Confirm
+      // below if the swap was planned", and this button ANSWERS that —
+      // account-wide, recorded, gone for everyone.  Calling it Dismiss
+      // put the vocabulary of hiding on the act of answering, one word
+      // away from the fold in the corner, which hides a strip from one
+      // person's view and settles nothing.  Two meanings needed two
+      // words.  (The wire value stays `dismissed`: renaming a stored
+      // resolution would orphan every row already carrying it.)
       <Button
         type="button" variant="outline" size="sm"
         disabled={busyId === e.id}
         onClick={() => resolveSimple(e, 'dismissed')}
       >
         {busyId === e.id && <Loader2 className="animate-spin" />}
-        Dismiss
+        Confirm
       </Button>
     );
 

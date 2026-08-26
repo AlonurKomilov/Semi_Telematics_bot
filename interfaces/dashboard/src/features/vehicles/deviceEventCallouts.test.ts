@@ -24,14 +24,23 @@ describe('device-event callouts', () => {
     }
   });
 
-  it('carry no X, because they are answered rather than hidden', () => {
-    // Their answer edits the registry.  Offering to hide the question
-    // would leave a truck's history filed under the wrong unit with
-    // nothing on screen to say so — and the card supplies its own
-    // Dismiss for the rows that ask nothing.
+  it('fold, but are never removed — the question stays on screen', () => {
+    // The fear this once encoded was real and aimed at the wrong
+    // control: hiding a pending identity question would leave a
+    // truck's history filed under the wrong unit with nothing on
+    // screen to say so.  Removal would do that.  Collapse does not —
+    // it leaves the statement as one line carrying its count, re-opens
+    // when a new truck raises the same question, and undoes in a
+    // click.  Someone who is not the person answering these should not
+    // carry the queue at the top of their page all week.
     for (const key of EVENT_KEYS) {
-      expect(dismissBehaviour(key)).toBe('none');
+      expect(dismissBehaviour(key)).toBe('collapse');
     }
+    // The guarantee that matters is that 'remove' does not exist at
+    // all — no callout can be hidden outright, whatever it declares.
+    const behaviours = Object.keys(CALLOUT_CATALOG)
+      .map((k) => dismissBehaviour(k));
+    expect(behaviours).not.toContain('remove');
   });
 
   it('asks in warn, never danger', () => {
