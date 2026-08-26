@@ -1325,7 +1325,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     <div className={`text-sm truncate ${conv.id === conversationId ? 'text-primary font-medium' : 'text-foreground'}`}>
                       {conv.title}
                     </div>
-                    <div className="text-3xs text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {formatDate(new Date(conv.updated_at), { timeZone: tz })}
                       {' · '}
                       {conv.message_count} {t('chat.messages_count')}
@@ -1486,7 +1486,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       <Pencil className="size-3" />
                     </button>
                   </Tip>
-                  <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                  <p className="text-2xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                     {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
                   </p>
                 </div>
@@ -1538,7 +1538,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               browser-local by policy — say so before a user
                               meets it as a surprise on another device. */}
                           {!thoughtNoteDismissed && (
-                            <div className="mb-2 flex items-start justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-3xs text-muted-foreground">
+                            <div className="mb-2 flex items-start justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-2xs text-muted-foreground">
                               <span>{t('chat.thoughts_local_note')}</span>
                               <button
                                 onClick={dismissThoughtNote}
@@ -1568,13 +1568,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                                 <div className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
                                   <span>{step.label || step.name}</span>
                                   {stepDuration(step.elapsed_ms) && (
-                                    <span className="text-3xs text-muted-foreground/50 tabular-nums">
+                                    <span className="text-2xs text-muted-foreground/50 tabular-nums">
                                       {stepDuration(step.elapsed_ms)}
                                     </span>
                                   )}
                                 </div>
                                 {step.result && (
-                                  <div className="mt-0.5 text-3xs text-muted-foreground/60 font-mono break-all line-clamp-2">
+                                  <div className="mt-0.5 text-2xs text-muted-foreground/60 font-mono break-all line-clamp-2">
                                     {step.result}
                                   </div>
                                 )}
@@ -1615,7 +1615,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   {msg.modelTier && (() => {
                     const TierIcon = (TIER_ICONS as Record<string, LucideIcon>)[msg.modelTier.toLowerCase()];
                     return (
-                      <span className="inline-flex items-center gap-1 text-3xs text-muted-foreground/60">
+                      <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground/60">
                         {TierIcon && <TierIcon className="size-3" aria-hidden />}
                         {msg.modelTier}
                       </span>
@@ -1623,7 +1623,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   })()}
                   {/* Data-freshness stamp — hover-reveal like the action
                       icons, so it's available but not noisy by default. */}
-                  <span className="text-3xs text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-2xs text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
                     {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
                   </span>
                   {/* Feedback row — only on the latest AI bubble.
@@ -1723,7 +1723,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   <span>{liveStatusLabel}…</span>
                 </span>
                 {elapsedSec > 0 && (
-                  <span className="text-3xs text-muted-foreground/60 tabular-nums">
+                  <span className="text-2xs text-muted-foreground/60 tabular-nums">
                     {elapsedSec}s
                   </span>
                 )}
@@ -1771,7 +1771,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               {step.label}…
                             </span>
                             {step.startedAt != null && (
-                              <span className="shrink-0 text-3xs font-medium text-primary/70 tabular-nums">
+                              <span className="shrink-0 text-2xs font-medium text-primary/70 tabular-nums">
                                 {t('chat.running')} · {stepDuration(Date.now() - step.startedAt) ?? '0s'}
                               </span>
                             )}
@@ -1786,7 +1786,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           <div className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
                             <span>{step.label}</span>
                             {stepDuration(step.elapsed_ms) && (
-                              <span className="text-3xs text-muted-foreground/50 tabular-nums">
+                              <span className="text-2xs text-muted-foreground/50 tabular-nums">
                                 {stepDuration(step.elapsed_ms)}
                               </span>
                             )}
@@ -1991,7 +1991,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 >
                   <Loader2 className="shrink-0 animate-spin size-3" aria-hidden />
                   <span className="max-w-40 truncate">{name}</span>
-                  <span className="text-3xs">{t('chat.attach_preparing')}</span>
+                  <span className="text-2xs">{t('chat.attach_preparing')}</span>
                 </span>
               ))}
               {attachments.map((a) => (
@@ -2005,7 +2005,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       ? <ImageIcon className="shrink-0 text-muted-foreground size-3" aria-hidden />
                       : <Paperclip className="shrink-0 text-muted-foreground size-3" aria-hidden />}
                   <span className="max-w-40 truncate">{a.name}</span>
-                  <span className="text-3xs text-muted-foreground tabular-nums">
+                  <span className="text-2xs text-muted-foreground tabular-nums">
                     {Math.max(1, Math.round(a.size / 1024))} KB
                   </span>
                   <button
@@ -2022,7 +2022,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 </span>
               ))}
               {attachError && (
-                <span className="text-3xs text-destructive" role="alert">{attachError}</span>
+                <span className="text-2xs text-destructive" role="alert">{attachError}</span>
               )}
             </div>
           )}
@@ -2116,7 +2116,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     return (
                       <>
                         <div className="my-1 border-t border-border" role="separator" />
-                        <div className="px-2.5 py-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <div className="px-2.5 py-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                           {t('chat.attach_recent')}
                         </div>
                         {recent.map((f) => (
@@ -2140,7 +2140,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                                 ? <FileText className="shrink-0 text-muted-foreground size-3" aria-hidden />
                                 : <Paperclip className="shrink-0 text-muted-foreground size-3" aria-hidden />}
                             <span className="max-w-40 truncate">{f.name}</span>
-                            <span className="ml-auto text-3xs text-muted-foreground tabular-nums">
+                            <span className="ml-auto text-2xs text-muted-foreground tabular-nums">
                               {Math.max(1, Math.round(f.size / 1024))} KB
                             </span>
                           </button>
@@ -2153,7 +2153,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   {conversationId != null && convoFiles.length > 0 && (
                     <>
                       <div className="my-1 border-t border-border" role="separator" />
-                      <div className="px-2.5 py-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <div className="px-2.5 py-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                         {t('chat.attach_in_chat')}
                       </div>
                       {convoFiles.map((f) => (
@@ -2188,7 +2188,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     >
                       <Sparkles className="text-primary shrink-0 size-3.5" aria-hidden />
                       <span className="font-medium">{c.label}</span>
-                      <span className="ml-auto text-3xs text-muted-foreground font-mono">/{c.name}</span>
+                      <span className="ml-auto text-2xs text-muted-foreground font-mono">/{c.name}</span>
                     </button>
                   ))}
                 </div>
@@ -2239,13 +2239,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                                 <Icon aria-hidden className="shrink-0 size-4" />
                                 <span className="font-medium">{tier.label}</span>
                                 {tier.model_count > 0 && (
-                                  <span className="ml-auto text-3xs text-muted-foreground">
+                                  <span className="ml-auto text-2xs text-muted-foreground">
                                     {tier.model_count} models
                                   </span>
                                 )}
                               </div>
                               {tier.description && (
-                                <span className="text-3xs text-muted-foreground block mt-0.5 ml-6">
+                                <span className="text-2xs text-muted-foreground block mt-0.5 ml-6">
                                   {tier.description}
                                 </span>
                               )}

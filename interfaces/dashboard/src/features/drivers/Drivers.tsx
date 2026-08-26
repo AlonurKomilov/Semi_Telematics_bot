@@ -95,13 +95,13 @@ function ExpirationChip({ iso }: { iso: string | null }) {
 function StorageBadge({ driveId }: { driveId: string | null }) {
   if (driveId) {
     return (
-      <span className="px-1.5 py-0.5 rounded text-3xs bg-primary/10 text-primary border border-primary/30">
+      <span className="px-1.5 py-0.5 rounded text-2xs bg-primary/10 text-primary border border-primary/30">
         Drive
       </span>
     );
   }
   return (
-    <span className="px-1.5 py-0.5 rounded text-3xs bg-muted text-muted-foreground border border-border">
+    <span className="px-1.5 py-0.5 rounded text-2xs bg-muted text-muted-foreground border border-border">
       Local
     </span>
   );
@@ -121,7 +121,7 @@ const driverColumns: AnyColumn[] = [
       const terminated = !!p.termination_date;
       return (
         <div className="flex items-center gap-2">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-3xs font-bold ${
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold ${
             terminated ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-primary'
           }`}>{ini}</div>
           <span>{p.display_name}</span>
@@ -449,7 +449,7 @@ function DriverDrawer({
                 {p.telegram_id ? (
                   <span
                     title="Telegram ID — captured when this driver joined via invite link"
-                    className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground tabular-nums"
+                    className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground tabular-nums"
                   >
                     tg:{p.telegram_id}
                   </span>
@@ -486,7 +486,7 @@ function DriverDrawer({
             >
               {tt.icon}{tt.label}
               {tt.soon && (
-                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-primary/15 text-primary text-3xs font-semibold uppercase tracking-wider">
+                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-primary/15 text-primary text-2xs font-semibold uppercase tracking-wider">
                   soon
                 </span>
               )}
@@ -820,7 +820,7 @@ function VehiclesTab({
                   <Truck className="text-muted-foreground size-3.5" />
                   <span className="font-medium">{a.vehicle_name}</span>
                   {a.is_primary && (
-                    <span className="px-1.5 py-0.5 text-3xs rounded bg-primary/15 text-primary">Primary</span>
+                    <span className="px-1.5 py-0.5 text-2xs rounded bg-primary/15 text-primary">Primary</span>
                   )}
                   <span className="text-xs text-muted-foreground tabular-nums">since {formatDay(a.assigned_at, { timeZone: tz })}</span>
                 </span>
@@ -1107,7 +1107,7 @@ function SamsaraDriverPicker({
           onChange={(e) => onChange(e.target.value || null)}
           placeholder="Samsara driver ID (autocomplete unavailable)"
         />
-        <p className={`text-3xs ${toneText('warn')}`}>
+        <p className={`text-2xs ${toneText('warn')}`}>
           Couldn't reach Samsara — type the ID manually.
         </p>
       </div>
@@ -1126,7 +1126,7 @@ function SamsaraDriverPicker({
             <Link2 className="text-primary shrink-0 size-3" />
             <span className="truncate font-medium">{selected.name}</span>
             {selected.username && (
-              <span className="text-3xs text-muted-foreground tabular-nums">
+              <span className="text-2xs text-muted-foreground tabular-nums">
                 {selected.username}
               </span>
             )}
@@ -1202,14 +1202,14 @@ function SamsaraDriverPicker({
                     )}
                     <span className="flex-1 min-w-0">
                       <span className="font-medium truncate block">{d.name || '—'}</span>
-                      <span className="text-3xs text-muted-foreground tabular-nums">
+                      <span className="text-2xs text-muted-foreground tabular-nums">
                         {d.username || `id:${d.samsara_driver_id}`}
                         {d.company_code && ` · ${d.company_code}`}
                         {d.deactivated && ' · deactivated'}
                       </span>
                     </span>
                     {linkedElsewhere && (
-                      <span className={`text-3xs shrink-0 ${toneText('warn')}`}>
+                      <span className={`text-2xs shrink-0 ${toneText('warn')}`}>
                         already linked
                       </span>
                     )}
@@ -1228,7 +1228,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   const { data, isLoading } = useSamsaraDrivers();
   if (!samsaraDriverId) {
     return (
-      <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+      <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
         <Link2Off className="size-3" />
         Unlinked
       </span>
@@ -1236,7 +1236,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   }
   if (isLoading) {
     return (
-      <span className="text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+      <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
         samsara:{samsaraDriverId}
       </span>
     );
@@ -1253,7 +1253,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   return (
     <span
       title={`Linked to Samsara driver ${match.name} (${match.username || match.samsara_driver_id})`}
-      className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30"
+      className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30"
     >
       <Link2 className="size-3" />
       {match.name}
@@ -1276,7 +1276,7 @@ function ComingSoonTab({
       <p className="text-xs text-muted-foreground max-w-[320px] leading-relaxed">
         {description}
       </p>
-      <span className="mt-2 px-2 py-0.5 rounded-full text-3xs uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
+      <span className="mt-2 px-2 py-0.5 rounded-full text-2xs uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
         Coming soon
       </span>
     </div>
@@ -1295,7 +1295,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-3xs text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className="text-2xs text-muted-foreground uppercase tracking-wider">{label}</span>
       {children}
     </label>
   );

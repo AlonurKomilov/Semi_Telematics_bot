@@ -308,7 +308,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
       {top && (
         <div className="bg-muted/30 border border-border rounded-md px-2.5 py-1.5">
           <div className="flex items-baseline gap-2">
-            <p className="text-3xs uppercase tracking-wide text-muted-foreground font-semibold shrink-0">
+            <p className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold shrink-0">
               Top Issue
             </p>
             <p className="text-sm font-medium text-foreground truncate">
@@ -349,7 +349,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
             <div className="mt-2 bg-background/60 border border-primary/30 rounded-md px-2 py-1.5">
               <div className="flex items-center gap-1.5 mb-0.5">
                 <Lightbulb className="text-primary size-3" />
-                <p className="text-3xs uppercase tracking-wide text-primary font-bold">
+                <p className="text-2xs uppercase tracking-wide text-primary font-bold">
                   {top && top.rule_id && HARDWARE_ACTION_BY_RULE[top.rule_id]
                     ? 'Fleet / Ops Action'
                     : 'Coaching Action'}
@@ -371,10 +371,10 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
            coaching matter. */}
       <Card padding="none" className="overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-          <p className="text-3xs uppercase tracking-wide text-muted-foreground font-semibold">
+          <p className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
             Pillars · Your Events
           </p>
-          <p className="text-3xs text-muted-foreground tabular-nums">
+          <p className="text-2xs text-muted-foreground tabular-nums">
             {totalEvents} event{totalEvents === 1 ? '' : 's'}
           </p>
         </div>
@@ -395,17 +395,17 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
                     <span className={`text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
                     {hasScore ? (
                       <span
-                        className="text-3xs tabular-nums text-muted-foreground"
+                        className="text-2xs tabular-nums text-muted-foreground"
                         title={`${subtotal} of ${cap} points earned in this pillar`}
                       >
                         {subtotal}/{cap} pts
                       </span>
                     ) : (
-                      <span className="text-3xs italic text-muted-foreground">n/a</span>
+                      <span className="text-2xs italic text-muted-foreground">n/a</span>
                     )}
                   </span>
                   {events.length > 0 && (
-                    <span className="text-3xs text-muted-foreground tabular-nums">
+                    <span className="text-2xs text-muted-foreground tabular-nums">
                       {events.length} event{events.length === 1 ? '' : 's'}
                     </span>
                   )}
@@ -431,7 +431,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
                       return (
                         <li key={`${e.rule_id || e.label}-${e.kind}`} className="text-2xs">
                           <div className="flex items-baseline gap-2">
-                            <span className={`shrink-0 ${pointsColor} text-3xs`} aria-hidden>
+                            <span className={`shrink-0 ${pointsColor} text-2xs`} aria-hidden>
                               {isBonus ? '✓' : '✗'}
                             </span>
                             <span className="flex-1 truncate text-foreground">
@@ -447,7 +447,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
                             </span>
                           </div>
                           {hardwareAction && (
-                            <p className="text-3xs text-muted-foreground italic mt-0.5 pl-4 leading-snug">
+                            <p className="text-2xs text-muted-foreground italic mt-0.5 pl-4 leading-snug">
                               ↳ {hardwareAction}
                             </p>
                           )}

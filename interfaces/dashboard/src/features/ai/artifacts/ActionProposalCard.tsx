@@ -172,7 +172,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       {/* Reversibility hint at the approve moment — the copilot tells the
           user what committing does before they commit (P5, trust). */}
       {phase === 'pending' && a.consequence && (
-        <p className="mt-1 text-3xs text-muted-foreground">{a.consequence}</p>
+        <p className="mt-1 text-2xs text-muted-foreground">{a.consequence}</p>
       )}
 
       {phase === 'pending' && (
@@ -189,7 +189,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
           >
             <X className="size-3" aria-hidden /> Reject
           </button>
-          {error && <span className="text-3xs text-destructive">{error}</span>}
+          {error && <span className="text-2xs text-destructive">{error}</span>}
         </div>
       )}
       {phase === 'working' && (
@@ -223,11 +223,11 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
               {undoConfirm ? 'Undo this action?' : 'Undo'}
             </button>
           )}
-          {error && <span className="text-3xs text-destructive">{error}</span>}
+          {error && <span className="text-2xs text-destructive">{error}</span>}
         </div>
       )}
       {phase === 'done' && fileNote && (
-        <p className="mt-1 inline-flex items-center gap-1 text-3xs text-muted-foreground">
+        <p className="mt-1 inline-flex items-center gap-1 text-2xs text-muted-foreground">
           <Paperclip className="size-3" aria-hidden /> {fileNote}
         </p>
       )}

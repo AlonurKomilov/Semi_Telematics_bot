@@ -133,7 +133,7 @@ export function MediaGallery({ inspection }: Props) {
                   {m.media_type === 'document' && (m.content_type || '').includes('pdf') ? (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground p-2">
                       <FileText className="size-6" aria-hidden />
-                      <span className="text-3xs text-center break-all line-clamp-2">{m.file_name}</span>
+                      <span className="text-2xs text-center break-all line-clamp-2">{m.file_name}</span>
                     </div>
                   ) : m.media_type === 'video' ? (
                     <ThumbnailVideo src={src} alt={m.file_name} />
@@ -141,19 +141,19 @@ export function MediaGallery({ inspection }: Props) {
                     <ThumbnailImage src={src} alt={m.file_name} />
                   )}
                   {m.media_type === 'video' && (
-                    <span className="absolute bottom-1 right-1 bg-black/60 text-white text-3xs px-1.5 py-0.5 rounded">
+                    <span className="absolute bottom-1 right-1 bg-black/60 text-white text-2xs px-1.5 py-0.5 rounded">
                       ▶ video
                     </span>
                   )}
                   {m.media_type === 'document' && (
-                    <span className="absolute bottom-1 right-1 bg-foreground/70 text-background text-3xs px-1.5 py-0.5 rounded">
+                    <span className="absolute bottom-1 right-1 bg-foreground/70 text-background text-2xs px-1.5 py-0.5 rounded">
                       doc
                     </span>
                   )}
                   {m.annotated_at && (
                     <Badge
                       tone="info"
-                      className="absolute top-1 right-1 text-3xs font-semibold"
+                      className="absolute top-1 right-1 text-2xs font-semibold"
                       aria-label={`Annotated by driver on ${formatDate(m.annotated_at, { timeZone: tz })}`}
                     >
                       <Pencil className="size-2.5" aria-hidden /> Annotated
@@ -189,7 +189,7 @@ export function MediaGallery({ inspection }: Props) {
                     if (!cfg) return null;
                     return (
                       <span
-                        className={`absolute top-1 left-1 ${cfg.bg} text-white text-3xs font-semibold px-1.5 py-0.5 rounded shadow-sm`}
+                        className={`absolute top-1 left-1 ${cfg.bg} text-white text-2xs font-semibold px-1.5 py-0.5 rounded shadow-sm`}
                         title={cfg.label}
                       >
                         {cfg.glyph}

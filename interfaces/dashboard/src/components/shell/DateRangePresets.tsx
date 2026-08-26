@@ -205,7 +205,7 @@ function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, today, ra
       <p className="text-xs font-semibold text-foreground text-center mb-2 h-7 leading-7">
         {monthStart.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
       </p>
-      <div className="grid grid-cols-7 text-3xs text-muted-foreground text-center mb-1">
+      <div className="grid grid-cols-7 text-2xs text-muted-foreground text-center mb-1">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => <div key={d}>{d}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-y-0.5">

@@ -350,7 +350,24 @@ export default {
         // line-height) so they're a 1:1 swap for the arbitrary values they
         // replace — no vertical-rhythm shift.  See design.md §4.
         '2xs': scaled('0.6875rem', 'text'), // 11px
-        '3xs': scaled('0.625rem', 'text'),  // 10px (also absorbs the rare 8–9px)
+        // '3xs' (10px) is RETIRED and aliased to 2xs, not deleted.
+        //
+        // Retired because at the 85% floor it rendered 8.5px, and 145
+        // sites used it — including the fuel and DEF percentages on the
+        // live map, which are data rather than decoration. No floor could
+        // fix that: flooring the smallest steps at 10px puts '3xs' above
+        // 'xs' (10.2px at 85%) and inverts the scale. Removing the step
+        // does what a floor could not, and costs one pixel at 100%.
+        //
+        // Aliased rather than deleted because two AIs and a human share
+        // this tree. A file mid-edit elsewhere may still carry
+        // `text-3xs`, and a DELETED step emits no font-size at all — the
+        // element would inherit its parent's, silently, which is a worse
+        // failure than the 8.5px this was meant to cure. The alias makes
+        // every straggler correct; the guard in chrome.test.ts stops new
+        // ones. Delete this line once that guard has been green across a
+        // few weeks of everyone's commits.
+        '3xs': scaled('0.6875rem', 'text'),  // = 2xs. Retired; do not use.
       },
     },
   },

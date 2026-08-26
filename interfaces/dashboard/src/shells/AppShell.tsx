@@ -112,7 +112,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             >
               <Search className="size-3.5" />
               <span>Search…</span>
-              <kbd className="ml-auto px-1.5 py-0.5 text-3xs border border-border rounded bg-card">
+              <kbd className="ml-auto px-1.5 py-0.5 text-2xs border border-border rounded bg-card">
                 {shortcut('K')}
               </kbd>
             </button>

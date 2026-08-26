@@ -164,7 +164,7 @@ export default function Scene({
           className="pointer-events-none select-none"
           distanceFactor={16}
         >
-          <span className="text-3xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">
             {systemLabels.get(systemKey) ?? systemKey}
           </span>
         </Html>

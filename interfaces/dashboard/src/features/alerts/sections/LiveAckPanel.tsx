@@ -209,7 +209,7 @@ export default function LiveAckPanel() {
             announces it that way — so it was telling one group of users
             to press a key that does not exist.  Same pixels, honest
             element. */}
-        <span className="px-1 py-px rounded bg-muted text-foreground/80 text-3xs font-medium">
+        <span className="px-1 py-px rounded bg-muted text-foreground/80 text-2xs font-medium">
           {t('alerts.live_ack.hotkey_action')}
         </span>{' '}
         {t('alerts.live_ack.hotkey_tail')}
@@ -228,7 +228,7 @@ function Chip({ icon, label, value, accent }: {
   return (
     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card">
       {icon}
-      <span className="text-3xs uppercase tracking-wide text-muted-foreground font-medium">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </span>
       <span className={`text-sm font-semibold tabular-nums ${accent ?? 'text-foreground'}`}>

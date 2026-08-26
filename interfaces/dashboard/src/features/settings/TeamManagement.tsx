@@ -282,7 +282,7 @@ const userColumns: AnyColumn[] = [
       return (
         <span className="text-xs" title={trucks.join(', ')}>
           {trucks[0]}{' '}
-          <span className="px-1.5 py-0.5 bg-muted rounded-full text-3xs text-muted-foreground">+{trucks.length - 1}</span>
+          <span className="px-1.5 py-0.5 bg-muted rounded-full text-2xs text-muted-foreground">+{trucks.length - 1}</span>
         </span>
       );
     },
@@ -1051,7 +1051,7 @@ export default function TeamManagement() {
                               <Building2 className="size-3" aria-hidden="true" />
                               One company at a time.
                             </p>
-                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-3xs py-1 -my-1 min-h-tap">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
+                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-2xs py-1 -my-1 min-h-tap">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
                           </div>
                           <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
                             <Building2 className="text-muted-foreground size-3.5" aria-hidden="true" />
@@ -1152,7 +1152,7 @@ export default function TeamManagement() {
                                       if (editCompanyIds.length === allCompanies.length) setEditCompanyIds([]);
                                       else setEditCompanyIds(allCompanies.map(c => c.id));
                                     }}
-                                    className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
+                                    className="text-2xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
                                   >
                                     {editCompanyIds.length === allCompanies.length ? 'Deselect All' : 'Select All'}
                                   </button>
@@ -1205,7 +1205,7 @@ export default function TeamManagement() {
                                       if (editVehicles.length === vehicleList.length) setEditVehicles([]);
                                       else setEditVehicles(vehicleList.map(v => v.name));
                                     }}
-                                    className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
+                                    className="text-2xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
                                   >
                                     {editVehicles.length === vehicleList.length ? 'Deselect All' : 'Select All'}
                                   </button>
@@ -1286,7 +1286,7 @@ export default function TeamManagement() {
                             Change this driver's company?
                           </p>
                           <p className="mb-2">
-                            Previous documents under <strong>{pendingAccessSave.oldCodes}</strong> will be archived to <code className="font-mono text-3xs">{'{company}'}/drivers/_archive/{'{today}'}/</code> — files remain in Drive but move to the dated archive folder.
+                            Previous documents under <strong>{pendingAccessSave.oldCodes}</strong> will be archived to <code className="font-mono text-2xs">{'{company}'}/drivers/_archive/{'{today}'}/</code> — files remain in Drive but move to the dated archive folder.
                           </p>
                           <div className="flex gap-2">
                             <button

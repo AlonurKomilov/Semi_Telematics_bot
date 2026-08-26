@@ -112,7 +112,7 @@ export default function EscalationStatusCard() {
 
       {personaRows.length > 0 && (
         <div className="mt-4 pt-3 border-t border-border">
-          <p className="text-3xs uppercase tracking-wide text-muted-foreground mb-2">
+          <p className="text-2xs uppercase tracking-wide text-muted-foreground mb-2">
             {t('alerts.escalations.past_due_by_persona')}
           </p>
           <div className="flex flex-wrap gap-2">

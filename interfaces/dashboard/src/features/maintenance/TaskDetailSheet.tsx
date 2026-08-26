@@ -479,7 +479,7 @@ export default function TaskDetailSheet({
                   {task.company_code && (
                     <span
                       title="Company this truck belongs to — disambiguates when two companies share a vehicle name"
-                      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs align-middle"
+                      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-2xs align-middle"
                     >
                       {task.company_code}
                     </span>

@@ -67,6 +67,27 @@ export const HERO_STRIP =
   'flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden '
   + '[&>*]:hidden lg:[&>*]:inline-flex';
 
+/**
+ * A strip with a PINNED end, for a hero whose last chips are the ones
+ * that demand attention.
+ *
+ * A single scrolling row hides its overflow from the right, and the
+ * chips at the right are the ones that were put last on purpose —
+ * "Faults 38", "Maintenance due 15". Measured at 130% the row hid 542px,
+ * and those two were the first to go; even at 100% it hid 184px. The
+ * numbers asking to be looked at were the numbers that disappeared.
+ *
+ * So the counts scroll and the warnings do not. Wrap the scrolling chips
+ * in HERO_SCROLL and the pinned ones in HERO_PINNED, both inside
+ * HERO_STRIP_SPLIT.
+ */
+export const HERO_STRIP_SPLIT = 'flex-1 min-w-0 flex items-center gap-1.5';
+export const HERO_SCROLL =
+  'min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden '
+  + '[&>*]:hidden lg:[&>*]:inline-flex';
+export const HERO_PINNED =
+  'shrink-0 flex items-center gap-1.5 pr-2 [&>*]:hidden lg:[&>*]:inline-flex';
+
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   const chip = (
     <Badge

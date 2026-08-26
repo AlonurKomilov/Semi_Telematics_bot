@@ -222,7 +222,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
     <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
       {description && (
         <section>
-          <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+          <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
             {t('alerts.drillin.description_label')}
           </h3>
           <p className="text-sm text-foreground leading-relaxed">{description}</p>
@@ -234,7 +234,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
       )}
 
       <section>
-        <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-2">
+        <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-2">
           {t('alerts.drillin.quick_links')}
         </h3>
         <div className="grid gap-2">
@@ -346,7 +346,7 @@ function VideoBlock({ alert }: { alert: Alert }) {
 
   return (
     <section>
-      <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-2 inline-flex items-center gap-1.5">
+      <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-2 inline-flex items-center gap-1.5">
         <Video className="size-3" />
         {t('alerts.drillin.forward_camera')}
       </h3>

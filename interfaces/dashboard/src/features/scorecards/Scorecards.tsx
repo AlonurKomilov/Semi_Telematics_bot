@@ -167,7 +167,7 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
 
   const renderGroup = (items: typeof top, label: string, color: string) => (
     <div>
-      <p className="text-3xs font-semibold tracking-wide mb-1" style={{ color }}>{label}</p>
+      <p className="text-2xs font-semibold tracking-wide mb-1" style={{ color }}>{label}</p>
       <ResponsiveContainer width="100%" height={items.length * 28 + 8}>
         <BarChart layout="vertical" data={items} margin={{ top: 0, right: 36, left: 0, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} hide />
@@ -360,7 +360,7 @@ function ScoreExplanationCard({
           {sections.map((s, idx) => s.events.length > 0 && (
             <div key={idx}>
               <p
-                className="text-3xs font-semibold tracking-wide mb-1"
+                className="text-2xs font-semibold tracking-wide mb-1"
                 style={{ color: s.tone === 'good' ? 'var(--ok)' : 'var(--danger)' }}
               >
                 {s.tone === 'good' ? '✓' : '✗'} {t(s.titleKey)}
@@ -371,7 +371,7 @@ function ScoreExplanationCard({
                     <span className="truncate">
                       {e.label}
                       {e.occurrences > 1 && (
-                        <span className="text-3xs text-muted-foreground ml-1">
+                        <span className="text-2xs text-muted-foreground ml-1">
                           {t('scorecards.explanation_event_occurred', { count: e.occurrences })}
                         </span>
                       )}
@@ -402,7 +402,7 @@ function Sparkline({ values, width = 80, height = 24 }: {
   values: number[]; width?: number; height?: number;
 }) {
   if (!values || values.length < 2) {
-    return <span className="text-3xs text-muted-foreground">—</span>;
+    return <span className="text-2xs text-muted-foreground">—</span>;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -468,7 +468,7 @@ function makeColumns(
             </span>
           )}
           {isVehicle && !inlineDriver && anyDriverPaired && (
-            <span className="text-3xs italic text-muted-foreground">no driver paired</span>
+            <span className="text-2xs italic text-muted-foreground">no driver paired</span>
           )}
         </div>
       );
@@ -495,7 +495,7 @@ function makeColumns(
           <ScoreBadge score={score} tierLabel={t(`tier.${scoreTierKey(score)}`)} />
           {r.probationary && (
             <span
-              className={`text-3xs ${toneText('warn')}`}
+              className={`text-2xs ${toneText('warn')}`}
               title={t('scorecards.probationary_banner_desc')}
             >
               ⏳
@@ -503,7 +503,7 @@ function makeColumns(
           )}
           {r.insufficient_data && !r.probationary && (
             <span
-              className={`text-3xs ${toneText('warn')}`}
+              className={`text-2xs ${toneText('warn')}`}
               title={t('scorecards.insufficient_drive_time')}
             >
               ⚠
@@ -527,7 +527,7 @@ function makeColumns(
           <Sparkline values={values} />
           {delta !== null && (
             <span
-              className={`text-3xs font-semibold tabular-nums ${toneText(delta >= 0 ? 'ok' : 'danger')}`}
+              className={`text-2xs font-semibold tabular-nums ${toneText(delta >= 0 ? 'ok' : 'danger')}`}
             >
               {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}
             </span>
@@ -562,7 +562,7 @@ function makeColumns(
                 <span
                   key={k}
                   data-state="unavailable"
-                  className="text-3xs font-mono tabular-nums px-1.5 py-0.5 rounded border border-dashed border-muted-foreground/40 text-muted-foreground italic"
+                  className="text-2xs font-mono tabular-nums px-1.5 py-0.5 rounded border border-dashed border-muted-foreground/40 text-muted-foreground italic"
                   title={`${k}: ${t('scorecards.no_data_window')}`}
                 >
                   {abbr} {t('common.na')}
@@ -572,7 +572,7 @@ function makeColumns(
             const pct = p.cap ? Math.round((p.subtotal / p.cap) * 100) : 0;
             return (
               <span key={k}
-                className={`text-3xs font-mono tabular-nums px-1.5 py-0.5 rounded-md border ${toneClasses(scoreTone(pct))}`}
+                className={`text-2xs font-mono tabular-nums px-1.5 py-0.5 rounded-md border ${toneClasses(scoreTone(pct))}`}
                 title={`${k}: ${p.subtotal}/${p.cap} (${pct}%)`}>
                 {abbr} {pct}
               </span>
@@ -828,14 +828,14 @@ export default function Scorecards() {
           <div className="flex items-center gap-2">
             {relativeUpdated && (
               <span
-                className="text-3xs text-muted-foreground"
+                className="text-2xs text-muted-foreground"
                 title={generatedAt ? formatDate(generatedAt, { timeZone: tz }) : undefined}
               >
                 {t('common.updated_prefix')} {relativeUpdated}
               </span>
             )}
             {loading && cards.length > 0 && (
-              <span className="text-3xs text-muted-foreground animate-pulse">{t('common.refreshing')}</span>
+              <span className="text-2xs text-muted-foreground animate-pulse">{t('common.refreshing')}</span>
             )}
             <button
               type="button"
@@ -953,7 +953,7 @@ export default function Scorecards() {
                 );
               })}
               {pillarFilter !== 'all' && (
-                <span className="text-3xs text-muted-foreground ml-2">
+                <span className="text-2xs text-muted-foreground ml-2">
                   {t('scorecards.worst_first_hint', { count: displayCards.length })}
                 </span>
               )}
@@ -1153,7 +1153,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
 
         {/* History trend */}
         <div className="mb-6">
-          <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-1">
+          <p className="text-2xs font-semibold text-muted-foreground tracking-wide mb-1">
             {`${Math.max(7, Math.min(days, 180))}-DAY TREND`}
           </p>
           <HistoryChart driverId={card.driver_id || card.driver_name} days={days} />
@@ -1164,7 +1164,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
              /scorecards/{subject_id}/explanation endpoint; renders an
              empty state for drivers with <2 snapshots. */}
         <div className="mb-6">
-          <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-1">
+          <p className="text-2xs font-semibold text-muted-foreground tracking-wide mb-1">
             {t('scorecards.explanation_title').toUpperCase()}
           </p>
           <ScoreExplanationCard
@@ -1187,7 +1187,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
              driver actually had perfect behavior, so we collapse them
              all to "—" once the warning fires. */}
         <div className="border-t border-border pt-3">
-          <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-2">
+          <p className="text-2xs font-semibold text-muted-foreground tracking-wide mb-2">
             INPUTS {card.inputs._source && <span className="opacity-60">{card.inputs._source}</span>}
           </p>
           {(() => {

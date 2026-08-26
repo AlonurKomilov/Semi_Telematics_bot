@@ -829,15 +829,15 @@ export default function LiveMap() {
             {/* Nearest POI section — top 3 per enabled layer, clickable to draw route */}
             {selectedPos && (
               <div className="border-t border-border pt-2">
-                <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-2">
+                <p className="text-2xs font-semibold text-muted-foreground tracking-wide mb-2">
                   NEAREST POI
                   {routeLoading && (
-                    <span className="ml-2 text-3xs text-muted-foreground animate-pulse">routing…</span>
+                    <span className="ml-2 text-2xs text-muted-foreground animate-pulse">routing…</span>
                   )}
                   {activePoiKey && !routeLoading && (
                     <button
                       onClick={clearRouteLine}
-                      className="ml-2 text-3xs text-primary hover:underline normal-case font-normal py-1.5 -my-1.5 min-h-tap"
+                      className="ml-2 text-2xs text-primary hover:underline normal-case font-normal py-1.5 -my-1.5 min-h-tap"
                     >
                       clear route
                     </button>
@@ -856,11 +856,11 @@ export default function LiveMap() {
                           <div key={def.id} className="opacity-50">
                             <div className="flex items-center gap-1 mb-0.5">
                               <PoiIcon icon={def.icon} size={12} color={def.color} />
-                              <span className="text-3xs font-semibold tracking-wide" style={{ color: def.color }}>
+                              <span className="text-2xs font-semibold tracking-wide" style={{ color: def.color }}>
                                 {def.label}
                               </span>
                             </div>
-                            <p className="text-3xs text-muted-foreground italic pl-4">zoom in to load</p>
+                            <p className="text-2xs text-muted-foreground italic pl-4">zoom in to load</p>
                           </div>
                         );
                       }
@@ -884,7 +884,7 @@ export default function LiveMap() {
                           {/* Layer header */}
                           <div className="flex items-center gap-1 mb-0.5">
                             <PoiIcon icon={def.icon} size={12} color={def.color} />
-                            <span className="text-3xs font-semibold tracking-wide" style={{ color: def.color }}>
+                            <span className="text-2xs font-semibold tracking-wide" style={{ color: def.color }}>
                               {def.label}
                             </span>
                           </div>
@@ -907,7 +907,7 @@ export default function LiveMap() {
                                       : 'hover:bg-muted/60'
                                   } min-h-tap`}
                                 >
-                                  <span className={`text-3xs shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                                  <span className={`text-2xs shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
                                     {isActive ? <ArrowRight className="size-3" /> : `${i + 1}.`}
                                   </span>
                                   <span className="flex-1 truncate">{name}</span>
@@ -932,7 +932,7 @@ export default function LiveMap() {
                                     return next;
                                   })
                                 }
-                                className="w-full text-left text-3xs text-primary hover:underline px-1.5 pt-0.5 min-h-tap"
+                                className="w-full text-left text-2xs text-primary hover:underline px-1.5 pt-0.5 min-h-tap"
                               >
                                 {isExpanded
                                   ? 'Show less'
@@ -994,7 +994,7 @@ export default function LiveMap() {
                               style={{ width: `${Math.max(p.fuel_percent, 2)}%` }}
                             />
                           </div>
-                          <span className="text-3xs text-muted-foreground w-7 text-right tabular-nums">
+                          <span className="text-2xs text-muted-foreground w-7 text-right tabular-nums">
                             {Math.round(p.fuel_percent)}%
                           </span>
                         </div>
@@ -1008,7 +1008,7 @@ export default function LiveMap() {
                               style={{ width: `${Math.max(p.def_percent, 2)}%` }}
                             />
                           </div>
-                          <span className="text-3xs text-muted-foreground w-7 text-right tabular-nums">
+                          <span className="text-2xs text-muted-foreground w-7 text-right tabular-nums">
                             {Math.round(p.def_percent)}%
                           </span>
                         </div>

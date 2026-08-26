@@ -125,7 +125,7 @@ export default function ManageColumnsMenu({
               {groups.map((g) => (
                 <div key={g.name || '__ungrouped'}>
                   {g.name && (
-                    <p className="px-3 pt-2 pb-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <p className="px-3 pt-2 pb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                       {g.name}
                     </p>
                   )}

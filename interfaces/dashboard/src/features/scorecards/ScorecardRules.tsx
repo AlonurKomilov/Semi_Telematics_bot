@@ -361,7 +361,7 @@ function RuleRow({
           {rule.label}
           {rule.pillar && (
             <span
-              className="ml-2 text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded font-mono"
+              className="ml-2 text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded font-mono"
               style={{
                 background:
                   rule.pillar === 'safety'     ? '#ef444422'
@@ -379,17 +379,17 @@ function RuleRow({
           )}
           {rule.curve_kind && (
             <span
-              className="ml-1 text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-chart-1/20 text-chart-1"
+              className="ml-1 text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-chart-1/20 text-chart-1"
               title={`Curve: ${rule.curve_kind}`}
             >
               curve
             </span>
           )}
           {rule.overridden && (
-            <span className="ml-2 text-3xs text-info uppercase tracking-wide">customised</span>
+            <span className="ml-2 text-2xs text-info uppercase tracking-wide">customised</span>
           )}
         </p>
-        <p className="text-3xs text-muted-foreground font-mono truncate">{rule.id}</p>
+        <p className="text-2xs text-muted-foreground font-mono truncate">{rule.id}</p>
       </div>
 
       {/* points input */}
@@ -447,7 +447,7 @@ function RuleRow({
     </div>
     {hasCurve && showCurve && (
       <div className="bg-muted/30 px-4 py-3 border-t border-border text-xs space-y-2">
-        <p className="text-3xs uppercase tracking-wide text-muted-foreground">
+        <p className="text-2xs uppercase tracking-wide text-muted-foreground">
           Curve: <span className="font-mono">{rule.curve_kind}</span>
           <span className="ml-3 opacity-60">
             defaults — x_zero {rule.default_curve_x_zero ?? '—'} ·
@@ -484,7 +484,7 @@ function CurveInput({
   const { t } = useTranslation();
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-muted-foreground text-3xs">{label}</span>
+      <span className="text-muted-foreground text-2xs">{label}</span>
       <input
         type="number"
         value={value ?? ''}

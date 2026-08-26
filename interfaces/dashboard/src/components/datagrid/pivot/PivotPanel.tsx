@@ -749,7 +749,7 @@ export default function PivotPanel({
                       warn-toned while unmet, quiet once satisfied. */}
                   {axis === 'rows' && (
                     <span className={cn(
-                      'ml-1.5 px-1.5 py-0.5 rounded border normal-case tracking-normal font-medium text-3xs',
+                      'ml-1.5 px-1.5 py-0.5 rounded border normal-case tracking-normal font-medium text-2xs',
                       keys.length === 0
                         ? toneClasses('warn')
                         : 'border-border text-muted-foreground',

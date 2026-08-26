@@ -150,7 +150,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
             {tag && (
               /* Object chip (e.g. company code) — same styling as the bell
                  alert-row / maintenance company chip. */
-              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs font-normal">
+              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-2xs font-normal">
                 {tag}
               </span>
             )}

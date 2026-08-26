@@ -560,6 +560,16 @@ them next to a comment saying so.
 ## 8. Charts & maps
 
 
+**Map-canvas LENGTHS ride the map's own scale, not the Size engine.**
+A marker, its badge and its label are measured against the tiles they sit
+on, which have their own zoom; growing them with the interface setting
+would put two scales in one viewport and make a zoomed-out map unreadable
+at 130%. So the pixel values inside a Leaflet `divIcon` — `usePoiLayers`,
+`config/poiLayers.ts`, `live-map/sections/*`, and the two map control
+panels — are a sanctioned exception, named in `chrome.test.ts` rather
+than left to judgement. Chart text is NOT covered by this: it is read
+like any other text and rides `--size-text` through `lib/chartText.ts`.
+
 **Scope: any colour consumer CSS cannot reach** — charts, map markers,
 canvas, and 3D materials. All of them take tokens through a helper or a
 config constant, never an inline literal. The one sanctioned literal is
@@ -657,7 +667,8 @@ Step 0b.  This project's kept harness:
   invisible on light; the splash literal is what left light users on a dark
   canvas.
 - ✅ Colour comes from a token; status from a tone; spacing from the 4px
-  scale; radius from `--radius`; type from the Geist scale (incl. 2xs/3xs)
+  scale; radius from `--radius`; type from the Geist scale (2xs is the
+  smallest; `3xs` is retired and aliased)
   at a §4 role combo; icons from lucide at a standard step.
 - ✅ Verified in **both** themes — light and dark — before shipping a new
   surface. Low contrast in one theme is a bug even if the other looks fine.
@@ -674,7 +685,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Nineteen live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Twenty live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -703,6 +714,7 @@ this table has any chance of staying true.
 | don't hand-roll the card surface (§6) | narrow on purpose: `rounded-md` is the chip radius, `bg-card/NN` is translucent floating chrome, and `absolute/fixed/sticky` is a thing that floats — the first draft matched 50 sites and most were not cards |
 | no literal length in an inline `style` (§5.1) | the one spelling the arbitrary-length rule cannot see — a number in a style object is not a class. `lib/scaledLength.ts` is the replacement, mirroring the config's axis-by-magnitude rule |
 | the tap floor rides no axis (§5.1) | reads `tailwind.config.js` — `tap` must stay a literal `24px`, because `tapHeight`/`tapWidth` return a hardcoded 24 for it and would keep saying so if it ever became scalable |
+| no `text-3xs` (§7) | the 10px step is retired — it rendered 8.5px at the 85% floor. Aliased to `2xs` in the config so any straggler still renders, but nothing new may use it |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

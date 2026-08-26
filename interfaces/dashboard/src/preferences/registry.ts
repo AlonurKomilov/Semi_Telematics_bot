@@ -163,7 +163,7 @@ export interface SizeSetting {
  * geometry as the binding constraint. Every pointer target now carries a
  * non-scaling 24 px floor (`min-h-tap` / `h-tap`, see design.md §5.1), so
  * hit areas hold all the way down; what does not hold is type. The
- * smallest step in the app is `text-3xs` at 10 px, which renders 8.5 px at
+ * smallest step in the app is `text-2xs` at 10 px, which renders 8.5 px at
  * 0.85 — already at the edge of what is worth reading, and Geist's stem is
  * one device pixel at 11.63 px, so below that the glyphs of the dominant
  * `text-xs` stop landing on whole pixels on a DPR-1 screen.

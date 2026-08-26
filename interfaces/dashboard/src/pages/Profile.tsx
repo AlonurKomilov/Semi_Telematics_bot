@@ -214,7 +214,7 @@ export default function Profile() {
           <div className="md:col-span-2">
             <label className="block text-xs text-muted-foreground mb-1">
               Timezone override
-              <span className="ml-1 text-3xs opacity-70">
+              <span className="ml-1 text-2xs opacity-70">
                 (leave on "Use account default" to follow the company timezone)
               </span>
             </label>
@@ -228,7 +228,7 @@ export default function Profile() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-3xs text-muted-foreground mt-1 opacity-75">
+            <p className="text-2xs text-muted-foreground mt-1 opacity-75">
               Pick a specific timezone if you work in a different one from the
               company default.
             </p>
@@ -1042,7 +1042,7 @@ function ActiveSessions() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{s.device_label || 'Unknown device'}</span>
                   {isCurrent && (
-                    <span className="text-3xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-primary font-semibold">
+                    <span className="text-2xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-primary font-semibold">
                       This device
                     </span>
                   )}

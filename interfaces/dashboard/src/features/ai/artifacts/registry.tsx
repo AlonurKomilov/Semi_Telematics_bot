@@ -38,7 +38,7 @@ export function renderArtifact(artifact: Artifact): ReactNode {
 
 function fallback(artifact: Artifact): ReactNode {
   return (
-    <div className="rounded-md border border-border bg-muted/40 p-2 text-3xs text-muted-foreground">
+    <div className="rounded-md border border-border bg-muted/40 p-2 text-2xs text-muted-foreground">
       <div className="mb-1 font-medium">
         Unsupported result: {artifact.type}
       </div>

@@ -189,7 +189,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     if (!others.length) return null;
     return (
       <Tip label={`Also granted to: ${others.join(', ')}`}>
-        <span className="ml-2 text-3xs text-muted-foreground/70 cursor-help">
+        <span className="ml-2 text-2xs text-muted-foreground/70 cursor-help">
           {others.length} other{others.length > 1 ? 's' : ''}
         </span>
       </Tip>
@@ -367,11 +367,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </div>
           <div className={`${HEAD_COLS} gap-x-2`}>
             <span /><span /><span />
-            <span className="text-3xs text-muted-foreground/70 text-center inline-flex items-center justify-center gap-0.5">
+            <span className="text-2xs text-muted-foreground/70 text-center inline-flex items-center justify-center gap-0.5">
               own role
               <InfoTip size={12} label="Team-default page layouts for the holder's OWN role — the page gear's “Team default” block. General-settings holders can set any role's." />
             </span>
-            <span className="text-3xs text-muted-foreground/70 text-center inline-flex items-center justify-center gap-0.5">
+            <span className="text-2xs text-muted-foreground/70 text-center inline-flex items-center justify-center gap-0.5">
               account-wide
               <InfoTip size={12} label="A feature's SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, and every future feature setting." />
             </span>
@@ -516,7 +516,7 @@ const rowCls = (): string =>
 
 function DeltaChip() {
   return (
-    <span className="ml-2 text-3xs font-semibold uppercase tracking-wide text-ok">
+    <span className="ml-2 text-2xs font-semibold uppercase tracking-wide text-ok">
       manager adds
     </span>
   );

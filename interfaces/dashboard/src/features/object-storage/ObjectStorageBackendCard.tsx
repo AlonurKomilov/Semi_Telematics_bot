@@ -275,12 +275,12 @@ export function BackendOption({
                 switched on" — were indistinguishable to the eye and
                 absent to a screen reader. */}
             {active && (
-              <Badge tone="info" className="text-3xs uppercase tracking-wide">
+              <Badge tone="info" className="text-2xs uppercase tracking-wide">
                 <CheckCircle2 className="size-2.5" aria-hidden /> Active
               </Badge>
             )}
             {recommended && !active && (
-              <Badge tone="ok" className="text-3xs uppercase tracking-wide">
+              <Badge tone="ok" className="text-2xs uppercase tracking-wide">
                 <Star className="size-2.5" aria-hidden /> Recommended
               </Badge>
             )}

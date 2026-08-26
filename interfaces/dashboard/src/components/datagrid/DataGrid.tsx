@@ -4935,7 +4935,7 @@ function ColumnHeaderCell({
       {aggCurrent ? (
         <span className="inline-flex flex-col min-w-0 leading-tight">
           <span className="truncate" data-col-label>{labelNode}</span>
-          <span className="text-3xs font-normal text-muted-foreground normal-case">
+          <span className="text-2xs font-normal text-muted-foreground normal-case">
             {AGG_FN_LABELS[aggCurrent].toLowerCase()}
           </span>
         </span>

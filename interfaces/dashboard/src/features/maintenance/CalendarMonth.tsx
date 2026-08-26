@@ -227,7 +227,7 @@ export function CalendarMonth({
                       key={task.id}
                       type="button"
                       onClick={() => onTaskClick(task)}
-                      className={`flex items-center gap-1 text-left px-1.5 py-0.5 text-3xs rounded truncate ${
+                      className={`flex items-center gap-1 text-left px-1.5 py-0.5 text-2xs rounded truncate ${
                         isProjected
                           ? 'bg-card hover:bg-muted border border-dashed border-border'
                           : 'bg-muted/60 hover:bg-muted'
@@ -244,7 +244,7 @@ export function CalendarMonth({
                   <button
                     type="button"
                     onClick={() => setDayDetail({ date: cell, tasks: dayTasks })}
-                    className="text-3xs text-muted-foreground hover:text-foreground text-left px-1.5 py-1 -my-1 min-h-tap"
+                    className="text-2xs text-muted-foreground hover:text-foreground text-left px-1.5 py-1 -my-1 min-h-tap"
                   >
                     + {overflow} more
                   </button>

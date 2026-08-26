@@ -672,7 +672,7 @@ function BrandPreviewCard({
       </div>
       {preview.sample.length > 0 && (
         <div>
-          <p className="text-3xs uppercase tracking-wide text-muted-foreground mb-1">
+          <p className="text-2xs uppercase tracking-wide text-muted-foreground mb-1">
             Sample locations
           </p>
           <ul className="text-2xs text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">

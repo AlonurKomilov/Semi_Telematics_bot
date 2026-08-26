@@ -160,7 +160,7 @@ function EditableRows({
         </tbody>
       </table>
       {err && (
-        <div className="border-t border-border px-2 py-1 text-3xs text-destructive" role="alert">
+        <div className="border-t border-border px-2 py-1 text-2xs text-destructive" role="alert">
           {err}
         </div>
       )}
@@ -227,7 +227,7 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
           enablePagination={false}
         />
       )}
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
         <span>
           {serverRows == null && shown < total
             ? `Showing ${shown} of ${total} rows to import.`
@@ -254,10 +254,10 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
       </div>
       {(preview.notices?.length ?? 0) > 0 && (
         <div className="mt-1.5 rounded-md border border-info-bd bg-info-bg p-2">
-          <div className={`mb-1 inline-flex items-center gap-1 text-3xs font-medium ${toneText('info')}`}>
+          <div className={`mb-1 inline-flex items-center gap-1 text-2xs font-medium ${toneText('info')}`}>
             <Info className="size-3" aria-hidden /> Adjusted during validation
           </div>
-          <ul className="space-y-0.5 text-3xs text-muted-foreground">
+          <ul className="space-y-0.5 text-2xs text-muted-foreground">
             {preview.notices!.map((n, i) => (
               <li key={i}>{n}</li>
             ))}
@@ -266,10 +266,10 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
       )}
       {preview.skipped.length > 0 && (
         <div className="mt-1.5 rounded-md border border-warn-bd bg-warn-bg p-2">
-          <div className={`mb-1 inline-flex items-center gap-1 text-3xs font-medium ${toneText('warn')}`}>
+          <div className={`mb-1 inline-flex items-center gap-1 text-2xs font-medium ${toneText('warn')}`}>
             <AlertTriangle className="size-3" aria-hidden /> Skipped rows
           </div>
-          <ul className="space-y-0.5 text-3xs text-muted-foreground">
+          <ul className="space-y-0.5 text-2xs text-muted-foreground">
             {preview.skipped.map((s, i) => (
               <li key={i}>{s}</li>
             ))}

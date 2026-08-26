@@ -650,7 +650,7 @@ export default function PivotView({
                           )}
                           {cell.label}
                         </span>
-                        <span className="text-3xs font-normal lowercase">
+                        <span className="text-2xs font-normal lowercase">
                           {AGG_FN_LABELS[cell.aggFn].toLowerCase()}
                         </span>
                       </button>
@@ -702,7 +702,7 @@ export default function PivotView({
                       >
                         <span className="inline-flex flex-col items-end leading-tight">
                           <span>{label}</span>
-                          <span className="text-3xs font-normal normal-case">
+                          <span className="text-2xs font-normal normal-case">
                             {AGG_FN_LABELS[model.values[i].aggFn].toLowerCase()}
                           </span>
                         </span>

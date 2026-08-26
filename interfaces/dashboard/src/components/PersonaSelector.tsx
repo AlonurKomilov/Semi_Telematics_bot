@@ -167,7 +167,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
 
       {open && (
         <Card padding="none" className="absolute left-0 mt-1 w-64 shadow-xl text-sm z-50" render={<ul />} role="listbox">
-          <li className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
+          <li className="px-3 py-1.5 text-2xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
           {availableViews.map(v => {
@@ -236,7 +236,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
               </li>
             );
           })}
-          <li className="rounded-b-lg px-3 py-1.5 text-3xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
+          <li className="rounded-b-lg px-3 py-1.5 text-2xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
             Changes the dashboard UI only — data and permissions stay yours.
           </li>
         </Card>

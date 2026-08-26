@@ -22,7 +22,7 @@
  * shell).
  */
 import { useShellStats } from './useShellStats';
-import HeroChip, { HERO_STRIP } from './HeroChip';
+import HeroChip, { HERO_STRIP_SPLIT, HERO_SCROLL, HERO_PINNED } from './HeroChip';
 
 export default function FleetHero() {
   const { data, isLoading, isError } = useShellStats();
@@ -40,7 +40,8 @@ export default function FleetHero() {
   const trucks = vehicles.trucks;
   const trailers = vehicles.trailers;
   return (
-    <div className={HERO_STRIP}>
+    <div className={HERO_STRIP_SPLIT}>
+      <div className={HERO_SCROLL}>
       {trucks ? (
         <>
           <HeroChip label="Trucks" value={trucks.total} tone="info" />
@@ -71,12 +72,16 @@ export default function FleetHero() {
           <HeroChip label="Stopped" value={vehicles.stopped} tone="neutral" />
         </>
       )}
-      {faults !== undefined && faults > 0 && (
-        <HeroChip label="Faults" value={faults} tone="critical" title="Active diagnostic fault codes" />
-      )}
-      {maintenance_due !== undefined && maintenance_due > 0 && (
-        <HeroChip label="Maintenance due" value={maintenance_due} tone="warning" />
-      )}
+      </div>
+      {/* Pinned: these two are why anyone looks at the strip. */}
+      <div className={HERO_PINNED}>
+        {faults !== undefined && faults > 0 && (
+          <HeroChip label="Faults" value={faults} tone="critical" title="Active diagnostic fault codes" />
+        )}
+        {maintenance_due !== undefined && maintenance_due > 0 && (
+          <HeroChip label="Maintenance due" value={maintenance_due} tone="warning" />
+        )}
+      </div>
     </div>
   );
 }

@@ -233,7 +233,7 @@ export function tapHeight(cls: string): number | null {
       ? SPACING((pt ?? 'pt-0').split('-')[1]) + SPACING((pb ?? 'pb-0').split('-')[1])
       : pAll ? SPACING(pAll.split('-')[1]) * 2 : 0;
 
-  const type = find(/^text-(3xs|2xs|xs|sm|base|lg|xl)$/);
+  const type = find(/^text-(2xs|xs|sm|base|lg|xl)$/);
   if (!type) return null;
   const step = type.slice('text-'.length);
   // `text-2xs` / `text-3xs` are size-only steps by design (see the
@@ -320,7 +320,7 @@ const buttonSizeOverrides = (src: string): string[] => {
   const out: string[] = [];
   for (const m of src.matchAll(/<Button\b[^>]*className="([^"]*)"/g)) {
     const bad = m[1].match(
-      /\b(?:h|size|px|py)-[\d.]+\b|\btext-(?:3xs|2xs|xs|sm|base|lg|xl)\b/g,
+      /\b(?:h|size|px|py)-[\d.]+\b|\btext-(?:2xs|xs|sm|base|lg|xl)\b/g,
     );
     if (bad) out.push(bad.join(' '));
   }
@@ -338,7 +338,7 @@ const statusDoorSites = (src: string): number[] => {
     if (!/\$\{(?:toneClasses|statusClasses)\(/.test(cls)) continue;
     const t = cls.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/);
     const geometry = t.filter((c) =>
-      /^(rounded|px-|py-|text-(3xs|2xs|xs)$|font-medium$)/.test(c),
+      /^(rounded|px-|py-|text-(2xs|xs)$|font-medium$)/.test(c),
     );
     if (geometry.length >= 3) out.push(src.slice(0, m.index ?? 0).split('\n').length);
   }
@@ -492,10 +492,12 @@ const inlineLengthSites = (src: string): number[] => {
  *   · PublicApply — `left: -9999px; width: 1; height: 1` is the
  *     off-screen trick that keeps an input reachable to a screen reader
  *     and invisible to everyone else. Scaling a hiding place is absurd.
- *   · PoiLayerPanel, MapTypeControl — Leaflet control chrome. Whether
- *     map-canvas lengths ride the Size engine at all is an open OWNER
- *     decision (85 more px sit inside divIcon HTML strings), and a lint
- *     fix is not the place to settle it.
+ *   · PoiLayerPanel, MapTypeControl — Leaflet control chrome. Settled by
+ *     the owner (2026-08-26) and written down in design.md §8: map-canvas
+ *     lengths ride the MAP's scale, not the interface setting. A marker is
+ *     measured against tiles that have their own zoom, and growing it with
+ *     the Size control would put two scales in one viewport. Chart TEXT is
+ *     not covered — that is read like any other text.
  */
 const INLINE_LENGTH_ALLOWED = [
   'features/applications/public/PublicApply.tsx',
@@ -587,6 +589,17 @@ describe('UI chrome', () => {
       entries.filter((v) => v !== '24px'),
       'the tap floor must stay a literal 24px on every key that defines it',
     ).toEqual([]);
+  });
+
+  it('never uses the retired 10px type step', () => {
+    // `3xs` was removed from the config, so `text-3xs` no longer emits a
+    // font-size AT ALL — the element would silently inherit its parent's
+    // instead of rendering small. A class that quietly does nothing is
+    // worse than the 8.5px it used to render at the 85% floor.
+    const offenders = FILES
+      .filter(({ src }) => /\btext-3xs\b/.test(src))
+      .map(({ rel }) => `${rel} → text-2xs (11px); 3xs was retired`);
+    expect(offenders).toEqual([]);
   });
 
   it('is counted correctly in design.md', () => {

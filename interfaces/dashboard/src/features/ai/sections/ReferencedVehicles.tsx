@@ -122,7 +122,7 @@ export function ReferencedVehicles({ toolResults }: { toolResults: unknown }) {
 
   return (
     <div className="mt-2 pt-2 border-t border-border/40">
-      <div className="text-3xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+      <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
         Vehicles in this answer
       </div>
       <div className="flex flex-wrap gap-1.5">

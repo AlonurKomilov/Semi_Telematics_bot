@@ -145,7 +145,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
             placeholder="Jump to a page or feature…"
             className="flex-1 bg-transparent border-0 outline-none text-sm placeholder:text-muted-foreground"
           />
-          <kbd className="text-3xs text-muted-foreground border border-border rounded px-1.5 py-0.5">
+          <kbd className="text-2xs text-muted-foreground border border-border rounded px-1.5 py-0.5">
             Esc
           </kbd>
         </div>
@@ -188,7 +188,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
                       </p>
                     )}
                   </div>
-                  <span className="text-3xs uppercase tracking-wide text-muted-foreground/70 shrink-0">
+                  <span className="text-2xs uppercase tracking-wide text-muted-foreground/70 shrink-0">
                     {m.group}
                   </span>
                   {active && (
