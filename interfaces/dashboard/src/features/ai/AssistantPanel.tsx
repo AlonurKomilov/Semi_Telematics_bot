@@ -15,7 +15,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Bot, X, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import {
-  useAssistant, clampPanelW, setPanelWidthVar, PANEL_W_DEFAULT,
+  useAssistant, clampPanelW, setPanelWidthVar, panelScale, PANEL_W_DEFAULT,
 } from './AssistantContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Tip } from '../../components/tooltip';
@@ -55,8 +55,13 @@ export default function AssistantPanel() {
     el.setPointerCapture(e.pointerId);
     setPanelResizing(true);
     let latest = panelWidth;
+    // The pointer reports SCREEN pixels; what we store is the width at
+    // 100%. Without the divide, dragging at 130% would commit a number
+    // that renders 30% wider than where the user let go — and then wider
+    // again on the next drag.
+    const scale = panelScale();
     const onMove = (ev: PointerEvent) => {
-      latest = clampPanelW(window.innerWidth - ev.clientX);
+      latest = clampPanelW((window.innerWidth - ev.clientX) / scale);
       setPanelWidthVar(latest);
     };
     const finish = () => {

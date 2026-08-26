@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Search, X, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { sizeRegion } from '@/lib/sizeRegion';
 
 /**
  * Per-column filter dropdown — opened from a plain-label header.
@@ -153,6 +154,11 @@ function SelectFilter({
           anchor={anchor ?? undefined}
           align="start"
           sideOffset={6}
+          // A portal renders at <body>, outside the subtree the `tables`
+          // region scopes — so this menu stayed at 12px while the table
+          // that opened it read 18.2px. The region is re-applied here by
+          // hand because the DOM cannot inherit it across a portal.
+          style={sizeRegion('tables')}
           className="z-50 outline-none"
         >
           <PopoverPrimitive.Popup
@@ -290,6 +296,11 @@ function RangeFilter({
           anchor={anchor ?? undefined}
           align="start"
           sideOffset={6}
+          // A portal renders at <body>, outside the subtree the `tables`
+          // region scopes — so this menu stayed at 12px while the table
+          // that opened it read 18.2px. The region is re-applied here by
+          // hand because the DOM cannot inherit it across a portal.
+          style={sizeRegion('tables')}
           className="z-50 outline-none"
         >
           <PopoverPrimitive.Popup className="w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
@@ -394,6 +405,11 @@ function DateRangeFilter({
           anchor={anchor ?? undefined}
           align="start"
           sideOffset={6}
+          // A portal renders at <body>, outside the subtree the `tables`
+          // region scopes — so this menu stayed at 12px while the table
+          // that opened it read 18.2px. The region is re-applied here by
+          // hand because the DOM cannot inherit it across a portal.
+          style={sizeRegion('tables')}
           className="z-50 outline-none"
         >
           <PopoverPrimitive.Popup className="w-64 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">

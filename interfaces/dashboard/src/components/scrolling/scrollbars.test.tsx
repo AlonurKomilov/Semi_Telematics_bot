@@ -94,7 +94,12 @@ describe('an invisible bar does not take the pointer', () => {
     const el = makeScroller();
     const { container } = render(<ScrollbarV el={el} />);
     const bar = container.firstElementChild as HTMLElement;
-    expect(bar.className).toContain('opacity-0');
+    // Visible at rest (opacity-60), full on hover — the horizontal bar is
+    // always visible and the two disagreeing was the defect.
+    expect(bar.className).toContain('opacity-60');
+    expect(bar.className).toContain('group-hover/grid:opacity-100');
+    // The pointer-events rule is what keeps a finger from grabbing it.
+    expect(bar.className).toContain('pointer-events-none');
     expect(bar.className).toContain('pointer-events-none');
     // The two must move together: visible-but-inert would be a dead
     // control, invisible-but-live is the bug above.

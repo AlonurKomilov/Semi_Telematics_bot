@@ -61,6 +61,17 @@ export function Slider({
       disabled={disabled}
       onValueChange={(v) => onValueChange?.(first(v))}
       onValueCommitted={(v) => onValueCommitted?.(first(v))}
+      // Clicking the thumb left document.activeElement on <body>, so the
+      // arrow keys — the only way to land on an exact value — did nothing
+      // until you tabbed in from somewhere else. The keyboard support was
+      // all there; the hand-off from mouse to keyboard was the broken
+      // part, at precisely the moment someone wants to fine-tune.
+      onPointerDown={(e) => {
+        const input = (e.currentTarget as HTMLElement)
+          .querySelector<HTMLElement>('input,[role="slider"]');
+        // after the primitive's own pointer handling, not before it
+        if (input) requestAnimationFrame(() => input.focus({ preventScroll: true }));
+      }}
       className={cn('relative flex w-full touch-none select-none items-center', className)}
     >
       {/* The Control must be tall enough for the thumb, which the primitive

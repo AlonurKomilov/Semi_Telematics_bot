@@ -293,8 +293,16 @@ export function ScrollbarV({
     <div
       className={cn(
         BAR_LAYER,
-        'absolute right-0.5 w-2 opacity-0 group-hover/grid:opacity-100 transition-opacity',
-        // An INVISIBLE bar must not take pointer events.  At ``opacity-0``
+        'absolute right-0.5 w-2 opacity-60 group-hover/grid:opacity-100 transition-opacity',
+        // Seen always, grabbable only on hover — those are two different
+        // questions and they used to share one answer. The bar was
+        // `opacity-0` until hover while the HORIZONTAL bar was always
+        // visible, so a table showing 3 of 25 rows (which is what 130%
+        // does to Work Orders) gave no sign the other 22 existed. The
+        // pointer-events rule below is what the invisibility was really
+        // for, and it still holds.
+        //
+        // A NON-INTERACTIVE bar must not take pointer events.  At ``opacity-0``
         // it still occupied an 8px strip over the rightmost column, so on
         // touch a finger landing there grabbed the scrollbar — or the
         // track's page-scroll — instead of panning the table, on a

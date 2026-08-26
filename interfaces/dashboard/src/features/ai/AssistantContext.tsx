@@ -37,8 +37,35 @@ export const clampPanelW = (w: number) =>
  *  React state stays the source of truth — it's committed once on release
  *  and re-synced here. */
 export const PANEL_W_VAR = '--assistant-w';
+/**
+ * The product of the axes this panel sits under. The stored width is the
+ * width AT 100% — so a drag has to divide by this before committing, and
+ * the published variable multiplies by it again.
+ */
+export function panelScale(): number {
+  const cs = getComputedStyle(document.documentElement);
+  const n = (v: string) => {
+    const f = parseFloat(cs.getPropertyValue(v));
+    return Number.isFinite(f) && f > 0 ? f : 1;
+  };
+  return n('--size-panel') * n('--size-region-assistant');
+}
+
+/**
+ * `w` is the width the user chose AT 100%, not the pixels on screen.
+ *
+ * It used to be published raw, so the panel stayed 420px however large
+ * the interface got: at global 115% x assistant 130% the text inside grew
+ * to 149.5% and the box did not, leaving two and a half of five starter
+ * chips visible with 197px of the list hidden. `--sidebar-w` next door
+ * already emitted the formula — the pattern existed, this variable had
+ * just been left out of it.
+ */
 export const setPanelWidthVar = (w: number) =>
-  document.documentElement.style.setProperty(PANEL_W_VAR, `${w}px`);
+  document.documentElement.style.setProperty(
+    PANEL_W_VAR,
+    `calc(${w / 16}rem * var(--size-panel, 1) * var(--size-region-assistant, 1))`,
+  );
 
 interface AssistantState {
   open: boolean;

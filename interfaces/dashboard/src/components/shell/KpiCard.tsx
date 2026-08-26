@@ -84,14 +84,14 @@ export default function KpiCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide line-clamp-2">
             {label}
           </p>
           <p className={`text-3xl font-bold mt-1.5 ${t.value}`}>
             {value ?? '—'}
           </p>
           {hint && (
-            <p className="text-xs text-muted-foreground mt-1.5 truncate">{hint}</p>
+            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{hint}</p>
           )}
         </div>
         {Icon && (

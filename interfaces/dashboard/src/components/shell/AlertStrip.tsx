@@ -45,7 +45,7 @@ export default function AlertStrip({ items }: AlertStripProps) {
                 <p className="text-xs font-medium uppercase tracking-wide opacity-80">
                   Needs attention
                 </p>
-                <p className="text-sm font-medium truncate">
+                <p className="text-sm font-medium line-clamp-2">
                   <span className="text-2xl font-bold mr-1.5 align-baseline">
                     {item.count}
                   </span>

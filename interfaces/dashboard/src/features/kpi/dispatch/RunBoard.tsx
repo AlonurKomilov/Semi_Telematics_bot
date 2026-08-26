@@ -34,6 +34,7 @@ import {
   type DaySuggestion, type InactiveDate, type RunDetail, type RunLoad, type RunRow,
 } from '../api';
 import { Card } from '@/components/ui/card';
+import { scaledPx } from '@/lib/scaledLength';
 
 // Frozen empties: `?? []` allocates a NEW array every render, which
 // makes every memoized row look changed.
@@ -79,10 +80,35 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
       const m = unitPanesRef.current;
       if (el) m.set(key, el); else m.delete(key);
     }, []);
+  // Every calendar pane on the board scrolls as one. They used to scroll
+  // alone, so pushing the first dispatcher out to Sat/Sun left the rest
+  // on Tue-Fri, and a single day could not be read across dispatchers —
+  // on the screen where the week's pay is settled.
+  //
+  // Imperative, and guarded against the echo: writing scrollLeft fires
+  // each sibling's own onScroll, which would write back.
+  const boardPanesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const syncingRef = useRef(false);
+  const registerBoardPane = useCallback(
+    (key: string) => (el: HTMLDivElement | null) => {
+      const m = boardPanesRef.current;
+      if (el) m.set(key, el); else m.delete(key);
+    }, []);
   const onBoardScroll = useCallback(
     (key: string) => (e: React.UIEvent<HTMLDivElement>) => {
       const pane = unitPanesRef.current.get(key);
       if (pane) pane.classList.toggle('shadow-md', e.currentTarget.scrollLeft > 0);
+
+      if (syncingRef.current) return;
+      const { scrollLeft } = e.currentTarget;
+      syncingRef.current = true;
+      for (const [k, el] of boardPanesRef.current) {
+        if (k !== key && el.scrollLeft !== scrollLeft) el.scrollLeft = scrollLeft;
+        const other = unitPanesRef.current.get(k);
+        if (other) other.classList.toggle('shadow-md', scrollLeft > 0);
+      }
+      // one frame is enough: the echo scroll events are already queued
+      requestAnimationFrame(() => { syncingRef.current = false; });
     }, []);
 
   const loadsQ = useQuery({
@@ -332,13 +358,17 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
                 {/* Days pane — the ONLY thing that scrolls; its
                     scrollbar starts where the calendar starts. */}
                 <div
+                  ref={registerBoardPane(name)}
                   onScroll={onBoardScroll(name)}
                   className="min-w-0 flex-1 overflow-x-auto"
                 >
                   {/* minWidth is the scroll floor: below 112px/day the
                       pane scrolls; above it the columns grow equally,
                       so a wide window spends its space on the days. */}
-                  <div className="min-w-full" style={{ minWidth: days.length * 112 }}>
+                  <div
+                    className="min-w-full"
+                    style={{ minWidth: scaledPx(days.length * 112, 'layout') }}
+                  >
                     <div className="flex h-8 border-b border-border bg-muted">
                       {days.map((d) => (
                         <div key={d} className="flex flex-1 items-center px-2 text-xs text-muted-foreground border-r border-border last:border-r-0">
