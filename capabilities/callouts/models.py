@@ -36,7 +36,15 @@ class Callout:
 
 
 def callout_id(key: str, entity: str = "", since: str = "") -> str:
-    """The identity a user dismisses, owned by THIS capability.
+    """The identity ONE OCCURRENCE of a callout has, owned here.
+
+    Two readers today: the dashboard collapses by this id, and the
+    activity trail files an answered device question under it — so a
+    later audit asking "what became of THIS question" gets the person,
+    the moment and the choice, joined to the exact string the reader
+    saw.  (It was minted for a per-user dismissal, which is gone: no
+    callout ever wanted to be removed.  The id outlived it because
+    identity, not dismissal, was always the useful part.)
 
     Built from the three contract fields every callout already
     carries, so it works for any feature or integration that ever

@@ -1,11 +1,17 @@
 /**
- * The X does what the callout declares — and only removal is recorded.
+ * The control does what the callout declares.
  *
- * `kind` is too coarse to decide this: a condition that protects a
- * number the reader is about to act on must COLLAPSE (the one line is
- * what stops a 0-mile truck reading as a real zero), while a condition
- * that is merely good-to-know can REMOVE outright.  So the catalog
- * declares it per key, and `kind` only supplies the default.
+ * `kind` is the default, not the decision: the identity questions are
+ * conditions like `no_engine_data`, but they carry `dismiss: 'none'`
+ * because a question waiting on an answer must not be closeable — the
+ * answer buttons are how it leaves.  So the catalog declares it per
+ * key.
+ *
+ * Two behaviours remain, and that is the finding rather than the
+ * shape: a `remove` existed for dismissible advice and no callout
+ * ever wanted it.  A caveat qualifies a number so it must not be
+ * hideable; a condition can come back so it collapses.  See
+ * useDismissal's header for the whole account.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -16,7 +22,6 @@ describe('dismiss behaviour', () => {
   it('defaults by kind', () => {
     expect(defaultDismiss('caveat')).toBe('none');
     expect(defaultDismiss('condition')).toBe('collapse');
-    expect(defaultDismiss('guidance')).toBe('remove');
   });
 
   it('protects the data qualifiers — no X on a caveat', () => {
@@ -34,11 +39,13 @@ describe('dismiss behaviour', () => {
   });
 
   it('lets a callout override its kind default', () => {
-    // The future case the owner asked for: not urgent, good to know,
-    // deserves a real X.
-    const spec = { kind: 'condition' as const, severity: 'info' as const,
-                   dismiss: 'remove' as const };
-    expect(spec.dismiss ?? defaultDismiss(spec.kind)).toBe('remove');
+    // The live case: a condition whose answer is a button, not a
+    // close — so it opts OUT of the collapse its kind would give it.
+    for (const key of ['vehicle.vin_changed', 'vehicle.gateway_swapped',
+                       'vehicle.odometer_rebased']) {
+      expect(defaultDismiss(CALLOUT_CATALOG[key].kind)).toBe('collapse');
+      expect(dismissBehaviour(key)).toBe('none');
+    }
   });
 
   it('shows no X for a key it does not know', () => {
@@ -54,16 +61,15 @@ describe('dismiss behaviour', () => {
  * An X says "gone" — a promise collapse does not keep, since the line
  * stays on screen.  Pairing the fold-up chevron with the fold-down one
  * the collapsed row already shows makes the control reversible on
- * sight, which is what an X would have hidden.
+ * sight, which is what an X would have hidden.  Nothing renders an X
+ * any more, which is the point: no callout removes.
  */
-describe('the X icon means removal, only', () => {
-  it('pairs each behaviour with an icon that keeps its promise', () => {
-    // Encoded as the component does it, so the mapping is pinned even
-    // though the icons themselves are rendered inside a button.
+describe('the control icon keeps its promise', () => {
+  it('offers a reversible chevron, never an X', () => {
     const iconFor = (b: ReturnType<typeof dismissBehaviour>) =>
-      b === 'collapse' ? 'chevron-up' : b === 'remove' ? 'x' : 'none';
+      b === 'collapse' ? 'chevron-up' : 'none';
     expect(iconFor(dismissBehaviour('vehicle.no_engine_data'))).toBe('chevron-up');
-    expect(iconFor('remove')).toBe('x');
     expect(iconFor(dismissBehaviour('mileage.partial'))).toBe('none');
+    expect(iconFor(dismissBehaviour('vehicle.vin_changed'))).toBe('none');
   });
 });

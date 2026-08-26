@@ -163,3 +163,175 @@ def test_spec_fill_fields_all_exist_on_the_model():
     model_fields = {f.name for f in dataclasses.fields(Vehicle)}
     missing = [f for f in _SPEC_FILL if f not in model_fields]
     assert not missing, f"_SPEC_FILL names absent from Vehicle: {missing}"
+
+
+# ── Answering leaves a record ───────────────────────────────────────
+#
+# Answering an identity question is an ACCOUNT-WIDE act: the row goes
+# inactive for everyone and the question leaves every admin's screen.
+# "Same truck" also welds two identities' history together permanently.
+# The warehouse row carried who and when, but the activity trail — the
+# place an owner actually browses — knew nothing about it.
+
+
+@pytest.mark.asyncio
+async def test_answering_a_device_question_is_recorded_against_the_truck():
+    from features.vehicles.router import _record_device_event_answer
+
+    calls: list[dict] = []
+
+    async def fake_record(db, account_id, actor, action, etype, eid, **kw):
+        calls.append({"account_id": account_id, "actor": actor,
+                      "action": action, "entity_type": etype,
+                      "entity_id": eid, **kw})
+
+    import capabilities.activity_trail as trail
+    original = trail.record_simple
+    trail.record_simple = fake_record
+    try:
+        await _record_device_event_answer(
+            object(), 10000001, 42,
+            {"id": 7, "kind": "vin_change", "vehicle_id": "abc-123",
+             "vehicle_name": "128", "registry_id": 555,
+             "old_value": "4V4NC9EH8KN196862",
+             "new_value": "3AKJGLDV5GSGZ4085",
+             "observed_at": "2026-08-13T04:00:00Z"},
+            "same_truck", None,
+        )
+    finally:
+        trail.record_simple = original
+
+    assert len(calls) == 1
+    c = calls[0]
+    # Filed on the TRUCK, so it lands on the timeline an owner opens.
+    assert c["entity_type"] == "vehicle" and c["entity_id"] == 555
+    # The actor comes from the session, never the body.
+    assert c["actor"] == 42
+    # Named for the ANSWER — which way it went is the whole decision.
+    assert c["action"] == "device_event.same_truck"
+    # Keyed by the id the dashboard rendered, so a later audit can ask
+    # "what became of THIS question" and join the two halves.
+    assert c["context"]["callout_id"] == (
+        "vehicle.vin_changed@vehicle:abc-123#2026-08-13T04:00:00Z")
+    # Values, not prose: what the state WAS, not merely that it moved.
+    assert c["context"]["old_value"] == "4V4NC9EH8KN196862"
+    assert c["context"]["new_value"] == "3AKJGLDV5GSGZ4085"
+
+
+@pytest.mark.asyncio
+async def test_a_split_records_the_unit_it_created():
+    from features.vehicles.router import _record_device_event_answer
+
+    calls: list[dict] = []
+
+    async def fake_record(db, account_id, actor, action, etype, eid, **kw):
+        calls.append({"action": action, **kw})
+
+    import capabilities.activity_trail as trail
+    original = trail.record_simple
+    trail.record_simple = fake_record
+    try:
+        await _record_device_event_answer(
+            object(), 10000001, 42,
+            {"id": 7, "kind": "vin_change", "vehicle_id": "abc-123",
+             "vehicle_name": "128", "registry_id": 555,
+             "old_value": "A", "new_value": "B",
+             "observed_at": "2026-08-13T04:00:00Z"},
+            "different_truck:new_unit=PTG/301", 900,
+        )
+    finally:
+        trail.record_simple = original
+
+    # The action is the CHOICE, stripped of its parameters; the
+    # parameters survive in the context rather than fragmenting the
+    # vocabulary into one action per unit number.
+    assert calls[0]["action"] == "device_event.different_truck"
+    assert calls[0]["context"]["new_vehicle_id"] == 900
+    assert calls[0]["context"]["resolution"] == "different_truck:new_unit=PTG/301"
+
+
+@pytest.mark.asyncio
+async def test_a_trail_failure_does_not_undo_a_completed_answer():
+    """The registry surgery already happened.
+
+    Raising here would tell the caller nothing happened when a unit had
+    just been created and a telematics link moved — a worse lie than a
+    missing trail entry, which at least leaves the warehouse row's own
+    resolved_by/resolved_at intact.
+    """
+    from features.vehicles.router import _record_device_event_answer
+
+    async def boom(*a, **kw):
+        raise RuntimeError("trail down")
+
+    import capabilities.activity_trail as trail
+    original = trail.record_simple
+    trail.record_simple = boom
+    try:
+        await _record_device_event_answer(
+            object(), 10000001, 42,
+            {"id": 7, "kind": "vin_change", "vehicle_id": "abc-123",
+             "vehicle_name": "128", "registry_id": 555,
+             "old_value": "A", "new_value": "B",
+             "observed_at": "2026-08-13T04:00:00Z"},
+            "same_truck", None,
+        )
+    finally:
+        trail.record_simple = original
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_event_kind_records_nothing():
+    """No callout key means no id to file it under — a trail entry
+    keyed on an empty string is worse than none."""
+    from features.vehicles.router import _record_device_event_answer
+
+    calls: list = []
+
+    async def fake_record(*a, **kw):
+        calls.append(1)
+
+    import capabilities.activity_trail as trail
+    original = trail.record_simple
+    trail.record_simple = fake_record
+    try:
+        await _record_device_event_answer(
+            object(), 10000001, 42,
+            {"id": 7, "kind": "something_new", "vehicle_id": "abc-123",
+             "observed_at": "2026-08-13T04:00:00Z"},
+            "dismissed", None,
+        )
+    finally:
+        trail.record_simple = original
+    assert calls == []
+
+
+def test_the_resolve_endpoint_actually_calls_the_recorder():
+    """The lesson from the dismissal path, applied here.
+
+    Eight green tests once covered a dismissal endpoint no screen could
+    reach, because they called it directly instead of travelling the
+    route a user takes.  These tests exercise the recorder in
+    isolation, so this one checks the one thing they cannot: that
+    ``resolve_device_event`` is wired to it at all.
+    """
+    import ast
+    import inspect
+
+    from features.vehicles import router as vehicles_router
+
+    src = inspect.getsource(vehicles_router)
+    fn = next(
+        n for n in ast.walk(ast.parse(src))
+        if isinstance(n, ast.AsyncFunctionDef)
+        and n.name == "resolve_device_event"
+    )
+    called = {
+        n.func.id for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    }
+    assert "_record_device_event_answer" in called, (
+        "an identity answer would go unrecorded — the trail entry is "
+        "the only place an owner can see who welded two histories "
+        "together"
+    )

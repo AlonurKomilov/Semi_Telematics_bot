@@ -1127,12 +1127,81 @@ async def resolve_device_event(
             await tenant.reopen_device_event(account_id, event_id)
             raise HTTPException(400, str(e))
 
+    # ── The record ──────────────────────────────────────────────
+    # Answering an identity question is an ACCOUNT-WIDE act: the row
+    # goes inactive for everyone, the question leaves every admin's
+    # screen, and "same truck" quietly welds two identities' history
+    # together for good.  The warehouse row already carried who and
+    # when, but nothing reached the activity trail — the place an owner
+    # actually browses — so the most consequential answer on the
+    # Vehicles page left no trace where anyone would look for it.
+    #
+    # Written LAST, deliberately.  The registry surgery is already
+    # done and cannot be rolled back to satisfy a logger, so a trail
+    # failure is shouted into the log rather than turned into a 5xx
+    # that would tell the caller nothing happened when it did.
+    await _record_device_event_answer(
+        tenant, account_id, actor, event, resolution, new_vehicle_id,
+    )
+
     return {
         "resolved": True,
         "event_id": event_id,
         "resolution": resolution,
         "new_vehicle_id": new_vehicle_id,
     }
+
+
+async def _record_device_event_answer(
+    tenant, account_id: int, actor: int | None, event: dict,
+    resolution: str, new_vehicle_id: int | None,
+) -> None:
+    """File the answer on the truck's own timeline.
+
+    Keyed by ``callout_id`` in the context so a later audit can ask
+    "what happened to THIS question" and get the answer, the person and
+    the moment — the id is the same string the dashboard rendered, so
+    the two halves of the story join up.
+    """
+    from capabilities.activity_trail import record_simple
+    from capabilities.callouts import callout_id
+    from features.vehicles.callouts import EVENT_CALLOUT_KEYS
+
+    key = EVENT_CALLOUT_KEYS.get(str(event.get("kind") or ""), "")
+    if not key:
+        return
+    ident = callout_id(
+        key,
+        f"vehicle:{event.get('vehicle_id') or ''}",
+        str(event.get("observed_at") or ""),
+    )
+    # Values, not prose: the trail's contract is that a reader can see
+    # WHAT the state was, not just be told a change occurred.
+    note = (
+        f"Answered “{key}” on "
+        f"{event.get('vehicle_name') or event.get('vehicle_id')}: {resolution}"
+    )
+    try:
+        await record_simple(
+            tenant, account_id, actor,
+            f"device_event.{resolution.split(':')[0]}",
+            "vehicle", event.get("registry_id") or event.get("vehicle_id"),
+            note=note,
+            context={
+                "callout_id": ident,
+                "callout_key": key,
+                "event_id": event.get("id"),
+                "old_value": str(event.get("old_value") or ""),
+                "new_value": str(event.get("new_value") or ""),
+                "resolution": resolution,
+                **({"new_vehicle_id": new_vehicle_id} if new_vehicle_id else {}),
+            },
+        )
+    except Exception:
+        logger.exception(
+            "device event answered but not recorded acct=%d event=%s id=%s",
+            account_id, event.get("id"), ident,
+        )
 
 
 async def _vehicle_callouts(account_id: int, tenant, vehicle_ids) -> list[dict]:

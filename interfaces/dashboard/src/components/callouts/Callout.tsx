@@ -32,13 +32,10 @@ import { toneClasses } from '../../lib/status';
 export default function Callout({
   callout,
   className = '',
-  entity,
   actions,
 }: {
   callout: CalloutData;
   className?: string;
-  /** What the dismissal is recorded against, e.g. the truck it is on. */
-  entity?: { type: string; id: string };
   /**
    * Feature-supplied controls, rendered in one consistent place.
    *
@@ -53,13 +50,8 @@ export default function Callout({
 }) {
   const { t } = useTranslation();
   const { tone, title, lines, Icon } = useCallout(callout);
-  const { dismissed, collapsed, behaviour, close, expand } =
-    useDismissal(callout, entity);
+  const { collapsed, behaviour, close, expand } = useDismissal(callout);
   const [failed, setFailed] = useState(false);
-  // Removed by this person, and the server has the record.  Nothing
-  // renders — but note this is per-USER: a colleague opening the same
-  // truck still sees it.
-  if (dismissed) return null;
 
   const onClose = async () => {
     setFailed(false);

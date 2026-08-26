@@ -20,7 +20,6 @@ lifecycle, which is the whole reason it has its own name:
                because hiding it re-hides the thing it corrects.
     condition  a state that clears when the world changes, not when
                the reader clicks.
-    guidance   an optional suggestion — dismissible and remembered.
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-KINDS = ("caveat", "condition", "guidance")
+KINDS = ("caveat", "condition")
 
 # ``<feature>.<name>`` — enforced, not merely conventional.  A callout's
 # public identity (``callout_id``) is built from its key, so two

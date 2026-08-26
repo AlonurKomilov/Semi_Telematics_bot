@@ -35,7 +35,6 @@ from interfaces.api.routes import webhooks as webhooks_routes
 # Hub + platform-capability routers live WITH their domain:
 from capabilities.alerting import router as alerts
 from capabilities.notifications import router as notifications_routes
-from capabilities.callouts import router as callouts_routes
 from capabilities.preferences import router as preferences_routes
 from interfaces.api import page_layouts as page_layouts_routes
 from capabilities.reporting import router as reports_routes
@@ -445,7 +444,6 @@ def create_api() -> FastAPI:
         # Mounted right after the user router it was split out of, so the
         # /user/preferences/ui/* paths stay byte-identical.
         app.include_router(preferences_routes.router, prefix=prefix)
-        app.include_router(callouts_routes.router, prefix=prefix)
         app.include_router(page_layouts_routes.router, prefix=prefix)
         app.include_router(overview_routes.router, prefix=prefix)
         # Config FIRST — vehicles' /{vehicle_name} would shadow /config.

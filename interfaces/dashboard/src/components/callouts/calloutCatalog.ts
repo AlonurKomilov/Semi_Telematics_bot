@@ -11,7 +11,6 @@
  *              devices" re-hides the very thing it corrects.
  *   condition  a state that clears when the WORLD changes, not when
  *              the reader clicks.
- *   guidance   an optional suggestion — dismissible and remembered.
  *              No consumer yet; the storage lands with the first one.
  *
  * A key the backend can emit but this catalog does not know would
@@ -20,7 +19,7 @@
  */
 import type { Tone } from '../../lib/status';
 
-export type CalloutKind = 'caveat' | 'condition' | 'guidance';
+export type CalloutKind = 'caveat' | 'condition';
 
 /**
  * What the X does — declared per callout, because `kind` is too coarse
@@ -37,12 +36,11 @@ export type CalloutKind = 'caveat' | 'condition' | 'guidance';
  * `remove` is the only one that writes to the activity trail, because
  * it is the only one where something left the reader's screen.
  */
-export type CalloutDismiss = 'none' | 'collapse' | 'remove';
+export type CalloutDismiss = 'none' | 'collapse';
 
 /** The default when a callout does not declare one — kind decides. */
 export function defaultDismiss(kind: CalloutKind): CalloutDismiss {
-  if (kind === 'caveat') return 'none';
-  return kind === 'guidance' ? 'remove' : 'collapse';
+  return kind === 'caveat' ? 'none' : 'collapse';
 }
 
 export interface CalloutSpec {

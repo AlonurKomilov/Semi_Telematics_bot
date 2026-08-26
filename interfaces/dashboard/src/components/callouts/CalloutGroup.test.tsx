@@ -46,7 +46,6 @@ vi.mock('./useCallout', async (importOriginal) => {
       title: 'VIN changed: is this a different truck?',
       short: 'VIN changed',
       explanation: 'A VIN names one physical truck.',
-      dismissible: false,
       Icon: () => null,
       lines: [
         { name: 'where' as const, label: 'Where', value: c.params!.unit },

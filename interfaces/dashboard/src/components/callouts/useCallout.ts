@@ -95,8 +95,6 @@ export interface ResolvedCallout {
    */
   explanation: string;
   Icon: ReturnType<typeof toneIcon>;
-  /** Only `guidance` may ever be dismissed — see calloutCatalog. */
-  dismissible: boolean;
 }
 
 /**
@@ -143,7 +141,6 @@ export function resolveCallout(t: Translate, c: CalloutData): ResolvedCallout {
     lines,
     explanation: lines.find((l) => l.name === 'why')?.value ?? title,
     Icon: toneIcon(tone),
-    dismissible: spec?.kind === 'guidance',
   };
 }
 

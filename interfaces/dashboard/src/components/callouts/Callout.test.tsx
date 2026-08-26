@@ -48,7 +48,6 @@ const FULL = {
       value: 'Have the diagnostic-port connection checked.' },
   ],
   Icon: () => null,
-  dismissible: false,
 };
 
 describe('Callout strip', () => {

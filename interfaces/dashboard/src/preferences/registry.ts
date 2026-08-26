@@ -528,18 +528,6 @@ export const DEFS = {
     sanitize: asIdMap,
     note: 'Callouts you have collapsed to a single line.',
   }),
-  // DISMISSED — the callout was removed from this person's view.  That
-  // is the act an owner may need to reconstruct later, so the SERVER
-  // owns this key: POST /callouts/dismiss writes the trail entry and
-  // this value together.  The client only READS it.  A client-written
-  // copy plus a separate audit call could disagree, and a dismissal
-  // with no record is the gap the record exists to close.
-  'callout.dismissed': def<Record<string, number>>({
-    default: {},
-    scope: 'synced',
-    sanitize: asIdMap,
-    note: 'Callouts you have dismissed. Written by the server so each one is recorded.',
-  }),
   'onboarding.dismissed': def<boolean>({
     default: false,
     scope: 'synced',

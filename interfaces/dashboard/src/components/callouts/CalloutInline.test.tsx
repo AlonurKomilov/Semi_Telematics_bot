@@ -35,7 +35,6 @@ vi.mock('./useCallout', () => ({
     affects: '',
     act: '',
     Icon: () => null,
-    dismissible: false,
   }),
 }));
 

@@ -38,11 +38,14 @@ const FROZEN_KEYS: readonly string[] = [
   'maintenance.viewMode',
   'table.density',
   'datagrid.savedTabCoachSeen',
-  // Two keys, one act each: collapsed = still on screen (client
-  // writes it), dismissed = removed from view (SERVER writes it, with
-  // a trail entry, so a dismissal cannot happen unrecorded).
+  // One act: the strip shrank to a line and is still on screen, so
+  // the client writes it like any display setting.  A sibling
+  // `callout.dismissed` was removed rather than frozen — freezing
+  // protects a key USERS HAVE DATA UNDER, and nothing ever wrote this
+  // one: it was server-owned, and its endpoint was unreachable from
+  // every screen.  A frozen key with no data is a name nobody may
+  // reuse, protecting nothing.
   'callout.collapsed',
-  'callout.dismissed',
   'onboarding.dismissed',
   'alerts.routingNudgeDismissed',
   'invites.lastChannel',

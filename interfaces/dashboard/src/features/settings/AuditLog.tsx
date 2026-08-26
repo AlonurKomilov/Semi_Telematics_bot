@@ -56,6 +56,13 @@ const LEGACY_ACTION_LABEL: Record<string, string> = {
   'ai_undo:import_inventory_items': 'AI: undid inventory import',
   'ai_write:create_maintenance_task': 'AI: created maintenance task',
   'ai_write:acknowledge_alerts': 'AI: acknowledged alerts',
+  // Identity questions.  Named for the ANSWER, not for "resolved":
+  // which way it was answered is the whole content of the decision,
+  // and "same truck" is the one that welds two histories together.
+  'device_event.same_truck': 'Device change: answered same truck',
+  'device_event.different_truck': 'Device change: split onto a new unit',
+  'device_event.dismissed': 'Device change: acknowledged',
+  'device_event.acknowledge': 'Device change: acknowledged',
 };
 
 function actionLabel(s: string): string {
