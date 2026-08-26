@@ -196,10 +196,15 @@ if py:
 # ask who still imports it in the tree AS IT WILL BE.  `git grep` over
 # HEAD is ~0.1s for 885 files; a staged file is re-read from the index,
 # because its staged version may already be fixed.
-deleted_py = [
-    f for f in sh("git", "diff", "--cached", "--diff-filter=D", "--name-only").splitlines()
-    if f.endswith(".py")
-]
+# Everything this commit removes.  `staged_paths()` filters ACMR, so
+# deletions are absent from it by design — which made a file the commit
+# DELETES read as an importer that survives the commit.  Deleting a
+# module together with its own test is the ordinary way to remove a
+# feature, and the guard blocked exactly that.
+deleted_now = set(
+    sh("git", "diff", "--cached", "--diff-filter=D", "--name-only").splitlines()
+)
+deleted_py = [f for f in deleted_now if f.endswith(".py")]
 for f in deleted_py:
     parts = f[:-3].split("/")
     if parts[-1] == "__init__":
@@ -213,7 +218,10 @@ for f in deleted_py:
               "HEAD", "--", "*.py").splitlines()
     for hit in hits:
         path = hit.split(":", 1)[1] if hit.startswith("HEAD:") else hit
-        if path == f:
+        # A file this commit also removes cannot import anything after
+        # it — judging it by its HEAD content asks about a tree that
+        # will not exist.
+        if path == f or path in deleted_now:
             continue
         # Staged files may already be corrected — judge the staged blob.
         if path in paths:
