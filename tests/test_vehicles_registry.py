@@ -819,3 +819,37 @@ async def test_a_retired_door_number_is_not_identity(db):
     survivor = next(r for r in rows if r.id == old.id)
     assert survivor.telematics_ref == "281475003801071"
     assert survivor.vin == "3AKJGLDV5GSGZ4085"
+
+
+@pytest.mark.asyncio
+async def test_while_duplicates_exist_the_sync_keeps_the_row_with_history(db):
+    """Two rows claiming one device is a state that must not be
+    resolved by accident.
+
+    Nothing in code can decide which row is the real truck — only the
+    number painted on the door can. So the sync makes the conservative
+    choice and says so: it keeps updating the row that came first (the
+    one carrying the work orders), rather than whichever the dict
+    happened to see last.
+    """
+    await db.upsert_from_integration(42, [_row(unit_number="6862")],
+                                     source="samsara")
+    (original,) = await db.list_vehicles(42)
+    # A second row for the same device — the state this fix prevents,
+    # written directly because the fix now stops the sync creating it.
+    await db._db.execute(
+        "INSERT INTO vehicles (account_id, company_code, unit_number, "
+        "vehicle_type, vin, telematics_ref, status, source, is_active, "
+        "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)",
+        (42, "PTG", "128", "truck", "3AKJGLDV5GSGZ4085",
+         "281475003801071", "active", "samsara", "2026-08-05", "2026-08-05"),
+    )
+    await db._db.commit()
+
+    await db.upsert_from_integration(42, [_row(unit_number="6862")],
+                                     source="samsara")
+    rows = {r.id: r for r in await db.list_vehicles(42, include_inactive=True)}
+    assert len(rows) == 2, "the duplicate is not silently merged away"
+    # The older row is the one that keeps being refreshed.
+    newer = max(rows)
+    assert rows[original.id].updated_at > rows[newer].updated_at

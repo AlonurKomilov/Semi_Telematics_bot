@@ -872,9 +872,36 @@ class VehiclesRegistryMixin(_MixinBase):
         # moves a ref onto a new unit, the provider still displays the
         # OLD unit number — a name-first match would re-link the old row
         # and silently undo the operator's split on the next tick.
-        by_ref = {
-            v.telematics_ref: v for v in existing if v.telematics_ref
-        }
+        by_ref: dict[str, Vehicle] = {}
+        for v in existing:
+            if not v.telematics_ref:
+                continue
+            clash = by_ref.get(v.telematics_ref)
+            if clash is None:
+                by_ref[v.telematics_ref] = v
+                continue
+            # Two rows claiming one device — the state this account
+            # spent four trucks in.  Nothing here can decide which is
+            # real (only the number on the door can), so the choice is
+            # the conservative one: keep syncing the row that carries
+            # the history, so answering it later does not have to move
+            # work orders as well as identity.  ACTIVE beats retired,
+            # then the LOWER id, which is the row that existed first.
+            keep = min(
+                (clash, v),
+                key=lambda x: (not x.is_active, x.id),
+            )
+            by_ref[v.telematics_ref] = keep
+            # Said out loud every tick, because the alternative is what
+            # happened: one physical truck quietly counted twice, its
+            # work orders on one row and its door number on the other,
+            # found only when someone went looking for something else.
+            logger.warning(
+                "vehicle identity: device %s is claimed by %d rows "
+                "(units %s / %s) — syncing id=%d, the other is a "
+                "duplicate that needs merging",
+                v.telematics_ref, 2, clash.unit_number, v.unit_number, keep.id,
+            )
         now = self._now()
         written = 0
         conflict_ops: list = []
