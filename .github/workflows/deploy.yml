@@ -98,10 +98,42 @@ jobs:
       # No ``-x``.  It stopped at the FIRST failure, so a single
       # collection error hid every failure behind it — eighteen of them,
       # for about three weeks.  Fail on all of them at once instead.
+      # A FLOOR on collected tests, beside the ceiling on skipped ones.
+      # They are different guarantees and the skip ceiling does not imply
+      # this one: tests are migrating into features/<x>/tests/ and
+      # capabilities/<x>/tests/, and a run that fails to collect them is
+      # not SKIPPING anything — the skip count goes DOWN while the suite
+      # is hollowed out, so the ceiling reads it as getting healthier.
+      # Proven with a probe: before pytest.ini's testpaths were widened,
+      # a test in features/parking/tests/ was collected by neither
+      # `pytest` nor `pytest tests/`, and the build stayed green.
+      - name: Guard — the whole suite is still collected
+        env:
+          MIN_TESTS: "3473"
+        run: |
+          set -o pipefail
+          # The summary line is decorated ("==== 3473 tests collected ===="),
+          # so it does not start with a digit — match the phrase, not the
+          # line start.  The naive version returned 0 and failed always.
+          collected=$(python -m pytest --collect-only -q \
+                      | grep -oE '[0-9]+ tests? collected' \
+                      | tail -1 | grep -oE '^[0-9]+' || echo 0)
+          echo "collected=$collected floor=$MIN_TESTS"
+          if [ "$collected" -lt "$MIN_TESTS" ]; then
+            echo "::error::only $collected tests collected (floor $MIN_TESTS)."
+            echo "::error::Tests exist that this run did not see. Usually a path"
+            echo "::error::named on a command line, or pytest.ini testpaths not"
+            echo "::error::covering a package that now owns its own tests/ dir."
+            exit 1
+          fi
+
+      # No path argument, deliberately.  pytest.ini's testpaths is the ONE
+      # definition of the suite; naming `tests/` here silently narrows the
+      # run as tests migrate into their packages.
       - name: Run tests
         run: |
           set -o pipefail
-          python -m pytest tests/ -q --tb=short | tee /tmp/pytest-summary.txt
+          python -m pytest -q --tb=short | tee /tmp/pytest-summary.txt
 
       # A skipped test and a passing test look identical in a green
       # build.  This is the guard that makes the two distinguishable —

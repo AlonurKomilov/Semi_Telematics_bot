@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import sys
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 os.environ.setdefault("JWT_SECRET", "test" * 8)
@@ -191,7 +192,7 @@ class TestConfigLivesInConfigPy:
             mod = inspect.getsourcefile(endpoint) or ""
             if os.path.basename(mod) != "config.py":
                 offenders.append(
-                    f"{sorted(methods)[0]} {path} -> {os.path.relpath(mod, REPO)}"
+                    f"{sorted(methods)[0]} {path} -> {os.path.relpath(mod, _REPO)}"
                 )
         assert not offenders, (
             "config endpoints defined outside a config.py:\n  "

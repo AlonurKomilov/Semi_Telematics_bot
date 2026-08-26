@@ -552,22 +552,32 @@ system-dashboard-build-if-needed:
 	fi
 
 # ── testing targets ──────────────────────────────────
+#
+# None of these name a path.  pytest.ini's `testpaths` is the ONE
+# definition of the suite, because tests are migrating into the package
+# that owns them (features/<x>/tests/, capabilities/<x>/tests/) — and a
+# hardcoded `tests/` silently collects less and less as they go, while
+# still exiting 0.
 
 ## Run tests
 test:
-	python3 -m pytest tests/
+	python3 -m pytest
 
 ## Run tests with coverage report
 test-cov:
-	python3 -m pytest tests/ --cov=bot --cov-report=term-missing
+	python3 -m pytest --cov=bot --cov-report=term-missing
 
 ## Run tests in parallel (uses all available CPU cores)
 test-fast:
-	python3 -m pytest tests/ -n auto
+	python3 -m pytest -n auto
 
 ## Watch mode — re-runs tests on file changes
 test-watch:
-	ptw -- tests/ -v --tb=short
+	ptw -- -v --tb=short
+
+## How many tests does the suite collect?  CI pins a floor on this.
+test-census:
+	@python3 -m pytest --collect-only -q | tail -1
 
 # ── PTI manual triggers (development / staging) ──────
 #
