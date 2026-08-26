@@ -321,7 +321,9 @@ const statusDoorSites = (src: string): number[] => {
   const out: number[] = [];
   for (const m of src.matchAll(/<span\s+className=\{`([^`]*)`\}/g)) {
     const cls = m[1];
-    if (!/\$\{(?:toneClasses|statusClasses)\(/.test(cls)) continue;
+    // Whitespace after `${` — a call site that wraps its line was
+    // invisible to this, which is where four of them were hiding.
+    if (!/\$\{\s*(?:toneClasses|statusClasses)\s*\(/.test(cls)) continue;
     const t = cls.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/);
     const geometry = t.filter((c) =>
       /^(rounded|px-|py-|text-(2xs|xs)$|font-medium$)/.test(c),
@@ -451,14 +453,17 @@ const CARD_NOT_A_CARD = [
  * `lib/scaledLength.ts` is the replacement, and it mirrors the config's
  * axis-by-magnitude rule so `220px` there behaves like `h-55` here.
  */
-const inlineLengthSites = (src: string): number[] => {
+const inlineLengthSites = (src: string): { line: number; prop: string }[] => {
   const PROPS = new Set([
     'width', 'height', 'fontSize', 'padding', 'margin', 'top', 'left',
     'right', 'bottom', 'gap', 'minWidth', 'maxWidth', 'minHeight',
     'maxHeight', 'borderRadius', 'borderWidth', 'inset', 'flexBasis',
   ]);
-  const out: number[] = [];
-  for (const style of src.matchAll(/style=\{\{([\s\S]{0,400}?)\}\}/g)) {
+  const out: { line: number; prop: string }[] = [];
+  // `[Ss]tyle`: recharts passes its own boxes as `contentStyle` /
+  // `labelStyle` / `itemStyle`, and twenty of those sat in the blind
+  // spot of a regex that only knew the lowercase prop.
+  for (const style of src.matchAll(/[A-Za-z]*[Ss]tyle=\{\{([\s\S]{0,400}?)\}\}/g)) {
     for (const m of style[1].matchAll(
       /(?:^|[,{\s])([A-Za-z]+)\s*:\s*(`[^`]*`|'[^']*'|"[^"]*"|-?[0-9][0-9.]*)/g,
     )) {
@@ -467,7 +472,7 @@ const inlineLengthSites = (src: string): number[] => {
       if (/%|\$\{|vh|vw|var\(|calc\(/.test(v)) continue;
       if (!/^-?\d[\d.]*(?:px|rem)?$/.test(v)) continue;
       if (v === '0' || v === '0px') continue;
-      out.push(src.slice(0, style.index ?? 0).split('\n').length);
+      out.push({ line: src.slice(0, style.index ?? 0).split('\n').length, prop: m[1] });
     }
   }
   return out;
@@ -491,6 +496,63 @@ const INLINE_LENGTH_ALLOWED = [
   'features/live-map/MapTypeControl.tsx',
 ];
 
+/**
+ * A corner that ignores the Corners setting.
+ *
+ * `rounded-[10px]` is the radius twin of an arbitrary length, and
+ * `rounded-4xl` is worse than arbitrary: it is a step the scale never
+ * defined, so it compiles to NOTHING and the corner falls back to square
+ * with no warning. That is exactly how it reached StatusBadge and stayed.
+ *
+ * Comments are stripped first. StatusBadge's docblock still explains the
+ * old `rounded-4xl` bug, and a guard that cannot tell an explanation from
+ * an offence teaches people to delete the explanation.
+ */
+const radiusClassSites = (src: string): string[] => {
+  const code = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
+  return [...code.matchAll(/\brounded(?:-[trblse]{1,2})?-\[[^\]]+\]|\brounded-4xl\b/g)]
+    .map((m) => m[0]);
+};
+
+/**
+ * design.md §3: a CAPSULE states a fact you read; a bordered rounded
+ * rectangle invites a click. So a control may not wear `rounded-full`
+ * unless it is circular by geometry — an icon button, an avatar — which
+ * is what the size/dimension classes tell us.
+ *
+ * Two subsystems had opposite grammars for the same shape (alerts wrote
+ * theirs down, Scorecards inverted it inside one file). Settled by the
+ * owner 2026-08-26 in favour of the twelve-to-two majority; this keeps it
+ * settled. It matters most at Sharp, where a rounded rect collapses to
+ * 2px and a capsule stays a capsule.
+ */
+const capsuleControlSites = (src: string): number[] => {
+  const out: number[] = [];
+  for (const m of src.matchAll(
+    /<(button|a)\b([\s\S]{0,400}?)>([\s\S]{0,160}?)<\/\1>/g,
+  )) {
+    const [, , attrs, inner] = m;
+    if (!/rounded-full/.test(attrs)) continue;
+    // circular BY GEOMETRY — an icon button in a square box — is fine
+    if (/\b(?:size|w|h)-[\d.]+\b/.test(attrs)) continue;
+    if (!/\bpx-[\d.]/.test(attrs)) continue;
+    const text = inner.replace(/<[^>]*>/g, '').trim();
+    if (!/[A-Za-z]{2}/.test(text) && !/\{[a-zA-Z_.]+\}/.test(inner)) continue;
+    out.push(src.slice(0, m.index ?? 0).split('\n').length);
+  }
+  return out;
+};
+
+/**
+ * The one sanctioned arbitrary corner. `tooltip.tsx` rotates a small
+ * square to make the arrow, and at Pill `rounded-sm` is 12px on a 10px
+ * square — the arrow degenerates into a dot. The comment at the call site
+ * carries the arithmetic, which is what an exception should look like.
+ */
+const RADIUS_ARBITRARY_ALLOWED = ['components/ui/tooltip.tsx'];
+
 type DebtList = {
   name: string;
   entries: string[];
@@ -511,6 +573,7 @@ const DEBT: DebtList[] = [
   { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
   { name: 'CARD_NOT_A_CARD',             entries: CARD_NOT_A_CARD,             match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
   { name: 'INLINE_LENGTH_ALLOWED',       entries: INLINE_LENGTH_ALLOWED,       match: 'exact',     scope: FILES, offends: (f) => inlineLengthSites(f.src).length > 0 },
+  { name: 'RADIUS_ARBITRARY_ALLOWED',    entries: RADIUS_ARBITRARY_ALLOWED,    match: 'exact',     scope: FILES, offends: (f) => radiusClassSites(f.src).length > 0 },
 ];
 
 describe('UI chrome', () => {
@@ -550,7 +613,12 @@ describe('UI chrome', () => {
       .filter((f) => !INLINE_LENGTH_ALLOWED.includes(f.rel))
       .filter((f) => !f.rel.startsWith('lib/scaledLength'))
       .flatMap((f) => inlineLengthSites(f.src).map(
-        (line) => `${f.rel}:${line} → scaledPx() from lib/scaledLength.ts`,
+        // A corner is not a length on the Size axis. Pointing the author
+        // at scaledPx() for a borderRadius would turn a silent bug into a
+        // confidently wrong one.
+        ({ line, prop }) => `${f.rel}:${line} → ${prop === 'borderRadius'
+          ? "'var(--radius)', or useRadiusPx() from lib/radius.ts"
+          : 'scaledPx() from lib/scaledLength.ts'}`,
       ));
     expect(
       offenders,
@@ -588,12 +656,88 @@ describe('UI chrome', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('never writes a corner the Corners setting cannot reach', () => {
+    const offenders = FILES
+      .filter((f) => !RADIUS_ARBITRARY_ALLOWED.includes(f.rel))
+      .flatMap((f) => radiusClassSites(f.src).map(
+        (cls) => `${f.rel} → ${cls}; use rounded-sm|md|lg|xl, which track --radius`,
+      ));
+    expect(
+      offenders,
+      'an arbitrary radius ignores the setting, and `rounded-4xl` is a step ' +
+        'the scale never defined — it compiles to nothing and falls back to square',
+    ).toEqual([]);
+  });
+
+  it('never gives a control a capsule', () => {
+    // design.md §3. Circular BY GEOMETRY (an icon button in a square box)
+    // is exempt and detected by its own size classes.
+    const offenders = TSX.flatMap((f) => capsuleControlSites(f.src).map(
+      (line) => `${f.rel}:${line} → rounded-md; a capsule states a fact, it is not a control`,
+    ));
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps the three Corners presets wired to the token', () => {
+    // The first test in this repo to read a stylesheet. Until it existed,
+    // a fourth preset could ship as a silent no-op — the picker would
+    // offer it, the attribute would land on <html>, and no rule would
+    // answer. The same hole lets an existing preset be neutered by
+    // deleting one line.
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
+
+    const declared = (/THEME_RADII[^=]*=\s*\[([^\]]*)\]/.exec(registry)?.[1] ?? '')
+      .split(',').map((x) => x.trim().replace(/['"`]/g, '')).filter(Boolean);
+    expect(declared, 'THEME_RADII should list the presets the picker offers')
+      .toEqual(['sharp', 'rounded', 'pill']);
+
+    // ':root' carries the middle preset — "rounded" IS the absence of an
+    // override, which is why it has no block of its own.
+    expect(/:root[^}]*--radius:\s*[\d.]+rem/.test(css), ':root must define --radius').toBe(true);
+    const missing = declared
+      .filter((r) => r !== 'rounded')
+      .filter((r) => !new RegExp(`\\[data-radius="${r}"\\][^}]*--radius:`).test(css));
+    expect(missing, 'a preset with no --radius override does nothing at all').toEqual([]);
+  });
+
+  it('assigns --radius nowhere but the stylesheet', () => {
+    // One writer, one place. A component redefining it would scope the
+    // Corners setting to its own subtree and the picker would appear to
+    // half-work — the failure is invisible until someone tries Sharp.
+    const offenders = FILES
+      // The quote matters: in TS the key has to be written `'--radius':`,
+      // so a regex expecting the colon straight after the name misses
+      // every realistic way a component would actually do this.
+      .filter(({ src }) => /--radius['"`]?\s*:/.test(src))
+      .map(({ rel }) => `${rel} assigns --radius; index.css owns it`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps the borderRadius scale derived from the token', () => {
+    // Seven of nine keys must read --radius. `none` and `full` are
+    // deliberately literal: they are shapes, not softness (design.md §6).
+    const cfg = readFileSync(join(SRC, '..', 'tailwind.config.js'), 'utf8');
+    const block = /borderRadius:\s*\{([\s\S]*?)\n\s{6}\}/.exec(cfg)?.[1] ?? '';
+    expect(block, 'no borderRadius block found in tailwind.config.js').not.toBe('');
+    const derived = (block.match(/var\(--radius\)/g) ?? []).length;
+    expect(
+      derived,
+      'the borderRadius scale stopped deriving from --radius — the Corners ' +
+        'picker would still stamp the attribute and nothing would move',
+    ).toBeGreaterThanOrEqual(5);
+    for (const key of ['sm', 'md', 'lg', 'xl'])
+      expect(new RegExp(`['"\`]?${key}['"\`]?\\s*:`).test(block), `${key} missing`).toBe(true);
+  });
+
   it('is counted correctly in design.md', () => {
     const doc = readFileSync(join(SRC, '..', 'design.md'), 'utf8');
     const NUMBER: Record<string, number> = {
       ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
       fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
       twenty: 20, 'twenty-one': 21, 'twenty-two': 22, 'twenty-three': 23,
+      'twenty-four': 24, 'twenty-five': 25, 'twenty-six': 26,
+      'twenty-seven': 27, 'twenty-eight': 28, 'twenty-nine': 29, thirty: 30,
     };
     const claimed = /\b([A-Za-z-]+) live in `src\/components\/ui\/chrome\.test\.ts`/
       .exec(doc)?.[1]?.toLowerCase();

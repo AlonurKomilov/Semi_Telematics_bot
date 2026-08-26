@@ -15,6 +15,8 @@ import { SectionHeader } from '@/components/shell';
 import { CHART_FONT_MD } from "@/lib/chartText";
 import { CHART_FONT_XS } from "@/lib/chartText";
 import { scaledPx } from '@/lib/scaledLength';
+import { useRadiusPx } from '@/lib/radius';
+import { RoundedBar } from '@/components/charts/RoundedBar';
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
 // and we backfill empty months with zero so the gap pattern is honest
@@ -107,6 +109,7 @@ export function ServiceHistoryModal({
   // invoices.  WOs already linked from a task are deduped (the task
   // card carries the link); the rest render as standalone invoice
   // cards.  Standalone-WO spend joins the Total Spend stat.
+  const radiusPx = useRadiusPx();
   const { entries, standaloneWoCents } = useMemo(() => {
     const tasks = (data?.tasks ?? []).map(t => ({
       kind: 'task' as const,
@@ -216,12 +219,12 @@ export function ServiceHistoryModal({
                         contentStyle={{
                           background: 'var(--card)',
                           border: '1px solid var(--border)',
-                          borderRadius: 6,
+                          borderRadius: 'var(--radius)',
                           fontSize: CHART_FONT_MD,
                         }}
                         formatter={(v: unknown) => [String(v), 'services']}
                       />
-                      <Bar dataKey="count" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="count" fill="var(--chart-1)" shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

@@ -171,6 +171,17 @@ Every badge/chip uses one treatment: a **15% tinted fill + solid text +
 [`StatusBadge`](src/components/StatusBadge.tsx): **`rounded-md · px-2
 py-0.5 · text-xs font-medium`**. One corner shape everywhere; a status
 pill is never `rounded-full` on one page and square-ish on another.
+
+**Shape is the grammar, and it says one thing: a CAPSULE
+(`rounded-full`) states a FACT you read; a bordered rounded rectangle
+invites a CLICK.** The rule was already written down in
+`features/alerts/_shared/components.tsx`, and the rest of the app
+already followed it — a census found twelve static capsules against two
+clickable ones. The two exceptions were converted (owner decision,
+2026-08-26): Scorecards' pillar filter and the AI composer's suggestion
+chip. It matters most at **Sharp**, where a rounded rect collapses to
+2px and a capsule stays a capsule — the setting that makes the grammar
+loudest is the one that exposes a broken one.
 (Dense table cells may drop to `text-2xs`, keeping the rest.)  Close ✕
 icons follow the same two-step idea: `12` inside chips/tags, `16` in
 modal/panel headers.
@@ -366,8 +377,13 @@ pill) reshapes the whole UI from it.
 
 - Use `rounded`, `rounded-md`, `rounded-lg`, `rounded-xl` — they all
   track `--radius`. `rounded-lg` is the card default.
-- `rounded-full` (dots, avatars, pills) and `rounded-none` are shapes,
-  not softness — leave them.
+- `rounded-full` and `rounded-none` are shapes, not softness — leave
+  them. `rounded-full` is for something CIRCULAR by geometry (a dot, an
+  avatar, a spinner), something CAPSULE by geometry (a switch track, a
+  scrollbar thumb), or a counter that must be a circle at one digit and
+  a capsule at two. It is **not** a way to say "very round", and it is
+  not available to a control — see §3: a capsule states a fact. (This
+  line used to list "pills" and contradicted §3 outright.)
 - **Never** hardcode `rounded-[10px]` or use `rounded-4xl` (it ignores
   the user's Corners setting — see the StatusBadge fix for why).
 - **JS-drawn geometry** (SVG paths, canvas arcs) is bound by the same
@@ -560,6 +576,18 @@ them next to a comment saying so.
 ## 8. Charts & maps
 
 
+**Chart GEOMETRY follows the Corners setting; map geometry does not.**
+A chart bar is a rectangle on a page like any other and rounds with it —
+but through `components/charts/RoundedBar.tsx`, never the `radius` prop.
+Two reasons, both mechanical: recharts takes a NUMBER (`getRectanglePath`
+branches on `radius === +radius`, so `'var(--radius)'` draws square
+corners and reports nothing), and `radius` is one static tuple for a
+whole series, so it cannot know how thick any individual bar turned out.
+A 6px bar with a 16px corner is a lozenge, and a bar's height IS its
+value — so the corner is **clamped to half the bar's smaller dimension**.
+Map markers keep the exemption below for the same reason their lengths
+do: they are measured against tiles with their own zoom.
+
 **Map-canvas LENGTHS ride the map's own scale, not the Size engine.**
 A marker, its badge and its label are measured against the tiles they sit
 on, which have their own zoom; growing them with the interface setting
@@ -685,7 +713,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Twenty live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Twenty-five live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -715,6 +743,11 @@ this table has any chance of staying true.
 | no literal length in an inline `style` (§5.1) | the one spelling the arbitrary-length rule cannot see — a number in a style object is not a class. `lib/scaledLength.ts` is the replacement, mirroring the config's axis-by-magnitude rule |
 | the tap floor rides no axis (§5.1) | reads `tailwind.config.js` — `tap` must stay a literal `24px`, because `tapHeight`/`tapWidth` return a hardcoded 24 for it and would keep saying so if it ever became scalable |
 | no `text-3xs` (§7) | the 10px step is retired — it rendered 8.5px at the 85% floor. Aliased to `2xs` in the config so any straggler still renders, but nothing new may use it |
+| no corner outside the scale (§6) | `rounded-[Npx]` ignores the setting; `rounded-4xl` is worse — a step the scale never defined, so it compiles to nothing and falls back to square. Comments are stripped first, so StatusBadge's write-up of the old bug is not itself a bug |
+| a capsule is never a control (§3) | `rounded-full` on a text-bearing `<button>`/`<a>`. Circular BY GEOMETRY — an icon button in a square box — is exempt and detected by its own size classes |
+| the three Corners presets stay wired | reads `index.css` — the first test in this repo to open a stylesheet. Without it a fourth preset ships as a silent no-op, and an existing one can be neutered by deleting a line |
+| `--radius` is assigned only in the stylesheet | a component redefining it would scope the picker to its own subtree, and the half-failure is invisible until someone tries Sharp |
+| the borderRadius scale still derives from `--radius` | reads `tailwind.config.js`; `none` and `full` are deliberately literal |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

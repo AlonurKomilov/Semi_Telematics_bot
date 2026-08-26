@@ -11,6 +11,7 @@ import DataGrid from '../../components/datagrid';
 import { Button } from '../../components/ui/button';
 import StatementDrawer from './StatementDrawer';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -315,9 +316,9 @@ function RunsTab() {
             render: (v) => {
               const s = String(v);
               return (
-                <span className={`px-2 py-0.5 rounded text-xs border ${
-                  toneClasses(s === 'finalized' ? 'ok' : s === 'cancelled' ? 'neutral' : 'warn')
-                }`}>{s}</span>
+                <Badge tone={s === 'finalized' ? 'ok' : s === 'cancelled' ? 'neutral' : 'warn'}>
+                  {s}
+                </Badge>
               );
             },
           },

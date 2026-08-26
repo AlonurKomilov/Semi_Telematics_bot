@@ -27,7 +27,7 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey={xKey} tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
             <YAxis tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
-            <Tooltip />
+            <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (
               <Line key={s.key} type="monotone" dataKey={s.key} name={s.label ?? s.key}
@@ -39,7 +39,7 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey={xKey} tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
             <YAxis tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
-            <Tooltip />
+            <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (
               <Bar key={s.key} dataKey={s.key} name={s.label ?? s.key} fill={chartColor(i + 1)} />

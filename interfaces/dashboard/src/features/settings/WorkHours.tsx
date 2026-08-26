@@ -192,7 +192,7 @@ export function WorkHoursPanel() {
           <button
             key={r}
             onClick={() => setRoleFilter(r)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
               roleFilter === r ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
             } min-h-tap`}
           >

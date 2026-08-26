@@ -27,9 +27,10 @@ import {
   EmptyState,
   Greeting,
 } from '../../components/shell';
-import { toneClasses, toneText } from '../../lib/status';
+import { toneText } from '../../lib/status';
 import type { DashboardStats } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface DriverOverviewProps {
   stats: DashboardStats;
@@ -89,17 +90,14 @@ export default function DriverOverview({
                   {truck.name}
                 </h2>
               </div>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium border ${
-                  toneClasses(
-                    truck.status === 'Moving' ? 'ok'
-                    : truck.status === 'Idle' ? 'warn'
-                    : 'danger',
-                  )
-                }`}
+              {/* A FACT about the truck, not a control — but a capsule is for
+                  something circular or capsule BY GEOMETRY (design.md §3), and a
+                  status word is neither. The tone layer ships the geometry. */}
+              <Badge
+                tone={truck.status === 'Moving' ? 'ok' : truck.status === 'Idle' ? 'warn' : 'danger'}
               >
                 {truck.status}
-              </span>
+              </Badge>
             </div>
             <div className="grid grid-cols-fit-36 gap-4">
               <div>

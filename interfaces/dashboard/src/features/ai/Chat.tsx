@@ -1948,7 +1948,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <button
                           key={i}
                           onClick={() => send(s)}
-                          className="px-2.5 py-1 text-2xs rounded-full bg-card hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors min-h-tap"
+                          // A suggestion you SEND — a control, so a rounded rect, not a
+                          // capsule. Capsule states a fact (see
+                          // features/alerts/_shared/components.tsx).
+                          className="px-2.5 py-1 text-2xs rounded-md bg-card hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors min-h-tap"
                         >
                           {s}
                         </button>

@@ -505,7 +505,7 @@ export default function PivotPanel({
       >
         <button
           type="button"
-          className="px-1.5 py-0.5 rounded-full border border-border text-2xs text-muted-foreground hover:border-ring hover:text-foreground transition py-0.5 -my-0.5 min-h-tap"
+          className="px-1.5 py-0.5 rounded-md border border-border text-2xs text-muted-foreground hover:border-ring hover:text-foreground transition py-0.5 -my-0.5 min-h-tap"
         >
           {AGG_FN_LABELS[picked.aggFn].toLowerCase()}
         </button>

@@ -39,6 +39,8 @@ import { Tip } from '../../components/tooltip';
 import { Badge } from '@/components/ui/badge';
 
 import { CHART_FONT_2XS, CHART_FONT_MD, CHART_FONT_SM, CHART_FONT_XS } from "@/lib/chartText";
+import { useRadiusPx } from '@/lib/radius';
+import { RoundedBar } from '@/components/charts/RoundedBar';
 // ── Color helpers ───────────────────────────────────────────────────
 
 // Single source of truth for score → bucket.  Thresholds are
@@ -121,6 +123,7 @@ function ScoreGauge({ score, tierLabel }: { score: number; tierLabel: string }) 
 // ── Score-distribution histogram ─────────────────────────────────────
 
 function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
+  const radiusPx = useRadiusPx();
   // Band fill follows the score tone (ok ≥ 70, warn ≥ 40, danger below)
   // so the histogram reads with the same good/attention/bad language as
   // the gauge and badges.
@@ -145,7 +148,7 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
             return [`${v} trucks (${pct}%)`, 'Count'];
           }}
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
-        <Bar dataKey="count" radius={[6, 6, 0, 0]} label={{ position: 'top', fontSize: CHART_FONT_XS, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
+        <Bar dataKey="count" shape={<RoundedBar corners="top" radiusPx={radiusPx} />} label={{ position: 'top', fontSize: CHART_FONT_XS, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
           {buckets.map((b) => <Cell key={b.label} fill={b.color} />)}
         </Bar>
       </BarChart>
@@ -156,6 +159,7 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
 // ── Top vs Bottom comparative chart ──────────────────────────────────
 
 function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
+  const radiusPx = useRadiusPx();
   // Memoise so we sort/slice only when `cards` actually changes — not on
  // every parent re-render.
   const { top, bottom } = useMemo(() => {
@@ -176,7 +180,7 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
             formatter={(v) => [`${v}`, 'Score']}
             contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
           <ReferenceLine x={70} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
-          <Bar dataKey="score" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }}>
+          <Bar dataKey="score" shape={<RoundedBar corners="right" radiusPx={radiusPx} />} label={{ position: 'right', fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }}>
             {items.map((d, i) => <Cell key={i} fill={scoreVar(d.score)} />)}
           </Bar>
         </BarChart>
@@ -941,7 +945,12 @@ export default function Scorecards() {
                     onClick={() => setPillarFilter(c.k)}
                     aria-pressed={active}
                     aria-label={t('scorecards.filter_aria', { pillar: label.replace(/^\W+\s*/, '') })}
-                    className={`text-xs px-3 py-1 rounded-full border transition ${
+                    // A pillar FILTER — you press it. Shape is the grammar here
+                  // (features/alerts/_shared/components.tsx): a capsule
+                  // states a fact, a bordered rounded-rect invites a
+                  // click. This file had it inverted against its own score
+                  // badge four hundred lines up, which is a rectangle.
+                  className={`text-xs px-3 py-1 rounded-md border transition ${
                       active
                         ? 'border-transparent text-white'
                         : 'border-border text-foreground/70 hover:bg-muted'
