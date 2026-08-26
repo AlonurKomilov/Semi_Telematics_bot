@@ -22,6 +22,7 @@
  * Group/forum routing is a separate admin surface under /alerts.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
 import { apiJSON } from '@/api/client';
@@ -30,7 +31,6 @@ import EmailChannelCard from './EmailChannelCard';
 import PushChannelCard from './PushChannelCard';
 import NotifyMatrix from './NotifyMatrix';
 import AccountActivitySection from './AccountActivitySection';
-import AlertTriggersSection from './AlertTriggersSection';
 import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
 import { useSavedFlash } from './_shared/useSavedFlash';
@@ -218,8 +218,20 @@ export default function MyNotifications() {
         refreshKey={refreshKey}
       />
 
-      <SourceLabel>Alerts — my own triggers</SourceLabel>
-      <AlertTriggersSection onSaved={flashSaved} />
+      {/* The triggers themselves moved to Alerts → Triggers, and this
+          line is what stops the move from reading as a deletion to
+          anyone who set one here.  It stays a POINTER rather than a
+          second editor: a trigger carries its own channels now, which
+          this page's matrix — one row per alert TYPE, shared by everyone
+          who receives it — has no way to express. */}
+      <p className="text-xs text-muted-foreground mt-2">
+        Watching for your own numbers — "tell me when DEF drops below 10%" —
+        lives on the Alerts page now, where you can also see what each one
+        has caught.{' '}
+        <Link to="/alerts/triggers" className="text-primary hover:underline">
+          My alert triggers →
+        </Link>
+      </p>
 
       <SourceLabel>Account activity</SourceLabel>
       <AccountActivitySection refreshKey={refreshKey} section="personal" onSaved={flashSaved} />

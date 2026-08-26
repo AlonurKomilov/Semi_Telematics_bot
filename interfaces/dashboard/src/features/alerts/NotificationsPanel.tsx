@@ -56,7 +56,15 @@ type Tab = 'all' | 'critical';
 // 'all' interleaves every source by time — the default landing view.
 // Applications is permission-gated the way Alerts is: a bucket you can
 // never receive shouldn't cost you a tab.
-type Source = 'all' | 'alerts' | 'applications' | 'activity' | 'system';
+type Source = 'all' | 'alerts' | 'triggers' | 'applications' | 'activity' | 'system';
+
+/** The category a fired personal trigger arrives under.  It lives in the
+ *  ``alert`` namespace so alerting owns one inbox source — but it is not
+ *  an Alerts-tab row: the Alerts tab is the account's shared queue, read
+ *  from ``/alerts/pending``, and a trigger writes no board row at all.
+ *  Filtering on the exact CATEGORY rather than the source is what keeps
+ *  those two apart. */
+const TRIGGER_CATEGORY = 'alert.trigger';
 
 // One row of the merged All feed — an alert or a notice, time-sortable.
 type MergedItem =
@@ -92,11 +100,17 @@ export function NotificationsPanel(
     () => notices.filter((n) => n.source === 'system'), [notices]);
   const applicationNotices = useMemo(
     () => notices.filter((n) => n.source === 'applications'), [notices]);
+  // A person's own fired triggers.  Their own bucket, never mixed into
+  // Alerts: nobody else received these, nobody else can act on them, and
+  // an Acknowledge verb over them would be acknowledging to yourself.
+  const triggerNotices = useMemo(
+    () => notices.filter((n) => n.category === TRIGGER_CATEGORY), [notices]);
   // Fail OPEN: without the Applications tab, application notices stay in
   // Activity rather than vanishing — a permission revoked after delivery
   // must not hide notices the person already holds.
   const activityNotices = useMemo(
     () => notices.filter((n) => n.source !== 'system'
+      && n.category !== TRIGGER_CATEGORY
       && !(canApplications && n.source === 'applications')), [notices, canApplications]);
   // Per-tab counts come from the loaded page (newest 30) — a glance
   // number, deliberately approximate past that window.  The BELL badge
@@ -105,6 +119,10 @@ export function NotificationsPanel(
   // Force a valid tab if permissions shift under us.
   if (src === 'alerts' && !canAlerts) setSrc('all');
   if (src === 'applications' && !canApplications) setSrc('all');
+  // The Triggers pill exists only while there are triggers to show, so
+  // the last one ageing out of the page mid-session has to move the
+  // person somewhere rather than leaving them on a tab that is gone.
+  if (src === 'triggers' && triggerNotices.length === 0) setSrc('all');
   // Ids inside a pending "Acknowledge all" window — module-level store, so
   // the hide survives this panel unmounting when the dropdown closes (a
   // reopened panel must NOT resurface rows that are mid-countdown, and
@@ -132,6 +150,7 @@ export function NotificationsPanel(
   const contributingSources =
     [(canAlerts ? alerts.length : 0) > 0,
      canApplications && applicationNotices.length > 0,
+     triggerNotices.length > 0,
      activityNotices.length > 0,
      systemNotices.length > 0].filter(Boolean).length;
 
@@ -207,7 +226,7 @@ export function NotificationsPanel(
   };
 
   return (
-    <div className="flex flex-col max-h-[32rem]">
+    <div className="flex flex-col max-h-128">
       {/* Header — title + refresh + preferences gear (the ONE settings door) */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
         {/* The bell is the Notifications door; this panel is its glance.
@@ -254,6 +273,16 @@ export function NotificationsPanel(
           <TabPill active={src === 'alerts'} onClick={() => setSrc('alerts')}
                    dim={alerts.length === 0}>
             Alerts{alerts.length ? ` ${alerts.length}` : ''}
+          </TabPill>
+        )}
+        {/* Only while there is something in it.  Every other pill names a
+            bucket everyone receives; triggers are opt-in, and a permanent
+            empty tab would charge the whole account for a feature most
+            people never turn on. */}
+        {triggerNotices.length > 0 && (
+          <TabPill active={src === 'triggers'} onClick={() => setSrc('triggers')}
+                   dim={unreadOf(triggerNotices) === 0}>
+            Triggers{unreadOf(triggerNotices) ? ` ${unreadOf(triggerNotices)}` : ''}
           </TabPill>
         )}
         {canApplications && (
@@ -369,6 +398,7 @@ export function NotificationsPanel(
         (() => {
           const list = src === 'system' ? systemNotices
             : src === 'applications' ? applicationNotices
+            : src === 'triggers' ? triggerNotices
             : activityNotices;
           return (
             <>
@@ -382,6 +412,8 @@ export function NotificationsPanel(
                     ? 'No system notices'
                     : src === 'applications'
                     ? 'No new applications'
+                    : src === 'triggers'
+                    ? 'Nothing your triggers caught'
                     : 'No account activity yet'} />
                 ) : (
                   <ul className="divide-y divide-border/60">
@@ -407,11 +439,15 @@ export function NotificationsPanel(
                   unread={inbox?.unread ?? 0}
                   onClick={() => void markAllRead()}
                 />
+                {/* Triggers lead to the page that OWNS them — where the
+                    same person sets them and reads the full history —
+                    rather than to the generic notice archive. */}
                 <button
-                  onClick={() => goto('/notifications')}
+                  onClick={() => goto(src === 'triggers' ? '/alerts/triggers' : '/notifications')}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline py-1 -my-1 min-h-tap"
                 >
-                  See all <ArrowRight className="size-3.5" aria-hidden />
+                  {src === 'triggers' ? 'My triggers' : 'See all'}
+                  <ArrowRight className="size-3.5" aria-hidden />
                 </button>
               </div>
             </>
@@ -506,7 +542,7 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
                    company chip in maintenance/Tasks.tsx (same "disambiguate
                    a shared vehicle name" job → identical styling per the
                    design rules). */
-                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs">
+                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-2xs">
                   {alert.company}
                 </span>
               )}
@@ -514,12 +550,12 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
                 /* How long this alert has been OPEN (first_seen).  The age
                    on the right is the last FIRE — a chronic alert that keeps
                    re-firing reads "18m ago" and hides that it's days old. */
-                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs">
+                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-2xs">
                   {openFor}
                 </span>
               )}
             </span>
-            <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
+            <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
           </span>
           {detail && (
             <span className="block text-xs text-muted-foreground truncate mt-0.5">{detail}</span>
@@ -588,7 +624,7 @@ export function InboxRow({ notice, onOpen, onAction }: {
           <span className="flex-1 min-w-0">
             <span className="flex items-baseline justify-between gap-2">
               <span className="text-sm font-medium truncate">{notice.title}</span>
-              <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
+              <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
             </span>
             {notice.body && (
               <span className={`block text-xs text-muted-foreground mt-0.5 ${

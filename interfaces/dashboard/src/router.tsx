@@ -126,6 +126,7 @@ const Profile          = lazyWithReload(() => import('./pages/Profile'));
 const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
 const NotificationCenter = lazyWithReload(() => import('./features/alerts/NotificationCenter'));
 const GroupDelivery    = lazyWithReload(() => import('./features/alerts/GroupDelivery'));
+const MyTriggers       = lazyWithReload(() => import('./features/alerts/MyTriggers'));
 const Storage          = lazyWithReload(() => import('./features/object-storage/ObjectStorage'));
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
 const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
@@ -320,6 +321,13 @@ export default function AppRouter() {
         <Route path="notifications/preferences" element={L(<MyNotifications />)} />
         <Route path="alerts/preferences" element={<Navigate to="/notifications/preferences" replace />} />
         <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
+        {/* Deliberately UNGATED, unlike the Board beside it: a trigger is
+            self-scoped — it watches only the vehicles its owner can
+            already see and delivers to nobody else — so requiring an
+            alerts permission here would take the feature away from the
+            people who reached it from notification preferences, where it
+            used to live and where no permission gated it either. */}
+        <Route path="alerts/triggers" element={L(<MyTriggers />)} />
         <Route path="object-storage" element={L(<P perm="can_manage_storage"><Storage /></P>)} />
         {/* bookmarks + the historical /admin/storage redirect land here */}
         <Route path="storage" element={<Navigate to="/object-storage" replace />} />

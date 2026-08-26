@@ -8,10 +8,13 @@
  * word for one concept, which is the same-name-two-things confusion the
  * clarity rules exist to stop, just wearing the other face.
  *
- * The other sections on this page answer *where* a notice reaches you.
- * This one answers *whether there is one at all*, which is why it reads
- * as a sentence rather than a matrix: you are writing "tell me when DEF
- * drops below 10%", not ticking a channel.
+ * It sits on the ALERTS page, not on notification preferences, and the
+ * split is deliberate: the preferences matrix answers *where a category
+ * of notice reaches you*, one row per alert type shared by everyone who
+ * receives it.  A trigger is not a category — it is a sentence one person
+ * wrote — and its delivery is per TRIGGER, which the matrix cannot say.
+ * A single row there could only mean "all my triggers, one way"; here,
+ * DEF can reach your phone while battery waits for email.
  *
  * The form is rendered ENTIRELY from ``/alerts/triggers/metrics``.  No
  * metric, unit, range or direction is hardcoded here — adding "watch
@@ -64,14 +67,34 @@ interface Trigger {
   describes: string;
   unit: string | null;
   direction: 'below' | 'above' | null;
+  /** The EXTRA channels this trigger asked for. */
+  channels: string[];
+  /** Everything it actually reaches, bell included — the server's list,
+   *  so the UI never has to know that the bell is implicit. */
+  delivers_to: string[];
 }
+
+/** Channel keys are wire values; these are the words a person reads.  A
+ *  key with no entry here still renders (as its key) rather than
+ *  vanishing, so a channel added server-side is visible before this file
+ *  catches up. */
+const CHANNEL_LABEL: Record<string, string> = {
+  telegram_dm: 'Telegram',
+  email: 'Email',
+  web_push: 'Push',
+};
 
 const API = '/alerts/triggers';
 
-export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void }) {
+export default function AlertTriggersSection(
+  { onChanged }: { onChanged?: () => void },
+) {
   const [metrics, setMetrics] = useState<MetricSpec[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [maxPerUser, setMaxPerUser] = useState(0);
+  // Which extra channels EXIST, from the server — not a hardcoded three.
+  const [channelKeys, setChannelKeys] = useState<string[]>([]);
+  const [defaultChannels, setDefaultChannels] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   // A SET, not a scalar: two requests in flight would otherwise have the
@@ -97,16 +120,26 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
   const [adding, setAdding] = useState(false);
   const [draftMetric, setDraftMetric] = useState('');
   const [draftValue, setDraftValue] = useState('');
+  // The new trigger's channels.  Seeded from the server default on open
+  // rather than left empty: an unticked form would create a trigger that
+  // only ever reaches the bell, which is not what someone writing
+  // "tell me when DEF drops" is asking for.
+  const [draftChannels, setDraftChannels] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setFailed(false);
     try {
       const [cat, mine] = await Promise.all([
-        apiJSON<{ metrics: MetricSpec[]; max_per_user: number }>(`${API}/metrics`),
+        apiJSON<{
+          metrics: MetricSpec[]; max_per_user: number;
+          channels: string[]; default_channels: string[];
+        }>(`${API}/metrics`),
         apiJSON<{ triggers: Trigger[] }>(API),
       ]);
       setMetrics(cat.metrics);
       setMaxPerUser(cat.max_per_user);
+      setChannelKeys(cat.channels || []);
+      setDefaultChannels(cat.default_channels || []);
       setTriggers(mine.triggers);
     } catch {
       setFailed(true);
@@ -142,13 +175,17 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
     try {
       const made = await apiJSON<Trigger>(API, {
         method: 'POST',
-        body: { metric: draftMetric, threshold: Number(draftValue) },
+        body: {
+          metric: draftMetric, threshold: Number(draftValue),
+          channels: draftChannels,
+        },
       });
       setTriggers((cur) => [made, ...cur]);
       setAdding(false);
       setDraftMetric('');
       setDraftValue('');
-      onSaved?.();
+      setDraftChannels([]);
+      onChanged?.();
       // The form unmounts — put focus somewhere deliberate rather than
       // letting it fall to <body>.
       requestAnimationFrame(() => addBtnRef.current?.focus());
@@ -173,7 +210,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
         method: 'PATCH', body: { enabled },
       });
       setTriggers((cur) => cur.map((x) => (x.id === t.id ? fresh : x)));
-      onSaved?.();
+      onChanged?.();
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
         // Deleted elsewhere. Drop it rather than restoring a ghost.
@@ -181,6 +218,34 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
         return;
       }
       setTriggers((cur) => cur.map((x) => (x.id === t.id ? { ...x, enabled: !enabled } : x)));
+      toast.error(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      mark(t.id, false);
+    }
+  };
+
+  const setChannels = async (t: Trigger, channel: string, on: boolean) => {
+    if (busy.has(t.id)) return;
+    const next = on
+      ? [...t.channels, channel]
+      : t.channels.filter((c) => c !== channel);
+    // Surgical, for the same reason `toggle` is: a whole-array snapshot
+    // restored on failure would resurrect a row a concurrent delete had
+    // already taken away.
+    setTriggers((cur) => cur.map((x) => (x.id === t.id ? { ...x, channels: next } : x)));
+    mark(t.id, true);
+    try {
+      const fresh = await apiJSON<Trigger>(`${API}/${t.id}`, {
+        method: 'PATCH', body: { channels: next },
+      });
+      setTriggers((cur) => cur.map((x) => (x.id === t.id ? fresh : x)));
+      onChanged?.();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        setTriggers((cur) => cur.filter((x) => x.id !== t.id));
+        return;
+      }
+      setTriggers((cur) => cur.map((x) => (x.id === t.id ? t : x)));
       toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
       mark(t.id, false);
@@ -202,10 +267,10 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
     mark(t.id, true);
     try {
       await apiJSON(`${API}/${t.id}`, { method: 'DELETE' });
-      onSaved?.();
+      onChanged?.();
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        onSaved?.();          // already gone — the goal, not a failure
+        onChanged?.();          // already gone — the goal, not a failure
         return;
       }
       // Put back exactly the one row, at the place it came from.
@@ -225,7 +290,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
   // shoves every section below it down the page.
   const heading = (
     <SectionHeader size="card" icon={<BellRing className="size-4" />} className="mb-1">
-      My alert triggers
+      Triggers I set
     </SectionHeader>
   );
 
@@ -257,11 +322,10 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
     <Card render={<section />}>
       {heading}
       <p className="text-xs text-muted-foreground mb-3">
-        Your own triggers, on the vehicles you can see. A crossing reaches
-        you in the bell, plus Telegram and email if you’ve connected them
-        above. It never posts to the shared Alerts board — so setting one
-        adds nothing to anyone else’s queue, and you won’t find it on the
-        Alerts page.
+        Your own triggers, on the vehicles you can see. Every one reaches
+        your bell; tick where else it should reach you. None of them post
+        to the shared Alerts board — setting one adds nothing to anyone
+        else’s queue, and what yours have caught is listed below.
       </p>
       <p className="text-xs text-muted-foreground mb-3">
         You hear on the <span className="text-foreground">crossing</span>:
@@ -312,6 +376,32 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
                     where the question occurs, not in a help page. */}
                 {m?.requires_engine === 'on' && (
                   <span className="text-2xs text-muted-foreground">while running</span>
+                )}
+
+                {/* Checkboxes, not switches: this is MEMBERSHIP — which
+                    set of channels carries this trigger — and the switch
+                    on the left already owns the behaviour question.  The
+                    bell is not among them and is not offered: a trigger
+                    that fired and left no record is indistinguishable
+                    from one that never fired. */}
+                {m && (
+                  <span className="flex items-center gap-2.5">
+                    {channelKeys.map((c) => (
+                      <label key={c}
+                             className="flex items-center gap-1 text-2xs
+                                        text-muted-foreground cursor-pointer
+                                        min-h-tap">
+                        <input
+                          type="checkbox"
+                          className="accent-primary cursor-pointer"
+                          checked={t.channels.includes(c)}
+                          onChange={(e) => { void setChannels(t, c, e.target.checked); }}
+                          aria-label={`${CHANNEL_LABEL[c] ?? c} — ${t.describes}`}
+                        />
+                        {CHANNEL_LABEL[c] ?? c}
+                      </label>
+                    ))}
+                  </span>
                 )}
                 {/* A row naming a metric the catalog no longer carries
                     stays visible and deletable rather than vanishing. */}
@@ -421,6 +511,33 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
             </Tip>
           </div>
 
+          {/* Where it should reach you, decided WITH the sentence rather
+              than after it: the number and the delivery are one thought
+              ("tell me on Telegram when DEF drops below 10%"), and a
+              trigger saved before that question is asked is a trigger
+              someone has to go back and edit. */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-2xs text-muted-foreground">
+              Always in your bell. Also send to
+            </span>
+            {channelKeys.map((c) => (
+              <label key={c}
+                     className="flex items-center gap-1 text-2xs
+                                text-muted-foreground cursor-pointer
+                                min-h-tap">
+                <input
+                  type="checkbox"
+                  className="accent-primary cursor-pointer"
+                  checked={draftChannels.includes(c)}
+                  onChange={(e) => setDraftChannels((cur) => (
+                    e.target.checked ? [...cur, c] : cur.filter((x) => x !== c)
+                  ))}
+                />
+                {CHANNEL_LABEL[c] ?? c}
+              </label>
+            ))}
+          </div>
+
           {/* The range lives HERE, not only in the placeholder — a
               placeholder vanishes on the first keystroke, which is exactly
               when someone needs to know the bounds.  Followed by the
@@ -451,6 +568,11 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
             onClick={() => {
               if (atCap) return;
               setAdding(true);
+              // Seed the SERVER's default rather than an empty set: a
+              // blank form would quietly create bell-only triggers, and
+              // "I set it and my phone never buzzed" is the support
+              // ticket that follows.
+              setDraftChannels(defaultChannels);
               // Enter the form rather than leaving focus on a button that
               // just vanished from the reading order.
               requestAnimationFrame(() => metricRef.current?.focus());

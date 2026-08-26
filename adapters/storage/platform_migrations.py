@@ -4655,6 +4655,13 @@ async def migrate_alert_triggers(conn) -> None:
             "CREATE INDEX IF NOT EXISTS idx_alert_triggers_enabled "
             "ON alert_triggers(enabled, account_id)"
         )
+        # Per-trigger delivery.  Added after the table shipped, so the
+        # default is what every existing row was already getting through
+        # the (now retired) single matrix row.
+        await conn.execute(
+            "ALTER TABLE alert_triggers ADD COLUMN IF NOT EXISTS channels "
+            "TEXT NOT NULL DEFAULT 'telegram_dm,email'"
+        )
         await conn.commit()
         logger.info("Migration: alert_triggers ready")
     except Exception as e:

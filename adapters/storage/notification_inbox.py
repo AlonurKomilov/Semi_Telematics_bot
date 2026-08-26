@@ -55,11 +55,22 @@ class NotificationInboxMixin(_MixinBase):
 
     async def list_inbox_notices(
         self, account_id: int, user_id: int, *,
-        source: str = "", limit: int = 30, before_id: int | None = None,
+        source: str = "", category: str = "", exclude_category: str = "",
+        limit: int = 30, before_id: int | None = None,
     ) -> list[dict]:
-        """Newest-first page of a user's notices.  ``source`` filters to one
-        namespace tab; ``before_id`` is keyset pagination (ids are
-        monotonic, so this stays index-backed at any depth)."""
+        """Newest-first page of a user's notices.
+
+        ``source`` filters to one namespace bucket; ``before_id`` is keyset
+        pagination (ids are monotonic, so this stays index-backed at any
+        depth).
+
+        ``category`` narrows INSIDE a source, which a bucket cannot do: an
+        alert trigger and an engine fault share the ``alert`` namespace by
+        design, and a tab showing only the first needs the finer key.
+        ``exclude_category`` is its complement — what the broader tab must
+        stop showing once the narrower one exists, so one notice never
+        appears under two tabs at once.
+        """
         q = ("SELECT * FROM notification_inbox "
              "WHERE account_id = ? AND user_id = ?")
         params: list = [account_id, user_id]
@@ -79,6 +90,15 @@ class NotificationInboxMixin(_MixinBase):
             ph = ", ".join("?" for _ in wanted)
             q += f" AND source IN ({ph})"
             params.extend(wanted)
+        # Exact match, and never validated against a registry: a category
+        # is a stable wire key, and an unknown one legitimately matches
+        # nothing rather than everything.
+        if category:
+            q += " AND category = ?"
+            params.append(category)
+        if exclude_category:
+            q += " AND category <> ?"
+            params.append(exclude_category)
         if before_id is not None:
             q += " AND id < ?"
             params.append(before_id)

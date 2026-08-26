@@ -24,7 +24,7 @@ class AlertTriggersMixin:
         Omitted → the whole account's, which is what the evaluator sweeps.
         """
         q = ("SELECT id, account_id, owner_user_id, metric, threshold, scope, "
-             "       origin, enabled, severity, created_at, updated_at "
+             "       origin, enabled, severity, channels, created_at, updated_at "
              "  FROM alert_triggers WHERE account_id = ?")
         params: list = [account_id]
         if owner_user_id is not None:
@@ -42,7 +42,7 @@ class AlertTriggersMixin:
         subscribers in one pass rather than per account."""
         cur = await self._db.execute(
             "SELECT id, account_id, owner_user_id, metric, threshold, scope, "
-            "       origin, enabled, severity "
+            "       origin, enabled, severity, channels "
             "  FROM alert_triggers WHERE enabled = 1 ORDER BY account_id, id"
         )
         return [dict(r) for r in await cur.fetchall()]
@@ -60,6 +60,11 @@ class AlertTriggersMixin:
         self, account_id: int, owner_user_id: int, *, metric: str,
         threshold: float, severity: str = "warning",
         scope: str = "personal", origin: str = "user",
+        # Mirrors DEFAULT_CHANNELS_CSV in capabilities/alerting/triggers/
+        # models.py, which is the SSOT — repeated as a literal because
+        # adapters may not import from capabilities.  Only ever reached
+        # by a caller that passes nothing; the router always passes.
+        channels: str = "telegram_dm,email",
     ) -> dict[str, Any]:
         """Insert one trigger and return it.
 
@@ -72,11 +77,11 @@ class AlertTriggersMixin:
         cur = await self._db.execute(
             """INSERT INTO alert_triggers
                  (account_id, owner_user_id, metric, threshold, scope,
-                  origin, enabled, severity, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                  origin, enabled, severity, channels, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
                RETURNING id""",
             (account_id, owner_user_id, metric, float(threshold), scope,
-             origin, severity, now, now),
+             origin, severity, channels, now, now),
         )
         row = await cur.fetchone()
         await self._db.commit()
@@ -84,13 +89,14 @@ class AlertTriggersMixin:
             "id": int(row[0]) if row else 0, "account_id": account_id,
             "owner_user_id": owner_user_id, "metric": metric,
             "threshold": float(threshold), "scope": scope, "origin": origin,
-            "enabled": True, "severity": severity,
+            "enabled": True, "severity": severity, "channels": channels,
             "created_at": now, "updated_at": now,
         }
 
     async def update_alert_trigger(
         self, account_id: int, owner_user_id: int, trigger_id: int, *,
         threshold: float | None = None, enabled: bool | None = None,
+        channels: str | None = None,
     ) -> bool:
         """Edit one's own trigger.  Scoped to the owner in the WHERE, so a
         foreign id silently matches nothing rather than editing it."""
@@ -101,6 +107,9 @@ class AlertTriggersMixin:
         if enabled is not None:
             sets.append("enabled = ?")
             params.append(1 if enabled else 0)
+        if channels is not None:
+            sets.append("channels = ?")
+            params.append(channels)
         if not sets:
             return False
         sets.append("updated_at = ?")

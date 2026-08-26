@@ -304,10 +304,20 @@ async def _deliver(
                 body=f"Now {shown}{metric.unit}. Your alert trigger.",
                 category=TRIGGER_FIRED,
                 severity=trig.severity,
+                # Everything the Triggers tab renders as COLUMNS, written
+                # at fire time rather than looked up at read time: the
+                # trigger can be edited or deleted afterwards, and a
+                # history that re-reads today's threshold would silently
+                # rewrite what it said last week.
                 meta={"trigger_id": trig.id, "vehicle_id": row.get("vehicle_id"),
-                      "metric": trig.metric, "value": shown},
+                      "vehicle": name, "metric": trig.metric,
+                      "threshold": trig.threshold, "value": shown},
             ),
-            channels=["in_app", "telegram_dm", "email"],
+            # This trigger's own channels, bell always first.  Not the
+            # notification matrix: that has one row for every trigger a
+            # person owns, which cannot say "DEF reaches my phone, battery
+            # can wait for email".
+            channels=trig.delivery_channels,
             correlation_key=f"trigger:{trig.id}:{row.get('vehicle_id')}",
         )
         return True

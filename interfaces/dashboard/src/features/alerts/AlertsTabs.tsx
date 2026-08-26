@@ -1,6 +1,6 @@
 /**
- * Alerts area tabs — the operational Board and the admin Group-delivery
- * routing.  Personal notification PREFERENCES no longer live here: they
+ * Alerts area tabs — the operational Board, a person's own Triggers, and
+ * the admin Group-delivery routing.  Personal notification PREFERENCES no longer live here: they
  * moved to their own top-level door (/notifications/preferences, reached
  * from the topbar Notifications bell's gear), because notifications are a
  * cross-source personal concern, not an Alerts sub-feature.
@@ -43,6 +43,12 @@ export function AlertsTabs() {
   return (
     <div className="flex items-center gap-1 border-b border-border mb-4">
       {canBoard && <Tab to="/alerts" end>Board</Tab>}
+      {/* No gate, and that is not an oversight: a trigger watches only
+          the vehicles its owner can already see and reaches nobody else,
+          so there is no permission to check.  It also has to stay
+          reachable for people who cannot see the Board — they could set
+          one from notification preferences before it moved here. */}
+      <Tab to="/alerts/triggers">Triggers</Tab>
       {canDelivery && <Tab to="/alerts/group-delivery">Group delivery</Tab>}
     </div>
   );

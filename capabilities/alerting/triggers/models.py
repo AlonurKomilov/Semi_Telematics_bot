@@ -52,6 +52,21 @@ MAX_TRIGGERS_PER_USER = 20
 SCOPES = ("personal", "account")
 ORIGINS = ("user", "seeded")
 
+#: Where a trigger may be sent.  ``in_app`` is absent on purpose: the bell
+#: record is not a channel a person turns off, because a trigger that
+#: fired and left no trace is indistinguishable from one that never fired.
+#: These are the EXTRA places it can reach you.
+TRIGGER_CHANNELS = ("telegram_dm", "email", "web_push")
+#: The bell always gets it, so it is prepended at delivery, never stored.
+ALWAYS = "in_app"
+#: What a new trigger reaches when nobody said otherwise.  Push is absent
+#: because it needs a subscribed browser: a default that silently depends
+#: on setup someone has not done reads as "I ticked it and nothing came".
+DEFAULT_CHANNELS = ("telegram_dm", "email")
+#: The stored form of that default — one definition, so the column
+#: default, the dataclass default and the create route cannot drift.
+DEFAULT_CHANNELS_CSV = ",".join(DEFAULT_CHANNELS)
+
 
 @dataclass(frozen=True)
 class AlertTrigger:
@@ -64,6 +79,23 @@ class AlertTrigger:
     origin: str = "user"
     enabled: bool = True
     severity: str = "warning"
+    #: csv of TRIGGER_CHANNELS — the extra places beyond the bell.
+    channels: str = DEFAULT_CHANNELS_CSV
+
+    @property
+    def chosen_channels(self) -> list[str]:
+        """The stored csv as a list.  SPLIT, never substring-matched: a
+        future key that is a substring of another ("push" beside
+        "web_push") would otherwise report itself as chosen by a row that
+        never picked it."""
+        picked = {c.strip() for c in (self.channels or "").split(",")}
+        return [c for c in TRIGGER_CHANNELS if c in picked]
+
+    @property
+    def delivery_channels(self) -> list[str]:
+        """The channel list ``notify_user`` is given: the bell first,
+        always, then whatever this trigger asked for."""
+        return [ALWAYS, *self.chosen_channels]
 
     @property
     def spec(self) -> Metric | None:
@@ -76,7 +108,7 @@ class AlertTrigger:
         m = self.spec
         if m is None:
             return f"{self.metric} {self.threshold}"
-        return f"{m.label} {m.direction} {_num(self.threshold)}{m.unit}"
+        return f"{m.label} {m.direction} {num_text(self.threshold)}{m.unit}"
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "AlertTrigger":
@@ -90,10 +122,29 @@ class AlertTrigger:
             origin=str(row.get("origin") or "user"),
             enabled=bool(row.get("enabled", True)),
             severity=str(row.get("severity") or "warning"),
+            # ``is None``, never ``or``: an empty string is the legal
+            # BELL-ONLY choice, and coercing it to the default would keep
+            # DMing someone who explicitly unticked every channel.
+            channels=(str(row["channels"]) if row.get("channels") is not None
+                      else DEFAULT_CHANNELS_CSV),
         )
 
 
-def _num(value: float) -> str:
+def clean_channels(raw) -> str:
+    """A caller's channel list → the csv this row stores.
+
+    Unknown keys are dropped rather than refused: a client sending a
+    channel this build does not have should lose that one choice, not the
+    whole save.  An empty result is legal and means bell-only — the one
+    delivery nobody can switch off.
+    """
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    seen = [str(c).strip() for c in (raw or [])]
+    return ",".join(c for c in TRIGGER_CHANNELS if c in seen)
+
+
+def num_text(value: float) -> str:
     """12.0 → "12", 12.5 → "12.5" — a threshold reads as the number the
     person typed, not as a float."""
     return str(int(value)) if float(value).is_integer() else str(value)

@@ -12,9 +12,12 @@ sentence and can delete it.  A per-metric category would put a second
 mute switch beside the delete button, and two ways to stop the same
 notice is how "I turned it off and it kept coming" happens.
 
-The ``alert.`` prefix is deliberate: it puts these notices in the same
-inbox source as the rest of alerting, so the bell's Alerts bucket holds
-everything alerting sends rather than growing a bucket of one.
+The ``alert.`` prefix keeps these notices in alerting's inbox SOURCE, but
+the bell shows them under their own Triggers tab and excludes them from
+Alerts — the two are answers to different questions.  Alerts is what the
+account must triage; Triggers is what one person asked to be told, and
+nobody else can act on it.  That split is why the inbox query grew
+``category`` / ``exclude_category``: one notice, one tab.
 """
 
 from __future__ import annotations

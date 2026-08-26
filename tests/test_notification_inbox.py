@@ -236,6 +236,42 @@ async def test_applications_is_a_filterable_source(pg_db):
             await pg_db.list_inbox_notices(acct, uid, source="team,ai")] == ["t"]
 
 
+async def test_category_splits_one_source_into_two_tabs(pg_db):
+    """A bucket cannot separate a fired alert trigger from an engine
+    fault: both live in the ``alert`` namespace by design, because one
+    capability owns one inbox source.  The bell still has to show them
+    under different tabs, so the filter goes one level finer — and its
+    complement is what stops the SAME notice appearing under both.
+    """
+    acct, uid = await _seed(pg_db, name="Split Co", tg=7318)
+    await pg_db.add_inbox_notice(acct, uid, category="alert.trigger", title="mine")
+    await pg_db.add_inbox_notice(acct, uid, category="alert.faults", title="ours")
+    await pg_db.add_inbox_notice(acct, uid, category="team.a", title="t")
+
+    mine = await pg_db.list_inbox_notices(acct, uid, category="alert.trigger")
+    assert [r["title"] for r in mine] == ["mine"]
+
+    rest = await pg_db.list_inbox_notices(acct, uid, exclude_category="alert.trigger")
+    assert {r["title"] for r in rest} == {"ours", "t"}
+
+    # Between them they cover the feed exactly once — no notice in both
+    # tabs, none in neither.
+    everything = await pg_db.list_inbox_notices(acct, uid)
+    assert len(mine) + len(rest) == len(everything)
+
+
+async def test_an_unknown_category_matches_nothing_not_everything(pg_db):
+    """Unlike ``source``, a category is never checked against a registry —
+    it is a stable wire key, and the safe reading of one nobody knows is
+    an empty tab rather than the whole feed relabelled."""
+    acct, uid = await _seed(pg_db, name="Unknown Cat Co", tg=7319)
+    await pg_db.add_inbox_notice(acct, uid, category="team.a", title="t")
+    assert await pg_db.list_inbox_notices(acct, uid, category="no.such") == []
+    # And excluding one nobody has changes nothing.
+    assert len(await pg_db.list_inbox_notices(
+        acct, uid, exclude_category="no.such")) == 1
+
+
 async def test_prune_drops_old_rows(pg_db):
     acct, uid = await _seed(pg_db, name="Prune Co", tg=7314)
     await pg_db.add_inbox_notice(acct, uid, category="team.t", title="fresh")

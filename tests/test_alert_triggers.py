@@ -282,3 +282,163 @@ class TestQueryShape:
         with _pytest.raises(Exception):
             await _latest_per_vehicle(
                 pg_db, 10_000_001, ["vehicle_id", "a_column_that_never_existed"])
+
+
+class TestChannels:
+    """Where one trigger goes, decided per TRIGGER and not per category.
+
+    The notification matrix has one row per alert type, shared by everyone
+    who receives it — it can say "faults reach me by email" but never "DEF
+    reaches my phone while battery waits for email".  That is the whole
+    reason a trigger carries its own channel list, and these pin the two
+    rules that make it safe: the bell is not optional, and an unknown
+    channel loses its own tick rather than the whole save.
+    """
+
+    def test_the_bell_is_always_first_and_never_stored(self):
+        from capabilities.alerting.triggers.models import ALWAYS
+        t = AlertTrigger(id=1, account_id=1, owner_user_id=1,
+                         metric="fuel_pct", threshold=20, channels="email")
+        assert t.delivery_channels == [ALWAYS, "email"]
+        # Stored form stays exactly what was asked for — the bell is
+        # prepended at delivery, so nothing can un-tick it by writing the
+        # column.
+        assert t.channels == "email"
+
+    def test_a_trigger_with_no_extra_channels_still_reaches_the_bell(self):
+        """Bell-only is legal and means the record exists but nothing
+        buzzes — a trigger that fired and left no trace is
+        indistinguishable from one that never fired."""
+        from capabilities.alerting.triggers.models import ALWAYS
+        t = AlertTrigger(id=1, account_id=1, owner_user_id=1,
+                         metric="fuel_pct", threshold=20, channels="")
+        assert t.delivery_channels == [ALWAYS]
+
+    def test_an_unknown_channel_is_dropped_not_refused(self):
+        from capabilities.alerting.triggers.models import clean_channels
+        assert clean_channels(["email", "carrier_pigeon"]) == "email"
+        # Order is the CATALOG's, not the caller's — two clients sending
+        # the same set must store the same string, or "did this change?"
+        # becomes unanswerable.
+        assert clean_channels(["email", "telegram_dm"]) == \
+            clean_channels(["telegram_dm", "email"])
+
+    def test_the_default_is_one_definition(self):
+        """The column default, the dataclass default and the create route
+        all mean the same set.  A drift here is a trigger that silently
+        delivers somewhere the person did not pick."""
+        from capabilities.alerting.triggers.models import (
+            DEFAULT_CHANNELS, DEFAULT_CHANNELS_CSV, TRIGGER_CHANNELS,
+        )
+        assert DEFAULT_CHANNELS_CSV == ",".join(DEFAULT_CHANNELS)
+        assert all(c in TRIGGER_CHANNELS for c in DEFAULT_CHANNELS)
+        t = AlertTrigger(id=1, account_id=1, owner_user_id=1,
+                         metric="fuel_pct", threshold=20)
+        assert t.channels == DEFAULT_CHANNELS_CSV
+        # Push is deliberately absent: it needs a subscribed browser, and
+        # a default depending on setup nobody did reads as "I ticked it
+        # and nothing came".
+        assert "web_push" not in DEFAULT_CHANNELS
+
+
+class TestFiredHistory:
+    """The Triggers tab reads FIRINGS, not sentences.
+
+    Every column it renders is written into the notice at fire time.  The
+    trigger it names can be edited or deleted afterwards, so a history
+    that re-read today's threshold would quietly rewrite what last week's
+    alert said.
+    """
+
+    def test_a_firing_is_shaped_from_its_own_meta(self):
+        from capabilities.alerting.triggers.router import _fired_shape
+        row = {"id": 7, "title": "Truck 12 — fuel level below 30%",
+               "body": "Now 24%. Your alert trigger.",
+               "severity": "warning", "created_at": "2026-08-26T10:00:00",
+               "read_at": ""}
+        meta = {"trigger_id": 3, "vehicle": "Truck 12", "vehicle_id": "v1",
+                "metric": "fuel_pct", "threshold": 30, "value": 24}
+        out = _fired_shape(row, meta)
+        assert out["id"] == 7                    # the NOTICE id — marks read
+        assert out["vehicle"] == "Truck 12"
+        assert out["metric_label"] and out["unit"] == "%"
+        assert out["says"] == "Fuel level below 30%"
+        assert out["value"] == 24
+        assert out["read"] is False
+
+    def test_an_edited_threshold_does_not_rewrite_what_was_said(self):
+        """The number in the row is the one that fired, taken from meta —
+        the current trigger is never consulted."""
+        from capabilities.alerting.triggers.router import _fired_shape
+        row = {"id": 8, "title": "Truck 12 — fuel level below 30%", "body": "",
+               "severity": "warning", "created_at": "", "read_at": ""}
+        out = _fired_shape(row, {"metric": "fuel_pct", "threshold": 30})
+        assert "30%" in out["says"]
+
+    def test_a_row_written_before_meta_carried_columns_still_reads(self):
+        """Rows already in the inbox have no vehicle or threshold in meta.
+        They fall back to the notice text rather than rendering blank —
+        a history that empties itself on deploy is worse than one that is
+        merely less precise."""
+        from capabilities.alerting.triggers.router import _fired_shape
+        row = {"id": 9, "title": "Truck 12 — fuel level below 30%",
+               "body": "Now 24%.", "severity": "warning",
+               "created_at": "", "read_at": ""}
+        out = _fired_shape(row, {})
+        assert out["vehicle"] == "Truck 12"
+        assert out["says"] == "fuel level below 30%"
+
+    def test_a_malformed_meta_does_not_take_the_page_down(self):
+        from capabilities.alerting.triggers.router import _meta
+        assert _meta("") == {}
+        assert _meta("not json") == {}
+        assert _meta("[1, 2]") == {}             # valid JSON, wrong shape
+        assert _meta('{"metric": "fuel_pct"}') == {"metric": "fuel_pct"}
+
+    def test_a_retired_metric_still_produces_a_readable_row(self):
+        """The catalog moved on; the history did not.  The row keeps the
+        sentence the notice was written with instead of vanishing."""
+        from capabilities.alerting.triggers.router import _fired_shape
+        row = {"id": 10, "title": "Truck 3 — tyre pressure below 90psi",
+               "body": "", "severity": "warning", "created_at": "", "read_at": ""}
+        out = _fired_shape(row, {"metric": "tyre_psi", "threshold": 90})
+        assert out["says"] == "tyre pressure below 90psi"
+        assert out["metric_label"] == ""
+
+    def test_bell_only_survives_a_round_trip_through_the_row(self):
+        """The regression the first version of this suite missed.
+
+        ``clean_channels([])`` stores '', which is the legal bell-only
+        choice — but ``from_row`` read it with ``or``, so the empty string
+        came back as the default pair.  Every reconstruction did it: the
+        PATCH response told the UI the boxes were still ticked, and the
+        sweep kept DMing someone who had explicitly unticked everything.
+        The earlier test built the dataclass directly and never touched
+        the path that was wrong.
+        """
+        from capabilities.alerting.triggers.models import ALWAYS, clean_channels
+        row = {"id": 1, "account_id": 1, "owner_user_id": 1,
+               "metric": "fuel_pct", "threshold": 20.0,
+               "channels": clean_channels([])}
+        assert row["channels"] == ""
+        t = AlertTrigger.from_row(row)
+        assert t.chosen_channels == []
+        assert t.delivery_channels == [ALWAYS]
+
+    def test_a_row_with_no_channels_column_still_gets_the_default(self):
+        """The other side of the same coin: MISSING is not EMPTY.  A row
+        read before the column existed has no choice recorded, and the
+        default is the honest reading of that."""
+        from capabilities.alerting.triggers.models import DEFAULT_CHANNELS
+        t = AlertTrigger.from_row({"id": 1, "account_id": 1, "owner_user_id": 1,
+                                   "metric": "fuel_pct", "threshold": 20.0})
+        assert t.chosen_channels == list(DEFAULT_CHANNELS)
+
+    def test_membership_is_parsed_not_substring_matched(self):
+        """``"push" in "telegram_dm,web_push"`` is True as a substring and
+        false as a fact.  Nothing collides today; the first shorter key
+        added would have made every longer row claim it."""
+        t = AlertTrigger(id=1, account_id=1, owner_user_id=1,
+                         metric="fuel_pct", threshold=20, channels="web_push")
+        assert t.chosen_channels == ["web_push"]
+        assert "telegram_dm" not in t.chosen_channels

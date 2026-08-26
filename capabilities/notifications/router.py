@@ -292,7 +292,15 @@ async def get_account_activity_prefs(
     # never a locked billing row a driver will never get.
     role_str = getattr(db_user.role, "value", None) or str(db_user.role)
 
+    #: Categories whose delivery is decided somewhere OTHER than this
+    #: matrix.  Listing one here would put a second switch on the same
+    #: decision, and two stores for one delivery choice is how "I turned
+    #: it off and it kept coming" happens.
+    _ELSEWHERE = {"alert.trigger"}          # each trigger owns its channels
+
     def _listed(c) -> bool:
+        if c.key in _ELSEWHERE:
+            return False
         if c.kind == TARGETED:
             return True
         if c.source == "system":
@@ -372,6 +380,8 @@ async def set_account_activity_pref(
 async def get_inbox(
     request: Request,
     source: str = "",
+    category: str = "",
+    exclude_category: str = "",
     before_id: int | None = None,
     limit: int = 30,
     user: dict = Depends(get_current_user),
@@ -380,7 +390,12 @@ async def get_inbox(
     ``source`` filters to one namespace tab, or a comma-separated bucket of
     them (``team,ai`` = Activity); ``before_id`` is keyset pagination.
 
-    No permission check on ``source``: inbox rows are per-USER, so asking
+    ``category`` narrows inside a source and ``exclude_category`` is its
+    complement — a bucket cannot separate an alert trigger from an engine
+    fault, since both live in the ``alert`` namespace by design, and the
+    two tabs must not both show the same notice.
+
+    No permission check on any of them: inbox rows are per-USER, so asking
     for a bucket you never receive returns your own empty page, never
     someone else's notices."""
     from infra.platform import get_platform_db
@@ -390,7 +405,8 @@ async def get_inbox(
         return {"notices": [], "unread": 0}
     notices = await db.list_inbox_notices(
         db_user.account_id, db_user.id,
-        source=source, limit=limit, before_id=before_id)
+        source=source, category=category, exclude_category=exclude_category,
+        limit=limit, before_id=before_id)
     unread = await db.count_inbox_unread(db_user.account_id, db_user.id)
 
     def _meta(meta_raw: str) -> dict:

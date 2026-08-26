@@ -13,6 +13,7 @@ whitelist; the row's owner is taken from the session, never the body.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -23,7 +24,8 @@ from interfaces.api.rate_limit import limiter
 
 from capabilities.alerting.triggers import catalog as cat
 from capabilities.alerting.triggers.models import (
-    MAX_TRIGGERS_PER_USER, AlertTrigger, validate,
+    DEFAULT_CHANNELS, MAX_TRIGGERS_PER_USER, TRIGGER_CHANNELS, AlertTrigger,
+    DEFAULT_CHANNELS_CSV, clean_channels, num_text, validate,
 )
 
 logger = logging.getLogger("api.alert_triggers")
@@ -35,11 +37,28 @@ class TriggerRequest(BaseModel):
     metric: str
     threshold: float
     severity: str = Field(default="warning")
+    #: Extra channels beyond the bell.  Omitted = the default pair.
+    #: Capped because only a handful of keys are ever valid — a thousand
+    #: strings is not a choice anyone is making.
+    channels: list[str] | None = Field(default=None, max_length=8)
 
 
 class TriggerPatch(BaseModel):
     threshold: float | None = None
     enabled: bool | None = None
+    channels: list[str] | None = Field(default=None, max_length=8)
+
+
+def _meta(raw: str) -> dict:
+    """A notice's parsed meta, {} on ANY malformed value — one bad row
+    must not 500 a whole history page."""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 async def _me(user: dict):
@@ -64,6 +83,11 @@ def _shape(row: dict) -> dict:
         "severity": trig.severity,
         "scope": trig.scope,
         "describes": trig.describe(),
+        # The stored extras, and the full delivery list including the bell
+        # — so the UI can show "always in the bell" as a fact rather than
+        # a checkbox nobody may untick.
+        "channels": trig.chosen_channels,
+        "delivers_to": trig.delivery_channels,
         # None when the catalog has moved on and this row names a metric
         # that no longer exists — the UI shows it as retired so the person
         # can delete it, rather than the row vanishing unexplained.
@@ -91,7 +115,80 @@ async def list_metrics(request: Request, user: dict = Depends(get_current_user))
             for m in cat.CATALOG
         ],
         "max_per_user": MAX_TRIGGERS_PER_USER,
+        # The channels a trigger may add.  The bell is not among them and
+        # is not optional — a trigger that fired and left no record is
+        # indistinguishable from one that never fired.
+        "channels": list(TRIGGER_CHANNELS),
+        # What the add form should open with.  Sent rather than assumed:
+        # a client that filtered a channel out of the full list by name
+        # would be hardcoding the very thing the catalog exists to own.
+        "default_channels": list(DEFAULT_CHANNELS),
     }
+
+
+def _fired_shape(row: dict, meta: dict) -> dict:
+    """One FIRING as the history grid needs it.
+
+    Built from the notice's own meta, never from the trigger row it names:
+    a threshold edited afterwards must not rewrite what last week's alert
+    said, and a deleted trigger still has a history.  Rows written before
+    meta carried these fields fall back to the notice text, which is why
+    ``title``/``body`` are returned alongside the parsed values instead of
+    being replaced by them.
+    """
+    metric = cat.get_metric(str(meta.get("metric") or ""))
+    title = str(row.get("title") or "")
+    # "Truck 12 — fuel level below 30%" — the name is everything before
+    # the dash, and only used when meta predates the vehicle field.
+    fallback_vehicle, _, fallback_says = title.partition(" — ")
+    try:
+        threshold = float(meta["threshold"])
+    except (KeyError, TypeError, ValueError):
+        threshold = None
+    if metric is not None and threshold is not None:
+        says = f"{metric.label} {metric.direction} {num_text(threshold)}{metric.unit}"
+    else:
+        says = fallback_says or title
+    return {
+        # The NOTICE id: the row is marked read through the ordinary
+        # inbox route, so the bell's count and this grid's Status column
+        # can never disagree about the same firing.
+        "id": int(row["id"]),
+        "trigger_id": meta.get("trigger_id"),
+        "vehicle": str(meta.get("vehicle") or fallback_vehicle or ""),
+        "metric": str(meta.get("metric") or ""),
+        "metric_label": metric.label if metric else "",
+        "unit": metric.unit if metric else "",
+        "threshold": threshold,
+        "value": meta.get("value"),
+        "says": says,
+        "severity": str(row.get("severity") or "warning"),
+        "created_at": str(row.get("created_at") or ""),
+        "read": bool(row.get("read_at")),
+        "title": title,
+        "body": str(row.get("body") or ""),
+    }
+
+
+@router.get("/fired")
+@limiter.limit("30/minute")
+async def list_fired(
+    request: Request, limit: int = 100, user: dict = Depends(get_current_user),
+):
+    """What the caller's triggers have caught, newest first.
+
+    Reads the caller's own inbox rows in the trigger category — the same
+    records the bell shows — because a personal trigger writes no board
+    row and the notice IS the only record of the firing.  Shaped as
+    firings rather than notices so the grid gets columns instead of
+    sentences to parse.
+    """
+    from capabilities.alerting.triggers.notification_category import TRIGGER_FIRED
+    db, me = await _me(user)
+    rows = await db.list_inbox_notices(
+        me.account_id, me.id, category=TRIGGER_FIRED,
+        limit=max(1, min(int(limit), 100)))
+    return {"fired": [_fired_shape(r, _meta(r.get("meta", ""))) for r in rows]}
 
 
 @router.get("")
@@ -124,6 +221,8 @@ async def create_trigger(
     row = await db.create_alert_trigger(
         me.account_id, me.id, metric=body.metric,
         threshold=float(body.threshold), severity=body.severity,
+        channels=(clean_channels(body.channels)
+                  if body.channels is not None else DEFAULT_CHANNELS_CSV),
     )
     return _shape(row)
 
@@ -146,6 +245,8 @@ async def update_trigger(
     ok = await db.update_alert_trigger(
         me.account_id, me.id, trigger_id,
         threshold=body.threshold, enabled=body.enabled,
+        channels=(clean_channels(body.channels)
+                  if body.channels is not None else None),
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Trigger not found")

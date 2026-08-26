@@ -436,6 +436,14 @@ async def create_tables(conn) -> None:
             origin         TEXT    NOT NULL DEFAULT 'user',
             enabled        INTEGER NOT NULL DEFAULT 1,
             severity       TEXT    NOT NULL DEFAULT 'warning',
+            -- Where THIS trigger goes, as a csv of channel keys.  Per
+            -- trigger rather than one row in the notification matrix
+            -- governing all of them: "DEF low reaches my phone, battery
+            -- can wait for email" is a real distinction the matrix has no
+            -- grain to express.  The in-app bell is not listed and is not
+            -- optional — a trigger you created but cannot find a record of
+            -- is worse than one you muted.
+            channels       TEXT    NOT NULL DEFAULT 'telegram_dm,email',
             created_at     TEXT    NOT NULL DEFAULT '',
             updated_at     TEXT    NOT NULL DEFAULT ''
         );
