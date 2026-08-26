@@ -8,13 +8,15 @@
  * word for one concept, which is the same-name-two-things confusion the
  * clarity rules exist to stop, just wearing the other face.
  *
- * It sits on the ALERTS page, not on notification preferences, and the
- * split is deliberate: the preferences matrix answers *where a category
- * of notice reaches you*, one row per alert type shared by everyone who
- * receives it.  A trigger is not a category — it is a sentence one person
- * wrote — and its delivery is per TRIGGER, which the matrix cannot say.
- * A single row there could only mean "all my triggers, one way"; here,
- * DEF can reach your phone while battery waits for email.
+ * It sits on the ALERTS page and owns exactly one half of a trigger:
+ * WHAT it watches.  The other half — where it reaches you — is a
+ * notification question, and it lives with every other answer to that
+ * question on notification preferences, as a matrix whose rows are
+ * individual triggers (TriggerDeliveryMatrix).  Splitting them this way
+ * costs a link and buys the rule that delivery is configured in exactly
+ * one place; the alternative was a person hunting three screens to turn
+ * Telegram off.  This page STATES where each trigger goes, so the row
+ * still answers "did my change take", and never edits it.
  *
  * The form is rendered ENTIRELY from ``/alerts/triggers/metrics``.  No
  * metric, unit, range or direction is hardcoded here — adding "watch
@@ -33,6 +35,7 @@
  *     board — one person's trigger is not the account's news.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { BellRing, Plus, Trash2, X } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
@@ -79,6 +82,11 @@ interface Trigger {
  *  vanishing, so a channel added server-side is visible before this file
  *  catches up. */
 const CHANNEL_LABEL: Record<string, string> = {
+  // ``in_app`` is in ``delivers_to`` and never in ``channels`` — the bell
+  // is not a choice, so it has no checkbox anywhere, but the row still
+  // names it: "Telegram · Email" alone would read as if the bell were
+  // one more thing that could be switched off.
+  in_app: 'Bell',
   telegram_dm: 'Telegram',
   email: 'Email',
   web_push: 'Push',
@@ -92,8 +100,7 @@ export default function AlertTriggersSection(
   const [metrics, setMetrics] = useState<MetricSpec[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [maxPerUser, setMaxPerUser] = useState(0);
-  // Which extra channels EXIST, from the server — not a hardcoded three.
-  const [channelKeys, setChannelKeys] = useState<string[]>([]);
+  // What a trigger created here will reach, per the server.
   const [defaultChannels, setDefaultChannels] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -120,11 +127,6 @@ export default function AlertTriggersSection(
   const [adding, setAdding] = useState(false);
   const [draftMetric, setDraftMetric] = useState('');
   const [draftValue, setDraftValue] = useState('');
-  // The new trigger's channels.  Seeded from the server default on open
-  // rather than left empty: an unticked form would create a trigger that
-  // only ever reaches the bell, which is not what someone writing
-  // "tell me when DEF drops" is asking for.
-  const [draftChannels, setDraftChannels] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -132,13 +134,12 @@ export default function AlertTriggersSection(
       const [cat, mine] = await Promise.all([
         apiJSON<{
           metrics: MetricSpec[]; max_per_user: number;
-          channels: string[]; default_channels: string[];
+          default_channels: string[];
         }>(`${API}/metrics`),
         apiJSON<{ triggers: Trigger[] }>(API),
       ]);
       setMetrics(cat.metrics);
       setMaxPerUser(cat.max_per_user);
-      setChannelKeys(cat.channels || []);
       setDefaultChannels(cat.default_channels || []);
       setTriggers(mine.triggers);
     } catch {
@@ -149,6 +150,12 @@ export default function AlertTriggersSection(
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // "your bell, Telegram and email" — built from the server's answer.
+  const defaultLabels = ['in_app', ...defaultChannels]
+    .map((c) => CHANNEL_LABEL[c] ?? c)
+    .join(', ')
+    .replace(/, ([^,]*)$/, ' and $1');
 
   const spec = (key: string) => metrics.find((m) => m.key === key);
   const metricItems = useMemo(
@@ -175,16 +182,15 @@ export default function AlertTriggersSection(
     try {
       const made = await apiJSON<Trigger>(API, {
         method: 'POST',
-        body: {
-          metric: draftMetric, threshold: Number(draftValue),
-          channels: draftChannels,
-        },
+        // No channels in the body: the server's default applies, and
+        // where it goes is retuned on notification preferences — the same
+        // way a newly relevant alert type arrives with defaults there.
+        body: { metric: draftMetric, threshold: Number(draftValue) },
       });
       setTriggers((cur) => [made, ...cur]);
       setAdding(false);
       setDraftMetric('');
       setDraftValue('');
-      setDraftChannels([]);
       onChanged?.();
       // The form unmounts — put focus somewhere deliberate rather than
       // letting it fall to <body>.
@@ -218,34 +224,6 @@ export default function AlertTriggersSection(
         return;
       }
       setTriggers((cur) => cur.map((x) => (x.id === t.id ? { ...x, enabled: !enabled } : x)));
-      toast.error(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      mark(t.id, false);
-    }
-  };
-
-  const setChannels = async (t: Trigger, channel: string, on: boolean) => {
-    if (busy.has(t.id)) return;
-    const next = on
-      ? [...t.channels, channel]
-      : t.channels.filter((c) => c !== channel);
-    // Surgical, for the same reason `toggle` is: a whole-array snapshot
-    // restored on failure would resurrect a row a concurrent delete had
-    // already taken away.
-    setTriggers((cur) => cur.map((x) => (x.id === t.id ? { ...x, channels: next } : x)));
-    mark(t.id, true);
-    try {
-      const fresh = await apiJSON<Trigger>(`${API}/${t.id}`, {
-        method: 'PATCH', body: { channels: next },
-      });
-      setTriggers((cur) => cur.map((x) => (x.id === t.id ? fresh : x)));
-      onChanged?.();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) {
-        setTriggers((cur) => cur.filter((x) => x.id !== t.id));
-        return;
-      }
-      setTriggers((cur) => cur.map((x) => (x.id === t.id ? t : x)));
       toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
       mark(t.id, false);
@@ -322,10 +300,15 @@ export default function AlertTriggersSection(
     <Card render={<section />}>
       {heading}
       <p className="text-xs text-muted-foreground mb-3">
-        Your own triggers, on the vehicles you can see. Every one reaches
-        your bell; tick where else it should reach you. None of them post
-        to the shared Alerts board — setting one adds nothing to anyone
-        else’s queue, and what yours have caught is listed below.
+        Your own triggers, on the vehicles you can see. None of them post to
+        the shared Alerts board — setting one adds nothing to anyone else’s
+        queue, and what yours have caught is listed below. Every one reaches
+        your bell; each row also shows where it is <em>set</em> to reach
+        you — Telegram, email and push have to be connected before they
+        can, which is on{' '}
+        <Link to="/notifications/preferences" className="text-primary hover:underline">
+          notification preferences
+        </Link>{' '}along with the switches themselves.
       </p>
       <p className="text-xs text-muted-foreground mb-3">
         You hear on the <span className="text-foreground">crossing</span>:
@@ -386,33 +369,22 @@ export default function AlertTriggersSection(
                   )}
                 </span>
 
-                {/* Checkboxes, not switches: this is MEMBERSHIP — which
-                    set of channels carries this trigger — and the switch
-                    on the left already owns the behaviour question.  The
-                    bell is not among them and is not offered: a trigger
-                    that fired and left no record is indistinguishable
-                    from one that never fired. */}
+                {/* Where it goes is STATED here, never edited here.  The
+                    controls live with every other delivery choice on
+                    notification preferences; a checkbox on this page would
+                    be the third screen a person has to visit to turn
+                    Telegram off.  Read-only, so the row still answers
+                    "did my change take" without owning the answer. */}
                 {m && (
-                  // One flex child, so a wrap moves the whole group rather
-                  // than scattering three checkboxes under the sentence.
-                  // Every row now ends identity → state → destination →
-                  // remove, on the same x.
-                  <span className="flex items-center gap-2.5 shrink-0">
-                    {channelKeys.map((c) => (
-                      <label key={c}
-                             className="flex items-center gap-1 text-2xs
-                                        text-muted-foreground cursor-pointer
-                                        min-h-tap">
-                        <input
-                          type="checkbox"
-                          className="accent-primary cursor-pointer"
-                          checked={t.channels.includes(c)}
-                          onChange={(e) => { void setChannels(t, c, e.target.checked); }}
-                          aria-label={`${CHANNEL_LABEL[c] ?? c} — ${t.describes}`}
-                        />
-                        {CHANNEL_LABEL[c] ?? c}
-                      </label>
-                    ))}
+                  // The leading "to" is doing real work: with the
+                  // checkboxes gone, this run and the "while running" note
+                  // beside it are both muted 2xs and read as one string at
+                  // narrow widths.  A preposition restores the boundary
+                  // and makes the run a phrase rather than a list.
+                  <span className="text-2xs text-muted-foreground shrink-0">
+                    to {t.delivers_to
+                      .map((c) => CHANNEL_LABEL[c] ?? c)
+                      .join(' · ')}
                   </span>
                 )}
                 {/* A row naming a metric the catalog no longer carries
@@ -523,33 +495,6 @@ export default function AlertTriggersSection(
             </Tip>
           </div>
 
-          {/* Where it should reach you, decided WITH the sentence rather
-              than after it: the number and the delivery are one thought
-              ("tell me on Telegram when DEF drops below 10%"), and a
-              trigger saved before that question is asked is a trigger
-              someone has to go back and edit. */}
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-2xs text-muted-foreground">
-              Always in your bell. Also send to
-            </span>
-            {channelKeys.map((c) => (
-              <label key={c}
-                     className="flex items-center gap-1 text-2xs
-                                text-muted-foreground cursor-pointer
-                                min-h-tap">
-                <input
-                  type="checkbox"
-                  className="accent-primary cursor-pointer"
-                  checked={draftChannels.includes(c)}
-                  onChange={(e) => setDraftChannels((cur) => (
-                    e.target.checked ? [...cur, c] : cur.filter((x) => x !== c)
-                  ))}
-                />
-                {CHANNEL_LABEL[c] ?? c}
-              </label>
-            ))}
-          </div>
-
           {/* The range lives HERE, not only in the placeholder — a
               placeholder vanishes on the first keystroke, which is exactly
               when someone needs to know the bounds.  Followed by the
@@ -569,6 +514,17 @@ export default function AlertTriggersSection(
               </>
             ) : 'Pick what to watch, then the number.'}
           </p>
+          {/* The channel names come from the SERVER's default, never a
+              sentence written here — a hardcoded promise about where an
+              alert will go is one nobody notices has gone stale. */}
+          <p className="text-2xs text-muted-foreground">
+            It’ll reach {defaultLabels || 'your bell'} to start with — change
+            where on{' '}
+            <Link to="/notifications/preferences"
+                  className="text-primary hover:underline">
+              notification preferences
+            </Link>.
+          </p>
         </form>
       ) : (
         <div className="flex items-center gap-2">
@@ -580,11 +536,6 @@ export default function AlertTriggersSection(
             onClick={() => {
               if (atCap) return;
               setAdding(true);
-              // Seed the SERVER's default rather than an empty set: a
-              // blank form would quietly create bell-only triggers, and
-              // "I set it and my phone never buzzed" is the support
-              // ticket that follows.
-              setDraftChannels(defaultChannels);
               // Enter the form rather than leaving focus on a button that
               // just vanished from the reading order.
               requestAnimationFrame(() => metricRef.current?.focus());

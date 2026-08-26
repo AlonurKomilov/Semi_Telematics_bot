@@ -119,9 +119,12 @@ async def list_metrics(request: Request, user: dict = Depends(get_current_user))
         # is not optional — a trigger that fired and left no record is
         # indistinguishable from one that never fired.
         "channels": list(TRIGGER_CHANNELS),
-        # What the add form should open with.  Sent rather than assumed:
-        # a client that filtered a channel out of the full list by name
-        # would be hardcoding the very thing the catalog exists to own.
+        # What a trigger created without a ``channels`` body will get.
+        # The dashboard's add form no longer asks — delivery is chosen on
+        # notification preferences — so this is documentation of the
+        # server's answer rather than a value the form seeds itself with,
+        # and it stays in the contract because a client that needs to SAY
+        # what the default is should not have to hardcode it.
         "default_channels": list(DEFAULT_CHANNELS),
     }
 

@@ -7,13 +7,13 @@
  *
  * Structured by SOURCE so each kind of notification has a home:
  *   • Channels        — connect Telegram / Email / Push (the "where").
- *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where).
- *                        A person's own triggers used to sit here too;
- *                        they moved to Alerts → Triggers, because each
- *                        one now carries its OWN channels and this
- *                        matrix — one row per alert TYPE, shared by
- *                        everyone who receives it — has no grain to say
- *                        that.  What is left here is a pointer.
+ *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where),
+ *                        one row per alert TYPE.
+ *   • My triggers     — the SAME question at a finer grain: one row per
+ *                        trigger a person wrote, because the type matrix
+ *                        above can only say "all of them, one way".  What
+ *                        each trigger WATCHES is set on Alerts → Triggers;
+ *                        only where it reaches you is answered here.
  *   • Account activity — TARGETED + opt-OUT notices (invite accepted …).
  *   • System           — platform notices (placeholder until a source
  *                        registers system.* categories).
@@ -25,7 +25,6 @@
  * Group/forum routing is a separate admin surface under /alerts.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
 import { apiJSON } from '@/api/client';
@@ -33,6 +32,7 @@ import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';
 import PushChannelCard from './PushChannelCard';
 import NotifyMatrix from './NotifyMatrix';
+import TriggerDeliveryMatrix from './TriggerDeliveryMatrix';
 import AccountActivitySection from './AccountActivitySection';
 import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
@@ -221,20 +221,18 @@ export default function MyNotifications() {
         refreshKey={refreshKey}
       />
 
-      {/* The triggers themselves moved to Alerts → Triggers, and this
-          line is what stops the move from reading as a deletion to
-          anyone who set one here.  It stays a POINTER rather than a
-          second editor: a trigger carries its own channels now, which
-          this page's matrix — one row per alert TYPE, shared by everyone
-          who receives it — has no way to express. */}
-      <p className="text-xs text-muted-foreground mt-2">
-        Watching for your own numbers — "tell me when DEF drops below 10%" —
-        lives on the Alerts page now, where you can also see what each one
-        has caught.{' '}
-        <Link to="/alerts/triggers" className="text-primary hover:underline">
-          My triggers →
-        </Link>
-      </p>
+      {/* Same question as the matrix above, different rows.  WHAT a
+          trigger watches is an alert question and lives on the Alerts
+          page; WHERE it reaches you is a notification question, and every
+          other answer to that is on this page.  Its rows are individual
+          triggers rather than one "my triggers" row, because per-trigger
+          is the whole grain the matrix above cannot express. */}
+      <SourceLabel>My triggers — where they reach you</SourceLabel>
+      <TriggerDeliveryMatrix
+        telegramMasterOn={prefs.alerts_on}
+        refreshKey={refreshKey}
+        onSaved={flashSaved}
+      />
 
       <SourceLabel>Account activity</SourceLabel>
       <AccountActivitySection refreshKey={refreshKey} section="personal" onSaved={flashSaved} />

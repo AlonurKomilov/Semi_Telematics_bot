@@ -20,8 +20,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Send, Mail, MonitorSmartphone } from 'lucide-react';
 import { apiJSON } from '@/api/client';
-import { Tip } from '@/components/tooltip';
 import { Card } from '@/components/ui/card';
+import { MatrixCell, MatrixTh } from './_shared/matrixCells';
 
 // Every alert type the registry can hand us needs a row label here —
 // the fallback renders the RAW key ("maintenance"), which reads as a bug
@@ -122,19 +122,20 @@ export default function NotifyMatrix({
           <thead>
             <tr className="text-xs text-muted-foreground">
               <th className="text-left font-medium pb-2">Alert type</th>
-              <Th icon={Send} label="Telegram" hint={colHint.telegram} />
-              <Th icon={Mail} label="Email" hint={colHint.email} />
-              <Th icon={MonitorSmartphone} label="Push" hint={colHint.push} />
+              <MatrixTh icon={Send} label="Telegram" hint={colHint.telegram} />
+              <MatrixTh icon={Mail} label="Email" hint={colHint.email} />
+              <MatrixTh icon={MonitorSmartphone} label="Push" hint={colHint.push} />
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
             {relevantTypes.map((type) => (
               <tr key={type}>
                 <td className="py-2.5 pr-3">{TYPE_LABEL[type] || type}</td>
-                <Cell
+                <MatrixCell
                   checked={!!telegramToggles[`alert_${type}`]}
                   disabled={!telegramMasterOn || saving === `tg:${type}`}
                   hint={colHint.telegram}
+                  label={`Telegram — ${TYPE_LABEL[type] || type}`}
                   onChange={async (v) => {
                     setSaving(`tg:${type}`);
                     // setField already toasts + rolls back on failure —
@@ -144,16 +145,18 @@ export default function NotifyMatrix({
                     finally { setSaving(null); }
                   }}
                 />
-                <Cell
+                <MatrixCell
                   checked={!!email?.types[type]}
                   disabled={!emailOn || saving === `email:${type}`}
                   hint={colHint.email}
+                  label={`Email — ${TYPE_LABEL[type] || type}`}
                   onChange={(v) => setMatrixType('email', type, v)}
                 />
-                <Cell
+                <MatrixCell
                   checked={!!push?.types[type]}
                   disabled={!pushOn || saving === `web_push:${type}`}
                   hint={colHint.push}
+                  label={`Push — ${TYPE_LABEL[type] || type}`}
                   onChange={(v) => setMatrixType('web_push', type, v)}
                 />
               </tr>
@@ -185,45 +188,5 @@ export default function NotifyMatrix({
         places they can reach you.
       </p>
     </Card>
-  );
-}
-
-function Th({ icon: Icon, label, hint }: {
-  icon: typeof Send; label: string; hint: string;
-}) {
-  const head = (
-    <span className={`inline-flex items-center gap-1.5 font-medium ${
-      hint ? 'opacity-50' : ''
-    }`}>
-      <Icon className="size-3.5" aria-hidden /> {label}
-    </span>
-  );
-  return (
-    <th className="pb-2 px-2 text-center font-medium w-24">
-      {hint ? <Tip label={hint}>{head}</Tip> : head}
-    </th>
-  );
-}
-
-function Cell({ checked, disabled, hint, onChange }: {
-  checked: boolean; disabled: boolean; hint: string;
-  onChange: (v: boolean) => void | Promise<void>;
-}) {
-  const box = (
-    <input
-      type="checkbox"
-      checked={checked}
-      disabled={disabled}
-      onChange={(e) => void onChange(e.target.checked)}
-      className="accent-primary cursor-pointer disabled:cursor-not-allowed"
-      aria-label={hint || undefined}
-    />
-  );
-  return (
-    <td className="py-2.5 px-2 text-center">
-      {/* Disabled inputs swallow pointer events, so the Tip needs a
-          wrapper element to hover — without it the reason never shows. */}
-      {disabled && hint ? <Tip label={hint}><span>{box}</span></Tip> : box}
-    </td>
   );
 }
