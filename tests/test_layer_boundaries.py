@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
-from tests._repo import scanned  # a guard that scans nothing must fail
+from tests._repo import is_test_path, scanned  # a guard that scans nothing must fail
 
 REPO = _REPO
 
@@ -84,6 +84,14 @@ def _violations(root: str, banned: tuple[str, ...]) -> list[str]:
         if "__pycache__" in path.parts:
             continue
         rel = str(path.relative_to(REPO))
+        # Test code is not production code.  This wall had no exclusion
+        # at all — harmless while every test lived in the top-level
+        # tests/ tree, which this walk never entered.  Once a package
+        # owns its own tests/, a test that imports across a boundary on
+        # purpose (to assert the boundary) would be reported as breaking
+        # it.
+        if is_test_path(path.relative_to(REPO)):
+            continue
         if any(rel.startswith(p) for p in EXEMPT_PREFIXES):
             continue
         for mod in _imports_of(path):
@@ -139,8 +147,13 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
 
         "capabilities/integrations/",     # ingest writers
         "scripts/",
-        "tests/",
     )
+    # Test code is allowed to address the physical tables — 11 files do,
+    # and they are legal ONLY by being test code.  That used to be
+    # spelled as the literal prefix "tests/" in the tuple above, which
+    # stops being true the moment a package owns its own tests/ dir:
+    # every one of those files would fail the build with "write outside
+    # machinery". is_test_path() answers it by directory, wherever it is.
     # READ verbs may address the grain tables (they took the surface
     # names — that is the public read API); WRITE verbs on them stay
     # machinery-only; and the RETIRED names (vehicle_state bare,
@@ -166,7 +179,8 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
         txt = path.read_text(errors="ignore")
         if rel != "adapters/storage/migrations.py" and retired.search(txt):
             offenders.append(rel + "  (retired table name)")
-        if not rel.startswith(allowed) and write_verb.search(txt):
+        if (not rel.startswith(allowed) and not is_test_path(rel)
+                and write_verb.search(txt)):
             offenders.append(rel + "  (write outside machinery)")
     assert not offenders, (
         "SQL against PHYSICAL warehouse tables outside the machinery — "

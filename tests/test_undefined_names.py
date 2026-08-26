@@ -26,9 +26,20 @@ from tests._repo import scanned  # a guard that scans nothing must fail
 
 ROOT = _REPO
 
-# Backend code that runs in production.  Frontend has its own linters;
-# scripts/ and tests/ are not worth gating.
-PACKAGES = ("capabilities", "features", "adapters", "infra", "interfaces/api", "interfaces/bot")
+# Backend code that runs in production, PLUS the test suite itself.
+# Frontend has its own linters; scripts/ stays out.
+#
+# tests/ used to be excluded as "not worth gating".  Evidence says
+# otherwise: tests/test_config_endpoint_convention.py carried an
+# undefined name for however long inside its own FAILURE MESSAGE, so the
+# guard passed while green and would have raised NameError instead of
+# naming the offending endpoint at the exact moment someone needed to
+# read it.  pyflakes finds that in milliseconds.  Including tests/ costs
+# nothing — the tree is at zero violations — and it becomes DELIBERATE
+# rather than accidental as tests migrate into features/ and
+# capabilities/, where this walk would have picked them up anyway.
+PACKAGES = ("capabilities", "features", "adapters", "infra",
+            "interfaces/api", "interfaces/bot", "tests")
 
 
 class _Collector(Reporter):

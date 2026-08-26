@@ -64,3 +64,33 @@ def scanned(items, what: str, minimum: int = 1):
         f"enforcing NOTHING. Root in use: {REPO}"
     )
     return items
+
+# ── what is test code ─────────────────────────────────────────────
+#
+# Backend tests are migrating INTO the package that owns them, as a
+# `tests/` SUBDIRECTORY — features/<x>/tests/, capabilities/<x>/tests/ —
+# never as loose test_*.py beside the source.  That form is load-bearing:
+# the structural guards prune by DIRECTORY NAME, so a `tests` directory
+# is already invisible to them, while a flat features/<x>/test_foo.py
+# would be scanned, imported and enforced as production source.
+#
+# Several guards used to spell "this is test code" as
+# `rel.startswith("tests/")`, which is true only while every test lives
+# in the one top-level directory.  One place answers it now, so the
+# guards cannot drift into disagreeing about what they are auditing.
+
+_TEST_DIR = "tests"
+
+
+def is_test_path(rel) -> bool:
+    """True when a repo-relative path is test code, wherever it lives.
+
+    Covers the top-level tests/ tree AND any package-owned tests/
+    subdirectory.  Takes a str or a Path; compares path PARTS, never a
+    substring, so a source file called `latest/thing.py` or a package
+    named `contests` is not mistaken for a test.
+    """
+    parts = getattr(rel, "parts", None)
+    if parts is None:
+        parts = str(rel).replace("\\", "/").split("/")
+    return _TEST_DIR in parts
