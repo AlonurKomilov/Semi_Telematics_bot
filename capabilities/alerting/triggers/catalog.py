@@ -151,8 +151,14 @@ def columns_needed(keys) -> list[str]:
 
     Always includes what every metric needs to be judged at all:
     ``engine_state`` for the engine gate and ``source_ts`` for freshness.
+
+    NOT ``vehicle_name`` — the minute tier does not carry one.  Asking
+    for it made every sweep die on ``column "vehicle_name" does not
+    exist``, silently, because the per-account error is caught and
+    logged rather than raised.  The name a person reads in the DM is
+    resolved separately from the live tier, which does carry it.
     """
-    cols = {"vehicle_id", "vehicle_name", "engine_state", "source_ts", "captured_at"}
+    cols = {"vehicle_id", "engine_state", "source_ts", "captured_at"}
     for k in keys:
         m = get_metric(k)
         if m is not None:

@@ -163,6 +163,27 @@ class _DenyAll:
 _DENY_ALL = _DenyAll()
 
 
+async def _names_for(tenant, account_id: int) -> dict[str, str]:
+    """``vehicle_id → display name``, for the sentence a person reads.
+
+    The MINUTE tier carries no ``vehicle_name`` — it is keyed by id — so
+    the name comes from the live tier, which holds one row per vehicle
+    and does carry it.  One extra query per sweep, and a miss simply
+    leaves the id in the message rather than failing the sweep: a DM
+    naming a truck by its provider id is poor, being silent is worse.
+    """
+    try:
+        cur = await tenant._db.execute(
+            "SELECT vehicle_id, vehicle_name FROM warehouse.vehicle_state_live "
+            " WHERE account_id = ?",
+            (account_id,),
+        )
+        return {str(r[0]): str(r[1] or "") for r in await cur.fetchall()}
+    except Exception as e:
+        logger.debug("trigger sweep: names unavailable acct=%s: %s", account_id, e)
+        return {}
+
+
 async def evaluate_account(
     account_id: int, triggers: list[AlertTrigger], tick: int,
 ) -> dict[str, int]:
@@ -179,6 +200,7 @@ async def evaluate_account(
         tenant, account_id, cat.columns_needed({t.metric for t in due}))
     if not rows:
         return stats
+    names = await _names_for(tenant, account_id)
 
     scopes: dict[int, Any] = {}
     for trig in due:
@@ -226,7 +248,8 @@ async def evaluate_account(
                     # state instead of announcing all of it.
                     stats["seeded"] += 1
                     continue
-                if await _deliver(account_id, trig, row, value):
+                if await _deliver(account_id, trig, row, value,
+                                  names.get(vid, "")):
                     stats["fired"] += 1
             elif was and cat.recovered(metric, value, trig.threshold):
                 # Recovered past the band — re-armed.  v1 says nothing on
@@ -262,6 +285,7 @@ async def _mark_trigger_seen(account_id: int, trigger_id: int) -> None:
 
 async def _deliver(
     account_id: int, trig: AlertTrigger, row: dict[str, Any], value: float,
+    vehicle_name: str = "",
 ) -> bool:
     """DM the trigger's owner.  Personal triggers write NO board row —
     the Alerts board is the account's shared queue, and one person's
@@ -270,7 +294,7 @@ async def _deliver(
     from capabilities.alerting.triggers.notification_category import TRIGGER_FIRED
 
     metric = trig.spec
-    name = str(row.get("vehicle_name") or row.get("vehicle_id") or "?")
+    name = str(vehicle_name or row.get("vehicle_id") or "?")
     shown = int(value) if float(value).is_integer() else round(value, 1)
     try:
         await notify_user(

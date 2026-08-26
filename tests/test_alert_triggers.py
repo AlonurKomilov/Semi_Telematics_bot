@@ -34,12 +34,21 @@ class TestCatalog:
         # The columns the minute tier is contracted to carry.  Kept here
         # deliberately rather than introspected: a test that reads the
         # live schema would agree with a rename instead of failing on it.
+        #
+        # This list is only as good as its accuracy, and the first draft
+        # proved it: it included ``vehicle_name``, which the minute tier
+        # does NOT carry (that is a live-tier column).  The test passed,
+        # and every sweep in production died on
+        # ``column "vehicle_name" does not exist`` — caught per account,
+        # logged, and therefore silent.  TestQueryShape below is the
+        # companion that would have failed instead of agreeing.
         MINUTE_COLUMNS = {
-            "vehicle_id", "vehicle_name", "captured_at", "source_ts",
+            "vehicle_id", "captured_at", "source_ts",
             "engine_state", "speed_mph", "fuel_pct", "def_pct",
             "odometer_mi", "engine_hours", "fault_count",
             "dtc_critical_count", "battery_v", "oil_psi", "coolant_c",
-            "engine_load_pct", "rpm",
+            "engine_load_pct", "rpm", "lat", "lon", "last_driver_id",
+            "registry_id", "account_id",
         }
         for m in cat.CATALOG:
             assert m.source == cat.MINUTE, f"{m.key} reads an unexpected tier"
@@ -53,6 +62,14 @@ class TestCatalog:
         cols = set(cat.columns_needed(["fuel_pct"]))
         assert {"source_ts", "engine_state", "vehicle_id"} <= cols
         assert "fuel_pct" in cols
+
+    def test_columns_needed_never_asks_for_a_display_name(self):
+        """The minute tier is keyed by id and carries no name.  Asking
+        for one killed every sweep, silently, because the failure is
+        caught per account and logged.  The name comes from the live
+        tier instead."""
+        for keys in ([], ["fuel_pct"], list(cat.metric_keys())):
+            assert "vehicle_name" not in cat.columns_needed(keys)
 
     def test_direction_is_pinned_not_chosen(self):
         """Every metric declares which way it matters.  'Fuel above 26%'
@@ -194,3 +211,44 @@ class TestDescribe:
 class TestCap:
     def test_there_is_a_cap_and_it_is_modest(self):
         assert 5 <= MAX_TRIGGERS_PER_USER <= 50
+
+
+class TestQueryShape:
+    """Run the sweep's ACTUAL queries against a real schema.
+
+    The hand-kept column list above is a contract, and a contract can be
+    wrong: the first draft asserted the minute tier carries
+    ``vehicle_name``, it does not, and every production sweep died on
+    ``column "vehicle_name" does not exist`` while this file stayed
+    green.  The failure was invisible because the sweep catches per
+    account and logs.
+
+    These execute the real SQL.  A column that is not there fails here,
+    loudly, instead of at 3am in a log nobody is reading.
+    """
+
+    async def test_the_sweep_query_runs_against_the_real_tier(self, pg_db):
+        from capabilities.alerting.triggers import catalog as c
+        from capabilities.alerting.triggers.evaluator import _latest_per_vehicle
+        # Every metric at once — the widest column set a sweep can ask for.
+        rows = await _latest_per_vehicle(
+            pg_db, 10_000_001, c.columns_needed(c.metric_keys()))
+        assert rows == [] or isinstance(rows[0], dict)
+
+    async def test_the_name_lookup_runs_against_the_real_tier(self, pg_db):
+        """Names come from the LIVE tier, which is a different table with
+        different columns — so it needs its own execution, not an
+        assumption that whatever worked above works here."""
+        from capabilities.alerting.triggers.evaluator import _names_for
+        names = await _names_for(pg_db, 10_000_001)
+        assert isinstance(names, dict)
+
+    async def test_a_metric_column_that_vanished_is_caught_here(self, pg_db):
+        """Proof this test can fail: ask for a column nothing carries and
+        the query must raise, which is what makes the two tests above
+        evidence rather than decoration."""
+        import pytest as _pytest
+        from capabilities.alerting.triggers.evaluator import _latest_per_vehicle
+        with _pytest.raises(Exception):
+            await _latest_per_vehicle(
+                pg_db, 10_000_001, ["vehicle_id", "a_column_that_never_existed"])
