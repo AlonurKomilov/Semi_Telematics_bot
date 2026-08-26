@@ -449,6 +449,60 @@ const CARD_NOT_A_CARD = [
   'features/settings/TeamManagement.tsx',
 ];
 
+/**
+ * A literal px/rem length inside an inline `style` object. A class can be
+ * multiplied by the Size axes; a number in a style object cannot, and it
+ * is the one spelling the arbitrary-length guard above never sees.
+ *
+ * Narrow on purpose, the same way the card rule is. Percentages, `vh`,
+ * `var()`, `calc()` and template-interpolated values are relative or
+ * computed and stay alone; `0` has no scale to lose; `lineHeight` is
+ * unitless by design. A first draft that skipped those exclusions
+ * reported 127 sites, of which 117 were recharts `margin` props in SVG
+ * units, a `topPerformers` key matched by a `top` prefix, and Leaflet
+ * `divIcon` HTML. The real number was ten.
+ *
+ * `lib/scaledLength.ts` is the replacement, and it mirrors the config's
+ * axis-by-magnitude rule so `220px` there behaves like `h-55` here.
+ */
+const inlineLengthSites = (src: string): number[] => {
+  const PROPS = new Set([
+    'width', 'height', 'fontSize', 'padding', 'margin', 'top', 'left',
+    'right', 'bottom', 'gap', 'minWidth', 'maxWidth', 'minHeight',
+    'maxHeight', 'borderRadius', 'borderWidth', 'inset', 'flexBasis',
+  ]);
+  const out: number[] = [];
+  for (const style of src.matchAll(/style=\{\{([\s\S]{0,400}?)\}\}/g)) {
+    for (const m of style[1].matchAll(
+      /(?:^|[,{\s])([A-Za-z]+)\s*:\s*(`[^`]*`|'[^']*'|"[^"]*"|-?[0-9][0-9.]*)/g,
+    )) {
+      if (!PROPS.has(m[1])) continue;
+      const v = m[2].replace(/^['"`]|['"`]$/g, '');
+      if (/%|\$\{|vh|vw|var\(|calc\(/.test(v)) continue;
+      if (!/^-?\d[\d.]*(?:px|rem)?$/.test(v)) continue;
+      if (v === '0' || v === '0px') continue;
+      out.push(src.slice(0, style.index ?? 0).split('\n').length);
+    }
+  }
+  return out;
+};
+
+/**
+ * The three that must NOT be converted:
+ *   · PublicApply — `left: -9999px; width: 1; height: 1` is the
+ *     off-screen trick that keeps an input reachable to a screen reader
+ *     and invisible to everyone else. Scaling a hiding place is absurd.
+ *   · PoiLayerPanel, MapTypeControl — Leaflet control chrome. Whether
+ *     map-canvas lengths ride the Size engine at all is an open OWNER
+ *     decision (85 more px sit inside divIcon HTML strings), and a lint
+ *     fix is not the place to settle it.
+ */
+const INLINE_LENGTH_ALLOWED = [
+  'features/applications/public/PublicApply.tsx',
+  'features/live-map/PoiLayerPanel.tsx',
+  'features/live-map/MapTypeControl.tsx',
+];
+
 type DebtList = {
   name: string;
   entries: string[];
@@ -468,6 +522,7 @@ const DEBT: DebtList[] = [
   { name: 'STATUS_DOOR_DEBT',            entries: STATUS_DOOR_DEBT,            match: 'exact',     scope: TSX,   offends: (f) => statusDoorSites(f.src).length > 0 },
   { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
   { name: 'CARD_NOT_A_CARD',             entries: CARD_NOT_A_CARD,             match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
+  { name: 'INLINE_LENGTH_ALLOWED',       entries: INLINE_LENGTH_ALLOWED,       match: 'exact',     scope: FILES, offends: (f) => inlineLengthSites(f.src).length > 0 },
 ];
 
 describe('UI chrome', () => {
@@ -500,6 +555,38 @@ describe('UI chrome', () => {
         (line) => `${f.rel}:${line} → <Card> or cn(cardVariants({…}), …)`,
       ));
     expect(offenders).toEqual([]);
+  });
+
+  it('never writes a literal length into an inline style', () => {
+    const offenders = FILES
+      .filter((f) => !INLINE_LENGTH_ALLOWED.includes(f.rel))
+      .filter((f) => !f.rel.startsWith('lib/scaledLength'))
+      .flatMap((f) => inlineLengthSites(f.src).map(
+        (line) => `${f.rel}:${line} → scaledPx() from lib/scaledLength.ts`,
+      ));
+    expect(
+      offenders,
+      'a number in a style object cannot be multiplied by the Size axes, ' +
+        'and no other guard in this file can see it',
+    ).toEqual([]);
+  });
+
+  it('keeps the tap floor off every axis', () => {
+    // `min-h-tap` / `min-w-tap` are the only config entries that
+    // deliberately ride NO axis: WCAG 2.5.8 is a floor in CSS pixels, and
+    // a floor that shrinks with a user's Size setting is not a floor.
+    // `tapHeight`/`tapWidth` above return a hardcoded 24 for them — so if
+    // someone ever wraps `tap` in scaled(), those two would keep saying 24
+    // while the page rendered something smaller, and the guard would go on
+    // passing. This is the lid on that.
+    const cfg = readFileSync(join(SRC, '..', 'tailwind.config.js'), 'utf8');
+    const entries = [...cfg.matchAll(/\btap:\s*('[^']*'|"[^"]*"|`[^`]*`)/g)]
+      .map((m) => m[1].replace(/^['"`]|['"`]$/g, ''));
+    expect(entries.length, 'no `tap` entry found in tailwind.config.js').toBeGreaterThan(0);
+    expect(
+      entries.filter((v) => v !== '24px'),
+      'the tap floor must stay a literal 24px on every key that defines it',
+    ).toEqual([]);
   });
 
   it('is counted correctly in design.md', () => {

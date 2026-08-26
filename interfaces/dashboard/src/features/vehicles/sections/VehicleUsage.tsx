@@ -26,6 +26,7 @@ import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
 import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
+import { scaledPx } from '@/lib/scaledLength';
 interface UsageSummary {
   vehicle_id: string;
   vehicle_name: string;
@@ -171,7 +172,7 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
             )}
           </div>
           {series.length > 0 && (
-            <div className="mt-5" style={{ width: '100%', height: 220 }}>
+            <div className="mt-5" style={{ width: '100%', height: scaledPx(220) }}>
               <ResponsiveContainer>
                 <BarChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />

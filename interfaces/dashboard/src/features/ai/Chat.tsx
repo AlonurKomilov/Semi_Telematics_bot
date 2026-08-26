@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { sizeRegion } from '@/lib/sizeRegion';
 import { Card } from '@/components/ui/card';
 import { usePreference } from '../../preferences';
+import { scaledPx } from '@/lib/scaledLength';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -2053,7 +2054,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 ? t('chat.placeholder_ask', { subject: chatSubject })
                 : t('chat.placeholder_commands')}
             rows={1}
-            style={{ maxHeight: '120px' }}
+            style={{ maxHeight: scaledPx(120, 'text') }}
             className="w-full bg-transparent text-foreground text-sm resize-none focus:outline-none placeholder:text-muted-foreground/50"
           />
           {/* Toolbar — slash-commands (icon-only) on the left; the model

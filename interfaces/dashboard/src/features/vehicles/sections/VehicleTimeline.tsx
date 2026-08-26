@@ -22,6 +22,7 @@ import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
 import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
+import { scaledPx } from '@/lib/scaledLength';
 interface TimelinePoint {
   hour_utc: string;
   miles?: number | null;
@@ -70,7 +71,7 @@ export default function VehicleTimeline({ vehicleName, company }: VehicleSection
         </p>
       )}
       {points.length > 0 && (
-        <div style={{ width: '100%', height: 220 }}>
+        <div style={{ width: '100%', height: scaledPx(220) }}>
           <ResponsiveContainer>
             <LineChart data={points} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />

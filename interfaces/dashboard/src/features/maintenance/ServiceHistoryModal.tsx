@@ -14,6 +14,7 @@ import { SectionHeader } from '@/components/shell';
 
 import { CHART_FONT_MD } from "@/lib/chartText";
 import { CHART_FONT_XS } from "@/lib/chartText";
+import { scaledPx } from '@/lib/scaledLength';
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
 // and we backfill empty months with zero so the gap pattern is honest
@@ -199,7 +200,7 @@ export function ServiceHistoryModal({
                     {monthlyTotal} total
                   </p>
                 </div>
-                <div style={{ width: '100%', height: 100 }}>
+                <div style={{ width: '100%', height: scaledPx(100) }}>
                   <ResponsiveContainer>
                     <BarChart data={monthly} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                       <XAxis
