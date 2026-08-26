@@ -99,8 +99,19 @@ export interface ResolvedCallout {
   dismissible: boolean;
 }
 
-export function useCallout(c: CalloutData): ResolvedCallout {
-  const { t } = useTranslation();
+/**
+ * i18next's `t`, narrowed to what this module uses.
+ *
+ * Declared rather than imported so the pure resolver below stays a
+ * plain function of (translate, callout) — which is what lets a GROUP
+ * resolve many callouts at once.  Calling `useCallout` in a loop over
+ * a variable-length list would break the rules of hooks; calling
+ * `useTranslation` once and mapping does not.
+ */
+export type Translate = (key: string, vars?: Record<string, string>) => string;
+
+/** The resolution itself, hook-free. See `useCallout` for the usual entry. */
+export function resolveCallout(t: Translate, c: CalloutData): ResolvedCallout {
   const spec = calloutSpec(c.key);
   const tone: Tone = spec?.severity ?? 'info';
   // `since` and the backend's params are merged into one substitution
@@ -134,4 +145,9 @@ export function useCallout(c: CalloutData): ResolvedCallout {
     Icon: toneIcon(tone),
     dismissible: spec?.kind === 'guidance',
   };
+}
+
+export function useCallout(c: CalloutData): ResolvedCallout {
+  const { t } = useTranslation();
+  return resolveCallout(t, c);
 }

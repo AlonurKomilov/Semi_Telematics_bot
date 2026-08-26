@@ -1114,7 +1114,8 @@
       "dismiss": "Masquer cet avis",
       "dismiss_failed": "Enregistrement impossible — toujours affiché.",
       "where": "Où",
-      "changed": "Changement"
+      "changed": "Changement",
+      "show_all": "Afficher les {{count}}"
     }
   }
 }

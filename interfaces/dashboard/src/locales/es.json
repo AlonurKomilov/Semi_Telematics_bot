@@ -1114,7 +1114,8 @@
       "dismiss": "Descartar este aviso",
       "dismiss_failed": "No se pudo registrar — sigue visible.",
       "where": "Dónde",
-      "changed": "Cambio"
+      "changed": "Cambio",
+      "show_all": "Ver los {{count}}"
     }
   }
 }

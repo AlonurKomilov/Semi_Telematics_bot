@@ -1405,7 +1405,8 @@
       "dismiss": "Dismiss this notice",
       "dismiss_failed": "Could not be recorded — still showing.",
       "where": "Where",
-      "changed": "Changed"
+      "changed": "Changed",
+      "show_all": "Show all {{count}}"
     }
   }
 }

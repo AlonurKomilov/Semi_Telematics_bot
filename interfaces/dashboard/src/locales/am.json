@@ -885,7 +885,8 @@
       "dismiss": "ይህን ማስታወቂያ አስወግድ",
       "dismiss_failed": "መመዝገብ አልተቻለም — አሁንም ይታያል።",
       "where": "የት",
-      "changed": "ለውጥ"
+      "changed": "ለውጥ",
+      "show_all": "ሁሉንም {{count}} አሳይ"
     }
   }
 }

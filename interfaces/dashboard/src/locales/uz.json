@@ -744,7 +744,8 @@
       "dismiss": "Xabarnomani yopish",
       "dismiss_failed": "Yozib bo'lmadi — ekranda qoladi.",
       "where": "Qayerda",
-      "changed": "O'zgarish"
+      "changed": "O'zgarish",
+      "show_all": "Barchasini ko‘rsatish ({{count}})"
     }
   }
 }

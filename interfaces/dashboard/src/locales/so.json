@@ -885,7 +885,8 @@
       "dismiss": "Ogeysiiskan qari",
       "dismiss_failed": "Lama diiwaangelin karin — weli wuu muuqdaa.",
       "where": "Halka",
-      "changed": "Isbeddel"
+      "changed": "Isbeddel",
+      "show_all": "Muuji dhammaan {{count}}"
     }
   }
 }

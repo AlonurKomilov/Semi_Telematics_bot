@@ -25,7 +25,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
-import { Callout, type CalloutData } from '../../components/callouts';
+import { CalloutGroup, type CalloutData } from '../../components/callouts';
 import type { Vehicle } from '../../types';
 
 export interface DeviceEvent {
@@ -63,9 +63,7 @@ const EVENT_CALLOUT_KEY: Record<string, string> = {
 /** One event as the callouts lane wants it.  ``params`` feed the copy
  *  ("{{old}} → {{new}}"), so the values a person needs to judge the
  *  change stay in the sentence rather than in a separate mono column. */
-function eventCallout(e: DeviceEvent, scoped: boolean): CalloutData | null {
-  const key = EVENT_CALLOUT_KEY[e.kind];
-  if (!key) return null;
+function eventCallout(key: string, e: DeviceEvent, scoped: boolean): CalloutData {
   return {
     key,
     // Same entity shape the vehicles endpoints emit, so a dismissal or
@@ -136,74 +134,82 @@ export default function DeviceEventsCard({
     }
   };
 
+  // Grouped by KIND, not by truck.  The explanation belongs to the
+  // kind — three trucks that changed VIN raise one question three
+  // times — so grouping this way is what lets it be said once.  A
+  // truck appearing in two groups (a gateway swap usually brings a new
+  // VIN with it) is the cheaper cost: grouping by truck would print
+  // the explanation once per truck instead, which is the repetition
+  // this replaced.  Insertion-ordered, so the newest kind stays put
+  // rather than re-ordering under someone mid-answer.
+  // Keyed by the CALLOUT key rather than the log's `kind`, so the key
+  // is resolved once here and the render cannot be handed an event
+  // this lane has no copy for.
+  const groups = new Map<string, DeviceEvent[]>();
+  for (const e of open) {
+    const key = EVENT_CALLOUT_KEY[e.kind];
+    if (!key) continue;
+    const at = groups.get(key);
+    if (at) at.push(e); else groups.set(key, [e]);
+  }
+
+  const rowActions = (e: DeviceEvent) =>
+    e.kind === 'vin_change' ? (
+      <>
+        <Button
+          type="button" variant="outline" size="sm"
+          disabled={busyId === e.id}
+          onClick={() => resolveSimple(e, 'same_truck')}
+        >
+          {busyId === e.id && <Loader2 className="animate-spin" />}
+          Same truck
+        </Button>
+        {/* Outline, NOT the filled primary it used to be.  Splitting
+            mints a new unit, moves the telematics ref and forks the
+            truck's history — the hard-to-reverse answer of the two.
+            Giving it the button that reads as "the default" nudged
+            toward it; both answers now carry the same weight so the
+            choice is made on the VIN evidence beside them, not on
+            styling. */}
+        <Button
+          type="button" variant="outline" size="sm"
+          disabled={busyId === e.id}
+          onClick={() => { setError(''); setSplitEvent(e); }}
+        >
+          Different truck…
+        </Button>
+      </>
+    ) : (
+      <Button
+        type="button" variant="outline" size="sm"
+        disabled={busyId === e.id}
+        onClick={() => resolveSimple(e, 'dismissed')}
+      >
+        {busyId === e.id && <Loader2 className="animate-spin" />}
+        Dismiss
+      </Button>
+    );
+
   return (
-    <div className="mb-4">
-      {/* No card and no icon-plus-title of its own: each strip below
+    <div className="mb-4 space-y-2">
+      {/* No card and no icon-plus-title of its own: each group below
           already carries both, and wrapping them repeated the warning
           icon, the heading and the border around a single statement.
-          A plain label survives only to group several. */}
-      {open.length > 1 && (
+          A plain label survives only to name what several groups have
+          in common. */}
+      {groups.size > 1 && (
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Device changes to review
         </p>
       )}
-      {/* Rendered through the callouts lane so a device question wears
-          the same shape as every other statement on the page — one
-          vocabulary for the reader.  The DATA and the answer flow stay
-          here: the buttons below perform registry surgery, which the
-          lane must never learn about, so they ride its actions slot. */}
-      <ul className="space-y-2">
-        {open.map((e) => {
-          const c = eventCallout(e, Boolean(vehicleName));
-          if (!c) return null;
-          return (
-            <li key={e.id}>
-              <Callout
-                callout={c}
-                entity={{ type: 'vehicle', id: e.vehicle_name || e.vehicle_id }}
-                actions={
-                  e.kind === 'vin_change' ? (
-                    <>
-                      <Button
-                        type="button" variant="outline" size="sm"
-                        disabled={busyId === e.id}
-                        onClick={() => resolveSimple(e, 'same_truck')}
-                      >
-                        {busyId === e.id && <Loader2 className="animate-spin" />}
-                        Same truck
-                      </Button>
-                      {/* Outline, NOT the filled primary it used to
-                          be.  Splitting mints a new unit, moves the
-                          telematics ref and forks the truck's history —
-                          the hard-to-reverse answer of the two.  Giving
-                          it the button that reads as "the default"
-                          nudged toward it; both answers now carry the
-                          same weight so the choice is made on the VIN
-                          evidence above, not on styling. */}
-                      <Button
-                        type="button" variant="outline" size="sm"
-                        disabled={busyId === e.id}
-                        onClick={() => { setError(''); setSplitEvent(e); }}
-                      >
-                        Different truck…
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      type="button" variant="outline" size="sm"
-                      disabled={busyId === e.id}
-                      onClick={() => resolveSimple(e, 'dismissed')}
-                    >
-                      {busyId === e.id && <Loader2 className="animate-spin" />}
-                      Dismiss
-                    </Button>
-                  )
-                }
-              />
-            </li>
-          );
-        })}
-      </ul>
+      {[...groups.entries()].map(([key, events]) => (
+        <CalloutGroup
+          key={key}
+          items={events}
+          callout={(e) => eventCallout(key, e, Boolean(vehicleName))}
+          actions={rowActions}
+        />
+      ))}
       {error && !splitEvent && (
         <p className="mt-2 text-xs text-destructive">{error}</p>
       )}
