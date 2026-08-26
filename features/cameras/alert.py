@@ -18,29 +18,40 @@ from capabilities.alerting.registry import register_alert_source
 logger = logging.getLogger("bot")
 
 
-def _issues_for_subscriber(sub, all_issues: list[dict]) -> list[dict]:
+def _issues_for_subscriber(sub, all_issues: list[dict], gate: dict) -> list[dict]:
     """Apply driver-role isolation to camera issues.
 
     A driver should only ever receive camera alerts for their own
-    assigned truck.  This mirrors the pattern in
-    ``capabilities/alerting/pipeline.py:286-288`` which the universal
-    ``send_alert()`` pipeline uses for fault / health / fuel / parking
-    alerts.  Camera alerts previously bypassed that pipeline and
-    broadcast every issue to every subscriber — a real privacy
-    regression where drivers in company G1 were seeing dashcam reports
-    for trucks in CFT / OSY / PTG.
+    assigned truck — the same wall ``send_alert()`` applies for fault /
+    health / fuel / parking.  Camera alerts once bypassed it entirely and
+    broadcast every issue to every subscriber, which is how drivers in
+    company G1 were seeing dashcam reports for CFT / OSY / PTG trucks.
 
-    Non-driver roles (owner, admin, fleet manager, safety) keep the
-    account-wide view they had before; account / company scoping for
-    those roles is a separate concern handled by their permissions.
+    This used to match by SUBSTRING on the legacy single ``truck_num``:
+    ``my_truck in vehicle_name``.  Two defects in one line.  The
+    substring over-matched exactly where it mattered — an assignment of
+    "230" also admitted truck 2303, "100" admitted trailer AK1001 — and
+    these are DASHCAM images, so an over-match is the most consequential
+    disclosure in the product.  And reading only ``truck_num`` ignored
+    the multi-assignment table, so a driver with three trucks was scoped
+    by whichever one the legacy column happened to hold.
+
+    Both are fixed by deferring to the shared gate, which decides by the
+    identity ladder (registry id → provider id → exact name) over every
+    assignment the driver actually has.
+
+    Non-driver roles keep the account-wide view; company scoping for
+    those is a separate concern handled below.
     """
-    if sub.role == Role.DRIVER and sub.truck_num:
-        my_truck = sub.truck_num.strip().lower()
-        return [
-            r for r in all_issues
-            if my_truck in str(r.get("vehicle", "")).strip().lower()
-        ]
-    return list(all_issues)
+    from capabilities.alerting.vehicle_gate import user_sees_vehicle
+    if sub.role != Role.DRIVER:
+        return list(all_issues)
+    return [
+        r for r in all_issues
+        if user_sees_vehicle(getattr(sub, "id", None), sub.role,
+                             {"name": r.get("vehicle"), "id": r.get("vehicle_id")},
+                             gate)
+    ]
 
 
 def _issues_for_companies(
@@ -322,6 +333,10 @@ async def _check_cameras_account(
     from capabilities.alerting.dnd import is_user_dnd_active
     from interfaces.bot.state import get_tenant_db as _get_tenant_db
     _user_co = await load_company_scope(account_id)
+    # One load for the whole fan-out — the gate is per account, not per
+    # subscriber, and this runs inside a per-subscriber loop.
+    from capabilities.alerting.vehicle_gate import load_vehicle_gate
+    _veh_gate = await load_vehicle_gate(account_id)
     # Tenant DB handle for the per-sub DND queue.  Fetched once
     # (cheap pool lookup) so the per-subscriber loop doesn't
     # re-resolve it on every iteration.
@@ -332,7 +347,7 @@ async def _check_cameras_account(
         # admin / fleet manager) keep the full-fleet view.  Without
         # this, drivers received every camera issue across every
         # company in the account — a privacy regression.
-        sub_issues = _issues_for_subscriber(sub, new_issues)
+        sub_issues = _issues_for_subscriber(sub, new_issues, _veh_gate)
         _sub_co = subscriber_companies(sub, _user_co)
         if _sub_co:
             # Keyed on the WIRE code, and fail-CLOSED.  Two reasons this

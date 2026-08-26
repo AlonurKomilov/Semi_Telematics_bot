@@ -246,6 +246,11 @@ async def check_overdue_maintenance(app: Application):
                         subject_id=str(task.get("vehicle_id")
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
+                        # The identity the vehicle gate matches on: a
+                        # driver assigned one truck must not be DM'd about
+                        # another's overdue service.
+                        vehicle={"id": task.get("vehicle_id"),
+                                 "name": task.get("vehicle_name")},
                         dedup_key=f"task:{task['id']}",
                         co=str(task.get("company_code") or ""),
                     )
@@ -324,6 +329,11 @@ async def check_overdue_by_mileage(app: Application):
                         subject_id=str(task.get("vehicle_id")
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
+                        # The identity the vehicle gate matches on: a
+                        # driver assigned one truck must not be DM'd about
+                        # another's overdue service.
+                        vehicle={"id": task.get("vehicle_id"),
+                                 "name": task.get("vehicle_name")},
                         dedup_key=f"task:{task['id']}",
                         co=str(task.get("company_code") or ""),
                     )
@@ -405,6 +415,11 @@ async def check_overdue_by_engine_hours(app: Application):
                         subject_id=str(task.get("vehicle_id")
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
+                        # The identity the vehicle gate matches on: a
+                        # driver assigned one truck must not be DM'd about
+                        # another's overdue service.
+                        vehicle={"id": task.get("vehicle_id"),
+                                 "name": task.get("vehicle_name")},
                         dedup_key=f"task:{task['id']}",
                         co=str(task.get("company_code") or ""),
                     )
@@ -494,6 +509,11 @@ async def check_upcoming_maintenance_warnings(app: Application):
                         subject_id=str(task.get("vehicle_id")
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
+                        # The identity the vehicle gate matches on: a
+                        # driver assigned one truck must not be DM'd about
+                        # another's overdue service.
+                        vehicle={"id": task.get("vehicle_id"),
+                                 "name": task.get("vehicle_name")},
                         dedup_key=f"task:{task['id']}",
                         co=str(task.get("company_code") or ""),
                     )

@@ -622,6 +622,7 @@ async def post_alert_to_topic(
     subject_name: str = "",
     dedup_key: str = "",
     co: str = "",
+    vehicle: dict | None = None,
 ) -> bool:
     """Public group-post helper for alert paths that don't run through
     ``send_alert()`` — maintenance overdue, doc expiry, Samsara sync,
@@ -703,11 +704,35 @@ async def post_alert_to_topic(
             except Exception as _fe:
                 logger.debug("effective-perm gate unavailable (%s): %s",
                              alert_type, _fe)
+            # Vehicle scope — the same gate send_alert applies, expressed
+            # as an opaque predicate so the notification core never learns
+            # what a vehicle is.
+            #
+            # ONLY when the caller named a vehicle.  Not every source on
+            # this path is about one: a document-expiry alert's subject is
+            # a DRIVER (``drv:5``), and an identity-less dict is DENIED to
+            # a restricted driver by design — so defaulting to ``{}`` here
+            # would black out whole alert types for exactly the people the
+            # gate is supposed to protect.  No vehicle named = no gate.
+            _veh_pred = None
+            if vehicle:
+                try:
+                    from capabilities.alerting.vehicle_gate import (
+                        load_vehicle_gate, user_sees_vehicle)
+                    _gate = await load_vehicle_gate(account_id)
+                    if _gate:
+                        _veh_pred = (lambda uid, role, _v=vehicle, _g=_gate:
+                                     user_sees_vehicle(uid, role, _v, _g))
+                except Exception as _ve:
+                    logger.debug("vehicle gate unavailable (%s): %s",
+                                 alert_type, _ve)
             _rf = None
-            if _co_pred is not None or _allowed_ids is not None:
-                _rf = (lambda uid, role, _p=_co_pred, _a=_allowed_ids:
+            if (_co_pred is not None or _allowed_ids is not None
+                    or _veh_pred is not None):
+                _rf = (lambda uid, role, _p=_co_pred, _a=_allowed_ids, _v=_veh_pred:
                        (_a is None or uid in _a)
-                       and (_p is None or _p(uid, role)))
+                       and (_p is None or _p(uid, role))
+                       and (_v is None or _v(uid, role)))
             await _notif_dispatch(
                 get_platform_db(), account_id,
                 _NotifContent(
@@ -1055,6 +1080,18 @@ async def send_alert(
     # Group/forum delivery is per-account and intentionally NOT gated.
     from capabilities.alerting.company_scope import filter_subscribers_by_company
     subscribers = await filter_subscribers_by_company(subscribers, co, account_id)
+
+    # ── Vehicle-scope gate ────────────────────────────────────────
+    # The company gate cannot express "this driver's truck": a restricted
+    # driver's own company is exactly what they are restricted WITHIN, so
+    # until now a driver assigned one truck was DM'd about every truck
+    # their company owns — rows the board already refuses to show them.
+    # Only DRIVERS with an assignment are affected; everyone else passes
+    # untouched.  Loading fails open, matching fails closed
+    # (capabilities/alerting/vehicle_gate).
+    from capabilities.alerting.vehicle_gate import filter_subscribers_by_vehicle
+    subscribers = await filter_subscribers_by_vehicle(
+        subscribers, vehicle, account_id)
 
     # ── Chronic-pattern suppression gate (Fix C) ──────────────────
     # When the operator has marked this ``(alert_type, vehicle_id)``

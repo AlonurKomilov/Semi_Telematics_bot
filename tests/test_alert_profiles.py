@@ -201,6 +201,58 @@ async def test_personal_fanout_carries_company_predicate(monkeypatch):
     assert rf(8, "dispatcher") is True
 
 
+@pytest.mark.asyncio
+async def test_personal_fanout_carries_vehicle_predicate(monkeypatch):
+    """The topic path's personal fan-out must gate by VEHICLE too.
+
+    This exists because the first version of that gate referenced a
+    ``vehicle`` name the function never had: the lambda raised NameError
+    at creation, the surrounding except swallowed it, and the predicate
+    silently dropped out — so a driver assigned one truck kept receiving
+    maintenance DMs for every truck in the company while the code read as
+    though it were gated.  A test that only asserts the COMPANY predicate
+    cannot see that; this one names the vehicle and checks the driver is
+    dropped.
+    """
+    from capabilities.permissions.vehicle_scope import VehicleScope
+
+    async def _gate(account_id):
+        return {7: VehicleScope(names=frozenset({"truck 999"}))}
+
+    monkeypatch.setattr(
+        "capabilities.alerting.vehicle_gate.load_vehicle_gate", _gate)
+    posted, tenant, dispatch = await _post(
+        monkeypatch, alert_type="maintenance",
+        subject_id="v-105", subject_name="Truck 105",
+        dedup_key="task:7",
+        vehicle={"id": "v-105", "name": "Truck 105"})
+    rf = dispatch.calls[0].get("recipient_filter")
+    assert rf is not None, "a populated vehicle gate must produce a predicate"
+    assert rf(7, "driver") is False      # assigned truck 999, not 105
+    assert rf(8, "driver") is True       # unassigned driver: unrestricted
+    assert rf(9, "dispatcher") is True   # not a driver: never narrowed
+
+
+@pytest.mark.asyncio
+async def test_an_alert_with_no_vehicle_is_not_gated(monkeypatch):
+    """A document-expiry alert's subject is a DRIVER, not a truck.  An
+    identity-less vehicle is DENIED to a restricted driver by design, so
+    gating those calls would black out whole alert types for exactly the
+    people the gate protects.  No vehicle named = no vehicle predicate."""
+    from capabilities.permissions.vehicle_scope import VehicleScope
+
+    async def _gate(account_id):
+        return {7: VehicleScope(names=frozenset({"truck 999"}))}
+
+    monkeypatch.setattr(
+        "capabilities.alerting.vehicle_gate.load_vehicle_gate", _gate)
+    posted, tenant, dispatch = await _post(
+        monkeypatch, alert_type="documents",
+        subject_id="drv:7", subject_name="John Doe", dedup_key="doc:7")
+    rf = dispatch.calls[0].get("recipient_filter")
+    assert rf is None or rf(7, "driver") is True
+
+
 # ── targeted alert notices (documents driver DM + shift report) ─────
 
 def test_targeted_notice_categories_registered():

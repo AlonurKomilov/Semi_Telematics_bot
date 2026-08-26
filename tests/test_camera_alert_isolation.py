@@ -34,6 +34,18 @@ class _StubSub:
     """Minimal subscriber stub matching the fields _issues_for_subscriber reads."""
     role: Role
     truck_num: str | None = None
+    id: int = 1
+
+
+def _gate(*names, user_id: int = 1):
+    """The account's restriction map, as the shared gate builds it.
+
+    Name-only, which is the ladder's weakest rung and the one a substring
+    match used to fake — so a test that passes here proves EXACT-name
+    behaviour rather than the old ``in`` comparison.
+    """
+    from capabilities.permissions.vehicle_scope import VehicleScope
+    return {user_id: VehicleScope(names=frozenset(n.lower() for n in names))}
 
 
 # Camera-issue payload shape mirrors what ``analyze_snapshot`` returns:
@@ -53,7 +65,7 @@ class TestCameraAlertIsolation:
         """A driver assigned to Truck 107 must see only the #107 issue —
         not the four others, even though they're in the same account."""
         sub = _StubSub(role=Role.DRIVER, truck_num="107")
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES)
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, _gate("107"))
         assert len(out) == 1
         assert out[0]["vehicle"] == "107"
 
@@ -61,19 +73,19 @@ class TestCameraAlertIsolation:
         """A driver assigned to a truck with no issues this cycle gets
         an empty list — the dispatch loop will then skip them silently."""
         sub = _StubSub(role=Role.DRIVER, truck_num="999")
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES)
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, _gate("999"))
         assert out == []
 
     def test_owner_sees_every_issue(self):
         """Non-driver subscribers (owner / admin / fleet manager) keep
         the full-fleet view — driver-isolation only applies to drivers."""
         sub = _StubSub(role=Role.OWNER, truck_num=None)
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES)
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, _gate("107"))
         assert len(out) == len(SAMPLE_ISSUES)
 
     def test_admin_sees_every_issue(self):
         sub = _StubSub(role=Role.ADMIN, truck_num=None)
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES)
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, _gate("107"))
         assert len(out) == len(SAMPLE_ISSUES)
 
     def test_driver_with_no_truck_assignment_sees_every(self):
@@ -81,29 +93,55 @@ class TestCameraAlertIsolation:
         list — same behavior as today, prevents a NULL truck from
         silently muting their entire alert stream."""
         sub = _StubSub(role=Role.DRIVER, truck_num=None)
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES)
+        # An unassigned driver is ABSENT from the gate — the map lists
+        # walls, not people — so nothing narrows for them.  Legacy
+        # behaviour, kept deliberately and matching deps.get_user_vehicle_scope.
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, {})
         assert len(out) == len(SAMPLE_ISSUES)
 
-    def test_filter_is_case_insensitive_and_substring(self):
-        """Truck-name forms vary ("Truck 107" vs "107") — match the
-        same case-insensitive substring rule pipeline.py uses for
-        consistency between the two alert paths."""
+    def test_a_renamed_truck_still_matches_by_provider_id(self):
+        """Display names drift — the provider may call the truck
+        "TRUCK 107" while the registry knows it as unit 107.  The ladder
+        settles that on rung 2 (provider id), which is why the gate
+        resolves each assignment against the registry rather than
+        comparing strings.
+
+        This test used to assert a SUBSTRING match instead, and that is
+        what made it a disclosure: see the next test.
+        """
+        from capabilities.permissions.vehicle_scope import VehicleScope
         sub = _StubSub(role=Role.DRIVER, truck_num="107")
-        # Simulate a name format like "TRUCK 107" — must still match.
+        gate = {1: VehicleScope(names=frozenset({"107"}),
+                                external_ids=frozenset({"veh-abc"}))}
         issues = [
-            {"vehicle": "TRUCK 107", "status": "WARNING"},
-            {"vehicle": "201",       "status": "PROBLEM"},
+            {"vehicle": "TRUCK 107", "vehicle_id": "veh-abc", "status": "WARNING"},
+            {"vehicle": "201", "vehicle_id": "veh-201", "status": "PROBLEM"},
         ]
-        out = _issues_for_subscriber(sub, issues)
+        out = _issues_for_subscriber(sub, issues, gate)
         assert len(out) == 1
         assert out[0]["vehicle"] == "TRUCK 107"
+
+    def test_an_assignment_no_longer_admits_a_longer_number(self):
+        """The reason the substring had to go, on the most sensitive
+        alert in the product: a driver assigned 230 was shown DASHCAM
+        images of truck 2303, and 100 was shown trailer AK1001, because
+        ``"230" in "2303"`` is true.  These are the rows a driver is
+        ALLOWED to see, so an over-match was a disclosure, not a
+        convenience."""
+        sub = _StubSub(role=Role.DRIVER, truck_num="230")
+        issues = [
+            {"vehicle": "230",  "vehicle_id": "veh-230",  "status": "WARNING"},
+            {"vehicle": "2303", "vehicle_id": "veh-2303", "status": "PROBLEM"},
+        ]
+        out = _issues_for_subscriber(sub, issues, _gate("230"))
+        assert [r["vehicle"] for r in out] == ["230"]
 
     def test_cross_company_isolation(self):
         """Regression for the reported bug: driver on G1/107 must not
         see issues for CFT, OSY, or any other company even within the
         same account."""
         sub = _StubSub(role=Role.DRIVER, truck_num="107")
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES)
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, _gate("107"))
         companies = {r.get("company") for r in out}
         assert companies == {"G1"}, (
             f"Driver on G1/107 leaked alerts for: {companies - {'G1'}}"
