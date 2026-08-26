@@ -1,5 +1,12 @@
 /**
- * "Alert me when…" — a person's own thresholds on vehicle metrics.
+ * "My alert triggers" — a person's own watches on vehicle metrics.
+ *
+ * ONE vocabulary, deliberately.  A TRIGGER is the thing you create; a
+ * THRESHOLD is the number on it.  The table, the class, the package, the
+ * endpoints, the notification category and the DM all say trigger, and an
+ * earlier draft of this file said "thresholds" for the object — a third
+ * word for one concept, which is the same-name-two-things confusion the
+ * clarity rules exist to stop, just wearing the other face.
  *
  * The other sections on this page answer *where* a notice reaches you.
  * This one answers *whether there is one at all*, which is why it reads
@@ -20,7 +27,7 @@
  *   • an engine-gated metric only means something while the engine runs,
  *     so a battery trigger silent overnight is working, not broken;
  *   • these arrive by direct message and never reach the shared Alerts
- *     board — your threshold is not the account's news.
+ *     board — one person's trigger is not the account's news.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -218,7 +225,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
   // shoves every section below it down the page.
   const heading = (
     <SectionHeader size="card" icon={<BellRing className="size-4" />} className="mb-1">
-      My own thresholds
+      My alert triggers
     </SectionHeader>
   );
 
@@ -226,7 +233,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
     return (
       <Card render={<section />}>
         {heading}
-        <CardSkeleton height="h-24" message="Loading your thresholds…" />
+        <CardSkeleton height="h-24" message="Loading your triggers…" />
       </Card>
     );
   }
@@ -236,7 +243,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
       <Card render={<section />}>
         {heading}
         <p className="text-xs text-muted-foreground h-24">
-          Couldn’t load your thresholds.{' '}
+          Couldn’t load your triggers.{' '}
           <button type="button" onClick={() => void load()}
             className="text-primary hover:underline min-h-tap">
             Try again
@@ -250,7 +257,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
     <Card render={<section />}>
       {heading}
       <p className="text-xs text-muted-foreground mb-3">
-        Numbers you choose, on the vehicles you can see. A crossing reaches
+        Your own triggers, on the vehicles you can see. A crossing reaches
         you in the bell, plus Telegram and email if you’ve connected them
         above. It never posts to the shared Alerts board — so setting one
         adds nothing to anyone else’s queue, and you won’t find it on the
@@ -336,7 +343,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
           answers neither key. */}
       {adding ? (
         <form
-          aria-label="Add a threshold"
+          aria-label="Add an alert trigger"
           onSubmit={(e) => { e.preventDefault(); void add(); }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); }
@@ -408,7 +415,7 @@ export default function AlertTriggersSection({ onSaved }: { onSaved?: () => void
             <Tip label="Cancel">
               <Button type="button" variant="ghost" size="icon"
                       onClick={() => setAdding(false)}
-                      aria-label="Cancel adding a threshold">
+                      aria-label="Cancel adding a trigger">
                 <X />
               </Button>
             </Tip>

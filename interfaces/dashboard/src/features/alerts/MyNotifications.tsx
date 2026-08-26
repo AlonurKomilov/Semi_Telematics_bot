@@ -8,8 +8,9 @@
  * Structured by SOURCE so each kind of notification has a home:
  *   • Channels        — connect Telegram / Email / Push (the "where").
  *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where),
- *                        plus "Alert me when…": personal thresholds that
- *                        decide WHETHER there is an alert at all.
+ *                        plus "My alert triggers": a person's own
+ *                        watches, which decide WHETHER there is an alert
+ *                        at all rather than where it goes.
  *   • Account activity — TARGETED + opt-OUT notices (invite accepted …).
  *   • System           — platform notices (placeholder until a source
  *                        registers system.* categories).
@@ -217,7 +218,7 @@ export default function MyNotifications() {
         refreshKey={refreshKey}
       />
 
-      <SourceLabel>Alerts — my own thresholds</SourceLabel>
+      <SourceLabel>Alerts — my own triggers</SourceLabel>
       <AlertTriggersSection onSaved={flashSaved} />
 
       <SourceLabel>Account activity</SourceLabel>
