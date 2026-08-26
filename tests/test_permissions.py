@@ -2,6 +2,7 @@
 
 import os
 import pytest
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 from unittest.mock import patch
 
 from adapters.storage import Role
@@ -310,7 +311,7 @@ class TestPermSsotDriftDetection:
         import re
         from capabilities.permissions.roles import FeatureSet
 
-        repo_root = os.path.dirname(os.path.dirname(__file__))
+        repo_root = str(_REPO)
         # PERM_GROUPS moved to permRows.ts in the RoleLens refactor —
         # the guard follows the block, not the filename.
         tsx_path = os.path.join(

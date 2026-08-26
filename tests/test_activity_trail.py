@@ -7,6 +7,7 @@ round-trips ride each feature's own router tests as they convert.
 import inspect
 
 import pytest
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 from capabilities.activity_trail import (
     delete_changes, diff_rows, mask_changes, new_group_id,
@@ -193,7 +194,7 @@ def test_no_fourth_event_table_rule():
         "processed_stripe_events", "email_webhook_events",
         "parking_events", "score_events",
     }
-    root = pathlib.Path(__file__).resolve().parent.parent / "adapters" / "storage"
+    root = _REPO / "adapters" / "storage"
     offenders = set()
     for f in root.glob("*.py"):
         for m in re.finditer(
@@ -576,7 +577,7 @@ def test_ai_write_target_types_are_registered_trail_entities():
     from capabilities.ai.actions import _AI_TRAIL_ENTITY
     ensure_declarations_loaded()
     reg = registered_entity_types()
-    root = pathlib.Path(__file__).resolve().parent.parent
+    root = _REPO
     found: set[str] = set()
     for py in (list((root / "features").rglob("*.py"))
                + list((root / "capabilities").rglob("*.py"))):

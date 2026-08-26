@@ -22,6 +22,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -71,7 +72,7 @@ class TestServiceSplitFlags:
         assert enable_scheduler is True
 
     def test_docker_compose_services_file_exists(self):
-        root = os.path.dirname(os.path.dirname(__file__))
+        root = str(_REPO)
         path = os.path.join(root, "docker-compose.services.yml")
         assert os.path.exists(path), "docker-compose.services.yml not found"
         content = open(path).read()
@@ -81,7 +82,7 @@ class TestServiceSplitFlags:
         assert "ENABLE_SCHEDULER=1" in content
 
     def test_api_service_unit_exists(self):
-        root = os.path.dirname(os.path.dirname(__file__))
+        root = str(_REPO)
         path = os.path.join(root, "4truck-api.service")
         assert os.path.exists(path), "4truck-api.service not found"
         content = open(path).read()
@@ -90,7 +91,7 @@ class TestServiceSplitFlags:
         assert "ENABLE_SCHEDULER=0" in content
 
     def test_bot_service_unit_has_flags(self):
-        root = os.path.dirname(os.path.dirname(__file__))
+        root = str(_REPO)
         path = os.path.join(root, "4truck-bot.service")
         assert os.path.exists(path), "4truck-bot.service not found"
         content = open(path).read()
