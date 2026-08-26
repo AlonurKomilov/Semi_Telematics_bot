@@ -7,10 +7,13 @@
  *
  * Structured by SOURCE so each kind of notification has a home:
  *   • Channels        — connect Telegram / Email / Push (the "where").
- *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where),
- *                        plus "My alert triggers": a person's own
- *                        watches, which decide WHETHER there is an alert
- *                        at all rather than where it goes.
+ *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where).
+ *                        A person's own triggers used to sit here too;
+ *                        they moved to Alerts → Triggers, because each
+ *                        one now carries its OWN channels and this
+ *                        matrix — one row per alert TYPE, shared by
+ *                        everyone who receives it — has no grain to say
+ *                        that.  What is left here is a pointer.
  *   • Account activity — TARGETED + opt-OUT notices (invite accepted …).
  *   • System           — platform notices (placeholder until a source
  *                        registers system.* categories).
@@ -229,7 +232,7 @@ export default function MyNotifications() {
         lives on the Alerts page now, where you can also see what each one
         has caught.{' '}
         <Link to="/alerts/triggers" className="text-primary hover:underline">
-          My alert triggers →
+          My triggers →
         </Link>
       </p>
 

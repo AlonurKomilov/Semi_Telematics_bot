@@ -1,5 +1,5 @@
 /**
- * "My alert triggers" — a person's own watches on vehicle metrics.
+ * "Triggers I set" — a person's own watches on vehicle metrics.
  *
  * ONE vocabulary, deliberately.  A TRIGGER is the thing you create; a
  * THRESHOLD is the number on it.  The table, the class, the package, the
@@ -367,16 +367,24 @@ export default function AlertTriggersSection(
                   <span className="inline-flex size-4 items-center justify-center
                                    text-muted-foreground/40" aria-hidden>–</span>
                 )}
-                <span className={`text-sm truncate flex-1 min-w-0 ${
-                  t.enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
-                  {t.describes}
+                {/* The sentence and its footnote are ONE flex child.  As
+                    two, the optional "while running" sat between the text
+                    and the channel checkboxes, so an engine-gated row
+                    pushed its checkboxes left by the width of two words
+                    and no two rows agreed on where "Telegram" was. */}
+                <span className="flex items-baseline gap-2 flex-1 min-w-0">
+                  <span className={`text-sm truncate ${
+                    t.enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {t.describes}
+                  </span>
+                  {/* Why a battery trigger can be quiet all night — said
+                      where the question occurs, not in a help page. */}
+                  {m?.requires_engine === 'on' && (
+                    <span className="text-2xs text-muted-foreground shrink-0">
+                      while running
+                    </span>
+                  )}
                 </span>
-
-                {/* Why a battery trigger can be quiet all night — said
-                    where the question occurs, not in a help page. */}
-                {m?.requires_engine === 'on' && (
-                  <span className="text-2xs text-muted-foreground">while running</span>
-                )}
 
                 {/* Checkboxes, not switches: this is MEMBERSHIP — which
                     set of channels carries this trigger — and the switch
@@ -385,7 +393,11 @@ export default function AlertTriggersSection(
                     that fired and left no record is indistinguishable
                     from one that never fired. */}
                 {m && (
-                  <span className="flex items-center gap-2.5">
+                  // One flex child, so a wrap moves the whole group rather
+                  // than scattering three checkboxes under the sentence.
+                  // Every row now ends identity → state → destination →
+                  // remove, on the same x.
+                  <span className="flex items-center gap-2.5 shrink-0">
                     {channelKeys.map((c) => (
                       <label key={c}
                              className="flex items-center gap-1 text-2xs
