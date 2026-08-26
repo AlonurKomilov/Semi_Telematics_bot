@@ -26,44 +26,18 @@ import {
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import { CalloutGroup, type CalloutData } from '../../components/callouts';
+import {
+  EVENT_CALLOUT_KEY, subjectUnit,
+  type DeviceEvent, type EventsResponse,
+} from './deviceEvents';
 import type { Vehicle } from '../../types';
-
-export interface DeviceEvent {
-  id: number;
-  registry_id: number | null;
-  vehicle_id: string;
-  vehicle_name: string;
-  kind: string;
-  old_value: string;
-  new_value: string;
-  observed_at: string;
-  status: string;
-  resolution: string;
-  resolved_at: string;
-}
-
-interface EventsResponse {
-  events: DeviceEvent[];
-  open_count: number;
-}
-
-/** ``device_event_log.kind`` → the callout key that renders it.
- *
- *  The event vocabulary predates the callouts lane and is stored in
- *  the log's rows, so it is MAPPED here rather than renamed — the
- *  backend keeps saying ``vin_change`` and the reader sees one shape
- *  of statement across the whole page.  Mirrors
- *  ``EVENT_CALLOUT_KEYS`` in features/vehicles/callouts.py. */
-const EVENT_CALLOUT_KEY: Record<string, string> = {
-  vin_change: 'vehicle.vin_changed',
-  gateway_swap: 'vehicle.gateway_swapped',
-  odo_rebase: 'vehicle.odometer_rebased',
-};
 
 /** One event as the callouts lane wants it.  ``params`` feed the copy
  *  ("{{old}} → {{new}}"), so the values a person needs to judge the
  *  change stay in the sentence rather than in a separate mono column. */
-function eventCallout(key: string, e: DeviceEvent, scoped: boolean): CalloutData {
+function eventCallout(
+  key: string, e: DeviceEvent, scoped: boolean, unit: string,
+): CalloutData {
   return {
     key,
     // Same entity shape the vehicles endpoints emit, so a dismissal or
@@ -78,7 +52,7 @@ function eventCallout(key: string, e: DeviceEvent, scoped: boolean): CalloutData
       // account-wide list leaves open and a truck's own page has
       // already answered.  Empty resolves the line to nothing and the
       // strip omits it, so the copy needs no scoped variant.
-      unit: scoped ? '' : e.vehicle_name || e.vehicle_id,
+      unit: scoped ? '' : unit,
     },
   };
 }
@@ -110,6 +84,16 @@ export default function DeviceEventsCard({
     enabled: canManage,
     staleTime: 60_000,
   });
+  // registry id → what THIS account calls that truck.  The same source
+  // the vehicle list below renders from, so the strip and the table
+  // cannot disagree about a truck's name on one screen.
+  const unitByRegistryId = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const v of vehicles) {
+      if (v.registry_id != null) m.set(v.registry_id, v.name);
+    }
+    return m;
+  }, [vehicles]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [splitEvent, setSplitEvent] = useState<DeviceEvent | null>(null);
   const [error, setError] = useState('');
@@ -218,7 +202,9 @@ export default function DeviceEventsCard({
         <CalloutGroup
           key={key}
           items={events}
-          callout={(e) => eventCallout(key, e, Boolean(vehicleName))}
+          callout={(e) => eventCallout(
+            key, e, Boolean(vehicleName), subjectUnit(e, unitByRegistryId),
+          )}
           actions={rowActions}
         />
       ))}
@@ -230,6 +216,7 @@ export default function DeviceEventsCard({
         <SplitDialog
           event={splitEvent}
           vehicles={vehicles}
+          oldName={subjectUnit(splitEvent, unitByRegistryId)}
           onClose={() => setSplitEvent(null)}
           onDone={async () => {
             setSplitEvent(null);
@@ -243,10 +230,19 @@ export default function DeviceEventsCard({
 }
 
 function SplitDialog({
-  event, vehicles, onClose, onDone,
+  event, vehicles, oldName, onClose, onDone,
 }: {
   event: DeviceEvent;
   vehicles: Vehicle[];
+  /**
+   * The registry unit this split will operate on — passed in rather
+   * than read off the event, for the same reason the strip shows it:
+   * `split_vehicle_identity` runs against `registry_id`, and this
+   * dialog is the last screen before it does.  Naming the provider's
+   * label here would put a different truck's number on the
+   * confirmation for an irreversible change.
+   */
+  oldName: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -263,7 +259,6 @@ function SplitDialog({
     () => [...new Set(vehicles.map((v) => v.company).filter(Boolean))].sort(),
     [vehicles],
   );
-  const oldName = event.vehicle_name || event.vehicle_id;
 
   const submit = async () => {
     setSaving(true); setError('');
