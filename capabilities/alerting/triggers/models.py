@@ -12,9 +12,20 @@ Two columns exist before they are used, deliberately.
     ``personal`` today, and the API refuses ``account``.  Personal
     triggers deliver by DM only and never write an ``alert_history``
     row, so they cannot add to a board that already carries thousands of
-    unacknowledged alerts.  Account scope — triggers that DO make board
-    alerts — arrives once we have decided how a trigger relates to the
-    built-in checker that already watches the same metric.
+    unacknowledged alerts.
+
+    Account scope was mapped rather than guessed: every built-in checker
+    was read to find what it actually fires on, and the answer per metric
+    now lives in the catalog.  Fuel, DEF and coolant are REFUSED — a
+    built-in check already alerts the whole account on each, so a second
+    watcher would be two alerts for one event.  Battery voltage and oil
+    pressure are free: nothing in the tree produces either, and both have
+    labels and escalation titles for alerts the product has never sent.
+
+    Those two are still gated, for a reason that is about the BOARD and
+    not about them: every fire threads a timestamp into its dedup key, so
+    repeats never collapse and 85% of rows are never acknowledged. New
+    writers wait for that.
 
 ``origin``
     ``user`` for something a person wrote, ``seeded`` for a default the
@@ -29,7 +40,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from capabilities.alerting.triggers.catalog import Metric, get_metric, settable_error
+from capabilities.alerting.triggers.catalog import (
+    Metric, account_scope_error, get_metric, settable_error,
+)
 
 #: One person's worth of watching.  Not a technical limit — a cap that
 #: keeps a runaway UI (or a script) from turning one account's sweep into
@@ -103,9 +116,22 @@ def validate(metric_key: str, threshold: Any, scope: str = "personal") -> str:
     if scope not in SCOPES:
         return f"{scope!r} is not a scope"
     if scope == "account":
-        # Not "unsupported" — deferred, and the reason is worth saying
-        # out loud so the next reader does not simply switch it on.
-        return ("Account-wide triggers are not available yet — they write "
-                "to the shared Alerts board, which needs the built-in "
-                "checkers to yield first")
+        # Two questions, and they refuse for different reasons.  First:
+        # does something ALREADY alert the whole account on this metric?
+        # Where one does, a second watcher is two alerts for one event —
+        # the catalog carries that verdict per metric, mapped from what
+        # each built-in checker actually fires on.
+        blocked = account_scope_error(metric)
+        if blocked:
+            return blocked
+        # Second: even where the metric is free, account triggers write
+        # to the shared Alerts board, and the board's consolidation is
+        # broken — every fire threads a timestamp into its dedup key, so
+        # 12,528 of 12,595 rows sit at one occurrence and 85% are never
+        # acknowledged.  Adding writers to that is adding noise.  The
+        # metric-level verdicts above are settled and recorded; this
+        # gate lifts when the board can collapse repeats again.
+        return ("Account-wide triggers are not switched on yet — they post "
+                "to the shared Alerts board, and that board needs its "
+                "repeat-collapsing fixed first")
     return settable_error(metric, value)

@@ -84,6 +84,14 @@ class Metric:
     check_every_minutes: int
     #: ``"on"`` = only evaluate while the engine runs.
     requires_engine: str | None = None
+    #: Whether an ACCOUNT-scope trigger — one that writes a row on the
+    #: shared Alerts board for everyone — may watch this metric.
+    #: ``"refuse"`` when a built-in checker already alerts the account on
+    #: it, because two watchers on one condition is two alerts for one
+    #: event on a board where 85% of rows are never acknowledged.
+    account_scope: str = "refuse"
+    #: Said to the person who tried, in place of a generic refusal.
+    account_refused_because: str = ""
     source: str = MINUTE
     #: Shown under the number in the editor — the sentence that stops
     #: someone setting a physically meaningless threshold.
@@ -97,6 +105,10 @@ CATALOG: tuple[Metric, ...] = (
         settable=(5, 60), plausible=(0, 100),
         hysteresis=5, stale_after_minutes=24 * 60, check_every_minutes=15,
         hint="A tank level is meaningful parked or moving.",
+        account_scope="refuse",
+        account_refused_because=(
+            "the built-in fuel check already alerts this account below "
+            "20% and posts to the Alerts board"),
     ),
     Metric(
         key="def_pct", label="DEF level", unit="%",
@@ -104,6 +116,10 @@ CATALOG: tuple[Metric, ...] = (
         settable=(5, 60), plausible=(0, 100),
         hysteresis=5, stale_after_minutes=24 * 60, check_every_minutes=15,
         hint="Running out derates the engine — worth catching early.",
+        account_scope="refuse",
+        account_refused_because=(
+            "the built-in health check already alerts this account below "
+            "10% DEF and posts to the Alerts board"),
     ),
     Metric(
         key="battery_v", label="Battery voltage", unit="V",
@@ -114,6 +130,12 @@ CATALOG: tuple[Metric, ...] = (
         hint="Charging-system voltage, engine running (~13.8 V healthy). "
              "A parked truck rests near 11 V with nothing charging it, "
              "which is normal and not an alert.",
+        # Nothing in the tree produces a battery condition: the health
+        # checker gave its voltage threshold up to the fault-code path
+        # and _CRITICAL_HEALTH is empty, so no account-wide alert exists
+        # for this today.  An account trigger here adds a signal rather
+        # than a second copy of one.
+        account_scope="allow",
     ),
     Metric(
         key="coolant_c", label="Coolant temperature", unit="°C",
@@ -122,6 +144,11 @@ CATALOG: tuple[Metric, ...] = (
         hysteresis=5, stale_after_minutes=60, check_every_minutes=5,
         requires_engine="on",
         hint="Normal running range peaks near 90 °C.",
+        account_scope="refuse",
+        account_refused_because=(
+            "the engine's own coolant fault code already alerts this "
+            "account, and the ECU judges overheating better than a "
+            "number read off a 60-second poll"),
     ),
     Metric(
         key="oil_psi", label="Oil pressure", unit="psi",
@@ -131,6 +158,10 @@ CATALOG: tuple[Metric, ...] = (
         requires_engine="on",
         hint="Engine running: idle sits near 30 psi, moving near 42. "
              "A stopped engine reads near zero, which is not a fault.",
+        # Same as battery: ``low_oil_pressure`` has a label, an
+        # escalation title and dashboard copy, and NO producer — the
+        # product speaks about an alert it has never sent.
+        account_scope="allow",
     ),
 )
 
@@ -208,6 +239,23 @@ def reading_usable(metric: Metric, reading, engine_state: str) -> bool:
         # is running, so it fails closed with everything else.
         return str(engine_state or "").strip().lower() in ("idle", "moving")
     return True
+
+
+def account_scope_error(metric: Metric) -> str:
+    """'' when this metric may carry an ACCOUNT-scope trigger, else why not.
+
+    Account scope writes to the shared Alerts board, so the question is
+    not "may this person" but "does something already alert the whole
+    account on this".  Where one does, a second watcher means two alerts
+    for one event, and the reason is worth saying rather than refusing
+    generically — the person asked for something reasonable and the
+    product already does it for them.
+    """
+    if metric.account_scope == "allow":
+        return ""
+    because = metric.account_refused_because or "a built-in check already covers it"
+    return (f"{metric.label} can't be an account-wide trigger — {because}. "
+            f"Your own {metric.label.lower()} trigger still works.")
 
 
 def settable_error(metric: Metric, value: float) -> str:

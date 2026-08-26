@@ -179,9 +179,39 @@ class TestValidate:
         assert validate("def_pct", 10) == ""
         assert validate("battery_v", 12.4) == ""
 
-    def test_account_scope_is_refused_with_its_reason(self):
-        err = validate("fuel_pct", 26, scope="account")
-        assert "not available yet" in err and "Alerts board" in err
+    def test_account_scope_names_the_check_that_already_covers_it(self):
+        """A generic "not supported" reads as a missing feature.  The
+        person asked for something reasonable that the product ALREADY
+        does for them, and saying which check does it is the difference
+        between a refusal and an answer."""
+        fuel = validate("fuel_pct", 26, scope="account")
+        assert "fuel check" in fuel and "20%" in fuel
+        assert "Your own" in fuel, "and it must say what still works"
+        deff = validate("def_pct", 10, scope="account")
+        assert "health check" in deff and "10%" in deff
+        coolant = validate("coolant_c", 105, scope="account")
+        assert "fault code" in coolant or "ECU" in coolant
+
+    def test_a_metric_nothing_else_watches_is_refused_for_the_other_reason(self):
+        """Battery and oil have no producer anywhere — they are gated by
+        the BOARD's condition, not by a duplicate.  Two different
+        refusals because they lift at different times."""
+        for metric, value in (("battery_v", 12.4), ("oil_psi", 20)):
+            err = validate(metric, value, scope="account")
+            assert "repeat-collapsing" in err, metric
+            assert "already" not in err.split("—")[0], (
+                f"{metric} must not be refused as a duplicate — nothing "
+                "else watches it")
+
+    def test_the_catalog_carries_the_verdict_not_this_module(self):
+        """The map lives with the metric so the next reader finds it
+        beside the thing it describes."""
+        assert cat.get_metric("battery_v").account_scope == "allow"
+        assert cat.get_metric("oil_psi").account_scope == "allow"
+        for k in ("fuel_pct", "def_pct", "coolant_c"):
+            m = cat.get_metric(k)
+            assert m.account_scope == "refuse", k
+            assert m.account_refused_because, f"{k} refuses without saying why"
 
     def test_non_numeric_thresholds_are_refused(self):
         assert "has to be a number" in validate("fuel_pct", "twenty-six")

@@ -46,9 +46,10 @@ def _isolate(monkeypatch):
     monkeypatch.setattr(ev.rcache, "is_available", lambda: False)
     sent: list[dict] = []
 
-    async def fake_deliver(account_id, trig, row, value):
+    async def fake_deliver(account_id, trig, row, value, vehicle_name=""):
         sent.append({"account_id": account_id, "trigger": trig.id,
-                     "vehicle": row.get("vehicle_id"), "value": value})
+                     "vehicle": row.get("vehicle_id"), "value": value,
+                     "name": vehicle_name})
         # True = delivered.  ``fired`` counts what reached someone, not
         # what was attempted, so a stub that returned None would make
         # every fire look like a delivery failure.
@@ -72,10 +73,18 @@ def _sweep(monkeypatch, rows, triggers, tick=15):
     async def fake_latest(tenant, account_id, columns):
         return rows
 
+    async def fake_names(tenant, account_id):
+        # The minute tier carries no name; the sweep resolves it from the
+        # live tier.  Stubbed from the rows so the tests keep reading in
+        # terms of one fleet snapshot.
+        return {str(r.get("vehicle_id")): str(r.get("vehicle_name") or "")
+                for r in rows}
+
     async def fake_tenant(account_id):
         return object()
 
     monkeypatch.setattr(ev, "_latest_per_vehicle", fake_latest)
+    monkeypatch.setattr(ev, "_names_for", fake_names)
     monkeypatch.setattr(ev, "get_tenant_db", fake_tenant)
     import asyncio
     return asyncio.run(ev.evaluate_account(42, triggers, tick))
