@@ -228,7 +228,7 @@ export default function Parts() {
     try {
       const res = await apiJSON<{ part: CatalogPart; created: boolean }>('/parts', {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: form,
       });
       setAddOpen(false);
       setForm(EMPTY_FORM);

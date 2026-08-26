@@ -122,8 +122,12 @@ export default function DeviceEventsCard({
   const resolveSimple = async (e: DeviceEvent, action: 'same_truck' | 'dismissed') => {
     setBusyId(e.id); setError('');
     try {
+      // A PLAIN object.  apiFetch serialises it and sets the JSON
+      // content type in the same branch — hand it a string and it does
+      // neither, so the body leaves as untyped text and FastAPI
+      // answers 422.  See apiBodies.test.ts.
       await apiJSON(`/vehicles/device-events/${e.id}/resolve`, {
-        method: 'POST', body: JSON.stringify({ action }),
+        method: 'POST', body: { action },
       });
       await refetch();
       onResolved();
@@ -266,12 +270,12 @@ function SplitDialog({
     try {
       await apiJSON(`/vehicles/device-events/${event.id}/resolve`, {
         method: 'POST',
-        body: JSON.stringify({
+        body: {
           action: 'different_truck',
           company_code: company.trim(),
           unit_number: unit.trim(),
           archive_old: archiveOld,
-        }),
+        },
       });
       onDone();
     } catch (err) {

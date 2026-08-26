@@ -281,7 +281,7 @@ export default function PartDetail() {
     try {
       await apiJSON(`/parts/${partId}`, {
         method: 'PUT',
-        body: JSON.stringify(editForm),
+        body: editForm,
       });
       toast.success('Part updated');
       setEditOpen(false);
