@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
+from tests._repo import scanned  # a guard that scans nothing must fail
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = _REPO
 
 # Matches `_PROJECT_ROOT = os.path.dirname(os.path.dirname(...))` and the
 # multi-line variant, capturing the whole right-hand side.
@@ -42,7 +44,7 @@ SKIP_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv"}
 
 def _python_files() -> list[Path]:
     out = []
-    for path in REPO_ROOT.rglob("*.py"):
+    for path in scanned(REPO_ROOT.rglob("*.py"), "repo sources"):
         if any(part in SKIP_DIRS for part in path.relative_to(REPO_ROOT).parts):
             continue
         out.append(path)

@@ -32,7 +32,8 @@ from capabilities.config import (  # noqa: E402
     SELF_ONLY, SETTING_OWNERS, SYSTEM_ONLY, owner_for,
 )
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted  # noqa: E402
+REPO = str(_REPO)
 
 # The ONE permission an account_settings key may name.  Not a convenience
 # constant — it is the assertion: account scope has exactly one owner.
@@ -173,11 +174,13 @@ class TestNoUndeclaredWrites:
         consts: dict[str, str] = {}
         sources: list[tuple[str, str, bool]] = []
 
+        _visited = 0
         for root, dirs, files in os.walk(REPO):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
             for fn in files:
                 if not fn.endswith(".py"):
                     continue
+                _visited += 1
                 path = os.path.join(root, fn)
                 with open(path, encoding="utf-8", errors="ignore") as fh:
                     text = fh.read()
@@ -209,6 +212,10 @@ class TestNoUndeclaredWrites:
             if owner_for(resolved) is None:
                 undeclared.append(f"{rel}: {key} → {resolved}")
 
+        assert _visited > 100, (
+            f"the settings sweep visited {_visited} python files — the scan\n"
+            f"root or skip list is wrong, so this guard is enforcing NOTHING"
+        )
         assert not undeclared, (
             "these account_settings keys are written but declare no owner:\n  "
             + "\n  ".join(sorted(set(undeclared)))
@@ -281,11 +288,13 @@ class TestReadableKeysAreAlsoWritable:
         skip = {".git", "node_modules", "__pycache__", "venv", ".venv", "tests"}
         consts: dict[str, str] = {}
         seen: list[tuple[str, str, bool]] = []
+        _visited = 0
         for root, dirs, files in os.walk(REPO):
             dirs[:] = [d for d in dirs if d not in skip]
             for fn in files:
                 if not fn.endswith(".py"):
                     continue
+                _visited += 1
                 path = os.path.join(root, fn)
                 with open(path, encoding="utf-8", errors="ignore") as fh:
                     text = fh.read()
@@ -302,6 +311,10 @@ class TestReadableKeysAreAlsoWritable:
                 continue
             if owner_for(resolved) is None:
                 undeclared.append(f"{rel}: {resolved}")
+        assert _visited > 100, (
+            f"the settings sweep visited {_visited} python files — the scan\n"
+            f"root or skip list is wrong, so this guard is enforcing NOTHING"
+        )
         assert not undeclared, (
             "these keys are READ but declare no owner, so nothing can set "
             "them:\n  " + "\n  ".join(sorted(set(undeclared)))

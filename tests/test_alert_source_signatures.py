@@ -44,8 +44,10 @@ import pytest
 from apscheduler.util import check_callable_args
 
 from capabilities.alerting.registry import alert_sources
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
+from tests._repo import scanned  # a guard that scans nothing must fail
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = _REPO
 
 SKIP_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "tests"}
 
@@ -53,7 +55,7 @@ SKIP_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "tests"}
 def _modules_declaring_sources() -> list[str]:
     """Dotted module names for every file applying the decorator."""
     found: list[str] = []
-    for path in REPO_ROOT.rglob("*.py"):
+    for path in scanned(REPO_ROOT.rglob("*.py"), "repo sources"):
         if any(part in SKIP_DIRS for part in path.relative_to(REPO_ROOT).parts):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")

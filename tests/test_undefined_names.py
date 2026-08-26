@@ -21,8 +21,10 @@ pyflakes_api = pytest.importorskip(
 )
 from pyflakes.messages import UndefinedName  # noqa: E402
 from pyflakes.reporter import Reporter  # noqa: E402
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
+from tests._repo import scanned  # a guard that scans nothing must fail
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = _REPO
 
 # Backend code that runs in production.  Frontend has its own linters;
 # scripts/ and tests/ are not worth gating.
@@ -51,7 +53,7 @@ class _Collector(Reporter):
 def test_no_undefined_names_in_backend() -> None:
     collector = _Collector()
     for pkg in PACKAGES:
-        for py in sorted((ROOT / pkg).rglob("*.py")):
+        for py in scanned(sorted((ROOT / pkg).rglob("*.py")), f"{pkg} sources"):
             pyflakes_api.check(py.read_text(encoding="utf-8"), str(py.relative_to(ROOT)), collector)
     assert not collector.findings, (
         "Undefined names in backend code (each is a NameError waiting for "

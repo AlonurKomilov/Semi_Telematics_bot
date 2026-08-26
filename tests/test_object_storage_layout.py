@@ -27,8 +27,10 @@ import re
 from pathlib import Path
 
 import pytest
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
+from tests._repo import scanned  # a guard that scans nothing must fail
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = _REPO
 
 # Where feature code lives.  Scripts are excluded on purpose: the repair
 # tooling legitimately names the legacy layouts it exists to clean up.
@@ -55,7 +57,7 @@ def _source_files() -> list[Path]:
         if base.is_dir():
             out += [p for p in base.rglob("*.py")
                     if "node_modules" not in p.parts]
-    return out
+    return scanned(out, "storage-layout sources")
 
 
 class TestOnlyOneHoldingPen:

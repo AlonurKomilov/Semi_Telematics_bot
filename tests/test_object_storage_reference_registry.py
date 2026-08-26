@@ -36,7 +36,8 @@ from capabilities.object_storage.references import (  # noqa: E402
     json_leaf_paths,
 )
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted  # noqa: E402
+REPO = str(_REPO)
 
 # Words that make a TEXT column look like it might hold a file reference.
 # Deliberately WIDER than the old matcher: this test's job is to force a

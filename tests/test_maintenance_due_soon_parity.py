@@ -37,7 +37,8 @@ from features.maintenance.service import (  # noqa: E402
     due_soon_miles_for,
 )
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted  # noqa: E402
+REPO = str(_REPO)
 TS = os.path.join(
     REPO, "interfaces", "dashboard", "src", "features", "maintenance",
     "useMaintenanceTasks.ts",

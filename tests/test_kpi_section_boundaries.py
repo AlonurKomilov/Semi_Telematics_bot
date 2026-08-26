@@ -28,8 +28,9 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
-KPI_ROOT = Path(__file__).resolve().parent.parent / "features" / "kpi"
+KPI_ROOT = _REPO / "features" / "kpi"
 
 
 def _sections() -> list[str]:

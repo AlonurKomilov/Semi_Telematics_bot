@@ -29,8 +29,10 @@ import ast
 from pathlib import Path
 
 import pytest
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
+from tests._repo import scanned  # a guard that scans nothing must fail
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = _REPO
 
 # Module prefixes each side is forbidden to import.
 FORBIDDEN = {
@@ -78,7 +80,7 @@ def _imports_of(path: Path) -> list[str]:
 
 def _violations(root: str, banned: tuple[str, ...]) -> list[str]:
     out: list[str] = []
-    for path in sorted((REPO / root).rglob("*.py")):
+    for path in scanned(sorted((REPO / root).rglob("*.py")), f"{root} sources"):
         if "__pycache__" in path.parts:
             continue
         rel = str(path.relative_to(REPO))
@@ -157,7 +159,7 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
         r"|(FROM|INTO|UPDATE|JOIN)\s+(warehouse\.)?vehicle_state\b(?!_)"
     )
     offenders = []
-    for path in REPO.rglob("*.py"):
+    for path in scanned(REPO.rglob("*.py"), "repo sources"):
         rel = path.relative_to(REPO).as_posix()
         if "__pycache__" in rel:
             continue
