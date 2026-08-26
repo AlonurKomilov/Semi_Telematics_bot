@@ -2,6 +2,8 @@ import { Sparkles, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardStats } from '../../types';
 import { useShellConfig } from '../../hooks/useShellConfig';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 interface AISummaryCardProps {
   stats: DashboardStats;
@@ -73,7 +75,7 @@ export default function AISummaryCard({ stats }: AISummaryCardProps) {
   const narrative = buildNarrative(stats, aiSubjectAll, aiRestingHint);
 
   return (
-    <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-xl p-5 mb-6">
+    <div className={cn(cardVariants({ padding: 'default' }), 'bg-gradient-to-br from-primary/5 via-card to-card border-primary/20 mb-6')}>
       <div className="flex items-start gap-3">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-primary shrink-0">
           <Sparkles className="size-4.5" />

@@ -1,5 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 interface ErrorStateProps {
   title?: string;
@@ -21,7 +23,9 @@ export default function ErrorState({
   const resolvedTitle = title ?? t('common.error_generic');
   return (
     <div
-      className={`bg-card border border-destructive/40 rounded-xl p-6 ${className}`}
+      // Not a <Card> either: the destructive edge is the warning. Same
+      // shared definition underneath it.
+      className={cn(cardVariants({ padding: 'panel' }), 'border-destructive/40', className)}
     >
       <div className="flex items-start gap-3">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-destructive/10 text-destructive shrink-0">

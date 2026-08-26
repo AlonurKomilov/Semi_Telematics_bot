@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 type Tone = 'default' | 'positive' | 'warning' | 'critical' | 'info';
 
@@ -65,8 +67,12 @@ export default function KpiCard({
     <Wrapper
       onClick={onClick}
       {...(interactive ? { 'aria-pressed': selected } : {})}
-      className={`bg-card border rounded-xl p-5 text-left w-full transition ${
-        selected ? 'border-primary ring-1 ring-primary' : 'border-border'
+      // A <button>, so it cannot BE a <Card> — it takes the definition
+      // instead. It carried `rounded-xl`, the SHELL FRAME's radius, on a
+      // tile sitting inside that frame: every Overview above the fold
+      // showed KPI tiles curving exactly like the page behind them.
+      className={cn(cardVariants({ padding: 'default' }), 'text-left w-full transition', `${
+        selected ? 'border-primary ring-1 ring-primary' : ''
       } ${
         // The hover border is omitted while selected — it's a weaker
         // primary than the selected one, so it would visually *undo* the
@@ -74,7 +80,7 @@ export default function KpiCard({
         interactive
           ? `cursor-pointer hover:bg-card/80 ${selected ? '' : 'hover:border-primary/40'}`
           : ''
-      }`}
+      }`)}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">

@@ -37,6 +37,7 @@ import {
   putIncentiveTargets,
   type IncentiveConfig, type IncentiveTier, type RulesPreview,
 } from '../api';
+import { Card } from '@/components/ui/card';
 
 const EMPTY: IncentiveConfig = {
   model: 'ladder',
@@ -417,7 +418,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
           ONE card because they are ONE PUT — the save's enclosure is
           its scope, and a save floating between two cards belongs to
           neither.  Sub-sections carry caps labels. */}
-      <section id="cfg-rules" className="bg-card border border-border rounded-xl p-5 space-y-4">
+      <Card className="space-y-4" render={<section id="cfg-rules" />}>
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-base font-semibold">
             {t('kpi_config.rules_title', 'Incentive rules')}
@@ -812,10 +813,10 @@ export default function IncentiveEditor({ onDirtyChange }: {
             {t('kpi_config.save_rules', 'Save incentive rules')}
           </Button>
         </div>
-      </section>
+      </Card>
 
       {/* ── Per-company weekly targets ──────────────────────────── */}
-      <section id="cfg-targets" className="bg-card border border-border rounded-xl p-5 space-y-3">
+      <Card className="space-y-3" render={<section id="cfg-targets" />}>
         <h2 className="text-base font-semibold">{t('kpi_config.targets_title2', 'Company weekly targets')}</h2>
         <p className="text-xs text-muted-foreground max-w-prose">
           {t('kpi_config.targets_note',
@@ -888,7 +889,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
             {t('kpi_config.save_targets', 'Save targets')}
           </Button>
         </div>
-      </section>
+      </Card>
       <Dialog open={emptySaveOpen}
         onOpenChange={(o) => { if (!o) setEmptySaveOpen(false); }}>
         <DialogContent className="max-w-lg">

@@ -96,11 +96,11 @@ export function CardSkeleton({
   return (
     <div>
       {showPill && <LoadingPill message={message} />}
-      <div className={`bg-card border border-border rounded-xl p-5 ${height}`}>
+      <Card className={height}>
         <Skeleton className="h-4 w-1/3 mb-3" />
         <Skeleton className="h-3 w-full mb-2" />
         <Skeleton className="h-3 w-2/3" />
-      </div>
+      </Card>
     </div>
   );
 }

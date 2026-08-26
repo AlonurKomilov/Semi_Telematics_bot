@@ -33,6 +33,7 @@ import {
   getIncentiveRunLoads, patchIncentiveRow,
   type DaySuggestion, type InactiveDate, type RunDetail, type RunLoad, type RunRow,
 } from '../api';
+import { Card } from '@/components/ui/card';
 
 // Frozen empties: `?? []` allocates a NEW array every render, which
 // makes every memoized row look changed.
@@ -276,7 +277,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
         const confirmed = rows.reduce((a, r) => a + r.confirmed_dollars, 0);
         const isCollapsed = !!collapsed[name];
         return (
-          <section key={name} className="bg-card border border-border rounded-xl">
+          <Card key={name} padding="none" render={<section />}>
             {/* Section header — the dispatcher's summary band. */}
             <button
               type="button"
@@ -362,7 +363,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
               </div>
               </NearGate>
             )}
-          </section>
+          </Card>
         );
       })}
       </div>

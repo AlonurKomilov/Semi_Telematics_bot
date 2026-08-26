@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Inbox } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 interface EmptyStateProps {
   icon?: LucideIcon;
@@ -19,7 +21,11 @@ export default function EmptyState({
 }: EmptyStateProps) {
   return (
     <div
-      className={`bg-card border border-dashed border-border rounded-xl p-10 text-center ${className}`}
+      // Not a <Card>: the DASHED edge is this component's whole
+      // message — "nothing here yet" — and Card ships a solid one. It
+      // still takes the single definition, so the surface underneath
+      // cannot drift from every other card in the app.
+      className={cn(cardVariants({ padding: 'panel' }), 'border-dashed text-center', className)}
     >
       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted text-muted-foreground mb-4">
         <Icon className="size-6" />

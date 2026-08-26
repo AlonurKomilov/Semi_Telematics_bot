@@ -674,7 +674,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Sixteen live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Seventeen live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -700,6 +700,7 @@ this table has any chance of staying true.
 | modals are never hand-rolled | `scrolling/backdrops.test.ts` |
 | the sheet ✕ is suppressed where the header has one | `components/ui/sheetClose.test.ts` |
 | a locale never falls further behind English | `locales/parity.test.ts` — per-locale ceilings, plus: a translation may not carry a key English does not have |
+| don't hand-roll the card surface (§6) | narrow on purpose: `rounded-md` is the chip radius, `bg-card/NN` is translucent floating chrome, and `absolute/fixed/sticky` is a thing that floats — the first draft matched 50 sites and most were not cards |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

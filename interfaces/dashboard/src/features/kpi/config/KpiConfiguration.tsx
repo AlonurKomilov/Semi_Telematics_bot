@@ -23,6 +23,7 @@ import { toneClasses } from '../../../lib/status';
 import { PageHeader } from '../../../components/shell';
 import KpiConfigPanel from './KpiConfigPanel';
 import IncentiveEditor from './IncentiveEditor';
+import { Card } from '@/components/ui/card';
 
 export default function KpiConfiguration() {
   const { t } = useTranslation();
@@ -71,7 +72,7 @@ export default function KpiConfiguration() {
       {/* 32px between top-level cards — clearly above the 12–16px
           rhythms inside them. */}
       <div className="space-y-8">
-        <section id="cfg-grading" className="bg-card border border-border rounded-xl p-5 space-y-3">
+        <Card className="space-y-3" render={<section id="cfg-grading" />}>
           <h2 className="text-base font-semibold">
             {t('kpi_config.grades_title', 'Grading thresholds')}
           </h2>
@@ -79,7 +80,7 @@ export default function KpiConfiguration() {
             onSaved={() => qc.invalidateQueries({ queryKey: ['kpi-dispatchers'] })}
             onDirtyChange={onPanelDirty}
           />
-        </section>
+        </Card>
 
         <IncentiveEditor onDirtyChange={onEditorDirty} />
       </div>

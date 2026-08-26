@@ -342,6 +342,7 @@ import { iconSizeClass } from '@/lib/iconSize';
 import { Card } from '@/components/ui/card';
 import { Tip } from '@/components/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { cardVariants } from '@/components/ui/card';
 
 interface KBArticle {
   id: number;
@@ -1176,7 +1177,7 @@ function ArticleCard({
     ] : []),
   ];
   return (
-    <ContextMenu items={cardMenu} render={<div className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors" />}>
+    <ContextMenu items={cardMenu} render={<div className={cn(cardVariants({ padding: 'none' }), 'overflow-hidden hover:border-border transition-colors')} />}>
       {/* Header row.  Native ``<button>`` doesn't allow a nested
           button (the bookmark pin), so we use a div with a click +
           keyboard handler.  The bookmark button stops propagation so

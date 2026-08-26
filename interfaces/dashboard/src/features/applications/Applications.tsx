@@ -34,6 +34,8 @@ import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { iconSizeClass } from '@/lib/iconSize';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 // Lifecycle split for the grid's segment tabs: the working pipeline
 // vs the two terminal outcomes.  Finer stage slicing (Submitted /
@@ -1375,7 +1377,7 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
                   onDragStart={() => setDragId(r.id)}
                   onDragEnd={() => { setDragId(null); setOverCol(null); }}
                   onClick={() => onOpen(r.id)}
-                  className="cursor-grab rounded-md border border-border bg-card p-2.5 text-sm hover:border-ring active:cursor-grabbing">
+                  className={cn(cardVariants({ padding: 'compact' }), 'cursor-grab text-sm hover:border-ring active:cursor-grabbing')}>
                   <div className="flex items-center justify-between gap-1">
                     <span className="truncate font-medium text-foreground">{r.first_name} {r.last_name}</span>
                     <span className="shrink-0 font-mono text-2xs text-muted-foreground">{r.reference}</span>

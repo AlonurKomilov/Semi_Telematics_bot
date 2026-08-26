@@ -11,6 +11,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { toneClasses, toneText } from '../../lib/status';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 interface OnboardingStep {
   id: string;
@@ -94,7 +96,7 @@ export default function OnboardingBanner({
   const ICONS = [Truck, Users, Trophy, MapPin] as const;
 
   return (
-    <div className="bg-gradient-to-br from-primary/10 via-card to-card border border-primary/30 rounded-xl p-5 mb-6">
+    <div className={cn(cardVariants({ padding: 'default' }), 'bg-gradient-to-br from-primary/10 via-card to-card border-primary/30 mb-6')}>
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-primary">

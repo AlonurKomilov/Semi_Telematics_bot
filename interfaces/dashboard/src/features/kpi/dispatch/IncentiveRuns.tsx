@@ -56,6 +56,7 @@ import {
   getIncentiveRun, getIncentiveRunLoads, listIncentiveRuns,
   type RunDetail, type RunLoad, type RunRow, type RunSummary,
 } from '../api';
+import { Card } from '@/components/ui/card';
 
 
 /** Days a DRAFT has sat past its period end — money payroll cannot see
@@ -348,7 +349,7 @@ export default function IncentiveRuns() {
               describes the selected run (selector strip stays above,
               the row cards/grid below).  Six unenclosed bands failed
               the audit's count test. ── */}
-          <section className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <Card className="space-y-3" render={<section />}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* Reversible view switch LEFT, the commit pair RIGHT —
                   the audit measured 9px between reversible and
@@ -531,7 +532,7 @@ export default function IncentiveRuns() {
                 </span>
               ))}
             </div>
-          </section>
+          </Card>
 
           {/* ≥32px between the run panel and the row list — between-zone
               air must beat the 12px card rhythm inside the list. */}

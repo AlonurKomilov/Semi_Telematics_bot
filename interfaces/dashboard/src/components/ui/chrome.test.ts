@@ -395,6 +395,60 @@ const SIZE_DEBT = [
 ];
 
 
+/**
+ * A hand-rolled card: the bordered surface `components/ui/card.tsx`
+ * exists to be. 223 copies of it are why the app had two radii and five
+ * paddings before the primitive landed.
+ *
+ * The rule is narrow on purpose, because a first pass matching
+ * "bg-card + border + rounded" found 50 sites and most were not cards at
+ * all. Three exclusions do the work:
+ *   · `rounded-md` is the CHIP/ROW radius (8px), not the card's 10px
+ *   · `bg-card/NN` is translucent floating chrome — a Leaflet control,
+ *     the 3D info panel — sitting over content, not holding it
+ *   · `absolute` / `fixed` / `sticky` is a thing that floats, not a
+ *     surface the page sits on
+ * That takes 50 down to 7, and those 7 are named below.
+ */
+const cardShellSites = (src: string): number[] => {
+  const out: number[] = [];
+  for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+    const c = m[1] ?? m[2] ?? '';
+    if (!/\bbg-card(?![/\w-])/.test(c)) continue;
+    if (!/\bborder\b/.test(c)) continue;
+    if (!/\brounded-(?:lg|xl)\b/.test(c)) continue;
+    if (/\b(?:absolute|fixed|sticky)\b/.test(c)) continue;
+    out.push(src.slice(0, m.index ?? 0).split('\n').length);
+  }
+  return out;
+};
+
+/**
+ * Surfaces that wear a card's clothes and are not cards. Every one was
+ * read before it was listed — the batch this guard was written for
+ * turned out to be one card and seven other things, which is the whole
+ * reason the rule above is as narrow as it is.
+ *
+ *   · Chat 1834/1973 — a chip column and the message composer's input
+ *     frame. Form-control chrome; a Card would give the composer a
+ *     card's padding and a card's meaning.
+ *   · Applications 1090/1092, TeamManagement 2233 — inline "Loading…"
+ *     and "nothing here" rows inside a list. Not <EmptyState> either:
+ *     that is a dashed `p-10` box for a whole page. These three are a
+ *     THIRD empty treatment nobody has named, and naming it is a design
+ *     decision, not a padding one.
+ *   · DatatruckSyncPanel 335, Permissions 315 — a status notice row and
+ *     a filter strip. Asymmetric padding is the tell: a card breathes
+ *     evenly, a row is wider than it is tall.
+ */
+const CARD_NOT_A_CARD = [
+  'features/ai/Chat.tsx',
+  'features/applications/Applications.tsx',
+  'features/integrations/DatatruckSyncPanel.tsx',
+  'features/permissions/Permissions.tsx',
+  'features/settings/TeamManagement.tsx',
+];
+
 type DebtList = {
   name: string;
   entries: string[];
@@ -413,6 +467,7 @@ const DEBT: DebtList[] = [
   { name: 'OVERRIDE_DEBT',               entries: OVERRIDE_DEBT,               match: 'exact',     scope: TSX,   offends: (f) => buttonSizeOverrides(f.src).length > 0 },
   { name: 'STATUS_DOOR_DEBT',            entries: STATUS_DOOR_DEBT,            match: 'exact',     scope: TSX,   offends: (f) => statusDoorSites(f.src).length > 0 },
   { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
+  { name: 'CARD_NOT_A_CARD',             entries: CARD_NOT_A_CARD,             match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
 ];
 
 describe('UI chrome', () => {
@@ -428,6 +483,25 @@ describe('UI chrome', () => {
    * test until the sentence — and, one hopes, the row beside it — moves
    * too.
    */
+  it('never hand-rolls the card surface the primitive already ships', () => {
+    // design.md §6: `rounded-lg` is the card default and card padding is
+    // p-3/p-4. Everything outside that was drift — two radii and five
+    // paddings across 223 copies. `rounded-xl` is the SHELL FRAME's
+    // radius, so a card wearing it repeats the curvature of the box it
+    // sits inside; the primitive settles that rather than offering both.
+    //
+    // An element that already exists for another reason — a <button>, a
+    // <section> with an id, a ContextMenu's render target — still takes
+    // the one definition via `cn(cardVariants({ padding }), …)`.
+    const offenders = TSX
+      .filter((f) => !CARD_NOT_A_CARD.includes(f.rel))
+      .filter((f) => !f.rel.startsWith('components/ui/card'))
+      .flatMap((f) => cardShellSites(f.src).map(
+        (line) => `${f.rel}:${line} → <Card> or cn(cardVariants({…}), …)`,
+      ));
+    expect(offenders).toEqual([]);
+  });
+
   it('is counted correctly in design.md', () => {
     const doc = readFileSync(join(SRC, '..', 'design.md'), 'utf8');
     const NUMBER: Record<string, number> = {

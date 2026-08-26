@@ -15,6 +15,8 @@ import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { cardVariants } from '@/components/ui/card';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -393,9 +395,7 @@ interface PlanCardProps {
 
 function PlanCard({ name, price, included, extraPer, features, current, onUpgrade, loading }: PlanCardProps) {
   return (
-    <div className={`bg-card border rounded-xl p-5 flex flex-col ${
-      current ? 'border-primary ring-1 ring-primary/30' : 'border-border'
-    }`}>
+    <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', current && 'border-primary ring-1 ring-primary/30')}>
       {current && (
         <span className="text-xs bg-primary/15 text-primary border border-primary/30 rounded-md px-2 py-0.5 self-start mb-2">
           Current Plan
