@@ -216,6 +216,9 @@ async def test_answering_a_device_question_is_recorded_against_the_truck():
     # Values, not prose: what the state WAS, not merely that it moved.
     assert c["context"]["old_value"] == "4V4NC9EH8KN196862"
     assert c["context"]["new_value"] == "3AKJGLDV5GSGZ4085"
+    # The note says what the PERSON did, in the words they saw.
+    assert c["note"] == (
+        "Same truck — 128: 4V4NC9EH8KN196862 → 3AKJGLDV5GSGZ4085")
 
 
 @pytest.mark.asyncio
@@ -246,6 +249,7 @@ async def test_a_split_records_the_unit_it_created():
     # parameters survive in the context rather than fragmenting the
     # vocabulary into one action per unit number.
     assert calls[0]["action"] == "device_event.different_truck"
+    assert calls[0]["note"].startswith("Different truck — 128:")
     assert calls[0]["context"]["new_vehicle_id"] == 900
     assert calls[0]["context"]["resolution"] == "different_truck:new_unit=PTG/301"
 
@@ -304,6 +308,39 @@ async def test_an_unknown_event_kind_records_nothing():
     finally:
         trail.record_simple = original
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_the_note_uses_the_word_on_the_button_not_the_wire_value():
+    """`dismissed` is what the column stores; "Confirm" is what the
+    person clicked.  A trail reporting the storage vocabulary makes a
+    reader translate their own action back into it."""
+    from features.vehicles.router import _record_device_event_answer
+
+    calls: list[dict] = []
+
+    async def fake_record(db, account_id, actor, action, etype, eid, **kw):
+        calls.append({"action": action, **kw})
+
+    import capabilities.activity_trail as trail
+    original = trail.record_simple
+    trail.record_simple = fake_record
+    try:
+        await _record_device_event_answer(
+            object(), 10000001, 42,
+            {"id": 9, "kind": "gateway_swap", "vehicle_id": "abc-9",
+             "vehicle_name": "254", "registry_id": 77,
+             "old_value": "G4WU-EEF-5B9", "new_value": "GZPF-V5G-6GP",
+             "observed_at": "2026-08-20T00:00:00Z"},
+            "dismissed", None,
+        )
+    finally:
+        trail.record_simple = original
+
+    assert calls[0]["note"] == "Confirmed — 254: G4WU-EEF-5B9 → GZPF-V5G-6GP"
+    # The stored resolution is untouched — it rides in the context.
+    assert calls[0]["context"]["resolution"] == "dismissed"
+    assert calls[0]["action"] == "device_event.dismissed"
 
 
 def test_the_resolve_endpoint_actually_calls_the_recorder():

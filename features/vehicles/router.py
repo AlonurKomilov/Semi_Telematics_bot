@@ -1175,16 +1175,29 @@ async def _record_device_event_answer(
         f"vehicle:{event.get('vehicle_id') or ''}",
         str(event.get("observed_at") or ""),
     )
+    # The note carries the words the PERSON saw, not the words the
+    # column stores.  `dismissed` is a wire value the button stopped
+    # saying when it became "Confirm"; a trail that reports the storage
+    # vocabulary makes a reader translate their own action back.  The
+    # stored `resolution` is untouched and rides in the context, so
+    # nothing is lost.
+    choice = resolution.split(":")[0]
+    answer = {
+        "same_truck": "Same truck",
+        "different_truck": "Different truck",
+        "dismissed": "Confirmed",
+        "acknowledge": "Confirmed",
+    }.get(choice, choice)
     # Values, not prose: the trail's contract is that a reader can see
     # WHAT the state was, not just be told a change occurred.
     note = (
-        f"Answered “{key}” on "
-        f"{event.get('vehicle_name') or event.get('vehicle_id')}: {resolution}"
+        f"{answer} — {event.get('vehicle_name') or event.get('vehicle_id')}: "
+        f"{event.get('old_value') or ''} → {event.get('new_value') or ''}"
     )
     try:
         await record_simple(
             tenant, account_id, actor,
-            f"device_event.{resolution.split(':')[0]}",
+            f"device_event.{choice}",
             "vehicle", event.get("registry_id") or event.get("vehicle_id"),
             note=note,
             context={
