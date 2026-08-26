@@ -13,6 +13,11 @@
 # the same engine production uses.  No SQLite fallback — when Docker
 # isn't available the fixture ``pytest.skip``s rather than degrading.
 testcontainers>=4.0
+# ``_has_docker()`` in tests/conftest.py imports this directly as its
+# cheap probe, so it must be declared rather than relied on as a
+# transitive dep of testcontainers: without it the import raises, the
+# probe returns False, and every pg_db-backed test SKIPS silently.
+docker>=7.0
 
 # ── Test runner ─────────────────────────────────────
 pytest>=8.0

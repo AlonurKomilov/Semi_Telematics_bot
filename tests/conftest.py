@@ -13,6 +13,7 @@ that were originally written against SQLite.
 
 from __future__ import annotations
 
+import itertools
 import os
 import sys
 import tempfile
@@ -104,6 +105,107 @@ def _has_docker() -> bool:
         return False
 
 
+def _per_worker_database(url: str) -> str:
+    """Give each xdist worker its OWN database on a shared server.
+
+    The container path already isolates workers — each is a separate
+    process running its own session fixture, so each gets its own
+    container.  The ``POSTGRES_TEST_URL`` path handed every worker the
+    SAME url, so under ``-n auto`` eight of them raced on the per-test
+    ``DROP SCHEMA public`` / ``CREATE SCHEMA public`` reset and died with
+    ``DuplicateSchemaError``.  The documented CI path was therefore
+    incompatible with the configured parallelism, which is part of why
+    it was never actually wired up.
+
+    Appending the worker id keeps the promise the docstring below makes,
+    at the cost of one CREATE DATABASE per worker per session.  Serial
+    runs (no ``PYTEST_XDIST_WORKER``) are untouched.
+    """
+    worker = os.getenv("PYTEST_XDIST_WORKER", "").strip()
+    if not worker:
+        return url
+    head, _, tail = url.rpartition("/")
+    dbname, sep, query = tail.partition("?")
+    target = f"{dbname or 'test'}_{worker}"
+
+    async def _ensure() -> None:
+        import asyncpg
+        conn = await asyncpg.connect(url)
+        try:
+            await conn.execute(f'CREATE DATABASE "{target}"')
+        except Exception:
+            # Already there from a previous run — the per-test schema
+            # reset below scrubs it, so existing state is not a problem.
+            pass
+        finally:
+            await conn.close()
+
+    import asyncio
+    import concurrent.futures
+    # Same thread trick as the container start: pytest-asyncio may
+    # already own the running loop in this process.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(lambda: asyncio.run(_ensure())).result()
+    return f"{head}/{target}{sep}{query}"
+
+
+# ── Per-test databases by TEMPLATE, not by re-migration ───────────
+#
+# Every DB-backed test used to DROP the schema and replay all 194
+# migrations: ~34 s per test measured, against 2.5 s for a test that
+# needs no database.  With ~3,400 tests that is the 4h22m suite nobody
+# could run — and a suite nobody runs is why CI became the only thing
+# running it, and why CI silently skipping the DB tests went unnoticed
+# for weeks.
+#
+# The cost is avoidable because migrations are VERSION-TRACKED
+# (adapters/storage/migrations.py: _is_applied / _mark_applied).  Build
+# the schema ONCE per worker into a template database, then give each
+# test a copy: `CREATE DATABASE x TEMPLATE t` is a file copy inside
+# Postgres, and the copy carries the version table, so run_all() skips
+# all 194 instead of executing them.
+#
+# The isolation property is unchanged — every test still gets its own
+# pristine database, never a half-cleared one.  Only the way that
+# database is PRODUCED changes: copied, not rebuilt.
+
+_TEST_DB_SEQ = itertools.count(1)
+
+
+def _split_url(url: str) -> tuple[str, str, str, str]:
+    """(head, dbname, sep, query) — the pieces needed to swap databases."""
+    head, _, tail = url.rpartition("/")
+    dbname, sep, query = tail.partition("?")
+    return head, (dbname or "test"), sep, query
+
+
+def _with_db(url: str, name: str) -> str:
+    head, _dbname, sep, query = _split_url(url)
+    return f"{head}/{name}{sep}{query}"
+
+
+def _admin_url(url: str) -> str:
+    """A connection on the same server but a database we never copy.
+
+    CREATE/DROP DATABASE cannot run from inside the database being
+    acted on, and `postgres` is guaranteed to exist.
+    """
+    return _with_db(url, "postgres")
+
+
+def _run_sync(coro_fn) -> None:
+    """Run an async helper from a SYNC fixture.
+
+    Same reason the container start uses a thread: pytest-asyncio may
+    already own a running loop in this process, and asyncio.run() would
+    refuse.
+    """
+    import asyncio
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(lambda: asyncio.run(coro_fn())).result()
+
+
 @pytest.fixture(scope="session")
 def _pg_container_url() -> str:
     """Start one Postgres container for the whole test session.
@@ -127,7 +229,7 @@ def _pg_container_url() -> str:
     """
     override = os.getenv("POSTGRES_TEST_URL", "").strip()
     if override:
-        yield override
+        yield _per_worker_database(override)
         return
 
     if not _has_docker():
@@ -153,29 +255,63 @@ def _pg_container_url() -> str:
             pool.submit(container.stop).result()
 
 
-@pytest_asyncio.fixture
-async def pg_db(_pg_container_url, monkeypatch) -> AsyncIterator[Database]:
-    """Per-test Postgres-backed ``Database``.
+@pytest.fixture(scope="session")
+def _pg_template(_pg_container_url) -> str:
+    """Build the migrated schema ONCE per worker.  Tests copy it.
 
-    The container is shared across the session, but each test gets a
-    pristine schema: DROP and recreate ``public`` before initialise(),
-    then re-run the full migration pipeline.  Slower per-test (~7 s)
-    than a TRUNCATE-only strategy, but migrations that RENAME or DROP
-    columns (024_rename_work_schedules_to_work_hours, etc.) aren't
-    idempotent against a half-cleared schema — they assume the
-    pre-rename table still exists.  DROP+CREATE is the only correct
-    reset short of teaching migrations to no-op when the target
-    schema is already current, which is a larger project.
+    This is the whole optimisation: the 194-migration replay happens
+    here, one time, instead of inside every test.  Because migrations
+    are version-tracked, the copy carries the version table and
+    ``run_all()`` finds everything already applied.
+    """
+    base = _pg_container_url
+    template = f"{_split_url(base)[1]}_tmpl"
+
+    async def _create() -> None:
+        import asyncpg
+        conn = await asyncpg.connect(_admin_url(base))
+        try:
+            await conn.execute(f'DROP DATABASE IF EXISTS "{template}" WITH (FORCE)')
+            await conn.execute(f'CREATE DATABASE "{template}"')
+        finally:
+            await conn.close()
+
+    async def _migrate() -> None:
+        import adapters.storage.core as _core
+        saved = _core._DATABASE_URL
+        _core._DATABASE_URL = _with_db(base, template)
+        try:
+            d = Database("ignored_path_pg_branch_used", pool_size=2)
+            await d.initialize()
+            await d.close()
+        finally:
+            _core._DATABASE_URL = saved
+
+    _run_sync(_create)
+    _run_sync(_migrate)
+    return template
+
+
+@pytest_asyncio.fixture
+async def pg_db(_pg_container_url, _pg_template, monkeypatch) -> AsyncIterator[Database]:
+    """Per-test Postgres-backed ``Database`` — a COPY of the template.
+
+    Each test still gets its own pristine database; it is produced by
+    copying the session template rather than by dropping the schema and
+    replaying every migration.  The original reason for DROP+CREATE
+    still holds and is still honoured — migrations that RENAME or DROP
+    columns are not idempotent against a half-cleared schema, so no test
+    ever sees one: a fresh copy is as clean as a fresh build.
     """
     import asyncpg
-    conn = await asyncpg.connect(_pg_container_url)
+    base = _pg_container_url
+    name = f"{_split_url(base)[1]}_t{next(_TEST_DB_SEQ)}"
+    admin = _admin_url(base)
+
+    conn = await asyncpg.connect(admin)
     try:
-        await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
-        # The telemetry warehouse lives in its own schema (migration
-        # 183) — reset it too, or the previous test's warehouse tables
-        # survive into this test's fresh migration run.
-        await conn.execute("DROP SCHEMA IF EXISTS warehouse CASCADE")
-        await conn.execute("CREATE SCHEMA public")
+        await conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        await conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{_pg_template}"')
     finally:
         await conn.close()
 
@@ -183,7 +319,30 @@ async def pg_db(_pg_container_url, monkeypatch) -> AsyncIterator[Database]:
     # patch it so initialise() picks the PG branch.  monkeypatch
     # restores the previous value after the test returns.
     import adapters.storage.core as _core
-    monkeypatch.setattr(_core, "_DATABASE_URL", _pg_container_url)
+    monkeypatch.setattr(_core, "_DATABASE_URL", _with_db(base, name))
+
+    # initialise() re-runs four schema steps after opening the pool.  On
+    # a COPY every one of them can only no-op — the copy already has the
+    # tables and the applied-migration rows, because the template was
+    # built by running these same four for real.  Measured, they cost
+    # 19.0 s per test (CREATE TABLE IF NOT EXISTS × ~200, then 194
+    # applied-checks) against 0.85 s for the copy itself: this, not the
+    # migrations, was where the suite's time actually went.
+    #
+    # This can never hide a schema change.  The template is built
+    # through the REAL path once per session, so a missing or broken
+    # migration fails there — loudly, and before any test runs.
+    async def _already_in_the_copy(*_a, **_kw):
+        return None
+
+    from adapters.storage import migrations as _migrations
+    from adapters.storage import platform_migrations as _pmigrations
+    from adapters.storage import platform_schema as _pschema
+    from adapters.storage import schema as _schema
+    monkeypatch.setattr(_schema, "create_tables", _already_in_the_copy)
+    monkeypatch.setattr(_migrations, "run_all", _already_in_the_copy)
+    monkeypatch.setattr(_pschema, "create_tables", _already_in_the_copy)
+    monkeypatch.setattr(_pmigrations, "run_all", _already_in_the_copy)
 
     database = Database("ignored_path_pg_branch_used", pool_size=2)
     await database.initialize()
@@ -191,6 +350,11 @@ async def pg_db(_pg_container_url, monkeypatch) -> AsyncIterator[Database]:
         yield database
     finally:
         await database.close()
+        conn = await asyncpg.connect(admin)
+        try:
+            await conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        finally:
+            await conn.close()
 
 
 @pytest_asyncio.fixture

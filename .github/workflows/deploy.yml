@@ -19,6 +19,17 @@ jobs:
   # ── 1. Test ──────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
+
+    # The suite is Postgres-only.  Without a reachable database the
+    # ``pg_db`` fixture calls ``pytest.skip`` (tests/conftest.py), so
+    # ~132 of 277 test files turned into no-ops here while the build
+    # stayed green — which is how nineteen failures and two live
+    # production bugs accumulated unseen.  POSTGRES_TEST_URL is the path
+    # conftest.py already documents for CI; it needs no testcontainers
+    # and no Docker socket inside the test process.
+    env:
+      POSTGRES_TEST_URL: postgresql://postgres:postgres@localhost:5432/test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +38,29 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      # Started as a step, not a `services:` container, because the
+      # server FLAGS below are not settable on a service container and
+      # two of them are load-bearing:
+      #   max_locks_per_transaction — every xdist worker resets its
+      #     schema with DROP SCHEMA … CASCADE over ~200 objects, and
+      #     eight of those against one server exhaust the shared lock
+      #     table ("out of shared memory").  The testcontainers path
+      #     never hit this because each worker got its own SERVER.
+      #   fsync/synchronous_commit/full_page_writes — throwaway data, so
+      #     durability buys nothing and costs real minutes on a suite
+      #     this size.
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=test -p 5432:5432 postgres:16-alpine \
+            -c max_locks_per_transaction=1024 -c fsync=off \
+            -c synchronous_commit=off -c full_page_writes=off
+          for i in $(seq 1 60); do
+            docker exec ci-postgres pg_isready -U postgres && break
+            sleep 1
+          done
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -61,8 +95,36 @@ jobs:
       - name: Dashboard — production build
         run: cd interfaces/dashboard && npm run build
 
+      # No ``-x``.  It stopped at the FIRST failure, so a single
+      # collection error hid every failure behind it — eighteen of them,
+      # for about three weeks.  Fail on all of them at once instead.
       - name: Run tests
-        run: python -m pytest tests/ -x -q --tb=short
+        run: |
+          set -o pipefail
+          python -m pytest tests/ -q --tb=short | tee /tmp/pytest-summary.txt
+
+      # A skipped test and a passing test look identical in a green
+      # build.  This is the guard that makes the two distinguishable —
+      # without it, the Postgres step above could break tomorrow and the
+      # suite would go quiet again with nothing turning red.
+      - name: Guard — the database suite actually ran
+        if: always()
+        env:
+          MAX_SKIPPED: "40"
+        run: |
+          if [ ! -f /tmp/pytest-summary.txt ]; then
+            echo "::error::pytest produced no summary — the run did not complete"
+            exit 1
+          fi
+          skipped=$(grep -oE '[0-9]+ skipped' /tmp/pytest-summary.txt \
+                    | tail -1 | grep -oE '^[0-9]+' || echo 0)
+          echo "skipped=$skipped ceiling=$MAX_SKIPPED"
+          if [ "$skipped" -gt "$MAX_SKIPPED" ]; then
+            echo "::error::$skipped tests skipped (ceiling $MAX_SKIPPED). The pg_db"
+            echo "::error::fixture skips itself when Postgres is unreachable, so this"
+            echo "::error::usually means the service container or POSTGRES_TEST_URL broke."
+            exit 1
+          fi
 
       - name: Type check (mypy)
         run: python -m mypy interfaces/api/ interfaces/bot/app.py run.py --ignore-missing-imports --no-error-summary
