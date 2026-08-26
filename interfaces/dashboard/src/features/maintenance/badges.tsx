@@ -59,7 +59,7 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
   // "X hrs to go" since there's no future event to count down to.
   if (isClosed(row.status)) {
     return (
-      <div className="flex flex-col gap-1.5 min-w-[120px]">
+      <div className="flex flex-col gap-1.5 min-w-30">
         <div className="text-xs text-muted-foreground">
           Completed at {Number(row.last_engine_hours).toLocaleString()} hrs
         </div>
@@ -91,7 +91,7 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
   const dueSoon = !overdue
     && remaining <= dueSoonHoursFor(row.recur_interval_engine_hours);
   return (
-    <div className="flex flex-col gap-1.5 min-w-[120px]">
+    <div className="flex flex-col gap-1.5 min-w-30">
       <div className="text-xs">
         {Number(row.last_engine_hours).toLocaleString()} / {Number(row.due_engine_hours).toLocaleString()} hrs
       </div>
@@ -261,7 +261,7 @@ export function DueDateChip({
       : pct >= 90 ? 'bg-warn'
       : 'bg-ok';
     return (
-      <div className="flex flex-col gap-1.5 min-w-[140px]">
+      <div className="flex flex-col gap-1.5 min-w-35">
         <Badge tone={tone} className="self-start">
           {dateStr}{suffix}
         </Badge>
@@ -300,7 +300,7 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
   // ticket rather than a stale tracking metric.
   if (isClosed(row.status)) {
     return (
-      <div className="flex flex-col gap-1.5 min-w-[140px]">
+      <div className="flex flex-col gap-1.5 min-w-35">
         <div className="text-xs text-muted-foreground">
           Completed at {Number(row.last_odometer).toLocaleString()} mi
         </div>
@@ -335,7 +335,7 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
   const overdue = remaining < 0;
   const dueSoon = !overdue && remaining <= dueSoonMilesFor(row.recur_interval_miles);
   return (
-    <div className="flex flex-col gap-1.5 min-w-[140px]">
+    <div className="flex flex-col gap-1.5 min-w-35">
       <div className="text-xs">
         {Number(row.last_odometer).toLocaleString()} / {Number(row.due_miles).toLocaleString()} mi
       </div>

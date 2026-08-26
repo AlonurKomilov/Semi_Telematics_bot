@@ -826,7 +826,7 @@ function RecentActivity() {
                 <div className="text-xs text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
                   <span>{formatWhen(r.attempted_at)}</span>
                   {r.ip_address && <span className="font-mono">· {r.ip_address}</span>}
-                  {r.user_agent && <span className="truncate max-w-[260px]">· {r.user_agent}</span>}
+                  {r.user_agent && <span className="truncate max-w-65">· {r.user_agent}</span>}
                 </div>
               </div>
             </li>

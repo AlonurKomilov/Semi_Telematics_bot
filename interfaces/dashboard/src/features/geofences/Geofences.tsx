@@ -392,7 +392,7 @@ export default function Geofences() {
       <div className="flex gap-4 flex-1 min-h-0">
 
         {/* Map — always visible */}
-        <div className="flex-1 relative rounded-xl border border-border overflow-hidden z-0 min-h-[400px]">
+        <div className="flex-1 relative rounded-xl border border-border overflow-hidden z-0 min-h-100">
           <div ref={mapRef} className="absolute inset-0" />
           <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
       {/* Absolute against the MAP, not the page. This lived at the page

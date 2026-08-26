@@ -48,7 +48,7 @@ export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
         <p className="text-xs text-muted-foreground">{total} trucks</p>
       </div>
       <Suspense
-        fallback={<div className="h-[220px] bg-muted/40 rounded animate-pulse" />}
+        fallback={<div className="h-55 bg-muted/40 rounded animate-pulse" />}
       >
         <FleetStatusChart moving={moving} idle={idle} stopped={stopped} />
       </Suspense>

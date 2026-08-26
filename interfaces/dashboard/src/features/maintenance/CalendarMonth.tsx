@@ -183,7 +183,7 @@ export function CalendarMonth({
           return (
             <div
               key={i}
-              className={`min-h-[88px] p-1.5 border-r border-b border-border ${
+              className={`min-h-22 p-1.5 border-r border-b border-border ${
                 inMonth ? 'bg-card' : 'bg-muted/20'
               } ${i % 7 === 6 ? 'border-r-0' : ''}`}
             >

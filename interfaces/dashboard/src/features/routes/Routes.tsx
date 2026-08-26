@@ -133,7 +133,7 @@ export default function Routes() {
         <div>
           <label className="block text-xs text-muted-foreground mb-1">Vehicle</label>
           <Select value={vehicleName} onValueChange={(v) => setVehicleName(v)} items={vehicleItems}>
-            <SelectTrigger className="min-w-[200px]" aria-label="Vehicle">
+            <SelectTrigger className="min-w-50" aria-label="Vehicle">
               <SelectValue placeholder="Select vehicle..." />
             </SelectTrigger>
             <SelectContent>

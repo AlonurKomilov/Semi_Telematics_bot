@@ -194,7 +194,7 @@ export default function ObjectStorageFileTable() {
             {
               key: 'filename', label: t('storage.files.col_file'), sortable: true,
               render: (v) => (
-                <span className="font-mono text-xs truncate max-w-[220px] inline-block" title={String(v)}>
+                <span className="font-mono text-xs truncate max-w-55 inline-block" title={String(v)}>
                   {String(v)}
                 </span>
               ),

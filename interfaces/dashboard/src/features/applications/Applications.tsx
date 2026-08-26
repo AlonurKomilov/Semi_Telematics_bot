@@ -967,7 +967,7 @@ export default function Applications() {
                   )}
                   <span className="font-medium">{l.label || '(no label)'}</span>
                   {l.source && <span className="text-muted-foreground text-xs">· {l.source}</span>}
-                  <code className="text-2xs text-muted-foreground truncate max-w-[16rem]">
+                  <code className="text-2xs text-muted-foreground truncate max-w-64">
                     {APPLY_BASE}/{l.token}
                   </code>
                   <span className="text-2xs text-muted-foreground whitespace-nowrap" title="views · applications · hires">

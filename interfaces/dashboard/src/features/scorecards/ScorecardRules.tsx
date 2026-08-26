@@ -229,7 +229,7 @@ export function ScorecardRulesPanel() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('forms.search_rules_placeholder')}
-          className="flex-1 min-w-[200px] bg-muted border border-border rounded px-3 py-1.5 text-sm"
+          className="flex-1 min-w-50 bg-muted border border-border rounded px-3 py-1.5 text-sm"
         />
       </div>
 

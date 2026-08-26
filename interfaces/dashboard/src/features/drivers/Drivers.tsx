@@ -739,7 +739,7 @@ function ProfileTab({
 
       <Section title="Notes">
         <textarea
-          className={`${inputCls} min-h-[60px]`}
+          className={`${inputCls} min-h-15`}
           value={String(v('driver_notes'))}
           onChange={(e) => set('driver_notes', e.target.value)}
         />
@@ -1273,7 +1273,7 @@ function ComingSoonTab({
         {icon}
       </div>
       <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="text-xs text-muted-foreground max-w-[320px] leading-relaxed">
+      <p className="text-xs text-muted-foreground max-w-80 leading-relaxed">
         {description}
       </p>
       <span className="mt-2 px-2 py-0.5 rounded-full text-2xs uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">

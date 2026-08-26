@@ -95,36 +95,22 @@ const NOT_YET_CONVERTED: string[] = [];
  * can see. The staleness test below deletes the list's right to linger.
  */
 /**
- * Arbitrary lengths with NO exact step on the 4px scale. Two of the
- * thirty had one (`min-w-[6rem]` -> `min-w-24`, `max-w-[10rem]` ->
- * `max-w-40`) and were converted; the rest — `w-[220px]`,
- * `min-h-[400px]`, `max-h-[32rem]` and friends — sit between steps, so
- * clearing them means choosing a nearby step and accepting the pixels
- * that move. That is a design decision per site, not a rename, which is
- * exactly why it is a list and not a sweep.
+ * One entry, and it is not a UI length at all.
+ *
+ * `ApplyPreview` renders the public application form inside a real
+ * iframe at `w-[390px] h-[780px]` — a phone viewport, so the form under
+ * test lays itself out the way a phone would. Scaling that with the
+ * reader's Size setting would preview a phone that does not exist.
+ *
+ * The other 31 that used to be here were converted rather than excused.
+ * They were not off-ladder by choice: the ladder stopped at 384px while
+ * the app has a 680px form column and a 512px popover, and there was no
+ * `w-55` to write for 220px. `EXTRA_STEPS` in tailwind.config.js names
+ * the fourteen steps that were missing, and every one of those sites now
+ * follows the user's setting instead of promising never to.
  */
 const ARBITRARY_NOT_YET_CONVERTED: string[] = [
-  'components/datagrid/DataGrid.tsx',
-  'components/datagrid/pivot/PivotPanel.tsx',
-  'components/ui/sheet.tsx',
-  'features/alerts/NotificationsPanel.tsx',
-  'features/applications/Applications.tsx',
   'features/applications/ApplyPreview.tsx',
-  'features/applications/public/steps.tsx',
-  'features/costs/CostPerMile.tsx',
-  'features/drivers/Drivers.tsx',
-  'features/geofences/Geofences.tsx',
-  'features/maintenance/CalendarMonth.tsx',
-  'features/maintenance/badges.tsx',
-  'features/object-storage/ObjectStorageFileTable.tsx',
-  'features/overview/sections/OverviewStatusChart.tsx',
-  'features/routes/Routes.tsx',
-  'features/scorecards/ScorecardRules.tsx',
-  'features/settings/Invites.tsx',
-  'features/settings/TeamManagement.tsx',
-  'features/work-orders/WorkOrderForm.tsx',
-  'pages/Profile.tsx',
-  'shells/AppShell.tsx',
 ];
 
 const TITLE_NOT_YET_CONVERTED: string[] = [

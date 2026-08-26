@@ -374,7 +374,7 @@ export default function ApplyPreview() {
         onAsset={pickAsset} onClearAsset={clearAsset} onSave={saveTheme}
         onAiTheme={() => setAiOpen((o) => !o)} aiOpen={aiOpen} />
       {aiOpen && (
-        <Card className="fixed bottom-20 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-foreground shadow-xl">
+        <Card className="fixed bottom-20 left-1/2 z-50 w-104 max-w-[calc(100vw-2rem)] -translate-x-1/2 text-foreground shadow-xl">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-sm font-medium">
               <Sparkles className="text-primary size-3.5" /> AI theme

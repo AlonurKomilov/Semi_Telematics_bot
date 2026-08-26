@@ -140,7 +140,7 @@ export default function CostPerMile() {
           {/* CPM bar chart */}
           <Card className="mb-6">
             <p className="text-sm text-muted-foreground mb-3 font-medium">Cost per Mile by Vehicle</p>
-            <Suspense fallback={<div className="h-[220px] bg-muted/40 rounded animate-pulse" />}>
+            <Suspense fallback={<div className="h-55 bg-muted/40 rounded animate-pulse" />}>
               <CpmChart vehicles={vehicles} avgCpm={fleet?.avg_cpm ?? null} />
             </Suspense>
           </Card>

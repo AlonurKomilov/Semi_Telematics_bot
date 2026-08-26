@@ -1000,7 +1000,7 @@ function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef
           </div>
           <Card>
             <p className="mb-2 text-sm font-semibold text-foreground">{doc.title}</p>
-            <div className="max-h-[26rem] overflow-y-auto rounded border border-border p-3">
+            <div className="max-h-104 overflow-y-auto rounded border border-border p-3">
               <DisclosureBody blocks={doc.blocks} />
             </div>
           </Card>

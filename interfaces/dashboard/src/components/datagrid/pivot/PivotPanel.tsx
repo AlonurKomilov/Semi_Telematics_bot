@@ -517,7 +517,7 @@ export default function PivotPanel({
     <aside
       className={cn(
         'shrink-0 border-l border-border bg-card flex flex-col relative',
-        fill ? 'min-h-0' : 'max-h-[32rem]',
+        fill ? 'min-h-0' : 'max-h-128',
       )}
       style={{ width }}
     >

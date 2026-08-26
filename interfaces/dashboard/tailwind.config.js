@@ -108,6 +108,40 @@ const layoutScale = (source) => Object.fromEntries(
  * neither a button nor a panel); it rides layout because it behaves
  * like structure rather than like a target.
  */
+/**
+ * Steps the app measures in but Tailwind's default ladder does not name.
+ *
+ * These are not new opinions — every one is a length already in the
+ * codebase, written as `w-[220px]` because there was no `w-55` to write.
+ * An arbitrary length is the one value the Size multipliers cannot reach
+ * (design.md §5.1), so those sites were a promise that the element would
+ * never follow the user's setting. Naming the step is what un-promises
+ * it: `dimensionScale` picks the axis by magnitude and the calc comes
+ * for free.
+ *
+ * Added to the DERIVED keys only — never to `spacing` itself, which is
+ * the shared source all four axes fan out from and would fuse them.
+ *
+ * The ladder also simply stopped at 384px while the app has an 680px
+ * form column and a 512px popover. Half of these are that gap.
+ */
+const EXTRA_STEPS = {
+  15: '3.75rem',    //  60px  row minimum
+  22: '5.5rem',     //  88px  calendar cell
+  30: '7.5rem',     // 120px  narrow column
+  35: '8.75rem',    // 140px  column
+  50: '12.5rem',    // 200px  column
+  55: '13.75rem',   // 220px  chart box, topbar search
+  65: '16.25rem',   // 260px
+  70: '17.5rem',    // 280px
+  100: '25rem',     // 400px  map minimum
+  104: '26rem',     // 416px  floating panel
+  120: '30rem',     // 480px
+  128: '32rem',     // 512px  popover maximum
+  140: '35rem',     // 560px  form column
+  170: '42.5rem',   // 680px  wide form column
+};
+
 const dimensionScale = (source) => Object.fromEntries(
   Object.entries(source).flatMap(([k, v]) => {
     const rem = remValue(v);
@@ -277,13 +311,13 @@ export default {
       // SEPARATE Tailwind key, and leaving it out freezes every `size-N`
       // element while its `w-N h-N` siblings grow — which turns a round
       // icon button into an oval.
-      width: dimensionScale(defaultTheme.spacing),
+      width: dimensionScale({ ...defaultTheme.spacing, ...EXTRA_STEPS }),
       // `h-tap` exists for ONE case that `min-h-tap` cannot serve: a table
       // row. A row's height comes from the table layout algorithm, not from
       // min-height — measured, `min-h-tap` on a <tr> leaves a compact row at
       // 20.4px at 0.85x. `height` on a <tr> IS treated as a minimum, so this
       // floors the row while a taller row still grows past it.
-      height: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
+      height: { ...dimensionScale({ ...defaultTheme.spacing, ...EXTRA_STEPS }), tap: '24px' },
       // `size-4.5` = 18px. It is added HERE and nowhere else on purpose:
       // 18 is a sanctioned ICON step (CLAUDE.md: 12·14·16·18·20·24) but it
       // is not on Tailwind's spacing ladder, which jumps 16 -> 20. Without
@@ -298,11 +332,11 @@ export default {
       // sees the literal, and it is not greppable when the next person
       // audits the floor.
       size: {
-        ...dimensionScale(defaultTheme.spacing),
+        ...dimensionScale({ ...defaultTheme.spacing, ...EXTRA_STEPS }),
         '4.5': scaled('1.125rem', 'control'),
         tap: '24px',
       },
-      maxHeight: dimensionScale(defaultTheme.spacing),
+      maxHeight: dimensionScale({ ...defaultTheme.spacing, ...EXTRA_STEPS }),
 
       // `min-h-tap` / `min-w-tap` — the pointer-target floor, and the ONE
       // step in this file that deliberately rides no axis.
@@ -320,8 +354,8 @@ export default {
       // rather than `min-h-[24px]` at 500 call sites: greppable, states
       // its intent, and cannot silently fail to exist the way an
       // arbitrary value does when the scanner never sees it.
-      minWidth: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
-      minHeight: { ...dimensionScale(defaultTheme.spacing), tap: '24px' },
+      minWidth: { ...dimensionScale({ ...defaultTheme.spacing, ...EXTRA_STEPS }), tap: '24px' },
+      minHeight: { ...dimensionScale({ ...defaultTheme.spacing, ...EXTRA_STEPS }), tap: '24px' },
       // maxWidth is TWO ladders in one key: the named dialog steps
       // (`max-w-lg`) and the whole spacing scale (`max-w-40`). Tailwind's
       // default is a function that merges `theme('spacing')` in, so

@@ -107,7 +107,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setPaletteOpen(true)}
-              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 min-h-tap text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-[220px] lg:w-[280px]"
+              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 min-h-tap text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-55 lg:w-70"
               aria-label="Open command palette"
             >
               <Search className="size-3.5" />

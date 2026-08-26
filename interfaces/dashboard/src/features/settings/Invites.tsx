@@ -813,7 +813,7 @@ export function InvitesPanel() {
                 title={`Sent to ${inv.sent_to_email}${inv.email_send_count && inv.email_send_count > 1 ? ` (${inv.email_send_count} attempts)` : ''}${inv.email_bounce_reason ? ' — ' + inv.email_bounce_reason : ''}`}
               >
                 <Mail className={cn(isBounced || isComplained ? toneText('danger') : undefined, 'size-3')} />
-                <span className="truncate max-w-[160px]">{inv.sent_to_email}</span>
+                <span className="truncate max-w-40">{inv.sent_to_email}</span>
                 {inv.email_send_count != null && inv.email_send_count > 1 && (
                   <span className="opacity-60">×{inv.email_send_count}</span>
                 )}

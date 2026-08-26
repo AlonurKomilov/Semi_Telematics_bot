@@ -734,7 +734,7 @@ export default function WorkOrderForm() {
     }
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[680px]">
+        <table className="w-full text-sm min-w-170">
           <thead>
             <tr className="text-xs text-muted-foreground border-b border-border">
               <th className="text-left font-medium py-1.5 px-2">{t('work_orders_page.col_part')}</th>
@@ -844,7 +844,7 @@ export default function WorkOrderForm() {
     if (entries.length === 0) return null;
     return (
       <div className="overflow-x-auto border-t border-border">
-        <table className="w-full text-sm min-w-[560px]">
+        <table className="w-full text-sm min-w-140">
           <thead>
             <tr className="text-left text-xs text-muted-foreground border-b border-border">
               <th className="py-1.5 px-2 font-medium">

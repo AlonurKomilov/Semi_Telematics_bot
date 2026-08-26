@@ -1945,7 +1945,7 @@ function Row({ label, value, status, action }: {
  *   - autoFocus on the close button so keyboard users have a
  *     reachable first stop; native focus management handles the
  *     rest (Tab cycles within the drawer's tabindex tree).
- *   - max-w-md (28rem / 448px) replaces the original w-[480px]
+ *   - max-w-md (28rem / 448px) replaces the original w-120
  *     arbitrary value — on the 4px scale and follows the design
  *     system's "no arbitrary layout values" rule.
  */

@@ -3831,7 +3831,7 @@ export default function DataGrid({
             />
         </div>
       ) : (
-      /* ``min-h-0``, NOT a ``min-h-[16rem]`` floor.  That floor belonged to
+      /* ``min-h-0``, NOT a ``min-h-64`` floor.  That floor belonged to
          the old flexbox path, where the card's height came from its parent
          and could collapse to a slit.  Against a MEASURED max-height it
          does the opposite: the body refuses to shrink into its share, so
