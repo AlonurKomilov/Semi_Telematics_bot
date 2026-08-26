@@ -249,11 +249,41 @@ class TestSanitizerRefusesToEscapeItsFolder:
 
 
 class TestTestsDoNotWriteIntoTheLiveTree:
+    """accounts.id starts at 10000001, the SAME id as the first real
+    account — so an unpinned root writes fixtures into a live customer's
+    folders.  It did, for months: 64 "Roe, Jane" application paths were
+    found sitting in production's tree.
+
+    The pin is moving to the REPO-ROOT conftest.py, and it has to.
+    pytest resolves conftest.py by DIRECTORY ANCESTRY, and the root is
+    the only directory that is an ancestor of tests/, features/*/tests/
+    and capabilities/*/tests/ alike — a pin under tests/ would not apply
+    to a single co-located test.
+
+    These read whichever conftest exists, so they stay green across the
+    move itself, and they assert that EXACTLY ONE exists.  That last
+    part is the point: a leftover tests/conftest.py — a stub, a merge
+    artefact, a copy kept "just in case" — would let this guard read a
+    file pytest no longer loads, pass green, and protect nothing.
+    """
+
+    @staticmethod
+    def _the_conftest_pytest_loads():
+        candidates = [p for p in (ROOT / "conftest.py", ROOT / "tests" / "conftest.py")
+                      if p.is_file()]
+        assert candidates, "no conftest.py at the repo root or under tests/"
+        assert len(candidates) == 1, (
+            "TWO conftest.py files exist: "
+            + ", ".join(str(p.relative_to(ROOT)) for p in candidates)
+            + ". pytest loads them by directory ancestry, so the one under "
+            "tests/ does NOT apply to co-located package tests — and this "
+            "guard cannot tell which one is really pinning the root. "
+            "Keep exactly one, at the repo root."
+        )
+        return candidates[0]
+
     def test_conftest_pins_the_object_store_root(self):
-        """accounts.id starts at 10000001, the SAME id as the first real
-        account — so an unpinned root writes fixtures into a customer's
-        folders.  It did, for months."""
-        src = (ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+        src = self._the_conftest_pytest_loads().read_text(encoding="utf-8")
         assert 'os.environ["OBJECT_STORE_ROOT"]' in src, (
             "conftest must ASSIGN OBJECT_STORE_ROOT (not setdefault — an "
             "exported production path would win) before importing "
@@ -264,6 +294,17 @@ class TestTestsDoNotWriteIntoTheLiveTree:
         assert assign < first_storage_import, (
             "the pin must come BEFORE the first adapters.storage import — "
             "infra.config reads the variable once, at module import"
+        )
+
+    def test_nothing_else_re_sets_the_root_after_the_pin(self):
+        """Source order proves the pin is early; it does not prove it is
+        the LAST word.  A second assignment anywhere in the loaded
+        conftest would quietly win."""
+        src = self._the_conftest_pytest_loads().read_text(encoding="utf-8")
+        assert src.count('os.environ["OBJECT_STORE_ROOT"]') == 1, (
+            "OBJECT_STORE_ROOT is assigned more than once in the conftest "
+            "pytest loads — only the last assignment counts, and this "
+            "guard checks the position of the first"
         )
 
     def test_the_root_is_actually_a_throwaway_during_this_run(self):

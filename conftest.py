@@ -48,7 +48,13 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 
 # Ensure project root is on sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# This file now lives AT the repo root, so the root is its own
+# directory — not its parent.  The old two-level chain would have
+# inserted /home/abcdev/projects here, putting eight sibling
+# projects on sys.path[0] for no reason.  (pytest.ini's
+# `pythonpath = .` already covers the real need; this stays for
+# non-pytest importers.)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # E402: the os.environ.setdefault calls above must happen BEFORE these
 # imports so adapters.storage / interfaces.api.auth see the test env at
