@@ -208,6 +208,45 @@ def test_every_locale_declares_the_same_callout_fields():
             )
 
 
+# A value that is ONLY placeholders and punctuation is the same string
+# in every language by necessity — "{{old}} → {{new}}" has nothing to
+# translate.  Anything with a letter outside a placeholder does.
+_PLACEHOLDER = re.compile(r"\{\{[^}]*\}\}")
+
+
+def _has_translatable_words(value: str) -> bool:
+    return any(ch.isalpha() for ch in _PLACEHOLDER.sub("", value))
+
+
+def test_no_locale_silently_ships_the_english_string():
+    """Field parity is not translation parity.
+
+    The older guard checks every locale declares the same FIELDS, and
+    it passed for months while all six mileage caveats sat in English
+    in all eight non-English locales — 96 strings.  A translated label
+    above an English sentence does not read as "not translated yet",
+    it reads as broken, and nothing could see it because the fields
+    were all present.
+    """
+    base = json.loads(
+        (REPO / "interfaces/dashboard/src/locales/en.json").read_text()
+    )["callout"]
+    for lang in ("ru", "uz", "es", "fr", "uk", "am", "pa", "so"):
+        other = json.loads(
+            (REPO / f"interfaces/dashboard/src/locales/{lang}.json").read_text()
+        )["callout"]
+        untranslated = [
+            f"{key}.{field}"
+            for key, block in base.items()
+            for field, value in block.items()
+            if _has_translatable_words(value)
+            and other.get(key, {}).get(field) == value
+        ]
+        assert not untranslated, (
+            f"{lang}: still English — {sorted(untranslated)}"
+        )
+
+
 def test_every_key_has_english_copy():
     strings = json.loads(
         (REPO / "interfaces/dashboard/src/locales/en.json").read_text()

@@ -1056,28 +1056,28 @@
       "do": "Проверьте подключение устройства к диагностическому разъёму. 4truck показывает то, что присылает устройство."
     },
     "mileage.device_change": {
-      "title": "Device change",
-      "why": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+      "title": "Смена устройства",
+      "why": "Этот юнит передавал данные более чем с одного телематического устройства в диапазоне. Мили суммируются по всем; в колонках одометра показано устройство, на которое пришлась большая часть, поэтому разность по нему не совпадёт с итогом."
     },
     "mileage.estimated": {
-      "title": "Estimated",
-      "why": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+      "title": "Оценка",
+      "why": "Граница диапазона попала в разрыв данных — её показание одометра интерполировано по соседним."
     },
     "mileage.catchup": {
-      "title": "Catch-up days",
-      "why": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+      "title": "Дни с догоном",
+      "why": "Одометр молчал несколько дней и затем передал накопленное одним показанием: итог диапазона верен, но если диапазон начинается внутри такого разрыва, в него может попасть и более ранняя поездка."
     },
     "mileage.partial": {
-      "title": "Partial",
-      "why": "Odometer history starts inside this range — real miles are at least the number shown."
+      "title": "Частично",
+      "why": "История одометра начинается внутри этого диапазона — реальный пробег не меньше показанного."
     },
     "mileage.reset": {
-      "title": "Odometer reset",
-      "why": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+      "title": "Сброс одометра",
+      "why": "Одометр упал внутри диапазона (замена устройства или сброс) — мили суммируются по суточным показаниям."
     },
     "mileage.rebase": {
-      "title": "Odometer changed scale",
-      "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+      "title": "Смена шкалы одометра",
+      "why": "Одометр скакнул вверх внутри диапазона дальше, чем грузовик физически мог проехать (сменился источник показаний) — мили суммируются по суточным показаниям."
     },
     "vehicle.vin_changed": {
       "title": "VIN изменился: это другой грузовик?",
@@ -1085,7 +1085,7 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "VIN принадлежит одному физическому грузовику, поэтому либо этот юнит переназначен на другой грузовик, либо устройство переставили.",
-      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "affects": "Пробег · История обслуживания · Инспекции — всё это числится за этим юнитом",
       "do": "Выберите ответ, который соответствует грузовику — «тот же грузовик» сохраняет одну историю, «другой грузовик» выносит новый на отдельную запись."
     },
     "vehicle.gateway_swapped": {
@@ -1094,8 +1094,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Серийный номер шлюза за этим юнитом изменился — оборудование в грузовике заменили.",
-      "affects": "Odometer readings, which may restart from a different number",
-      "do": "Confirm below if the swap was planned."
+      "affects": "Показания одометра, которые могут начаться с другого числа",
+      "do": "Подтвердите ниже, если замена была плановой."
     },
     "vehicle.odometer_rebased": {
       "title": "Одометр сменил шкалу",
@@ -1103,8 +1103,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Одометр скакнул дальше, чем грузовик мог проехать с прошлого показания, значит изменился источник показаний, а не грузовик поехал.",
-      "affects": "Mileage totals for the period around the jump",
-      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+      "affects": "Итоги пробега за период вокруг скачка",
+      "do": "Подтвердите ниже. Мили суммируются по суточным показаниям через скачок, поэтому итоги остаются верными в любом случае."
     },
     "labels": {
       "why": "Причина",

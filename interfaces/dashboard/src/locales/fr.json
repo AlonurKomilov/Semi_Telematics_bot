@@ -1056,28 +1056,28 @@
       "do": "Faites vérifier la connexion au port de diagnostic. 4truck affiche ce que l'appareil envoie."
     },
     "mileage.device_change": {
-      "title": "Device change",
-      "why": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+      "title": "Changement de boîtier",
+      "why": "Cette unité a émis depuis plus d'un boîtier télématique sur la période. Les miles sont additionnés sur l'ensemble ; les colonnes du compteur montrent le boîtier qui en a parcouru le plus, donc cet écart seul n'égalera pas le total."
     },
     "mileage.estimated": {
-      "title": "Estimated",
-      "why": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+      "title": "Estimé",
+      "why": "Une borne de la période est tombée dans un trou de données — son compteur a été interpolé à partir des relevés voisins."
     },
     "mileage.catchup": {
-      "title": "Catch-up days",
-      "why": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+      "title": "Jours de rattrapage",
+      "why": "Le compteur est resté muet quelques jours puis a transmis l'arriéré en un seul relevé : le total de la période est réel, mais si la période commence dans un tel trou, elle peut inclure des trajets antérieurs."
     },
     "mileage.partial": {
-      "title": "Partial",
-      "why": "Odometer history starts inside this range — real miles are at least the number shown."
+      "title": "Partiel",
+      "why": "L'historique du compteur commence à l'intérieur de cette période — les miles réels sont au moins ceux affichés."
     },
     "mileage.reset": {
-      "title": "Odometer reset",
-      "why": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+      "title": "Compteur remis à zéro",
+      "why": "Le compteur a chuté en cours de période (boîtier remplacé ou remise à zéro) — les miles sont additionnés à partir des relevés quotidiens."
     },
     "mileage.rebase": {
-      "title": "Odometer changed scale",
-      "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+      "title": "Le compteur a changé d'échelle",
+      "why": "Le compteur a bondi en cours de période au-delà de ce que le camion pouvait physiquement rouler (sa source de relevé a changé) — les miles sont additionnés à partir des relevés quotidiens."
     },
     "vehicle.vin_changed": {
       "title": "Le VIN a changé : est-ce un autre camion ?",
@@ -1085,7 +1085,7 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Un VIN désigne un seul camion physique : soit cette unité a été réaffectée à un autre camion, soit le boîtier a été déplacé.",
-      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "affects": "Kilométrage · Historique d'entretien · Inspections — tout est classé sous cette unité",
       "do": "Choisissez la réponse qui correspond au camion : « même camion » garde un seul historique, « autre camion » sépare le nouveau sur sa propre fiche."
     },
     "vehicle.gateway_swapped": {
@@ -1094,8 +1094,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Le numéro de série du boîtier de cette unité a changé — le matériel du camion a été remplacé.",
-      "affects": "Odometer readings, which may restart from a different number",
-      "do": "Confirm below if the swap was planned."
+      "affects": "Les relevés du compteur, qui peuvent repartir d'un autre chiffre",
+      "do": "Confirmez ci-dessous si le remplacement était prévu."
     },
     "vehicle.odometer_rebased": {
       "title": "L'odomètre a changé d'échelle",
@@ -1103,8 +1103,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Le compteur a bondi plus loin que le camion n'aurait pu rouler depuis sa lecture précédente : c'est la source de lecture qui a changé, pas le camion.",
-      "affects": "Mileage totals for the period around the jump",
-      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+      "affects": "Les totaux de kilométrage de la période autour du saut",
+      "do": "Confirmez ci-dessous. Les miles sont additionnés à partir des relevés quotidiens de part et d'autre du saut, donc les totaux restent justes dans les deux cas."
     },
     "labels": {
       "why": "Cause",

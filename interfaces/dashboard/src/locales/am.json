@@ -827,28 +827,28 @@
       "do": "የመሣሪያውን የመመርመሪያ ወደብ ግንኙነት ያስፈትሹ። 4truck መሣሪያው የሚልከውን ያሳያል።"
     },
     "mileage.device_change": {
-      "title": "Device change",
-      "why": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+      "title": "የመሣሪያ ለውጥ",
+      "why": "ይህ ዩኒት በዚህ ክልል ውስጥ ከአንድ በላይ የቴሌማቲክስ መሣሪያ ሪፖርት አድርጓል። ማይሎች ከሁሉም ተደምረዋል፤ የኦዶሜትር አምዶች አብዛኛውን የነዳው መሣሪያ ያሳያሉ፣ ስለዚህ ያ ልዩነት ብቻውን ከጠቅላላው ጋር አይመጣጠንም።"
     },
     "mileage.estimated": {
-      "title": "Estimated",
-      "why": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+      "title": "ግምታዊ",
+      "why": "የክልሉ ወሰን በመረጃ ክፍተት ውስጥ ወደቀ — ኦዶሜትሩ ከአጎራባች ንባቦች ተሰልቷል።"
     },
     "mileage.catchup": {
-      "title": "Catch-up days",
-      "why": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+      "title": "የተጠራቀሙ ቀናት",
+      "why": "ኦዶሜትሩ ለጥቂት ቀናት ዝም አለ ከዚያም የተጠራቀመውን በአንድ ንባብ ላከ — የክልሉ ጠቅላላ እውነተኛ ነው፣ ነገር ግን ክልሉ በእንዲህ ያለ ክፍተት ውስጥ ከጀመረ ቀደም ያለ ጉዞንም ሊያካትት ይችላል።"
     },
     "mileage.partial": {
-      "title": "Partial",
-      "why": "Odometer history starts inside this range — real miles are at least the number shown."
+      "title": "ከፊል",
+      "why": "የኦዶሜትር ታሪክ በዚህ ክልል ውስጥ ይጀምራል — እውነተኛ ማይሎች ቢያንስ የታየው ያህል ናቸው።"
     },
     "mileage.reset": {
-      "title": "Odometer reset",
-      "why": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+      "title": "ኦዶሜትር ዳግም ተጀምሯል",
+      "why": "ኦዶሜትሩ በክልሉ መሃል ወረደ (መሣሪያ ተቀይሯል ወይም ዳግም ተጀምሯል) — ማይሎች ከዕለታዊ ንባቦች ተደምረዋል።"
     },
     "mileage.rebase": {
-      "title": "Odometer changed scale",
-      "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+      "title": "ኦዶሜትር መለኪያውን ቀይሯል",
+      "why": "ኦዶሜትሩ በክልሉ መሃል መኪናው በአካል ሊነዳ ከሚችለው በላይ ወደ ላይ ዘሏል (የንባቡ ምንጭ ተቀይሯል) — ማይሎች ከዕለታዊ ንባቦች ተደምረዋል።"
     },
     "vehicle.vin_changed": {
       "title": "VIN ተቀይሯል፦ ይህ ሌላ መኪና ነው?",
@@ -856,7 +856,7 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "VIN አንድ አካላዊ መኪናን ይሰይማል፤ ስለዚህ ወይ ይህ ዩኒት ወደ ሌላ መኪና ተዛውሯል፣ ወይ መሣሪያው ተንቀሳቅሷል።",
-      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "affects": "ማይሌጅ · የጥገና ታሪክ · ምርመራዎች — ሁሉም በዚህ ዩኒት ስር ተመዝግቧል",
       "do": "ከመኪናው ጋር የሚስማማውን መልስ ይምረጡ — «ተመሳሳይ መኪና» አንድ ታሪክ ይይዛል፣ «ሌላ መኪና» አዲሱን ወደ ራሱ መዝገብ ይለያል።"
     },
     "vehicle.gateway_swapped": {
@@ -865,8 +865,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "የዚህ ዩኒት ጌትዌይ ተከታታይ ቁጥር ተቀይሯል — በመኪናው ውስጥ ያለው መሣሪያ ተተክቷል።",
-      "affects": "Odometer readings, which may restart from a different number",
-      "do": "Confirm below if the swap was planned."
+      "affects": "የኦዶሜትር ንባቦች፣ ከሌላ ቁጥር ሊጀምሩ ይችላሉ",
+      "do": "ለውጡ የታቀደ ከሆነ ከታች ያረጋግጡ።"
     },
     "vehicle.odometer_rebased": {
       "title": "ኦዶሜትር ሚዛን ቀይሯል",
@@ -874,8 +874,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "ኦዶሜትሩ ከቀደመው ንባብ ወዲህ መኪናው ሊነዳ ከሚችለው በላይ ዘሏል፤ ስለዚህ የንባቡ ምንጭ ተቀይሯል እንጂ መኪናው አልተንቀሳቀሰም።",
-      "affects": "Mileage totals for the period around the jump",
-      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+      "affects": "በዝላዩ ዙሪያ ላለው ጊዜ የማይሌጅ ድምሮች",
+      "do": "ከታች ያረጋግጡ። ማይሎች በዝላዩ አቋርጠው ከዕለታዊ ንባቦች ስለሚደመሩ ድምሮቹ በሁለቱም መንገድ ትክክል ይሆናሉ።"
     },
     "labels": {
       "why": "ምክንያት",

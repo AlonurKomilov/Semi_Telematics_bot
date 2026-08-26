@@ -827,28 +827,28 @@
       "do": "Xiriirka qalabka ee dekedda baaritaanka ha la hubiyo. 4truck wuxuu tusayaa waxa qalabku diro."
     },
     "mileage.device_change": {
-      "title": "Device change",
-      "why": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+      "title": "Isbeddel qalab",
+      "why": "Unugkani wuxuu ka soo warramay in ka badan hal qalab telematics ah muddada. Miilasha waa la isku darayaa dhammaantood; tiirarka odometer-ku waxay muujinayaan qalabkii inta badan socday, markaa faraqaas keligiis ma le'ekaan doono wadarta."
     },
     "mileage.estimated": {
-      "title": "Estimated",
-      "why": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+      "title": "Qiyaas",
+      "why": "Xadka muddada ayaa ku dhacay bannaan xog la'aan ah — odometer-kiisa waxaa laga qiyaasay akhrisyada ku xiga."
     },
     "mileage.catchup": {
-      "title": "Catch-up days",
-      "why": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+      "title": "Maalmo isu tegey",
+      "why": "Odometer-ku dhowr maalmood wuu aamusay ka dibna wixii isu tegey hal akhris ku soo diray — wadarta muddadu waa sax, laakiin haddii muddadu ka bilaabato bannaankaas waxay ku dari kartaa socod hore."
     },
     "mileage.partial": {
-      "title": "Partial",
-      "why": "Odometer history starts inside this range — real miles are at least the number shown."
+      "title": "Qayb ahaan",
+      "why": "Taariikhda odometer-ku waxay ka bilaabmaysaa gudaha muddadan — miilasha dhabta ah ugu yaraan waa intii la muujiyay."
     },
     "mileage.reset": {
-      "title": "Odometer reset",
-      "why": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+      "title": "Odometer dib loo bilaabay",
+      "why": "Odometer-ku wuu hoos u dhacay muddada dhexdeeda (qalab la beddelay ama dib loo bilaabay) — miilasha waxaa laga isku darayaa akhrisyada maalinlaha ah."
     },
     "mileage.rebase": {
-      "title": "Odometer changed scale",
-      "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+      "title": "Odometer-ku cabbirka wuu beddelay",
+      "why": "Odometer-ku wuxuu kor u boodtay muddada dhexdeeda in ka badan intii gaarigu jireed ku socon karay (isha akhriskiisa way beddelantay) — miilasha waxaa laga isku darayaa akhrisyada maalinlaha ah."
     },
     "vehicle.vin_changed": {
       "title": "VIN wuu beddelay: ma gaari kale baa?",
@@ -856,7 +856,7 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "VIN wuxuu magacaabaa hal gaari oo jireed, markaa ama unugkan waxaa loo wareejiyay gaari kale, ama qalabkii waa la rogay.",
-      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "affects": "Miilaha · Taariikhda dayactirka · Baaritaannada — dhammaantood waxaa lagu diiwaangeliyaa unugkan",
       "do": "Dooro jawaabta ku habboon gaariga — \"gaari isku mid ah\" wuxuu hayaa hal taariikh, \"gaari kale\" ayaa kan cusub u kala saara diiwaan u gaar ah."
     },
     "vehicle.gateway_swapped": {
@@ -865,8 +865,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Lambarka taxanaha ee gateway-ga unugkan wuu beddelmay — qalabka gaariga waa la beddelay.",
-      "affects": "Odometer readings, which may restart from a different number",
-      "do": "Confirm below if the swap was planned."
+      "affects": "Akhrisyada odometer-ka, oo laga yaabo inay ka bilaabmaan lambar kale",
+      "do": "Hoos ku xaqiiji haddii beddelkaas la qorsheeyay."
     },
     "vehicle.odometer_rebased": {
       "title": "Odomitarku miisaan buu beddelay",
@@ -874,8 +874,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Odometer-ku wuxuu boodtay in ka badan intii uu gaarigu socon karay tan iyo akhriskii hore, markaa waxaa beddelmay isha akhriska ee ma aha gaariga.",
-      "affects": "Mileage totals for the period around the jump",
-      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+      "affects": "Wadarta miilaha ee muddada boodka ku xeeran",
+      "do": "Hoos ku xaqiiji. Miilasha waxaa laga isku darayaa akhrisyada maalinlaha ah boodka labadiisa dhinac, markaa wadarta way sax ahaanaysaa labadaba."
     },
     "labels": {
       "why": "Sababta",

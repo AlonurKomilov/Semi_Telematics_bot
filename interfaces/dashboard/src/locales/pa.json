@@ -827,28 +827,28 @@
       "do": "ਡਿਵਾਈਸ ਦਾ ਡਾਇਗਨੌਸਟਿਕ ਪੋਰਟ ਕਨੈਕਸ਼ਨ ਚੈੱਕ ਕਰਵਾਓ। 4truck ਉਹੀ ਦਿਖਾਉਂਦਾ ਹੈ ਜੋ ਡਿਵਾਈਸ ਭੇਜਦਾ ਹੈ।"
     },
     "mileage.device_change": {
-      "title": "Device change",
-      "why": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+      "title": "ਡਿਵਾਈਸ ਬਦਲੀ",
+      "why": "ਇਸ ਯੂਨਿਟ ਨੇ ਇਸ ਸੀਮਾ ਵਿੱਚ ਇੱਕ ਤੋਂ ਵੱਧ ਟੈਲੀਮੈਟਿਕਸ ਡਿਵਾਈਸਾਂ ਤੋਂ ਰਿਪੋਰਟ ਕੀਤਾ। ਮੀਲ ਸਾਰਿਆਂ ਵਿੱਚੋਂ ਜੋੜੇ ਜਾਂਦੇ ਹਨ; ਓਡੋਮੀਟਰ ਕਾਲਮ ਉਹ ਡਿਵਾਈਸ ਦਿਖਾਉਂਦੇ ਹਨ ਜਿਸ ਨੇ ਬਹੁਤੇ ਚਲਾਏ, ਸੋ ਇਕੱਲਾ ਉਹ ਫ਼ਰਕ ਕੁੱਲ ਦੇ ਬਰਾਬਰ ਨਹੀਂ ਹੋਵੇਗਾ।"
     },
     "mileage.estimated": {
-      "title": "Estimated",
-      "why": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+      "title": "ਅੰਦਾਜ਼ਨ",
+      "why": "ਸੀਮਾ ਦਾ ਇੱਕ ਸਿਰਾ ਡਾਟਾ ਖੱਪੇ ਵਿੱਚ ਆ ਗਿਆ — ਇਸ ਦਾ ਓਡੋਮੀਟਰ ਨੇੜਲੀਆਂ ਰੀਡਿੰਗਾਂ ਤੋਂ ਲਾਇਆ ਗਿਆ ਹੈ।"
     },
     "mileage.catchup": {
-      "title": "Catch-up days",
-      "why": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+      "title": "ਇਕੱਠੇ ਹੋਏ ਦਿਨ",
+      "why": "ਓਡੋਮੀਟਰ ਕੁਝ ਦਿਨ ਚੁੱਪ ਰਿਹਾ ਅਤੇ ਫਿਰ ਸਾਰਾ ਇਕੱਠਾ ਇੱਕੋ ਰੀਡਿੰਗ ਵਿੱਚ ਭੇਜਿਆ — ਸੀਮਾ ਦਾ ਕੁੱਲ ਸਹੀ ਹੈ, ਪਰ ਜੇ ਸੀਮਾ ਅਜਿਹੇ ਖੱਪੇ ਵਿੱਚ ਸ਼ੁਰੂ ਹੁੰਦੀ ਹੈ ਤਾਂ ਇਸ ਵਿੱਚ ਪਹਿਲਾਂ ਦੀ ਚਲਾਈ ਵੀ ਆ ਸਕਦੀ ਹੈ।"
     },
     "mileage.partial": {
-      "title": "Partial",
-      "why": "Odometer history starts inside this range — real miles are at least the number shown."
+      "title": "ਅੰਸ਼ਕ",
+      "why": "ਓਡੋਮੀਟਰ ਦਾ ਇਤਿਹਾਸ ਇਸ ਸੀਮਾ ਦੇ ਅੰਦਰ ਸ਼ੁਰੂ ਹੁੰਦਾ ਹੈ — ਅਸਲ ਮੀਲ ਦਿਖਾਏ ਗਏ ਤੋਂ ਘੱਟ ਨਹੀਂ ਹਨ।"
     },
     "mileage.reset": {
-      "title": "Odometer reset",
-      "why": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+      "title": "ਓਡੋਮੀਟਰ ਰੀਸੈੱਟ",
+      "why": "ਓਡੋਮੀਟਰ ਸੀਮਾ ਦੇ ਵਿਚਕਾਰ ਘਟ ਗਿਆ (ਡਿਵਾਈਸ ਬਦਲੀ ਜਾਂ ਰੀਸੈੱਟ) — ਮੀਲ ਰੋਜ਼ਾਨਾ ਰੀਡਿੰਗਾਂ ਤੋਂ ਜੋੜੇ ਜਾਂਦੇ ਹਨ।"
     },
     "mileage.rebase": {
-      "title": "Odometer changed scale",
-      "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+      "title": "ਓਡੋਮੀਟਰ ਦਾ ਪੈਮਾਨਾ ਬਦਲਿਆ",
+      "why": "ਓਡੋਮੀਟਰ ਸੀਮਾ ਦੇ ਵਿਚਕਾਰ ਟਰੱਕ ਦੇ ਭੌਤਿਕ ਤੌਰ 'ਤੇ ਚੱਲ ਸਕਣ ਨਾਲੋਂ ਵੱਧ ਉੱਪਰ ਛਾਲ ਮਾਰ ਗਿਆ (ਰੀਡਿੰਗ ਦਾ ਸਰੋਤ ਬਦਲਿਆ) — ਮੀਲ ਰੋਜ਼ਾਨਾ ਰੀਡਿੰਗਾਂ ਤੋਂ ਜੋੜੇ ਜਾਂਦੇ ਹਨ।"
     },
     "vehicle.vin_changed": {
       "title": "VIN ਬਦਲ ਗਿਆ: ਕੀ ਇਹ ਵੱਖਰਾ ਟਰੱਕ ਹੈ?",
@@ -856,7 +856,7 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "VIN ਇੱਕ ਹੀ ਭੌਤਿਕ ਟਰੱਕ ਨੂੰ ਦਰਸਾਉਂਦਾ ਹੈ, ਇਸ ਲਈ ਜਾਂ ਤਾਂ ਇਹ ਯੂਨਿਟ ਕਿਸੇ ਹੋਰ ਟਰੱਕ ਨੂੰ ਸੌਂਪਿਆ ਗਿਆ, ਜਾਂ ਡਿਵਾਈਸ ਹਿਲਾਈ ਗਈ।",
-      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "affects": "ਮਾਈਲੇਜ · ਰੱਖ-ਰਖਾਅ ਦਾ ਇਤਿਹਾਸ · ਜਾਂਚਾਂ — ਸਭ ਕੁਝ ਇਸੇ ਯੂਨਿਟ ਹੇਠ ਦਰਜ ਹੈ",
       "do": "ਉਹ ਜਵਾਬ ਚੁਣੋ ਜੋ ਟਰੱਕ ਨਾਲ ਮੇਲ ਖਾਂਦਾ ਹੈ — \"ਉਹੀ ਟਰੱਕ\" ਇੱਕ ਹੀ ਇਤਿਹਾਸ ਰੱਖਦਾ ਹੈ, \"ਵੱਖਰਾ ਟਰੱਕ\" ਨਵੇਂ ਨੂੰ ਆਪਣੇ ਰਿਕਾਰਡ ਵਿੱਚ ਵੰਡ ਦਿੰਦਾ ਹੈ।"
     },
     "vehicle.gateway_swapped": {
@@ -865,8 +865,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "ਇਸ ਯੂਨਿਟ ਦੇ ਗੇਟਵੇ ਦਾ ਸੀਰੀਅਲ ਨੰਬਰ ਬਦਲ ਗਿਆ — ਟਰੱਕ ਦਾ ਹਾਰਡਵੇਅਰ ਬਦਲਿਆ ਗਿਆ ਹੈ।",
-      "affects": "Odometer readings, which may restart from a different number",
-      "do": "Confirm below if the swap was planned."
+      "affects": "ਓਡੋਮੀਟਰ ਰੀਡਿੰਗਾਂ, ਜੋ ਕਿਸੇ ਹੋਰ ਅੰਕ ਤੋਂ ਮੁੜ ਸ਼ੁਰੂ ਹੋ ਸਕਦੀਆਂ ਹਨ",
+      "do": "ਜੇ ਬਦਲੀ ਯੋਜਨਾਬੱਧ ਸੀ ਤਾਂ ਹੇਠਾਂ ਪੁਸ਼ਟੀ ਕਰੋ।"
     },
     "vehicle.odometer_rebased": {
       "title": "ਓਡੋਮੀਟਰ ਸਕੇਲ ਬਦਲਿਆ",
@@ -874,8 +874,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "ਓਡੋਮੀਟਰ ਪਿਛਲੀ ਰੀਡਿੰਗ ਤੋਂ ਬਾਅਦ ਟਰੱਕ ਦੇ ਚੱਲ ਸਕਣ ਨਾਲੋਂ ਵੱਧ ਛਾਲ ਮਾਰ ਗਿਆ, ਸੋ ਟਰੱਕ ਨਹੀਂ, ਰੀਡਿੰਗ ਦਾ ਸਰੋਤ ਬਦਲਿਆ ਹੈ।",
-      "affects": "Mileage totals for the period around the jump",
-      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+      "affects": "ਛਾਲ ਦੇ ਆਸ-ਪਾਸ ਦੇ ਸਮੇਂ ਲਈ ਮਾਈਲੇਜ ਦੇ ਕੁੱਲ",
+      "do": "ਹੇਠਾਂ ਪੁਸ਼ਟੀ ਕਰੋ। ਮੀਲ ਛਾਲ ਦੇ ਆਰ-ਪਾਰ ਰੋਜ਼ਾਨਾ ਰੀਡਿੰਗਾਂ ਤੋਂ ਜੋੜੇ ਜਾਂਦੇ ਹਨ, ਸੋ ਕੁੱਲ ਦੋਵੇਂ ਹਾਲਤਾਂ ਵਿੱਚ ਸਹੀ ਰਹਿੰਦੇ ਹਨ।"
     },
     "labels": {
       "why": "ਕਾਰਨ",

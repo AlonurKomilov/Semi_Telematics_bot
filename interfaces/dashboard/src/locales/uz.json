@@ -686,28 +686,28 @@
       "do": "Qurilmaning diagnostika portiga ulanishini tekshiring. 4truck qurilma yuborgan narsani ko'rsatadi."
     },
     "mileage.device_change": {
-      "title": "Device change",
-      "why": "This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total."
+      "title": "Qurilma almashgan",
+      "why": "Bu birlik oraliqda bittadan ortiq telematika qurilmasidan ma'lumot yubordi. Millar hammasidan jamlanadi; odometr ustunlarida ularning ko'pini bosib o'tgan qurilma ko'rsatiladi, shuning uchun faqat o'sha oraliq jamiga teng bo'lmaydi."
     },
     "mileage.estimated": {
-      "title": "Estimated",
-      "why": "A range boundary fell inside a data gap — its odometer was interpolated from the readings around it."
+      "title": "Taxminiy",
+      "why": "Oraliq chegarasi ma'lumot uzilishiga tushdi — uning odometri atrofdagi ko'rsatkichlardan interpolyatsiya qilindi."
     },
     "mileage.catchup": {
-      "title": "Catch-up days",
-      "why": "The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving."
+      "title": "To'planib kelgan kunlar",
+      "why": "Odometr bir necha kun jim qoldi va keyin to'plangani bitta ko'rsatkichda keldi — oraliq jami haqiqiy, lekin oraliq shunday uzilish ichida boshlansa, unga oldingi yurish ham kirishi mumkin."
     },
     "mileage.partial": {
-      "title": "Partial",
-      "why": "Odometer history starts inside this range — real miles are at least the number shown."
+      "title": "Qisman",
+      "why": "Odometr tarixi shu oraliq ichida boshlanadi — haqiqiy millar ko'rsatilganidan kam emas."
     },
     "mileage.reset": {
-      "title": "Odometer reset",
-      "why": "The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead."
+      "title": "Odometr nolga tushgan",
+      "why": "Odometr oraliq o'rtasida pasaydi (qurilma almashtirilgan yoki nolga tushirilgan) — millar kunlik ko'rsatkichlardan jamlanadi."
     },
     "mileage.rebase": {
-      "title": "Odometer changed scale",
-      "why": "The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead."
+      "title": "Odometr shkalasi o'zgargan",
+      "why": "Odometr oraliq o'rtasida mashina jismonan bosib o'tishi mumkin bo'lganidan ko'proqqa sakradi (ko'rsatkich manbai o'zgargan) — millar kunlik ko'rsatkichlardan jamlanadi."
     },
     "vehicle.vin_changed": {
       "title": "VIN o'zgardi: bu boshqa yuk mashinasimi?",
@@ -715,7 +715,7 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "VIN bitta jismoniy yuk mashinasini bildiradi, shuning uchun yo bu birlik boshqa mashinaga biriktirilgan, yo qurilma ko'chirilgan.",
-      "affects": "Mileage · Maintenance history · Inspections — all of it is filed under this unit",
+      "affects": "Yurish · Texnik xizmat tarixi · Tekshiruvlar — hammasi shu birlik ostida saqlanadi",
       "do": "Mashinaga mos javobni tanlang — «o'sha mashina» bitta tarixni saqlaydi, «boshqa mashina» yangisini alohida yozuvga ajratadi."
     },
     "vehicle.gateway_swapped": {
@@ -724,8 +724,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Ushbu birlik ortidagi shlyuz seriya raqami o'zgardi — mashinadagi uskuna almashtirilgan.",
-      "affects": "Odometer readings, which may restart from a different number",
-      "do": "Confirm below if the swap was planned."
+      "affects": "Odometr ko'rsatkichlari — boshqa raqamdan qayta boshlanishi mumkin",
+      "do": "Almashtirish rejalashtirilgan bo'lsa, quyida tasdiqlang."
     },
     "vehicle.odometer_rebased": {
       "title": "Odometr shkalasi o'zgardi",
@@ -733,8 +733,8 @@
       "where": "{{unit}}",
       "changed": "{{old}} → {{new}}",
       "why": "Odometr mashina oldingi ko'rsatkichdan beri bosib o'tishi mumkin bo'lganidan uzoqroqqa sakradi — demak mashina emas, ko'rsatkich manbai o'zgargan.",
-      "affects": "Mileage totals for the period around the jump",
-      "do": "Confirm below. Miles are summed from daily readings across the jump, so totals stay right either way."
+      "affects": "Sakrash atrofidagi davr uchun yurish jamlari",
+      "do": "Quyida tasdiqlang. Millar sakrash orqali kunlik ko'rsatkichlardan jamlanadi, shuning uchun jamlar har holda to'g'ri qoladi."
     },
     "labels": {
       "why": "Sabab",
