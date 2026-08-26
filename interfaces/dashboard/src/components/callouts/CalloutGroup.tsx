@@ -115,6 +115,21 @@ export default function CalloutGroup<T>({
             ))}
           </dl>
         )}
+        {/* No column varies — one occurrence, or several that differ in
+            nothing a reader would use to tell them apart.  The answer
+            must NOT depend on that: the actions were rendered inside
+            the grid below, so a lone gateway swap showed "Confirm
+            below" with nothing below it.  This is the same block
+            `Callout` uses, which is what a group of one should be. */}
+        {columns.length === 0 && actions && (
+          <div className="flex flex-col gap-2 pt-1">
+            {rows.map((_, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                {actions(items[i])}
+              </div>
+            ))}
+          </div>
+        )}
         {columns.length > 0 && (
           <div className="grid items-center gap-x-3 gap-y-1 pt-1" style={grid}>
             {/* The labels once, as a column head — repeating them on

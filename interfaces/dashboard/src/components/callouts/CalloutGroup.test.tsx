@@ -153,3 +153,32 @@ describe('the answers stay legible', () => {
     expect(screen.getByText('229').className).not.toContain('font-mono');
   });
 });
+
+describe('the answer never depends on what varies', () => {
+  // Shipped broken: the actions lived inside the varying-columns grid,
+  // so a group whose occurrences differ in NOTHING rendered no buttons
+  // at all.  A lone gateway swap read "Confirm below if the swap was
+  // planned" with nothing below it — an unanswerable question, which is
+  // the one state this whole lane exists to prevent.
+  it('gives a single occurrence its buttons, with no column to vary', () => {
+    render(
+      <CalloutGroup
+        items={[THREE[0]]} callout={asCallout}
+        actions={() => <button type="button">Dismiss</button>}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
+    // ...and still no column heads, because nothing varies.
+    expect(screen.getByText('Where').tagName).toBe('DT');
+  });
+
+  it('gives every occurrence its own buttons when several vary', () => {
+    render(
+      <CalloutGroup
+        items={THREE} callout={asCallout}
+        actions={(t) => <button type="button">Answer {t.unit}</button>}
+      />,
+    );
+    expect(screen.getAllByRole('button', { name: /^Answer / })).toHaveLength(3);
+  });
+});
