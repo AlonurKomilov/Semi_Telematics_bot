@@ -418,6 +418,35 @@ const DEBT: DebtList[] = [
 describe('UI chrome', () => {
 
   /**
+   * design.md §11 carries a table of which rules are enforced. An audit
+   * found it listing ten of the fifteen guards that existed — so five
+   * real guards read as "not enforced" to anyone consulting the doc
+   * before deciding what they could get away with. A table that lags is
+   * worse than no table: it gives permission.
+   *
+   * The doc states the count in words. Adding a guard here breaks this
+   * test until the sentence — and, one hopes, the row beside it — moves
+   * too.
+   */
+  it('is counted correctly in design.md', () => {
+    const doc = readFileSync(join(SRC, '..', 'design.md'), 'utf8');
+    const NUMBER: Record<string, number> = {
+      ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+      fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+      twenty: 20, 'twenty-one': 21, 'twenty-two': 22, 'twenty-three': 23,
+    };
+    const claimed = /\b([A-Za-z-]+) live in `src\/components\/ui\/chrome\.test\.ts`/
+      .exec(doc)?.[1]?.toLowerCase();
+    const actual = (readFileSync(join(SRC, 'components/ui/chrome.test.ts'), 'utf8')
+      .match(/^ {2}it\(/gm) ?? []).length;
+    expect(
+      claimed && NUMBER[claimed],
+      `design.md §11 says "${claimed}", this file has ${actual} guards — ` +
+        'update the sentence AND add the row',
+    ).toBe(actual);
+  });
+
+  /**
    * Recharts takes `fontSize` as a number and writes it onto an SVG <text>
    * as an attribute, so no Tailwind class reaches it — 31 axis, tick and
    * legend sizes sat frozen at 10-12px while every heading beside them

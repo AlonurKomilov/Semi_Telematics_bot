@@ -464,14 +464,26 @@ picks a step, never invents a value.
 - **Menus & popovers**: `w-44` (compact action menu) · `w-56` (standard
   menu) · `w-64` (menu with descriptions) · `w-80` (list panel — history,
   notifications). Don't invent in-between widths.
-- **Dialogs**: pick a `max-w-*` step — `max-w-lg` (S · confirm/simple
-  form) · `max-w-xl` (M · standard form) · `max-w-2xl` (L · wide editor).
-  Legacy `w-[480px]`-style dialogs migrate to the nearest step as you
-  touch them (same convention as the `title=` migration).
-- **Right-docked form drawers** (`border-l` slide-overs): always
-  `w-full max-w-md` (S) · `max-w-lg` (M) · `max-w-xl` (L). The `w-full`
-  is load-bearing — a fixed `w-[520px]` drawer overflows a phone
-  viewport; `w-full` + the cap degrades to full-screen on mobile.
+- **Dialogs**: pass `size` to `<DialogContent>` — `sm · md · lg · xl ·
+  2xl · 3xl` for forms; `4xl · 5xl` exist for a media player, which is
+  not a form. **Never write `max-w-*` in `className`.** The primitive's
+  base carries `sm:max-w-sm`, and tailwind-merge cannot replace a
+  `sm:`-prefixed class with an unprefixed one — both survive, so the
+  prefixed one wins from 640px up and the dialog renders at 384px on
+  every desktop. This paragraph used to instruct exactly that, and 31
+  dialogs had been shipping at 384px for months before anyone noticed.
+  A guard now fails the build for it, so following the old advice broke
+  the build rather than the layout. Legacy `w-[480px]`-style dialogs
+  migrate to the nearest step as you touch them.
+- **Right-docked form drawers** (`<SheetContent side="right">`): pass
+  `size` — `sm` (the default, and what every sheet rendered before the
+  prop existed) · `md · lg · xl · 2xl`. Write no width class of your own:
+  the base is `w-3/4` below the `sm` breakpoint and `sm:max-w-*` above
+  it, so a phone gets three-quarters of the viewport and a desktop gets
+  the step you named. (This paragraph previously called `w-full`
+  load-bearing and promised full-screen on mobile. `sheet.tsx` contains
+  no `w-full` at all, and none of its fourteen call sites writes a width
+  — the rule described a mechanism that was never there.)
   (The assistant panel is chrome, not a form drawer — it has its own
   resizable width.)
 
@@ -629,7 +641,7 @@ Step 0b.  This project's kept harness:
 - ❌ No re-implemented primitives — use `ui/*` and `shell/*`.
 - ❌ No off-ladder control heights — interactive controls sit on
   `h-7 · h-8 · h-9` (`size-7/8/9` for icon-buttons); menus/popovers on
-  `w-44 · w-56 · w-64 · w-80`; new dialogs on `max-w-lg/xl/2xl` (§7).
+  `w-44 · w-56 · w-64 · w-80`; new dialogs on `size="lg|xl|2xl"` (§7).
 - ❌ No z-index outside the §7 ladder (`0–20` content · `30` sticky ·
   `40` panels · `50` floating UI · `z-[60]` above-dialog · `z-[100]`
   maintenance blocker). Map components matching Leaflet pane values are
@@ -656,13 +668,21 @@ copy its tokens.
 ### Which of these are GUARDED
 
 A rule that lives only in this file decays — twice in one session an
-audit found violations of rules written here for months. These now fail
-`npm test`, in `src/components/ui/chrome.test.ts` (plus
-`scrolling/backdrops.test.ts` for hand-rolled modals):
+audit found violations of rules written here for months, and a later
+sweep found this very table three years' worth of guards out of date,
+listing ten of the fifteen that existed. Keep it current: a row missing
+from here reads as "not enforced", which is how a rule gets broken on
+purpose.
+
+These fail `npm test`. Sixteen live in `src/components/ui/chrome.test.ts`;
+the rest are noted per row. That count is itself checked — add a guard
+there and this sentence has to move with it, which is the only reason
+this table has any chance of staying true.
 
 | Rule | Guard |
 |---|---|
-| 24px pointer floor (§5.1) | computes each control's height from its classes; **validated against 728 elements measured in Chrome — 428/428 verdicts matched**, and it abstains on the 116 whose line-height is inherited |
+| 24px pointer floor, HEIGHT (§5.1) | computes each control's height from its classes; **validated against 728 elements measured in Chrome — 428/428 verdicts matched**, and it abstains on the 116 whose line-height is inherited |
+| 24px pointer floor, WIDTH (§5.1) | icon-only controls only — a control with text is as wide as its text, so it abstains on those (164 of 195). **Validated the same way: 31 controls rendered in Chrome, predicted width matched `getBoundingClientRect()` 31/31.** Added after thirteen targets turned up 14–22px wide while passing the height floor |
 | never extend `spacing` (§5.1) | reads `tailwind.config.js` |
 | no `calc(100vh − Nrem)` (§5.1) | code lines only, comments excluded |
 | no arbitrary px/rem length (§5.1, §11) | viewport units and `var()` deliberately allowed |
@@ -672,6 +692,15 @@ audit found violations of rules written here for months. These now fail
 | per-user state via the registry | allowlist mirrors `preferences/CLAUDE.md`'s exception table |
 | don't hand-roll a Button variant (§7) | a raw `<button>` wearing a variant's own dimensions |
 | don't override a Button variant (§7) | dimensions only — a call site may set colour |
+| dialog width via `size`, never `max-w-*` (§7) | the base carries `sm:max-w-sm`, which an unprefixed class cannot replace |
+| don't restate what a primitive already ships (§7) | the call site repeating a base the component already applies |
+| don't hand-roll a Badge (§11) | a `<span>` wearing a status colour plus badge geometry — both the `toneClasses` and `statusClasses` doors |
+| chart text rides the text axis (§5.1) | recharts takes `fontSize` as a number and writes an SVG attribute no class reaches; `lib/chartText.ts` holds the replacements |
+| every exemption list stays honest | each of the eight debt lists is paired with the predicate it exempts from, so an entry that no longer offends is reported by name |
+| modals are never hand-rolled | `scrolling/backdrops.test.ts` |
+| the sheet ✕ is suppressed where the header has one | `components/ui/sheetClose.test.ts` |
+| a locale never falls further behind English | `locales/parity.test.ts` — per-locale ceilings, plus: a translation may not carry a key English does not have |
+| this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards
 (`title=`, arbitrary lengths, one Button override). A separate test

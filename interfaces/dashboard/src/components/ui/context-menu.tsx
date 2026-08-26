@@ -28,8 +28,11 @@ export interface MenuAction {
   /** Stable key for React (also handy for tests). */
   key: string;
   label: ReactNode;
-  /** Fully-styled icon node — pass e.g. ``<Pencil size={14} … />`` so the
-   *  caller owns colour/state (the star-toggle case needs this). */
+  /** Fully-styled icon node — pass e.g. ``<Pencil className="size-3.5" … />``
+   *  so the caller owns colour/state (the star-toggle case needs this).
+   *  A CLASS, not the `size` prop: that prop writes an SVG width/height
+   *  attribute, which no Size axis can reach. This line used to show the
+   *  prop form, which is how a doc comment ships the bug it documents. */
   icon?: ReactNode;
   onSelect: () => void;
   disabled?: boolean;
