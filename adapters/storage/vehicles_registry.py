@@ -207,6 +207,19 @@ def _parse_provenance(raw: Any) -> dict:
         return {}
 
 
+def _operator_retired(v: Vehicle) -> bool:
+    """Did a PERSON retire this row, or did the departure sweep?
+
+    The discriminator is the operator's ``status`` column: the sweep
+    writes only ``is_active``, deliberately ("the operator status column
+    is deliberately absent from this UPDATE"), while both human paths —
+    ``deactivate_vehicle`` and a split's ``archive_old`` — set
+    ``status = 'inactive'`` alongside it.  One flag, two meanings, and
+    the second column is what tells them apart.
+    """
+    return not v.is_active and str(v.status or "").strip().lower() == "inactive"
+
+
 def _row_to_vehicle(r) -> Vehicle:
     return Vehicle(
         id=r[0], account_id=r[1], company_code=r[2] or "",
@@ -830,9 +843,25 @@ class VehiclesRegistryMixin(_MixinBase):
         if not rows:
             return 0
         precedence = await recon.get_precedence(self, account_id, "vehicle")
-        existing = await self.list_vehicles(account_id)
+        # INCLUDING retired rows.  A row that is no longer active still
+        # OWNS its telematics ref, its VIN and its (company, unit) in the
+        # unique index — those identities are taken whether the row shows
+        # on a page or not.  Indexing only active rows meant a retired
+        # row was invisible to the match and the provider's next tick
+        # inserted a second row for the same physical truck: that is how
+        # one account came to have four devices claimed by two rows each,
+        # with the work-order history on one and the door number on the
+        # other.
+        existing = await self.list_vehicles(account_id, include_inactive=True)
+        # IDENTITY vs LABEL — the two indexes are scoped differently on
+        # purpose.  A telematics ref and a VIN name a physical thing, so
+        # they match a retired row too.  A unit number is a LABEL people
+        # reuse: once a truck is retired its door number can legitimately
+        # go on a different truck, and matching that by name would merge
+        # two vehicles' histories.  Labels match live rows only.
         by_key = {
-            (v.company_code, v.unit_number.strip().lower()): v for v in existing
+            (v.company_code, v.unit_number.strip().lower()): v
+            for v in existing if v.is_active
         }
         # VIN index for reconciliation — a Datatruck-first row (no company
         # scoping) must be ENRICHED, not duplicated, when Samsara later reports
@@ -875,7 +904,7 @@ class VehiclesRegistryMixin(_MixinBase):
                     prov = {
                         f: source for f in _SPEC_FILL if not is_unset(r.get(f))
                     }
-                    await self._db.execute(
+                    cur_ins = await self._db.execute(
                         """INSERT INTO vehicles
                            (account_id, company_code, unit_number, vehicle_type,
                             vin, plate_number, make, model, year, gateway_serial,
@@ -901,6 +930,20 @@ class VehiclesRegistryMixin(_MixinBase):
                             json.dumps(prov), now, now,
                         ),
                     )
+                    # ON CONFLICT DO NOTHING covers a real collision the
+                    # match above cannot see: the unique index spans
+                    # RETIRED rows too, so a genuinely different truck
+                    # taking a retired truck's door number lands here and
+                    # writes nothing.  Silently counting that as written
+                    # is how a vehicle goes missing with no error
+                    # anywhere; say so instead.
+                    if getattr(cur_ins, "rowcount", 1) == 0:
+                        logger.warning(
+                            "vehicle upsert: %s/%s not inserted — the unit "
+                            "number is held by a retired row (source=%s)",
+                            company, unit, source,
+                        )
+                        continue
                     written += 1
                     continue
 
@@ -942,7 +985,32 @@ class VehiclesRegistryMixin(_MixinBase):
                 params.append(source)
                 sets.append("field_provenance = ?")
                 params.append(json.dumps(prov))
-                sets.append("is_active = 1")
+                # Revival, but only of what the SWEEP retired.
+                #
+                # Two different things set is_active = 0, and they are
+                # told apart by the operator's `status` column, which
+                # the sweep deliberately never writes:
+                #
+                #   swept   is_active=0, status untouched — the gateway
+                #           went silent.  vehicle_departure's contract
+                #           is explicit that "a badge that reports again
+                #           is re-upserted and its registry row
+                #           reactivated", so reviving here IS the
+                #           promise, and it was going unkept.
+                #   deleted is_active=0 AND status='inactive' — a person
+                #           retired the truck, or archived the old unit
+                #           of a split.  Reviving that would undo an
+                #           audited human decision on the next 60-second
+                #           tick, which is why the row is matched (never
+                #           duplicated) but left hidden.
+                if not _operator_retired(match):
+                    sets.append("is_active = 1")
+                elif not match.is_active:
+                    logger.info(
+                        "vehicle upsert: %s reports into retired unit %s/%s "
+                        "(id=%d) — merged, left hidden",
+                        source, match.company_code, match.unit_number, match.id,
+                    )
                 sets.append("updated_at = ?")
                 params.append(now)
                 params.extend([match.id, account_id])

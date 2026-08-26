@@ -714,3 +714,108 @@ async def test_plan_matches_by_plate(db):
     assert diff["counts"]["new"] == 0
     assert diff["counts"]["enrich"] == 1
     assert diff["enrich"][0]["by"] == "plate"
+
+
+# ── Retired rows still own their identity ───────────────────────────
+#
+# A live account had FOUR telematics refs claimed by two registry rows
+# each — the work-order history on one, the door number on the other.
+# The mechanism: `upsert_from_integration` built its match indexes from
+# active rows only, so a retired row was invisible and the next tick
+# inserted a second row for the same physical truck.
+#
+# The retired row still owns its ref, its VIN and its (company, unit)
+# in the unique index. Those identities are taken whether or not the
+# row shows on a page.
+
+
+def _row(**kw):
+    base = {
+        "company_code": "PTG", "unit_number": "128", "vehicle_type": "truck",
+        "vin": "3AKJGLDV5GSGZ4085", "telematics_ref": "281475003801071",
+    }
+    base.update(kw)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_a_swept_row_is_revived_not_duplicated(db):
+    """vehicle_departure retires a badge that went silent, and its
+    contract says so out loud: "a badge that reports again is
+    re-upserted and its registry row reactivated". It was not — the
+    ingest could not see the row it had retired, so it made a new one."""
+    await db.upsert_from_integration(42, [_row()], source="samsara")
+    (v,) = await db.list_vehicles(42)
+
+    # The sweep: is_active only. The operator's status column is
+    # deliberately untouched, and that is the discriminator.
+    await db._db.execute(
+        "UPDATE vehicles SET is_active = 0 WHERE id = ?", (v.id,))
+    await db._db.commit()
+
+    await db.upsert_from_integration(42, [_row()], source="samsara")
+    rows = await db.list_vehicles(42, include_inactive=True)
+    assert len(rows) == 1, f"duplicated: {[(r.id, r.unit_number) for r in rows]}"
+    assert rows[0].id == v.id and rows[0].is_active
+
+
+@pytest.mark.asyncio
+async def test_an_operator_delete_is_matched_but_never_revived(db):
+    """A person retiring a truck is an audited decision. Reviving it on
+    the next 60-second tick would undo it silently — so the row is
+    matched (no duplicate) and left hidden."""
+    await db.upsert_from_integration(42, [_row()], source="samsara")
+    (v,) = await db.list_vehicles(42)
+    await db.deactivate_vehicle(42, v.id)
+
+    await db.upsert_from_integration(42, [_row()], source="samsara")
+    rows = await db.list_vehicles(42, include_inactive=True)
+    assert len(rows) == 1, "a deleted truck must not be duplicated either"
+    assert rows[0].id == v.id
+    assert not rows[0].is_active, "an audited human delete was undone"
+    assert await db.list_vehicles(42) == []
+
+
+@pytest.mark.asyncio
+async def test_a_provider_rename_re_links_rather_than_inserting(db):
+    """The original duplicate mechanism: the upsert keys on
+    (company, unit), so renaming a truck in the provider minted a new
+    row while the old one kept the same telematics ref.
+
+    The ref match ends that. Note what it does NOT do: the name stays
+    ours. `unit_number` is not in the merged spec fields, because the
+    registry is the source of truth for what a truck is called and a
+    provider does not get to rename it — the same reason `status`,
+    `notes` and `vehicle_type` are untouched here. So a provider rename
+    is now a no-op rather than a second truck, and correcting the door
+    number is an edit someone makes deliberately."""
+    await db.upsert_from_integration(42, [_row(unit_number="6862")],
+                                     source="samsara")
+    await db.upsert_from_integration(42, [_row(unit_number="128")],
+                                     source="samsara")
+    rows = await db.list_vehicles(42, include_inactive=True)
+    assert len(rows) == 1, "a rename must not mint a second truck"
+    assert rows[0].unit_number == "6862"
+    assert rows[0].telematics_ref == "281475003801071"
+
+
+@pytest.mark.asyncio
+async def test_a_retired_door_number_is_not_identity(db):
+    """A unit number is a LABEL people reuse; a ref and a VIN name a
+    physical thing. Once a truck is retired its door number can go on a
+    different truck, and matching THAT by name would merge two
+    vehicles' histories into one row."""
+    await db.upsert_from_integration(42, [_row()], source="samsara")
+    (old,) = await db.list_vehicles(42)
+    await db.deactivate_vehicle(42, old.id)
+
+    # Same door number, different truck: different device, different VIN.
+    await db.upsert_from_integration(42, [_row(
+        telematics_ref="999000111", vin="1FUJHHDR5VLXK1417",
+    )], source="samsara")
+    rows = await db.list_vehicles(42, include_inactive=True)
+    # The retired row must NOT have absorbed the new truck's identity.
+    assert old.id in {r.id for r in rows}
+    survivor = next(r for r in rows if r.id == old.id)
+    assert survivor.telematics_ref == "281475003801071"
+    assert survivor.vin == "3AKJGLDV5GSGZ4085"
