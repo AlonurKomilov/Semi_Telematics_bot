@@ -33,14 +33,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Search, X } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { FEATURE_CATALOG } from '@/config/featureCatalog';
 import {
-  Sheet, SheetContent, SheetBody, SheetHeader, SheetFooter, SheetTitle,
+  Sheet, SheetContent, SheetBody, SheetDescription, SheetFooter,
+  SheetHeader, SheetTitle,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { ScrollRegion } from '@/components/scrolling';
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel,
@@ -84,6 +86,9 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   const [metrics, setMetrics] = useState<MetricSpec[]>([]);
   const [fleet, setFleet] = useState<Targetable[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // A toast fades; the empty dropdown it explained does not.  This keeps
+  // the reason on screen for as long as the problem lasts.
+  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [metric, setMetric] = useState('');
@@ -96,6 +101,7 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   const metricRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
+    setFailed(false);
     try {
       const [cat, veh] = await Promise.all([
         apiJSON<{ metrics: MetricSpec[] }>(`${API}/metrics`),
@@ -104,7 +110,7 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
       setMetrics(cat.metrics || []);
       setFleet(veh.vehicles || []);
     } catch {
-      toast.error('Couldn’t load the metrics or your vehicles');
+      setFailed(true);
     } finally {
       setLoaded(true);
     }
@@ -155,8 +161,21 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
     return '';
   };
 
-  const blocked = !spec || value === '' || !!rangeError()
-    || (!allMine && picked.length === 0);
+  // Why the button is inert, in the same words the person would ask it.
+  // A greyed control with no reason is the failure the section beside
+  // this one already avoids ("20 is the limit — remove one to add
+  // another"), and an aria-disabled button that simply does nothing on
+  // click is worse than a disabled one: it accepts the press.
+  const blockedBecause = (): string => {
+    if (busy) return 'Saving…';
+    if (failed) return 'Couldn’t load what can be watched.';
+    if (!spec) return 'Pick what to watch.';
+    if (value === '') return 'Enter a number.';
+    if (rangeError()) return rangeError();
+    if (!allMine && picked.length === 0) return 'Pick at least one vehicle.';
+    return '';
+  };
+  const blocked = !!blockedBecause();
 
   const save = async () => {
     if (blocked || busy) return;
@@ -171,6 +190,12 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
           vehicles: allMine ? [] : picked,
         },
       });
+      // Every failure toasted and success said nothing, so the one
+      // outcome a person most wants confirmed was the silent one.
+      toast.success(`Watching ${spec?.label.toLowerCase()} ${spec?.direction} `
+        + `${value}${spec?.unit} on `
+        + (allMine ? 'every vehicle you can see'
+                   : `${picked.length} vehicle${picked.length === 1 ? '' : 's'}`));
       onSaved();
       onClose();
     } catch (e) {
@@ -178,6 +203,21 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Anything typed or picked that would be lost.  Not a generic "dirty"
+  // flag: opening the Sheet and closing it again must not nag, so this
+  // asks whether there is WORK here, and picking 20 of 189 vehicles is
+  // several minutes of it.
+  const hasWork = metric !== '' || value !== '' || picked.length > 0;
+
+  const requestClose = () => {
+    if (busy) return;
+    if (hasWork && !window.confirm(
+      'Discard this trigger? What you picked here isn’t saved yet.')) {
+      return;
+    }
+    onClose();
   };
 
   const toggleVehicle = (id: number) =>
@@ -189,19 +229,36 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   if (!open) return null;
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+    // Escape and a backdrop click are the same intent as Cancel, so they
+    // get the same guard — a selection that took minutes to build must
+    // not vanish to a mis-aimed click.
+    <Sheet open onOpenChange={(o) => { if (!o) requestClose(); }}>
       <SheetContent side="right" size="lg" aria-label="Add an alert trigger">
         <SheetHeader className="px-5 py-4 border-b border-border shrink-0">
-          <SheetTitle className="text-base font-semibold">
-            Add a trigger
-          </SheetTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <SheetTitle>Add a trigger</SheetTitle>
+          {/* SheetDescription, not a styled <p>: the primitive is what
+              wires aria-describedby onto the dialog, so this caveat —
+              the single most load-bearing sentence in the form — is
+              announced WITH the sheet rather than only seen. */}
+          <SheetDescription>
             You hear on the <span className="text-foreground">crossing</span> —
             a vehicle already past your number when you save stays quiet.
-          </p>
+          </SheetDescription>
         </SheetHeader>
 
-        <SheetBody className="px-5 py-4 flex flex-col gap-5">
+        {/* A real <form>, restored deliberately.  The inline row this
+            Sheet replaced was one, and its comment said why: "Enter
+            submits and Escape cancels, which is what anyone typing a
+            number expects.  A plain div of inputs answers neither key."
+            Moving to a Sheet dropped the form and with it Enter — a
+            regression against intent this feature had already written
+            down.  Escape is the Sheet's own. */}
+        <form
+          onSubmit={(e) => { e.preventDefault(); void save(); }}
+          className="contents"
+        >
+        <SheetBody label="Add a trigger"
+                   className="px-5 py-4 flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <span id="trg-watch-lbl" className="text-xs font-medium
                                                 uppercase tracking-wide
@@ -254,6 +311,15 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
               />
               <span className="text-xs text-muted-foreground">{spec?.unit ?? ''}</span>
             </div>
+            {failed && (
+              <p className="text-2xs text-danger">
+                Couldn’t load what can be watched.{' '}
+                <button type="button" onClick={() => void load()}
+                        className="text-primary hover:underline min-h-tap">
+                  Try again
+                </button>
+              </p>
+            )}
             <p id="trg-help" className="text-2xs text-muted-foreground">
               {spec ? (
                 <>
@@ -272,21 +338,36 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
                              text-muted-foreground">
               On which vehicles
             </span>
-            {/* One checkbox that REVEALS the list, rather than two
-                radios.  "All" is not the absence of a selection — it is
-                a choice that keeps meaning "all" as the fleet grows —
-                and stating it as the checked default puts the safe,
-                commonest answer one glance away instead of one decision
-                away. Unchecking is what asks the narrower question. */}
-            <label className="flex items-center gap-2 text-xs min-h-tap cursor-pointer">
-              <input type="checkbox" className="accent-primary min-h-tap min-w-tap"
-                     checked={allMine}
-                     onChange={(e) => setAllMine(e.target.checked)} />
-              Every vehicle I can see
-              <span className="text-muted-foreground">
-                — including any added later
+            {/* A Switch, NOT a checkbox, and the rule names this exact
+                mistake: "Never mix shapes in one vertical run: the pivot
+                panel stacked a zone setting directly above its field rows
+                as the same checkbox, so five identical boxes in one
+                column meant two unrelated things."  Below this sits a run
+                of N identical checkboxes meaning MEMBERSHIP (is this
+                vehicle in the set); a checkbox here would have been the
+                sixth identical box meaning something else entirely, and
+                would read as select-all.
+                Switch is also the honest primitive: this is a BEHAVIOUR
+                ("limit this trigger"), not membership.  Off is the
+                default because watching everything is the safe, commonest
+                answer — and it keeps meaning "everything" as the fleet
+                grows, which a snapshot of ticked boxes would not. */}
+            <div className="flex items-center gap-2">
+              <Switch
+                size="sm"
+                checked={!allMine}
+                onCheckedChange={(on) => setAllMine(!on)}
+                aria-label="Limit this trigger to specific vehicles"
+              />
+              <span className="text-xs">
+                Limit to specific vehicles
+                <span className="text-muted-foreground">
+                  {allMine
+                    ? ` — watching all ${fleet.length}, including any added later`
+                    : ''}
+                </span>
               </span>
-            </label>
+            </div>
 
             {!allMine && (
               <div className="flex flex-col gap-2">
@@ -314,8 +395,24 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
                 <ScrollRegion label="Vehicles"
                               className="max-h-64 rounded-md border
                                          border-border divide-y divide-border/60">
+                  {/* Three different empties, three different answers.
+                      One branch for all of them rendered a failed fetch
+                      as `No vehicle matches ""` — an error dressed as a
+                      fact about the search someone had not typed. */}
                   {!loaded ? (
                     <p className="text-xs text-muted-foreground p-3">Loading…</p>
+                  ) : failed ? (
+                    <p className="text-xs text-muted-foreground p-3">
+                      Couldn’t load your vehicles.{' '}
+                      <button type="button" onClick={() => void load()}
+                              className="text-primary hover:underline min-h-tap">
+                        Try again
+                      </button>
+                    </p>
+                  ) : fleet.length === 0 ? (
+                    <p className="text-xs text-muted-foreground p-3">
+                      You don’t have any vehicles to pick from yet.
+                    </p>
                   ) : shown.length === 0 ? (
                     <p className="text-xs text-muted-foreground p-3">
                       No vehicle matches “{query}”.
@@ -334,21 +431,19 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
                           <span className="text-muted-foreground"> · {v.company}</span>
                         )}
                       </span>
-                      {/* Selectable but honest: it can be picked, and it
-                          will start working the day it reports. */}
+                      {/* Says what happens to the TRIGGER, not a fact
+                          about the vehicle.  "no telemetry yet" reads as
+                          a spec line someone can shrug at; the person
+                          needs to know that picking this buys silence
+                          until the vehicle reports. */}
                       {!v.watchable && (
                         <span className="text-2xs text-muted-foreground shrink-0">
-                          no telemetry yet
+                          won’t fire until it reports
                         </span>
                       )}
                     </label>
                   ))}
                 </ScrollRegion>
-                {picked.length === 0 && (
-                  <p className="text-2xs text-danger">
-                    Pick at least one vehicle, or switch back to every vehicle.
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -356,13 +451,24 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
 
         <SheetFooter className="px-5 py-4 border-t border-border shrink-0
                                 flex-row justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            <X /> Cancel
+          {/* No icon: this is the only Cancel in the app that had one,
+              and the Sheet already draws a ✕ in the opposite corner —
+              two glyphs for one verb. */}
+          <Button type="button" variant="ghost" onClick={requestClose}>
+            Cancel
           </Button>
-          <Button onClick={() => { void save(); }} aria-disabled={blocked || busy}>
-            Add trigger
-          </Button>
+          <div className="flex items-center gap-2">
+            {blocked && (
+              <span className="text-2xs text-muted-foreground" aria-live="polite">
+                {blockedBecause()}
+              </span>
+            )}
+            <Button type="submit" aria-disabled={blocked}>
+              Add trigger
+            </Button>
+          </div>
         </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
   );
