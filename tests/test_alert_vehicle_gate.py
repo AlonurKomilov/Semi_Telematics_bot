@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from adapters.storage import Role
 from capabilities.alerting import vehicle_gate as vg
 from capabilities.permissions.vehicle_scope import VehicleScope
+import pytest
 
 
 @dataclass
@@ -187,3 +188,69 @@ class TestLoadAtTheSource:
         gate = {1: _scope(names=["229"])}
         assert vg.user_sees_vehicle("not-an-id", Role.DRIVER,
                                     {"name": "5585"}, gate) is True
+
+
+# ── the legacy column, from a REAL driver (security review 2026-08-26) ──
+
+
+class TestLegacyTruckNumFallback:
+    """A driver onboarded by invite has users.truck_num and NO junction row.
+
+    Every other test in this file injects the gate dict by hand, which is
+    exactly why none of them caught the regression this class exists for:
+    the bug was in how the gate is BUILT, not in how it is read.
+
+    driver_trucks is the record, but create_user(truck_num=...) — the
+    invite-redemption path — writes only the denormalized column, and
+    assign_vehicle_to_driver writes driver_vehicle_assignments plus that
+    same column.  Absent from the gate means UNRESTRICTED, so such a
+    driver saw every vehicle in the account until a restart ran the
+    seeding migration.  For camera alerts that is dashcam imagery,
+    inward-facing cab views included.
+    """
+
+    @pytest.mark.asyncio
+    async def test_gate_restricts_a_driver_with_only_the_legacy_column(self, pg_db):
+        from adapters.storage import Role as _Role
+        db = pg_db
+        acct = await db.create_account("Legacy Gate Co")
+        driver = await db.create_user(
+            telegram_id=770001, account_id=acct.id,
+            role=_Role.DRIVER, truck_num="229",
+        )
+
+        # Precondition: the junction table really is empty for them.
+        junction = await db.get_account_vehicle_nums_map(acct.id)
+        assert driver.id not in junction, (
+            "this test is meaningless unless the invite path leaves "
+            "driver_trucks empty — if that changed, the fallback may be "
+            "removable"
+        )
+
+        legacy = await db.get_account_legacy_truck_nums(acct.id)
+        assert legacy.get(driver.id) == "229"
+
+    @pytest.mark.asyncio
+    async def test_such_a_driver_does_not_see_another_truck(self, pg_db, monkeypatch):
+        from adapters.storage import Role as _Role
+        db = pg_db
+        acct = await db.create_account("Legacy Gate Co 2")
+        driver = await db.create_user(
+            telegram_id=770002, account_id=acct.id,
+            role=_Role.DRIVER, truck_num="229",
+        )
+
+        monkeypatch.setattr(vg, "get_platform_db", lambda: db)
+
+        async def _no_tenant(account_id):
+            return None
+        monkeypatch.setattr(vg, "get_tenant_db", _no_tenant)
+
+        gate = await vg.load_vehicle_gate(acct.id)
+        assert driver.id in gate, (
+            "a driver with users.truck_num set must appear in the gate — "
+            "absent means unrestricted, which is how account-wide dashcam "
+            "photos reached a freshly invited driver"
+        )
+        assert vg.user_sees_vehicle(driver.id, Role.DRIVER, {"name": "229"}, gate) is True
+        assert vg.user_sees_vehicle(driver.id, Role.DRIVER, {"name": "5585"}, gate) is False

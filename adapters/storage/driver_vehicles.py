@@ -59,6 +59,36 @@ class DriverVehiclesMixin(_MixinBase):
             rows = await cur.fetchall()
         return [r[0] for r in rows]
 
+    async def get_account_legacy_truck_nums(
+        self, account_id: int,
+    ) -> dict[int, str]:
+        """``user_id -> users.truck_num`` for drivers with the LEGACY
+        column set and no junction row yet.
+
+        The junction table is the record, but two ordinary onboarding
+        paths still write only the denormalized column: invite redemption
+        (create_user(truck_num=...)) and assign_vehicle_to_driver, which
+        writes driver_vehicle_assignments plus this cache.  Such a driver
+        is absent from get_account_vehicle_nums_map until a restart runs
+        the seeding migration.
+
+        interfaces/api/deps.get_user_vehicle_nums has always applied this
+        fallback ("Falls back to users.truck_num if no junction table rows
+        exist").  Anything deciding who is RESTRICTED must apply it too,
+        or the two halves of the wall disagree about who has a truck —
+        and disagreeing in the unsafe direction means an unrestricted
+        driver.
+        """
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT id, truck_num FROM users "
+                "WHERE account_id = ? AND role = 'driver' "
+                "AND truck_num IS NOT NULL AND truck_num <> ''",
+                (account_id,),
+            )
+            rows = await cur.fetchall()
+        return {int(r[0]): str(r[1]) for r in rows}
+
     async def get_account_vehicle_nums_map(
         self, account_id: int,
     ) -> dict[int, list[str]]:

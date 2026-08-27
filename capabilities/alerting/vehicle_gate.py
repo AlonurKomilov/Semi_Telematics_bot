@@ -68,6 +68,28 @@ async def load_vehicle_gate(account_id: int) -> dict[int, VehicleScope]:
     except Exception as e:
         logger.debug("vehicle gate: assignments unavailable acct=%s: %s", account_id, e)
         return {}
+
+    # The LEGACY column, unioned in — not an optimisation, a correctness
+    # fix.  driver_trucks is the record, but invite redemption
+    # (create_user(truck_num=...)) and assign_vehicle_to_driver write
+    # only users.truck_num, so a freshly onboarded driver has no junction
+    # row until a restart runs the seeding migration.  Absent from this
+    # map means UNRESTRICTED (see the docstring above), so without the
+    # union such a driver silently saw every vehicle in the account —
+    # and camera alerts are dashcam images, including inward-facing cab
+    # views of other drivers.  The dashboard's
+    # deps.get_user_vehicle_nums has always applied this same fallback;
+    # a wall that disagrees with itself about who has a truck fails open.
+    try:
+        legacy = await platform.get_account_legacy_truck_nums(account_id)
+    except Exception as e:
+        logger.debug("vehicle gate: legacy truck_num unavailable acct=%s: %s",
+                     account_id, e)
+        legacy = {}
+    for uid, num in (legacy or {}).items():
+        if not nums_map.get(uid):          # junction rows win when present
+            nums_map[uid] = [num]
+
     if not nums_map:
         return {}
 
