@@ -726,6 +726,16 @@ describe('UI chrome', () => {
       'the borderRadius scale stopped deriving from --radius — the Corners ' +
         'picker would still stamp the attribute and nothing would move',
     ).toBeGreaterThanOrEqual(5);
+    // And it rides NO size axis — the second of exactly two deliberate
+    // exceptions in this system (the first is the 24px tap floor).
+    // Tailwind emits ONE borderRadius scale serving buttons, cards,
+    // panels and dialogs, so any axis chosen is right for one of them and
+    // wrong for the other three. design.md §8 carries the arithmetic.
+    expect(
+      (block.match(/var\(--size-/g) ?? []).length,
+      'the borderRadius scale must stay size-invariant — see design.md §8',
+    ).toBe(0);
+
     for (const key of ['sm', 'md', 'lg', 'xl'])
       expect(new RegExp(`['"\`]?${key}['"\`]?\\s*:`).test(block), `${key} missing`).toBe(true);
   });

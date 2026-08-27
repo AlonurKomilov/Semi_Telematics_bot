@@ -576,6 +576,37 @@ them next to a comment saying so.
 ## 8. Charts & maps
 
 
+**`--radius` rides NO size axis, and that is deliberate.** It is the
+second of exactly two exceptions in this design system — the first is the
+24px tap floor, which is a WCAG minimum in CSS pixels and cannot shrink.
+This one is different: a corner is a length, and every other length in
+the app is multiplied by an axis. This one cannot be, because Tailwind
+emits ONE `borderRadius` scale and that scale serves buttons, cards,
+panels and dialogs at once. Any axis chosen would be right for one of
+them and wrong for the other three.
+
+The cost is real and worth stating, because it is not obvious. The
+reachable compound multiplier is `global x region`, and both clamp to
+[0.85, 1.5] — so **0.7225 to 2.25, a 3.11x span**. Against the default
+Button (`h-8`, 32px at 100%):
+
+| preset | m = 0.7225 | m = 1.0 | m = 2.25 |
+|---|---:|---:|---:|
+| Sharp (4px) | 17.3% | 12.5% | 5.6% |
+| Rounded (10px) | **43.3%** | 31.2% | 13.9% |
+| Pill (16px) | 69.2% (stadium) | 50.0% (stadium) | **22.2%** |
+
+Read the two bold cells together: a reader on the smallest Size with
+**Rounded** sees proportionally rounder buttons than a reader on the
+largest Size with **Pill**. The preset ordering inverts between two users
+of the same build, and Pill stops being a literal stadium above m = 1.0.
+
+That is the price of one scale serving four axes, and it is the cheaper
+price. Coupling would trade a cross-user inconsistency for a
+within-screen one, where a card and a button on the same page disagree
+about how round the theme is. Guarded: the `borderRadius` block may
+contain no `var(--size-*)`.
+
 **Chart GEOMETRY follows the Corners setting; map geometry does not.**
 A chart bar is a rectangle on a page like any other and rounds with it —
 but through `components/charts/RoundedBar.tsx`, never the `radius` prop.
