@@ -1,11 +1,14 @@
-"""Manager tier (per-user seniority) + the invites feature's targeting policy.
+"""Manager tier — the per-user seniority layered on a base role.
 
-"Manager" is NOT a role — it's a per-user ``is_manager`` tier layered on the
-base role (capabilities/permissions/roles.MANAGER_GRANTS).  A recruiting team
-lead is a ``recruiter`` + ``is_manager``, gaining ``can_invite`` and
-``can_manage_carrier_directory``.  "Who a manager may invite" is owned by the
-invites FEATURE (features/settings/invites.service), not the RBAC layer — a
-recruiting manager may build ONLY a recruiter team, never fleet/hr/etc.
+"Manager" is NOT a role: it is a per-user ``is_manager`` tier applied on
+top of the base role (MANAGER_GRANTS).  A recruiting team lead is a
+``recruiter`` + ``is_manager``, gaining can_invite and
+can_manage_carrier_directory.
+
+Split from tests/test_invite_policy.py, which asserted two subjects that
+were never setup for each other: this half touches only the RBAC layer
+and never calls invite_authorized.  The other half — who a manager may
+INVITE — is owned by the invites feature and lives with it.
 """
 
 from dataclasses import asdict
@@ -15,7 +18,6 @@ from capabilities.permissions.roles import (
     ROLE_PERMISSIONS, MANAGER_GRANTS, apply_manager_grants,
     role_supports_manager, get_permissions, role_tier, TIER_GRANTS,
 )
-from features.settings.invites.service import invite_authorized, MANAGER_INVITE_ONLY
 
 
 class TestManagerTier:
@@ -112,56 +114,4 @@ class TestManagerTier:
         assert set(TIER_GRANTS) == {
             Role.RECRUITER, Role.ADMIN, Role.FLEET, Role.SAFETY,
             Role.DISPATCHER, Role.HR, Role.ACCOUNTING,
-        }
-
-
-class TestInviteTargetingPolicy:
-    def test_manager_may_invite_only_recruiter(self):
-        # Manager authority is rank-independent: a recruiter-manager (rank 2)
-        # may invite a recruiter (rank 2) — normally same-rank is blocked.
-        ok, _ = invite_authorized("recruiter", True, "recruiter")
-        assert ok is True
-        for blocked in ("hr", "fleet", "dispatcher", "accounting", "driver", "safety"):
-            ok, reason = invite_authorized("recruiter", True, blocked)
-            assert ok is False and reason.startswith("manager_invite_restricted:"), blocked
-
-    def test_employee_recruiter_cannot_invite_by_rank(self):
-        # A non-manager recruiter has no can_invite AND can't out-rank a peer,
-        # so even if it reached the check, rank blocks a same-rank recruiter.
-        ok, reason = invite_authorized("recruiter", False, "recruiter")
-        assert ok is False and reason == "cant_invite_higher"
-
-    def test_unconstrained_roles_use_rank(self):
-        assert invite_authorized("owner", False, "fleet")[0] is True
-        assert invite_authorized("admin", False, "recruiter")[0] is True
-        assert invite_authorized("hr", False, "driver")[0] is True
-        # owner can never be created via invite
-        ok, reason = invite_authorized("owner", False, "owner")
-        assert ok is False and reason == "owner_via_invite"
-
-    def test_department_managers_invite_own_role_only(self):
-        # A team-lead manager may invite ONLY their own role (rank-independent),
-        # never other departments.
-        for role in ("fleet", "safety", "dispatcher", "accounting"):
-            ok, _ = invite_authorized(role, True, role)
-            assert ok is True, role
-            for blocked in ("driver", "hr", "admin", "recruiter"):
-                if blocked == role:
-                    continue
-                ok, reason = invite_authorized(role, True, blocked)
-                assert ok is False and reason.startswith("manager_invite_restricted:"), (role, blocked)
-        # HR manager keeps driver (HR's base role invites drivers by rank —
-        # promoting to manager must not take that away) + gains own-role.
-        assert invite_authorized("hr", True, "hr")[0] is True
-        assert invite_authorized("hr", True, "driver")[0] is True
-        assert invite_authorized("hr", True, "fleet")[0] is False
-
-    def test_policy_lives_with_the_invites_feature(self):
-        assert MANAGER_INVITE_ONLY == {
-            "recruiter": {"recruiter"},
-            "fleet": {"fleet"},
-            "safety": {"safety"},
-            "dispatcher": {"dispatcher"},
-            "hr": {"hr", "driver"},
-            "accounting": {"accounting"},
         }
