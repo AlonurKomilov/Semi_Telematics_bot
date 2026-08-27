@@ -90,6 +90,18 @@ async def check_events(app: Application):
         logger.error(f"Events check error: {e}")
 
 
+async def _archived_refs(account_id: int) -> set[str]:
+    """Provider ids of trucks that have left the fleet, either way they
+    left.  Alerting does not want the sweep-vs-operator distinction —
+    a truck off the list should not be paging anyone."""
+    from infra.services import get_tenant_db
+
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return set()
+    return await tenant.archived_refs(account_id)
+
+
 async def _check_events_account(bot_app: Application, account):
     """Process safety event alerts for a single account."""
     account_id = account.id
@@ -123,6 +135,30 @@ async def _check_events_account(bot_app: Application, account):
         if account_id not in _events_warmup_done:
             _events_warmup_done[account_id] = True
         return
+
+    # Retired trucks raise no safety alerts.  This source reads the
+    # warehouse event log (or falls back to a live Samsara call) and
+    # never consults the registry, so an archived truck kept producing
+    # harsh-driving and crash alerts — with video links — for a vehicle
+    # nobody can open in the fleet list.
+    #
+    # By provider id, never by name: a door number is REUSABLE, so a
+    # name filter could silence a live truck that inherited it.  Events
+    # carrying no id are KEPT — an unfiltered alert is a smaller harm
+    # than a missed crash.
+    try:
+        retired = await _archived_refs(account_id)
+        if retired:
+            events = [
+                e for e in events
+                if not e.get("vehicle_id")
+                or str(e["vehicle_id"]) not in retired
+            ]
+    except Exception:
+        logger.warning(
+            "archived filter unavailable for safety events acct=%s",
+            account_id, exc_info=True,
+        )
 
     known = await _get_known_event_ids(account_id)
     new_events = [e for e in events if e.get("event_id") not in known]

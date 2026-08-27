@@ -80,6 +80,36 @@ async def gather_snapshots(
     for r in results:
         all_snapshots.extend(r)
 
+    # Drop retired trucks.  This one asks the PROVIDER directly, so
+    # neither the ingest gate nor any registry filter reaches it —
+    # Samsara still returns a truck we archived, and every snapshot it
+    # returns is then handed to AI vision.  So an archived truck was
+    # costing analysis budget on every 6-hourly run and alerting on the
+    # result, displacing trucks the customer actually operates.
+    #
+    # Filtered by provider id, never by name: a unit number is REUSABLE
+    # — a retired truck's door number can already be on a different
+    # truck — so a name filter could silence the wrong vehicle.
+    try:
+        retired = await tenant.archived_refs(account_id)
+        if retired:
+            kept = [s for s in all_snapshots
+                    if str(s.get("vehicle_id") or "") not in retired]
+            dropped = len(all_snapshots) - len(kept)
+            if dropped:
+                logger.info(
+                    "camera snapshots acct=%d dropped_archived=%d",
+                    account_id, dropped,
+                )
+            all_snapshots = kept
+    except Exception:
+        # Fail-open: a stray analysis costs money, a blank camera report
+        # costs the customer the thing they pay for.
+        logger.exception(
+            "archived filter unavailable for camera snapshots acct=%d",
+            account_id,
+        )
+
     return all_snapshots, show_co
 
 
