@@ -179,8 +179,8 @@ invites a CLICK.** The rule was already written down in
 already followed it — a census found twelve static capsules against two
 clickable ones. The two exceptions were converted (owner decision,
 2026-08-26): Scorecards' pillar filter and the AI composer's suggestion
-chip. It matters most at **Sharp**, where a rounded rect collapses to
-2px and a capsule stays a capsule — the setting that makes the grammar
+chip. It matters most at **Sharp**, where a rounded rect is a true
+right angle and a capsule stays a capsule — the setting that makes the grammar
 loudest is the one that exposes a broken one.
 (Dense table cells may drop to `text-2xs`, keeping the rest.)  Close ✕
 icons follow the same two-step idea: `12` inside chips/tags, `16` in
@@ -576,6 +576,37 @@ them next to a comment saying so.
 ## 8. Charts & maps
 
 
+**Vendor chrome follows the axis; three vendor circles do not.** Leaflet's
+popup, tooltip and zoom bar and sonner's toast, action button and loading
+bar are themed from `index.css` with one extra ancestor class each — never
+`!important`, and never at equal specificity, because both vendors inject
+their stylesheets at runtime and the winner would otherwise depend on
+build mode (sonner is imported before `index.css`, so an equal-specificity
+rule wins under `vite dev` and loses in the production build — it would
+look fixed and ship broken). Left alone on purpose: sonner's close button
+and MarkerCluster's two nested discs are CIRCLES, and
+`.leaflet-control-layers` is dead — this app never constructs a layers
+control.
+
+**Sharp is `0px`, and the frame keeps a hairline.** The preset means what
+its name says: `sm`, `rounded`, `md` and `lg` all render a true right
+angle, which is 1098 of the 1120 sites that track the token. Twenty-two
+keep a curve, and that is a decision rather than a leftover — `xl` (4px),
+`2xl` (8px) and `3xl` (16px) survive because they sit on the surfaces that
+FRAME or FLOAT ABOVE everything else: the shell's `<main>`, the Dialog
+primitive, the avatar and theme menus, the assistant panel, the two map
+control panels. Sharp squares the content; the frame keeps a hairline, so
+a modal still reads as sitting on top of the page rather than cut out of
+it.
+
+**Write it `0px`, never `0`.** The scale is `calc(var(--radius) + 4px)`,
+and `calc(<number> + <length>)` is invalid — a bare `0` collapses all
+seven steps instead of four. Worse, `lib/radius.ts` and `DataGrid.tsx`
+both branch on `.endsWith('rem')` / `.endsWith('px')` and fall through to
+a 10px default, which would put 10px chart-bar corners against 0px CSS.
+Measured in Chrome, not reasoned: `0px` gives `xl` = 4px, bare `0` gives
+0px. Guarded — every preset's value must carry a unit.
+
 **`--radius` rides NO size axis, and that is deliberate.** It is the
 second of exactly two exceptions in this design system — the first is the
 24px tap floor, which is a WCAG minimum in CSS pixels and cannot shrink.
@@ -744,7 +775,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Twenty-five live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Twenty-six live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -779,6 +810,7 @@ this table has any chance of staying true.
 | the three Corners presets stay wired | reads `index.css` — the first test in this repo to open a stylesheet. Without it a fourth preset ships as a silent no-op, and an existing one can be neutered by deleting a line |
 | `--radius` is assigned only in the stylesheet | a component redefining it would scope the picker to its own subtree, and the half-failure is invisible until someone tries Sharp |
 | the borderRadius scale still derives from `--radius` | reads `tailwind.config.js`; `none` and `full` are deliberately literal |
+| a primitive never animates its own geometry (§7) | `transition-all` on Button or Badge animates height, padding and radius with the colours — and the Size slider paints every drag frame, so each one retargeted an in-flight 150ms transition. `transition-control` names what a control may animate |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

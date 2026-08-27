@@ -283,6 +283,24 @@ export default {
         'fit-36': `repeat(auto-fit, minmax(${scaled('9rem', 'layout')}, 1fr))`,
         'fit-48': `repeat(auto-fit, minmax(${scaled('12rem', 'layout')}, 1fr))`,
       },
+      /**
+       * What a CONTROL may animate. `transition-all` cannot be narrowed
+       * by adding a second utility — `transition-colors transition-shadow`
+       * is one property list replacing another, and tailwind-merge keeps
+       * the last — so the list has to be named once, here.
+       *
+       * Height, padding, font-size and border-radius are deliberately
+       * absent. They are what `transition-all` was quietly animating, and
+       * the Size slider writes straight to the DOM on every drag frame
+       * (ThemeToggle: "paint straight to the DOM so the drag is smooth"),
+       * so each 60fps frame was retargeting an in-flight 150ms transition
+       * and every Button and Badge rubber-banded behind the cursor.
+       * Nobody chose that; it came free with `all`.
+       */
+      transitionProperty: {
+        control: 'color, background-color, border-color, box-shadow, opacity, transform',
+      },
+
       borderRadius: {
         DEFAULT: 'max(0px, calc(var(--radius) - 3px))',
         sm: 'max(0px, calc(var(--radius) - 4px))',

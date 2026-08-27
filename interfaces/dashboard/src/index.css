@@ -420,7 +420,7 @@
   }
 
   /* ── Border radius presets ──────────────────────────────── */
-  [data-radius="sharp"] { --radius: 0.25rem; }
+  [data-radius="sharp"] { --radius: 0px; }   /* 0px, never bare `0` — see design.md §6 */
   [data-radius="pill"]  { --radius: 1rem; }
 }
 
@@ -472,3 +472,35 @@
     box-shadow: none;
   }
 }
+
+/* ── Vendor chrome joins the Corners axis ─────────────────────────────
+ *
+ * Leaflet and sonner inject their own stylesheets into <head> at runtime,
+ * so at EQUAL specificity they win on document order — and the order is
+ * not even stable: sonner is imported before index.css, which under
+ * `vite dev` puts the app second (app wins) and in the production build
+ * puts it first (sonner wins). An override written at equal specificity
+ * would look fixed in dev and ship broken.
+ *
+ * None of that matters here, because none of these is at equal
+ * specificity. One extra ancestor class outranks order outright, and it
+ * was measured that way — in Chrome, with the app's CSS in the LOSING
+ * position and no `!important` anywhere. The rule this encodes is not
+ * "verify vendor overrides against a real build"; it is "never write a
+ * vendor override at equal specificity".
+ *
+ * `rounded-lg` (= the token) on all six, so vendor chrome reads as the
+ * same material as the app: 0 / 10 / 16px at Sharp / Rounded / Pill.
+ *
+ * NOT overridden, and deliberately — these are circles, not corners:
+ * sonner's close button (50%), and MarkerCluster's two nested discs
+ * (20px on a 40x40 box, 15px on a 30x30). `.leaflet-control-layers` is
+ * skipped for a different reason: this app never constructs a layers
+ * control, so the declaration is dead.
+ */
+[data-sonner-toaster] [data-sonner-toast] { border-radius: var(--radius); }
+[data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-button] { border-radius: var(--radius); }
+[data-sonner-toast] .sonner-loading-bar { border-radius: var(--radius); }
+.leaflet-container .leaflet-bar { border-radius: var(--radius); }
+.leaflet-container .leaflet-popup-content-wrapper { border-radius: var(--radius); }
+.leaflet-container .leaflet-tooltip { border-radius: var(--radius); }

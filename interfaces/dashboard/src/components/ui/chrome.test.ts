@@ -706,6 +706,19 @@ describe('UI chrome', () => {
       .filter((r) => r !== 'rounded')
       .filter((r) => !new RegExp(`\\[data-radius="${r}"\\][^}]*--radius:`).test(css));
     expect(missing, 'a preset with no --radius override does nothing at all').toEqual([]);
+
+    // EVERY value carries a unit, and that is not pedantry. `0` and `0px`
+    // are different here: the scale is `calc(var(--radius) + 4px)`, and
+    // `calc(<number> + <length>)` is invalid — so a bare `0` collapses all
+    // seven steps to 0px instead of four, AND both JS readers
+    // (`lib/radius.ts`, `DataGrid.tsx`) branch on `.endsWith('rem'|'px')`
+    // and fall through to their 10px default. That would put 10px chart
+    // corners against 0px CSS. Measured in Chrome: `0px` -> xl = 4px,
+    // bare `0` -> xl = 0px.
+    const unitless = [...css.matchAll(/(:root|\[data-radius="[a-z]+"\])[^}]*--radius:\s*([^;]+);/g)]
+      .filter((m) => !/(?:px|rem|em)\s*$/.test(m[2].trim()))
+      .map((m) => `${m[1]} has --radius: ${m[2].trim()} — needs a unit`);
+    expect(unitless).toEqual([]);
   });
 
   it('assigns --radius nowhere but the stylesheet', () => {
@@ -747,6 +760,25 @@ describe('UI chrome', () => {
 
     for (const key of ['sm', 'md', 'lg', 'xl'])
       expect(new RegExp(`['"\`]?${key}['"\`]?\\s*:`).test(block), `${key} missing`).toBe(true);
+  });
+
+  it('never lets a primitive animate its own geometry', () => {
+    // `transition-all` on a control animates height, padding, font-size
+    // and border-radius along with the colours nobody objected to. The
+    // Size slider writes straight to the DOM on every drag frame, so each
+    // 60fps frame retargeted an in-flight 150ms transition and every
+    // Button and Badge rubber-banded behind the cursor — a
+    // layout-triggering animation on a continuous control that nobody
+    // chose. `transition-control` names what a control may animate.
+    //
+    // Scoped to the primitives on purpose: the other `transition-all`
+    // sites are progress bars animating width, which is the point of them.
+    const PRIMITIVES = ['components/ui/button.tsx', 'components/ui/badge.tsx'];
+    const offenders = TSX
+      .filter((f) => PRIMITIVES.includes(f.rel))
+      .filter((f) => /\btransition-all\b/.test(f.src))
+      .map((f) => `${f.rel} → transition-control; \`all\` includes geometry`);
+    expect(offenders).toEqual([]);
   });
 
   it('is counted correctly in design.md', () => {

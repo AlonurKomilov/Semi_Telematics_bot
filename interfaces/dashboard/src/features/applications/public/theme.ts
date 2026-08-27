@@ -43,7 +43,7 @@ export function applyPublicFormTheme(root: HTMLElement = document.documentElemen
   //
   // Without this the recruiter's own Corners and Size settings leaked
   // straight into a preview of a page that will never have them: 38
-  // `rounded-md` sites rendering at 2px on Sharp or 14px on Pill, where
+  // `rounded-md` sites rendering at 0px on Sharp or 14px on Pill, where
   // the applicant always sees 8px.
   delete root.dataset.radius;
   for (const v of SIZE_VARS) root.style.removeProperty(v);

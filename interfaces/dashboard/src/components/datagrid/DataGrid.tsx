@@ -595,12 +595,12 @@ function SegmentTab({
   const { w: W, h: H } = box;
   // Top-corner radius = the ``rounded-md`` formula (--radius − 2px),
   // matching what the inactive tabs' ``rounded-t-md`` resolves to —
-  // Sharp ≈ 2px, default ≈ 8px, Pill ≈ 14px — capped so tall radii
+  // Sharp 0px, Rounded 8px, Pill 14px — capped so tall radii
   // can't exceed the tab's own box.  The concave fillet scales WITH
   // the corner (a big soft flare next to a sharp square corner reads
   // as a mismatch) but stays ≤ 8px so Pill doesn't grow huge feet.
-  const RT = Math.max(2, Math.min(radiusPx - 2, H > 0 ? Math.floor(H / 2) : 12));
-  const RF = Math.max(2, Math.min(RT, 8));   // fillet radius (concave flare)
+  const RT = Math.max(0, Math.min(radiusPx - 2, H > 0 ? Math.floor(H / 2) : 12));
+  const RF = Math.max(0, Math.min(RT, 8));   // fillet radius (concave flare)
   const vw = W + 2 * RF;   // svg width: button + a fillet on each side
   const vh = H + 2;        // fill dips below the button to cover the card border
   // Baseline for the fillet tails: the CENTRE of the card's 1px top
