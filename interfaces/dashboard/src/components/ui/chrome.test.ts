@@ -490,11 +490,17 @@ const inlineLengthSites = (src: string): { line: number; prop: string }[] => {
  *     the Size control would put two scales in one viewport. Chart TEXT is
  *     not covered — that is read like any other text.
  */
-const INLINE_LENGTH_ALLOWED = [
-  'features/applications/public/PublicApply.tsx',
-  'features/live-map/PoiLayerPanel.tsx',
-  'features/live-map/MapTypeControl.tsx',
+const INLINE_LENGTH_ALLOWED: { file: string; props: string[] }[] = [
+  // Exempt by PROPERTY, not by file. PublicApply was excused for the
+  // off-screen trick — `left: -9999px; width: 1; height: 1` — and a
+  // whole-file pass handed it `borderRadius` too, on the one surface
+  // where a corner most needs to come from the token.
+  { file: 'features/applications/public/PublicApply.tsx', props: ['left', 'width', 'height'] },
+  { file: 'features/live-map/PoiLayerPanel.tsx', props: ['minWidth', 'maxWidth'] },
+  { file: 'features/live-map/MapTypeControl.tsx', props: ['minWidth'] },
 ];
+const inlineLengthAllows = (rel: string, prop: string) =>
+  INLINE_LENGTH_ALLOWED.some((e) => e.file === rel && e.props.includes(prop));
 
 /**
  * A corner that ignores the Corners setting.
@@ -572,7 +578,7 @@ const DEBT: DebtList[] = [
   { name: 'STATUS_DOOR_DEBT',            entries: STATUS_DOOR_DEBT,            match: 'exact',     scope: TSX,   offends: (f) => statusDoorSites(f.src).length > 0 },
   { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
   { name: 'CARD_NOT_A_CARD',             entries: CARD_NOT_A_CARD,             match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
-  { name: 'INLINE_LENGTH_ALLOWED',       entries: INLINE_LENGTH_ALLOWED,       match: 'exact',     scope: FILES, offends: (f) => inlineLengthSites(f.src).length > 0 },
+  { name: 'INLINE_LENGTH_ALLOWED',       entries: INLINE_LENGTH_ALLOWED.map((e) => e.file), match: 'exact', scope: FILES, offends: (f) => inlineLengthSites(f.src).length > 0 },
   { name: 'RADIUS_ARBITRARY_ALLOWED',    entries: RADIUS_ARBITRARY_ALLOWED,    match: 'exact',     scope: FILES, offends: (f) => radiusClassSites(f.src).length > 0 },
 ];
 
@@ -610,16 +616,17 @@ describe('UI chrome', () => {
 
   it('never writes a literal length into an inline style', () => {
     const offenders = FILES
-      .filter((f) => !INLINE_LENGTH_ALLOWED.includes(f.rel))
       .filter((f) => !f.rel.startsWith('lib/scaledLength'))
-      .flatMap((f) => inlineLengthSites(f.src).map(
+      .flatMap((f) => inlineLengthSites(f.src)
+        .filter(({ prop }) => !inlineLengthAllows(f.rel, prop))
+        .map(
         // A corner is not a length on the Size axis. Pointing the author
         // at scaledPx() for a borderRadius would turn a silent bug into a
         // confidently wrong one.
         ({ line, prop }) => `${f.rel}:${line} → ${prop === 'borderRadius'
           ? "'var(--radius)', or useRadiusPx() from lib/radius.ts"
           : 'scaledPx() from lib/scaledLength.ts'}`,
-      ));
+        ));
     expect(
       offenders,
       'a number in a style object cannot be multiplied by the Size axes, ' +
@@ -706,10 +713,12 @@ describe('UI chrome', () => {
     // Corners setting to its own subtree and the picker would appear to
     // half-work — the failure is invisible until someone tries Sharp.
     const offenders = FILES
-      // The quote matters: in TS the key has to be written `'--radius':`,
-      // so a regex expecting the colon straight after the name misses
-      // every realistic way a component would actually do this.
-      .filter(({ src }) => /--radius['"`]?\s*:/.test(src))
+      // Four syntaxes, because the first version of this guard knew one.
+      // `applications/public/theme.ts` writes all EIGHTEEN of its custom
+      // properties as `['--brand']: value` — a computed key — so the one
+      // file most likely to reach for `--radius` was the one the guard
+      // could not see. `setProperty` is the imperative third form.
+      .filter(({ src }) => /(?:\[\s*)?['"`]?--radius['"`]?\s*(?:\]\s*)?:|setProperty\(\s*['"`]--radius['"`]/.test(src))
       .map(({ rel }) => `${rel} assigns --radius; index.css owns it`);
     expect(offenders).toEqual([]);
   });
