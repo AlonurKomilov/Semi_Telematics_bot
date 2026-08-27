@@ -16,6 +16,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-chars-min-aaaaaaaaaaaaaaaaa
 os.environ.setdefault("JWT_SECRET", "test-secret-32-chars-or-more-please-aaaaaaaaaaaa")
 
 from adapters.storage import service_assemblies, service_tasks, service_taxonomy
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 
 # ── The rename is an alias, not a copy ──────────────────────────────
@@ -92,7 +93,7 @@ def test_work_orders_has_no_hand_written_delegation_list():
     the delegating systems that a change to the frozenset would leave
     stale, misfiling spend with no error anywhere."""
     src = open(
-        os.path.join(os.path.dirname(os.path.dirname(__file__)),
+        os.path.join(str(_REPO),
                      "adapters", "storage", "work_orders.py"),
         encoding="utf-8",
     ).read()

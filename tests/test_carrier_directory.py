@@ -18,6 +18,7 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
 from adapters.storage import Role
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 
 @pytest_asyncio.fixture
@@ -110,7 +111,7 @@ class TestFieldTemplateDrift:
         from features.carrier_directory.service import (
             PUBLIC_BASIC_FIELDS, PUBLIC_FIELD_COUNT,
         )
-        src = Path(__file__).resolve().parents[1] / (
+        src = _REPO / (
             "interfaces/dashboard/src/features/carrier-directory/fields.ts"
         )
         text = src.read_text()
@@ -133,7 +134,7 @@ class TestFieldTemplateDrift:
         from features.carrier_directory.router import (
             _INTAKE_ROW_SECTIONS, _INTAKE_TEXT_SECTIONS,
         )
-        src = Path(__file__).resolve().parents[1] / (
+        src = _REPO / (
             "interfaces/dashboard/src/features/carrier-directory/fields.ts"
         )
         text = src.read_text()

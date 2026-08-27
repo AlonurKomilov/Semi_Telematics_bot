@@ -19,9 +19,10 @@ import sys
 from dataclasses import fields
 
 from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS, FeatureSet
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 _MATRIX_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
+    str(_REPO),
     "interfaces", "dashboard", "src", "features", "permissions",
     "permRows.ts",
 )

@@ -20,13 +20,14 @@ import pytest
 
 from capabilities.callouts import known_keys, register_callout
 from capabilities.callouts.registry import CalloutSpec
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 from features.vehicles.callouts import (
     ENGINE_DATA_GAP_HOURS,
     NO_ENGINE_DATA,
     detect_no_engine_data,
 )
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = _REPO
 
 
 # ── The rule ─────────────────────────────────────────────────────

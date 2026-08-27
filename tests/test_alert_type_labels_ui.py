@@ -16,8 +16,9 @@ import re
 from pathlib import Path
 
 from capabilities.alerting.relevance import ALERT_TYPE_REQUIRED_PERM
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
-_MATRIX = (Path(__file__).resolve().parent.parent
+_MATRIX = (_REPO
            / "interfaces/dashboard/src/features/alerts/NotifyMatrix.tsx")
 
 
