@@ -372,6 +372,9 @@ class VehiclesRegistryMixin(_MixinBase):
             raise ValueError("vehicle not found")
         if not old.telematics_ref:
             raise ValueError("vehicle has no telematics link to move")
+        # archived-ok, and load-bearing: the unique index spans RETIRED
+        # rows, so a collision check that skipped them would let the
+        # INSERT below hit the constraint and fail the split.
         dup = await self.read_one(
             "SELECT id FROM vehicles WHERE account_id = ? "
             "AND company_code = ? AND unit_number = ?",
@@ -524,6 +527,8 @@ class VehiclesRegistryMixin(_MixinBase):
             # Trail: the pre-edit row — values, not field names.
             old: dict = {}
             if actor_user_id is not None:
+                # archived-ok: by primary key, for the trail's before-image.
+                # A retired truck can still be edited.
                 cur = await self._db.execute(
                     "SELECT * FROM vehicles WHERE id = ? AND account_id = ?",
                     (vehicle_id, account_id),
@@ -532,6 +537,7 @@ class VehiclesRegistryMixin(_MixinBase):
                 old = dict(r) if r else {}
             if edited_spec:
                 # Pin the edited spec fields so syncs can't undo the correction.
+                # archived-ok: by primary key, reading one row's own provenance.
                 cur = await self._db.execute(
                     "SELECT field_provenance FROM vehicles "
                     "WHERE id = ? AND account_id = ?",
@@ -577,6 +583,8 @@ class VehiclesRegistryMixin(_MixinBase):
             # Read unconditionally: the trail entry needs the status and
             # unit, and the live-row drop below needs the ref whether or
             # not there is an actor to record.
+            # archived-ok: this IS the archive path, reading the row it is
+            # about to retire.
             cur = await self._db.execute(
                 "SELECT status, unit_number, telematics_ref FROM vehicles "
                 "WHERE id = ? AND account_id = ?",
@@ -924,6 +932,9 @@ class VehiclesRegistryMixin(_MixinBase):
         whole map per tick rather than caching across ticks and going
         stale mid-rename.
         """
+        # archived-ok: a retired row keeps its ref, so its rows keep being
+        # stamped with the right registry id.  What stops an archived truck
+        # is the ingest GATE dropping its rows, not this map failing.
         cur = await self._db.execute(
             "SELECT telematics_ref, id FROM vehicles "
             "WHERE account_id = ? AND telematics_ref <> ''",
@@ -1172,6 +1183,13 @@ class VehiclesRegistryMixin(_MixinBase):
         unit_number, company_code}}`` — the identity anchors the ingest
         compares each tick to turn silent hardware changes into
         recorded events (device_event_log)."""
+        # archived-ok, DELIBERATELY: the watch must keep anchoring a retired
+        # truck.  If a gateway is pulled out of one and bolted into another,
+        # that VIN change has to be recorded — otherwise the retired row
+        # keeps a ref that now names a different physical truck and restoring
+        # it re-attaches the wrong vehicle.  The NOTICES are filtered instead
+        # (samsara/sync.py): recorded for every truck, announced only for
+        # live ones.
         cur = await self._db.execute(
             "SELECT telematics_ref, vin, gateway_serial, id, unit_number, "
             "company_code FROM vehicles "

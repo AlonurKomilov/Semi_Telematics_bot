@@ -268,6 +268,9 @@ class WorkOrdersMixin:
         # link.  Unique-match-or-nothing, same as everywhere else.
         reg_by_ck: dict[tuple[str, str], int] = {}
         reg_name_unique: dict[str, int | None] = {}
+        # archived-ok: work orders are HISTORY, and a retired truck's past
+        # jobs must keep resolving to it.  Excluding retired rows would
+        # orphan every work order the moment a truck was archived.
         cur = await self._db.execute(
             "SELECT id, unit_number, company_code FROM vehicles "
             "WHERE account_id = ?",

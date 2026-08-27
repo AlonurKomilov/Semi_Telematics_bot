@@ -26,6 +26,7 @@ docs/architecture/alert-dm-migration.md.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -185,4 +186,68 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
     assert not offenders, (
         "SQL against PHYSICAL warehouse tables outside the machinery — "
         "read through the grain surfaces instead:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ── Every raw read of `vehicles` declares its stance on retired rows ──
+#
+# `is_active = 0` means the truck left the fleet. Most queries want it
+# gone; some genuinely need it — a work order's history, a collision
+# check against a unique index that spans retired rows, the identity
+# watch that must keep anchoring a truck whose gateway might move.
+#
+# The rule is not "always filter". It is "say which". An unmarked query
+# is one nobody has thought about, and that is how a customer ended up
+# being alerted, invoiced and assigned inspections for trucks they had
+# retired weeks earlier.
+
+_VEHICLES_READ = re.compile(r"FROM\s+vehicles\b", re.I)
+_HAS_STANCE = re.compile(r"is_active|archived_reason", re.I)
+# Punctuation-agnostic on purpose: `archived-ok:` and
+# `archived-ok, because …` are the same declaration, and a guard
+# that rejects one of them teaches people to fight the guard.
+_MARKER = re.compile(r"#\s*archived-ok\b")
+
+#: How far above the SQL a marker may sit. Generous enough for a real
+#: explanation, short enough that it must belong to THIS query.
+_MARKER_LOOKBACK = 12
+
+
+def test_every_raw_vehicles_read_declares_its_stance_on_retired_rows():
+    exempt_dirs = ("/tests/", "/scripts/", "/node_modules/", "/__pycache__/")
+    exempt_files = {
+        # Schema and migrations define the table; they precede the rule.
+        "migrations.py", "schema.py",
+        "platform_schema.py", "platform_migrations.py",
+    }
+    offenders: list[str] = []
+    scanned_files = 0
+    for path in REPO.rglob("*.py"):
+        rel = str(path.relative_to(REPO))
+        if any(d in f"/{rel}" for d in exempt_dirs):
+            continue
+        if path.name in exempt_files or path.name.startswith("test_"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if not _VEHICLES_READ.search(text):
+            continue
+        scanned_files += 1
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if not _VEHICLES_READ.search(line):
+                continue
+            # The statement is an implicit string concat over several
+            # lines; look at the whole neighbourhood, not one line.
+            window = "\n".join(lines[max(0, i - _MARKER_LOOKBACK): i + 6])
+            if _HAS_STANCE.search(window) or _MARKER.search(window):
+                continue
+            offenders.append(f"{rel}:{i + 1}")
+
+    assert scanned_files, "no file reads `vehicles` — the scan is broken"
+    assert not offenders, (
+        "raw `FROM vehicles` with no stance on retired rows:\n    "
+        + "\n    ".join(offenders)
+        + "\n\nEither filter (`is_active = 1`, or `archived_reason` when the "
+          "sweep-vs-operator distinction matters), or write "
+          "`# archived-ok: <why this one must see retired trucks>` above it."
     )

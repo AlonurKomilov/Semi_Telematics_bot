@@ -104,6 +104,11 @@ async def build_vehicle_scope(
     registry_ids: set[int] = set()
     external_ids: set[str] = set()
     placeholders = ", ".join("?" for _ in names)
+    # archived-ok: a scope is a PERMISSION, not a liveness check.
+    # Someone scoped to a truck must keep reaching its records after it
+    # is retired — that history is the reason archiving exists.  Whether
+    # a retired truck may raise an ALERT is decided by the alerting
+    # sites, which filter for themselves.
     cur = await tenant._db.execute(
         f"SELECT id, telematics_ref FROM vehicles "
         f"WHERE account_id = ? AND lower(unit_number) IN ({placeholders})",

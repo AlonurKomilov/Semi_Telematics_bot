@@ -50,6 +50,11 @@ class TriggerRequest(BaseModel):
 
 
 class TriggerPatch(BaseModel):
+    #: Changing WHAT is watched.  Editable rather than delete-and-recreate
+    #: because a trigger now carries a vehicle selection, and re-picking
+    #: 20 of 189 trucks to correct one wrong word is a punishment for a
+    #: typo.
+    metric: str | None = None
     threshold: float | None = None
     enabled: bool | None = None
     channels: list[str] | None = Field(default=None, max_length=8)
@@ -143,9 +148,14 @@ async def _validate_targets(user: dict, me, raw) -> str:
     # The explicit account_id predicate stays as well; RLS is the floor,
     # not the only wall.
     async with tenant.with_account(me.account_id):
+        # `is_active = 1`: the picker that offers targets already
+        # filters this way, so accepting a retired truck on SAVE would
+        # store an id the UI can never show again — and the sweep would
+        # go on firing at it.
         cur = await tenant._db.execute(
             f"SELECT id, unit_number, telematics_ref FROM vehicles "
-            f"WHERE account_id = ? AND id IN ({placeholders})",
+            f"WHERE account_id = ? AND is_active = 1 "
+            f"AND id IN ({placeholders})",
             (me.account_id, *ids),
         )
         found = {int(r[0]): {"registry_id": int(r[0]), "vehicle_id": r[2] or "",
@@ -372,31 +382,40 @@ async def update_trigger(
     user: dict = Depends(get_current_user),
 ):
     db, me = await _me(user)
-    if body.threshold is not None:
+    if body.metric is not None or body.threshold is not None:
         rows = await db.list_alert_triggers(me.account_id, owner_user_id=me.id)
         current = next((r for r in rows if int(r["id"]) == trigger_id), None)
         if current is None:
             raise HTTPException(status_code=404, detail="Trigger not found")
-        err = validate(str(current["metric"]), body.threshold)
+        # Validate the pair that will EXIST after this edit, not the one
+        # that was sent.  Moving fuel(30%) to oil pressure without
+        # restating the number would otherwise store 30 on a metric whose
+        # band is 5–80 psi — legal by luck on one metric, meaningless on
+        # another, and never checked because only one field changed.
+        metric = body.metric if body.metric is not None else str(current["metric"])
+        threshold = (body.threshold if body.threshold is not None
+                     else float(current["threshold"]))
+        err = validate(metric, threshold)
         if err:
             raise HTTPException(status_code=400, detail=err)
     vehicles = (await _validate_targets(user, me, body.vehicles)
                 if body.vehicles is not None else None)
     ok = await db.update_alert_trigger(
         me.account_id, me.id, trigger_id,
-        threshold=body.threshold, enabled=body.enabled,
+        metric=body.metric, threshold=body.threshold, enabled=body.enabled,
         channels=(clean_channels(body.channels)
                   if body.channels is not None else None),
         vehicles=vehicles,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Trigger not found")
-    if vehicles is not None or body.threshold is not None:
+    if (vehicles is not None or body.threshold is not None
+            or body.metric is not None):
         # The crossing flags describe a WATCH that just changed shape.
         # Left alone, removing a vehicle and adding it back inside the
         # 24h flag TTL would look like "still in breach" and swallow its
-        # next real crossing — and a moved threshold has the same
-        # problem in the other direction.  Clearing re-seeds instead:
+        # next real crossing — and a moved threshold, or a different
+        # metric entirely, has the same problem.  Clearing re-seeds instead:
         # the next sweep re-learns the fleet's state and says nothing,
         # which is the same promise the UI already makes about a
         # newly-created trigger.
