@@ -28,15 +28,25 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
+from tests._repo import REPO as _REPO, is_test_path  # sentinel-anchored
 
 KPI_ROOT = _REPO / "features" / "kpi"
 
 
 def _sections() -> list[str]:
+    """The role sections — dispatch, fleet, safety … — and nothing else.
+
+    A section is any package directory under features/kpi, which stopped
+    being sufficient the moment the feature took ownership of its tests:
+    features/kpi/tests/ is a package too, so it was enumerated as a
+    SECTION, and a test legitimately importing features.kpi.dispatch was
+    reported as one section reaching into another.  Test code is not a
+    role.
+    """
     return sorted(
         p.name for p in KPI_ROOT.iterdir()
         if p.is_dir() and (p / "__init__.py").exists()
+        and not is_test_path(p)
     )
 
 
