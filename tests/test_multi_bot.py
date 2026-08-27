@@ -13,8 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  Helpers

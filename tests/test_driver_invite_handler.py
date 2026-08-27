@@ -16,8 +16,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 
 def _fake_user(account_id: int = 1, user_id: int = 7):
     """Minimal user stand-in matching the attributes the handler reads."""

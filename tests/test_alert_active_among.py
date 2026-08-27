@@ -78,7 +78,6 @@ class TestActiveAmong:
 # ── Router: GET /api/alerts/active-among ─────────────────────────────
 
 import sys as _sys
-_sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from adapters.storage import Role  # noqa: E402

@@ -19,7 +19,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-chars-min-aaaaaaaaaaaaaaaaa
 os.environ.setdefault("JWT_SECRET", "test-secret-32-chars-or-more-please-aaaaaaaaaaaa")
 os.environ.setdefault("OBJECT_STORE_BACKEND", "disk")
 os.environ.setdefault("OBJECT_STORE_ROOT", "/tmp/people_count_store")
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport

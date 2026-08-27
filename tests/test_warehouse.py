@@ -22,8 +22,6 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from adapters.storage import Database
 from features.vehicles.warehouse import readers as warehouse_reader, aggregator
 from capabilities.integrations.samsara import sync

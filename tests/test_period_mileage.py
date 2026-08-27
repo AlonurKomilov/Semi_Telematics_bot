@@ -20,8 +20,6 @@ import sys
 import pytest
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 
 @pytest_asyncio.fixture
 async def tenant(pg_db):

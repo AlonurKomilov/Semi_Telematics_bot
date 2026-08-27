@@ -24,7 +24,6 @@ import sys
 import tempfile
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 

@@ -34,8 +34,6 @@ import sys
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from features.parking.classifier import classify_from_ai  # noqa: E402
 
 UNSAFE_HIGH = (

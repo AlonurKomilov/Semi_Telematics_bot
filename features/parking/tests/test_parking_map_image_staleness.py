@@ -31,8 +31,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 # See test_parking_scope_consolidation.py — alerting must precede
 # features.parking while the forward edges remain.
 import capabilities.alerting  # noqa: F401

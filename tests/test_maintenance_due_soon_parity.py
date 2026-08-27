@@ -29,8 +29,6 @@ import sys
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from features.maintenance.service import (  # noqa: E402
     DUE_SOON_DAYS, DUE_SOON_HOURS, DUE_SOON_INTERVAL_FRACTION,
     DUE_SOON_MILES, classify_task_urgency, due_soon_hours_for,

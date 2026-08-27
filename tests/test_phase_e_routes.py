@@ -20,8 +20,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from httpx import ASGITransport, AsyncClient
 
 from adapters.storage import Database, Role

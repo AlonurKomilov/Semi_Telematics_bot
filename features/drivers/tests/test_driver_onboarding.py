@@ -19,7 +19,6 @@ import sys
 from dataclasses import fields
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from capabilities.permissions.roles import (
     ROLE_PERMISSIONS, TIER_GRANTS, FeatureSet, Role,

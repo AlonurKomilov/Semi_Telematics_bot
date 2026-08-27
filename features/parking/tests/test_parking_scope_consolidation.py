@@ -38,8 +38,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 # Import order is LOAD-BEARING, not cosmetic.
 #
 # ``features.parking`` and ``capabilities.alerting`` are mutually

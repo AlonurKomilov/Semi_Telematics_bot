@@ -14,7 +14,6 @@ import sys
 os.environ.setdefault("ENCRYPTION_KEY", "")
 os.environ.setdefault("JWT_SECRET", "test-secret-32-chars-or-more-please-aaaaaaaaaaaa")
 os.environ.setdefault("DATABASE_URL", "postgresql://x")
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
 # ── _format_ai_progress (pure) ──────────────────────────────────────

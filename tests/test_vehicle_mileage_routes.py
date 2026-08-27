@@ -17,8 +17,6 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from adapters.storage import Role
 from interfaces.api.auth import create_jwt
 

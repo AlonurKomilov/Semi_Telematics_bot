@@ -21,8 +21,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from datetime import datetime, timedelta, timezone
 
 from httpx import ASGITransport, AsyncClient

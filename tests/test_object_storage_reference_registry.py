@@ -28,8 +28,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from capabilities.object_storage.references import (  # noqa: E402
     NOT_REFERENCES,
     REFERENCES,

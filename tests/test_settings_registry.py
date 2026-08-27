@@ -26,8 +26,6 @@ import sys
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from capabilities.config import (  # noqa: E402
     SELF_ONLY, SETTING_OWNERS, SYSTEM_ONLY, owner_for,
 )

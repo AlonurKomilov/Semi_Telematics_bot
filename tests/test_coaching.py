@@ -20,8 +20,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 import pytest
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from adapters.storage import Database
 from features.coaching import engine as coaching_engine
 from features.coaching import service as coaching_service

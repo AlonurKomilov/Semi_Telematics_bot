@@ -18,8 +18,6 @@ import re
 import sys
 from dataclasses import fields
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS, FeatureSet
 
 _MATRIX_FILE = os.path.join(

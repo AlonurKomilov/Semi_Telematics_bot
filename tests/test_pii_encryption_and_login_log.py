@@ -10,7 +10,6 @@ import sys
 # it here and explicitly re-run ``init_encryption`` to rebuild the
 # module-level Fernet cipher with the test key.
 os.environ["ENCRYPTION_KEY"] = "test-key-for-pii-roundtrip-tests-please-rotate"
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 

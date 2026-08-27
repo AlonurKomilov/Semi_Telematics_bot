@@ -12,8 +12,6 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from capabilities.data_lifecycle.retention import discover
 from capabilities.data_lifecycle.retention.registry import (
     RetentionNeed,

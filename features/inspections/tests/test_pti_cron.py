@@ -18,8 +18,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from adapters.storage import Role
 from features.inspections import jobs as pti_jobs
 

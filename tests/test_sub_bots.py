@@ -15,7 +15,6 @@ from types import SimpleNamespace
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 os.environ.setdefault("JWT_SECRET", "test-secret-32-chars-or-more-please-aaaaaaaaaaaa")
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 import pytest_asyncio

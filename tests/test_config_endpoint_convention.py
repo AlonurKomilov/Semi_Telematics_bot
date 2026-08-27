@@ -30,8 +30,6 @@ from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 os.environ.setdefault("ENCRYPTION_KEY", "")
 os.environ.setdefault("JWT_SECRET", "test" * 8)
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 
 # The whole API mounts TWICE — ``/api/v1`` and ``/api`` (app.py:434), so
 # every route below appears under both.  Stripped here rather than written

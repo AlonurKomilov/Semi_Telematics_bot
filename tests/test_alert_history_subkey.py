@@ -19,8 +19,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 import pytest_asyncio
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from adapters.storage import Database
 
 

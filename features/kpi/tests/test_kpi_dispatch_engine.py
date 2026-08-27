@@ -25,8 +25,6 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from features.kpi.dispatch.engine import (  # noqa: E402
     adjusted_target, compute_rpm, compute_truck_row, confirmed_dollars,
     matched_rule, money, payout_total, resolve_pct, validate_exception,

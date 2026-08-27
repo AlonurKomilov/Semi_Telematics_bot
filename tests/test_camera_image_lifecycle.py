@@ -26,8 +26,6 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest_asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from adapters.storage import Database  # noqa: E402
 from adapters.storage.object_storage import (  # noqa: E402
     DiskObjectStorage, resolve_disk_path,
