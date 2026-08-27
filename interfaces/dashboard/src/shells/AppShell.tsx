@@ -86,7 +86,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             `controls` is this strip's Size region — see lib/sizeRegion. */}
         <header
           style={sizeRegion('controls')}
-          className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
+          className="h-12 bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
         >
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -136,10 +136,24 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             without that split the scrollbar renders at <main>'s right
             edge, visually leaking into the chrome frame because the
             rounded corner curves away from its straight track.
-            `text` is this card's Size region. */}
+            `text` is this card's Size region.
+
+            THE BORDER LIVES HERE, not on the <header>. The header used to
+            carry `border-b`, which is a straight 1px line across the full
+            frame — and this card's top corners curve away from it. That
+            left a quarter-disc of frame showing under each end of the
+            line: 4px at Sharp, 14px at Rounded, 20px at Pill. The line and
+            the corner were two objects describing one boundary, so the
+            bigger the radius the further apart they read.
+
+            One object now. The card's own edge IS the boundary, so it
+            follows the radius exactly and cannot disagree with it at any
+            preset. Sidebar, header and gutters are all `bg-sidebar` — one
+            continuous chrome surface — and the card is the thing sitting
+            in it, which is what the outline says. */}
         <main
           style={sizeRegion('text')}
-          className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}
+          className={`flex-1 bg-background border border-border rounded-xl overflow-hidden ${dockedContentClass}`}
         >
           <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
             <Outlet />
