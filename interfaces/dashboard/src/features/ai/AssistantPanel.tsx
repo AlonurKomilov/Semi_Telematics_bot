@@ -161,7 +161,7 @@ export default function AssistantPanel() {
             at the same y as the shells' <main> content card, so the two
             align — an 8px top gap here read as the chat sitting lower. */}
         <div className="h-full px-2 pb-2">
-          <div className="flex h-full flex-col rounded-xl bg-background text-foreground overflow-hidden">
+          <div className="flex h-full flex-col rounded-xl border border-border bg-background text-foreground overflow-hidden">
             {/* Mini header bar — title + New-chat / History (portalled) +
                 Expand + Close, divided from the messages by a border. */}
             <div className="flex h-11 items-center justify-between px-3 border-b border-border shrink-0">

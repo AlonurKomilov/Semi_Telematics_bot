@@ -41,8 +41,24 @@ import { cn } from "@/lib/utils"
 const cardVariants = cva("bg-card border border-border rounded-lg", {
   variants: {
     padding: {
-      /** Children own their own edges (a DataGrid, a divided list). */
-      none: "",
+      /**
+       * Children own their own edges (a DataGrid, a divided list).
+       *
+       * Which is exactly why it clips. A rounded box that hands its edge
+       * to a square child, and does not clip, gets that child painted
+       * over its own arc: `r − r/sqrt(2)` = 0.293r of overhang, so 4.7px
+       * at Pill — and the artifact GROWS as the reader asks for softer
+       * corners. Twenty-two call sites were each re-deciding this, four
+       * had not, and two of those four were visibly broken.
+       *
+       * `className` is merged LAST (see the render below) and `cn` is
+       * tailwind-merge, so a call site that genuinely must not clip says
+       * `overflow-visible` and wins. `RunBoard` is the real case: its
+       * header is `sticky top-0` bound to <main>'s scroller, and a clip
+       * here would re-parent the sticky to a box that never scrolls and
+       * silently kill the pin.
+       */
+      none: "overflow-hidden",
       /** A dense in-page card. */
       compact: "p-3",
       /** An in-page card. */

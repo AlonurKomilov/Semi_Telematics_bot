@@ -2161,7 +2161,7 @@ export default function DataGrid({
               />
               <MenuPrimitive.Portal>
                 <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
-                  <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                  <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
                     {action.options.map((opt) => (
                       <MenuPrimitive.Item
                         key={opt.value}
@@ -3573,7 +3573,7 @@ export default function DataGrid({
                 />
                 <MenuPrimitive.Portal>
                   <MenuPrimitive.Positioner align="end" sideOffset={4} className="z-50 outline-none">
-                    <MenuPrimitive.Popup className="min-w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                    <MenuPrimitive.Popup className="min-w-56 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
                       {(() => {
                         const pageCount = flattenLeaves(table.getRowModel().rows).length;
                         const allCount = table.getFilteredRowModel().rows.length;
@@ -3988,7 +3988,7 @@ export default function DataGrid({
                         ? groupRuns.find(r => `grp:${r.firstId}` === groupDrag.activeId)
                         : null;
                       return activeRun?.label ? (
-                        <div className="px-2.5 py-1.5 rounded-md bg-popover text-popover-foreground border border-border shadow-lg text-2xs font-medium uppercase tracking-wide whitespace-nowrap cursor-grabbing">
+                        <div className="px-2.5 py-1.5 rounded-md overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg text-2xs font-medium uppercase tracking-wide whitespace-nowrap cursor-grabbing">
                           {activeRun.label} · {activeRun.span} column{activeRun.span > 1 ? 's' : ''}
                         </div>
                       ) : null;
@@ -4076,7 +4076,7 @@ export default function DataGrid({
                 {createPortal(
                   <DragOverlay>
                     {leafDragId ? (
-                      <div className="px-2.5 py-1.5 rounded-md bg-popover text-popover-foreground border border-border shadow-lg text-xs font-medium whitespace-nowrap cursor-grabbing">
+                      <div className="px-2.5 py-1.5 rounded-md overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg text-xs font-medium whitespace-nowrap cursor-grabbing">
                         {columns.find(c => c.key === leafDragId)?.label || leafDragId}
                       </div>
                     ) : null}

@@ -501,6 +501,6 @@
 [data-sonner-toaster] [data-sonner-toast] { border-radius: var(--radius); }
 [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-button] { border-radius: var(--radius); }
 [data-sonner-toast] .sonner-loading-bar { border-radius: var(--radius); }
-.leaflet-container .leaflet-bar { border-radius: var(--radius); }
+.leaflet-container .leaflet-bar { border-radius: var(--radius); overflow: hidden; }
 .leaflet-container .leaflet-popup-content-wrapper { border-radius: var(--radius); }
 .leaflet-container .leaflet-tooltip { border-radius: var(--radius); }

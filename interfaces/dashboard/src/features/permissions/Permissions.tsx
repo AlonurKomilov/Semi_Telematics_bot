@@ -290,7 +290,7 @@ export default function Permissions() {
   };
 
   return (
-    <div className="pb-20">
+    <div className="pb-4">
       <PageHeader
         icon={Shield}
         title={t('pages.role_perms_title')}
@@ -353,9 +353,19 @@ export default function Permissions() {
         </>
       )}
 
-      {/* Sticky save bar — appears only when there are pending changes. */}
+      {/* Save bar — appears only when there are pending changes.
+          It used to be `fixed bottom-0 left-0 right-0`: a viewport-wide
+          strip that swallowed both bottom corners of the shell card, ran
+          the full width of the sidebar, and covered the 8px chrome
+          gutter. 49px of vertical overlap, so the card's arc was gone at
+          every preset and 20px of it at Pill.
+          `kpi/config/KpiConfiguration.tsx` already learned this and wrote
+          it down at its own call site — a full-width strip covered its
+          Save button outright in a 65px scroll band that no end-padding
+          could fix. Same grammar here: a pill that belongs to the page,
+          sticky to the scroller the page already has. */}
       {totalPending > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-popover border-t border-border px-4 py-3 flex items-center justify-between gap-4 shadow-lg">
+        <div className="sticky bottom-2 z-30 mt-6 inline-flex max-w-fit flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-popover px-4 py-3 shadow-lg">
           <span className="text-sm text-muted-foreground">
             {totalPending} pending change{totalPending === 1 ? '' : 's'}
           </span>

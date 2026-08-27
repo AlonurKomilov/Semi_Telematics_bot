@@ -1285,7 +1285,7 @@ function ConfirmDisconnect({
 }) {
   const [submitting, setSubmitting] = useState(false);
   return (
-    <div className="mt-3 border-t border-border pt-3 bg-danger/5 rounded p-3 -mx-2">
+    <div className="mt-3 bg-danger/5 border border-danger-bd rounded-md p-3">
       <p className="text-sm">
         Disconnect <span className="font-semibold">{providerName}</span>?
         Live ingest stops immediately.  Reconnecting later restores it

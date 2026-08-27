@@ -210,7 +210,7 @@ export default function ParkingDetailSheet({
                 No other parking events recorded for {event.vehicle_name}.
               </p>
             ) : (
-              <ul className="divide-y divide-border rounded-lg border border-border">
+              <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
                 {others.map((h) => (
                   <li key={h.id}>
                     {/* A real button, not a clickable <li>: keyboard and

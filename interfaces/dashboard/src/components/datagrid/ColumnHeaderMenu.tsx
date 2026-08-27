@@ -143,7 +143,7 @@ export default function ColumnHeaderMenu({
       />
       <MenuPrimitive.Portal>
         <MenuPrimitive.Positioner align="end" sideOffset={4} className="z-50 outline-none">
-          <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+          <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
             {canSort && (
               <>
                 <MenuPrimitive.SubmenuRoot>
@@ -174,7 +174,7 @@ export default function ColumnHeaderMenu({
                       sideOffset={4}
                       className="z-50 outline-none"
                     >
-                      <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                      <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
                         <MenuItem
                           icon={<ArrowUp className="size-3.5" />}
                           label="Ascending"
@@ -243,7 +243,7 @@ export default function ColumnHeaderMenu({
                     sideOffset={4}
                     className="z-50 outline-none"
                   >
-                    <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                    <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
                       <MenuItem
                         icon={<ArrowLeftToLine className="size-3.5" />}
                         label="Pin to Left"
@@ -296,7 +296,7 @@ export default function ColumnHeaderMenu({
                   sideOffset={4}
                   className="z-50 outline-none"
                 >
-                  <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                  <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
                     {groupNames.map((name) => (
                       <MenuItem
                         key={name}
@@ -386,7 +386,7 @@ export default function ColumnHeaderMenu({
                     sideOffset={4}
                     className="z-50 outline-none"
                   >
-                    <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                    <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md overflow-hidden shadow-lg py-1 outline-none">
                       {aggFns.map((fn) => (
                         <MenuItem
                           key={fn}

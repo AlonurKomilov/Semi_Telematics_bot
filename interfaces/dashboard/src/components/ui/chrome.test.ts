@@ -502,6 +502,12 @@ const INLINE_LENGTH_ALLOWED: { file: string; props: string[] }[] = [
 const inlineLengthAllows = (rel: string, prop: string) =>
   INLINE_LENGTH_ALLOWED.some((e) => e.file === rel && e.props.includes(prop));
 
+/** Source with comments removed — a rule that explains a past bug must
+ *  not read as the bug. */
+const codeOnly = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
+
 /**
  * A corner that ignores the Corners setting.
  *
@@ -779,6 +785,58 @@ describe('UI chrome', () => {
       .filter((f) => /\btransition-all\b/.test(f.src))
       .map((f) => `${f.rel} → transition-control; \`all\` includes geometry`);
     expect(offenders).toEqual([]);
+  });
+
+  it('never gives a popup a corner it will not clip', () => {
+    // A rounded box that hands its edge to a square child and does not
+    // clip gets that child painted over its own arc — 0.293r, so 4.7px at
+    // Pill, and the artifact GROWS as the reader asks for softer corners.
+    // Seven DataGrid menus had it and five siblings did not; the split
+    // was one rule being re-decided at every call site.
+    const offenders = TSX.flatMap((f) => {
+      const out: string[] = [];
+      for (const m of codeOnly(f.src).matchAll(
+        /<\w*Popup\b[^>]{0,300}?className=(?:"([^"]*)"|\{`([^`]*)`\})/g,
+      )) {
+        const cls = m[1] ?? m[2] ?? '';
+        if (!/\brounded-(?:sm|md|lg|xl|2xl|3xl)\b/.test(cls)) continue;
+        if (/overflow-/.test(cls)) continue;
+        out.push(`${f.rel} → add overflow-hidden; a rounded popup must clip its rows`);
+      }
+      return out;
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it('never spans the viewport with a fixed strip', () => {
+    // The shell owns the frame. A `fixed bottom-0 left-0 right-0` bar
+    // reaches past <main> into the sidebar and the 8px chrome gutter, and
+    // swallows both of the card's bottom corners — 20px of arc at Pill,
+    // gone at every preset because the overlap is 49px deep.
+    // A page's own save bar belongs to the page: `sticky bottom-2` inside
+    // the scroller it already has. kpi/config/KpiConfiguration.tsx got
+    // there first and wrote down why.
+    const offenders = TSX
+      .filter((f) => !f.rel.startsWith('shells/'))
+      .filter((f) => /fixed\s+(?:bottom-0\s+left-0\s+right-0|inset-x-0\s+bottom-0|top-0\s+left-0\s+right-0)/
+        .test(codeOnly(f.src)))
+      .map((f) => `${f.rel} → sticky inside the page, not fixed to the viewport`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps the edge-to-edge card variant clipping', () => {
+    // `padding="none"` exists for a card whose children own its edges — a
+    // DataGrid, a divided list. That is precisely the case that must clip,
+    // and leaving it to 22 call sites meant four of them did not. The
+    // variant carries it; a call site that genuinely must not clip says
+    // `overflow-visible` and wins, because className merges last.
+    const card = readFileSync(join(SRC, 'components/ui/card.tsx'), 'utf8');
+    const none = /none:\s*"([^"]*)"/.exec(card)?.[1];
+    expect(none, 'no `none` padding variant found in card.tsx').toBeDefined();
+    expect(
+      none,
+      'the edge-to-edge variant must clip, or every call site re-decides it',
+    ).toContain('overflow-hidden');
   });
 
   it('is counted correctly in design.md', () => {

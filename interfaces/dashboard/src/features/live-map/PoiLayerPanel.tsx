@@ -118,7 +118,13 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
       {/* Header */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="w-full flex items-center justify-between px-3 py-2.5 font-semibold text-foreground hover:bg-muted/60 rounded-xl transition"
+        // Four rounded corners only while COLLAPSED, where the header IS the
+        // panel. Expanded, it is docked on three edges: its hover fill then
+        // curves away from the straight divider under it and ~15px of panel
+        // background shows through each bottom corner at Pill.
+        className={`w-full flex items-center justify-between px-3 py-2.5 font-semibold text-foreground hover:bg-muted/60 transition ${
+          collapsed ? 'rounded-xl' : 'rounded-t-xl'
+        }`}
       >
         <span className="flex items-center gap-1.5">
           <MapIcon className="text-muted-foreground size-4" />

@@ -302,14 +302,18 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
         const baseGross = rows.reduce((a, r) => a + r.base_gross, 0);
         const confirmed = rows.reduce((a, r) => a + r.confirmed_dollars, 0);
         const isCollapsed = !!collapsed[name];
+        // overflow-visible, deliberately: the section header below is
+        // `sticky top-0` bound to <main>'s scroller. Clipping here would
+        // make this Card the scroll container and the pin would stop
+        // working, silently.
         return (
-          <Card key={name} padding="none" render={<section />}>
+          <Card key={name} padding="none" className="overflow-visible" render={<section />}>
             {/* Section header — the dispatcher's summary band. */}
             <button
               type="button"
               onClick={() => setCollapsed((m) => ({ ...m, [name]: !m[name] }))}
               aria-expanded={!isCollapsed}
-              className={`sticky top-0 z-30 w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted border-b border-border text-left hover:bg-border/60 transition ${isCollapsed ? 'rounded-lg' : 'rounded-t-xl'}`}
+              className={`sticky top-0 z-30 w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted border-b border-border text-left hover:bg-border/60 transition ${isCollapsed ? 'rounded-lg' : 'rounded-t-lg'}`}
             >
               {isCollapsed
                 ? <ChevronRight className="text-muted-foreground shrink-0 size-4" />

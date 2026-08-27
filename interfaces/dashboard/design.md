@@ -588,6 +588,21 @@ and MarkerCluster's two nested discs are CIRCLES, and
 `.leaflet-control-layers` is dead — this app never constructs a layers
 control.
 
+**One boundary, one object.** Where two surfaces share an edge, exactly
+one of them describes it. A straight rule that runs past a rounded
+neighbour leaves an `r × r` quarter-disc of whatever is behind it — 4px
+at Sharp, 20px at Pill — and a square child inside an unclipped rounded
+parent paints `0.293r` over its own arc. Both artifacts GROW as the
+reader asks for softer corners, which is why a sweep found ten of them
+the day Pill shipped and none of them had ever been reported.
+
+The recurring causes, so they are recognisable: a header drawing a
+`border-b` for a card below it (the card's own edge should); an inner
+radius larger than its parent's (`rounded-xl` is `--radius + 4`, so it
+NEVER fits inside a `rounded-lg` box at any preset); a header docked on
+three edges keeping four rounded corners; and a container that grants a
+radius but never a clip.
+
 **Sharp is `0px`, and the frame keeps a hairline.** The preset means what
 its name says: `sm`, `rounded`, `md` and `lg` all render a true right
 angle, which is 1098 of the 1120 sites that track the token. Twenty-two
@@ -775,7 +790,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Twenty-six live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Twenty-nine live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -811,6 +826,9 @@ this table has any chance of staying true.
 | `--radius` is assigned only in the stylesheet | a component redefining it would scope the picker to its own subtree, and the half-failure is invisible until someone tries Sharp |
 | the borderRadius scale still derives from `--radius` | reads `tailwind.config.js`; `none` and `full` are deliberately literal |
 | a primitive never animates its own geometry (§7) | `transition-all` on Button or Badge animates height, padding and radius with the colours — and the Size slider paints every drag frame, so each one retargeted an in-flight 150ms transition. `transition-control` names what a control may animate |
+| a rounded popup clips its rows (§6) | a square child painted over its parent's arc is 0.293r — 4.7px at Pill — and it GROWS as the reader asks for softer corners |
+| no viewport-wide fixed strip outside the shell (§6) | the shell owns the frame; a `fixed bottom-0 left-0 right-0` bar reaches into the sidebar and swallows both of the card's bottom corners |
+| the edge-to-edge card variant clips (§6) | `padding="none"` is for children that own the card's edges, which is exactly the case that must clip. Leaving it to 22 call sites meant four did not |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards
