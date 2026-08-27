@@ -84,8 +84,18 @@ interface Targetable {
 
 const API = '/alerts/triggers';
 
-export default function TriggerEditorSheet({ open, onClose, onSaved }: {
+/** The row being edited.  Absent = creating a new trigger. */
+export interface EditingTrigger {
+  id: number;
+  metric: string;
+  threshold: number;
+  vehicles: number[];
+  watches_all: boolean;
+}
+
+export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: {
   open: boolean;
+  editing?: EditingTrigger | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -126,11 +136,23 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
 
   useEffect(() => {
     if (!open) return;
-    setFeature(''); setMetric(''); setValue('');
-    setPicked([]); setAllMine(true); setQuery('');
+    setQuery('');
+    if (editing) {
+      // Feature is derived from the metric rather than stored, so an edit
+      // resolves it the same way the create path would — one fact, one
+      // owner, no second copy to fall out of date.
+      setMetric(editing.metric);
+      setValue(String(editing.threshold));
+      setAllMine(editing.watches_all);
+      setPicked(editing.vehicles);
+      setFeature('');                 // resolved once metrics land, below
+    } else {
+      setFeature(''); setMetric(''); setValue('');
+      setPicked([]); setAllMine(true);
+    }
     void load();
     requestAnimationFrame(() => metricRef.current?.focus());
-  }, [open, load]);
+  }, [open, editing, load]);
 
   const spec = metrics.find((m) => m.key === metric);
 
@@ -159,6 +181,16 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
     }
     return [...by.entries()];
   }, [metrics, t]);
+
+  // An edit knows its metric before it knows the catalog, so the feature
+  // it belongs to can only be resolved once the metrics arrive.  Runs
+  // before the single-feature default below, so an edit never briefly
+  // shows the wrong group.
+  useEffect(() => {
+    if (feature || !metric) return;
+    const m = metrics.find((x) => x.key === metric);
+    if (m) setFeature(m.feature);
+  }, [feature, metric, metrics]);
 
   // With a single feature there is no decision to make, so the control
   // still SHOWS the answer but does not demand it.  The moment a second
@@ -194,6 +226,12 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   const blockedBecause = (): string => {
     if (busy) return 'Saving…';
     if (failed) return 'Couldn’t load what can be watched.';
+    // Editing a trigger whose metric left the catalog: the generic
+    // "pick a feature" is true but unhelpful, because the person did not
+    // choose to be here and nothing on screen says what changed.
+    if (editing && metric && !metrics.some((m) => m.key === metric)) {
+      return 'That metric is no longer available — pick what to watch instead.';
+    }
     if (!feature) return 'Pick a feature.';
     if (!spec) return 'Pick what to watch.';
     if (value === '') return 'Enter a number.';
@@ -205,27 +243,37 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
 
   const save = async () => {
     if (blocked || busy) return;
+    if (editing && !hasWork) {
+      // Nothing moved.  Sending the fields anyway would clear the
+      // crossing flags server-side and silently re-seed a trigger the
+      // person only looked at — a save that costs them the next real
+      // crossing is worse than one that does nothing.
+      onClose();
+      return;
+    }
     setBusy(true);
     try {
-      await apiJSON(API, {
-        method: 'POST',
-        body: {
-          metric, threshold: Number(value),
-          // Empty array and "all mine" are the same wire value on
-          // purpose — the server's '' already means all.
-          vehicles: allMine ? [] : picked,
-        },
-      });
+      // Empty array and "all mine" are the same wire value on purpose —
+      // the server's '' already means all.
+      const body = {
+        metric, threshold: Number(value),
+        vehicles: allMine ? [] : picked,
+      };
+      await (editing
+        ? apiJSON(`${API}/${editing.id}`, { method: 'PATCH', body })
+        : apiJSON(API, { method: 'POST', body }));
       // Every failure toasted and success said nothing, so the one
       // outcome a person most wants confirmed was the silent one.
-      toast.success(`Watching ${spec?.label.toLowerCase()} ${spec?.direction} `
+      toast.success(`${editing ? 'Updated' : 'Watching'} `
+        + `${spec?.label.toLowerCase()} ${spec?.direction} `
         + `${value}${spec?.unit} on `
         + (allMine ? 'every vehicle you can see'
                    : `${picked.length} vehicle${picked.length === 1 ? '' : 's'}`));
       onSaved();
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not add that trigger');
+      toast.error(e instanceof Error ? e.message
+        : `Could not ${editing ? 'save' : 'add'} that trigger`);
     } finally {
       setBusy(false);
     }
@@ -235,12 +283,27 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   // flag: opening the Sheet and closing it again must not nag, so this
   // asks whether there is WORK here, and picking 20 of 189 vehicles is
   // several minutes of it.
-  const hasWork = metric !== '' || value !== '' || picked.length > 0;
+  const hasWork = editing
+    // An edit opens already full, so "is there work" has to mean CHANGED
+    // — otherwise closing a sheet you only looked at would nag every
+    // time. Compared as sets, because picking the same trucks in a
+    // different order is not an edit.
+    ? (metric !== editing.metric
+       || value !== String(editing.threshold)
+       || allMine !== editing.watches_all
+       // Only when the selection is what gets SENT.  Ticking some
+       // vehicles and switching back to "all" leaves `picked` populated
+       // but unsent, and counting it would nag about a change the save
+       // would not make.
+       || (!allMine && (picked.length !== editing.vehicles.length
+                        || picked.some((id) => !editing.vehicles.includes(id)))))
+    : (metric !== '' || value !== '' || (!allMine && picked.length > 0));
 
   const requestClose = () => {
     if (busy) return;
-    if (hasWork && !window.confirm(
-      'Discard this trigger? What you picked here isn’t saved yet.')) {
+    if (hasWork && !window.confirm(editing
+      ? 'Discard these changes? They aren’t saved yet.'
+      : 'Discard this trigger? What you picked here isn’t saved yet.')) {
       return;
     }
     onClose();
@@ -259,9 +322,11 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
     // get the same guard — a selection that took minutes to build must
     // not vanish to a mis-aimed click.
     <Sheet open onOpenChange={(o) => { if (!o) requestClose(); }}>
-      <SheetContent side="right" size="lg" aria-label="Add an alert trigger">
+      <SheetContent side="right" size="lg"
+                    aria-label={editing ? 'Edit an alert trigger'
+                                        : 'Add an alert trigger'}>
         <SheetHeader className="px-5 py-4 border-b border-border shrink-0">
-          <SheetTitle>Add a trigger</SheetTitle>
+          <SheetTitle>{editing ? 'Edit trigger' : 'Add a trigger'}</SheetTitle>
           {/* SheetDescription, not a styled <p>: the primitive is what
               wires aria-describedby onto the dialog, so this caveat —
               the single most load-bearing sentence in the form — is
@@ -269,6 +334,8 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
           <SheetDescription>
             You hear on the <span className="text-foreground">crossing</span> —
             a vehicle already past your number when you save stays quiet.
+            {editing && ' Saving a change re-reads the fleet, so anything '
+              + 'already past the new number stays quiet too.'}
           </SheetDescription>
         </SheetHeader>
 
@@ -283,7 +350,7 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
           onSubmit={(e) => { e.preventDefault(); void save(); }}
           className="contents"
         >
-        <SheetBody label="Add a trigger"
+        <SheetBody label={editing ? 'Edit trigger' : 'Add a trigger'}
                    className="px-5 py-4 flex flex-col gap-5">
           {/* FEATURE, then WATCH — the order the sentence is thought in:
               which part of the product, then which of its numbers.  It
@@ -526,7 +593,7 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
               </span>
             )}
             <Button type="submit" aria-disabled={blocked}>
-              Add trigger
+              {editing ? 'Save changes' : 'Add trigger'}
             </Button>
           </div>
         </SheetFooter>

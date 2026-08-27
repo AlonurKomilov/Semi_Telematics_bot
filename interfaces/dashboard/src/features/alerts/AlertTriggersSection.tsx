@@ -37,7 +37,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BellRing, Plus, Trash2 } from 'lucide-react';
+import { BellRing, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 import { Card } from '@/components/ui/card';
@@ -45,6 +45,7 @@ import { Button } from '@/components/ui/button';
 import { CardSkeleton, SectionHeader } from '@/components/shell';
 import { Switch } from '@/components/ui/switch';
 import TriggerEditorSheet from './TriggerEditorSheet';
+import type { EditingTrigger } from './TriggerEditorSheet';
 
 interface MetricSpec {
   key: string;
@@ -116,12 +117,21 @@ export default function AlertTriggersSection(
   // Trash buttons by trigger id, so removing a row can hand focus to the
   // next one instead of dropping the keyboard user at the document top.
   const trashRefs = useRef(new Map<number, HTMLButtonElement | null>());
+  // The same map for the edit button.  `remove()` already hands focus to
+  // a neighbouring row rather than dropping the keyboard user at the top
+  // of the document; closing the edit sheet has to return focus the same
+  // way, to the control that OPENED it — not to Add at the bottom of a
+  // list of twenty.
+  const editRefs = useRef(new Map<number, HTMLButtonElement | null>());
   const addBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // The add form stays closed until asked for: this section is a LIST of
   // what you already watch, and an always-open empty form would make an
   // unconfigured page read as a chore rather than a summary.
   const [adding, setAdding] = useState(false);
+  // The row being edited.  Separate from `adding` so the sheet can tell
+  // "create" from "edit" without inferring it from a half-filled form.
+  const [editing, setEditing] = useState<EditingTrigger | null>(null);
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -338,6 +348,23 @@ export default function AlertTriggersSection(
                   </span>
                 )}
 
+                <Tip label={`Edit — ${t.describes}`}>
+                  <Button
+                    ref={(el) => { editRefs.current.set(t.id, el); }}
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setEditing({
+                        id: t.id, metric: t.metric, threshold: t.threshold,
+                        vehicles: t.vehicles, watches_all: t.watches_all,
+                      });
+                      setAdding(true);
+                    }}
+                    aria-label={`Edit ${t.describes}`}
+                  >
+                    <Pencil />
+                  </Button>
+                </Tip>
                 <Tip label={`Stop watching — ${t.describes}`}>
                   <Button
                     ref={(el) => { trashRefs.current.set(t.id, el); }}
@@ -361,7 +388,7 @@ export default function AlertTriggersSection(
           variant="outline"
           size="sm"
           aria-disabled={atCap}
-          onClick={() => { if (!atCap) setAdding(true); }}
+          onClick={() => { if (!atCap) { setEditing(null); setAdding(true); } }}
         >
           <Plus /> Add
         </Button>
@@ -377,11 +404,19 @@ export default function AlertTriggersSection(
           the line that held "Watch [metric] below [n] %". */}
       <TriggerEditorSheet
         open={adding}
+        editing={editing}
         onClose={() => {
+          const wasEditing = editing?.id;
           setAdding(false);
-          // The trigger that opened it is gone from the reading order —
-          // put focus somewhere deliberate rather than on <body>.
-          requestAnimationFrame(() => addBtnRef.current?.focus());
+          setEditing(null);
+          // Focus returns to whatever opened the sheet: the row's own
+          // pencil for an edit, Add for a create.  Either way something
+          // deliberate, never <body>.
+          requestAnimationFrame(() => {
+            const back = wasEditing !== undefined
+              ? editRefs.current.get(wasEditing) : null;
+            (back ?? addBtnRef.current)?.focus();
+          });
         }}
         onSaved={() => { void load(); onChanged?.(); }}
       />

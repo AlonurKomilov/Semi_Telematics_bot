@@ -102,6 +102,7 @@ class AlertTriggersMixin:
 
     async def update_alert_trigger(
         self, account_id: int, owner_user_id: int, trigger_id: int, *,
+        metric: str | None = None,
         threshold: float | None = None, enabled: bool | None = None,
         channels: str | None = None,
         vehicles: str | None = None,
@@ -109,6 +110,9 @@ class AlertTriggersMixin:
         """Edit one's own trigger.  Scoped to the owner in the WHERE, so a
         foreign id silently matches nothing rather than editing it."""
         sets, params = [], []
+        if metric is not None:
+            sets.append("metric = ?")
+            params.append(metric)
         if threshold is not None:
             sets.append("threshold = ?")
             params.append(float(threshold))

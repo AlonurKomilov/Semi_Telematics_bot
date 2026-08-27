@@ -604,3 +604,43 @@ class TestTheSweepSeesTheSelection:
         assert not hasattr(infra.tenant, "get_router"), (
             "get_router now also lives in infra.tenant — if it moved, "
             "update the imports in triggers/router.py to match")
+
+
+class TestEditingAPair:
+    """Editing validates the pair that will EXIST, not the field that moved.
+
+    A trigger is (metric, threshold) — neither half means anything alone.
+    Changing only the metric leaves the old number attached to a new band,
+    and changing only the number is checked against the metric already
+    stored. Validating just the submitted field would let fuel's 30% land
+    on battery voltage, whose band is 11–13.5V — never checked, because
+    only one field changed.
+
+    Oil pressure is the instructive counter-example: 30 is legal there
+    too (5–40 psi), so the guard cannot be "refuse every cross-metric
+    move". It has to judge the PAIR, which is why both halves are read
+    back and validated together rather than the one that was sent.
+    """
+
+    def test_the_old_number_on_a_new_metric_is_refused(self):
+        # 30 is a fine fuel percentage and a nonsense battery voltage.
+        assert validate("fuel_pct", 30) == ""
+        assert validate("battery_v", 30) != ""
+
+    def test_a_number_legal_on_both_is_allowed(self):
+        """Not every cross-metric move is wrong — the guard has to let the
+        legal ones through, or editing becomes delete-and-recreate with
+        extra steps."""
+        assert validate("fuel_pct", 20) == ""
+        assert validate("def_pct", 20) == ""
+
+    def test_the_pair_is_what_the_catalog_judges(self):
+        """Both halves reach `validate` together; there is no code path
+        that judges a metric without a number or a number without a
+        metric."""
+        import inspect
+        sig = inspect.signature(validate)
+        assert list(sig.parameters)[:2] == ["metric_key", "threshold"]
+
+    def test_an_unknown_metric_is_still_refused_on_edit(self):
+        assert "not a metric" in validate("tyre_psi", 90)
