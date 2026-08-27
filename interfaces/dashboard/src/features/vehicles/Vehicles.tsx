@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -50,7 +51,10 @@ const UTILIZATION_PERSONAS = new Set(['owner', 'admin', 'fleet', 'accounting']);
 // so dropping the parameter costs nothing and buys exact counts, one
 // cache entry instead of five, and no refetch per tab.
 const STATUS_SEGMENTS: DataGridSegment[] = [
-  { key: 'all', label: 'All', match: () => true },
+  // `!r.archived` on every live tab, including All: a retired truck
+  // belongs on exactly one tab, its own.  Without this the fleet count
+  // in the hero would quietly grow each time someone archived a truck.
+  { key: 'all', label: 'All', match: (r) => !r.archived },
   { key: 'moving', label: 'Moving', match: (r) => r.status === 'moving' },
   { key: 'idle', label: 'Idle', match: (r) => r.status === 'idle' },
   { key: 'stopped', label: 'Stopped', match: (r) => r.status === 'stopped' },
@@ -381,18 +385,74 @@ export default function Vehicles() {
     placeholderData: (prev) => prev,
   });
 
-  const vehicles: Vehicle[] = data?.vehicles ?? [];
+  // Trucks that have left the fleet.  A SECOND query, because an
+  // archived truck has no live telematics row — the ingest stops
+  // writing them and archiving deletes the last one — so there is
+  // nothing for the main list's live merge to overlay.  Only fetched
+  // for someone who can act on them.
+  const { data: archivedData, refetch: refetchArchived } =
+    useQuery<{ vehicles: Vehicle[] }>({
+      queryKey: ['vehicles', 'archived'],
+      queryFn: () => apiJSON<{ vehicles: Vehicle[] }>(
+        '/vehicles/registry/archived'),
+      enabled: canManage,
+      staleTime: 60_000,
+    });
+
+  // Memoised, not `data?.vehicles ?? []`: that literal is a NEW array
+  // every render, so the merge below would rebuild — and re-render the
+  // grid — on any state change at all, on a list of up to 500 trucks.
+  const live: Vehicle[] = useMemo(() => data?.vehicles ?? [], [data]);
+  const archived: Vehicle[] = useMemo(
+    () => (archivedData?.vehicles ?? []).map((v) => ({
+      ...v,
+      archived: true,
+      // `archived`, not `inactive`: inactive is this app's colour for a
+      // thing that stopped working, and a retired truck is a decision
+      // someone made.  See lib/status.ts.
+      status: 'archived',
+    })),
+    [archivedData],
+  );
+  // One grid, one source of truth for slicing it.  The Archived tab is
+  // a segment like every other, so it inherits search, sort, columns
+  // and the row menu instead of becoming a second table that drifts.
+  const vehicles: Vehicle[] = useMemo(
+    () => [...live, ...archived], [live, archived],
+  );
   const error =
     queryError instanceof Error ? queryError.message : queryError ? String(queryError) : '';
 
-  const hasNoTelemetry = vehicles.some((v) => v.status === 'no_telemetry');
-  const segments = hasNoTelemetry ? STATUS_SEGMENTS : REPORTING_ONLY;
+  const hasNoTelemetry = live.some((v) => v.status === 'no_telemetry');
+  const segments = useMemo(() => {
+    const base = hasNoTelemetry ? STATUS_SEGMENTS : REPORTING_ONLY;
+    // Only when there is something to show.  A permanent "Archived 0"
+    // is a tab that teaches nothing and costs a click's worth of
+    // attention on every visit.
+    return archived.length
+      ? [...base, { key: 'archived', label: 'Archived',
+                    match: (r: Record<string, unknown>) => !!r.archived }]
+      : base;
+  }, [hasNoTelemetry, archived.length]);
 
   // Same warehouse-first pattern as the rest of the fleet — when the
   // warehouse is cold the list falls back to live Samsara, which on a
   // 100-truck fleet can take 15-30s.  useLoadingStage drives the
   // progressive feedback (Loading… → Still loading… → Retry).
   const stage = useLoadingStage(isLoading && vehicles.length === 0);
+
+  const handleRestore = async (v: Vehicle) => {
+    if (v.registry_id == null) return;
+    try {
+      await apiJSON(`/vehicles/registry/${v.registry_id}/restore`,
+                    { method: 'POST' });
+      // Both lists: the truck leaves one and joins the other.
+      await Promise.all([refetch(), refetchArchived()]);
+      toast.success(`${v.name} is back on the fleet`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Restore failed');
+    }
+  };
 
   return (
     <div>
@@ -530,6 +590,7 @@ export default function Vehicles() {
             navigate,
             canManage,
             openEdit: (v) => setDialog({ vehicle: v }),
+            restore: handleRestore,
           })}
         />
       )}

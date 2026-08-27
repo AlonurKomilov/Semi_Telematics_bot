@@ -608,3 +608,79 @@ async def test_live_names_are_an_allow_list_not_a_deny_list(pg_db):
     live = await pg_db.active_unit_names(acct)
     assert "k1" in live, (
         "the live truck that inherited the number must keep alerting")
+
+
+@pytest.mark.asyncio
+async def test_restore_puts_the_truck_back_the_way_it_was(pg_db):
+    """One act, because archiving destroyed nothing.
+
+    The telematics ref was never cleared, so restoring re-links nothing
+    — the ingest gate simply stops dropping this truck's rows.  And the
+    status comes back as it WAS: a truck retired out of the shop
+    returns to the shop, not to a guessed 'active'.
+    """
+    acct = 10009007
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "L2", "telematics_ref": "ref-l"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    await pg_db._db.execute(
+        "UPDATE vehicles SET status = 'shop' WHERE id = ?", (v.id,))
+    await pg_db._db.commit()
+
+    await pg_db.deactivate_vehicle(acct, v.id, actor_user_id=7)
+    assert await pg_db.list_vehicles(acct) == []
+    assert {r.unit_number for r in await pg_db.list_archived_vehicles(acct)} \
+        == {"L2"}
+    # While archived it is gated out of the ingest.
+    assert await pg_db.operator_archived_refs(acct) == {"ref-l"}
+
+    assert await pg_db.restore_vehicle(acct, v.id, actor_user_id=7) is True
+    (back,) = await pg_db.list_vehicles(acct)
+    assert back.status == "shop", "restored to a guess instead of its status"
+    assert back.archived_reason == "" and back.status_before_archive == ""
+    assert back.telematics_ref == "ref-l"
+    # And the gate lets it through again — telemetry resumes with no
+    # re-linking.
+    assert await pg_db.operator_archived_refs(acct) == set()
+    assert await pg_db.list_archived_vehicles(acct) == []
+
+
+@pytest.mark.asyncio
+async def test_restore_falls_back_honestly_when_the_status_was_never_kept(pg_db):
+    """Rows archived before status_before_archive existed have no
+    recorded previous status.  'active' is the honest fallback — we do
+    not know, so we do not invent something specific like 'shop'."""
+    acct = 10009008
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "M3", "telematics_ref": "ref-m"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    # An older archive: flag and status set, nothing preserved.
+    await pg_db._db.execute(
+        "UPDATE vehicles SET is_active = 0, status = 'inactive', "
+        "archived_reason = 'operator', status_before_archive = '' "
+        "WHERE id = ?", (v.id,))
+    await pg_db._db.commit()
+
+    assert await pg_db.restore_vehicle(acct, v.id) is True
+    (back,) = await pg_db.list_vehicles(acct)
+    assert back.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_restoring_a_live_truck_does_nothing(pg_db):
+    """Guarded by `is_active = 0` in the UPDATE, so a double-click or a
+    stale page cannot rewrite a working truck's status."""
+    acct = 10009009
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "N4", "telematics_ref": "ref-n"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    await pg_db._db.execute(
+        "UPDATE vehicles SET status = 'in_transit' WHERE id = ?", (v.id,))
+    await pg_db._db.commit()
+
+    assert await pg_db.restore_vehicle(acct, v.id) is False
+    (still,) = await pg_db.list_vehicles(acct)
+    assert still.status == "in_transit"

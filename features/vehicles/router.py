@@ -1605,6 +1605,66 @@ async def create_vehicle(
     return _vehicle_to_dict(v)
 
 
+@router.get("/registry/archived")
+async def list_archived_vehicles(user: dict = Depends(_manage_vehicles)):
+    """Trucks that have left the fleet.
+
+    Registry-only by nature: an archived truck has no live telematics
+    row — the ingest gate stops writing them and archiving deletes the
+    last one — so there is nothing to overlay and this does not go
+    through the vehicles list's live merge.
+
+    ``archived_reason`` travels with each row because the two ways a
+    truck leaves are different facts a person must be able to tell
+    apart: ``operator`` is someone deciding it is gone, ``sweep`` is
+    its gateway having stopped reporting.  One is a decision, the
+    other might be a broken device.
+    """
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    rows = await tenant.list_archived_vehicles(account_id)
+    return {
+        "vehicles": [
+            {
+                **_vehicle_to_dict(v),
+                "archived_reason": v.archived_reason,
+                "status_before_archive": v.status_before_archive,
+                "archived_at": v.updated_at,
+            }
+            for v in rows
+        ],
+        "count": len(rows),
+    }
+
+
+@router.post("/registry/{vehicle_id}/restore")
+async def restore_registry_vehicle(
+    vehicle_id: int,
+    user: dict = Depends(_manage_vehicles),
+):
+    """Bring a retired truck back, with the status it had before.
+
+    One act, because archiving destroyed nothing: the telematics link
+    was never cleared, so the ingest gate stops dropping this truck's
+    rows and telemetry resumes on the next tick.
+    """
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    ok = await tenant.restore_vehicle(
+        account_id, vehicle_id,
+        actor_user_id=await resolve_user_id(user),
+    )
+    if not ok:
+        raise HTTPException(404, "no archived vehicle with that id")
+    v = await tenant.get_vehicle(account_id, vehicle_id)
+    return {"restored": True, "id": vehicle_id,
+            "status": v.status if v else "active"}
+
+
 @router.put("/registry/{vehicle_id}")
 async def update_registry_vehicle(
     vehicle_id: int,

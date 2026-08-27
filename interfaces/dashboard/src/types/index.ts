@@ -185,6 +185,13 @@ export interface Vehicle {
   /** Registry row id for the manage UI's edit/delete.  Null for a
    *  live-only vehicle the registry hasn't caught yet. */
   registry_id?: number | null;
+  /** Set only on rows from the Archived view — a truck that has left. */
+  archived?: boolean;
+  /** `operator` (a person retired it) or `sweep` (its gateway went
+   *  silent).  One is a decision, the other might be a broken device,
+   *  and a reader has to be able to tell them apart. */
+  archived_reason?: string;
+  archived_at?: string;
 }
 
 export interface VehicleLocation {

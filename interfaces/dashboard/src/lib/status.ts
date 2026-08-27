@@ -123,6 +123,11 @@ const STATUS_TONE: Record<string, Tone> = {
   // equipped truck) — neutral, not red: it's a deliberate state, not
   // a fault.
   no_telemetry: 'neutral',
+  // A truck that LEFT the fleet.  Neutral for the same reason as
+  // no_telemetry: it is a decision someone made, not a failure.  The
+  // sibling `inactive` is danger, which is right for a thing that
+  // stopped working and wrong for a thing that was retired on purpose.
+  archived: 'neutral',
   // Task / work-order lifecycle.  Urgency progression reads as
   // info → warn → danger so an operator can tell the severity at a
   // glance: pending=info (scheduled, no action needed), due_soon=warn

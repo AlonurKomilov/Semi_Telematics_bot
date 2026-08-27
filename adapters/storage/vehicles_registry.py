@@ -924,6 +924,71 @@ class VehiclesRegistryMixin(_MixinBase):
         )
         return {str(r[0]) for r in await cur.fetchall() if r[0]}
 
+    async def restore_vehicle(
+        self, account_id: int, vehicle_id: int,
+        actor_user_id: Optional[int] = None,
+    ) -> bool:
+        """Bring a retired truck back, the way it was.
+
+        The reverse of ``deactivate_vehicle``, and it can be one act
+        only because archiving never destroyed anything: the telematics
+        ref was left alone, so the ingest gate simply stops dropping the
+        truck's rows and telemetry resumes on the next tick — no
+        re-linking, no re-uploading documents, nothing to rebuild.
+
+        ``status`` goes back to what it was BEFORE archiving rather than
+        a guessed 'active': a truck retired out of the shop should come
+        back to the shop.  Rows archived before that value was recorded
+        fall back to 'active', which is honest — we do not know, so we
+        do not invent something specific.
+
+        Alerts closed by the archive are NOT re-opened.  They were
+        cleared, and if the conditions still hold the checks raise them
+        again within the hour; resurrecting week-old alerts about a
+        truck that just came back would be noise, not history.
+        """
+        async with self.transaction():
+            cur = await self._db.execute(
+                "SELECT status_before_archive FROM vehicles "
+                "WHERE id = ? AND account_id = ? AND is_active = 0",
+                (vehicle_id, account_id),
+            )
+            row = await cur.fetchone()
+            if row is None:
+                return False
+            previous = (row[0] or "").strip() or "active"
+            cur = await self._db.execute(
+                "UPDATE vehicles SET is_active = 1, status = ?, "
+                "archived_reason = '', status_before_archive = '', "
+                "updated_at = ? WHERE id = ? AND account_id = ? "
+                "AND is_active = 0",
+                (previous, self._now(), vehicle_id, account_id),
+            )
+            touched = (getattr(cur, "rowcount", 0) or 0) > 0
+            if touched and actor_user_id is not None:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "vehicle", "entity_id": vehicle_id,
+                    "action": "restore", "actor_user_id": actor_user_id,
+                    "changes": {"status": {"from": "inactive",
+                                           "to": previous}},
+                }])
+            return touched
+
+    async def list_archived_vehicles(self, account_id: int) -> list[Vehicle]:
+        """Retired trucks, newest first — the Archived view's rows.
+
+        Its own method rather than a flag on ``list_vehicles``: the
+        default there is active-only and dozens of callers depend on
+        that, so a parameter would be one typo away from putting
+        retired trucks back into a picker.
+        """
+        rows = await self.read_all(
+            f"{_SELECT} WHERE account_id = ? AND is_active = 0 "
+            "ORDER BY updated_at DESC, unit_number",
+            (account_id,),
+        )
+        return [_row_to_vehicle(r) for r in rows]
+
     async def retired_vehicle_named(
         self, account_id: int, name: str,
     ) -> dict | None:

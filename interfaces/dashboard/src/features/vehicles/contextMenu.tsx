@@ -9,7 +9,7 @@
  * carries the ``?company=`` disambiguator); Edit appears only for
  * managers on registry-backed rows, mirroring the inline pencil column.
  */
-import { ArrowUpRight, ExternalLink, Pencil } from 'lucide-react';
+import { ArrowUpRight, ExternalLink, Pencil, RotateCcw } from 'lucide-react';
 import type { MenuAction } from '../../components/ui/context-menu';
 import type { Vehicle } from '../../types';
 
@@ -20,6 +20,8 @@ export function vehicleRowMenu(
     navigate: (path: string) => void;
     canManage: boolean;
     openEdit: (v: Vehicle) => void;
+    /** Bring a retired truck back — omitted on live rows. */
+    restore?: (v: Vehicle) => void;
   },
 ): MenuAction[] {
   const actions: MenuAction[] = [
@@ -43,6 +45,19 @@ export function vehicleRowMenu(
       icon: <Pencil className="text-muted-foreground size-3.5" />,
       separatorBefore: true,
       onSelect: () => deps.openEdit(vehicle),
+    });
+  }
+  // Only on an archived row, and only for someone who can manage
+  // vehicles.  One act: the telematics link was never cleared when the
+  // truck was archived, so restoring re-links nothing — the ingest
+  // simply stops skipping it and readings resume on the next tick.
+  if (deps.restore && vehicle.archived && vehicle.registry_id != null) {
+    actions.push({
+      key: 'restore',
+      label: 'Restore to fleet',
+      icon: <RotateCcw className="text-muted-foreground size-3.5" />,
+      separatorBefore: true,
+      onSelect: () => deps.restore!(vehicle),
     });
   }
   return actions;
