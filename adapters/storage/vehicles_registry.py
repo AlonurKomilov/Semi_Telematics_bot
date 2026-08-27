@@ -895,6 +895,23 @@ class VehiclesRegistryMixin(_MixinBase):
         )
         return {str(r[0]) for r in await cur.fetchall() if r[0]}
 
+    async def archived_refs(self, account_id: int) -> set[str]:
+        """Telematics refs of every retired truck, however it retired.
+
+        The ALERTING predicate, and deliberately wider than
+        ``operator_archived_refs``: nothing about notifying a person
+        wants the sweep-vs-operator distinction — a truck that is not on
+        the fleet list should not be paging anyone, whichever way it
+        left.  The ingest gate is the narrow one, because a swept badge
+        must be allowed back in the moment it reports.
+        """
+        cur = await self._db.execute(
+            "SELECT telematics_ref FROM vehicles "
+            "WHERE account_id = ? AND telematics_ref <> '' AND is_active = 0",
+            (account_id,),
+        )
+        return {str(r[0]) for r in await cur.fetchall() if r[0]}
+
     async def registry_ids_by_telematics_ref(
         self, account_id: int,
     ) -> dict[str, int]:

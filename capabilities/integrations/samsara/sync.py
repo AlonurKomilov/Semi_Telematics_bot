@@ -474,7 +474,43 @@ async def ingest_vehicle_state(account_id: int) -> int:
             from capabilities.alerting.device_identity import (
                 notify_device_identity_events,
             )
-            await notify_device_identity_events(account_id, new_events)
+            # RECORDED for every truck, ANNOUNCED only for live ones.
+            # The two are deliberately different: the watch has to keep
+            # anchoring an archived truck, because a gateway pulled out
+            # of it and bolted into another one must still produce a VIN
+            # change — otherwise the archived row keeps a ref that now
+            # names a different physical truck and a restore re-attaches
+            # the wrong vehicle.  But nobody wants to be DM'd "VIN
+            # changed — is a different truck behind this unit?" about a
+            # truck they retired last month.  The event is in
+            # device_event_log either way, waiting for whoever restores
+            # it.
+            announce = new_events
+            try:
+                retired = {
+                    r for r in await tenant.archived_refs(account_id) if r
+                }
+                if retired:
+                    announce = [
+                        e for e in new_events
+                        if str(e.get("vehicle_id") or "") not in retired
+                    ]
+                    hushed = len(new_events) - len(announce)
+                    if hushed:
+                        logger.info(
+                            "identity events acct=%d recorded=%d "
+                            "not_announced_archived=%d",
+                            account_id, len(new_events), hushed,
+                        )
+            except Exception:
+                # Fail-open the same way the ingest gate does: an
+                # unannounced identity change is worse than one extra.
+                logger.exception(
+                    "archived filter unavailable for identity notices "
+                    "acct=%d — announcing all", account_id,
+                )
+            if announce:
+                await notify_device_identity_events(account_id, announce)
         except Exception:
             logger.exception(
                 "device-event record/notify failed acct=%d", account_id)

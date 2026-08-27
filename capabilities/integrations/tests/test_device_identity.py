@@ -519,3 +519,31 @@ def test_the_state_write_still_has_exactly_one_call_site():
         "the archive gate covers one write into vehicle_state_live; "
         f"found {len(callers)}: {callers}"
     )
+
+
+@pytest.mark.asyncio
+async def test_alerting_hushes_every_retired_truck_ingest_hushes_only_some(pg_db):
+    """Two predicates, deliberately different widths.
+
+    ALERTING (`archived_refs`) is wide: a truck that is not on the fleet
+    list should not be paging anyone, whichever way it left.
+
+    INGEST (`operator_archived_refs`) is narrow: a sweep-retired badge
+    must be allowed straight back in the moment it reports again, which
+    is the departure sweep's documented contract.  Using the wide one
+    there would zombie it forever.
+    """
+    acct = 10009004
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "F6", "telematics_ref": "ref-f"},
+        {"company_code": "PTG", "unit_number": "G7", "telematics_ref": "ref-g"},
+        {"company_code": "PTG", "unit_number": "H8", "telematics_ref": "ref-h"},
+    ], source="samsara")
+    rows = {v.unit_number: v for v in await pg_db.list_vehicles(acct)}
+    await pg_db.deactivate_vehicle(acct, rows["F6"].id)          # a person
+    await pg_db._db.execute(                                      # the sweep
+        "UPDATE vehicles SET is_active = 0 WHERE id = ?", (rows["G7"].id,))
+    await pg_db._db.commit()
+
+    assert await pg_db.archived_refs(acct) == {"ref-f", "ref-g"}
+    assert await pg_db.operator_archived_refs(acct) == {"ref-f"}

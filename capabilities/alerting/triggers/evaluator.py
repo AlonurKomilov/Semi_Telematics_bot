@@ -175,9 +175,19 @@ async def _target_scope(tenant, account_id: int, ids: list[int]):
         return None                      # "all of my scope" — no narrowing
     try:
         placeholders = ", ".join("?" for _ in ids)
+        # `is_active = 1`: a retired truck must not resolve into the
+        # allow-set, or a trigger someone pointed at three trucks keeps
+        # firing on the one that left.  BOTH kinds of retirement are
+        # silent here — unlike the ingest gate, which must let a
+        # sweep-retired badge back in when it reports again; nothing
+        # about alerting wants that distinction.
+        # The picker that BUILT this selection already filters the same
+        # way (triggers/router.py), so this closes the gap between what
+        # the UI offers and what the sweep judges.
         cur = await tenant._db.execute(
             f"SELECT id, telematics_ref FROM vehicles "
-            f"WHERE account_id = ? AND id IN ({placeholders})",
+            f"WHERE account_id = ? AND is_active = 1 "
+            f"AND id IN ({placeholders})",
             (account_id, *ids),
         )
         rows = await cur.fetchall()

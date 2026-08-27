@@ -85,9 +85,16 @@ async def load_vehicle_gate(account_id: int) -> dict[int, VehicleScope]:
         tenant = await get_tenant_db(account_id)
         if tenant is not None:
             placeholders = ", ".join("?" for _ in wanted)
+            # Active rows only.  A retired truck resolving here puts its
+            # registry id and provider id into an alert's scope, which is
+            # how alerts kept arriving for trucks nobody can open.  A
+            # unit number is also REUSABLE — once a truck is retired its
+            # door number can go on a different truck — so matching a
+            # retired row by name could even resolve to the wrong truck.
             cur = await tenant._db.execute(
                 f"SELECT id, telematics_ref, lower(unit_number) FROM vehicles "
-                f"WHERE account_id = ? AND lower(unit_number) IN ({placeholders})",
+                f"WHERE account_id = ? AND is_active = 1 "
+                f"AND lower(unit_number) IN ({placeholders})",
                 (account_id, *wanted),
             )
             for row in await cur.fetchall():
