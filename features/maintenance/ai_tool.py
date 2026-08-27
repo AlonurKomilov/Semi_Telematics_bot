@@ -263,7 +263,14 @@ async def _resolve_task_type(db, account_id, task_type: str) -> str:
 
 
 @register_tool({
-    "name": "create_maintenance_task",
+        # Schedules future work, which a truck that has left cannot receive.
+    # `vehicle_scope: "live"` makes the DISPATCHER refuse this
+    # for a truck that has left the fleet, rather than
+    # answering with stale readings as though they were
+    # current — see capabilities/ai/tools/registry.py.
+    "vehicle_scope": "live",
+    "vehicle_arg": "vehicle_name",
+"name": "create_maintenance_task",
     "description": (
         "Propose creating a maintenance task for a vehicle (e.g. schedule "
         "an oil change for Truck 228 due next month). This does NOT create "

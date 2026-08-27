@@ -14,6 +14,13 @@ from features.vehicles.warehouse.service import get_fleet_weather as _svc_weathe
 
 
 @register_tool({
+    # The current GPS fix.
+    # `vehicle_scope: "live"` makes the DISPATCHER refuse this for a
+    # truck that has left the fleet, rather than answering with a
+    # months-old position as though it were current — see
+    # capabilities/ai/tools/registry.py.
+    "vehicle_scope": "live",
+    "vehicle_arg": "vehicle_name",
     "name": "get_vehicle_location",
     "description": (
         "Get the current GPS location, city, and speed for a specific vehicle."

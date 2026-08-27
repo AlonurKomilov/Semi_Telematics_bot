@@ -924,6 +924,43 @@ class VehiclesRegistryMixin(_MixinBase):
         )
         return {str(r[0]) for r in await cur.fetchall() if r[0]}
 
+    async def retired_vehicle_named(
+        self, account_id: int, name: str,
+    ) -> dict | None:
+        """The retired truck answering to ``name``, when NO live one does.
+
+        Returns ``None`` the moment any ACTIVE row carries that unit
+        number — including the case where a retired truck's door number
+        has since gone onto a different truck.  A live truck always wins
+        the name, so asking about it can never be refused on account of
+        its predecessor.
+
+        Used to refuse a LIVE assistant question about a truck that left
+        the fleet, rather than answering it with stale readings as
+        though they were current.  Historical questions do not consult
+        this at all — the record is the reason archiving exists.
+        """
+        needle = str(name or "").strip().lower()
+        if not needle:
+            return None
+        cur = await self._db.execute(
+            "SELECT id, unit_number, company_code, is_active, "
+            "archived_reason, status_before_archive, updated_at "
+            "FROM vehicles WHERE account_id = ? AND lower(unit_number) = ?",
+            (account_id, needle),
+        )
+        rows = [
+            {
+                "id": r[0], "unit_number": r[1], "company_code": r[2] or "",
+                "is_active": bool(r[3]), "archived_reason": r[4] or "",
+                "status_before_archive": r[5] or "", "updated_at": r[6] or "",
+            }
+            for r in await cur.fetchall()
+        ]
+        if any(r["is_active"] for r in rows):
+            return None
+        return rows[0] if rows else None
+
     async def active_unit_names(self, account_id: int) -> set[str]:
         """Lowercased unit numbers of trucks still on the fleet.
 

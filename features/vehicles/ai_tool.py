@@ -19,7 +19,14 @@ from features.vehicles.warehouse.service import get_engine_states as _svc_engine
 
 
 @register_tool({
-    "name": "get_vehicle_detail",
+        # Current fuel, def, gps and speed, straight from the provider.
+    # `vehicle_scope: "live"` makes the DISPATCHER refuse this
+    # for a truck that has left the fleet, rather than
+    # answering with stale readings as though they were
+    # current — see capabilities/ai/tools/registry.py.
+    "vehicle_scope": "live",
+    "vehicle_arg": "vehicle_name",
+"name": "get_vehicle_detail",
     "description": (
         "Get detailed info for a specific vehicle: VIN, make/model/year, "
         "fuel level, DEF level, GPS location, and fault summary."
@@ -215,7 +222,14 @@ async def search_vehicles(tool_args: dict, samsara_client,
 
 
 @register_tool({
-    "name": "get_vehicle_odometer",
+        # The latest reading from vehicle_state_live.
+    # `vehicle_scope: "live"` makes the DISPATCHER refuse this
+    # for a truck that has left the fleet, rather than
+    # answering with stale readings as though they were
+    # current — see capabilities/ai/tools/registry.py.
+    "vehicle_scope": "live",
+    "vehicle_arg": "vehicle_name",
+"name": "get_vehicle_odometer",
     "description": (
         "Get current odometer readings (miles) for fleet vehicles, sourced from "
         "the warehouse (refreshed every 60s from Samsara OBD telemetry). "

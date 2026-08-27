@@ -345,6 +345,55 @@ def tool_ok(data: dict | None = None, **fields) -> dict:
     return out
 
 
+async def _refuse_live_on_retired(
+    tool_name: str, tool_args: dict, account_id, db,
+) -> dict | None:
+    """Refuse a LIVE tool aimed at a retired truck, or return None.
+
+    Returns an envelope that says WHEN it left and what can still be
+    asked, so the assistant redirects instead of dead-ending: "6862 was
+    archived — I can still tell you its work orders or past mileage."
+    A bare failure would read as the product being broken.
+
+    Fail-open on any error: a stale reading is a smaller harm than an
+    assistant that stops answering because a lookup hiccuped.
+    """
+    if db is None or account_id is None:
+        return None
+    schema = get_tool_schema(tool_name)
+    if not schema or schema.get("vehicle_scope") != "live":
+        return None
+    arg = schema.get("vehicle_arg") or ""
+    named = str(tool_args.get(arg) or "").strip() if arg else ""
+    if not named:
+        return None
+    try:
+        retired = await db.retired_vehicle_named(account_id, named)
+    except Exception:
+        logger.debug("archived check unavailable for %s", tool_name,
+                     exc_info=True)
+        return None
+    if not retired:
+        return None
+    when = str(retired.get("updated_at") or "")[:10]
+    left = " on " + when if when else ""
+    by_sweep = retired.get("archived_reason") == "sweep"
+    how = (
+        "stopped reporting and was retired automatically"
+        if by_sweep else "was archived"
+    )
+    return tool_error(
+        f"{retired.get('unit_number') or named} {how}{left}, so there is "
+        "no current position, fuel, engine or fault data for it. Its "
+        "history is still complete — ask about its work orders, "
+        "maintenance, inspections or past mileage instead.",
+        archived=True,
+        archived_reason=retired.get("archived_reason") or "",
+        unit=retired.get("unit_number") or named,
+        company=retired.get("company_code") or "",
+    )
+
+
 def tool_error(message: str, **fields) -> dict:
     """Build a failure envelope: ``{"ok": False, "error": message, ...}``."""
     return {"ok": False, "error": str(message), **fields}
@@ -480,6 +529,21 @@ async def execute_tool(tool_name: str, tool_args: dict,
                 tool_args["_attachments"] = attachment_grids
             if attachment_docs:
                 tool_args["_attachment_docs"] = attachment_docs
+    # ── A live question about a truck that left the fleet ───────
+    # Refused HERE, once, rather than inside twenty handlers.  The same
+    # server-side-channel discipline as `_scope_vehicles` above: the
+    # schema declares it, the dispatcher enforces it, and a model
+    # cannot argue its way past a check it never sees.
+    #
+    # Only `vehicle_scope: "live"` tools refuse.  A HISTORICAL tool
+    # answers about a retired truck exactly as before — that record is
+    # the whole reason archiving keeps the row instead of deleting it,
+    # and a fleet manager reconstructing an accident is precisely who
+    # needs it.
+    refusal = await _refuse_live_on_retired(tool_name, tool_args,
+                                            account_id, db)
+    if refusal is not None:
+        return _stamp_ok(refusal)
     try:
         return _stamp_ok(await handler(tool_args, samsara_client,
                                        account_id=account_id, db=db))

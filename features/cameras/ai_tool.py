@@ -10,7 +10,14 @@ logger = logging.getLogger("bot.ai.tools")
 
 
 @register_tool({
-    "name": "check_vehicle_camera",
+        # Analyses a dashcam frame pulled from the provider right now.
+    # `vehicle_scope: "live"` makes the DISPATCHER refuse this
+    # for a truck that has left the fleet, rather than
+    # answering with stale readings as though they were
+    # current — see capabilities/ai/tools/registry.py.
+    "vehicle_scope": "live",
+    "vehicle_arg": "vehicle_name",
+"name": "check_vehicle_camera",
     "description": (
         "Check the dashcam status for a specific vehicle: captures the "
         "latest camera image and analyzes it for obstruction, alignment, "

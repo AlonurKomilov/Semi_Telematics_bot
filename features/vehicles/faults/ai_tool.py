@@ -10,7 +10,14 @@ from features.vehicles.service import get_vehicle_detail as _svc_detail
 
 
 @register_tool({
-    "name": "get_vehicle_faults",
+        # Fault codes active on the truck now.
+    # `vehicle_scope: "live"` makes the DISPATCHER refuse this
+    # for a truck that has left the fleet, rather than
+    # answering with stale readings as though they were
+    # current — see capabilities/ai/tools/registry.py.
+    "vehicle_scope": "live",
+    "vehicle_arg": "vehicle_name",
+"name": "get_vehicle_faults",
     "description": (
         "Get fault codes (DTCs) and check engine light status. "
         "If vehicle_name is given, returns faults for that specific vehicle. "
