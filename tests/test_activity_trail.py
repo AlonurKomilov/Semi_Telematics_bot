@@ -240,7 +240,7 @@ def test_registry_and_frontend_entity_vocabulary_agree():
         ensure_declarations_loaded, registered_entity_types,
     )
     ensure_declarations_loaded()
-    src = (pathlib.Path(__file__).resolve().parent.parent
+    src = (_REPO
            / "interfaces/dashboard/src/components/activity-trail/ActivityTrailList.tsx"
            ).read_text()
     block = re.search(r"ENTITY_LABEL[^=]*= \{(.*?)\};", src, re.S).group(1)
@@ -579,8 +579,18 @@ def test_ai_write_target_types_are_registered_trail_entities():
     reg = registered_entity_types()
     root = _REPO
     found: set[str] = set()
+    # Executors only — never test code.  This guard used to scan every
+    # .py under features/ and capabilities/, which was fine while all
+    # tests lived in the top-level tests/ tree.  Once a package owns its
+    # own tests/, this very file is inside the scan, and the fake
+    # target_type in its OWN unit test above ("not_a_feature") reads as
+    # an executor inventing a type.  The guard would then fail on its own
+    # fixture.
+    from tests._repo import is_test_path
     for py in (list((root / "features").rglob("*.py"))
                + list((root / "capabilities").rglob("*.py"))):
+        if is_test_path(py.relative_to(root)):
+            continue
         for m in re.finditer(r'"target_type":\s*"([a-z_]+)"', py.read_text()):
             found.add(m.group(1))
     assert found, "no executor target_type literals found — pattern changed?"
