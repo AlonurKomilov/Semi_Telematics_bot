@@ -3305,18 +3305,37 @@ export default function DataGrid({
         <div
           role="tablist"
           aria-label="Data segments"
-          // ``px-6`` insets the first tab (and its 8px outward
-          // fillet) fully clear of the card's rounded corner below
-          // (radius ~10px) — tighter insets stack the fillet's curve
-          // on top of the card-corner curve and the two read as one
-          // lumpy S instead of two clean shapes.
+          // The inset holds the first tab (and its 8px outward fillet)
+          // clear of the card's rounded corner below. Stack the two curves
+          // and they read as one lumpy S instead of two clean shapes.
+          // 
+          // It was ``px-6``, computed when the corner was always ~10px:
+          // 24 − 8 = 16px of clearance against a 10px corner. Then the
+          // corner became a token. At Pill it is 16px and the clearance is
+          // 16px — EXACTLY tangent, zero headroom — and it goes negative
+          // below 100% Size (−3.6px at 0.85) and by the whole scroll offset
+          // the moment the strip scrolls, which it does: 347px of tabs in a
+          // 260px window. The comment here still said "fully clear", which
+          // is worse than no comment at all.
+          // 
+          // ``calc(var(--radius) + 16px)`` clears it BY CONSTRUCTION:
+          // radius + 16 − 8 = radius + 8, so 8px of headroom at every
+          // preset. Deliberately NOT a spacing class — what it must clear
+          // is the radius, and the radius rides no size axis (design.md §8),
+          // so an inset that scaled with Size would drift away from the very
+          // corner it exists to avoid. ``scroll-padding-inline-start`` keeps
+          // the same clearance when the strip scrolls back to the first tab.
           // ``overflow-x-auto`` because a fixed row of tabs CLIPS on a
           // narrow screen, and a clipped tab is not merely ugly — it is
           // unreachable.  On a 400px phone the Vehicles strip cut off at
           // "Stopped" and "No telemetry" could not be selected at all.
           // ``shrink-0`` on the tabs stops flex from squeezing them into
           // illegible slivers instead of overflowing.
-          className="relative z-10 -mb-px flex items-end gap-1 px-6 overflow-x-auto [&>*]:shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{
+            paddingInline: 'calc(var(--radius) + 16px)',
+            scrollPaddingInlineStart: 'calc(var(--radius) + 16px)',
+          }}
+          className="relative z-10 -mb-px flex items-end gap-1 overflow-x-auto [&>*]:shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {effectiveSegments.map((seg, i) => {
             // A CONTROLLED key that names nothing — a saved tab deleted
