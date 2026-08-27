@@ -134,7 +134,7 @@ export default function AccountAlertSummary() {
                 } min-h-tap`}
               >
                 <span className="text-muted-foreground truncate">{b.label}</span>
-                <div className="h-2 bg-muted rounded overflow-hidden">
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
                   <div
                     className="h-full bg-primary/70 rounded"
                     style={{ width: max > 0 ? `${(b.count / max) * 100}%` : '0%' }}

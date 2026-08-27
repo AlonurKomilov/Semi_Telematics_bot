@@ -282,7 +282,7 @@ export function tapWidth(cls: string, children: string): number | null {
 
 /* ── The exemption lists, each paired with the offence it exempts ──
  *
- * All eight live here, at module scope, next to the predicate that
+ * All eleven live here, at module scope, next to the predicate that
  * decides whether an entry still has a reason to exist. That pairing is
  * the whole point. Five of these used to be declared inside their own
  * `it()`, out of the staleness check's reach — and they rotted there,

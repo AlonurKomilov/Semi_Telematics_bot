@@ -249,8 +249,11 @@ export default {
         },
       },
       // Every common rounded-* variant tracks ``--radius`` so the
-      // Corners preset in the theme picker (sharp / default / pill /
-      // rounded) reshapes the whole UI in one keystroke.  Before this
+      // Corners preset in the theme picker (Sharp / Rounded / Pill —
+      // three, and "Rounded" is the absence of an override: it falls
+      // through to the `:root` value, which is why index.css has no
+      // `[data-radius="rounded"]` block) reshapes the whole UI in one
+      // keystroke.  Before this
       // extension, ``rounded``, ``rounded-xl`` and ``rounded-2xl`` were
       // hardcoded at Tailwind's defaults (0.25rem, 0.75rem, 1rem) and
       // ignored the user's choice — pill-mode buttons still had square

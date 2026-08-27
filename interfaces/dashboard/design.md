@@ -372,7 +372,7 @@ formulas.
 ## 6. Radius
 
 One variable, `--radius` (default `0.625rem`), drives everything via the
-`rounded-*` scale. The theme picker's Corners preset (sharp / default /
+`rounded-*` scale. The theme picker's Corners preset (Sharp / Rounded /
 pill) reshapes the whole UI from it.
 
 - Use `rounded`, `rounded-md`, `rounded-lg`, `rounded-xl` — they all
@@ -393,7 +393,7 @@ pill) reshapes the whole UI from it.
   — and recompute when `<html>`'s theme attributes change
   (MutationObserver; a CSS-var change alone never re-renders React).
   Reference implementation: `SegmentTab` in
-  [`components/DataGrid.tsx`](src/components/DataGrid.tsx).
+  [`components/datagrid/DataGrid.tsx`](src/components/datagrid/DataGrid.tsx).
 - **No radius caps on small variants.** Upstream shadcn ships `xs`/`sm`
   button and select sizes with `rounded-[min(var(--radius-md),10px)]`
   — a cap that silently ignores the Pill preset and makes a small
@@ -735,7 +735,7 @@ this table has any chance of staying true.
 | don't restate what a primitive already ships (§7) | the call site repeating a base the component already applies |
 | don't hand-roll a Badge (§11) | a `<span>` wearing a status colour plus badge geometry — both the `toneClasses` and `statusClasses` doors |
 | chart text rides the text axis (§5.1) | recharts takes `fontSize` as a number and writes an SVG attribute no class reaches; `lib/chartText.ts` holds the replacements |
-| every exemption list stays honest | each of the eight debt lists is paired with the predicate it exempts from, so an entry that no longer offends is reported by name |
+| every exemption list stays honest | each of the eleven debt lists is paired with the predicate it exempts from, so an entry that no longer offends is reported by name |
 | modals are never hand-rolled | `scrolling/backdrops.test.ts` |
 | the sheet ✕ is suppressed where the header has one | `components/ui/sheetClose.test.ts` |
 | a locale never falls further behind English | `locales/parity.test.ts` — per-locale ceilings, plus: a translation may not carry a key English does not have |

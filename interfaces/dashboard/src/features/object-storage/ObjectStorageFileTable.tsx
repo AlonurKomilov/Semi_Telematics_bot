@@ -133,7 +133,7 @@ export default function ObjectStorageFileTable() {
   const isDiskBackend = health?.backend === 'disk';
 
   return (
-    <Card padding="none">
+    <Card padding="none" className="overflow-hidden">
       {/* Header: title + filters + bulk action */}
       <div className="px-4 py-3 border-b border-border">
         <div className="flex flex-wrap items-center gap-2">

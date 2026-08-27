@@ -2103,7 +2103,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <Card padding="none" className="absolute right-0 z-50 mt-2 w-80 shadow-lg">
+          <Card padding="none" className="absolute right-0 z-50 mt-2 w-80 overflow-hidden shadow-lg">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-sm font-medium">Notifications</span>
               {unread > 0 && (

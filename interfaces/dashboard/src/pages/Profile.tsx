@@ -536,7 +536,7 @@ function SignInMethods() {
       <ul className="divide-y divide-border">
         {/* Email */}
         <li className="flex items-start gap-3 py-3">
-          <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${me?.email ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+          <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.email ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
             <Mail className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -675,7 +675,7 @@ function SignInMethods() {
 
         {/* Telegram */}
         <li className="flex items-start gap-3 py-3">
-          <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${me?.telegram_id ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+          <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.telegram_id ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
             <Send className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -1035,7 +1035,7 @@ function ActiveSessions() {
           const isBusy = busyId === s.id;
           return (
             <li key={s.id} className="flex items-start gap-3 py-3">
-              <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${isCurrent ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+              <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${isCurrent ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
                 <Icon className="size-4.5" />
               </div>
               <div className="min-w-0 flex-1">

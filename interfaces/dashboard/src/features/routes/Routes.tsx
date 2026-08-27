@@ -205,7 +205,7 @@ export default function Routes() {
           `min-h-96` makes the column OVERFLOW instead, handing the excess
           to the shell's existing scroller. It rides --size-panel, so the
           floor grows with everything else. */}
-      <div className="relative flex-1 min-h-96 rounded-xl border border-border overflow-hidden z-0">
+      <div className="relative flex-1 min-h-96 rounded-lg border border-border overflow-hidden z-0">
         <div ref={mapRef} className="absolute inset-0" />
         <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
       </div>

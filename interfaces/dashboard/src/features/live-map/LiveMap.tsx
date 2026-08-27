@@ -665,7 +665,7 @@ export default function LiveMap() {
     // height, so h-full is correct today AND at any multiplier.
     <div className="flex h-full gap-4">
       {/* Map — relative so the POI panel can be absolutely positioned inside it */}
-      <div className="flex-1 relative rounded-xl overflow-hidden border border-border z-0">
+      <div className="flex-1 relative rounded-lg overflow-hidden border border-border z-0">
         <div ref={mapRef} className="absolute inset-0" />
         <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
         <MapTypeControl

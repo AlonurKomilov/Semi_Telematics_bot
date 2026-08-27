@@ -14,9 +14,19 @@
 // Returns a restore() that undoes the change — the preview uses it to put
 // the recruiter's dashboard theme back when they leave; apply.4truck.us
 // ignores it (it owns the whole document).
+/** Every custom property the dashboard's Size engine publishes on <html>.
+ *  The applicant's host has none of them. */
+const SIZE_VARS = [
+  '--size-text', '--size-control', '--size-layout', '--size-panel',
+  '--size-region-text', '--size-region-tables', '--size-region-controls',
+  '--size-region-overlays', '--size-region-navigation', '--size-region-assistant',
+] as const;
+
 export function applyPublicFormTheme(root: HTMLElement = document.documentElement): () => void {
   const hadDark = root.classList.contains('dark');
   const prevTheme = root.dataset.theme;
+  const prevRadius = root.dataset.radius;
+  const prevSize = SIZE_VARS.map((v) => [v, root.style.getPropertyValue(v)] as const);
 
   // The public form's GLOBAL base: light `:root` tokens (no `.dark`).  A
   // per-carrier dark form is applied as a `.dark` class on the form root
@@ -24,9 +34,25 @@ export function applyPublicFormTheme(root: HTMLElement = document.documentElemen
   root.classList.remove('dark');
   root.dataset.theme = 'light';
 
+  // DELETED, not set to a value. `apply.4truck.us` is a host the theme
+  // boot script deliberately skips, so an applicant's document carries no
+  // `data-radius` and no `--size-*` at all — the tokens sit at their
+  // `:root` defaults. Setting 'rounded' here would reproduce the RIGHT
+  // corners by luck and the wrong mechanism; deleting reproduces the
+  // host.
+  //
+  // Without this the recruiter's own Corners and Size settings leaked
+  // straight into a preview of a page that will never have them: 38
+  // `rounded-md` sites rendering at 2px on Sharp or 14px on Pill, where
+  // the applicant always sees 8px.
+  delete root.dataset.radius;
+  for (const v of SIZE_VARS) root.style.removeProperty(v);
+
   return () => {
     if (hadDark) root.classList.add('dark');
     if (prevTheme !== undefined) root.dataset.theme = prevTheme;
+    if (prevRadius !== undefined) root.dataset.radius = prevRadius;
+    for (const [v, was] of prevSize) if (was) root.style.setProperty(v, was);
   };
 }
 

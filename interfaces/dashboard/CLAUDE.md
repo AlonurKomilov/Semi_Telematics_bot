@@ -41,8 +41,19 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   wrapper scales its subtree; regions MULTIPLY the global, never replace
   it. Axis table, the enlarge-only floor and why:
   [design.md §5.1](design.md).
-- **Radius = `--radius`.** Use `rounded`, `rounded-md`, `rounded-lg`.
-  Never `rounded-[10px]` or `rounded-4xl` (ignores the theme picker).
+- **Radius = `--radius`.** Use `rounded`, `rounded-md`, `rounded-lg`,
+  `rounded-xl` — they all track the token. Never `rounded-[10px]`, and
+  never `rounded-4xl`: that step does not exist in the scale, so it
+  compiles to nothing and the corner falls back to square. Guarded.
+- **`rounded-full` and `rounded-none` are shapes, not softness** — a
+  circle, a capsule, or a suppressed corner where two controls butt
+  together. `rounded-full` is NOT a way to say "very round", and a
+  control may not wear it: a capsule states a FACT, a bordered rounded
+  rectangle invites a CLICK (design.md §3). Guarded.
+- **A corner CSS cannot reach** — a recharts bar, anything drawn — takes
+  `useRadiusPx()` from `lib/radius.ts`, clamped to half the shape's
+  smaller dimension. Never the raw token: a 6px bar with a 16px corner
+  is a lozenge.
   This includes **JS-drawn geometry** (SVG paths, canvas arcs): a
   corner radius baked into a path number is invisible to the Corners
   picker. Read the live token instead —

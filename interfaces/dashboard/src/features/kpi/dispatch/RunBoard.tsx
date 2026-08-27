@@ -309,7 +309,7 @@ export default function RunBoard({ run, draft, onChanged, onRecreate, onOpenLoad
               type="button"
               onClick={() => setCollapsed((m) => ({ ...m, [name]: !m[name] }))}
               aria-expanded={!isCollapsed}
-              className={`sticky top-0 z-30 w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted border-b border-border text-left hover:bg-border/60 transition ${isCollapsed ? 'rounded-xl' : 'rounded-t-xl'}`}
+              className={`sticky top-0 z-30 w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-muted border-b border-border text-left hover:bg-border/60 transition ${isCollapsed ? 'rounded-lg' : 'rounded-t-xl'}`}
             >
               {isCollapsed
                 ? <ChevronRight className="text-muted-foreground shrink-0 size-4" />
