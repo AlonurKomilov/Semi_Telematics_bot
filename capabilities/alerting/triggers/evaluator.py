@@ -152,6 +152,89 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
         return _DENY_ALL
 
 
+async def _target_scope(tenant, account_id: int, ids: list[int]):
+    """The vehicles a trigger explicitly targets, as a VehicleScope.
+
+    Deliberately the SAME type the owner wall uses, so targeting is
+    matched by the same identity ladder rather than a second comparison
+    that could drift from it.  Ids are ``vehicles.id``; the provider ids
+    are resolved HERE, on every sweep, which is what makes a target
+    survive a gateway swap: the registry row keeps its id, its
+    ``telematics_ref`` is rewritten in place, and the next sweep picks up
+    the new one.
+
+    Scoped by ``account_id`` in the WHERE as well as by RLS — a stored id
+    from another tenant matches nothing rather than resolving.
+
+    Returns ``_DENY_ALL`` when a non-empty selection resolves to nothing.
+    A trigger that names vehicles is a trigger that asked to be narrow;
+    if none of them can be resolved, firing on the whole fleet would be
+    the opposite of what was asked.
+    """
+    if not ids:
+        return None                      # "all of my scope" — no narrowing
+    try:
+        placeholders = ", ".join("?" for _ in ids)
+        cur = await tenant._db.execute(
+            f"SELECT id, telematics_ref FROM vehicles "
+            f"WHERE account_id = ? AND id IN ({placeholders})",
+            (account_id, *ids),
+        )
+        rows = await cur.fetchall()
+    except Exception as e:
+        logger.warning("trigger targets unresolved acct=%s: %s", account_id, e)
+        return _DENY_ALL
+    registry_ids = {int(r[0]) for r in rows}
+    external_ids = {str(r[1]) for r in rows if r[1]}
+    if not registry_ids:
+        return _DENY_ALL
+    from capabilities.permissions.vehicle_scope import VehicleScope
+    # No ``names`` rung on purpose: a target is an identity, and falling
+    # back to a name is how "230" once matched 2303.
+    return VehicleScope(registry_ids=frozenset(registry_ids),
+                        external_ids=frozenset(external_ids))
+
+
+def _collapse_by_registry(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per VEHICLE, where the query gave one row per DEVICE.
+
+    ``_latest_per_vehicle`` dedupes on ``DISTINCT ON (vehicle_id)`` — the
+    PROVIDER id — so a truck whose gateway was swapped appears twice: the
+    new device, and the retired one whose last reading stays judgeable
+    until the metric's staleness bar passes (24h for fuel and DEF).  Both
+    rows carry the same ``registry_id``, each gets its own crossing flag,
+    and the same truck can announce itself twice.
+
+    This is live, not hypothetical: registry id 99 on the production
+    account maps to two provider ids today.
+
+    Collapsed in Python rather than by changing the SQL — the DISTINCT ON
+    is what makes this one indexed query per account, and rows with a
+    NULL ``registry_id`` (a vehicle the registry has not placed yet) are
+    passed through untouched rather than being merged into one bucket.
+    """
+    best: dict[int, dict[str, Any]] = {}
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        rid = row.get("registry_id")
+        if rid is None:
+            out.append(row)              # unplaced — cannot be collapsed
+            continue
+        rid = int(rid)
+        prev = best.get(rid)
+        # Lexical comparison, and that is safe rather than lucky: every
+        # one of the 1,026,473 source_ts values on the live account is
+        # exactly ``YYYY-MM-DDTHH:MM:SSZ`` — fixed width, zero-padded,
+        # single UTC suffix — so string order IS chronological order.  A
+        # writer that ever emits an offset (``+00:00``) or fractional
+        # seconds breaks that silently, which is why the shape is stated
+        # here rather than assumed.
+        if prev is None or str(row.get("source_ts") or "") > str(prev.get("source_ts") or ""):
+            best[rid] = row
+    out.extend(best.values())
+    return out
+
+
 class _DenyAll:
     """Sentinel scope: allows nothing.  Used only when a scope could not
     be resolved, so a failure never widens what somebody sees."""
@@ -200,9 +283,15 @@ async def evaluate_account(
         tenant, account_id, cat.columns_needed({t.metric for t in due}))
     if not rows:
         return stats
+    # One row per vehicle, not per device — see _collapse_by_registry.
+    rows = _collapse_by_registry(rows)
     names = await _names_for(tenant, account_id)
 
     scopes: dict[int, Any] = {}
+    # One resolve per distinct SELECTION, not per trigger: two triggers
+    # naming the same three trucks cost one query, and the untargeted
+    # majority cost none at all.
+    targets: dict[str, Any] = {}
     for trig in due:
         metric = trig.spec
         seeding = not await _trigger_seen(account_id, trig.id)
@@ -212,6 +301,10 @@ async def evaluate_account(
             scopes[trig.owner_user_id] = await _owner_scope(
                 tenant, account_id, trig.owner_user_id)
         scope = scopes[trig.owner_user_id]
+        if trig.vehicles not in targets:
+            targets[trig.vehicles] = await _target_scope(
+                tenant, account_id, trig.target_ids)
+        target = targets[trig.vehicles]
         judged = 0
         for row in rows:
             vid = str(row.get("vehicle_id") or "")
@@ -220,6 +313,15 @@ async def evaluate_account(
             if scope is not None and not scope.allows_row(
                     row, name_key="vehicle_name", external_key="vehicle_id"):
                 continue        # not this person's truck — not their news
+            # Targeting NARROWS, never widens: a second, independent
+            # allows_row on top of the owner wall.  ANDed as two calls
+            # rather than intersecting the two scopes' id sets, because
+            # each side decides on the strongest rung IT carries and an
+            # intersection would silently drop a vehicle the two sides
+            # know by different rungs.
+            if target is not None and not target.allows_row(
+                    row, name_key="vehicle_name", external_key="vehicle_id"):
+                continue        # watched, but not one of the chosen
             reading = row.get(metric.column)
             if not cat.reading_usable(metric, reading, row.get("engine_state") or ""):
                 stats["skipped"] += 1
@@ -266,6 +368,40 @@ async def evaluate_account(
             # reading would arrive as a live alert instead of a seed.
             await _mark_trigger_seen(account_id, trig.id)
     return stats
+
+
+async def forget_trigger_state(account_id: int, trigger_id: int) -> None:
+    """Drop everything the sweep remembers about one trigger.
+
+    Called when a trigger's WATCH changes shape — its threshold moved, or
+    its vehicle list did.  Both invalidate the crossing flags for the
+    same reason: a flag says "this pair was already in breach last time I
+    looked", and that sentence is only meaningful against the watch that
+    set it.  Remove a vehicle and add it back inside the flag's 24h TTL
+    and it would still read as in-breach, silently swallowing its next
+    real crossing.
+
+    Clearing the seen-marker too means the next sweep RE-SEEDS: it
+    re-learns the fleet's current state and announces none of it.  That
+    is deliberately the same promise the UI already makes about a new
+    trigger — you hear on the crossing, not on what was already true.
+    """
+    prefix = f"t:{account_id}:trig:{trigger_id}:"
+    seen_key = f"t:{account_id}:trigseen:{trigger_id}"
+    if rcache.is_available():
+        try:
+            keys = await rcache.scan_keys(f"{prefix}*")
+            for key in keys:
+                await rcache.delete(key)
+            await rcache.delete(seen_key)
+        except Exception as e:
+            # A stale flag re-seeds at worst; failing the edit the person
+            # just made would be the larger harm.
+            logger.warning("trigger %s: could not clear state: %s", trigger_id, e)
+        return
+    for key in [k for k in _local_flags if k.startswith(prefix)]:
+        _local_flags.pop(key, None)
+    _local_flags.pop(seen_key, None)
 
 
 async def _trigger_seen(account_id: int, trigger_id: int) -> bool:

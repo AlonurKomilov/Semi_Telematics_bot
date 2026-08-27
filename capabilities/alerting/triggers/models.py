@@ -81,6 +81,41 @@ class AlertTrigger:
     severity: str = "warning"
     #: csv of TRIGGER_CHANNELS — the extra places beyond the bell.
     channels: str = DEFAULT_CHANNELS_CSV
+    #: csv of ``vehicles.id`` — which vehicles this trigger watches.
+    #: '' means EVERY vehicle in the owner's scope, which is what a
+    #: trigger meant before targeting existed and still means.
+    vehicles: str = ""
+
+    @property
+    def target_ids(self) -> list[int]:
+        """The registry ids this trigger watches, or [] for "all mine".
+
+        Non-numeric junk is dropped rather than raising: this list is
+        data a client sent, and one bad entry must narrow the selection,
+        never take the sweep down for the whole account.
+
+        De-duplicated on READ as well as on write.  ``clean_vehicle_ids``
+        already dedupes what it stores, but a row predating it — or one
+        edited by hand — would otherwise report "3 vehicles" for two, and
+        the count is a number a person checks their work against.
+        """
+        out: list[int] = []
+        for part in (self.vehicles or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                value = int(part)
+            except ValueError:
+                continue
+            if value not in out:
+                out.append(value)
+        return out
+
+    @property
+    def targets_all(self) -> bool:
+        """True when this trigger watches everything the owner can see."""
+        return not self.target_ids
 
     @property
     def chosen_channels(self) -> list[str]:
@@ -127,6 +162,7 @@ class AlertTrigger:
             # DMing someone who explicitly unticked every channel.
             channels=(str(row["channels"]) if row.get("channels") is not None
                       else DEFAULT_CHANNELS_CSV),
+            vehicles=str(row.get("vehicles") or ""),
         )
 
 
@@ -142,6 +178,32 @@ def clean_channels(raw) -> str:
         raw = raw.split(",")
     seen = [str(c).strip() for c in (raw or [])]
     return ",".join(c for c in TRIGGER_CHANNELS if c in seen)
+
+
+def clean_vehicle_ids(raw) -> str:
+    """A caller's vehicle selection → the csv this row stores.
+
+    Ints only, de-duplicated, order preserved.  Anything that is not a
+    positive integer is DROPPED rather than refused, for the same reason
+    ``clean_channels`` drops an unknown channel: a client sending one bad
+    id should lose that one vehicle, not the whole save.  An empty result
+    is legal and is the "all my vehicles" default.
+
+    This does NOT check that the ids exist or that the caller may see
+    them — that is the router's job, because it needs the database and
+    the caller's scope, and neither belongs in a shape helper.
+    """
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    seen: list[int] = []
+    for item in (raw or []):
+        try:
+            value = int(str(item).strip())
+        except (TypeError, ValueError):
+            continue
+        if value > 0 and value not in seen:
+            seen.append(value)
+    return ",".join(str(v) for v in seen)
 
 
 def num_text(value: float) -> str:

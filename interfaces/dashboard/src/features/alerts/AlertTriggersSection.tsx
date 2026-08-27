@@ -34,20 +34,17 @@
  *   • these arrive by direct message and never reach the shared Alerts
  *     board — one person's trigger is not the account's news.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BellRing, Plus, Trash2, X } from 'lucide-react';
+import { BellRing, Plus, Trash2 } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { CardSkeleton, SectionHeader } from '@/components/shell';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import TriggerEditorSheet from './TriggerEditorSheet';
 
 interface MetricSpec {
   key: string;
@@ -68,6 +65,9 @@ interface Trigger {
   threshold: number;
   enabled: boolean;
   describes: string;
+  /** Registry ids this trigger watches; empty = all in my scope. */
+  vehicles: number[];
+  watches_all: boolean;
   unit: string | null;
   direction: 'below' | 'above' | null;
   /** The EXTRA channels this trigger asked for. */
@@ -100,8 +100,6 @@ export default function AlertTriggersSection(
   const [metrics, setMetrics] = useState<MetricSpec[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [maxPerUser, setMaxPerUser] = useState(0);
-  // What a trigger created here will reach, per the server.
-  const [defaultChannels, setDefaultChannels] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   // A SET, not a scalar: two requests in flight would otherwise have the
@@ -119,28 +117,22 @@ export default function AlertTriggersSection(
   // next one instead of dropping the keyboard user at the document top.
   const trashRefs = useRef(new Map<number, HTMLButtonElement | null>());
   const addBtnRef = useRef<HTMLButtonElement | null>(null);
-  const metricRef = useRef<HTMLButtonElement | null>(null);
 
   // The add form stays closed until asked for: this section is a LIST of
   // what you already watch, and an always-open empty form would make an
   // unconfigured page read as a chore rather than a summary.
   const [adding, setAdding] = useState(false);
-  const [draftMetric, setDraftMetric] = useState('');
-  const [draftValue, setDraftValue] = useState('');
 
   const load = useCallback(async () => {
     setFailed(false);
     try {
       const [cat, mine] = await Promise.all([
-        apiJSON<{
-          metrics: MetricSpec[]; max_per_user: number;
-          default_channels: string[];
-        }>(`${API}/metrics`),
+        apiJSON<{ metrics: MetricSpec[]; max_per_user: number }>(
+          `${API}/metrics`),
         apiJSON<{ triggers: Trigger[] }>(API),
       ]);
       setMetrics(cat.metrics);
       setMaxPerUser(cat.max_per_user);
-      setDefaultChannels(cat.default_channels || []);
       setTriggers(mine.triggers);
     } catch {
       setFailed(true);
@@ -151,58 +143,8 @@ export default function AlertTriggersSection(
 
   useEffect(() => { void load(); }, [load]);
 
-  // "your bell, Telegram and email" — built from the server's answer.
-  const defaultLabels = ['in_app', ...defaultChannels]
-    .map((c) => CHANNEL_LABEL[c] ?? c)
-    .join(', ')
-    .replace(/, ([^,]*)$/, ' and $1');
-
   const spec = (key: string) => metrics.find((m) => m.key === key);
-  const metricItems = useMemo(
-    () => metrics.map((m) => ({ value: m.key, label: m.label })), [metrics]);
-  const draftSpec = spec(draftMetric);
   const atCap = maxPerUser > 0 && triggers.length >= maxPerUser;
-
-  const rangeError = (): string => {
-    if (!draftSpec || draftValue === '') return '';
-    const n = Number(draftValue);
-    if (Number.isNaN(n)) return 'That has to be a number.';
-    // `min`/`max` on a number input constrain the spinner, not typing —
-    // without this check the only feedback is a round trip that fails.
-    if (n < draftSpec.min || n > draftSpec.max) {
-      return `${draftSpec.label} accepts ${draftSpec.min}–${draftSpec.max}${draftSpec.unit}.`;
-    }
-    return '';
-  };
-
-  const add = async () => {
-    if (!draftSpec || draftValue === '' || rangeError()) return;
-    if (busy.has('new')) return;
-    mark('new', true);
-    try {
-      const made = await apiJSON<Trigger>(API, {
-        method: 'POST',
-        // No channels in the body: the server's default applies, and
-        // where it goes is retuned on notification preferences — the same
-        // way a newly relevant alert type arrives with defaults there.
-        body: { metric: draftMetric, threshold: Number(draftValue) },
-      });
-      setTriggers((cur) => [made, ...cur]);
-      setAdding(false);
-      setDraftMetric('');
-      setDraftValue('');
-      onChanged?.();
-      // The form unmounts — put focus somewhere deliberate rather than
-      // letting it fall to <body>.
-      requestAnimationFrame(() => addBtnRef.current?.focus());
-    } catch (e) {
-      // The server's refusals are written to be read — "would fire on
-      // almost every vehicle" says more than "invalid input".
-      toast.error(e instanceof Error ? e.message : 'Could not add that trigger');
-    } finally {
-      mark('new', false);
-    }
-  };
 
   const toggle = async (t: Trigger, enabled: boolean) => {
     if (busy.has(t.id)) return;
@@ -376,15 +318,16 @@ export default function AlertTriggersSection(
                     Telegram off.  Read-only, so the row still answers
                     "did my change take" without owning the answer. */}
                 {m && (
-                  // The leading "to" is doing real work: with the
-                  // checkboxes gone, this run and the "while running" note
-                  // beside it are both muted 2xs and read as one string at
-                  // narrow widths.  A preposition restores the boundary
-                  // and makes the run a phrase rather than a list.
+                  // Two facts, two phrases.  Both are muted 2xs and sit
+                  // together at the end of the row, so each leads with a
+                  // preposition — without one they read as a single
+                  // string at narrow widths.
                   <span className="text-2xs text-muted-foreground shrink-0">
-                    to {t.delivers_to
-                      .map((c) => CHANNEL_LABEL[c] ?? c)
-                      .join(' · ')}
+                    {t.watches_all
+                      ? 'on every vehicle'
+                      : `on ${t.vehicles.length} vehicle${t.vehicles.length === 1 ? '' : 's'}`}
+                    {' · to '}
+                    {t.delivers_to.map((c) => CHANNEL_LABEL[c] ?? c).join(' · ')}
                   </span>
                 )}
                 {/* A row naming a metric the catalog no longer carries
@@ -412,144 +355,36 @@ export default function AlertTriggersSection(
         </ul>
       )}
 
-      {/* A real form when adding: Enter submits and Escape cancels, which
-          is what anyone typing a number expects.  A plain div of inputs
-          answers neither key. */}
-      {adding ? (
-        <form
-          aria-label="Add an alert trigger"
-          onSubmit={(e) => { e.preventDefault(); void add(); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); }
-          }}
-          className="flex flex-col gap-2 rounded-md border border-border p-3"
+      <div className="flex items-center gap-2">
+        <Button
+          ref={addBtnRef}
+          variant="outline"
+          size="sm"
+          aria-disabled={atCap}
+          onClick={() => { if (!atCap) setAdding(true); }}
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <span id="trg-metric-lbl" className="text-xs text-muted-foreground">
-              Watch
-            </span>
-            {/* ``items`` is what lets the closed trigger render the LABEL;
-                without it the control shows the raw catalog key. */}
-            <Select
-              value={draftMetric}
-              onValueChange={(v) => setDraftMetric(v ?? '')}
-              items={metricItems}
-            >
-              <SelectTrigger ref={metricRef} id="trg-metric"
-                             aria-labelledby="trg-metric-lbl trg-metric"
-                             className="h-8 w-56 text-xs">
-                <SelectValue placeholder="Pick a metric" />
-              </SelectTrigger>
-              <SelectContent>
-                {metrics.map((m) => (
-                  <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Plus /> Add
+        </Button>
+        {atCap && (
+          <span className="text-2xs text-muted-foreground">
+            {maxPerUser} is the limit — remove one to add another.
+          </span>
+        )}
+      </div>
 
-            {/* The direction is stated, never offered: the metric owns it,
-                and a comparator with one useful value is a control that
-                only invites a wrong answer.  Blank until a metric is
-                picked — "below" would be the wrong word for coolant. */}
-            <span className="text-xs text-muted-foreground">
-              {draftSpec?.direction ?? ''}
-            </span>
-
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={draftValue}
-              onChange={(e) => setDraftValue(e.target.value)}
-              disabled={!draftSpec}
-              min={draftSpec?.min}
-              max={draftSpec?.max}
-              // Half a volt is a real battery threshold; an integer step
-              // would put it out of the spinner's reach.
-              step={draftSpec && draftSpec.hysteresis < 1 ? 0.1 : 1}
-              aria-describedby="trg-help"
-              aria-invalid={!!rangeError()}
-              placeholder={draftSpec ? `${draftSpec.min}–${draftSpec.max}` : '—'}
-              aria-label={draftSpec
-                ? `Threshold in ${draftSpec.unit}, between ${draftSpec.min} and ${draftSpec.max}`
-                : 'Threshold'}
-              className="h-8 w-24 text-xs"
-            />
-            <span className="text-xs text-muted-foreground w-8">
-              {draftSpec?.unit ?? ''}
-            </span>
-
-            <Button
-              type="submit"
-              size="sm"
-              aria-disabled={!draftSpec || draftValue === '' || !!rangeError()
-                             || busy.has('new')}
-            >
-              Add
-            </Button>
-            <Tip label="Cancel">
-              <Button type="button" variant="ghost" size="icon"
-                      onClick={() => setAdding(false)}
-                      aria-label="Cancel adding a trigger">
-                <X />
-              </Button>
-            </Tip>
-          </div>
-
-          {/* The range lives HERE, not only in the placeholder — a
-              placeholder vanishes on the first keystroke, which is exactly
-              when someone needs to know the bounds.  Followed by the
-              metric's own sentence, which is what stops a number that is
-              physically meaningless for it. */}
-          <p id="trg-help" className="text-2xs text-muted-foreground">
-            {draftSpec ? (
-              <>
-                {rangeError() && (
-                  <span className="text-danger">{rangeError()} </span>
-                )}
-                Between {draftSpec.min} and {draftSpec.max}{draftSpec.unit}.{' '}
-                {draftSpec.hint}
-                {draftSpec.requires_engine === 'on'
-                  && ' Checked only while the engine is running.'}
-                {' '}Re-checked every {draftSpec.checked_every_minutes} minutes.
-              </>
-            ) : 'Pick what to watch, then the number.'}
-          </p>
-          {/* The channel names come from the SERVER's default, never a
-              sentence written here — a hardcoded promise about where an
-              alert will go is one nobody notices has gone stale. */}
-          <p className="text-2xs text-muted-foreground">
-            It’ll reach {defaultLabels || 'your bell'} to start with — change
-            where on{' '}
-            <Link to="/notifications/preferences"
-                  className="text-primary hover:underline">
-              notification preferences
-            </Link>.
-          </p>
-        </form>
-      ) : (
-        <div className="flex items-center gap-2">
-          <Button
-            ref={addBtnRef}
-            variant="outline"
-            size="sm"
-            aria-disabled={atCap}
-            onClick={() => {
-              if (atCap) return;
-              setAdding(true);
-              // Enter the form rather than leaving focus on a button that
-              // just vanished from the reading order.
-              requestAnimationFrame(() => metricRef.current?.focus());
-            }}
-          >
-            <Plus /> Add
-          </Button>
-          {atCap && (
-            <span className="text-2xs text-muted-foreground">
-              {maxPerUser} is the limit — remove one to add another.
-            </span>
-          )}
-        </div>
-      )}
+      {/* A Sheet, not the inline row this replaced: a trigger now also
+          carries a vehicle selection, and a fleet of 189 does not fit on
+          the line that held "Watch [metric] below [n] %". */}
+      <TriggerEditorSheet
+        open={adding}
+        onClose={() => {
+          setAdding(false);
+          // The trigger that opened it is gone from the reading order —
+          // put focus somewhere deliberate rather than on <body>.
+          requestAnimationFrame(() => addBtnRef.current?.focus());
+        }}
+        onSaved={() => { void load(); onChanged?.(); }}
+      />
     </Card>
   );
 }

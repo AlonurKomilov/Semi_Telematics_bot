@@ -4662,6 +4662,16 @@ async def migrate_alert_triggers(conn) -> None:
             "ALTER TABLE alert_triggers ADD COLUMN IF NOT EXISTS channels "
             "TEXT NOT NULL DEFAULT 'telegram_dm,email'"
         )
+        # Per-trigger vehicle targeting.  The default is '' and '' means
+        # EVERY vehicle in the owner's scope — so every row written before
+        # this column keeps exactly the meaning it had, and no backfill is
+        # needed.  No index: the sweep reads these rows without a
+        # predicate on this column, and an index in platform_schema.py on
+        # a column a migration adds crashes boot on upgrade.
+        await conn.execute(
+            "ALTER TABLE alert_triggers ADD COLUMN IF NOT EXISTS vehicles "
+            "TEXT NOT NULL DEFAULT ''"
+        )
         await conn.commit()
         logger.info("Migration: alert_triggers ready")
     except Exception as e:

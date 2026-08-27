@@ -442,3 +442,165 @@ class TestFiredHistory:
                          metric="fuel_pct", threshold=20, channels="web_push")
         assert t.chosen_channels == ["web_push"]
         assert "telegram_dm" not in t.chosen_channels
+
+
+class TestVehicleTargeting:
+    """Which vehicles a trigger watches.
+
+    Empty means EVERY vehicle in the owner's scope — the meaning every
+    trigger written before this column had, which is why the migration
+    needed no backfill.  A selection NARROWS that and can never widen it.
+    """
+
+    def test_empty_means_all_not_none(self):
+        t = AlertTrigger(id=1, account_id=1, owner_user_id=1,
+                         metric="fuel_pct", threshold=30)
+        assert t.target_ids == [] and t.targets_all is True
+
+    def test_a_row_predating_the_column_watches_everything(self):
+        """If '' did not mean "all", every existing trigger would go
+        silent on deploy — the failure nobody reports, because a trigger
+        that stops firing looks exactly like a quiet fleet."""
+        t = AlertTrigger.from_row({"id": 1, "account_id": 1, "owner_user_id": 1,
+                                   "metric": "fuel_pct", "threshold": 30.0})
+        assert t.targets_all is True
+
+    def test_ids_are_parsed_deduped_and_junk_dropped(self):
+        from capabilities.alerting.triggers.models import clean_vehicle_ids
+        assert clean_vehicle_ids([7, "7", " 9 ", "x", -1, 0]) == "7,9"
+        t = AlertTrigger(id=1, account_id=1, owner_user_id=1, metric="fuel_pct",
+                         threshold=30, vehicles="99, 12,abc,99")
+        # Deduped on READ too: the count is a number a person checks
+        # their work against, so "3 vehicles" for two would be a lie.
+        assert t.target_ids == [99, 12]
+
+    def test_targeting_uses_the_same_ladder_as_the_permission_wall(self):
+        from capabilities.permissions.vehicle_scope import VehicleScope
+        target = VehicleScope(registry_ids=frozenset({99}),
+                              external_ids=frozenset({"dev-new"}))
+        assert target.allows_row({"registry_id": 99, "vehicle_id": "dev-old"})
+        assert target.allows_row({"registry_id": None, "vehicle_id": "dev-new"})
+        assert not target.allows_row({"registry_id": 41, "vehicle_id": "dev-x"})
+
+    def test_a_target_has_no_name_rung(self):
+        """Deliberately absent.  Matching a target by NAME is how "230"
+        once matched 2303 on a visibility wall — an over-match here is an
+        alert about somebody else's truck."""
+        from capabilities.permissions.vehicle_scope import VehicleScope
+        target = VehicleScope(registry_ids=frozenset({99}))
+        assert not target.allows_row(
+            {"registry_id": None, "vehicle_id": "", "vehicle_name": "99"})
+
+
+class TestDeviceCollapse:
+    """One row per VEHICLE, where the query gives one row per DEVICE."""
+
+    def test_two_devices_on_one_vehicle_collapse_to_the_newest(self):
+        """Live on production: registry id 99 maps to two provider ids.
+        A gateway swap re-points telematics_ref on the SAME registry row,
+        and the retired device's last reading stays judgeable until the
+        metric's staleness bar (24h for fuel)."""
+        from capabilities.alerting.triggers.evaluator import _collapse_by_registry
+        rows = [
+            {"registry_id": 99, "vehicle_id": "old", "source_ts": "2026-08-26T01:00:00Z"},
+            {"registry_id": 99, "vehicle_id": "new", "source_ts": "2026-08-26T09:00:00Z"},
+        ]
+        out = _collapse_by_registry(rows)
+        assert len(out) == 1 and out[0]["vehicle_id"] == "new"
+
+    def test_unplaced_rows_are_never_merged_together(self):
+        """Three provider ids on the live account carry NULL registry_id.
+        Collapsing them into one bucket would silently drop two real
+        vehicles — they are unplaced, not the same truck."""
+        from capabilities.alerting.triggers.evaluator import _collapse_by_registry
+        rows = [{"registry_id": None, "vehicle_id": "a", "source_ts": "1"},
+                {"registry_id": None, "vehicle_id": "b", "source_ts": "2"}]
+        assert len(_collapse_by_registry(rows)) == 2
+
+    def test_a_single_device_fleet_is_unchanged(self):
+        from capabilities.alerting.triggers.evaluator import _collapse_by_registry
+        rows = [{"registry_id": i, "vehicle_id": f"v{i}", "source_ts": "1"}
+                for i in range(5)]
+        assert len(_collapse_by_registry(rows)) == 5
+
+
+class TestFeatureDimension:
+    """"Feature" is DERIVED from the catalog, never stored on the row."""
+
+    def test_every_metric_declares_its_owning_feature(self):
+        for m in cat.CATALOG:
+            assert m.feature, f"{m.key} has no feature"
+
+    def test_the_trigger_row_stores_no_feature(self):
+        """The catalog owns this fact.  A copy on the row would go stale
+        the day a metric moves to another feature — and the row has no
+        way to know it happened."""
+        import dataclasses
+        assert "feature" not in {f.name for f in dataclasses.fields(AlertTrigger)}
+
+    def test_registry_id_is_read_so_the_top_rung_is_reachable(self):
+        """Without this column VehicleScope's registry rung is dead code
+        on the sweep's rows and every verdict falls to the provider id —
+        exactly the identifier a gateway swap rewrites."""
+        assert "registry_id" in cat.columns_needed(["fuel_pct"])
+
+
+class TestTheSweepSeesTheSelection:
+    """The two reads of a trigger must agree about what it watches.
+
+    ``list_alert_triggers`` is what the dashboard shows; the sweep judges
+    ``list_enabled_alert_triggers``.  The first shipped with the
+    ``vehicles`` column and the second did not, so a person narrowing a
+    trigger to one truck saw "on 1 vehicle" while the sweep fired on
+    their whole fleet.
+
+    Silent, because ``from_row`` reads a missing column as '' and '' is
+    the legitimate "all my vehicles" default: no value says "this query
+    forgot to ask".  So the guard has to EXECUTE the sweep's own query.
+    """
+
+    async def test_the_sweep_query_returns_the_vehicle_selection(self, pg_db):
+        acct = await pg_db.create_account("Sweep Sees Co")
+        user = await pg_db.create_user(telegram_id=9931, account_id=acct.id)
+        made = await pg_db.create_alert_trigger(
+            acct.id, user.id, metric="fuel_pct", threshold=30.0, vehicles="7,9")
+        rows = await pg_db.list_enabled_alert_triggers()
+        mine = next(r for r in rows if int(r["id"]) == int(made["id"]))
+        assert "vehicles" in mine, (
+            "the sweep's query does not select `vehicles` — every targeted "
+            "trigger silently watches the whole fleet")
+        assert AlertTrigger.from_row(mine).target_ids == [7, 9]
+
+    async def test_both_reads_agree_about_one_trigger(self, pg_db):
+        acct = await pg_db.create_account("Agree Co")
+        user = await pg_db.create_user(telegram_id=9932, account_id=acct.id)
+        made = await pg_db.create_alert_trigger(
+            acct.id, user.id, metric="def_pct", threshold=10.0, vehicles="42")
+        shown = next(r for r in await pg_db.list_alert_triggers(
+            acct.id, owner_user_id=user.id) if int(r["id"]) == int(made["id"]))
+        judged = next(r for r in await pg_db.list_enabled_alert_triggers()
+                      if int(r["id"]) == int(made["id"]))
+        assert (AlertTrigger.from_row(shown).target_ids
+                == AlertTrigger.from_row(judged).target_ids == [42])
+
+    async def test_an_untargeted_trigger_still_watches_everything(self, pg_db):
+        acct = await pg_db.create_account("All Co")
+        user = await pg_db.create_user(telegram_id=9933, account_id=acct.id)
+        made = await pg_db.create_alert_trigger(
+            acct.id, user.id, metric="fuel_pct", threshold=25.0)
+        judged = next(r for r in await pg_db.list_enabled_alert_triggers()
+                      if int(r["id"]) == int(made["id"]))
+        assert AlertTrigger.from_row(judged).targets_all is True
+
+    def test_the_tenant_router_import_resolves(self):
+        """``_validate_targets`` and the vehicle picker both reach for
+        ``get_router``.  It lives in ``infra.platform``; importing it from
+        ``infra.tenant`` raises at CALL time, inside the function — which
+        500s the picker, and with it the whole Add sheet, because the
+        metrics fetch shares one Promise.all with the vehicle fetch."""
+        from infra.platform import get_router
+        assert callable(get_router)
+        import infra.tenant
+        assert not hasattr(infra.tenant, "get_router"), (
+            "get_router now also lives in infra.tenant — if it moved, "
+            "update the imports in triggers/router.py to match")

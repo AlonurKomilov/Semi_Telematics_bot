@@ -444,6 +444,17 @@ async def create_tables(conn) -> None:
             -- optional — a trigger you created but cannot find a record of
             -- is worse than one you muted.
             channels       TEXT    NOT NULL DEFAULT 'telegram_dm,email',
+            -- Which vehicles this trigger watches, as a csv of
+            -- vehicles.id.  '' = every vehicle in the owner's scope,
+            -- which is what every trigger written before this column
+            -- meant and still means.  Same shape as alert_topics.subtypes
+            -- ("csv of selected sub-categories, '' = every sub-category")
+            -- because it is the same idea: narrow this alert to a subset,
+            -- empty means all.  REGISTRY ids, never the provider id: a
+            -- gateway swap rewrites telematics_ref in place, so a
+            -- provider-keyed target would follow the device onto a
+            -- different truck and alert about the wrong one, silently.
+            vehicles       TEXT    NOT NULL DEFAULT '',
             created_at     TEXT    NOT NULL DEFAULT '',
             updated_at     TEXT    NOT NULL DEFAULT ''
         );

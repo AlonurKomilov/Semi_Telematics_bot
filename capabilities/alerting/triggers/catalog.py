@@ -96,6 +96,15 @@ class Metric:
     #: Shown under the number in the editor — the sentence that stops
     #: someone setting a physically meaningless threshold.
     hint: str = ""
+    #: Which product FEATURE owns this metric — the same dimension the
+    #: Alerts board's "Feature" column shows, and the id used by
+    #: interfaces/dashboard/src/featureCatalog.ts.  DECLARED here rather
+    #: than stored on the trigger row: the catalog already owns every
+    #: other fact about a metric, and a copy on the row would go stale
+    #: the day a metric moves to another feature.  It groups the metric
+    #: picker; with one feature there is nothing to choose, which is why
+    #: it is a heading and not a control.
+    feature: str = "vehicles"
 
 
 CATALOG: tuple[Metric, ...] = (
@@ -189,7 +198,18 @@ def columns_needed(keys) -> list[str]:
     logged rather than raised.  The name a person reads in the DM is
     resolved separately from the live tier, which does carry it.
     """
-    cols = {"vehicle_id", "engine_state", "source_ts", "captured_at"}
+    # ``registry_id`` is what makes VehicleScope's TOP rung reachable.
+    # Without it every scope verdict on these rows is decided by the
+    # provider id alone — rung 1 (registry) and rung 3 (name) both fall
+    # through, so the ladder documented in vehicle_scope.py was, on this
+    # query, a one-rung ladder.  It is also the key a targeted trigger
+    # stores, because the provider id is rewritten in place by a gateway
+    # swap and would follow the DEVICE onto a different truck.
+    # Verified present on warehouse.vehicle_state_minute before this was
+    # added (integer, nullable, 98.7% populated on the live account) —
+    # a column that is not there kills every sweep in silence.
+    cols = {"vehicle_id", "registry_id", "engine_state", "source_ts",
+            "captured_at"}
     for k in keys:
         m = get_metric(k)
         if m is not None:
