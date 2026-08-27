@@ -1,24 +1,21 @@
-"""API tests for the Phase B Live Map overlay endpoints.
+"""GET /api/parking/utilisation/heatmap — the UtilisationHeatmap feed.
 
-Covers:
-  GET /api/maintenance/due-locations  — Fleet's MaintenanceMarkersLayer
-  GET /api/parking/utilisation/heatmap  — Owner/Admin's UtilisationHeatmap
+Server-aggregated points for a map overlay: zero coordinates and
+zero-duration stays are dropped, weight is capped at 24h, and a driver
+is refused outright.
 
-Both endpoints are server-aggregated counts/points for map overlays —
-the frontend never fetches the raw rows for performance reasons, so
-the shape contract matters and is asserted here.
+Split from tests/test_live_map_overlay_endpoints.py — see the sibling
+features/maintenance/tests/test_due_locations_endpoint.py for why.
 """
 
 from __future__ import annotations
 
 import os
-import sys
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 import pytest_asyncio
-
 from httpx import ASGITransport, AsyncClient
 
 from adapters.storage import Role
@@ -26,9 +23,9 @@ from interfaces.api.auth import create_jwt
 
 
 @pytest_asyncio.fixture
-async def app_client(pg_db):
+async def heatmap_app(pg_db):
     db = pg_db
-    acct = await db.create_account("Live Map Overlay Co")
+    acct = await db.create_account("Utilisation Heatmap Co")
     await db.add_company(acct.id, "LMO", "samsara_test", "LMO")
     owner = await db.create_user(960001, acct.id, role=Role.OWNER)
     driver = await db.create_user(960002, acct.id, role=Role.DRIVER)
@@ -56,85 +53,9 @@ def _hdr(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-# ── /maintenance/due-locations ───────────────────────────────────
-
-
 @pytest.mark.asyncio
-async def test_maintenance_due_locations_empty_account(app_client):
-    s = app_client
-    r = await s["client"].get(
-        "/api/maintenance/due-locations", headers=_hdr(s["tokens"]["fleet"]),
-    )
-    assert r.status_code == 200
-    body = r.json()
-    assert body == {"items": [], "count": 0}
-
-
-@pytest.mark.asyncio
-async def test_maintenance_due_locations_aggregates_per_vehicle(app_client):
-    """Three tasks across two vehicles → two aggregated rows.  Counts
-    distinguish pending vs. overdue per the schema's status column."""
-    s = app_client
-    db = s["db"]
-    acct = s["acct"]
-    # Two pending tasks on Truck-1, one overdue on Truck-2.
-    await db.add_maintenance_task(
-        acct.id, "LMO", "Truck-1", "oil_change", "Oil change",
-        vehicle_id="v-001",
-    )
-    await db.add_maintenance_task(
-        acct.id, "LMO", "Truck-1", "tire_rotation", "Tires",
-        vehicle_id="v-001",
-    )
-    tid = await db.add_maintenance_task(
-        acct.id, "LMO", "Truck-2", "brake", "Brakes",
-        vehicle_id="v-002",
-    )
-    await db.update_maintenance_status(tid, "overdue", acct.id)
-
-    r = await s["client"].get(
-        "/api/maintenance/due-locations", headers=_hdr(s["tokens"]["fleet"]),
-    )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["count"] == 2
-
-    by_name = {row["vehicle_name"]: row for row in body["items"]}
-    assert by_name["Truck-1"]["pending_count"] == 2
-    assert by_name["Truck-1"]["overdue_count"] == 0
-    assert by_name["Truck-2"]["pending_count"] == 0
-    assert by_name["Truck-2"]["overdue_count"] == 1
-
-
-@pytest.mark.asyncio
-async def test_maintenance_due_locations_driver_scope_returns_empty_when_no_trucks(app_client):
-    """Driver has ``can_maintenance_vehicle=True`` (they can see their own
-    truck's tasks) but no truck assignments in this fixture, so the
-    response is an empty list — not a 403.  This matches the
-    storage-mixin contract: _own scope with no trucks safe-denies to
-    an empty result so we never leak the unfiltered account list."""
-    s = app_client
-    db = s["db"]
-    acct = s["acct"]
-    # Seed a task that exists on the account but isn't on a driver's truck.
-    await db.add_maintenance_task(
-        acct.id, "LMO", "OtherTruck", "oil_change", "Oil",
-        vehicle_id="v-x",
-    )
-
-    r = await s["client"].get(
-        "/api/maintenance/due-locations", headers=_hdr(s["tokens"]["driver"]),
-    )
-    assert r.status_code == 200
-    assert r.json() == {"items": [], "count": 0}
-
-
-# ── /parking/utilisation/heatmap ───────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_utilisation_heatmap_empty_account(app_client):
-    s = app_client
+async def test_utilisation_heatmap_empty_account(heatmap_app):
+    s = heatmap_app
     r = await s["client"].get(
         "/api/parking/utilisation/heatmap", headers=_hdr(s["tokens"]["owner"]),
     )
@@ -144,10 +65,10 @@ async def test_utilisation_heatmap_empty_account(app_client):
 
 
 @pytest.mark.asyncio
-async def test_utilisation_heatmap_skips_zero_coord_and_zero_duration(app_client):
+async def test_utilisation_heatmap_skips_zero_coord_and_zero_duration(heatmap_app):
     """Server filters: points at (0, 0) and zero-duration rows are
     excluded so they don't pollute the heatmap weight calculation."""
-    s = app_client
+    s = heatmap_app
     db = s["db"]
     acct = s["acct"]
     # Three events: one valid, one at origin, one with zero duration.
@@ -194,10 +115,10 @@ async def test_utilisation_heatmap_skips_zero_coord_and_zero_duration(app_client
 
 
 @pytest.mark.asyncio
-async def test_utilisation_heatmap_caps_weight_at_24h(app_client):
+async def test_utilisation_heatmap_caps_weight_at_24h(heatmap_app):
     """A 72-hour weekend stop is capped at 24 so it doesn't drown out
     busy-weekday stops on the heatmap."""
-    s = app_client
+    s = heatmap_app
     db = s["db"]
     acct = s["acct"]
     await db.upsert_parking_event(
@@ -218,10 +139,10 @@ async def test_utilisation_heatmap_caps_weight_at_24h(app_client):
 
 
 @pytest.mark.asyncio
-async def test_utilisation_heatmap_driver_blocked(app_client):
+async def test_utilisation_heatmap_driver_blocked(heatmap_app):
     """Driver doesn't have ``can_vehicle_all`` → 403.  Overlay hides
     on this status (UtilisationHeatmap is Owner/Admin only)."""
-    s = app_client
+    s = heatmap_app
     r = await s["client"].get(
         "/api/parking/utilisation/heatmap", headers=_hdr(s["tokens"]["driver"]),
     )
@@ -229,8 +150,8 @@ async def test_utilisation_heatmap_driver_blocked(app_client):
 
 
 @pytest.mark.asyncio
-async def test_utilisation_heatmap_days_param_roundtrips(app_client):
-    s = app_client
+async def test_utilisation_heatmap_days_param_roundtrips(heatmap_app):
+    s = heatmap_app
     r = await s["client"].get(
         "/api/parking/utilisation/heatmap?days=7",
         headers=_hdr(s["tokens"]["owner"]),
