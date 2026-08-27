@@ -133,7 +133,16 @@ recon.register_reconciled_entity(
 
 def _index_existing(existing: list["Vehicle"]) -> tuple[dict, dict, dict]:
     """Build VIN / plate / unit lookups over the current registry, so a
-    planner and the projection match identically."""
+    planner and the projection match identically.
+
+    IDENTITY vs LABEL, the same split the ref match makes.  A VIN and a
+    plate name a physical asset, so a retired row still owns them and
+    still matches — that is what stops an archived truck reappearing as
+    a brand-new row on the next sync.  A unit number is a LABEL people
+    REUSE: once a truck is retired its door number can legitimately go
+    on a different truck, and matching THAT by name would merge two
+    vehicles' histories into one row.  So labels index live rows only.
+    """
     by_vin: dict[str, Vehicle] = {}
     by_plate: dict[str, Vehicle] = {}
     by_unit: dict[str, list[Vehicle]] = {}
@@ -142,7 +151,8 @@ def _index_existing(existing: list["Vehicle"]) -> tuple[dict, dict, dict]:
             by_vin.setdefault(v.vin.strip().upper(), v)
         if v.plate_number:
             by_plate.setdefault(v.plate_number.strip().upper(), v)
-        by_unit.setdefault(v.unit_number.strip().lower(), []).append(v)
+        if v.is_active:
+            by_unit.setdefault(v.unit_number.strip().lower(), []).append(v)
     return by_vin, by_plate, by_unit
 
 
@@ -196,6 +206,13 @@ class Vehicle:
     # Telematics gateway hardware serial — an identity anchor the
     # ingest's identity watch compares each tick (gateway_swap events).
     gateway_serial: str = ""
+    #: Why this row is inactive — ``'operator'`` (a person retired it),
+    #: ``'sweep'`` (the badge went silent), or ``''`` while active.
+    archived_reason: str = ""
+    #: The operator status archiving overwrote, so a restore can put it
+    #: back.  Empty for sweep-retired rows: their status was never
+    #: touched, so the live value already IS the pre-archive one.
+    status_before_archive: str = ""
 
 
 def _parse_provenance(raw: Any) -> dict:
@@ -207,17 +224,25 @@ def _parse_provenance(raw: Any) -> dict:
         return {}
 
 
+#: The value ``archived_reason`` carries when a PERSON retired the row.
+#: The other is ``'sweep'`` — the departure sweep dropping a badge that
+#: went silent, which the ingest is meant to revive when it reports
+#: again.  Gating anything on bare ``is_active`` conflates the two and
+#: permanently zombies a swept truck whose gateway comes back.
+ARCHIVED_BY_OPERATOR = "operator"
+
+
 def _operator_retired(v: Vehicle) -> bool:
     """Did a PERSON retire this row, or did the departure sweep?
 
-    The discriminator is the operator's ``status`` column: the sweep
-    writes only ``is_active``, deliberately ("the operator status column
-    is deliberately absent from this UPDATE"), while both human paths —
-    ``deactivate_vehicle`` and a split's ``archive_old`` — set
-    ``status = 'inactive'`` alongside it.  One flag, two meanings, and
-    the second column is what tells them apart.
+    Reads the column that says so.  This used to infer it from
+    ``status == 'inactive'`` — encoding lifecycle in a free-text
+    operator field, which is the side-channel that made the two
+    indistinguishable to begin with.  Migration 201 moved the answer
+    into ``archived_reason`` and the heuristic survives only inside
+    that migration.
     """
-    return not v.is_active and str(v.status or "").strip().lower() == "inactive"
+    return not v.is_active and v.archived_reason == ARCHIVED_BY_OPERATOR
 
 
 def _row_to_vehicle(r) -> Vehicle:
@@ -232,6 +257,8 @@ def _row_to_vehicle(r) -> Vehicle:
         field_provenance=_parse_provenance(r[17] if len(r) > 17 else None),
         datatruck_ref=(r[18] or "") if len(r) > 18 else "",
         gateway_serial=(r[19] or "") if len(r) > 19 else "",
+        archived_reason=(r[20] or "") if len(r) > 20 else "",
+        status_before_archive=(r[21] or "") if len(r) > 21 else "",
     )
 
 
@@ -239,7 +266,8 @@ _SELECT = (
     "SELECT id, account_id, company_code, unit_number, vehicle_type, vin, "
     "plate_number, make, model, year, status, source, telematics_ref, "
     "notes, is_active, created_at, updated_at, field_provenance, "
-    "datatruck_ref, gateway_serial FROM vehicles"
+    "datatruck_ref, gateway_serial, archived_reason, status_before_archive "
+    "FROM vehicles"
 )
 
 
@@ -377,7 +405,11 @@ class VehiclesRegistryMixin(_MixinBase):
                 params.append(str(restore_vin))
             if archive_old:
                 sets.append("is_active = 0")
+                sets.append(
+                    "status_before_archive = CASE WHEN status_before_archive "
+                    "= '' THEN status ELSE status_before_archive END")
                 sets.append("status = 'inactive'")
+                sets.append(f"archived_reason = '{ARCHIVED_BY_OPERATOR}'")
             await self._db.execute(
                 f"UPDATE vehicles SET {', '.join(sets)} "
                 "WHERE id = ? AND account_id = ?",
@@ -541,21 +573,55 @@ class VehiclesRegistryMixin(_MixinBase):
         async with self.transaction():
             old_status = None
             unit = ""
-            if actor_user_id is not None:
-                cur = await self._db.execute(
-                    "SELECT status, unit_number FROM vehicles "
-                    "WHERE id = ? AND account_id = ?",
-                    (vehicle_id, account_id),
-                )
-                r = await cur.fetchone()
-                if r:
-                    old_status, unit = r[0], r[1]
+            ref = ""
+            # Read unconditionally: the trail entry needs the status and
+            # unit, and the live-row drop below needs the ref whether or
+            # not there is an actor to record.
             cur = await self._db.execute(
-                "UPDATE vehicles SET is_active = 0, status = 'inactive', "
+                "SELECT status, unit_number, telematics_ref FROM vehicles "
+                "WHERE id = ? AND account_id = ?",
+                (vehicle_id, account_id),
+            )
+            r = await cur.fetchone()
+            if r:
+                old_status, unit, ref = r[0], r[1], (r[2] or "")
+            # `status = 'inactive'` stays — existing readers depend on
+            # it — but the value it overwrites is kept, so a restore can
+            # put the truck back the way it was instead of guessing
+            # 'active' over a truck that was in the shop.
+            cur = await self._db.execute(
+                "UPDATE vehicles SET is_active = 0, "
+                "status_before_archive = CASE WHEN status_before_archive = '' "
+                "  THEN status ELSE status_before_archive END, "
+                "status = 'inactive', archived_reason = ?, "
                 "updated_at = ? WHERE id = ? AND account_id = ?",
-                (self._now(), vehicle_id, account_id),
+                (ARCHIVED_BY_OPERATOR, self._now(), vehicle_id, account_id),
             )
             touched = cur.rowcount > 0
+            # Drop the live row NOW, rather than leaving it to the
+            # departure sweep 30 days from now.  The ingest gate stops
+            # NEW rows, but the last one already written keeps a fresh
+            # `captured_at` — and billing counts exactly that, so the
+            # customer would go on paying for a truck they retired until
+            # the sweep collected it.  Every staleness gate downstream
+            # closes on the same act.  History (minute/hour/day tiers)
+            # is untouched; this is the "now" row only, and the ingest
+            # rebuilds it the moment the truck is restored.
+            if touched and ref:
+                try:
+                    # Through the warehouse mixin, never raw SQL from
+                    # here: physical warehouse tables are machinery-
+                    # internal and CI enforces it
+                    # (tests/test_layer_boundaries.py).
+                    await self.drop_live_state(account_id, ref)
+                except Exception:
+                    # The archive itself stands; the row goes stale on
+                    # its own once the gate stops refreshing it.
+                    logger.warning(
+                        "archive: live row not cleared for vehicle %d "
+                        "acct=%d — it will age out instead",
+                        vehicle_id, account_id, exc_info=True,
+                    )
             if touched and actor_user_id is not None:
                 await self.append_activity_events(account_id, [{
                     "entity_type": "vehicle", "entity_id": vehicle_id,
@@ -605,7 +671,14 @@ class VehiclesRegistryMixin(_MixinBase):
         if not rows:
             return 0
         precedence = await recon.get_precedence(self, account_id, "vehicle")
-        existing = await self.list_vehicles(account_id)
+        # INCLUDING retired rows, for the same reason as
+        # `upsert_from_integration`: a retired row still owns its VIN,
+        # its plate and its (company, unit) in the unique index.  This
+        # sibling kept the active-only blind spot after that one was
+        # fixed, so a truck archived here reappeared as a brand-new
+        # active row on the next roster sync — the archive silently
+        # undone, and a second row for one physical asset.
+        existing = await self.list_vehicles(account_id, include_inactive=True)
         by_vin, by_plate, by_unit = _index_existing(existing)
         # Ref-first: a stamped datatruck_ref decides identity outright on
         # every re-sync; the natural keys below are DISCOVERY for the first
@@ -796,6 +869,31 @@ class VehiclesRegistryMixin(_MixinBase):
                 "total": len(new) + len(enrich) + len(review) + unchanged,
             },
         }
+
+    async def operator_archived_refs(self, account_id: int) -> set[str]:
+        """Telematics refs belonging to trucks a PERSON archived.
+
+        The ingest drops state rows for these: no new live/minute rows,
+        so every downstream staleness gate closes on its own and the
+        billed count — which reads ``vehicle_state_live.captured_at``,
+        not the registry — stops counting a truck that left.
+
+        ``archived_reason = 'operator'`` and NOT bare ``is_active = 0``.
+        A SWEPT badge must keep ingesting the moment it reports again,
+        which is the departure sweep's documented contract; gating it
+        here would zombie it permanently.
+
+        The ref itself is never cleared — that is identity, and this is
+        lifecycle.  Keeping it is what lets a restore re-attach the
+        truck to its own device in one act.
+        """
+        cur = await self._db.execute(
+            "SELECT telematics_ref FROM vehicles "
+            "WHERE account_id = ? AND telematics_ref <> '' "
+            "AND is_active = 0 AND archived_reason = ?",
+            (account_id, ARCHIVED_BY_OPERATOR),
+        )
+        return {str(r[0]) for r in await cur.fetchall() if r[0]}
 
     async def registry_ids_by_telematics_ref(
         self, account_id: int,

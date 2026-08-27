@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from capabilities.integrations.samsara.sync import _detect_identity_events
+from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 IDENT = {"ref1": {"vin": "1XKAD49X1KJ211111", "gateway_serial": "G-AAA",
                   "registry_id": 37, "unit_number": "128",
@@ -371,4 +372,150 @@ def test_the_resolve_endpoint_actually_calls_the_recorder():
         "an identity answer would go unrecorded — the trail entry is "
         "the only place an owner can see who welded two histories "
         "together"
+    )
+
+
+# ── The archive gate ────────────────────────────────────────────────
+#
+# An operator-archived truck whose gateway is still bolted in kept
+# every warehouse-driven feature alive: alerts DMing, maintenance
+# posting "overdue" with a live odometer, PTI inspections assigned to
+# drivers, scorecard digests, parking and camera AI spend — and the
+# billed quantity, which counts `vehicle_state_live.captured_at` and
+# never looks at the registry at all.  61 of 88 verified leaks read
+# that table without joining `vehicles`, so they cannot ask whether a
+# truck is archived.  The gate answers for them, once, at the write.
+
+
+def _rows(*refs):
+    return [{"vehicle_id": r, "name": f"unit-{r}", "speed_mph": 0} for r in refs]
+
+
+def _gate(rows, archived_refs):
+    """The filter exactly as sync.py applies it."""
+    return [r for r in rows
+            if str(r.get("vehicle_id") or "") not in archived_refs]
+
+
+def test_the_gate_drops_only_the_archived_ref():
+    kept = _gate(_rows("aaa", "bbb", "ccc"), {"bbb"})
+    assert [r["vehicle_id"] for r in kept] == ["aaa", "ccc"]
+
+
+def test_an_empty_archived_set_changes_nothing():
+    # Fail-open: a registry read that failed yields an empty set, and one
+    # leaked tick is a far smaller harm than blanking a fleet's telemetry
+    # on a transient database error.
+    rows = _rows("aaa", "bbb")
+    assert _gate(rows, set()) == rows
+
+
+@pytest.mark.asyncio
+async def test_only_operator_archived_refs_are_gated(pg_db):
+    """Bare `is_active = 0` would zombie a swept truck forever.
+
+    The departure sweep retires a badge that went silent and promises
+    it will ingest again the moment it reports — so the gate must key
+    on the operator's decision, never on the flag alone.
+    """
+    acct = 10009001
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "A1", "telematics_ref": "ref-a"},
+        {"company_code": "PTG", "unit_number": "B2", "telematics_ref": "ref-b"},
+        {"company_code": "PTG", "unit_number": "C3", "telematics_ref": "ref-c"},
+    ], source="samsara")
+    rows = {v.unit_number: v for v in await pg_db.list_vehicles(acct)}
+
+    # A person archives A1; the sweep retires B2 for silence.
+    await pg_db.deactivate_vehicle(acct, rows["A1"].id)
+    await pg_db._db.execute(
+        "UPDATE vehicles SET is_active = 0 WHERE id = ?", (rows["B2"].id,))
+    await pg_db._db.commit()
+
+    gated = await pg_db.operator_archived_refs(acct)
+    assert gated == {"ref-a"}, (
+        "the swept badge must keep ingesting so it can be revived")
+
+
+@pytest.mark.asyncio
+async def test_archiving_records_why_and_keeps_the_status_it_overwrote(pg_db):
+    """Restore has to put the truck back the way it was.
+
+    Archiving stamps status='inactive' over whatever the operator had
+    set — 'yard', 'shop', 'available' — so without keeping the previous
+    value a restore can only guess 'active' over a truck that was in
+    the shop.
+    """
+    acct = 10009002
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "D4", "telematics_ref": "ref-d",
+         "status": "shop"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    await pg_db._db.execute(
+        "UPDATE vehicles SET status = 'shop' WHERE id = ?", (v.id,))
+    await pg_db._db.commit()
+
+    await pg_db.deactivate_vehicle(acct, v.id, actor_user_id=7)
+    (archived,) = await pg_db.list_vehicles(acct, include_inactive=True)
+    assert archived.archived_reason == "operator"
+    assert archived.status_before_archive == "shop"
+    assert archived.status == "inactive"
+    # Identity is NOT destroyed — that is what lets a restore re-attach
+    # the truck to its own device in one act.
+    assert archived.telematics_ref == "ref-d"
+
+
+@pytest.mark.asyncio
+async def test_the_identity_watch_still_sees_an_archived_truck(pg_db):
+    """The gate runs AFTER the watch, and that order is load-bearing.
+
+    If a gateway is pulled off an archived truck and bolted into a
+    different one, the VIN change must still be recorded — otherwise
+    the archived row keeps a telematics_ref that now names another
+    physical truck, and restoring it would re-attach the wrong vehicle.
+    """
+    acct = 10009003
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "E5", "telematics_ref": "ref-e",
+         "vin": "VINOLD0000000001"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    await pg_db.deactivate_vehicle(acct, v.id)
+
+    ident = await pg_db.get_identity_map(acct)
+    assert "ref-e" in ident, (
+        "an archived truck must stay visible to the identity watch, or a "
+        "gateway moving onto another truck goes unrecorded")
+
+
+def test_the_state_write_still_has_exactly_one_call_site():
+    """The gate filters rows in sync.py, immediately before the single
+    call to ``upsert_vehicle_state``.  That is only a complete gate
+    while there IS one call site.  A second provider learning to write
+    vehicle state would slip past it silently — so the guard is a test,
+    not a comment.
+
+    If this fires: move the filter into a shared ingest helper both
+    callers use, rather than copying it.
+    """
+    import re
+    from pathlib import Path
+
+    repo = _REPO
+    callers = []
+    for path in repo.rglob("*.py"):
+        parts = set(path.parts)
+        if parts & {"node_modules", ".git", "tests", "__pycache__"}:
+            continue
+        if path.name.startswith("test_"):
+            continue
+        text = path.read_text(errors="ignore")
+        for m in re.finditer(r"\.upsert_vehicle_state\s*\(", text):
+            line = text.count("\n", 0, m.start()) + 1
+            callers.append(f"{path.relative_to(repo)}:{line}")
+
+    assert len(callers) == 1, (
+        "the archive gate covers one write into vehicle_state_live; "
+        f"found {len(callers)}: {callers}"
     )

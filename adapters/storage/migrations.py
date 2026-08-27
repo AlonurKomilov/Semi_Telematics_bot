@@ -9176,3 +9176,81 @@ async def migrate_drop_retired_application_notice_tables(conn) -> None:
             return
     await conn.commit()
     logger.info("Migration 190: retired application notice tables dropped")
+
+
+@_register("201_vehicle_archive_state")
+async def migrate_vehicle_archive_state(conn) -> None:
+    """Tell apart a truck a PERSON retired from one the sweep dropped.
+
+    ``vehicles.is_active = 0`` has carried both meanings, separable
+    only by a side-effect: the departure sweep writes the flag alone
+    (``vehicle_departure.py`` — "the operator status column is
+    deliberately absent from this UPDATE"), while both human paths,
+    ``deactivate_vehicle`` and a split's ``archive_old``, also stamp
+    ``status = 'inactive'``.  Reading lifecycle out of a free-text
+    status string is the side-channel that made the two
+    indistinguishable in the first place, and it is read on the ingest
+    hot path — every tick, per row.
+
+    Not derived from the activity trail, which cannot answer it: the
+    sweep records no event at all, so on the account this was written
+    for six of seven archived rows have no trail evidence.  The trail
+    is also subject to the retention engine, and lifecycle state must
+    not evaporate because a prune ran.
+
+    ``status_before_archive`` exists because archiving OVERWRITES the
+    operator's status (yard / shop / available), which made restore
+    impossible to do honestly.  Sweep-retired rows need none — their
+    status was never touched, so it already IS the pre-archive value.
+
+    No index: both columns are read per-row alongside the primary key,
+    where an index buys nothing.
+    """
+    for ddl in (
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "
+        "archived_reason TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "
+        "status_before_archive TEXT NOT NULL DEFAULT ''",
+    ):
+        await conn.execute(ddl)
+
+    # Backfill with the heuristic this migration retires.  It survives
+    # HERE and nowhere else: after this runs, code reads the column.
+    await conn.execute(
+        "UPDATE vehicles SET archived_reason = 'operator' "
+        "WHERE is_active = 0 AND lower(status) = 'inactive' "
+        "AND archived_reason = ''"
+    )
+    await conn.execute(
+        "UPDATE vehicles SET archived_reason = 'sweep' "
+        "WHERE is_active = 0 AND archived_reason = ''"
+    )
+    # Recover the pre-archive status for the operator rows that have a
+    # trail entry — `deactivate_vehicle` records
+    # {"status": {"from": <previous>, "to": "inactive"}}.  Rows with no
+    # entry keep '' and restore falls back to 'active', which is honest:
+    # we do not know, so we do not invent.
+    try:
+        await conn.execute(
+            """
+            UPDATE vehicles v SET status_before_archive = t.prev
+              FROM (
+                SELECT e.entity_id::int AS vid,
+                       e.changes::json -> 'status' ->> 'from' AS prev
+                  FROM activity_events e
+                 WHERE e.entity_type = 'vehicle' AND e.action = 'deactivate'
+                   AND e.changes::json -> 'status' ->> 'from' IS NOT NULL
+              ) t
+             WHERE v.id = t.vid AND v.archived_reason = 'operator'
+               AND v.status_before_archive = ''
+            """
+        )
+    except Exception:
+        # A trail row with a non-JSON `changes`, or no trail at all.
+        # The columns are the state; the trail was only ever evidence.
+        logger.info(
+            "Migration 201: pre-archive status not recovered from the trail"
+        )
+
+    await conn.commit()
+    logger.info("Migration 201: vehicles carry why they were archived")

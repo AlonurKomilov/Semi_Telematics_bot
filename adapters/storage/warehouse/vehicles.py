@@ -192,6 +192,30 @@ class VehiclesWarehouseMixin(_MixinBase):
 
     # ── vehicle_state_hour ────────────────────────────────────
 
+    async def drop_live_state(self, account_id: int, vehicle_id: str) -> int:
+        """Forget the "now" row for one badge.  History is untouched.
+
+        Called when a person archives a truck.  The ingest gate stops
+        NEW rows, but the last one already written keeps a fresh
+        ``captured_at`` — and the billed quantity counts exactly that,
+        not the registry, so without this the customer keeps paying for
+        a retired truck until the departure sweep collects the row up to
+        thirty days later.  Every downstream staleness gate closes on
+        the same act.
+
+        Only the live tier: the minute/hour/day/week rows ARE the
+        history this whole archive concept exists to keep, and the
+        ingest rebuilds the live row the moment the truck is restored.
+        """
+        if not vehicle_id:
+            return 0
+        cur = await self._db.execute(
+            "DELETE FROM vehicle_state_live "
+            "WHERE account_id = ? AND vehicle_id = ?",
+            (account_id, vehicle_id),
+        )
+        return getattr(cur, "rowcount", 0) or 0
+
     async def upsert_vehicle_state_hour(
         self,
         account_id: int,

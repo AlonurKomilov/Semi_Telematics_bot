@@ -280,6 +280,19 @@ async def ingest_vehicle_state(account_id: int) -> int:
             "last known registry link", account_id,
         )
         ref_to_id = {}
+    # Trucks a PERSON archived.  Their rows are dropped below, AFTER the
+    # identity watch has read them — see the filter for why the order
+    # matters.  FAIL-OPEN: a registry read that fails ingests everything,
+    # because one leaked tick is a smaller harm than blanking a fleet's
+    # telemetry on a transient database error.
+    try:
+        archived_refs = await tenant.operator_archived_refs(account_id)
+    except Exception:
+        logger.exception(
+            "archived-vehicle filter unavailable acct=%d — ingesting "
+            "everything this tick", account_id,
+        )
+        archived_refs = set()
     if ref_to_id:
         for row in rows:
             vid = str(row.get("vehicle_id") or "")
@@ -332,6 +345,39 @@ async def ingest_vehicle_state(account_id: int) -> int:
     except Exception:
         logger.debug("identity watch skipped acct=%d", account_id,
                      exc_info=True)
+
+    # ── The archive gate ────────────────────────────────────────
+    # Placed HERE, after `_detect_identity_events` above has already
+    # read `rows`, and that order is load-bearing.  If a gateway is
+    # pulled off an archived truck and bolted into a different one, the
+    # VIN change still has to reach `device_event_log` — otherwise the
+    # archived row keeps a telematics_ref that now names another
+    # physical truck, and restoring it would re-attach the wrong
+    # vehicle.  Silencing the truck must not silence the watch.
+    #
+    # Dropping the rows is what actually stops the 60-odd downstream
+    # readers of `vehicle_state_*`: none of them join `vehicles`, so
+    # they cannot ask whether a truck is archived.  With no fresh row
+    # their own staleness gates close, and billing — which counts
+    # `vehicle_state_live.captured_at`, not registry rows — stops
+    # charging for a truck that left.
+    #
+    # Nobody may read the ABSENCE as a fact.  "Archived" and "gateway
+    # broken" look identical in the warehouse and always did; the
+    # registry answers that question and is the only thing that may.
+    if archived_refs:
+        before = len(rows)
+        rows = [r for r in rows
+                if str(r.get("vehicle_id") or "") not in archived_refs]
+        dropped = before - len(rows)
+        if dropped:
+            # Said out loud every tick: support still has to be able to
+            # answer "is that gateway alive?" about a truck we have
+            # deliberately stopped recording.
+            logger.info(
+                "ingest_vehicle_state acct=%d dropped_archived=%d refs=%s",
+                account_id, dropped, sorted(archived_refs)[:20],
+            )
 
     n = await tenant.upsert_vehicle_state(account_id, rows)
     logger.info(
