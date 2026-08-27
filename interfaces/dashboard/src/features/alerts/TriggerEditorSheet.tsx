@@ -7,15 +7,23 @@
  * would have made the most consequential choice in the form the smallest
  * control on it.
  *
- * Two things here are stated rather than asked:
+ * The form reads FEATURE, then WATCH, then ON WHICH VEHICLES — which
+ * part of the product, which of its numbers, on which trucks.
  *
- * FEATURE is a heading, not a select.  Every metric the catalog carries
- * today belongs to Vehicles, and a dropdown with one option is a decision
- * nobody makes.  It is rendered as a SelectGroup label so the grouping is
- * already visible and already correct — the day a Cameras metric is
- * registered, a second group appears with no change here.  The word
- * matches the "Feature" column on the Alerts board and the delivery
- * settings, which is the same dimension under the same name.
+ * FEATURE is a field, not a caption.  It was a SelectGroup heading inside
+ * the metric dropdown first, on the reasoning that a select with one
+ * option is a decision nobody makes.  That reasoning was about the
+ * CONTROL and ignored the form: a heading inside a list is invisible
+ * until the list is opened, so a closed form showed no Feature anywhere
+ * and the structure existed only for people who had already gone
+ * looking.  As a field it also does real work — it FILTERS what can be
+ * watched, so the two selects read as one sentence.  With a single
+ * feature it fills itself in rather than demanding a choice; the day a
+ * second registers, it becomes a real one with no change here.
+ *
+ * The word is not new: "Feature" is what the Alerts board's column and
+ * the delivery settings already call this dimension, and the value comes
+ * from featureCatalog.ts, which is the SSOT for what a feature is named.
  *
  * DELIVERY is absent entirely.  Where a trigger reaches you is answered
  * on notification preferences, per trigger, next to every other delivery
@@ -45,8 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { ScrollRegion } from '@/components/scrolling';
 import {
-  Select, SelectContent, SelectGroup, SelectItem, SelectLabel,
-  SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 
 interface MetricSpec {
@@ -91,6 +98,7 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const [feature, setFeature] = useState('');
   const [metric, setMetric] = useState('');
   const [value, setValue] = useState('');
   // Empty = every vehicle in my scope.  Kept as the same "" meaning the
@@ -118,12 +126,20 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
 
   useEffect(() => {
     if (!open) return;
-    setMetric(''); setValue(''); setPicked([]); setAllMine(true); setQuery('');
+    setFeature(''); setMetric(''); setValue('');
+    setPicked([]); setAllMine(true); setQuery('');
     void load();
     requestAnimationFrame(() => metricRef.current?.focus());
   }, [open, load]);
 
   const spec = metrics.find((m) => m.key === metric);
+
+  // Only the metrics belonging to the chosen feature.  This is what makes
+  // Feature a real control rather than a caption: it NARROWS what can be
+  // watched, so the two selects read as one sentence — watch, in this
+  // feature, this thing.
+  const metricsInFeature = useMemo(
+    () => metrics.filter((m) => m.feature === feature), [metrics, feature]);
 
   // Group the metric list by the feature that owns it — the grouping IS
   // the Feature dimension, so it needs no control of its own.
@@ -143,6 +159,15 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
     }
     return [...by.entries()];
   }, [metrics, t]);
+
+  // With a single feature there is no decision to make, so the control
+  // still SHOWS the answer but does not demand it.  The moment a second
+  // feature registers this stops firing and the field becomes a real
+  // choice, with no change here.
+  useEffect(() => {
+    if (feature || groups.length !== 1) return;
+    setFeature(groups[0][0]);
+  }, [feature, groups]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -169,6 +194,7 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
   const blockedBecause = (): string => {
     if (busy) return 'Saving…';
     if (failed) return 'Couldn’t load what can be watched.';
+    if (!feature) return 'Pick a feature.';
     if (!spec) return 'Pick what to watch.';
     if (value === '') return 'Enter a number.';
     if (rangeError()) return rangeError();
@@ -259,6 +285,42 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
         >
         <SheetBody label="Add a trigger"
                    className="px-5 py-4 flex flex-col gap-5">
+          {/* FEATURE, then WATCH — the order the sentence is thought in:
+              which part of the product, then which of its numbers.  It
+              was a group heading inside the metric dropdown before, which
+              meant it existed but was invisible until you opened the
+              list; on a closed form there was no Feature anywhere.  As a
+              field it also does real work — it FILTERS what can be
+              watched, so the two selects read as one sentence. */}
+          <div className="flex flex-col gap-2">
+            <span id="trg-feature-lbl" className="text-xs font-medium
+                                                  uppercase tracking-wide
+                                                  text-muted-foreground">
+              Feature
+            </span>
+            <Select
+              value={feature}
+              onValueChange={(v) => {
+                setFeature(v ?? '');
+                // A metric from the old feature would be a sentence about
+                // something the form no longer says.
+                setMetric('');
+              }}
+              items={groups.map(([key, g]) => ({ value: key, label: g.label }))}
+            >
+              <SelectTrigger id="trg-feature"
+                             aria-labelledby="trg-feature-lbl trg-feature"
+                             className="w-56 text-xs">
+                <SelectValue placeholder="Pick a feature" />
+              </SelectTrigger>
+              <SelectContent>
+                {groups.map(([key, g]) => (
+                  <SelectItem key={key} value={key}>{g.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex flex-col gap-2">
             <span id="trg-watch-lbl" className="text-xs font-medium
                                                 uppercase tracking-wide
@@ -266,21 +328,21 @@ export default function TriggerEditorSheet({ open, onClose, onSaved }: {
               Watch
             </span>
             <div className="flex flex-wrap items-center gap-2">
+              {/* No SelectGroup heading any more: the list is already
+                  filtered to one feature, so repeating its name above
+                  every option would label a group of one kind. */}
               <Select value={metric} onValueChange={(v) => setMetric(v ?? '')}
-                      items={metrics.map((m) => ({ value: m.key, label: m.label }))}>
+                      items={metricsInFeature.map(
+                        (m) => ({ value: m.key, label: m.label }))}>
                 <SelectTrigger ref={metricRef} id="trg-metric"
                                aria-labelledby="trg-watch-lbl trg-metric"
-                               className="h-8 w-56 text-xs">
-                  <SelectValue placeholder="Pick a metric" />
+                               className="w-56 text-xs">
+                  <SelectValue placeholder={feature ? 'Pick a metric'
+                                                    : 'Pick a feature first'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {groups.map(([key, g]) => (
-                    <SelectGroup key={key}>
-                      <SelectLabel>{g.label}</SelectLabel>
-                      {g.items.map((m) => (
-                        <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
-                      ))}
-                    </SelectGroup>
+                  {metricsInFeature.map((m) => (
+                    <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
