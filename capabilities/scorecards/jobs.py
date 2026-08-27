@@ -230,6 +230,32 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
                     if score_now <= floor_threshold or (drop is not None and drop >= drop_threshold):
                         at_risk.append((sid, row["subject_name"], score_now, score_prior))
 
+                # Retired trucks raise no scorecard alert.  Their
+                # SCORES stay — last month's number for a truck you ran
+                # last month is real, and the page keeps showing it —
+                # but a truck that left the fleet cannot "need
+                # attention".
+                #
+                # An ALLOW-list of live names, not a deny-list of
+                # retired ones: a vehicle subject is keyed by unit
+                # number, and a door number is reusable, so excluding
+                # an archived truck's name could silence a live truck
+                # that inherited it.
+                if subject == "vehicle" and at_risk:
+                    try:
+                        live = await tenant.active_unit_names(acc.id)
+                        if live:
+                            at_risk = [
+                                r for r in at_risk
+                                if str(r[1] or "").strip().lower() in live
+                            ]
+                    except Exception:
+                        logger.warning(
+                            "scorecard alert: live-name filter unavailable "
+                            "acct=%d — alerting on all", acc.id,
+                            exc_info=True,
+                        )
+
                 if not at_risk:
                     continue
 

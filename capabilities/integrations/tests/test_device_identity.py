@@ -547,3 +547,64 @@ async def test_alerting_hushes_every_retired_truck_ingest_hushes_only_some(pg_db
 
     assert await pg_db.archived_refs(acct) == {"ref-f", "ref-g"}
     assert await pg_db.operator_archived_refs(acct) == {"ref-f"}
+
+
+@pytest.mark.asyncio
+async def test_archiving_closes_alerts_already_on_the_board(pg_db):
+    """Stopping new alerts says nothing about the open ones.
+
+    `critical_reescalate` re-notifies unacknowledged rows straight out
+    of alert_history, which never joins the registry — so a fault
+    raised before a truck was archived kept paging hourly afterwards,
+    up to its retry cap.
+    """
+    acct = 10009005
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "J9", "telematics_ref": "ref-j"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+
+    await pg_db._db.execute(
+        "INSERT INTO alert_history (account_id, alert_type, vehicle_id, "
+        "vehicle_name, last_detail, status, first_seen, last_seen) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (acct, "fault", "ref-j", "J9", "DTC 1234", "active",
+         "2026-08-20T00:00:00Z", "2026-08-20T00:00:00Z"),
+    )
+    await pg_db._db.commit()
+
+    await pg_db.deactivate_vehicle(acct, v.id)
+
+    cur = await pg_db._db.execute(
+        "SELECT status FROM alert_history WHERE account_id = ? "
+        "AND vehicle_id = ?", (acct, "ref-j"))
+    statuses = [r[0] for r in await cur.fetchall()]
+    assert statuses == ["cleared"], (
+        "an open alert must stop re-escalating when its truck is retired")
+
+
+@pytest.mark.asyncio
+async def test_live_names_are_an_allow_list_not_a_deny_list(pg_db):
+    """A door number is reusable, so retiring one must not silence it.
+
+    The surfaces that identify a vehicle by NAME (scorecards) cannot
+    filter by excluding archived names: once a retired truck's number
+    goes on a different truck, a deny-list would silence the live one
+    too.  Keeping only names an ACTIVE row still claims is correct
+    whichever way round it happens.
+    """
+    acct = 10009006
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "K1", "telematics_ref": "ref-k"},
+    ], source="samsara")
+    (old,) = await pg_db.list_vehicles(acct)
+    await pg_db.deactivate_vehicle(acct, old.id)
+
+    # The number goes on a different truck, in another company.
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "OSY", "unit_number": "K1", "telematics_ref": "ref-k2"},
+    ], source="samsara")
+
+    live = await pg_db.active_unit_names(acct)
+    assert "k1" in live, (
+        "the live truck that inherited the number must keep alerting")

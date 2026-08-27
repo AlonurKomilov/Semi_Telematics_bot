@@ -757,6 +757,46 @@ class AlertsMixin(_MixinBase):
             await self._db.commit()
         return rows
 
+    async def close_alerts_for_retired_vehicle(
+        self, account_id: int, vehicle_id: str,
+    ) -> int:
+        """Close every open alert for a truck that has left the fleet.
+
+        Archiving stops NEW alerts, but says nothing about the ones
+        already on the board — and `critical_reescalate` re-notifies
+        unacknowledged rows straight out of ``alert_history``, which
+        never consults the registry.  So a fault raised last week went
+        on paging people hourly about a truck that was archived
+        yesterday, up to its retry cap.
+
+        Every alert TYPE, unlike ``clear_alert_history``: the reason
+        these close is the vehicle, not the condition.  ``'cleared'``
+        is the same status a condition-cleared alert gets, so nothing
+        downstream needs to learn a new word; WHY they closed is in the
+        activity trail entry the archive writes.
+
+        History is untouched — the rows stay, they stop being active.
+        """
+        if not vehicle_id:
+            return 0
+        cur = await self._db.execute(
+            "UPDATE alert_history SET status = 'cleared' "
+            "WHERE account_id = ? AND vehicle_id = ? AND status = 'active'",
+            (account_id, vehicle_id),
+        )
+        closed = getattr(cur, "rowcount", 0) or 0
+        # The acknowledgment side too, or the bell keeps a pending row
+        # nobody can act on: its vehicle is gone from every list.
+        await self._db.execute(
+            "UPDATE alert_acknowledgments SET acknowledged_by = 0, "
+            "acknowledged_at = ?, status = 'acknowledged' "
+            "WHERE account_id = ? AND vehicle_id = ? "
+            "AND acknowledged_at IS NULL AND status = 'active'",
+            (self._now(), account_id, vehicle_id),
+        )
+        await self._db.commit()
+        return closed
+
     async def get_active_fault_history_for_account(self, account_id: int) -> list[dict]:
         """Return all active fault alert_history rows for an account.
 

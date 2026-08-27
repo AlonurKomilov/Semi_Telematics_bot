@@ -157,23 +157,27 @@ ARCHIVED_STANCE: dict[str, str] = {
     "driver_onboarding_stale_check": "n/a",
     "driver_samsara_sync": "n/a",
     # ── Known leaks, deliberately recorded rather than forgotten ──
-    # Re-notifies unacknowledged alert_history rows; candidates come
-    # from alert_history alone and the registry is never consulted, so
-    # an alert raised before a truck was archived keeps escalating
-    # after it.
+    # NARROWED, not closed.  Archiving a truck now closes its open
+    # alerts at the source (`close_alerts_for_retired_vehicle`), so the
+    # operator path no longer leaks.  What remains is the SWEEP path: a
+    # badge that simply went silent is retired without closing its
+    # alerts, because a sweep is reversible — the truck may report
+    # again tomorrow — and clearing a person's unacknowledged alerts on
+    # a temporary signal loss is a bigger act than the sweep is allowed
+    # to take.  Still `open` because it still leaks, just less.
     "critical_reescalate": "open",
-    # Compares nightly scorecard snapshots. Its roster is historical,
-    # so the ingest gate cannot quiet it: last month's score for a truck
-    # you ran last month is legitimate data. The ALERT should skip
-    # retired trucks while the page keeps scoring them — two different
-    # fixes, and an owner decision about which.
-    "scorecard_drop_alerts": "open",
+    # The ALERT filters to trucks still on the fleet; the PAGE keeps
+    # scoring retired ones, because last month's score for a truck you
+    # ran last month is real and dropping it would change past periods.
+    # An allow-list of live names, since a vehicle subject is keyed by
+    # unit number and a door number is reusable.
+    "scorecard_drop_alerts": "filters",
 }
 
 #: Exactly the sources still leaking. A ratchet, like the lint budget:
 #: fixing one means removing it here, and a NEW leak cannot be added
 #: quietly.
-KNOWN_OPEN = {"critical_reescalate", "scorecard_drop_alerts"}
+KNOWN_OPEN = {"critical_reescalate"}
 
 
 def test_every_alert_source_declares_its_stance_on_retired_trucks(

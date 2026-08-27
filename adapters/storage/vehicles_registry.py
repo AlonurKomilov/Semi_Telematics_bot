@@ -617,6 +617,27 @@ class VehiclesRegistryMixin(_MixinBase):
             # rebuilds it the moment the truck is restored.
             if touched and ref:
                 try:
+                    # Close what is already on the board.  Archiving
+                    # stops NEW alerts, but the hourly re-escalation
+                    # reads alert_history alone and never consults the
+                    # registry — so a fault raised last week went on
+                    # paging people about a truck retired yesterday.
+                    # Rows are kept; they stop being active, and WHY is
+                    # in the trail entry below.
+                    closed = await self.close_alerts_for_retired_vehicle(
+                        account_id, ref)
+                    if closed:
+                        logger.info(
+                            "archive: closed %d open alert(s) for vehicle "
+                            "%d acct=%d", closed, vehicle_id, account_id,
+                        )
+                except Exception:
+                    logger.warning(
+                        "archive: open alerts not closed for vehicle %d "
+                        "acct=%d — they will keep escalating",
+                        vehicle_id, account_id, exc_info=True,
+                    )
+                try:
                     # Through the warehouse mixin, never raw SQL from
                     # here: physical warehouse tables are machinery-
                     # internal and CI enforces it
@@ -900,6 +921,23 @@ class VehiclesRegistryMixin(_MixinBase):
             "WHERE account_id = ? AND telematics_ref <> '' "
             "AND is_active = 0 AND archived_reason = ?",
             (account_id, ARCHIVED_BY_OPERATOR),
+        )
+        return {str(r[0]) for r in await cur.fetchall() if r[0]}
+
+    async def active_unit_names(self, account_id: int) -> set[str]:
+        """Lowercased unit numbers of trucks still on the fleet.
+
+        An ALLOW-list, deliberately, for the surfaces that identify a
+        vehicle by NAME rather than by ref.  Excluding archived names
+        instead would be unsafe: a door number is reusable, so a
+        retired truck's number can already belong to a live truck, and
+        a deny-list would silence both.  Keeping only names an ACTIVE
+        row still claims is right either way round.
+        """
+        cur = await self._db.execute(
+            "SELECT lower(unit_number) FROM vehicles "
+            "WHERE account_id = ? AND is_active = 1 AND unit_number <> ''",
+            (account_id,),
         )
         return {str(r[0]) for r in await cur.fetchall() if r[0]}
 
