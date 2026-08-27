@@ -371,6 +371,35 @@ formulas.
 
 ## 6. Radius
 
+**What each step actually renders.** Keep this to hand — every corner
+question in this app is a lookup, and the audit that produced these
+numbers measured them in Chrome rather than deriving them.
+
+| class | formula | Sharp | Rounded | Pill |
+|---|---|---:|---:|---:|
+| `rounded-none` | `0` | 0 | 0 | 0 |
+| `rounded-sm` | `max(0, r−4)` | 0 | 6 | 12 |
+| `rounded` | `max(0, r−3)` | 0 | 7 | 13 |
+| `rounded-md` | `max(0, r−2)` | 0 | 8 | 14 |
+| `rounded-lg` | `r` | **0** | **10** | **16** |
+| `rounded-xl` | `r+4` | 4 | 14 | 20 |
+| `rounded-2xl` | `r+8` | 8 | 18 | 24 |
+| `rounded-3xl` | `r+16` | 16 | 26 | 32 |
+| `rounded-full` | `9999px` | — | — | — |
+
+Three properties fall out of it and each has bitten someone:
+
+- **The move is additive, not proportional.** Every step shifts a constant
+  +6px per click. So step RATIOS change wildly — `sm:lg` is 0:0 at Sharp
+  and 12:16 at Pill — and a layout that depends on two steps differing
+  will not survive the range.
+- **`xl` is `r+4`, so it never fits inside `lg` at any preset.** That is
+  not a Pill problem; it is a constant 4px overshoot. If a child sits
+  inside a `rounded-lg` box, it cannot be `rounded-xl`.
+- **At Sharp the bottom four steps are all 0.** `rounded-sm` and
+  `rounded-none` are pixel-identical there, which is why a shape that
+  must stay curved uses `rounded-full`, not a small step.
+
 One variable, `--radius` (default `0.625rem`), drives everything via the
 `rounded-*` scale. The theme picker's Corners preset (Sharp / Rounded /
 pill) reshapes the whole UI from it.
@@ -386,14 +415,21 @@ pill) reshapes the whole UI from it.
   line used to list "pills" and contradicted §3 outright.)
 - **Never** hardcode `rounded-[10px]` or use `rounded-4xl` (it ignores
   the user's Corners setting — see the StatusBadge fix for why).
-- **JS-drawn geometry** (SVG paths, canvas arcs) is bound by the same
-  rule: a radius baked into a path number is invisible to the Corners
-  preset. Read the live token —
-  `getComputedStyle(document.documentElement).getPropertyValue('--radius')`
-  — and recompute when `<html>`'s theme attributes change
-  (MutationObserver; a CSS-var change alone never re-renders React).
-  Reference implementation: `SegmentTab` in
-  [`components/datagrid/DataGrid.tsx`](src/components/datagrid/DataGrid.tsx).
+- **JS-drawn geometry** (SVG paths, canvas arcs, a recharts bar) is bound
+  by the same rule: a radius baked into a path number is invisible to the
+  Corners preset. **Use [`lib/radius.ts`](src/lib/radius.ts)** —
+  `useRadiusPx()` reads the live token and re-reads when `<html>`'s theme
+  attributes change, which a CSS-var change alone never does because it
+  re-renders no React. `clampRadius(r, …dimensions)` is the other half:
+  a corner may never eat the shape it is rounding, so a 6px bar with a
+  16px corner is a lozenge and its height stops being readable.
+  [`components/charts/RoundedBar.tsx`](src/components/charts/RoundedBar.tsx)
+  is the worked example for recharts, which takes a NUMBER — pass it as
+  `shape`, never `radius`, because `radius` is one static tuple for a
+  whole series and cannot know how thick any single bar turned out.
+  (This paragraph used to describe the `getComputedStyle` +
+  MutationObserver dance and point at `SegmentTab` as the reference. The
+  helper is that code, lifted; do not write it a third time.)
 - **No radius caps on small variants.** Upstream shadcn ships `xs`/`sm`
   button and select sizes with `rounded-[min(var(--radius-md),10px)]`
   — a cap that silently ignores the Pill preset and makes a small
@@ -602,6 +638,16 @@ radius larger than its parent's (`rounded-xl` is `--radius + 4`, so it
 NEVER fits inside a `rounded-lg` box at any preset); a header docked on
 three edges keeping four rounded corners; and a container that grants a
 radius but never a clip.
+
+That last one has a mechanism, so name it: **a rounded box whose child
+bleeds to its edge needs `overflow-hidden`.** `<Card padding="none">`
+carries it — that variant exists precisely for children that own the
+card's edges, which is precisely the case that must clip, and leaving it
+to the call sites meant four of twenty-two forgot. A call site that
+genuinely must not clip says `overflow-visible` and wins, because
+`className` merges last. The real case for opting out is a `sticky`
+child bound to an OUTER scroller: clipping makes the parent a scroll
+container and the pin dies, silently.
 
 **Sharp is `0px`, and the frame keeps a hairline.** The preset means what
 its name says: `sm`, `rounded`, `md` and `lg` all render a true right

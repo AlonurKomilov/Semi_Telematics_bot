@@ -50,6 +50,22 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   together. `rounded-full` is NOT a way to say "very round", and a
   control may not wear it: a capsule states a FACT, a bordered rounded
   rectangle invites a CLICK (design.md §3). Guarded.
+- **One boundary, one object.** Where two surfaces share an edge, exactly
+  ONE of them describes it. A header drawing a `border-b` for the card
+  below it is two objects describing one line, and the card's corner
+  curves away from it: `r × r` of whatever is behind, so 20px at Pill.
+  Same for a rounded box that never clips — a square child paints
+  `0.293r` over its own arc, 4.7px at Pill. **Both artifacts GROW as the
+  reader asks for softer corners**, which is how ten of them shipped
+  unnoticed. Guarded three ways; design.md §6 lists the recurring causes.
+- **`rounded-xl` is `--radius + 4`, so it never fits inside a
+  `rounded-lg` box** — at any preset, not just Pill. A child inside a
+  Card cannot be `rounded-xl`. `rounded-xl` is the SHELL FRAME's radius.
+- **A container that hands its edge to a child must clip** with
+  `overflow-hidden`. `<Card
+  padding="none">` does this for you; say `overflow-visible` if you
+  genuinely must not (a `sticky` child bound to an outer scroller is the
+  real case — clipping re-parents it and kills the pin, silently).
 - **A corner CSS cannot reach** — a recharts bar, anything drawn — takes
   `useRadiusPx()` from `lib/radius.ts`, clamped to half the shape's
   smaller dimension. Never the raw token: a 6px bar with a 16px corner
