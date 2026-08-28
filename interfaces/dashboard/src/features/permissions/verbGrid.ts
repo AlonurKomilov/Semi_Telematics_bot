@@ -52,7 +52,7 @@ const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_r
   can_scorecard_all: ['can_manage_config_all', 'rules + pillar caps'],
   can_kpi: ['can_manage_config_all', 'grade thresholds'],
   can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
-  can_manage_integrations: ['can_manage_config_all', 'provider precedence'],
+  can_manage_integrations: ['can_manage_config_all', 'provider precedence + vehicle auto-pilot'],
   can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],
   can_manage_account: ['can_manage_config_all', 'account-wide values'],
 };
