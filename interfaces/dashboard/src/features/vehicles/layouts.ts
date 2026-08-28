@@ -22,14 +22,14 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // Superset — preserves the original page order so Owner / Admin
   // see byte-identical output to pre-Pattern-B.  Used as the runtime
   // fallback for any persona that doesn't have an entry below.
-  owner: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage', 'mileage'],
-  admin: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage', 'mileage'],
+  owner: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'documents', 'timeline', 'usage', 'mileage'],
+  admin: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'documents', 'timeline', 'usage', 'mileage'],
 
   // Fleet — vehicle health + maintenance signals lead.  Faults bubbles
   // above Location because a fleet manager opening a truck is usually
   // chasing a fault code; coordinates can wait.  Usage trends sit at
   // the bottom for utilization review.
-  fleet: ['header', 'info', 'inventory', 'health', 'faults', 'inspections', 'location', 'timeline', 'usage', 'mileage'],
+  fleet: ['header', 'info', 'inventory', 'health', 'faults', 'inspections', 'documents', 'location', 'timeline', 'usage', 'mileage'],
 
   // Dispatcher — "where is this truck right now and what's it doing
   // over the next few hours."  Health / Faults / Inspections are
