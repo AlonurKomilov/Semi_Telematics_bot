@@ -565,6 +565,84 @@ const capsuleControlSites = (src: string): number[] => {
  */
 const RADIUS_ARBITRARY_ALLOWED = ['components/ui/tooltip.tsx'];
 
+/**
+ * The rung a `rounded-*` class sits on. These are OFFSETS from the token
+ * (`xl` is `--radius + 4`, `sm` is `--radius − 4`), so the ORDER is fixed
+ * — an `xl` is rounder than an `lg` at every preset, including Sharp
+ * where the token is 0. That is what makes the rule below checkable from
+ * source: it needs no measurement, because the scale decides it.
+ */
+const RADIUS_RUNG: Record<string, number> = {
+  'rounded-sm': -4, rounded: -3, 'rounded-md': -2, 'rounded-lg': 0,
+  'rounded-xl': 4, 'rounded-2xl': 8, 'rounded-3xl': 16,
+};
+const rungOf = (cls: string): string | null => {
+  // The SIDE prefixes matter and were missed the first time: a header
+  // docked on three edges rounds only its top two, so the adjacency
+  // defects live in `rounded-t-*` almost by definition. Without this the
+  // rule was blind to `rounded-t-xl` — the one shape it was written for.
+  // Take the ROUNDEST step named, since that is the corner that can
+  // overshoot its parent.
+  const found = [...cls.matchAll(
+    /\brounded(?:-(?:t|b|l|r|tl|tr|bl|br|s|e|ss|se|es|ee))?-(sm|md|lg|xl|2xl|3xl)\b/g,
+  )].map((m) => `rounded-${m[1]}`);
+  if (found.length) {
+    return found.reduce((a, b) => (RADIUS_RUNG[b] > RADIUS_RUNG[a] ? b : a));
+  }
+  return /\brounded\b(?![-\w])/.test(cls) ? 'rounded' : null;
+};
+
+/**
+ * A child rounder than the parent it sits against.
+ *
+ * Concentric corners want `inner = outer − gap`; inner LARGER than outer
+ * has no gap that makes it right and always reads broken — a crescent of
+ * the parent showing inside its own corner. RunBoard shipped one:
+ * `rounded-t-xl` inside a `rounded-lg` Card, a constant +4px at every
+ * preset, and at Sharp a 4px-rounded band floating inside a dead-square
+ * card.
+ *
+ * ADJACENCY IS THE WHOLE QUESTION, and this approximates it by source
+ * proximity: a child whose className is within 8 lines of its parent's
+ * and indented deeper. Loosen that window and the rule dissolves — at 20
+ * lines it reports 9, at 60 it reports 22, and at no limit 41, of which
+ * the furthest pair is 325 lines apart with dozens of elements between
+ * and arcs that never meet. Measured: at 8 lines, zero. At 6, it would
+ * still have caught RunBoard.
+ *
+ * The complete answer is a DOM walk — for every element inset ≤2px in a
+ * rounded parent, assert child ≤ parent — and it needs a browser, which
+ * this file does not have. This catches the shape that actually shipped.
+ */
+const nestedRadiusSites = (src: string): string[] => {
+  const NEAR = 8;
+  const marks: { line: number; indent: number; step: string }[] = [];
+  src.split('\n').forEach((l, i) => {
+    const m = /className=(?:"([^"]*)"|\{`([^`]*)`\})/.exec(l);
+    let step = m ? rungOf(m[1] ?? m[2] ?? '') : null;
+    // A primitive carries its radius in the component, not the class
+    // string. Without this the rule misses the ONE case it was written
+    // for: RunBoard's header is `rounded-t-xl` inside a <Card> whose
+    // className reads `overflow-visible` and nothing else. Found by
+    // mutation-testing the guard against the defect it was built from —
+    // it passed, which is how a guard becomes theatre.
+    if (!step && /<Card\b|cardVariants\(/.test(l)) step = 'rounded-lg';
+    if (step) marks.push({ line: i + 1, indent: l.search(/\S/), step });
+  });
+  const out: string[] = [];
+  for (let a = 0; a < marks.length; a += 1) {
+    for (let b = a + 1; b < marks.length; b += 1) {
+      if (marks[b].indent <= marks[a].indent) break;
+      if (marks[b].line - marks[a].line > NEAR) break;
+      if (RADIUS_RUNG[marks[b].step] > RADIUS_RUNG[marks[a].step]) {
+        out.push(`:${marks[b].line} ${marks[b].step} inside ${marks[a].step} (:${marks[a].line})`);
+        break;
+      }
+    }
+  }
+  return out;
+};
+
 type DebtList = {
   name: string;
   entries: string[];
@@ -837,6 +915,17 @@ describe('UI chrome', () => {
       none,
       'the edge-to-edge variant must clip, or every call site re-decides it',
     ).toContain('overflow-hidden');
+  });
+
+  it('never rounds a child more than the parent it sits against', () => {
+    const offenders = TSX.flatMap((f) => nestedRadiusSites(f.src).map(
+      (hit) => `${f.rel}${hit} — the offsets are fixed, so this is wrong at EVERY preset`,
+    ));
+    expect(
+      offenders,
+      'concentric corners want inner = outer − gap; inner LARGER than outer ' +
+        'has no gap that makes it right',
+    ).toEqual([]);
   });
 
   it('is counted correctly in design.md', () => {

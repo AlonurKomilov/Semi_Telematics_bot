@@ -836,7 +836,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Twenty-nine live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Thirty live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -875,6 +875,7 @@ this table has any chance of staying true.
 | a rounded popup clips its rows (§6) | a square child painted over its parent's arc is 0.293r — 4.7px at Pill — and it GROWS as the reader asks for softer corners |
 | no viewport-wide fixed strip outside the shell (§6) | the shell owns the frame; a `fixed bottom-0 left-0 right-0` bar reaches into the sidebar and swallows both of the card's bottom corners |
 | the edge-to-edge card variant clips (§6) | `padding="none"` is for children that own the card's edges, which is exactly the case that must clip. Leaving it to 22 call sites meant four did not |
+| a child is never rounder than the parent it sits against (§6) | the steps are fixed OFFSETS, so an `xl` is rounder than an `lg` at every preset — no measurement needed. Adjacency is approximated by source proximity (8 lines); loosen it and the rule dissolves — 0 hits at 8, 9 at 20, 41 at no limit, the furthest pair 325 lines apart with arcs that never meet |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards
