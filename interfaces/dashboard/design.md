@@ -145,6 +145,61 @@ There is no literal brand ramp. A `brand.50…900` scale of ten hardcoded
 hex values used to live in the config — the only hardcoded palette in a
 token-driven system — and not one class ever referenced it. Use `primary`.
 
+### Mode and accent are two axes
+
+The theme picker asks two questions, and for a long time one field
+answered both. `dark-blue | dark-purple | dark-green | light` reads as a
+list of four themes, but three of those entries name a mode AND an accent
+while the fourth names only a mode — so Light sat in the row looking like
+a kind of dark, and "Light with a green accent" was not merely
+unsupported, it was **unsayable**.
+
+Light was never accent-less either. Its `--primary` is
+`oklch(0.52 0.2 264)` — chromatic blue. It had an accent all along; the
+grammar just had no way to name it.
+
+    stored   { mode: 'dark' | 'light', accent: 'blue' | 'purple' | 'green', radius }
+    stamped  <html class="dark" data-accent="green" data-radius="pill">
+    CSS      :root[data-accent="green"]  /  .dark[data-accent="green"]
+
+**An accent needs a value per mode.** A `--primary` bright enough to read
+on near-black is too pale to clear AA as text on white, so every accent
+block exists twice. Blue has no block at all — it IS the base `--primary`
+in both modes, the same way `rounded` is the absence of a `--radius`
+override. Guard 34 fails if an accent ships with only one half, because
+the picker would offer a chip that does nothing in the other mode.
+
+Light green is `oklch(0.48 0.15 142)`, a step darker than its siblings at
+0.52, and that is deliberate: `--ok` in light is `oklch(0.52 0.15 150)`,
+so a 0.52 green accent sat at ΔE2000 **4.28** from the success colour and
+a primary button read as a success state. Dropping the lightness
+separates them the way the dark themes already do (0.65 against 0.76) and
+lands at 6.59 — better than the blue-against-`--info` pair (6.29) that
+has shipped all along.
+
+**The migration lives in `sanitize`, and nowhere else.** That function is
+the single funnel for all four read paths — canonical key, legacy key,
+cross-tab adopt, and the synced cross-device blob — and it rebuilds the
+stored object field by field, dropping anything it does not name. A split
+that forgot the migration branch would hand every dark-purple,
+dark-green and light user a Dark Blue theme on their next page load, in
+silence. `registry.test.ts` covers it directly; `themeBoot.test.ts`
+**cannot**, because it compares the pre-paint script against `applyTheme`
+and `applyTheme` never touches the sanitiser. Deleting the migration left
+that file entirely green, which is why both tests exist.
+
+The pre-paint script in `index.html` carries a second copy of the same
+map, because it cannot import (rule 4 above). If the two disagree the
+first painted frame is one theme and the app snaps to another after
+hydration — `themeBoot.test.ts` compares them for exactly that reason.
+
+`ThemeSetting.color` is kept, derived, and **deprecated**. It exists so a
+build without the split can be rolled back to without resetting anyone —
+the recipe CLAUDE.md prescribes for a renamed wire value. It cannot
+express light + purple/green; those collapse to `light`, keeping the mode
+and losing the accent, which is the right half to lose. Delete it, and
+the migration branch, one release after the split ships.
+
 ### Rules this layer enforces
 
 **Never write `text-white` on a tone fill.** Use `text-ok-foreground`,
@@ -921,7 +976,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Thirty-three live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Thirty-four live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -964,6 +1019,7 @@ this table has any chance of staying true.
 | a child is never rounder than the parent it sits against (§6) | the steps are fixed OFFSETS, so an `xl` is rounder than an `lg` at every preset — no measurement needed. Adjacency is approximated by source proximity (8 lines); loosen it and the rule dissolves — 0 hits at 8, 9 at 20, 41 at no limit, the furthest pair 325 lines apart with arcs that never meet |
 | print puts the light palette back (§6) | `@media print` re-declares, at its `:root` value, every colour token the dark themes override, and the guard asserts that set equality both ways plus byte-equal values. Without the reset a dark-mode user prints white-on-a-background-the-printer-drops — a blank page. Nobody reviews a printout, so the drift would live for years |
 | every class the code writes actually compiles (§6) | compiles every class the codebase writes — variant-prefixed AND bare — against the real config, and fails on any that emits no rule. Three structural filters keep it allowlist-free (comments stripped, so an apostrophe in prose cannot open a fake string; a literal followed by `:` is an object key, not a class; index.css's own classes count as emitted). Found 36 dead classes: nine primitives' v4 variants, plus `backdrop-blur-xs` on every modal scrim, `max-w-55` beside a `truncate`, `field-sizing-content`, `outline-hidden`, `underline-offset-3` and `[a]:hover:` on every Badge rendered as a link. Reading the files cannot find any of it |
+| every accent the picker offers has CSS, in both modes (§2) | reads `THEME_ACCENTS` out of the registry and requires a `--primary` AND a `--chart-1` under both `:root[data-accent=…]` and `.dark[data-accent=…]`, plus a swatch in each mode. An accent needs a value per mode — a `--primary` bright enough for near-black is too pale to clear AA on white — so shipping only the dark half makes the chip a no-op in Light, silently |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

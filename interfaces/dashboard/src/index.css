@@ -207,6 +207,13 @@
     --danger-foreground: oklch(1 0 0);
     --info-foreground:   oklch(1 0 0);
 
+    /* The accent dots in the picker. Per mode, because the accent is
+       now orthogonal to the mode: choosing `green` while in Light
+       must preview the green Light paints, not the green Dark does. */
+    --swatch-accent-blue:   oklch(0.52 0.20 264);
+    --swatch-accent-purple: oklch(0.52 0.20 300);
+    --swatch-accent-green:  oklch(0.48 0.15 142);
+
     /* Derived soft-pill surfaces — same hue, fixed alpha for the
        `bg /15 + border /30` pill treatment.  Defined ONCE here (not
        repeated in .dark) because they reference var(--ok) etc., which
@@ -348,6 +355,10 @@
     --danger-foreground: oklch(0.145 0 0);
     --info-foreground:   oklch(0.145 0 0);
 
+    --swatch-accent-blue:   oklch(0.62 0.21 264);
+    --swatch-accent-purple: oklch(0.62 0.20 300);
+    --swatch-accent-green:  oklch(0.65 0.19 142);
+
     --chart-1: oklch(0.62 0.21 264);
 
     --chart-2: oklch(0.72 0.18 142);
@@ -394,33 +405,60 @@
      were raw palette classes (`bg-blue-500`, `bg-purple-500`, …) — banned
      by design.md §10, and wrong besides: none of them matched the accent
      the option applies.
-     Declared ONCE, on :root only, and deliberately NOT re-pointed in
-     `.dark` — a swatch answers "what would this option look like", which
-     does not change with the theme you are currently in.  Each value is
-     the `--primary` its preset installs below; `light` shows its canvas
-     instead, because Light is a MODE and the three others are accents —
-     a row of swatches that mixes the two axes is the picker bug O1
-     exists to fix.
 
-     This used to justify itself with "light's primary is near-black,
-     which would read as a broken dot".  That has been false since the
-     fix recorded at the top of this file: light's --primary is
-     oklch(0.52 0.2 264), chromatic blue.  Light already HAS an accent —
-     worth knowing before designing the mode/accent split, because the
-     doc made it look like it could not have one. */
+     The picker asks two questions now, so there are two kinds of dot.
+     A MODE dot shows the canvas that mode paints and is a constant —
+     it does not depend on which mode you are in.  An ACCENT dot is
+     declared per mode, up in the token blocks with everything else,
+     because the accent is orthogonal to the mode: picking `green` while
+     in Light has to preview the green LIGHT paints (0.48), not the one
+     Dark paints (0.65).
+
+     They used to be one row of four, and the old note here justified the
+     odd one out with "light's primary is near-black, which would read as
+     a broken dot".  That had been false since the fix recorded at the top
+     of this file — light's --primary is chromatic blue — and the row was
+     mixing two axes, which is the confusion the split removed. */
   :root {
-    --swatch-dark-blue:   oklch(0.62 0.21 264);
-    --swatch-dark-purple: oklch(0.62 0.20 300);
-    --swatch-dark-green:  oklch(0.65 0.19 142);
-    --swatch-light:       oklch(1 0 0);
+    /* The MODE dots. Constants: a mode swatch shows the canvas that mode
+       paints, and that does not depend on which mode you are in. */
+    --swatch-mode-dark:  oklch(0.10 0 0);
+    --swatch-mode-light: oklch(1 0 0);
   }
 
-  /* ── Theme accent presets ───────────────────────────────── */
-  .dark[data-theme="dark-purple"] {
+  /* ── Accent presets ───────────────────────────────────────
+     Keyed on [data-accent], and declared per MODE, because an accent has
+     to be a different lightness on white than on near-black: light wants
+     ~0.48-0.52 so it clears AA as text on white AND behind a near-white
+     label, dark wants ~0.62-0.65 to read on the canvas.
+
+     Blue has no block — it IS the base --primary in both modes.
+
+     `:root:not(.dark)` rather than a bare `:root` for the light half.
+     Both halves match in dark mode otherwise — `<html>` is the root AND
+     carries `.dark` — and which one wins would come down to source
+     order, so moving a block would silently repaint the dark themes.
+
+     Light green is 0.48, not 0.52 like its siblings, and that is
+     deliberate: --ok light is oklch(0.52 0.15 150), so a 0.52 green
+     accent sat at dE2000 4.28 from the success colour and a primary
+     button read as a success state. Dropping the lightness separates
+     them the same way the dark themes already do (0.65 vs 0.76), and
+     lands at 6.59 — better than the blue-vs-info pair (6.29) that has
+     shipped all along. */
+  :root:not(.dark)[data-accent="purple"] {
+    --primary: oklch(0.52 0.20 300);
+    --chart-1: oklch(0.52 0.20 300);
+  }
+  :root:not(.dark)[data-accent="green"] {
+    --primary: oklch(0.48 0.15 142);
+    --chart-1: oklch(0.48 0.15 142);
+  }
+  .dark[data-accent="purple"] {
     --primary: oklch(0.62 0.2 300);
     --chart-1: oklch(0.62 0.2 300);
   }
-  .dark[data-theme="dark-green"] {
+  .dark[data-accent="green"] {
     --primary: oklch(0.65 0.19 142);
     --chart-1: oklch(0.65 0.19 142);
   }
@@ -523,6 +561,9 @@
     --warn-foreground:            oklch(1 0 0);
     --danger-foreground:          oklch(1 0 0);
     --info-foreground:            oklch(1 0 0);
+    --swatch-accent-blue:         oklch(0.52 0.20 264);
+    --swatch-accent-purple:       oklch(0.52 0.20 300);
+    --swatch-accent-green:        oklch(0.48 0.15 142);
     --chart-1:                    oklch(0.55 0.20 264);
     --chart-2:                    oklch(0.55 0.15 142);
     --chart-3:                    oklch(0.65 0.14 95);

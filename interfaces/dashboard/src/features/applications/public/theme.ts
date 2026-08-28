@@ -25,6 +25,7 @@ const SIZE_VARS = [
 export function applyPublicFormTheme(root: HTMLElement = document.documentElement): () => void {
   const hadDark = root.classList.contains('dark');
   const prevTheme = root.dataset.theme;
+  const prevAccent = root.dataset.accent;
   const prevRadius = root.dataset.radius;
   const prevSize = SIZE_VARS.map((v) => [v, root.style.getPropertyValue(v)] as const);
 
@@ -33,6 +34,14 @@ export function applyPublicFormTheme(root: HTMLElement = document.documentElemen
   // element (scoped), not here — see brandTintStyle / PublicApply.
   root.classList.remove('dark');
   root.dataset.theme = 'light';
+
+  // DELETED for the same reason as data-radius below: the accent is now
+  // its own attribute, so leaving the recruiter's would tint an
+  // applicant preview with a colour the applicant will never see.
+  // `apply.4truck.us` carries no data-accent at all — the boot script
+  // skips that host — so deleting reproduces it, where setting 'blue'
+  // would reproduce the right colour by the wrong mechanism.
+  delete root.dataset.accent;
 
   // DELETED, not set to a value. `apply.4truck.us` is a host the theme
   // boot script deliberately skips, so an applicant's document carries no
@@ -51,6 +60,7 @@ export function applyPublicFormTheme(root: HTMLElement = document.documentElemen
   return () => {
     if (hadDark) root.classList.add('dark');
     if (prevTheme !== undefined) root.dataset.theme = prevTheme;
+    if (prevAccent !== undefined) root.dataset.accent = prevAccent;
     if (prevRadius !== undefined) root.dataset.radius = prevRadius;
     for (const [v, was] of prevSize) if (was) root.style.setProperty(v, was);
   };

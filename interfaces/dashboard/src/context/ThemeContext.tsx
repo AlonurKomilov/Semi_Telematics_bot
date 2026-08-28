@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 
 import { usePreference } from '../preferences';
-import { SIZE_REGIONS } from '../preferences/registry';
+import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import type {
   ThemeColor,
+  ThemeMode,
+  ThemeAccent,
   ThemeRadius,
   ThemeSetting,
   SizeSetting,
@@ -13,7 +15,10 @@ import type {
 // The stored SHAPE is owned by the preferences registry (it's the single
 // source of truth for what persists); these aliases keep the long-standing
 // names every consumer already imports from here.
+/** @deprecated The pre-split spelling — see preferences/registry.ts. */
 export type ColorTheme = ThemeColor;
+export type Mode = ThemeMode;
+export type Accent = ThemeAccent;
 export type RadiusVariant = ThemeRadius;
 export type Theme = ThemeSetting;
 export type Size = SizeSetting;
@@ -41,12 +46,16 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
  */
 export function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  if (theme.color === 'light') {
+  if (theme.mode === 'light') {
     root.classList.remove('dark');
   } else {
     root.classList.add('dark');
   }
-  root.dataset.theme = theme.color;
+  root.dataset.accent = theme.accent;
+  // Deprecated alias — see registry.ts. Kept stamped for one release so
+  // a [data-theme] selector or observer still written against the old
+  // spelling keeps working while it is being migrated.
+  root.dataset.theme = themeColorAlias(theme.mode, theme.accent);
   root.dataset.radius = theme.radius;
 }
 
@@ -107,7 +116,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // silently never published, and "use these settings on my other
   // devices" did nothing for them.
   const setTheme = (partial: Partial<Theme>) => {
-    setThemeValue((prev) => ({ ...prev, ...partial }));
+    // Re-derive the deprecated `color` alias on every write. A caller
+    // sets `{ mode }` or `{ accent }`, and a plain merge would leave the
+    // alias describing the PREVIOUS pair — which is the drift the
+    // deprecated-alias recipe exists to avoid. One writer, here.
+    setThemeValue((prev) => {
+      const next = { ...prev, ...partial };
+      return { ...next, color: themeColorAlias(next.mode, next.accent) };
+    });
     queueMicrotask(publishAppearanceDefault);
   };
   const setSize = (partial: Partial<Size>) => {

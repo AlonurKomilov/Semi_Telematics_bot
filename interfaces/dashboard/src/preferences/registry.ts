@@ -124,11 +124,36 @@ const oneOf = <T extends string>(allowed: readonly T[]) =>
  *  FIELD is safe where removing a KEY would not be — `theme` stays
  *  frozen, and `sanitize` below rebuilds the object field by field, so a
  *  stored `density` is simply dropped on the next read. */
+/**
+ * Mode and accent are two questions, and for a long time one field
+ * answered both. `dark-blue | dark-purple | dark-green | light` reads as
+ * a list of four themes, but three of its entries name a mode AND an
+ * accent while the fourth names only a mode — which is why "light with a
+ * green accent" was not merely unsupported, it was unsayable. Light was
+ * never accent-less, either: its `--primary` is chromatic blue.
+ */
+export type ThemeMode = 'dark' | 'light';
+export type ThemeAccent = 'blue' | 'purple' | 'green';
+
+/**
+ * @deprecated The pre-split spelling. Still written, and still read on
+ * the way in, so that a build without the split can be rolled back to
+ * without resetting anyone — the recipe CLAUDE.md prescribes for a
+ * renamed wire value. Delete one release after the split ships, together
+ * with the migration branch in `sanitize` below.
+ *
+ * It cannot express light + purple/green; those collapse to `light`,
+ * which keeps the MODE and loses the accent. That is the right way to
+ * lose information here.
+ */
 export type ThemeColor = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
 export type ThemeRadius = 'sharp' | 'rounded' | 'pill';
 export interface ThemeSetting {
-  color: ThemeColor;
+  mode: ThemeMode;
+  accent: ThemeAccent;
   radius: ThemeRadius;
+  /** @deprecated Derived from mode+accent; never read it to decide anything. */
+  color: ThemeColor;
 }
 
 /**
@@ -185,8 +210,31 @@ export type TableDensity = 'compact' | 'default' | 'roomy';
 // re-states these literals (it runs before any module loads, so it cannot
 // import them), and the test asserts the two copies still agree.  Nothing
 // else should read them — call sites get the guard via ``sanitize``.
-export const THEME_DEFAULT: ThemeSetting = { color: 'dark-blue', radius: 'rounded' };
+export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
+export const THEME_ACCENTS: ThemeAccent[] = ['blue', 'purple', 'green'];
+export const THEME_DEFAULT: ThemeSetting = {
+  mode: 'dark', accent: 'blue', radius: 'rounded', color: 'dark-blue',
+};
+
+/** @deprecated Only the migration and the alias use this. */
 export const THEME_COLORS: ThemeColor[] = ['dark-blue', 'dark-purple', 'dark-green', 'light'];
+
+/** The deprecated alias, derived. One writer, so it cannot drift. */
+export function themeColorAlias(mode: ThemeMode, accent: ThemeAccent): ThemeColor {
+  return mode === 'light' ? 'light' : (`dark-${accent}` as ThemeColor);
+}
+
+/**
+ * A stored value written before the split. `light` maps to the blue
+ * accent because that is what light has always painted — index.css gives
+ * it `oklch(0.52 0.2 264)`, hue 264, the same blue the dark default uses.
+ */
+const LEGACY_COLOR: Record<ThemeColor, { mode: ThemeMode; accent: ThemeAccent }> = {
+  'dark-blue':   { mode: 'dark',  accent: 'blue' },
+  'dark-purple': { mode: 'dark',  accent: 'purple' },
+  'dark-green':  { mode: 'dark',  accent: 'green' },
+  'light':       { mode: 'light', accent: 'blue' },
+};
 export const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
 
 export const SIZE_REGIONS: SizeRegion[] = [
@@ -268,10 +316,24 @@ export const DEFS = {
     sanitize: (v) => {
       if (typeof v !== 'object' || v === null) return undefined;
       const o = v as Partial<ThemeSetting>;
-      return {
-        color: THEME_COLORS.includes(o.color as ThemeColor) ? o.color as ThemeColor : THEME_DEFAULT.color,
-        radius: THEME_RADII.includes(o.radius as ThemeRadius) ? o.radius as ThemeRadius : THEME_DEFAULT.radius,
-      };
+      const radius = THEME_RADII.includes(o.radius as ThemeRadius)
+        ? o.radius as ThemeRadius : THEME_DEFAULT.radius;
+
+      // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
+      // the stored object field by field and drops anything it does not
+      // name, so a split that forgot this branch would hand every
+      // dark-purple, dark-green and light user a Dark Blue theme on their
+      // next page load, silently. It is also the single funnel for all
+      // four read paths — canonical key, legacy key, cross-tab adopt, and
+      // the synced cross-device blob — so one branch covers them all.
+      const split = THEME_MODES.includes(o.mode as ThemeMode)
+        && THEME_ACCENTS.includes(o.accent as ThemeAccent);
+      const { mode, accent } = split
+        ? { mode: o.mode as ThemeMode, accent: o.accent as ThemeAccent }
+        : LEGACY_COLOR[o.color as ThemeColor]
+          ?? { mode: THEME_DEFAULT.mode, accent: THEME_DEFAULT.accent };
+
+      return { mode, accent, radius, color: themeColorAlias(mode, accent) };
     },
     note: 'Colour scheme and corner radius.',
   }),

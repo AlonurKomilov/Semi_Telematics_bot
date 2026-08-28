@@ -1558,4 +1558,71 @@ describe('UI chrome', () => {
         'steps the config never defined both produce no rule at all',
     ).toEqual([]);
   }, 20_000);
+
+  // ── Guard 34 ────────────────────────────────────────────────────────
+  // An accent the picker offers with no CSS behind it. Same hole as the
+  // radius guard above, and it has already cost this repo once: a preset
+  // can ship as a chip that lands an attribute on <html> that no rule
+  // answers, and nothing fails.
+  //
+  // The split makes it wider, because an accent now needs a block PER
+  // MODE. Light and dark cannot share a value: a `--primary` bright
+  // enough to read on near-black is too pale to clear AA as text on
+  // white. Ship only the dark half and choosing that accent in Light
+  // silently does nothing.
+  it('every accent the picker offers has a rule in both modes', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
+
+    const list = (name: string) =>
+      (new RegExp(`${name}[^=]*=\\s*\\[([^\\]]*)\\]`).exec(registry)?.[1] ?? '')
+        .split(',').map((x) => x.trim().replace(/['"`]/g, '')).filter(Boolean);
+
+    const accents = list('THEME_ACCENTS');
+    const modes = list('THEME_MODES');
+    expect(accents, 'THEME_ACCENTS should list what the picker offers').toEqual(
+      ['blue', 'purple', 'green'],
+    );
+    expect(modes).toEqual(['dark', 'light']);
+
+    // `blue` is the base --primary in both modes, so it has no override —
+    // the same shape as `rounded` in the radius guard above.
+    const missing: string[] = [];
+    for (const a of accents.filter((x) => x !== 'blue')) {
+      for (const [mode, sel] of [
+        ['light', ':root:not\\(\\.dark\\)'], ['dark', '\\.dark'],
+      ] as const) {
+        const re = new RegExp(`${sel}\\[data-accent="${a}"\\][^}]*--primary:`);
+        if (!re.test(css)) missing.push(`${a} has no --primary for ${mode} mode`);
+      }
+    }
+    expect(missing, 'an accent with no override does nothing at all').toEqual([]);
+
+    // Each accent block must move --chart-1 with --primary. The ramp's
+    // first series IS the accent — leave it behind and a green-accented
+    // dashboard draws blue bars next to green buttons.
+    const lagging = [...css.matchAll(
+      /(?::root|\.dark)\[data-accent="([a-z]+)"\]\s*\{([^}]*)\}/g,
+    )]
+      .filter((m) => m[2].includes('--primary:') && !m[2].includes('--chart-1:'))
+      .map((m) => `${m[1]} re-points --primary without --chart-1`);
+    expect(lagging).toEqual([]);
+
+    // The swatch the picker paints has to exist for every accent, in both
+    // modes, or the chip renders a dot with no colour.
+    // index.css splits `:root` across several blocks (fonts, colour,
+    // swatches, size). Merge them the way the cascade does — reading only
+    // the first finds the font block and no colour at all.
+    const merged = (sel: RegExp) =>
+      [...css.matchAll(sel)].map((m) => m[1]).join('\n');
+    const lightBlock = merged(/^ {2}:root \{$([\s\S]*?)^ {2}\}$/gm);
+    const darkBlock = merged(/^ {2}\.dark \{$([\s\S]*?)^ {2}\}$/gm);
+    const dots = accents.flatMap((a) =>
+      ([['light', lightBlock], ['dark', darkBlock]] as const)
+        .filter(([, block]) => !block.includes(`--swatch-accent-${a}:`))
+        .map(([mode]) => `--swatch-accent-${a} missing from ${mode}`),
+    );
+    expect(dots, 'a chip whose swatch token does not exist renders a colourless dot')
+      .toEqual([]);
+  });
 });

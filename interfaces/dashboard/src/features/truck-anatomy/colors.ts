@@ -58,7 +58,11 @@ export function useSceneTokens(): SceneTokens {
   useEffect(() => {
     const observer = new MutationObserver(() => setTokens(read()));
     observer.observe(document.documentElement, {
-      attributes: true, attributeFilter: ['class', 'data-theme'],
+      // `data-accent` as well as `data-theme`: attributeFilter is a
+      // WHITELIST, so an attribute it does not name produces no callback
+      // at all — nothing throws and nothing logs, the colours simply
+      // stop following the picker.
+      attributes: true, attributeFilter: ['class', 'data-theme', 'data-accent'],
     });
     return () => observer.disconnect();
   }, []);

@@ -20,6 +20,8 @@ export {
   type PrefScope,
   type PrefDef,
   type ThemeSetting,
+  type ThemeMode,
+  type ThemeAccent,
   type ThemeColor,
   type ThemeRadius,
   type SizeSetting,

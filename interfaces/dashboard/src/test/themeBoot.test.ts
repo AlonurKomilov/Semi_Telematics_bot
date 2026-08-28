@@ -23,7 +23,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { applyTheme, applySize } from '../context/ThemeContext';
 import {
-  THEME_DEFAULT, THEME_COLORS, THEME_RADII,
+  THEME_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, THEME_RADII,
+  themeColorAlias,
   SIZE_DEFAULT, SIZE_REGIONS, SIZE_MIN, SIZE_MAX, clampSize,
 } from '../preferences/registry';
 import { LS_PREFIX } from '../preferences/local';
@@ -61,6 +62,7 @@ function bootScriptSource(): string {
 interface Stamp {
   dark: boolean;
   theme?: string;
+  accent?: string;
   radius?: string;
   vars: Record<string, string>;
 }
@@ -80,6 +82,7 @@ function stamp(): Stamp {
   return {
     dark: root.classList.contains('dark'),
     theme: root.dataset.theme,
+    accent: root.dataset.accent,
     radius: root.dataset.radius,
     vars,
   };
@@ -112,6 +115,7 @@ function resetRoot() {
   const root = document.documentElement;
   root.classList.remove('dark');
   delete root.dataset.theme;
+  delete root.dataset.accent;
   delete root.dataset.radius;
   root.removeAttribute('style');
 }
@@ -137,9 +141,10 @@ const storeSize = (s: Partial<SizeSetting>) =>
 
 describe('theme-boot ↔ applyTheme', () => {
   it('agrees on every valid stored theme', () => {
-    for (const color of THEME_COLORS) {
+    for (const mode of THEME_MODES) {
+      for (const accent of THEME_ACCENTS) {
       for (const radius of THEME_RADII) {
-        const theme: ThemeSetting = { color, radius };
+        const theme: ThemeSetting = { mode, accent, radius, color: themeColorAlias(mode, accent) };
 
         resetRoot();
         storeTheme(theme);
@@ -149,6 +154,46 @@ describe('theme-boot ↔ applyTheme', () => {
         const applied = runApply(theme);
 
         expect(booted, `boot disagrees for ${JSON.stringify(theme)}`).toEqual(applied);
+      }
+      }
+    }
+  });
+
+  // The split's whole risk lives here. `sanitize` rebuilds the stored
+  // object field by field and DROPS anything it does not name, so a
+  // migration that exists in one of the two implementations and not the
+  // other reverts users silently — and the boot script cannot import, so
+  // there are always two implementations. The structural tests below
+  // pass trivially on the new shape and would prove nothing about this.
+  it('migrates a pre-split stored value identically in both implementations', () => {
+    const LEGACY: Record<string, { mode: string; accent: string }> = {
+      'dark-blue':   { mode: 'dark',  accent: 'blue' },
+      'dark-purple': { mode: 'dark',  accent: 'purple' },
+      'dark-green':  { mode: 'dark',  accent: 'green' },
+      // Light's --primary has always been chromatic blue, so blue is the
+      // accent it has always painted — not an arbitrary default.
+      'light':       { mode: 'light', accent: 'blue' },
+    };
+    for (const color of THEME_COLORS) {
+      for (const radius of THEME_RADII) {
+        const { mode, accent } = LEGACY[color];
+
+        resetRoot();
+        // exactly what a browser holds from before the split
+        localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color, radius }));
+        const booted = runBoot();
+
+        resetRoot();
+        const applied = runApply({
+          mode: mode as ThemeSetting['mode'],
+          accent: accent as ThemeSetting['accent'],
+          radius,
+          color: themeColorAlias(mode as ThemeSetting['mode'], accent as ThemeSetting['accent']),
+        });
+
+        expect(booted, `boot mis-migrates the stored value ${color}/${radius}`).toEqual(applied);
+        expect(booted.dark, `${color} lost its mode`).toBe(mode === 'dark');
+        expect(booted.accent, `${color} lost its accent`).toBe(accent);
       }
     }
   });
@@ -177,23 +222,32 @@ describe('theme-boot ↔ applyTheme', () => {
   });
 
   it('completes a partially stored theme field by field, like the sanitizer', () => {
+    // A pre-split partial: mode and accent both come from the migration.
     storeTheme({ color: 'light' });
     const booted = runBoot();
     resetRoot();
-    expect(booted).toEqual(runApply({ ...THEME_DEFAULT, color: 'light' }));
+    expect(booted).toEqual(runApply({
+      ...THEME_DEFAULT, mode: 'light', accent: 'blue', color: 'light',
+    }));
   });
 
   it('reads the pre-service key when the canonical one is absent', () => {
-    const legacy: ThemeSetting = { color: 'light', radius: 'sharp' };
-    localStorage.setItem('dashboard-theme', JSON.stringify(legacy));
+    // Deliberately the OLD shape — this key predates the split by more
+    // than it predates the preference service, so anything still in it
+    // is guaranteed to need migrating.
+    localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
     const booted = runBoot();
     resetRoot();
-    expect(booted).toEqual(runApply(legacy));
+    expect(booted).toEqual(runApply({
+      mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
+    }));
   });
 
   it('prefers the canonical key over the legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
-    const canonical: ThemeSetting = { color: 'dark-green', radius: 'pill' };
+    const canonical: ThemeSetting = {
+      mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green',
+    };
     storeTheme(canonical);
     const booted = runBoot();
     resetRoot();

@@ -45,13 +45,36 @@
         var pick = function (v, allowed, fallback) {
           return allowed.indexOf(v) === -1 ? fallback : v;
         };
-        var color  = pick(t.color,  ['dark-blue', 'dark-purple', 'dark-green', 'light'], 'dark-blue');
         var radius = pick(t.radius, ['sharp', 'rounded', 'pill'], 'rounded');
 
+        // Mode and accent, with the pre-split `color` as the fallback —
+        // the same migration registry.ts's sanitiser does, written a
+        // second time because this script cannot import (design.md §2
+        // rule 4). If the two ever disagree the first painted frame is
+        // one theme and the app snaps to another after hydration;
+        // themeBoot.test.ts compares them for exactly that reason.
+        var LEGACY = {
+          'dark-blue':   ['dark',  'blue'],
+          'dark-purple': ['dark',  'purple'],
+          'dark-green':  ['dark',  'green'],
+          'light':       ['light', 'blue']
+        };
+        var mode, accent;
+        if (['dark', 'light'].indexOf(t.mode) !== -1
+            && ['blue', 'purple', 'green'].indexOf(t.accent) !== -1) {
+          mode = t.mode; accent = t.accent;
+        } else {
+          var legacy = LEGACY[t.color] || ['dark', 'blue'];
+          mode = legacy[0]; accent = legacy[1];
+        }
+
         var root = document.documentElement;
-        if (color === 'light') root.classList.remove('dark');
+        if (mode === 'light') root.classList.remove('dark');
         else root.classList.add('dark');
-        root.dataset.theme = color;
+        root.dataset.accent = accent;
+        // Deprecated alias, still stamped for one release so anything
+        // still keyed on [data-theme] keeps working.
+        root.dataset.theme = mode === 'light' ? 'light' : 'dark-' + accent;
         root.dataset.radius = radius;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts

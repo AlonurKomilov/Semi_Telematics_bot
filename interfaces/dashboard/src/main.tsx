@@ -26,7 +26,7 @@ function AppToaster() {
   // one element on screen that ignored the theme entirely. `light`
   // covers every non-dark colour, which today is just `light`.
   const { theme } = useTheme();
-  const mode = theme.color === 'light' ? 'light' : 'dark';
+  const mode = theme.mode;
   // Sonner starts a top-positioned toast 32px down the viewport, which
   // lands it squarely on the 48px topbar — the banner covered the
   // navigation it was often reporting about. Clear the header instead,

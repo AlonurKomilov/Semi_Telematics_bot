@@ -128,10 +128,11 @@ describe('legacy migration', () => {
     // A stored `density` is a retired field: the sanitizer rebuilds the
     // object field by field, so it is dropped rather than carried forward.
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    expect(readPref('theme')).toEqual({ color: 'light', radius: 'sharp' });
+    expect(readPref('theme')).toEqual(
+      { mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
     // Copied forward under the canonical key, so the next read is direct.
     expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}theme`)!)).toEqual(
-      { color: 'light', radius: 'sharp' });
+      { mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
     // Legacy entry deliberately left in place (roll-back safety).
     expect(localStorage.getItem('dashboard-theme')).not.toBeNull();
   });
@@ -153,8 +154,9 @@ describe('legacy migration', () => {
 
   it('prefers the canonical value over a stale legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    writePref('theme', { color: 'dark-green', radius: 'pill' });
-    expect(readPref('theme')).toEqual({ color: 'dark-green', radius: 'pill' });
+    writePref('theme', { mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
+    expect(readPref('theme')).toEqual(
+      { mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
   });
 });
 
@@ -221,7 +223,8 @@ describe('store semantics', () => {
   it('completes a partial stored theme from the default', () => {
     // Written before a field existed / hand-edited.
     localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color: 'light' }));
-    expect(readPref('theme')).toEqual({ color: 'light', radius: 'rounded' });
+    expect(readPref('theme')).toEqual(
+      { mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
   });
 
   it('adoptRaw() rejects an invalid cross-tab value', () => {
@@ -233,7 +236,8 @@ describe('store semantics', () => {
   it('adoptRaw() updates a known key without echoing to storage', () => {
     localStorage.clear();
     store.adoptRaw('theme', JSON.stringify({ color: 'light', radius: 'rounded' }));
-    expect(store.get('theme')).toEqual({ color: 'light', radius: 'rounded' });
+    expect(store.get('theme')).toEqual(
+      { mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
     // Came from another tab / the server — must not be written back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
   });
@@ -310,5 +314,61 @@ describe('resetAll sweeps family keys', () => {
     // Reset all must not leave saved tabs behind.
     expect(localStorage.getItem(`${LS_PREFIX}table.my-grid.views`)).toBeNull();
     expect(store.get('table.my-grid.views')).toEqual([]);
+  });
+
+  // ── The theme split's migration ─────────────────────────────────────
+  // `sanitize` is the single funnel every read path goes through:
+  // canonical key, legacy key, cross-tab adopt, and the synced
+  // cross-device blob. It also rebuilds the stored object field by field
+  // and DROPS anything it does not name — so a split that forgot the
+  // migration branch would hand every dark-purple, dark-green and light
+  // user a Dark Blue theme on their next page load, in silence.
+  //
+  // themeBoot.test.ts cannot catch this. It compares the pre-paint script
+  // against `applyTheme`, and `applyTheme` takes an already-built
+  // ThemeSetting — it never touches the sanitiser. Deleting the migration
+  // from here left that file entirely green, which is why this exists.
+  describe('the theme mode/accent migration', () => {
+    const sanitize = DEFS.theme.sanitize!;
+
+    it('turns every pre-split value into the right mode and accent', () => {
+      const EXPECTED: Record<string, { mode: string; accent: string }> = {
+        'dark-blue':   { mode: 'dark',  accent: 'blue' },
+        'dark-purple': { mode: 'dark',  accent: 'purple' },
+        'dark-green':  { mode: 'dark',  accent: 'green' },
+        // Light's --primary has always been chromatic blue (index.css),
+        // so blue is the accent it has always painted — not a fallback.
+        'light':       { mode: 'light', accent: 'blue' },
+      };
+      for (const [color, want] of Object.entries(EXPECTED)) {
+        expect(sanitize({ color, radius: 'pill' }), `stored ${color}`)
+          .toEqual({ ...want, radius: 'pill', color });
+      }
+    });
+
+    it('keeps a post-split value untouched', () => {
+      expect(sanitize({ mode: 'light', accent: 'green', radius: 'sharp', color: 'light' }))
+        .toEqual({ mode: 'light', accent: 'green', radius: 'sharp', color: 'light' });
+    });
+
+    it('re-derives the deprecated alias rather than trusting it', () => {
+      // A stored object whose alias disagrees with its own mode/accent —
+      // what a rolled-back build followed by a roll-forward can leave.
+      // The alias is output, never input.
+      expect(sanitize({ mode: 'dark', accent: 'green', radius: 'rounded', color: 'light' }))
+        .toEqual({ mode: 'dark', accent: 'green', radius: 'rounded', color: 'dark-green' });
+    });
+
+    it('falls back to the default for a value that is neither shape', () => {
+      expect(sanitize({ color: 'chartreuse', radius: 'pill' }))
+        .toEqual({ mode: 'dark', accent: 'blue', radius: 'pill', color: 'dark-blue' });
+    });
+
+    it('cannot express light + a non-blue accent in the alias, and says so', () => {
+      // The lossy direction is deliberate: a rollback keeps the MODE and
+      // loses the accent, which is the better half to keep.
+      const out = sanitize({ mode: 'light', accent: 'green', radius: 'pill' }) as { color: string };
+      expect(out.color).toBe('light');
+    });
   });
 });

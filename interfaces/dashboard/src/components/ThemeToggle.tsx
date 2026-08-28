@@ -5,7 +5,7 @@ import { Palette, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Tip } from './tooltip';
-import { useTheme, applySize, type ColorTheme, type RadiusVariant } from '../context/ThemeContext';
+import { useTheme, applySize, type Mode, type Accent, type RadiusVariant } from '../context/ThemeContext';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 
@@ -17,16 +17,26 @@ import { cn } from '../lib/utils';
 // translated.  Swatches are `--swatch-*` tokens — see index.css for why
 // a raw `bg-blue-500` was both a rule violation and the wrong colour.
 
-const COLOR_OPTIONS: { value: ColorTheme; key: string; label: string; dot: string }[] = [
-  { value: 'dark-blue',   key: 'theme.dark_blue',   label: 'Dark Blue',   dot: 'var(--swatch-dark-blue)' },
-  { value: 'dark-purple', key: 'theme.dark_purple', label: 'Dark Purple', dot: 'var(--swatch-dark-purple)' },
-  { value: 'dark-green',  key: 'theme.dark_green',  label: 'Dark Green',  dot: 'var(--swatch-dark-green)' },
-  // `theme.color_light`, not the older `theme.light`: that key is already
-  // translated in all nine locales while these three siblings are not, so
-  // reusing it rendered ONE translated chip beside three English ones in
-  // every partially-translated locale.  A key of its own makes the whole
-  // row fall back together.
-  { value: 'light',       key: 'theme.color_light', label: 'Light',       dot: 'var(--swatch-light)' },
+// Two rows, because they answer two questions. One row of four —
+// Dark Blue / Dark Purple / Dark Green / Light — read as a list of
+// themes, but three of its chips set a mode AND an accent while the
+// fourth set only a mode: Light looked like a kind of dark. It also made
+// "Light with a green accent" impossible to express, though Light has
+// always had an accent (its --primary is chromatic blue).
+//
+// `theme.dark` / `theme.light` are translated in all nine locales and
+// had no call sites; the accent keys are the old `theme.dark_*` renamed,
+// with the "dark" qualifier dropped from every translation. Net zero new
+// English keys, which is what locales/parity.test.ts requires.
+const MODE_OPTIONS: { value: Mode; key: string; label: string; dot: string }[] = [
+  { value: 'dark',  key: 'theme.dark',  label: 'Dark',  dot: 'var(--swatch-mode-dark)' },
+  { value: 'light', key: 'theme.light', label: 'Light', dot: 'var(--swatch-mode-light)' },
+];
+
+const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }[] = [
+  { value: 'blue',   key: 'theme.accent_blue',   label: 'Blue',   dot: 'var(--swatch-accent-blue)' },
+  { value: 'purple', key: 'theme.accent_purple', label: 'Purple', dot: 'var(--swatch-accent-purple)' },
+  { value: 'green',  key: 'theme.accent_green',  label: 'Green',  dot: 'var(--swatch-accent-green)' },
 ];
 
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
@@ -145,10 +155,19 @@ export function ThemeToggle() {
             <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
               {t('theme.group_color', 'Color')}
             </p>
+            {/* Mode first, then accent. The rows are separate elements
+                rather than one wrapped list so the two questions cannot
+                re-flow into each other at any Size setting. */}
             <div className="flex flex-wrap gap-1">
-              {COLOR_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.color} label={t(o.key, o.label)} dot={o.dot}
-                  onClick={(v) => setTheme({ color: v })} />
+              {MODE_OPTIONS.map((o) => (
+                <Chip key={o.value} value={o.value} current={theme.mode} label={t(o.key, o.label)} dot={o.dot}
+                  onClick={(v) => setTheme({ mode: v })} />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {ACCENT_OPTIONS.map((o) => (
+                <Chip key={o.value} value={o.value} current={theme.accent} label={t(o.key, o.label)} dot={o.dot}
+                  onClick={(v) => setTheme({ accent: v })} />
               ))}
             </div>
           </div>
