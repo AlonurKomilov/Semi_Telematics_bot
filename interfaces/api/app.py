@@ -73,6 +73,7 @@ from features.applications import config as applications_config
 from features.kpi import config as kpi_config
 from features.kpi import router as kpi_routes
 from features.vehicles import config as vehicles_config
+from features.vehicles import documents as vehicles_documents
 from features.inspections import router as inspections_routes
 from features.knowledge import router as knowledge_routes
 from features.coaching import config as coaching_config
@@ -448,6 +449,7 @@ def create_api() -> FastAPI:
         app.include_router(overview_routes.router, prefix=prefix)
         # Config FIRST — vehicles' /{vehicle_name} would shadow /config.
         app.include_router(vehicles_config.router, prefix=prefix)
+        app.include_router(vehicles_documents.router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
         app.include_router(vehicle_inventory_routes.router, prefix=prefix)
         app.include_router(loads_routes.router, prefix=prefix)

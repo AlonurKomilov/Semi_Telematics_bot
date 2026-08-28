@@ -25,11 +25,25 @@ data/userdata/                              ← OBJECT_STORE_ROOT
       branding/                             ← logo-{company_id}.ext, banner-{company_id}.ext
       drivers/user-{user_id}/
         _archive/{YYYY-MM-DD}/user-{user_id}/
+      vehicles/{unit_number}/                 ← registration, title, insurance,
+        _archive/{YYYY-MM-DD}/{unit_number}/     annual inspections; sanitized unit
     _generic/                               ← holding pen: company unresolved (a bug)
     _account/                               ← account-level data (by design)
       knowledge/
       inspection-templates/
 ```
+
+**Vehicle folders are named by UNIT NUMBER, not registry id** — this
+tree is browsed by hand in the customer's Drive, and `vehicles/6862/`
+reads as a truck where `vehicle-16/` reads as a database.  The number
+is sanitized like a company name (user data on a path).  Two costs,
+accepted: a renamed truck keeps its old folder until its documents are
+next touched, and a reused number lands in the retired truck's folder
+only if that truck was never archived — archiving moves the folder to
+`vehicles/_archive/{date}/{unit}/` (the driver-archive recipe: physical
+move + `move_vehicle_documents_bucket` row rewrite), and restore moves
+it back.  Helpers: `vehicle_docs_bucket` / `vehicle_docs_archive_bucket`
+in `features/work_orders/storage.py`.
 
 `OBJECT_STORE_ROOT` (`infra/config.py`) is read **once at import**.
 Changing it needs a process restart, and tests must set it by plain

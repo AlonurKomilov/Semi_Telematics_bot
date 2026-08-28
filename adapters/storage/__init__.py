@@ -62,6 +62,7 @@ from .part_directory import PartDirectoryMixin
 from .platform_settings import PlatformSettingsMixin
 from .vendor_directory import VendorDirectoryMixin
 from .market_intel import MarketIntelMixin
+from .vehicle_documents import VehicleDocumentsMixin
 from .vehicle_inventory import VehicleInventoryMixin
 from .fuel import FuelMixin
 from .alerts import AlertsMixin
@@ -142,6 +143,7 @@ class Database(
     PlatformSettingsMixin,
     VendorDirectoryMixin,
     MarketIntelMixin,
+    VehicleDocumentsMixin,
     VehicleInventoryMixin,
     FuelMixin,
     AlertsMixin,

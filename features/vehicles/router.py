@@ -27,6 +27,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from features.vehicles.scope import company_allows
 from interfaces.api.deps import (
     require_permission_any,
     get_user_company_codes,
@@ -1103,6 +1104,16 @@ async def resolve_device_event(
     event = await tenant.get_device_event(account_id, event_id)
     if event is None:
         raise HTTPException(404, "event not found")
+    # An id-referencing WRITE, so it takes the same wall as restore/PUT/
+    # DELETE — and 404 for the same reason.  The listing beside it was
+    # walled first; leaving this one open would have meant a restricted
+    # caller could not SEE an event but could still resolve it, which is
+    # the exact read/write split this contract exists to end.  An event
+    # with no registry_id yet is unplaced, not foreign: it stays
+    # resolvable, matching the listing's fail-open.
+    if event.get("registry_id"):
+        await _wall_registry_vehicle(
+            tenant, account_id, int(event["registry_id"]), user)
     if event.get("status") != "open":
         raise HTTPException(409, "event is already resolved")
 
@@ -1775,8 +1786,7 @@ async def _wall_registry_vehicle(tenant, account_id: int, vehicle_id: int,
     if v is None:
         raise HTTPException(404, "no vehicle with that id")
     allowed = await get_user_company_codes(user)
-    code = getattr(v, "company_code", "") or ""
-    if allowed and code and code not in allowed:
+    if not company_allows(getattr(v, "company_code", "") or "", allowed):
         raise HTTPException(404, "no vehicle with that id")
     return v
 
@@ -1803,6 +1813,16 @@ async def restore_registry_vehicle(
     )
     if not ok:
         raise HTTPException(404, "no archived vehicle with that id")
+    # The truck's paperwork comes home from the archive tree.  Best-
+    # effort: the restore already happened, and a folder that failed to
+    # move is a misfiling, not a loss — rows still point where the
+    # files are, so downloads keep working either way.
+    try:
+        from features.vehicles.documents import move_documents_on_restore
+        await move_documents_on_restore(tenant, account_id, vehicle_id)
+    except Exception:
+        logger.warning("restore: documents not moved v=%d acct=%d",
+                       vehicle_id, account_id, exc_info=True)
     v = await tenant.get_vehicle(account_id, vehicle_id)
     return {"restored": True, "id": vehicle_id,
             "status": v.status if v else "active"}
@@ -1857,4 +1877,14 @@ async def delete_registry_vehicle(
     )
     if not ok:
         raise HTTPException(404, "vehicle not found")
+    # Its paperwork moves to vehicles/_archive/{date}/{unit}/ — the
+    # driver-archive recipe: the live folder frees up for a future
+    # truck reusing the number, the carrier keeps a dated audit trail,
+    # and restore brings it back.  Best-effort, after the archive.
+    try:
+        from features.vehicles.documents import move_documents_on_archive
+        await move_documents_on_archive(tenant, account_id, vehicle_id)
+    except Exception:
+        logger.warning("archive: documents not moved v=%d acct=%d",
+                       vehicle_id, account_id, exc_info=True)
     return {"deactivated": True, "id": vehicle_id}

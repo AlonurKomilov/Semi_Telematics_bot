@@ -9254,3 +9254,49 @@ async def migrate_vehicle_archive_state(conn) -> None:
 
     await conn.commit()
     logger.info("Migration 201: vehicles carry why they were archived")
+
+
+@_register("202_vehicle_documents")
+async def migrate_vehicle_documents(conn) -> None:
+    """Per-vehicle documents — registration, title, insurance, annual
+    inspection certificates.
+
+    Mirrors ``driver_documents`` deliberately, column for column where
+    the concepts match: the two are the same product idea (files that
+    belong to one registry entity, live in the company's folder tree,
+    and must survive the entity leaving), and a second shape would make
+    every consumer — quota accounting, the archive move, expiry checks
+    later — handle two dialects of one thing.
+
+    ``vehicle_id`` is the REGISTRY id (vehicles.id), not a telematics
+    ref: documents belong to the truck, and the registry row is the
+    truck.  A telematics ref names a device that can move between
+    trucks — filing a title under one would hand the paperwork to
+    whichever truck inherits the gateway.
+    """
+    await conn.execute(
+        """CREATE TABLE IF NOT EXISTS vehicle_documents (
+               id BIGSERIAL PRIMARY KEY,
+               account_id INTEGER NOT NULL,
+               vehicle_id INTEGER NOT NULL,
+               doc_type TEXT NOT NULL,
+               bucket TEXT NOT NULL,
+               object_key TEXT NOT NULL,
+               drive_file_id TEXT,
+               file_name TEXT NOT NULL DEFAULT '',
+               file_size INTEGER,
+               mime_type TEXT,
+               issued_at TEXT,
+               expires_at TEXT,
+               status TEXT NOT NULL DEFAULT 'active',
+               uploaded_by INTEGER,
+               uploaded_at TEXT NOT NULL DEFAULT '',
+               notes TEXT
+           )"""
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle "
+        "ON vehicle_documents(account_id, vehicle_id, status)"
+    )
+    await conn.commit()
+    logger.info("Migration 202: vehicle documents ready")
