@@ -54,3 +54,26 @@ export function useVehicleCallouts(
   const grouped = byEntity(q.data?.callouts);
   return [...(grouped.get(`vehicle:${id}`) ?? []), ...(grouped.get('') ?? [])];
 }
+
+/**
+ * The "this truck has left the fleet" statement, if there is one.
+ *
+ * Sections use it to stop promising data that is never coming: a
+ * retired truck's timeline said "No telemetry data yet — the warehouse
+ * roll-up runs hourly", which is a promise, and its mileage said
+ * "Failed to load", which reads as a broken product.  Neither was
+ * true; the truck left.
+ *
+ * Two keys because they are two facts — someone retired it, or its
+ * gateway went silent and the sweep did.  Either way the page must
+ * stop implying more is on the way.
+ */
+export function useArchivedCallout(
+  vehicleName: string, company?: string,
+): CalloutData | null {
+  const callouts = useVehicleCallouts(vehicleName, company);
+  return callouts.find(
+    (c) => c.key === 'vehicle.archived'
+        || c.key === 'vehicle.stopped_reporting',
+  ) ?? null;
+}

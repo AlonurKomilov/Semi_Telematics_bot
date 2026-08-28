@@ -16,6 +16,7 @@ import { Tip } from '../../../components/tooltip';
 import { useTimezone } from '../../../hooks/useTimezone';
 import { todayInTimeZone, formatDay } from '../../../utils/datetime';
 import type { VehicleSectionProps } from './_shared/types';
+import { useArchivedCallout } from './_shared/useVehicle';
 import { flagCallout } from '../mileageFlags';
 import { CalloutChip } from '../../../components/callouts';
 import { Card } from '@/components/ui/card';
@@ -42,7 +43,8 @@ function startFor(end: string, days: number): string {
 }
 
 
-export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
+export default function VehicleMileage({ vehicleName, company }: VehicleSectionProps) {
+  const archived = useArchivedCallout(vehicleName, company);
   const tz = useTimezone();
   const [days, setDays] = useState(30);
   const end = todayInTimeZone(tz);
@@ -77,7 +79,17 @@ export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
         <p className="text-sm text-muted-foreground">Loading mileage…</p>
       )}
       {Boolean(error) && !isLoading && (
-        <p className="text-sm text-destructive">Failed to load mileage.</p>
+        // A retired truck has no mileage to load, and saying "failed"
+        // reads as the product being broken rather than as the truck
+        // having left.  Only the wording changes — a real failure on a
+        // live truck still says so, in red.
+        archived ? (
+          <p className="text-sm text-muted-foreground">
+            No mileage for this vehicle — it is no longer reporting.
+          </p>
+        ) : (
+          <p className="text-sm text-destructive">Failed to load mileage.</p>
+        )
       )}
       {!isLoading && !error && data?.no_data && (
         <p className="text-sm text-muted-foreground">

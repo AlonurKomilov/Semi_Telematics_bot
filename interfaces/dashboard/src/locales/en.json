@@ -1405,6 +1405,22 @@
       "where": "Where",
       "changed": "Changed",
       "show_all": "Show all {{count}}"
+    },
+    "vehicle.archived": {
+      "title": "Archived: no longer in the fleet",
+      "short": "Archived",
+      "where": "{{unit}}",
+      "why": "This truck was retired from the account, so nothing below is being updated any more.",
+      "affects": "Position · Fuel · DEF · Engine · Faults — the last values received, not current ones",
+      "do": "Its history stays complete. Restore it from the Vehicles page if it comes back."
+    },
+    "vehicle.stopped_reporting": {
+      "title": "Stopped reporting: retired automatically",
+      "short": "Not reporting",
+      "where": "{{unit}}",
+      "why": "This truck went silent long enough that it was retired automatically — which can mean it left the account, or that the device in it stopped working.",
+      "affects": "Position · Fuel · DEF · Engine · Faults — the last values received, not current ones",
+      "do": "If the truck is still yours, have the device checked, then restore it from the Vehicles page."
     }
   }
 }

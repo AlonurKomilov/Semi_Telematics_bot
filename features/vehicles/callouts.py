@@ -39,6 +39,34 @@ NO_ENGINE_DATA = register_callout(
     kind="condition", severity="warn", owner=_OWNER,
 ).key
 
+# ── The truck has left the fleet ─────────────────────────────────
+# Not a fault and not a question — a STATE, stated once at the top of
+# a page that otherwise looks exactly like a working truck's.  Without
+# it the detail page shows four-month-old fuel, DEF and coordinates
+# with a freshness dot beside them, which reads as current data to
+# anyone who does not already know the truck was retired.
+#
+# `condition`, so it collapses rather than being dismissable: the fact
+# stays true for as long as the truck is archived, and hiding it is
+# what let the page mislead in the first place.  `info`, not `warn` —
+# nothing is wrong here, someone decided this (or the sweep did), and
+# painting it amber would put a retired truck in the same visual
+# register as a fault.
+# TWO keys, because they are two different facts and one sentence
+# cannot honestly say both.  "Someone retired this truck" is a
+# decision; "its gateway went silent and we retired the row" might be
+# a broken device someone should go and look at.  Collapsing them into
+# one statement would hide the second, which is the one with an
+# action attached.
+ARCHIVED = register_callout(
+    "vehicle.archived",
+    kind="condition", severity="info", owner=_OWNER,
+).key
+STOPPED_REPORTING = register_callout(
+    "vehicle.stopped_reporting",
+    kind="condition", severity="warn", owner=_OWNER,
+).key
+
 # ── The mileage caveats ──────────────────────────────────────────
 # Already stamped on mileage rows as ``flag``; declared here so the
 # keys have one owner.  All are ``caveat``: they qualify a number the

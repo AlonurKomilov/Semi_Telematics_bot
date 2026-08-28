@@ -744,6 +744,22 @@
       "where": "Qayerda",
       "changed": "O'zgarish",
       "show_all": "Barchasini ko‘rsatish ({{count}})"
+    },
+    "vehicle.archived": {
+      "title": "Arxivda: endi avtoparkda emas",
+      "short": "Arxivda",
+      "where": "{{unit}}",
+      "why": "Bu mashina hisobdan chiqarilgan, shuning uchun quyidagi ma'lumotlar endi yangilanmaydi.",
+      "affects": "Joylashuv · Yoqilg'i · DEF · Dvigatel · Nosozliklar — oxirgi olingan qiymatlar, joriy emas",
+      "do": "Tarixi to‘liq saqlanadi. Qaytsa, «Transport» sahifasidan tiklang."
+    },
+    "vehicle.stopped_reporting": {
+      "title": "Ma'lumot yubormay qo'ydi: avtomatik chiqarildi",
+      "short": "Ma'lumot yo'q",
+      "where": "{{unit}}",
+      "why": "Mashina yetarlicha uzoq jim qoldi va avtomatik chiqarildi — bu hisobdan ketganini yoki undagi qurilma ishlamay qolganini bildirishi mumkin.",
+      "affects": "Joylashuv · Yoqilg'i · DEF · Dvigatel · Nosozliklar — oxirgi olingan qiymatlar, joriy emas",
+      "do": "Agar mashina hali sizniki bo‘lsa, qurilmani tekshirtiring va «Transport» sahifasidan tiklang."
     }
   }
 }

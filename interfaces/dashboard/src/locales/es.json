@@ -1114,6 +1114,22 @@
       "where": "Dónde",
       "changed": "Cambio",
       "show_all": "Ver los {{count}}"
+    },
+    "vehicle.archived": {
+      "title": "Archivado: ya no está en la flota",
+      "short": "Archivado",
+      "where": "{{unit}}",
+      "why": "Este camión se retiró de la cuenta, así que nada de lo siguiente se sigue actualizando.",
+      "affects": "Posición · Combustible · DEF · Motor · Fallos: los últimos valores recibidos, no los actuales",
+      "do": "Su historial se conserva completo. Restáurelo desde la página de Vehículos si vuelve."
+    },
+    "vehicle.stopped_reporting": {
+      "title": "Dejó de reportar: retirado automáticamente",
+      "short": "Sin reportes",
+      "where": "{{unit}}",
+      "why": "El camión estuvo en silencio el tiempo suficiente para retirarse automáticamente, lo que puede significar que dejó la cuenta o que su dispositivo dejó de funcionar.",
+      "affects": "Posición · Combustible · DEF · Motor · Fallos: los últimos valores recibidos, no los actuales",
+      "do": "Si el camión sigue siendo suyo, haga revisar el dispositivo y restáurelo desde la página de Vehículos."
     }
   }
 }

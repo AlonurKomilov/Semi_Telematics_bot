@@ -1240,7 +1240,7 @@ async def _vehicle_callouts(account_id: int, tenant, vehicle_ids) -> list[dict]:
     except Exception:
         logger.debug("callout read failed acct=%d", account_id, exc_info=True)
         return []
-    return callout_wire([
+    out = [
         Callout(
             key=str(r.get("key") or ""),
             entity=f"vehicle:{r.get('vehicle_id')}",
@@ -1248,7 +1248,51 @@ async def _vehicle_callouts(account_id: int, tenant, vehicle_ids) -> list[dict]:
             params=r.get("params") or {},
         )
         for r in rows if r.get("key")
-    ])
+    ]
+    out.extend(await _archived_callouts(account_id, tenant, vehicle_ids))
+    return callout_wire(out)
+
+
+async def _archived_callouts(account_id: int, tenant, vehicle_ids) -> list:
+    """One statement per truck on this page that has left the fleet.
+
+    Not a stored condition like the others — it is read straight off
+    the registry, because being archived IS the registry's own state
+    and duplicating it into `vehicle_conditions` would give one fact
+    two homes that can disagree.
+
+    It matters most on the detail page, which reads the PROVIDER
+    directly rather than our warehouse: the ingest gate cannot reach
+    it, so Samsara happily returns a retired truck's last-known fuel,
+    DEF and coordinates and the page renders them beside a freshness
+    dot as though they were readings from this morning.
+    """
+    from capabilities.callouts import Callout
+
+    wanted = {str(v) for v in vehicle_ids if v}
+    if not wanted:
+        return []
+    try:
+        rows = await tenant.list_archived_vehicles(account_id)
+    except Exception:
+        logger.debug("archived callouts unavailable acct=%d", account_id,
+                     exc_info=True)
+        return []
+    out = []
+    for v in rows:
+        if v.telematics_ref not in wanted:
+            continue
+        # Two keys, not one with a branch: "someone retired this" and
+        # "its gateway went silent" are different facts, and only the
+        # second has an action attached — go and check the device.
+        out.append(Callout(
+            key=("vehicle.stopped_reporting"
+                 if v.archived_reason == "sweep" else "vehicle.archived"),
+            entity=f"vehicle:{v.telematics_ref}",
+            since=str(v.updated_at or ""),
+            params={"unit": v.unit_number},
+        ))
+    return out
 
 
 @router.get("/{vehicle_name}")

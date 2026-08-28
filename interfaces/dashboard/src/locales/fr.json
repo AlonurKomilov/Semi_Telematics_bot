@@ -1114,6 +1114,22 @@
       "where": "Où",
       "changed": "Changement",
       "show_all": "Afficher les {{count}}"
+    },
+    "vehicle.archived": {
+      "title": "Archivé : ne fait plus partie du parc",
+      "short": "Archivé",
+      "where": "{{unit}}",
+      "why": "Ce camion a été retiré du compte : plus rien ci-dessous n'est mis à jour.",
+      "affects": "Position · Carburant · DEF · Moteur · Défauts — les dernières valeurs reçues, pas les actuelles",
+      "do": "Son historique reste complet. Restaurez-le depuis la page Véhicules s'il revient."
+    },
+    "vehicle.stopped_reporting": {
+      "title": "N'émet plus : retiré automatiquement",
+      "short": "Aucune donnée",
+      "where": "{{unit}}",
+      "why": "Le camion est resté muet assez longtemps pour être retiré automatiquement — soit il a quitté le compte, soit le boîtier a cessé de fonctionner.",
+      "affects": "Position · Carburant · DEF · Moteur · Défauts — les dernières valeurs reçues, pas les actuelles",
+      "do": "Si le camion est toujours le vôtre, faites vérifier le boîtier puis restaurez-le depuis la page Véhicules."
     }
   }
 }

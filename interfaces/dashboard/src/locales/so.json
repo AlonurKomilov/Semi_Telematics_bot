@@ -885,6 +885,22 @@
       "where": "Halka",
       "changed": "Isbeddel",
       "show_all": "Muuji dhammaan {{count}}"
+    },
+    "vehicle.archived": {
+      "title": "La kaydiyay: hadda kuma jiro ustuulka",
+      "short": "La kaydiyay",
+      "where": "{{unit}}",
+      "why": "Gaarigan waa laga saaray akoonka, markaa waxba hoos kuma cusboonaysiinayo.",
+      "affects": "Meesha · Shidaalka · DEF · Matoorka · Cilladaha — qiimayaashii ugu dambeeyay ee la helay, ee ma aha kuwa hadda",
+      "do": "Taariikhdiisu way dhammaystiran tahay. Ka soo celi bogga Gawaarida haddii uu soo laabto."
+    },
+    "vehicle.stopped_reporting": {
+      "title": "Wuu joojiyay soo warramista: si otomaatig ah ayaa loo saaray",
+      "short": "Warbixin ma jirto",
+      "where": "{{unit}}",
+      "why": "Gaarigu wuxuu aamusay muddo ku filan in si otomaatig ah looga saaro — taasoo macnaheedu noqon karo inuu akoonka ka baxay ama qalabkii ku jiray uu shaqo joojiyay.",
+      "affects": "Meesha · Shidaalka · DEF · Matoorka · Cilladaha — qiimayaashii ugu dambeeyay ee la helay, ee ma aha kuwa hadda",
+      "do": "Haddii gaarigu weli kuu yahay, qalabka la baaro, ka dibna ka soo celi bogga Gawaarida."
     }
   }
 }

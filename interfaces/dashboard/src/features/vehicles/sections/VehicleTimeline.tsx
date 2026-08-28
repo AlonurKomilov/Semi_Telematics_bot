@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { apiJSON } from '../../../api/client';
 import type { VehicleSectionProps } from './_shared/types';
+import { useArchivedCallout } from './_shared/useVehicle';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
@@ -41,6 +42,7 @@ interface TimelineResponse {
 }
 
 export default function VehicleTimeline({ vehicleName, company }: VehicleSectionProps) {
+  const archived = useArchivedCallout(vehicleName, company);
   const { data, isLoading, error } = useQuery<TimelineResponse>({
     queryKey: ['vehicle-timeline', vehicleName, company ?? ''],
     queryFn: () => {
@@ -67,7 +69,14 @@ export default function VehicleTimeline({ vehicleName, company }: VehicleSection
       {error && <p className="text-sm text-destructive">Failed to load timeline.</p>}
       {!isLoading && !error && points.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No telemetry data yet — the warehouse roll-up runs hourly.
+          {/* "yet … runs hourly" is a PROMISE, and for a truck that has
+              left the fleet it is one nothing will keep.  The statement
+              at the top of the page says why; this only has to stop
+              contradicting it. */}
+          {archived
+            ? 'No telemetry — this vehicle stopped reporting before it '
+              + 'was retired.'
+            : 'No telemetry data yet — the warehouse roll-up runs hourly.'}
         </p>
       )}
       {points.length > 0 && (

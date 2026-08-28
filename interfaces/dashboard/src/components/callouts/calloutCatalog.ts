@@ -90,6 +90,21 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
   'vehicle.gateway_swapped':  { kind: 'condition', severity: 'warn' },
   'vehicle.odometer_rebased': { kind: 'condition', severity: 'warn' },
 
+  // ── The truck has left the fleet ────────────────────────────
+  // A STATE, not a fault, stated at the top of a page that otherwise
+  // looks exactly like a working truck's.  The detail page reads the
+  // PROVIDER, not our warehouse, so the ingest gate cannot reach it:
+  // Samsara returns a retired truck's last-known fuel, DEF and
+  // coordinates and the page draws them beside a freshness dot.
+  //
+  // `info` for an archive someone chose — nothing is wrong, and amber
+  // would put a retired truck in the same register as a fault.
+  // `warn` for one the sweep retired: that might be a broken gateway
+  // rather than a truck that left, and it is the one with something
+  // to go and check.
+  'vehicle.archived':         { kind: 'condition', severity: 'info' },
+  'vehicle.stopped_reporting': { kind: 'condition', severity: 'warn' },
+
   // ── Mileage caveats (previously mileageFlags' FLAG_NOTE) ────
   // All six are `warn` because all six render as a warn chip TODAY —
   // the fold is deliberately rendering-identical, so a visual diff
