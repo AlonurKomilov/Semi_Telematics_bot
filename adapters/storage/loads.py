@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
-from capabilities.integrations import reconciliation as recon
+from capabilities import source as recon
 
 logger = logging.getLogger(__name__)
 

@@ -33,7 +33,7 @@ from adapters.telematics import (
     Capability,
     resolve_capability_cadence,
 )
-from capabilities.integrations import reconciliation
+from capabilities import source as reconciliation
 from capabilities.integrations.shared.history_backfill import (
     backfill_vehicle_history,
     get_backfill_status,

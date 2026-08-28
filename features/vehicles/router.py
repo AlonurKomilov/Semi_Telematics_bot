@@ -37,7 +37,7 @@ from interfaces.api.deps import (
     paginate,
     resolve_user_id,
 )
-from capabilities.integrations import reconciliation
+from capabilities import source as reconciliation
 from features.vehicles.service import (
     get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,

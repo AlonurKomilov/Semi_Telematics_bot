@@ -27,8 +27,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
 from capabilities.activity_trail import diff_rows
-from capabilities.integrations import reconciliation as recon
-from capabilities.integrations.reconciliation import MANUAL_SOURCE, is_unset
+from capabilities import source as recon
+from capabilities.source import MANUAL_SOURCE, is_unset
 
 logger = logging.getLogger(__name__)
 

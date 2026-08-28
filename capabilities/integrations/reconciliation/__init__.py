@@ -1,47 +1,41 @@
-"""Reconciliation — the shared merge / precedence / conflict engine for
-multi-integration data.
+"""DEPRECATED shim — moved to ``capabilities.source``.
 
-The problem it owns: when two integrations write the SAME field of the SAME
-canonical record, who wins, and how is a genuine disagreement surfaced?  It's
-the middle layer of the integration pipeline — provider adapters normalize
-their resources, this reconciles them into the canonical feature model,
-detecting conflicts as it goes.
+The package arbitrates every SOURCE a record's values can come from —
+Samsara, Datatruck, and the customer's own operators (``manual``, which
+always wins) — for three features (vehicles, drivers, loads).  A home
+under ``integrations/`` described the TRIGGER (only integration writes
+invoke the merge) but mis-described the concept, and the owner read
+"integrations-only" off the path twice: a name that misleads the person
+who owns the codebase will mislead everyone after them.  The whole
+package moved atomically — never split: ``merge_fields`` does fill,
+precedence and manual-pin in one loop, and tearing that across two
+homes is this repo's documented incident pattern.
 
-Structure:
-  * ``engine``     — pure ``merge_fields`` (blank-skip → fill → agree → pin →
-                     precedence); knows nothing about any feature.
-  * ``registry``   — features declare their reconcilable shape via
-                     ``register_reconciled_entity`` (the "by feature" hook).
-  * ``precedence`` — per-account, per-entity source priority (account_settings).
-  * ``conflicts``  — the generic ``data_conflicts`` store + resolution dispatch.
+Kept as a re-export for one release for the same reason the
+``settings_registry`` shim was: a branch written before the move must
+not fail to import mid-merge.  It re-exports the SAME objects — there
+is no second engine — so a caller on the old path and one on the new
+resolve identical rules.
 
-A feature = one ``register_reconciled_entity(...)`` call + a call to
-``merge_fields`` in its integration write path.  Adding a domain (drivers,
-health, …) needs no new engine code.
+Import from ``capabilities.source`` in new code.  When no import of
+this path remains, delete the directory.
 """
 
-from .conflicts import (  # noqa: F401
-    clear_conflict,
-    count_open,
-    list_open,
-    record_conflict,
-    resolve,
-    sync_batch,
-)
-from .engine import (  # noqa: F401
+from capabilities.source import (  # noqa: F401
     MANUAL_SOURCE,
     MergeResult,
-    is_unset,
-    merge_fields,
-    source_rank,
-)
-from .precedence import (  # noqa: F401
-    get_precedence,
-    precedence_options,
-    set_precedence,
-)
-from .registry import (  # noqa: F401
-    ReconciledEntity,
+    clear_conflict,
+    count_open,
     get_entity,
+    get_precedence,
+    is_unset,
+    list_open,
+    merge_fields,
+    precedence_options,
+    record_conflict,
     register_reconciled_entity,
+    resolve,
+    set_precedence,
+    source_rank,
+    sync_batch,
 )

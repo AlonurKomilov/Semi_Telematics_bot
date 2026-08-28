@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from adapters.storage import Role
-from capabilities.integrations import reconciliation as recon
+from capabilities import source as recon
 
 
 def _order(ref: str, **kw) -> dict:

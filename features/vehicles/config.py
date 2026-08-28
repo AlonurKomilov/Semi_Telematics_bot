@@ -25,7 +25,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from capabilities.integrations import reconciliation
+from capabilities import source as reconciliation
 from infra.platform import get_tenant_db as _get_tenant_db
 from interfaces.api.deps import require_permission
 

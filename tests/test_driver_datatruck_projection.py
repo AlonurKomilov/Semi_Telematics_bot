@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from adapters.storage import Role
-from capabilities.integrations import reconciliation as recon
+from capabilities import source as recon
 
 
 def _dt_row(ref: str, *, name: str = "", phone: str = "", email: str = "",

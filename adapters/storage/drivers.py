@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
-from capabilities.integrations import reconciliation as recon
+from capabilities import source as recon
 
 
 # Driver-profile columns containing personally-identifiable information.
