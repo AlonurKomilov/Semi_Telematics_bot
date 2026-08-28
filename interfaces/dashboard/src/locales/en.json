@@ -1407,7 +1407,7 @@
       "show_all": "Show all {{count}}"
     },
     "vehicle.archived": {
-      "title": "Archived: no longer in the fleet",
+      "title": "Archived: not in service",
       "short": "Archived",
       "where": "{{unit}}",
       "why": "This truck was retired from the account, so nothing below is being updated any more.",

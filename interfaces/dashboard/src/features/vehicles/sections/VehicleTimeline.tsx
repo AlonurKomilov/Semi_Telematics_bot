@@ -70,7 +70,7 @@ export default function VehicleTimeline({ vehicleName, company }: VehicleSection
       {!isLoading && !error && points.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {/* "yet … runs hourly" is a PROMISE, and for a truck that has
-              left the fleet it is one nothing will keep.  The statement
+              been retired it is one nothing will keep.  The statement
               at the top of the page says why; this only has to stop
               contradicting it. */}
           {archived

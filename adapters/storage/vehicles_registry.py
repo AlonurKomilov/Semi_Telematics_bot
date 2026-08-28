@@ -1001,7 +1001,7 @@ class VehiclesRegistryMixin(_MixinBase):
         its predecessor.
 
         Used to refuse a LIVE assistant question about a truck that left
-        the fleet, rather than answering it with stale readings as
+        the account, rather than answering it with stale readings as
         though they were current.  Historical questions do not consult
         this at all — the record is the reason archiving exists.
         """
@@ -1027,7 +1027,7 @@ class VehiclesRegistryMixin(_MixinBase):
         return rows[0] if rows else None
 
     async def active_unit_names(self, account_id: int) -> set[str]:
-        """Lowercased unit numbers of trucks still on the fleet.
+        """Lowercased unit numbers of trucks still in service.
 
         An ALLOW-list, deliberately, for the surfaces that identify a
         vehicle by NAME rather than by ref.  Excluding archived names
@@ -1049,7 +1049,7 @@ class VehiclesRegistryMixin(_MixinBase):
         The ALERTING predicate, and deliberately wider than
         ``operator_archived_refs``: nothing about notifying a person
         wants the sweep-vs-operator distinction — a truck that is not on
-        the fleet list should not be paging anyone, whichever way it
+        the vehicle list should not be paging anyone, whichever way it
         left.  The ingest gate is the narrow one, because a swept badge
         must be allowed back in the moment it reports.
         """

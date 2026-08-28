@@ -56,7 +56,7 @@ export function useVehicleCallouts(
 }
 
 /**
- * The "this truck has left the fleet" statement, if there is one.
+ * The "this truck is out of service" statement, if there is one.
  *
  * Sections use it to stop promising data that is never coming: a
  * retired truck's timeline said "No telemetry data yet — the warehouse

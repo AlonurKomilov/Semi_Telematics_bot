@@ -54,7 +54,7 @@ export function vehicleRowMenu(
   if (deps.restore && vehicle.archived && vehicle.registry_id != null) {
     actions.push({
       key: 'restore',
-      label: 'Restore to fleet',
+      label: 'Restore vehicle',
       icon: <RotateCcw className="text-muted-foreground size-3.5" />,
       separatorBefore: true,
       onSelect: () => deps.restore!(vehicle),

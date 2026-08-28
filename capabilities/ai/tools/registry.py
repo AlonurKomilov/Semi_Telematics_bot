@@ -529,7 +529,7 @@ async def execute_tool(tool_name: str, tool_args: dict,
                 tool_args["_attachments"] = attachment_grids
             if attachment_docs:
                 tool_args["_attachment_docs"] = attachment_docs
-    # ── A live question about a truck that left the fleet ───────
+    # ── A live question about a retired truck ───────────────────
     # Refused HERE, once, rather than inside twenty handlers.  The same
     # server-side-channel discipline as `_scope_vehicles` above: the
     # schema declares it, the dispatcher enforces it, and a model

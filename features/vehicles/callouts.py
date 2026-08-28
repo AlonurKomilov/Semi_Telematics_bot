@@ -39,7 +39,7 @@ NO_ENGINE_DATA = register_callout(
     kind="condition", severity="warn", owner=_OWNER,
 ).key
 
-# ── The truck has left the fleet ─────────────────────────────────
+# ── The truck is out of service ──────────────────────────────────
 # Not a fault and not a question — a STATE, stated once at the top of
 # a page that otherwise looks exactly like a working truck's.  Without
 # it the detail page shows four-month-old fuel, DEF and coordinates

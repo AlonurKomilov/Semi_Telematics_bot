@@ -1116,7 +1116,7 @@
       "show_all": "Afficher les {{count}}"
     },
     "vehicle.archived": {
-      "title": "Archivé : ne fait plus partie du parc",
+      "title": "Archivé : hors service",
       "short": "Archivé",
       "where": "{{unit}}",
       "why": "Ce camion a été retiré du compte : plus rien ci-dessous n'est mis à jour.",

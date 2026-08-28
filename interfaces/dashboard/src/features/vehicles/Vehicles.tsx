@@ -52,7 +52,7 @@ const UTILIZATION_PERSONAS = new Set(['owner', 'admin', 'fleet', 'accounting']);
 // cache entry instead of five, and no refetch per tab.
 const STATUS_SEGMENTS: DataGridSegment[] = [
   // `!r.archived` on every live tab, including All: a retired truck
-  // belongs on exactly one tab, its own.  Without this the fleet count
+  // belongs on exactly one tab, its own.  Without this the vehicle count
   // in the hero would quietly grow each time someone archived a truck.
   { key: 'all', label: 'All', match: (r) => !r.archived },
   { key: 'moving', label: 'Moving', match: (r) => r.status === 'moving' },
@@ -385,7 +385,7 @@ export default function Vehicles() {
     placeholderData: (prev) => prev,
   });
 
-  // Trucks that have left the fleet.  A SECOND query, because an
+  // Trucks that have been retired.  A SECOND query, because an
   // archived truck has no live telematics row — the ingest stops
   // writing them and archiving deletes the last one — so there is
   // nothing for the main list's live merge to overlay.  Only fetched
@@ -448,7 +448,7 @@ export default function Vehicles() {
                     { method: 'POST' });
       // Both lists: the truck leaves one and joins the other.
       await Promise.all([refetch(), refetchArchived()]);
-      toast.success(`${v.name} is back on the fleet`);
+      toast.success(`${v.name} restored`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Restore failed');
     }

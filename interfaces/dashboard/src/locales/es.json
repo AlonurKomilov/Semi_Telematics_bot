@@ -1116,7 +1116,7 @@
       "show_all": "Ver los {{count}}"
     },
     "vehicle.archived": {
-      "title": "Archivado: ya no está en la flota",
+      "title": "Archivado: fuera de servicio",
       "short": "Archivado",
       "where": "{{unit}}",
       "why": "Este camión se retiró de la cuenta, así que nada de lo siguiente se sigue actualizando.",
