@@ -169,15 +169,23 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
   // already returns each vehicle's company_code, so bulk-by-company costs
   // no extra request and no schema.
   const companies = useMemo(() => {
-    const by = new Map<string, number[]>();
+    const by = new Map<string, { ids: number[]; canFire: number }>();
     for (const v of fleet) {
       if (!v.company) continue;
-      const ids = by.get(v.company) ?? [];
-      ids.push(v.id);
-      by.set(v.company, ids);
+      const g = by.get(v.company) ?? { ids: [], canFire: 0 };
+      g.ids.push(v.id);
+      if (v.watchable) g.canFire += 1;
+      by.set(v.company, g);
     }
     return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [fleet]);
+
+  // Vehicles with no company at all.  They cannot appear as a group —
+  // there is no group to name — so bulk-fill cannot reach them, and on
+  // this fleet that is 87 of 188.  Said out loud under the control rather
+  // than left for someone to notice by adding the counts up.
+  const companyless = useMemo(
+    () => fleet.filter((v) => !v.company).length, [fleet]);
 
   // What the Vehicle select currently reads.  Derived, not stored: the
   // truth is `allMine` plus `picked`, and a second copy would be a second
@@ -188,12 +196,22 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
 
   const scopeItems = useMemo(() => [
     { value: 'all', label: 'All vehicles' },
-    ...companies.map(([code, ids]) => ({
+    ...companies.map(([code, g]) => ({
       value: `company:${code}`,
-      label: `${code} — ${ids.length} vehicle${ids.length === 1 ? '' : 's'}`,
+      label: companyLabel(code, g),
     })),
     { value: 'pick', label: 'Choose vehicles…' },
   ], [companies]);
+
+  /** "PTG — 31 vehicles" is optimistic when only 29 of them can fire.
+   *  The count says what you get; the parenthetical says what will
+   *  actually speak, and only when the two differ — an unconditional
+   *  "(31 can fire)" beside "31 vehicles" is noise. */
+  const companyLabel = (code: string, g: { ids: number[]; canFire: number }) => {
+    const n = g.ids.length;
+    const base = `${code} — ${n} vehicle${n === 1 ? '' : 's'}`;
+    return g.canFire === n ? base : `${base} (${g.canFire} can fire)`;
+  };
 
   const pickScope = (v: string) => {
     if (v === 'all') { setAllMine(true); return; }
@@ -419,9 +437,9 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
                       see. A stored "this company" would silently take on
                       trucks added later — a different promise, and not the
                       one this form makes. */}
-                  {companies.map(([code, ids]) => (
+                  {companies.map(([code, g]) => (
                     <SelectItem key={code} value={`company:${code}`}>
-                      {code} — {ids.length} vehicle{ids.length === 1 ? '' : 's'}
+                      {companyLabel(code, g)}
                     </SelectItem>
                   ))}
                   <SelectItem value="pick">Choose vehicles…</SelectItem>
@@ -431,6 +449,15 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
                 {allMine
                   ? `Watching all ${fleet.length}, including any added later`
                   : `${picked.length} of ${fleet.length} chosen`}
+                {/* The company options cover only vehicles that HAVE a
+                    company, so on a fleet where most do not, their counts
+                    do not add up to the whole and there is no group to
+                    put the rest in.  Say where they are instead of
+                    leaving someone to work it out. */}
+                {companyless > 0 && (
+                  <> · {companyless} without a company — find them under
+                  “Choose vehicles…”</>
+                )}
               </span>
             </div>
 
