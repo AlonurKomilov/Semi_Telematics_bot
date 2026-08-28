@@ -416,3 +416,85 @@ async def tenant_registry(core_platform):
     registry = TenantRegistry()
     yield registry
     await registry.close_all()
+
+
+# ── Process-global caches do not survive a test ──────────────────────
+#
+# Every test gets its own database, COPIED FROM A TEMPLATE — so account
+# ids restart at the same value in each one.  The in-process caches are
+# keyed by account id, which makes an entry written by one test a
+# valid-looking HIT for the next test's brand-new account, carrying
+# whatever the previous test left behind.
+#
+# That combination is why `test_put_writes_trail_event_with_diff` failed
+# with `KeyError: 'can_faults'` only when it ran after the cache tests in
+# its own file: the flag it flips was already False in the cache, the PUT
+# produced an empty diff, and the trail event had nothing to record.  It
+# passed alone, which is what made it read as flakiness.
+#
+# Only caches ALREADY imported are cleared — looking them up in
+# sys.modules rather than importing means a test that never touches
+# permissions pays nothing and pulls in no module it did not ask for.
+# Keep this list in step with ``invalidate_tool_cache`` in
+# capabilities/ai/tools/registry.py, which clears its three caches as one
+# unit — they share a key shape and a TTL, so isolating two of the three
+# leaves the same leak open on the third.
+_ACCOUNT_KEYED_CACHES = (
+    ("capabilities.permissions.roles", "_permissions_cache"),
+    ("capabilities.ai.tools.registry", "_cached_tools"),
+    ("capabilities.ai.tools.registry", "_anthropic_tools_cache"),
+    ("capabilities.ai.tools.registry", "_openai_tools_cache"),
+)
+
+# Global REGISTRIES, snapshot/restored rather than cleared: unlike the
+# caches above these hold real production entries, registered eagerly at
+# module import time (capabilities/notifications/__init__.py and
+# telegram.py — there is no lazy first-send registration path).  Because
+# registration has already happened by the time any test runs, a snapshot
+# taken at test setup always contains the real channels, so restoring can
+# only ever strip what the test itself added.
+_GLOBAL_REGISTRIES = (
+    ("capabilities.notifications.channels", "_CHANNELS"),
+    ("capabilities.notifications.actions", "_HANDLERS"),
+    ("capabilities.notifications.service", "_DIGEST_RENDERERS"),
+)
+
+
+def _clear_account_keyed_caches() -> None:
+    for mod_name, attr in _ACCOUNT_KEYED_CACHES:
+        mod = sys.modules.get(mod_name)
+        cache = getattr(mod, attr, None) if mod is not None else None
+        if isinstance(cache, dict):
+            cache.clear()
+
+
+def _snapshot_registries() -> list:
+    snaps = []
+    for mod_name, attr in _GLOBAL_REGISTRIES:
+        mod = sys.modules.get(mod_name)
+        reg = getattr(mod, attr, None) if mod is not None else None
+        if isinstance(reg, dict):
+            snaps.append((reg, dict(reg)))
+    return snaps
+
+
+@pytest.fixture(autouse=True)
+def _isolate_process_caches():
+    """No test inherits another test's cached permissions or fake channels.
+
+    The registry half is why a test double outlived its test: the digest
+    tests registered ``FakeChannel("fake_test")`` into the global channel
+    map with no teardown, and a notifications ROUTES test in another file
+    asserts the exact set of channel keys — so one file's missing cleanup
+    failed a different file's test, but only when the two landed on the
+    same xdist worker.  Restoring here means a leak cannot cross a test
+    boundary at all, in any package, instead of each file being expected
+    to remember the guard.
+    """
+    _clear_account_keyed_caches()
+    snaps = _snapshot_registries()
+    yield
+    for reg, snap in snaps:
+        reg.clear()
+        reg.update(snap)
+    _clear_account_keyed_caches()
