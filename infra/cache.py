@@ -31,6 +31,21 @@ _REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
 #   REDIS_SENTINELS=sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
 #   REDIS_MASTER_NAME=mymaster
 #   REDIS_URL=redis://:s3cr3t@unused/0   ← auth + db come from here
+#: Read deadline, not just connect.  ``socket_connect_timeout`` alone
+#: covers the handshake; a Redis that ACCEPTS and then stops answering
+#: (a BGSAVE fork stall, swap thrash, an iptables DROP after ESTABLISHED,
+#: a fenced Sentinel master) leaves every await hanging forever, because
+#: redis-py's read falls to an un-timed branch when ``socket_timeout`` is
+#: None.  The worst instance is boot: ``init_redis`` awaits ``ping()``
+#: inside the API's lifespan, so no gunicorn worker ever reaches a
+#: serving state and the 90s worker timeout turns it into a restart loop
+#: — which is the opposite of this module's promise that "all operations
+#: gracefully fall back to no-ops".
+_REDIS_SOCKET_TIMEOUT = float(os.getenv("REDIS_SOCKET_TIMEOUT", "5"))
+#: Let redis-py notice a connection that died under it, so a pooled
+#: socket is re-established rather than handed out dead.
+_REDIS_HEALTH_CHECK_S = int(os.getenv("REDIS_HEALTH_CHECK_INTERVAL", "30"))
+
 _REDIS_SENTINELS = os.getenv("REDIS_SENTINELS", "").strip()
 _REDIS_MASTER_NAME = os.getenv("REDIS_MASTER_NAME", "mymaster").strip()
 
@@ -97,6 +112,7 @@ async def init_redis() -> bool:
             sentinel = Sentinel(
                 sentinel_list,
                 socket_connect_timeout=5,
+                socket_timeout=_REDIS_SOCKET_TIMEOUT,
                 password=password,
             )
             _pool = sentinel.master_for(
@@ -105,6 +121,8 @@ async def init_redis() -> bool:
                 password=password,
                 decode_responses=True,
                 socket_connect_timeout=5,
+                socket_timeout=_REDIS_SOCKET_TIMEOUT,
+                health_check_interval=_REDIS_HEALTH_CHECK_S,
                 max_connections=_REDIS_MAX_CONNECTIONS,
                 retry_on_timeout=True,
             )
@@ -132,6 +150,8 @@ async def init_redis() -> bool:
             REDIS_URL,
             decode_responses=True,
             socket_connect_timeout=5,
+            socket_timeout=_REDIS_SOCKET_TIMEOUT,
+            health_check_interval=_REDIS_HEALTH_CHECK_S,
             max_connections=_REDIS_MAX_CONNECTIONS,
             retry_on_timeout=True,
         )

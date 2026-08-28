@@ -3,8 +3,17 @@ Description=4truck API (gunicorn + uvicorn workers)
 # After=4truck-bot.service so the platform (DB, Redis) is reachable when
 # the API boots. Wants= means "soft dependency" — API can still start
 # even if bot is down.
-After=network-online.target 4truck-bot.service
-Wants=network-online.target
+# Redis runs as the Docker container ``semi-telematics-redis``, so
+# ordering after network-online is not enough: on a host reboot
+# systemd can start this before dockerd has the container up.
+# ``init_redis`` then fails, ``_available`` latches False for the
+# LIFE of the process (it is a boot verdict, never re-probed), and
+# the service runs degraded until someone restarts it by hand —
+# silently, because the failure logs at warning and /health still
+# reports OK.  Wants=, not Requires=: Redis being down must not
+# stop the service from starting, only from starting FIRST.
+After=network-online.target docker.service 4truck-bot.service
+Wants=network-online.target docker.service
 
 # Restart-storm guard
 StartLimitIntervalSec=60

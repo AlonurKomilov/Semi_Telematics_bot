@@ -115,3 +115,37 @@ class TestFailureModes:
             and node.exc.args and isinstance(node.exc.args[0], ast.Constant)
         ]
         assert codes and set(codes) == {404}, codes
+
+
+class TestTheSharedVerdict:
+    """Both resolvers now ask one function, because the rule spelled out
+    twice is the rule that drifts. The lookups stay separate — inventory
+    resolves by unit NAME, the registry by id — only the verdict is
+    shared."""
+
+    def test_unrestricted_passes_everything(self):
+        from features.vehicles.scope import company_allows
+        assert company_allows("OSY", [])
+        assert company_allows(None, [])
+
+    def test_null_company_is_unscoped(self):
+        from features.vehicles.scope import company_allows
+        assert company_allows("", ["G1"])
+        assert company_allows(None, ["G1"])
+
+    def test_a_foreign_company_is_refused(self):
+        from features.vehicles.scope import company_allows
+        assert not company_allows("OSY", ["G1"])
+
+    def test_an_own_company_passes(self):
+        from features.vehicles.scope import company_allows
+        assert company_allows("G1", ["G1", "CFT"])
+
+    def test_both_resolvers_use_it(self):
+        """Pinned: if either grows its own copy of the predicate again,
+        this fails."""
+        import inspect
+        from features.vehicles import router as reg
+        from features.vehicles.inventory import router as inv
+        assert "company_allows" in inspect.getsource(reg._wall_registry_vehicle)
+        assert "company_allows" in inspect.getsource(inv._resolve_vehicle)

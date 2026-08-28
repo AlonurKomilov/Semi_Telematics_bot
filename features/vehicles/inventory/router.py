@@ -31,6 +31,7 @@ from adapters.storage.vehicle_inventory import (
     normalize_inventory_category,
     INVENTORY_STATUSES,
 )
+from features.vehicles.scope import company_allows
 from interfaces.api.deps import (
     get_platform_db,
     get_tenant_db,
@@ -61,7 +62,7 @@ async def _resolve_vehicle(
     if vehicle is None:
         raise HTTPException(404, "Vehicle not found in the registry")
     allowed = await get_user_company_codes(user)
-    if allowed and vehicle["company_code"] and vehicle["company_code"] not in allowed:
+    if not company_allows(vehicle["company_code"], allowed):
         raise HTTPException(404, "Vehicle not found in the registry")
     return vehicle
 
