@@ -263,7 +263,7 @@ PHASE A — transient attachment pipeline
                                                  un-truncated)
   MOD  capabilities/ai/actions.py                hand staged_payload to
                                                  executors alongside payload
-  NEW  tests/test_ai_attachments.py              parser caps/BOM/quoted-
+  NEW  capabilities/ai/tests/test_ai_attachments.py              parser caps/BOM/quoted-
                                                  newlines; mapping engine;
                                                  registry
 
@@ -312,7 +312,7 @@ PHASE C2 — Inventory adapter (first ImportTarget)
                                                  (NOT scope-aware — guard test
                                                  enforces the pairing)
   MOD  capabilities/ai/tools/__init__.py         import the feature module
-  NEW  tests/test_ai_inventory_import.py         resolution rules, transaction
+  NEW  features/vehicles/tests/test_ai_inventory_import.py         resolution rules, transaction
                                                  all-or-nothing, staged-rows
                                                  flow, re-approve idempotency
                                                  (pg_db)
@@ -413,8 +413,8 @@ above, all recorded at the section they amend:
   import it") still has the grid, since grids are request-scoped by
   design.  Composer holds an attached-state placeholder; store eviction
   is announced, never silent; preview titles carry the file name.
-- **Tests**: `tests/test_ai_attachments.py` (21) +
-  `tests/test_ai_inventory_import.py` (8); the §7 "foreign-account
+- **Tests**: `capabilities/ai/tests/test_ai_attachments.py` (21) +
+  `features/vehicles/tests/test_ai_inventory_import.py` (8); the §7 "foreign-account
   attachment → 404" row became structurally impossible (no stored
   attachments to cross accounts).
 

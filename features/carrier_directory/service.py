@@ -17,7 +17,7 @@ MAX_SENDER_NAME = 120
 #
 # The template itself lives in the dashboard's fields.ts — this constant
 # mirrors it across the language boundary, and
-# tests/test_carrier_directory.py::test_public_field_count_matches_template
+# features/carrier_directory/tests/test_carrier_directory.py::test_public_field_count_matches_template
 # parses that file and fails if the two ever drift.
 PUBLIC_BASIC_FIELDS = 4
 PUBLIC_FIELD_COUNT = 74

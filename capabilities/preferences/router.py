@@ -25,7 +25,7 @@ another user's preferences.
 
 URLs are unchanged from when these lived in ``routes/user.py`` — the
 prefix below reproduces ``/user/preferences/...`` exactly, and
-``tests/test_preferences_routes.py`` pins them.
+``capabilities/preferences/tests/test_preferences_routes.py`` pins them.
 """
 
 from __future__ import annotations

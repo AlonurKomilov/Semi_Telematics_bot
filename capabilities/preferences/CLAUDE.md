@@ -43,7 +43,7 @@ Consequences of the rule, already in force:
   (`table.<id>.views`, `notif.position`) and owns their meaning in its own
   registry. Renaming a key server-side or client-side **orphans that
   user's data** — there is no migration path, the row simply stops
-  resolving. `tests/test_preferences_routes.py` pins the paths for the
+  resolving. `capabilities/preferences/tests/test_preferences_routes.py` pins the paths for the
   same reason.
 - Limits (`keys.py`): key `^[A-Za-z0-9._-]{1,200}$`, value ≤ 64 KB.
 - **Tenant safety**: every handler resolves the user from the JWT and

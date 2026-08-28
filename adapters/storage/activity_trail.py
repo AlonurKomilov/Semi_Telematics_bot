@@ -7,7 +7,7 @@ that adopts the trail writes here; the two pre-existing rich trails
 unioned at READ time by the facade.  RULE: no fourth per-feature event
 table, ever — new features adopt THIS one.
 
-The contract (enforced by tests in tests/test_activity_trail.py):
+The contract (enforced by tests in capabilities/activity_trail/tests/test_activity_trail.py):
 
 * **People only.**  Events record HUMAN actions.  ``actor_user_id`` is
   the platform ``users.id`` (via ``resolve_user_id`` — never

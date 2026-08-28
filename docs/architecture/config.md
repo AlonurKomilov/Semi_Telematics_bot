@@ -97,7 +97,7 @@ starting point; every teammate's page then starts from it.
 * **Standard Admin** starts with neither flag (intentional tightening —
   the pre-matrix any-role bypass was never reachable from the UI);
   the owner delegates via the matrix. Pinned by
-  `tests/test_page_layouts.py::test_standard_admin_needs_the_matrix_grant`.
+  `capabilities/config/tests/test_page_layouts.py::test_standard_admin_needs_the_matrix_grant`.
 
 ### Opt-in recipe (next configurable page)
 
@@ -274,7 +274,7 @@ page, or leaking values on the weaker flag.
 ## Invariants (tested)
 
 * `account_id` comes only from the JWT — a hostile tenant can only
-  address their own empty namespace (`tests/test_page_layouts.py`).
+  address their own empty namespace (`capabilities/config/tests/test_page_layouts.py`).
 * The own-role wall holds under every grant combination; delegation and
   revocation through the Permissions page take effect via cache
   invalidation.

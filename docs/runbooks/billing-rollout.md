@@ -22,7 +22,7 @@ touching the rest of the system.
 
 2. **Read the test signal**:
 
-       python3 -m pytest tests/test_phase_c_e.py -q --no-header
+       python3 -m pytest capabilities/platform/billing/tests/test_phase_c_e.py -q --no-header
 
    Expect 82/82 pass.  Any failure here is a blocker.
 

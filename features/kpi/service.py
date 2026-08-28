@@ -10,7 +10,7 @@ This module re-exports the dispatch thresholds under their historical
 names because the root config router (``features/kpi/config.py``)
 serves them at ``/kpi/config`` — the root may import sections (that IS
 orchestration); sections may never import each other
-(``tests/test_kpi_section_boundaries.py`` enforces it).
+(``features/kpi/tests/test_kpi_section_boundaries.py`` enforces it).
 """
 
 from __future__ import annotations

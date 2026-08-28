@@ -223,7 +223,7 @@ class FeatureSet:
 # mini-app tab bar and the bot's own-truck screens gate on them, and
 # the alert fan-out narrows their holders to the assigned truck.
 #
-# Guard-tested (tests/test_permission_scope_registry.py): a new
+# Guard-tested (capabilities/permissions/tests/test_permission_scope_registry.py): a new
 # ``*_vehicle`` field that isn't registered here fails CI, and vice
 # versa.  ``can_location_vehicle`` pairs with ``can_location_map``
 # (naming predates the ``*_all`` convention); ``can_alerts_vehicle``

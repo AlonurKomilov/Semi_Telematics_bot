@@ -239,7 +239,7 @@ Therefore:
   SPA bundles survive the rollout.  Worked example:
   `/overview/stats` serves `vehicles` with a `fleet` alias
   (`features/overview/router.py`), pinned by
-  `tests/test_overview_stats_persona_filter.py`; consumers read
+  `features/overview/tests/test_overview_stats_persona_filter.py`; consumers read
   `stats.vehicles ?? stats.fleet`.  Delete the alias (and the
   fallbacks) once no pre-rename bundle is live.
 

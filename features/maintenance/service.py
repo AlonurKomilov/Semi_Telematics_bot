@@ -82,7 +82,7 @@ DUE_SOON_HOURS = 100
 #
 # MIRRORED in interfaces/dashboard/src/features/maintenance/
 # useMaintenanceTasks.ts — two implementations of one rule, pinned in
-# sync by tests/test_maintenance_due_soon_parity.py.
+# sync by features/maintenance/tests/test_maintenance_due_soon_parity.py.
 DUE_SOON_INTERVAL_FRACTION = 0.05
 
 

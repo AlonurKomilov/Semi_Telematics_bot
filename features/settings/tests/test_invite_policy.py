@@ -4,7 +4,7 @@ A recruiting manager may build ONLY a recruiter team, never fleet/hr/etc.
 That rule is the invites feature's, and the last test here asserts
 exactly that ownership.
 
-Split from tests/test_invite_policy.py.  The other half — what the
+Split from features/settings/tests/test_invite_policy.py.  The other half — what the
 manager TIER grants — is a permissions question and lives there.
 """
 

@@ -5,7 +5,7 @@ top of the base role (MANAGER_GRANTS).  A recruiting team lead is a
 ``recruiter`` + ``is_manager``, gaining can_invite and
 can_manage_carrier_directory.
 
-Split from tests/test_invite_policy.py, which asserted two subjects that
+Split from features/settings/tests/test_invite_policy.py, which asserted two subjects that
 were never setup for each other: this half touches only the RBAC layer
 and never calls invite_authorized.  The other half — who a manager may
 INVITE — is owned by the invites feature and lives with it.

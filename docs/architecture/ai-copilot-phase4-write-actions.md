@@ -311,4 +311,4 @@ reversed to exactly what IT created, and nothing else.
   every other phase.
 
 Adding undo to a future action = register one recipe + record the
-change-set in its result.  Tests: `tests/test_ai_action_undo.py`.
+change-set in its result.  Tests: `capabilities/ai/tests/test_ai_action_undo.py`.

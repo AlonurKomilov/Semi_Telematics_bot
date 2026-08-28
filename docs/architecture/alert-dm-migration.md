@@ -152,7 +152,7 @@ per account:
   edits on DM copies** (reminders still fire on the group path;
   history-level state is unaffected). Acceptable for the trial account;
   the cleanup step wires reminders through `update_delivery`.
-- Contract tests: `tests/test_alert_dm_spine.py` (9).
+- Contract tests: `capabilities/alerting/tests/test_alert_dm_spine.py` (9).
 
 ## Landed: quiet hours in the spine (2026-07-24)
 
@@ -193,7 +193,7 @@ live pipeline until the legacy cleanup retires it.
   `dnd_alert_queue` retires with the legacy cleanup.
 - Scheduler `_JOB_META` gains the Notifications category (the two
   digest flushes were missing from it too).
-- Contract tests: `tests/test_notification_quiet_hours.py` (17).
+- Contract tests: `capabilities/notifications/tests/test_notification_quiet_hours.py` (17).
 
 ## Landed: actions + callback routing (2026-07-24)
 
@@ -226,7 +226,7 @@ DMs until the fanout flip, so no user-visible change yet:
   recorded copy; a failed cosmetic edit never undoes the ack. Also
   exports the flip's contract: `correlation_key_for_history()` +
   `ACK_ACTION`.
-- Contract tests: `tests/test_notification_actions.py` (17).
+- Contract tests: `capabilities/notifications/tests/test_notification_actions.py` (17).
 
 ## Landed: delivery ledger + edit handles (2026-07-24)
 
@@ -254,7 +254,7 @@ All additive — nothing writes until a caller passes `correlation_key`:
   `migrate_notification_deliveries` for existing DBs, retention target
   `notifications.deliveries` (30 d — outlives the longest re-escalation
   schedule; sources clear their own rows on an event's final edit).
-- Contract tests: `tests/test_notification_deliveries.py` (14 — handle
+- Contract tests: `capabilities/notifications/tests/test_notification_deliveries.py` (14 — handle
   population, edit-verb selection, not-modified-as-success, ledger
   recording rules, update/skip/clear semantics), all on fakes.
 
