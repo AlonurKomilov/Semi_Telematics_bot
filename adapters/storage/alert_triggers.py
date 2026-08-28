@@ -104,6 +104,10 @@ class AlertTriggersMixin:
         self, account_id: int, owner_user_id: int, trigger_id: int, *,
         metric: str | None = None,
         threshold: float | None = None, enabled: bool | None = None,
+        #: The values the caller READ before validating.  Passing them
+        #: makes the write conditional on nothing having moved since.
+        expect_metric: str | None = None,
+        expect_threshold: float | None = None,
         channels: str | None = None,
         vehicles: str | None = None,
     ) -> bool:
@@ -132,9 +136,30 @@ class AlertTriggersMixin:
         sets.append("updated_at = ?")
         params.append(self._now())
         params += [account_id, owner_user_id, trigger_id]
+        # OPTIMISTIC CONCURRENCY on the pair the caller validated.
+        #
+        # A trigger is (metric, threshold) and neither half means
+        # anything alone, so the route reads both and validates the pair
+        # that WILL exist.  But two PATCHes sending disjoint fields each
+        # validated against a stale read of the other's column and then
+        # wrote their own: send {threshold: 45} and {metric: "oil_psi"}
+        # concurrently against (fuel_pct, 30) and both pass — the row
+        # lands on (oil_psi, 45), a pair nothing ever judged, and 45 is
+        # outside oil pressure's 5-40 band.
+        #
+        # Naming the values the caller read turns that into a lost race
+        # rather than a bad write: the second UPDATE matches no row and
+        # the route answers 409.  No lock, no transaction plumbing.
+        guard = ""
+        if expect_metric is not None:
+            guard += " AND metric = ?"
+            params.append(expect_metric)
+        if expect_threshold is not None:
+            guard += " AND threshold = ?"
+            params.append(float(expect_threshold))
         cur = await self._db.execute(
             f"UPDATE alert_triggers SET {', '.join(sets)} "
-            "  WHERE account_id = ? AND owner_user_id = ? AND id = ?",
+            f"  WHERE account_id = ? AND owner_user_id = ? AND id = ?{guard}",
             params,
         )
         await self._db.commit()

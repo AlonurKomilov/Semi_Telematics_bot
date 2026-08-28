@@ -683,3 +683,66 @@ class TestCompanyWall:
         from capabilities.permissions.vehicle_scope import VehicleScope
         company = VehicleScope(registry_ids=frozenset({1}))
         assert not company.allows_row({"registry_id": None, "vehicle_id": "new"})
+
+
+class TestConcurrentEdits:
+    """Two PATCHes on one trigger must not compose into a pair nobody
+    judged.
+
+    A trigger is (metric, threshold); the route reads both and validates
+    the pair that WILL exist. But two requests sending disjoint fields
+    each validated against a stale read of the other's column and then
+    wrote their own — send {threshold: 45} and {metric: "oil_psi"}
+    concurrently against (fuel_pct, 30) and both pass validation, while
+    the row lands on (oil_psi, 45): never judged, and outside oil
+    pressure's 5–40 band.
+    """
+
+    async def test_a_stale_pair_loses_the_race(self, pg_db):
+        acct = await pg_db.create_account("Race Co")
+        user = await pg_db.create_user(telegram_id=9941, account_id=acct.id)
+        made = await pg_db.create_alert_trigger(
+            acct.id, user.id, metric="fuel_pct", threshold=30.0)
+        tid = int(made["id"])
+
+        # Request A commits first, on the pair it read.
+        assert await pg_db.update_alert_trigger(
+            acct.id, user.id, tid, threshold=45.0,
+            expect_metric="fuel_pct", expect_threshold=30.0)
+
+        # Request B validated against the SAME pre-read pair. Its guard
+        # no longer matches, so it writes nothing.
+        assert not await pg_db.update_alert_trigger(
+            acct.id, user.id, tid, metric="oil_psi",
+            expect_metric="fuel_pct", expect_threshold=30.0)
+
+        rows = await pg_db.list_alert_triggers(acct.id, owner_user_id=user.id)
+        row = next(r for r in rows if int(r["id"]) == tid)
+        assert str(row["metric"]) == "fuel_pct" and float(row["threshold"]) == 45.0
+
+    async def test_an_unguarded_patch_still_writes(self, pg_db):
+        """enabled/channels read neither column, so they have nothing to
+        be stale about and must not be made to fail on someone else's
+        edit."""
+        acct = await pg_db.create_account("Unguarded Co")
+        user = await pg_db.create_user(telegram_id=9942, account_id=acct.id)
+        made = await pg_db.create_alert_trigger(
+            acct.id, user.id, metric="fuel_pct", threshold=30.0)
+        tid = int(made["id"])
+        await pg_db.update_alert_trigger(
+            acct.id, user.id, tid, threshold=25.0,
+            expect_metric="fuel_pct", expect_threshold=30.0)
+        # No expectations passed — succeeds against the moved row.
+        assert await pg_db.update_alert_trigger(
+            acct.id, user.id, tid, enabled=False)
+
+    async def test_the_guard_still_scopes_to_the_owner(self, pg_db):
+        """The new predicate is additive — it must not become the only
+        wall and let another account's row through."""
+        acct = await pg_db.create_account("Guard Scope Co")
+        user = await pg_db.create_user(telegram_id=9943, account_id=acct.id)
+        made = await pg_db.create_alert_trigger(
+            acct.id, user.id, metric="fuel_pct", threshold=30.0)
+        assert not await pg_db.update_alert_trigger(
+            acct.id, user.id + 999, int(made["id"]), threshold=20.0,
+            expect_metric="fuel_pct", expect_threshold=30.0)

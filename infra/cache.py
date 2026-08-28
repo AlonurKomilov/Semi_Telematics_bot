@@ -14,6 +14,10 @@ import time
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import redis.asyncio as aioredis
+from redis.exceptions import (
+    ConnectionError as RedisConnectionError,
+    TimeoutError as RedisTimeoutError,
+)
 
 T = TypeVar("T")
 
@@ -160,6 +164,7 @@ async def init_redis() -> bool:
         logger.info("Redis connected: %s (max_connections=%d)", REDIS_URL, _REDIS_MAX_CONNECTIONS)
         return True
     except Exception as e:
+        _note_down(e)
         logger.warning(f"Redis unavailable ({e}) — falling back to in-memory")
         _pool = None
         _available = False
@@ -175,8 +180,94 @@ async def close_redis():
         _available = False
 
 
+#: How long to wait before re-testing a Redis that went away.  A failed
+#: probe is cheap; a stampede of them is not.
+_REPROBE_COOLDOWN_S = float(os.getenv("REDIS_REPROBE_SECONDS", "10"))
+_last_probe: float = 0.0
+#: A STRONG reference to the in-flight probe.  asyncio holds only a weak
+#: one, so a fire-and-forget task can be collected before it ever runs —
+#: which is exactly what happened: the probe was scheduled, never
+#: executed, and Redis stayed marked down while being perfectly healthy.
+#: Keeping one also means only one probe is ever in flight.
+_probe_task: "asyncio.Task | None" = None
+
+
+def _note_down(exc: BaseException) -> None:
+    """Flip ``_available`` when a call fails for a CONNECTION reason.
+
+    ``_available`` used to be a one-time boot verdict — set in
+    ``init_redis`` and never touched again.  So a Redis that died AFTER
+    startup left ``is_available()`` returning True forever: every
+    consumer stayed on the Redis branch, each helper's ``except``
+    returned its neutral value, and callers read that neutral value as
+    fact — ``exists()`` False became "no flag set", which downstream is
+    "not in breach", "not revoked", "not yet alerted".  The carefully
+    written in-process fallbacks all over this codebase became
+    unreachable dead code at precisely the moment they existed for.
+
+    Only connection-shaped errors count.  A WRONGTYPE or a decode error
+    means Redis is fine and the caller is not, and marking the whole
+    cache down for that would be its own outage.
+    """
+    global _available
+    if isinstance(exc, (RedisConnectionError, RedisTimeoutError, OSError)):
+        if _available:
+            logger.warning("Redis unreachable (%s) — falling back until it returns",
+                           type(exc).__name__)
+        _available = False
+
+
+async def _reprobe() -> None:
+    """One attempt to bring Redis back."""
+    global _available
+    try:
+        if _pool is None:
+            await init_redis()
+            return
+        await _pool.ping()
+        if not _available:
+            logger.info("Redis reachable again — re-enabled")
+        _available = True
+    except Exception as e:
+        _note_down(e)
+        pass                            # still down; the cooldown paces us
+
+
+def _schedule_reprobe() -> None:
+    """Ask for a re-probe without blocking a sync caller.
+
+    ``is_available()`` is sync and called from everywhere, so it cannot
+    await.  And it cannot be the consumers' job either: once the flag is
+    False they take their fallback and never touch Redis again, so
+    nothing would ever discover that it came back.  Firing a background
+    task from the availability check itself is what closes that loop —
+    the answer this call returns is stale by design, and the next one is
+    right.
+    """
+    global _last_probe, _probe_task
+    if _probe_task is not None and not _probe_task.done():
+        return                          # one in flight is enough
+    now = time.monotonic()
+    if now - _last_probe < _REPROBE_COOLDOWN_S:
+        return
+    _last_probe = now
+    try:
+        _probe_task = asyncio.get_running_loop().create_task(_reprobe())
+    except RuntimeError:
+        pass            # no loop in this context; the next async caller tries
+
+
 def is_available() -> bool:
-    """Check if Redis is connected and usable."""
+    """Check if Redis is connected and usable.
+
+    A False answer also ASKS whether that is still true.  Consumers
+    branch on this and take their in-process fallback when it is False,
+    so once it flips nothing would ever touch Redis again — and nothing
+    would ever discover it came back.  The probe is fired in the
+    background: this answer is stale by design, the next one is right.
+    """
+    if not _available:
+        _schedule_reprobe()
     return _available
 
 
@@ -192,6 +283,7 @@ async def get(key: str) -> Optional[Any]:
             return None
         return json.loads(raw)
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis GET {key}: {e}")
         return None
 
@@ -203,6 +295,7 @@ async def cache_set(key: str, value: Any, ttl: int = 120):
     try:
         await _pool.setex(key, ttl, json.dumps(value, default=str))
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis SET {key}: {e}")
 
 
@@ -218,6 +311,7 @@ async def delete(key: str):
     try:
         await _pool.delete(key)
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis DEL {key}: {e}")
 
 
@@ -227,7 +321,8 @@ async def exists(key: str) -> bool:
         return False
     try:
         return bool(await _pool.exists(key))
-    except Exception:
+    except Exception as e:
+        _note_down(e)
         return False
 
 
@@ -250,6 +345,7 @@ async def scan_keys(pattern: str, batch: int = 500) -> list[str]:
                 out.append(str(k))
         return out
     except Exception as e:
+        _note_down(e)
         logger.warning("Redis SCAN %s: %s", pattern, e)
         return []
 
@@ -261,6 +357,7 @@ async def setex_flag(key: str, ttl: int):
     try:
         await _pool.setex(key, ttl, "1")
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis SETEX flag {key}: {e}")
 
 
@@ -282,6 +379,7 @@ async def incr(key: str, ttl: int) -> None:
         if count == 1:
             await _pool.expire(key, ttl)  # type: ignore[misc]
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis INCR %s: %s", key, e)
 
 
@@ -293,6 +391,7 @@ async def hincrby(key: str, field: str, ttl: int, amount: int = 1) -> None:
         await _pool.hincrby(key, field, amount)  # type: ignore[misc]
         await _pool.expire(key, ttl)  # type: ignore[misc]
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis HINCRBY %s.%s: %s", key, field, e)
 
 
@@ -304,6 +403,7 @@ async def get_int(key: str) -> int | None:
         raw = await _pool.get(key)
         return int(raw) if raw is not None else None
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis GET int %s: %s", key, e)
         return None
 
@@ -323,6 +423,7 @@ async def hgetall_int(key: str) -> dict[str, int]:
                 continue
         return out
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis HGETALL %s: %s", key, e)
         return {}
 
@@ -334,6 +435,7 @@ async def llen(key: str) -> int | None:
     try:
         return int(await _pool.llen(key))  # type: ignore[misc]
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis LLEN %s: %s", key, e)
         return None
 
@@ -347,6 +449,7 @@ async def used_memory_mb() -> float | None:
         used = info.get("used_memory")
         return round(float(used) / (1024 * 1024), 1) if used else None
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis INFO memory: %s", e)
         return None
 
@@ -375,6 +478,7 @@ async def rate_limit_check(key: str, window_secs: int, max_requests: int) -> boo
             await _pool.expire(full_key, window_secs * 2)  # type: ignore[misc]
         return count <= max_requests
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis rate_limit_check %s: %s", key, e)
         return True  # fail open
 
@@ -393,6 +497,7 @@ async def acquire_lock(name: str, ttl_secs: int = 60) -> bool:
         result = await _pool.set(f"lock:{name}", "1", nx=True, ex=ttl_secs)
         return result is not None
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis acquire_lock %s: %s", name, e)
         return True  # fail open
 
@@ -404,6 +509,7 @@ async def heartbeat_lock(name: str, ttl_secs: int = 60) -> bool:
     try:
         return bool(await _pool.expire(f"lock:{name}", ttl_secs))  # type: ignore[misc]
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis heartbeat_lock %s: %s", name, e)
         return True
 
@@ -415,6 +521,7 @@ async def release_lock(name: str):
     try:
         await _pool.delete(f"lock:{name}")
     except Exception as e:
+        _note_down(e)
         logger.debug("Redis release_lock %s: %s", name, e)
 
 
@@ -429,6 +536,7 @@ async def sadd(key: str, *members: str, ttl: int = 86400):
             await _pool.sadd(key, *members)  # type: ignore[misc]
             await _pool.expire(key, ttl)
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis SADD {key}: {e}")
 
 
@@ -439,7 +547,8 @@ async def smembers(key: str) -> set[str]:
     try:
         result = await _pool.smembers(key)  # type: ignore[misc]
         return result
-    except Exception:
+    except Exception as e:
+        _note_down(e)
         return set()
 
 
@@ -455,6 +564,7 @@ async def sset(key: str, members: set, ttl: int = 86400):
             pipe.expire(key, ttl)
         await pipe.execute()
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis SSET {key}: {e}")
 
 
@@ -469,6 +579,7 @@ async def rpush(key: str, *values: str, ttl: int = 3600):
             await _pool.rpush(key, *values)  # type: ignore[misc]
             await _pool.expire(key, ttl)
     except Exception as e:
+        _note_down(e)
         logger.debug(f"Redis RPUSH {key}: {e}")
 
 
@@ -478,7 +589,8 @@ async def lrange(key: str, start: int = 0, end: int = -1) -> list[str]:
         return []
     try:
         return await _pool.lrange(key, start, end)  # type: ignore[misc]
-    except Exception:
+    except Exception as e:
+        _note_down(e)
         return []
 
 
@@ -621,6 +733,7 @@ async def _refresh_in_background(
         await cache_set(key, {"v": value, "t": int(time.time())},
                         ttl=fresh_for + max_stale)
     except Exception as e:
+        _note_down(e)
         logger.debug("SWR refresh failed for %s: %s", key, e)
     finally:
         await release_lock(f"swr:{key}")

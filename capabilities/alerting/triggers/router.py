@@ -440,6 +440,7 @@ async def update_trigger(
     user: dict = Depends(get_current_user),
 ):
     db, me = await _me(user)
+    current = None
     if body.metric is not None or body.threshold is not None:
         rows = await db.list_alert_triggers(me.account_id, owner_user_id=me.id)
         current = next((r for r in rows if int(r["id"]) == trigger_id), None)
@@ -461,11 +462,27 @@ async def update_trigger(
     ok = await db.update_alert_trigger(
         me.account_id, me.id, trigger_id,
         metric=body.metric, threshold=body.threshold, enabled=body.enabled,
+        # Only when this request judged the pair.  An enabled/channels-only
+        # PATCH reads neither column, so it has nothing to be stale about
+        # and must not be made to fail on someone else's edit.
+        expect_metric=(str(current["metric"]) if current is not None else None),
+        expect_threshold=(float(current["threshold"])
+                          if current is not None else None),
         channels=(clean_channels(body.channels)
                   if body.channels is not None else None),
         vehicles=vehicles,
     )
     if not ok:
+        # Either it is gone, or the pair moved under us between the read
+        # and the write.  409 rather than 404 when we were guarding on a
+        # pair: the row may well still exist, and "not found" would send
+        # the client to recreate something that is still there.
+        if current is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Someone changed this trigger while you were editing "
+                       "it — reopen it and try again",
+            )
         raise HTTPException(status_code=404, detail="Trigger not found")
     if (vehicles is not None or body.threshold is not None
             or body.metric is not None):
