@@ -7,8 +7,18 @@
  * would have made the most consequential choice in the form the smallest
  * control on it.
  *
- * The form reads FEATURE, then WATCH, then ON WHICH VEHICLES — which
- * part of the product, which of its numbers, on which trucks.
+ * The form reads VEHICLE, FEATURE, WATCH, VALUE — four questions of
+ * equal rank on one row, so they scan across as a sentence rather than
+ * down as a checklist of steps.
+ *
+ * VEHICLE is a select, not a switch.  "All / this company / these
+ * trucks" is a choice among options, and a two-state toggle can only say
+ * two of them — it forced anyone wanting a company's worth of trucks to
+ * tick them one at a time out of 189.  Companies are a bulk FILL rather
+ * than a stored mode: choosing one ticks its vehicles and leaves them
+ * editable, so what the trigger watches is always the list you can see.
+ * A stored "this company" would quietly take on trucks added to it
+ * later, which is a different promise than the one this form makes.
  *
  * FEATURE is a field, not a caption.  It was a SelectGroup heading inside
  * the metric dropdown first, on the reasoning that a select with one
@@ -46,7 +56,6 @@ import { apiJSON } from '@/api/client';
 import { FEATURE_CATALOG } from '@/config/featureCatalog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import { ScrollRegion } from '@/components/scrolling';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -156,6 +165,50 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
   // Feature a real control rather than a caption: it NARROWS what can be
   // watched, so the two selects read as one sentence — watch, in this
   // feature, this thing.
+  // Companies come from the fleet rows themselves — the picker endpoint
+  // already returns each vehicle's company_code, so bulk-by-company costs
+  // no extra request and no schema.
+  const companies = useMemo(() => {
+    const by = new Map<string, number[]>();
+    for (const v of fleet) {
+      if (!v.company) continue;
+      const ids = by.get(v.company) ?? [];
+      ids.push(v.id);
+      by.set(v.company, ids);
+    }
+    return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [fleet]);
+
+  // What the Vehicle select currently reads.  Derived, not stored: the
+  // truth is `allMine` plus `picked`, and a second copy would be a second
+  // thing to keep in step.  A company choice collapses to "pick" the
+  // moment it is made, because after a bulk fill the honest answer is
+  // "these vehicles" — the ones ticked, which the person can still edit.
+  const vehicleMode = allMine ? 'all' : 'pick';
+
+  const scopeItems = useMemo(() => [
+    { value: 'all', label: 'All vehicles' },
+    ...companies.map(([code, ids]) => ({
+      value: `company:${code}`,
+      label: `${code} — ${ids.length} vehicle${ids.length === 1 ? '' : 's'}`,
+    })),
+    { value: 'pick', label: 'Choose vehicles…' },
+  ], [companies]);
+
+  const pickScope = (v: string) => {
+    if (v === 'all') { setAllMine(true); return; }
+    setAllMine(false);
+    if (v.startsWith('company:')) {
+      const code = v.slice('company:'.length);
+      // Replace rather than merge: picking a company after another one
+      // should mean that company, not both.  Merging is what the list
+      // below is for.
+      setPicked(fleet.filter((x) => x.company === code).map((x) => x.id));
+    } else {
+      setPicked([]);
+    }
+  };
+
   const metricsInFeature = useMemo(
     () => metrics.filter((m) => m.feature === feature), [metrics, feature]);
 
@@ -333,153 +386,169 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
           className="flex flex-col gap-5 rounded-md border border-border p-3"
         >
 
-          {/* FEATURE, then WATCH — the order the sentence is thought in:
-              which part of the product, then which of its numbers.  It
-              was a group heading inside the metric dropdown before, which
-              meant it existed but was invisible until you opened the
-              list; on a closed form there was no Feature anywhere.  As a
-              field it also does real work — it FILTERS what can be
-              watched, so the two selects read as one sentence. */}
-          <div className="flex flex-col gap-2">
-            <span id="trg-feature-lbl" className="text-xs font-medium
-                                                  uppercase tracking-wide
-                                                  text-muted-foreground">
-              Feature
-            </span>
-            <Select
-              value={feature}
-              onValueChange={(v) => {
-                setFeature(v ?? '');
-                // A metric from the old feature would be a sentence about
-                // something the form no longer says.
-                setMetric('');
-              }}
-              items={groups.map(([key, g]) => ({ value: key, label: g.label }))}
-            >
-              <SelectTrigger id="trg-feature"
-                             aria-labelledby="trg-feature-lbl trg-feature"
-                             className="w-56 text-xs">
-                <SelectValue placeholder="Pick a feature" />
-              </SelectTrigger>
-              <SelectContent>
-                {groups.map(([key, g]) => (
-                  <SelectItem key={key} value={key}>{g.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* One row: Vehicle, Feature, Watch, Value.  Four questions of
+              equal rank, so they read across as one sentence rather than
+              down as four steps — and the vehicle scope is a SELECT like
+              its neighbours, because "all / this company / these trucks"
+              is a choice among options, which a two-state switch cannot
+              say. Wraps on a narrow card; each field keeps its own
+              label so a wrapped field is never orphaned from its name. */}
+          <div className="flex flex-wrap items-start gap-4">
 
-          <div className="flex flex-col gap-2">
-            <span id="trg-watch-lbl" className="text-xs font-medium
+            <div className="flex flex-col gap-1.5">
+              <span id="trg-veh-lbl" className="text-xs font-medium
                                                 uppercase tracking-wide
                                                 text-muted-foreground">
-              Watch
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* No SelectGroup heading any more: the list is already
-                  filtered to one feature, so repeating its name above
-                  every option would label a group of one kind. */}
-              <Select value={metric} onValueChange={(v) => setMetric(v ?? '')}
-                      items={metricsInFeature.map(
-                        (m) => ({ value: m.key, label: m.label }))}>
-                <SelectTrigger ref={metricRef} id="trg-metric"
-                               aria-labelledby="trg-watch-lbl trg-metric"
+                Vehicle
+              </span>
+              <Select
+                value={vehicleMode}
+                onValueChange={(v) => pickScope(v ?? 'all')}
+                items={scopeItems}
+              >
+                <SelectTrigger id="trg-veh"
+                               aria-labelledby="trg-veh-lbl trg-veh"
                                className="w-56 text-xs">
-                  <SelectValue placeholder={feature ? 'Pick a metric'
-                                                    : 'Pick a feature first'} />
+                  <SelectValue placeholder="All vehicles" />
                 </SelectTrigger>
                 <SelectContent>
-                  {metricsInFeature.map((m) => (
-                    <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
+                  <SelectItem value="all">All vehicles</SelectItem>
+                  {/* Companies are a bulk FILL, not a stored mode: choosing
+                      one ticks its vehicles and leaves them editable, so
+                      what the trigger watches is always the list you can
+                      see. A stored "this company" would silently take on
+                      trucks added later — a different promise, and not the
+                      one this form makes. */}
+                  {companies.map(([code, ids]) => (
+                    <SelectItem key={code} value={`company:${code}`}>
+                      {code} — {ids.length} vehicle{ids.length === 1 ? '' : 's'}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="pick">Choose vehicles…</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-2xs text-muted-foreground">
+                {allMine
+                  ? `Watching all ${fleet.length}, including any added later`
+                  : `${picked.length} of ${fleet.length} chosen`}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span id="trg-feature-lbl" className="text-xs font-medium
+                                                    uppercase tracking-wide
+                                                    text-muted-foreground">
+                Feature
+              </span>
+              <Select
+                value={feature}
+                onValueChange={(v) => { setFeature(v ?? ''); setMetric(''); }}
+                items={groups.map(([key, g]) => ({ value: key, label: g.label }))}
+              >
+                <SelectTrigger id="trg-feature"
+                               aria-labelledby="trg-feature-lbl trg-feature"
+                               className="w-44 text-xs">
+                  <SelectValue placeholder="Pick a feature" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map(([key, g]) => (
+                    <SelectItem key={key} value={key}>{g.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-
-              {/* Stated, never offered: the metric owns its direction and
-                  a comparator with one useful value only invites a wrong
-                  answer. */}
-              <span className="text-xs text-muted-foreground">
-                {spec?.direction ?? ''}
-              </span>
-
-              <Input
-                type="number"
-                inputMode="decimal"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                disabled={!spec}
-                min={spec?.min}
-                max={spec?.max}
-                step={spec && spec.hysteresis < 1 ? 0.1 : 1}
-                aria-describedby="trg-help"
-                aria-invalid={!!rangeError()}
-                placeholder={spec ? `${spec.min}–${spec.max}` : '—'}
-                aria-label={spec
-                  ? `Threshold in ${spec.unit}, between ${spec.min} and ${spec.max}`
-                  : 'Threshold'}
-                className="h-8 w-24 text-xs"
-              />
-              <span className="text-xs text-muted-foreground">{spec?.unit ?? ''}</span>
             </div>
-            {failed && (
-              <p className="text-2xs text-danger">
-                Couldn’t load what can be watched.{' '}
-                <button type="button" onClick={() => void load()}
-                        className="text-primary hover:underline min-h-tap">
-                  Try again
-                </button>
-              </p>
-            )}
-            <p id="trg-help" className="text-2xs text-muted-foreground">
-              {spec ? (
-                <>
-                  {rangeError() && <span className="text-danger">{rangeError()} </span>}
-                  Between {spec.min} and {spec.max}{spec.unit}. {spec.hint}
-                  {spec.requires_engine === 'on'
-                    && ' Checked only while the engine is running.'}
-                  {' '}Re-checked every {spec.checked_every_minutes} minutes.
-                </>
-              ) : 'Pick what to watch, then the number.'}
-            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <span id="trg-watch-lbl" className="text-xs font-medium
+                                                  uppercase tracking-wide
+                                                  text-muted-foreground">
+                Watch
+              </span>
+              <div className="flex items-center gap-2">
+                <Select value={metric} onValueChange={(v) => setMetric(v ?? '')}
+                        items={metricsInFeature.map(
+                          (m) => ({ value: m.key, label: m.label }))}>
+                  <SelectTrigger ref={metricRef} id="trg-metric"
+                                 aria-labelledby="trg-watch-lbl trg-metric"
+                                 className="w-44 text-xs">
+                    <SelectValue placeholder={feature ? 'Pick a metric'
+                                                      : 'Pick a feature first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {metricsInFeature.map((m) => (
+                      <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* The direction is stated, never offered: the metric owns
+                    it, and a comparator with one useful value is a control
+                    that only invites a wrong answer. */}
+                <span className="text-xs text-muted-foreground">
+                  {spec?.direction ?? ''}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span id="trg-value-lbl" className="text-xs font-medium
+                                                  uppercase tracking-wide
+                                                  text-muted-foreground">
+                Value
+              </span>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  disabled={!spec}
+                  min={spec?.min}
+                  max={spec?.max}
+                  step={spec && spec.hysteresis < 1 ? 0.1 : 1}
+                  aria-labelledby="trg-value-lbl"
+                  aria-describedby="trg-help"
+                  aria-invalid={!!rangeError()}
+                  placeholder={spec ? `${spec.min}–${spec.max}` : '—'}
+                  className="w-24 text-xs"
+                />
+                <span className="text-xs text-muted-foreground w-8">
+                  {spec?.unit ?? ''}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide
-                             text-muted-foreground">
-              On which vehicles
-            </span>
-            {/* A Switch, NOT a checkbox, and the rule names this exact
-                mistake: "Never mix shapes in one vertical run: the pivot
-                panel stacked a zone setting directly above its field rows
-                as the same checkbox, so five identical boxes in one
-                column meant two unrelated things."  Below this sits a run
-                of N identical checkboxes meaning MEMBERSHIP (is this
-                vehicle in the set); a checkbox here would have been the
-                sixth identical box meaning something else entirely, and
-                would read as select-all.
-                Switch is also the honest primitive: this is a BEHAVIOUR
-                ("limit this trigger"), not membership.  Off is the
-                default because watching everything is the safe, commonest
-                answer — and it keeps meaning "everything" as the fleet
-                grows, which a snapshot of ticked boxes would not. */}
-            <div className="flex items-center gap-2">
-              <Switch
-                size="sm"
-                checked={!allMine}
-                onCheckedChange={(on) => setAllMine(!on)}
-                aria-label="Limit this trigger to specific vehicles"
-              />
-              <span className="text-xs">
-                Limit to specific vehicles
-                <span className="text-muted-foreground">
-                  {allMine
-                    ? ` — watching all ${fleet.length}, including any added later`
-                    : ''}
-                </span>
-              </span>
-            </div>
+          {failed && (
+            <p className="text-2xs text-danger">
+              Couldn’t load what can be watched.{' '}
+              <button type="button" onClick={() => void load()}
+                      className="text-primary hover:underline min-h-tap">
+                Try again
+              </button>
+            </p>
+          )}
 
-            {!allMine && (
+          {/* The range lives HERE, not only in the placeholder — a
+              placeholder vanishes on the first keystroke, which is exactly
+              when someone needs to know the bounds. */}
+          <p id="trg-help" className="text-2xs text-muted-foreground">
+            {spec ? (
+              <>
+                {rangeError() && (
+                  <span className="text-danger">{rangeError()} </span>
+                )}
+                Between {spec.min} and {spec.max}{spec.unit}. {spec.hint}
+                {spec.requires_engine === 'on'
+                  && ' Checked only while the engine is running.'}
+                {' '}Re-checked every {spec.checked_every_minutes} minutes.
+              </>
+            ) : 'Pick what to watch, then the number.'}
+          </p>
+
+          {/* The list only exists in "choose" mode, and only then does it
+              take vertical space — it is the one part of this form that
+              cannot be a single control. */}
+          {!allMine && (
               <div className="flex flex-col gap-2">
                 <div className="relative">
                   <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2
@@ -556,8 +625,7 @@ export default function TriggerEditorForm({ editing, onClose, onSaved }: {
                   ))}
                 </ScrollRegion>
               </div>
-            )}
-          </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-end gap-2
                           border-t border-border pt-3">
