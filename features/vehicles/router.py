@@ -817,6 +817,34 @@ async def _resolve_vehicle(
     every provider failure without a bare ``except`` swallowing real
     bugs behind a silently degraded page.
     """
+    # Archived trucks never reach the provider.  The detail fetch fans
+    # out one round-trip per COMPANY (~3-5s each), and for a retired
+    # truck the answer is either nothing (unlinked) or months-old state
+    # rendered beside a freshness dot — so the page sat through the
+    # whole fan-out to end at what the registry knew instantly, and
+    # then the active-only fallback below couldn't see the truck at
+    # all, leaving the cards loading forever.  A LIVE truck sharing the
+    # name still wins: only when EVERY row answering to it is retired
+    # does the short-circuit fire (door numbers are reused, and the
+    # truck that inherited one deserves live data).
+    tenant_pre = await _get_tenant_db(user["account_id"])
+    if tenant_pre is not None:
+        try:
+            all_rows = await tenant_pre.list_vehicles(
+                user["account_id"], company_code=company,
+                include_inactive=True,
+            )
+            needle_pre = vehicle_name.lower()
+            named = [v for v in all_rows
+                     if v.unit_number.lower() == needle_pre]
+            if named and not any(v.is_active for v in named):
+                reg_only = _wh_reader.merge_registry_with_live(named, [])
+                reg_only = filter_by_allowed_companies(reg_only, allowed)
+                return await filter_by_assigned_trucks(reg_only, user)
+        except Exception:
+            logger.debug("archived pre-check failed acct=%s",
+                         user["account_id"], exc_info=True)
+
     try:
         matches = await _svc_vehicle_detail(
             user["account_id"], vehicle_name, company=company,
@@ -843,8 +871,13 @@ async def _resolve_vehicle(
     if tenant_reg is None:
         return []
     try:
+        # include_inactive: an archived truck's page must resolve from
+        # the registry — its record is the reason archiving keeps the
+        # row.  Active-only here meant provider-miss + archived = a
+        # page that never finished loading.
         registry = await tenant_reg.list_vehicles(
             user["account_id"], company_code=company,
+            include_inactive=True,
         )
     except Exception:
         logger.warning(

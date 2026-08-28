@@ -114,3 +114,80 @@ async def test_moving_a_truck_with_no_documents_is_a_cheap_noop(pg_db):
     ], source="samsara")
     (v,) = await pg_db.list_vehicles(acct)
     assert await move_documents_on_archive(pg_db, acct, v.id) is None
+
+
+# ── An archived truck's page answers from the registry, instantly ────
+
+
+@pytest.mark.asyncio
+async def test_an_archived_trucks_page_never_waits_on_the_provider(
+    pg_db, monkeypatch,
+):
+    """The detail resolver fans out one provider round-trip per company
+    (~3-5s each).  For a retired truck that fan-out bought either
+    nothing or months-old state — and then the active-only registry
+    fallback could not see the truck, so the page loaded forever.
+
+    The short-circuit must fire BEFORE the provider; the sentinel
+    raises if it is ever consulted.
+    """
+    from features.vehicles import router as vr
+
+    acct = (await pg_db.create_account("Archived Detail Co")).id
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "AD-1",
+         "telematics_ref": "ref-ad1"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    await pg_db.deactivate_vehicle(acct, v.id)
+
+    async def _provider_must_not_be_called(*a, **kw):
+        raise AssertionError(
+            "an archived truck's detail page reached the provider")
+    monkeypatch.setattr(vr, "_svc_vehicle_detail",
+                        _provider_must_not_be_called)
+
+    async def _tenant(_aid):
+        return pg_db
+    monkeypatch.setattr(vr, "_get_tenant_db", _tenant)
+
+    matches = await vr._resolve_vehicle(
+        "AD-1", None, {"account_id": acct}, allowed=[])
+    assert matches, "the archived truck must resolve from the registry"
+    assert matches[0].get("name") == "AD-1"
+
+
+@pytest.mark.asyncio
+async def test_a_live_truck_that_inherited_the_name_still_gets_live_data(
+    pg_db, monkeypatch,
+):
+    """Door numbers are reused.  When ANY active row answers to the
+    name, the provider path must run — the live truck wins."""
+    from features.vehicles import router as vr
+
+    acct = (await pg_db.create_account("Inherited Name Co")).id
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "IN-1",
+         "telematics_ref": "ref-in1"},
+    ], source="samsara")
+    (old,) = await pg_db.list_vehicles(acct)
+    await pg_db.deactivate_vehicle(acct, old.id)
+    # The number goes on a different, LIVE truck in another company.
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "OSY", "unit_number": "IN-1",
+         "telematics_ref": "ref-in2"},
+    ], source="samsara")
+
+    called = []
+
+    async def _provider(*a, **kw):
+        called.append(1)
+        return []
+    monkeypatch.setattr(vr, "_svc_vehicle_detail", _provider)
+
+    async def _tenant(_aid):
+        return pg_db
+    monkeypatch.setattr(vr, "_get_tenant_db", _tenant)
+
+    await vr._resolve_vehicle("IN-1", None, {"account_id": acct}, allowed=[])
+    assert called, "a live truck sharing the name was denied its provider data"
