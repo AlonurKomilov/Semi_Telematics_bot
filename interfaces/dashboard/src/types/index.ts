@@ -179,6 +179,11 @@ export interface Vehicle {
   /** Where the row came from: 'manual' (operator added), 'samsara'
    *  (synced from telematics), 'datatruck' (Phase 2). */
   source?: string;
+  /** Everyone who contributed a value — created-by plus each provider
+   *  owning a field (derived from provenance server-side).  `source`
+   *  alone is the creator and cannot name an enriching second
+   *  integration. */
+  sources?: string[];
   /** Row-level freshness — freshest known reading time (GPS, else
    *  fuel/DEF) emitted by the list endpoint's _simplify. */
   time?: string;
@@ -1644,6 +1649,11 @@ export interface WorkOrder {
   /** Provenance: 'manual' (hand-entered) or an integration id like
    *  'datatruck'.  Drives the Source column badge on the list. */
   source?: string;
+  /** Everyone who contributed a value — created-by plus each provider
+   *  owning a field (derived from provenance server-side).  `source`
+   *  alone is the creator and cannot name an enriching second
+   *  integration. */
+  sources?: string[];
   /** Upstream id for integration-sourced rows; '' for manual. */
   external_id?: string;
   /** Source system's human reference (Datatruck "WO-00983"); '' for

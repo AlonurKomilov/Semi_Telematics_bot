@@ -210,6 +210,25 @@ export default function VehicleManageDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Who contributed to this record — created-by plus every
+            provider owning a field, derived server-side from
+            provenance.  One truck can be created by one integration
+            and enriched by another; the single `source` value cannot
+            say that, and for weeks it actively misreported (any
+            Samsara tick rewrote it).  Read-only: this states facts
+            about the data, it is not a choice. */}
+        {isEdit && (target?.sources?.length ?? 0) > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Sources:{' '}
+            <span className="text-foreground">
+              {target!.sources!
+                .map((s) => s === 'manual' ? 'Manual edits'
+                  : s.charAt(0).toUpperCase() + s.slice(1))
+                .join(' · ')}
+            </span>
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>

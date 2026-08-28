@@ -1613,7 +1613,10 @@ def _vehicle_to_dict(v) -> dict:
         "unit_number": v.unit_number, "vehicle_type": v.vehicle_type,
         "vin": v.vin, "plate_number": v.plate_number, "make": v.make,
         "model": v.model, "year": v.year, "status": v.status,
-        "source": v.source, "notes": v.notes,
+        # ``source`` = who created the row; ``sources`` = everyone who
+        # contributed a value (derived from provenance — one truck can
+        # be created by one integration and enriched by another).
+        "source": v.source, "sources": list(v.sources), "notes": v.notes,
     }
 
 
@@ -1684,6 +1687,7 @@ async def list_archived_vehicles(user: dict = Depends(_manage_vehicles)):
                 "registry_id": v.id,
                 "vehicle_type": v.vehicle_type,
                 "source": v.source,
+                "sources": list(v.sources),
                 "status": v.status,
                 "vin": v.vin,
                 "plate_number": v.plate_number,

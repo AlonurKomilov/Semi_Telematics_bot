@@ -146,7 +146,12 @@ async def test_upsert_from_integration_idempotent_and_preserves_operator_fields(
     v = (await db.list_vehicles(42))[0]
     assert v.vin == "NEWVIN123"               # spec refreshed
     assert v.telematics_ref == "samsara_vehicle_99"
-    assert v.source == "samsara"
+    # ``source`` is the CREATOR and the operator created this row by
+    # hand.  This line used to assert "samsara" — the last-toucher
+    # semantic, i.e. the stomp itself, encoded as an expectation.  The
+    # enriching integration shows up where it honestly belongs:
+    assert v.source == "manual"
+    assert "samsara" in v.sources
     assert v.vehicle_type == "other"          # operator classification preserved
     assert v.notes == "in the shop"           # operator note preserved
 

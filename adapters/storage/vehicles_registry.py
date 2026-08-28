@@ -214,6 +214,24 @@ class Vehicle:
     #: touched, so the live value already IS the pre-archive one.
     status_before_archive: str = ""
 
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """Every source that contributed to this row — the honest answer.
+
+        ``source`` alone cannot say it: one truck can be created by one
+        integration and enriched by another (unit 144: created under
+        Samsara, VIN/plate/model owned by Datatruck).  Derived, never
+        stored — both facts already live on the row, and a second column
+        would be one more thing to keep in sync forever.
+
+        Definition, decided rather than defaulted: a provider that
+        synced this row but owns no field and did not create it is NOT
+        a source.  Sorted, so equal rows render identically.
+        """
+        return tuple(sorted(
+            {self.source} | set(self.field_provenance.values()) - {""}
+        ))
+
 
 def _parse_provenance(raw: Any) -> dict:
     if isinstance(raw, dict):
@@ -1275,9 +1293,18 @@ class VehiclesRegistryMixin(_MixinBase):
                 if matched_by_vin and not match.company_code and company:
                     sets.append("company_code = ?")
                     params.append(company)
-                # source refreshes to the latest integration to touch the row.
-                sets.append("source = ?")
-                params.append(source)
+                # ``source`` is NOT written here.  It records who CREATED
+                # the row (this module's own header contract) and this was
+                # the one UPDATE of it anywhere — running every 60-second
+                # Samsara tick, so a Datatruck-created trailer that Samsara
+                # merely touched reported source=samsara within a minute,
+                # and unit 144 claimed samsara while Datatruck owned four
+                # of its six fields.  Who supplies VALUES lives in
+                # field_provenance; the row's ``sources`` list derives
+                # from both.  This also makes ``owner_fallback`` above
+                # MORE accurate, not less: a field with no provenance
+                # entry was written at insert, and insert-time fields are
+                # the creator's.
                 sets.append("field_provenance = ?")
                 params.append(json.dumps(prov))
                 # Revival, but only of what the SWEEP retired.

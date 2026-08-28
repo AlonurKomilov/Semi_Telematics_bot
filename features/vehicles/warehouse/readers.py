@@ -158,6 +158,7 @@ def _registry_only_overview(v: Any) -> dict[str, Any]:
         "fault_codes": {},
         "vehicle_type": v.vehicle_type,
         "source": v.source,
+        "sources": list(v.sources),
         "_registry_id": v.id,
         "_no_telemetry": True,
     }
@@ -204,6 +205,7 @@ def merge_registry_with_live(
             enriched = dict(match)
             enriched["vehicle_type"] = v.vehicle_type
             enriched["source"] = v.source
+            enriched["sources"] = list(v.sources)
             enriched["_registry_id"] = v.id
             out.append(enriched)
         else:
