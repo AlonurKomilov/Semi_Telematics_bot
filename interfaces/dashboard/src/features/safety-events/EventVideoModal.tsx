@@ -155,16 +155,26 @@ export default function EventVideoModal({
         </div>
 
         {/* Camera-angle tabs (only when inward is available) */}
+        {/* Opaque, and white-based text — this strip is player chrome,
+            like the header above it, not app chrome. It used to be
+            `bg-black/40`, which is TRANSPARENT: over the light theme's
+            white popover it resolved to a mid-grey (L 0.32), and
+            `text-muted-foreground` is a mid-grey too — the inactive tab
+            measured 1.66:1 and could not be read. (The active tab was
+            fine at 6.95; the defect was only ever the inactive one.)
+            Opaque black renders the same in both themes, which is what
+            media surround should do. The active underline stays
+            `border-primary` so the accent still reads here. */}
         {hasInward && (
-          <div className="flex border-b border-border bg-black/40">
+          <div className="flex border-b border-white/10 bg-black">
             {(['forward', 'inward'] as const).map((a) => (
               <button
                 key={a}
                 onClick={() => setAngle(a)}
                 className={`px-4 py-2 text-xs font-medium capitalize transition ${
                   angle === a
-                    ? 'text-foreground border-b-2 border-primary'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'text-white border-b-2 border-primary'
+                    : 'text-white/60 hover:text-white'
                 }`}
               >
                 {a} camera

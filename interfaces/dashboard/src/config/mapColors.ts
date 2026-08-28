@@ -66,14 +66,39 @@ export const CUSTOM_LAYER_SWATCHES: string[] = [
   '#ec4899', '#6366f1', '#14b8a6', '#84cc16', '#64748b',
 ];
 
-/** Brand link colour for <a> tags inside Leaflet popup HTML strings. */
-export const POPUP_LINK = '#2563eb';
+/** Link colour for <a> tags inside Leaflet popup HTML strings. */
+export const POPUP_LINK = 'var(--primary)';
 
 /** Neutral chrome inside Leaflet popup HTML strings (badges + secondary
- *  text).  Popup markup is a plain string, so these can't be CSS tokens
- *  — same rule as everything else in this file (design.md §8). */
+ *  text).
+ *
+ *  These ARE tokens, and the note that used to sit here saying they could
+ *  not be ("popup markup is a plain string") was simply wrong: the string
+ *  becomes real DOM under `.leaflet-popup-content-wrapper`, and an inline
+ *  `var()` inside the injected markup resolves like any other.
+ *
+ *  Measured, because half the story is not what it looks like. Leaflet
+ *  paints its popup white, so until index.css started theming that
+ *  wrapper with `var(--popover)` these literals sat on white in EVERY
+ *  theme. Two were already broken there: `#9ca3af` at 2.54:1, and
+ *  `#e5e7eb` at 1.24:1 wherever it lands on the popover itself rather
+ *  than inside a badge (poiLayers.ts:175 does exactly that -- inside the
+ *  `#374151` badge it was a healthy 8.33:1). The other two PASSED on
+ *  white -- `#666` at 5.74 and the `#2563eb` link at 5.17 -- and it was
+ *  theming the wrapper that dropped them to 2.21 and 2.45 on the dark
+ *  popover. Tokens fix both groups at once and cannot drift again.
+ *  `--muted-foreground` on `--popover` lands at 4.73 light / 4.40 dark;
+ *  the dark figure is marginally under AA, and it is the app-wide
+ *  secondary-text pair, tracked with that retune rather than here.
+ *
+ *  The rest of this file stays literal on purpose: a marker or polyline
+ *  is painted over arbitrary tile imagery and must NOT follow the theme.
+ *  That is the whole reason -- NOT "SVG cannot resolve var()", which is
+ *  false: Leaflet renders vectors as SVG and `fill="var(--x)"` resolves
+ *  there, as ServiceHistoryModal does. Only `HEATMAP_GRADIENT` genuinely
+ *  cannot -- it is consumed by a canvas renderer. */
 export const POPUP = {
-  badgeBg:   '#374151', // amenity-badge background
-  badgeText: '#e5e7eb', // amenity-badge text
-  muted:     '#9ca3af', // secondary text (subtitle, meta row)
+  badgeBg:   'var(--muted)',      // amenity-badge background
+  badgeText: 'var(--foreground)', // badge text — also used ON the popover
+  muted:     'var(--muted-foreground)', // secondary text (subtitle, meta row)
 } as const;

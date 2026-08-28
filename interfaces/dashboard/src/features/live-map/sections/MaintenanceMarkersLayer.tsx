@@ -140,13 +140,19 @@ export default function MaintenanceMarkersLayer({
       marker.bindPopup(`
         <div style="min-width:170px">
           <div style="font-weight:600">${escName}</div>
-          <div style="font-size:11px;color:#666;margin-top:4px">
+          <div style="font-size:11px;color:var(--muted-foreground);margin-top:4px">
+            ${/* The vivid MAP_STATUS hexes are for the MARKER, which sits
+                   on tile imagery and must not follow the theme. As popup
+                   TEXT on a themed surface they are a different job and
+                   were failing it: #f59e0b measured 2.15:1 and #ef4444
+                   3.76:1 at 11px on the light popover. The tone tokens
+                   are the contrast-tuned twins of the same meanings. */''}
             ${row.overdue_count > 0
-              ? `<span style="color:${COLOR_OVERDUE}">${row.overdue_count} overdue</span>`
+              ? `<span style="color:var(--danger)">${row.overdue_count} overdue</span>`
               : ''}
             ${row.overdue_count > 0 && row.pending_count > 0 ? ' · ' : ''}
             ${row.pending_count > 0
-              ? `<span style="color:${COLOR_PENDING}">${row.pending_count} pending</span>`
+              ? `<span style="color:var(--warn)">${row.pending_count} pending</span>`
               : ''}
           </div>
           <a href="/maintenance?vehicle=${encodeURIComponent(row.vehicle_name)}"

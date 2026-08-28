@@ -134,15 +134,100 @@ Rules that fall out of this:
 ### Identity & interaction
 | Token | Use |
 |---|---|
-| `primary` | Primary actions; brand accent (blue in dark, near-black in light) |
+| `primary` | Primary actions; brand accent. Chromatic blue in **both** modes — light's was an achromatic near-black once, and index.css records why that was an oversight, not a decision. The accent presets re-point it |
 | `secondary` | Secondary buttons / quiet fills |
 | `accent` | Hover/active background for interactive rows |
 | `border` / `input` | Hairlines and field outlines |
-| `ring` | Focus glow (primary @ 50% alpha) |
+| `ring` | Focus indicator — `--primary` at **72%**, derived once in index.css. Never re-declare it in a stylesheet; an element-scoped tint must derive its own (see below) |
 | `destructive` | Destructive **actions** (delete buttons). Not for status — use `danger`. |
 
-The `brand.50…900` scale also exists for the rare spot needing a literal
-brand-blue ramp (e.g. a gradient). Prefer `primary` for anything themed.
+There is no literal brand ramp. A `brand.50…900` scale of ten hardcoded
+hex values used to live in the config — the only hardcoded palette in a
+token-driven system — and not one class ever referenced it. Use `primary`.
+
+### Rules this layer enforces
+
+**Never write `text-white` on a tone fill.** Use `text-ok-foreground`,
+`text-warn-foreground`, `text-danger-foreground`, `text-info-foreground`;
+they flip with the theme. This is measured, not taste: the dark themes'
+tones are LIGHT (`--warn` is `oklch(0.82 …)`), so white-on-warn scored
+**1.77:1** and no tone beat 2.91:1 — a badge nobody could read. The same
+fills take near-black at 6.8–11.2:1. Light theme keeps white (5.1–6.2:1).
+
+**Never re-declare `--ring` in a stylesheet.** It is derived once, as
+`--primary` at **72%**, so a new accent preset gets a correct ring free.
+
+**An element-scoped tint is the exception, and it is forced.** A custom
+property's `var()` is substituted when that property is computed *on the
+element that declares it* — `--ring` on `:root` resolves against
+`:root`'s `--primary`, and descendants inherit the already-resolved
+value. An element that re-points `--primary` (the public apply form
+tinting itself to a carrier's brand colour, on a form-root `<div>`) does
+**not** move the ring and must derive its own. Deleting that derivation
+as a "duplicate" put a 4truck-blue focus ring on every field of a fully
+brand-tinted page.
+
+The weight is measured, not chosen. At 50% the ring scored 2.21 / 2.06 /
+2.02 / 2.37 against its own background in light / dark / purple / green —
+below WCAG 1.4.11's 3.0 floor in **every** theme, so keyboard users could
+not see where focus was. The thresholds are 66.6 / 68.7 / 70.3 / 60.3 %,
+so 72 clears all four: 3.33 / 3.21 / 3.10 / 3.89. It was written as 70
+first, from a measurement whose own `printf` rounded 70.3 down — purple
+lands at 2.98 there and still fails. A number in a comment is
+load-bearing; round it in the display and you ship the rounding.
+
+`ring-ring/50` and friends compose multiplicatively through `tokenColor()`,
+so the soft halo paints `--primary` at 0.72 × 0.50 and is decorative. The
+identifiable indicator is `focus-visible:border-ring` at the full weight —
+a control that has the halo and no `border-ring` has no usable focus ring.
+
+There is a trap in the history worth keeping. The two accent presets used
+to copy `--ring` from their own `--primary` and drop the alpha; that looks
+exactly like a copy-paste omission and was "fixed" by deriving it — which
+took purple from 5.18 to 2.02 and green from 6.83 to 2.37. The omission
+was the only reason those two accents passed. Deriving was still right;
+doing it at the inherited 50% was not.
+
+**Anything the dark themes override, `@media print` must put back.** A
+dark-mode user otherwise prints white text on a background the printer
+drops: a blank page. The print block is a copy of the light values and
+guard 31 asserts set-equality both ways plus byte-equal values, which is
+the only thing that makes keeping a copy safe.
+
+**Tailwind 3 syntax only.** The primitives were pasted from shadcn's v4
+era and thirty classes across select, dialog, sheet, table, tooltip,
+avatar, button and badge compiled to *nothing*: `data-open:`,
+`data-closed:`, `**:`, `*:[a]:`, `has-data-[…]:`, `not-data-[…]:`,
+`data-starting-style:`, `[a]:`, `in-data-[…]:`. Write `data-[open]:`,
+`[&_*]:`, `[&>a]:`, `has-[[data-…]]:`, `[a&]:`, `[[data-…]_&]:`.
+
+It is not only variants. A **step the config never defined** is just as
+dead: `backdrop-blur-xs` (v3's smallest is `-sm`) meant every dialog and
+sheet shipped without the blur it asked for; `max-w-55` was missing
+because `EXTRA_STEPS` reached every dimension key except `maxWidth`, so
+two `truncate`s had no box to clip against; `underline-offset-3` is not
+on the 0/1/2/4/8 scale; `field-sizing-content` is v4-only, so six
+textareas never grew.
+
+A class Tailwind never emits produces no error and no warning — the
+element just renders unstyled, and it reads as a design choice. Guard 32
+compiles every class the codebase writes, bare and prefixed, and fails on
+any that vanishes. `aria-invalid:` needed a config entry
+(`theme.extend.aria`) and without it every invalid field drew no error
+ring at all.
+
+**Animations come from `tailwindcss-animate`, the v3 plugin.** Not from
+`tw-animate-css`, which is the Tailwind 4 package: it ships 54 `@utility`
+blocks, v3 has no such at-rule, so it passed them through untouched and
+the browser dropped every one. `animate-in`, `fade-in-0`, `zoom-in-95`
+and `slide-in-from-*` existed only as keyframes with no classes to fire
+them, and 43 usages animated nothing.
+
+**Vendor surfaces need explicit colour.** Sonner defaults to a light
+toast and Leaflet hardcodes `background: white` on popups and tooltips,
+so on the dark themes both were white cards in a near-black page. Both
+now take `--popover` / an explicit `theme` prop. `color-scheme` is
+declared per theme so scrollbars and form controls follow too.
 
 ---
 
@@ -836,7 +921,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Thirty live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Thirty-two live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -876,6 +961,8 @@ this table has any chance of staying true.
 | no viewport-wide fixed strip outside the shell (§6) | the shell owns the frame; a `fixed bottom-0 left-0 right-0` bar reaches into the sidebar and swallows both of the card's bottom corners |
 | the edge-to-edge card variant clips (§6) | `padding="none"` is for children that own the card's edges, which is exactly the case that must clip. Leaving it to 22 call sites meant four did not |
 | a child is never rounder than the parent it sits against (§6) | the steps are fixed OFFSETS, so an `xl` is rounder than an `lg` at every preset — no measurement needed. Adjacency is approximated by source proximity (8 lines); loosen it and the rule dissolves — 0 hits at 8, 9 at 20, 41 at no limit, the furthest pair 325 lines apart with arcs that never meet |
+| print puts the light palette back (§6) | `@media print` re-declares, at its `:root` value, every colour token the dark themes override, and the guard asserts that set equality both ways plus byte-equal values. Without the reset a dark-mode user prints white-on-a-background-the-printer-drops — a blank page. Nobody reviews a printout, so the drift would live for years |
+| every class the code writes actually compiles (§6) | compiles every class the codebase writes — variant-prefixed AND bare — against the real config, and fails on any that emits no rule. Three structural filters keep it allowlist-free (comments stripped, so an apostrophe in prose cannot open a fake string; a literal followed by `:` is an object key, not a class; index.css's own classes count as emitted). Found 36 dead classes: nine primitives' v4 variants, plus `backdrop-blur-xs` on every modal scrim, `max-w-55` beside a `truncate`, `field-sizing-content`, `outline-hidden`, `underline-offset-3` and `[a]:hover:` on every Badge rendered as a link. Reading the files cannot find any of it |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

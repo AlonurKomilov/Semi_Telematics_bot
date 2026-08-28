@@ -399,9 +399,9 @@ export default function Geofences() {
                   root with top-20, which put it across the <h1> — the banner
                   covered the page title it was meant to sit below. */}
               {pickingFromMap && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-warn text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-warn text-warn-foreground text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
               <MapPin className="size-4" aria-hidden /> Click anywhere on the map to set zone center
-              <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs py-1 -my-1 min-h-tap">Cancel</button>
+              <button onClick={cancelMapPick} className="underline text-warn-foreground/80 hover:text-warn-foreground text-xs py-1 -my-1 min-h-tap">Cancel</button>
             </div>
           )}
         </div>

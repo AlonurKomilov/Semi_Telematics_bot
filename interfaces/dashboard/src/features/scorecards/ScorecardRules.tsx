@@ -11,6 +11,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { type Tone } from '@/lib/status';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -199,11 +200,11 @@ export function ScorecardRulesPanel() {
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <Kpi label="Rules" value={stats.total.toString()} />
-        <Kpi label="Enabled" value={stats.enabled.toString()} color="#22c55e" />
+        <Kpi label="Enabled" value={stats.enabled.toString()} color="var(--ok)" />
         <Kpi
           label="Customised"
           value={stats.overridden.toString()}
-          color={stats.overridden > 0 ? '#3b82f6' : '#6b7280'}
+          color={stats.overridden > 0 ? 'var(--info)' : 'var(--muted-foreground)'}
         />
       </div>
 
@@ -333,49 +334,38 @@ function RuleRow({
   return (
     <>
     <div className={`flex items-center gap-3 px-4 py-3 ${draft.enabled ? '' : 'opacity-50'}`}>
-      {/* enabled toggle */}
-      <button
-        onClick={() => onChange({ enabled: !draft.enabled })}
-        // Hit box split from paint — see ui/switch.tsx. The pill stays
-        // 20px; the button is what has to clear 24px.
-        className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center -my-0.5"
-        title={draft.enabled ? 'Enabled' : 'Disabled'}
-      >
-        <span
-          aria-hidden
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-            draft.enabled ? 'bg-ok' : 'bg-muted'
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-              draft.enabled ? 'translate-x-4' : 'translate-x-0.5'
-            }`}
-          />
-        </span>
-      </button>
+      {/* The primitive, not a copy of it. This was a hand-rolled toggle
+          that cited ui/switch.tsx for its hit box and then diverged from
+          it everywhere else: no role="switch", no aria-checked, the pill
+          aria-hidden, its only accessible name a native title= (which
+          CLAUDE.md bans), a white thumb that was a 1.09:1 edge against
+          the light theme's track, and `bg-ok` where the house ON colour
+          is `bg-primary`. Repainting it would have kept every one of
+          those. */}
+      <Switch
+        checked={draft.enabled}
+        onCheckedChange={(next) => onChange({ enabled: next })}
+        aria-label={draft.enabled ? 'Enabled' : 'Disabled'}
+        className="-my-0.5"
+      />
 
       {/* label + id */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">
           {rule.label}
+          {/* The hand-rolled pair here was an /13 alpha fill plus its solid
+              text — which is exactly what the tone layer already emits, and the six
+              hex it took to say it could not follow the theme. See CAT_META
+              above: the same three hues were removed from this file once
+              already, and the call sites were left behind. */}
           {rule.pillar && (
-            <span
-              className="ml-2 text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded font-mono"
-              style={{
-                background:
-                  rule.pillar === 'safety'     ? '#ef444422'
-                : rule.pillar === 'efficiency' ? '#22c55e22'
-                : '#3b82f622',
-                color:
-                  rule.pillar === 'safety'     ? '#ef4444'
-                : rule.pillar === 'efficiency' ? '#22c55e'
-                : '#3b82f6',
-              }}
+            <Badge
+              tone={rule.pillar === 'safety' ? 'danger' : rule.pillar === 'efficiency' ? 'ok' : 'info'}
+              className="ml-2 uppercase tracking-wide font-mono"
               title={`Pillar: ${rule.pillar}`}
             >
               {rule.pillar}
-            </span>
+            </Badge>
           )}
           {rule.curve_kind && (
             <span

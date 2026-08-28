@@ -72,15 +72,25 @@ export function readableTextOn(hex: string): string {
 // links) to the carrier colour with a legible foreground — or undefined for
 // a generic (untinted) form.  Overriding `--primary` is safe with the faded
 // states (`bg-primary/90`): tokenColor() builds them with color-mix(), which
-// accepts any CSS colour for var(--primary).  `--brand` stays exposed for
-// the header accents.
+// accepts any CSS colour for var(--primary).
+//
+// It used to also set `--brand` "for the header accents" — nothing ever
+// read var(--brand), so it was a write with no reader. The header takes
+// its accent from --primary like everything else.
 export function brandTintStyle(brandColor?: string): import('react').CSSProperties | undefined {
   if (!brandColor) return undefined;
   return {
-    ['--brand']: brandColor,
     ['--primary']: brandColor,
+    // Derived here as well as in index.css, and that is not a breach of
+    // the rule design.md states — it is the reason for it. A custom
+    // property's `var()` is substituted when that property is computed
+    // ON THE ELEMENT THAT DECLARES IT: `--ring` on `:root` resolves
+    // against `:root`'s `--primary`, and children inherit the resolved
+    // value. This tint lands on the form-root <div>, so without its own
+    // derivation every field on a fully brand-tinted page drew a
+    // 4truck-blue focus ring.
+    ['--ring']: `color-mix(in oklab, ${brandColor} 72%, transparent)`,
     ['--primary-foreground']: readableTextOn(brandColor),
-    ['--ring']: brandColor,   // focus rings follow the brand accent
   } as import('react').CSSProperties;
 }
 

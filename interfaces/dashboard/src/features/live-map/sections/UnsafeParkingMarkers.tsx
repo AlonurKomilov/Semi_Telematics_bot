@@ -93,7 +93,7 @@ export default function UnsafeParkingMarkers({
           marker.bindPopup(`
             <div style="min-width:160px">
               <div style="font-weight:600">${escapeHTML(e.vehicle_name)}</div>
-              <div style="font-size:11px;color:#666">Parked ${hours} · ${escapeHTML(cls)}</div>
+              <div style="font-size:11px;color:var(--muted-foreground)">Parked ${hours} · ${escapeHTML(cls)}</div>
               ${e.address ? `<div style="font-size:11px;margin-top:4px">${escapeHTML(e.address)}</div>` : ''}
               <a href="/parking" style="font-size:11px;color:${POPUP_LINK};display:inline-block;margin-top:6px">Triage →</a>
             </div>

@@ -40,7 +40,7 @@ export function InfoTip({ label, size = 14 }: InfoTipProps) {
         // costs ~2px of horizontal flow at size=14; the alternative was
         // a hand-tuned negative margin per icon size, which is a magic
         // constant that goes stale the first time a size is added.
-        className="inline-flex items-center justify-center align-middle cursor-pointer rounded p-1 -m-1 min-h-tap min-w-tap text-muted-foreground/60 hover:text-muted-foreground data-open:text-foreground transition-colors"
+        className="inline-flex items-center justify-center align-middle cursor-pointer rounded p-1 -m-1 min-h-tap min-w-tap text-muted-foreground/60 hover:text-muted-foreground data-[open]:text-foreground transition-colors"
       >
         <Info className={iconSizeClass(size)} />
       </PopoverPrimitive.Trigger>
@@ -51,7 +51,7 @@ export function InfoTip({ label, size = 14 }: InfoTipProps) {
           <PopoverPrimitive.Popup
             // Same bubble recipe as TooltipContent so the two read as one
             // family; slightly roomier padding since this holds sentences.
-            className="z-50 w-fit max-w-xs rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-lg outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+            className="z-50 w-fit max-w-xs rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-lg outline-none data-[open]:animate-in data-[open]:fade-in-0 data-[open]:zoom-in-95 data-[closed]:animate-out data-[closed]:fade-out-0 data-[closed]:zoom-out-95"
           >
             {label}
           </PopoverPrimitive.Popup>

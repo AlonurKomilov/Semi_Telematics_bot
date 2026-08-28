@@ -1,5 +1,3 @@
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @tailwind base;
 @tailwind components;
@@ -72,6 +70,7 @@
     overscroll-behavior-y: none;
   }
   :root {
+    color-scheme: light;
 
     /* Live sidebar width (Sidebar.tsx keeps it in sync w-14/w-56) — the
        assistant's expanded overlay anchors to the content edge with it. */
@@ -134,10 +133,31 @@
 
     --input: oklch(0.922 0 0);
 
-    /* Matches the dark themes' pattern — the accent hue at 50%. A
-       neutral grey focus ring on the one theme where the ring is
-       hardest to see is backwards. */
-    --ring: oklch(0.52 0.2 264 / 50%);
+    /* Derived, not copied.  --ring was `--primary` at 50% in :root and
+       in .dark, and the two accent presets re-declared it from their own
+       --primary but dropped the alpha — so the purple and green focus
+       rings were twice as heavy as the blue one.  Written once here it
+       follows whatever --primary the active preset installs, and a new
+       accent gets a correct ring without remembering to add one.
+
+       72%, not 50%.  WCAG 1.4.11 wants 3.0 for a focus indicator and at
+       50% the ring measured 2.21 (light), 2.06 (dark), 2.02 (purple),
+       2.37 (green) against its own background — it failed in every
+       theme.  The thresholds are 66.6 / 68.7 / 70.3 / 60.3 percent, so
+       72 clears all four with a little margin: 3.33 / 3.21 / 3.10 / 3.89.
+       (70 was written here first, from a measurement whose own printf
+       rounded 70.3 down to "70" — purple lands at 2.98 there, still
+       failing.  The number in a comment is load-bearing.)
+
+       This is the ring BORDER.  `ring-ring/50` and friends compose
+       multiplicatively through tokenColor(), so the soft halo paints
+       --primary at 0.72 x 0.50 and is decorative; the identifiable
+       indicator is `focus-visible:border-ring` at the full weight.
+       Deriving it had briefly made this WORSE: purple and green were
+       re-declared at full opacity, which measured 5.18 and 6.83, so the
+       omission this comment calls a bug was the only reason those two
+       accents had a visible focus ring at all. */
+    --ring: color-mix(in oklab, var(--primary) 72%, transparent);
 
     /* Pin-boundary shadow — paints a soft drop-shadow off the freeze
        edge of the pinned column cluster (DataGrid).  Tight offset +
@@ -176,6 +196,16 @@
     --danger: oklch(0.52 0.20 25);
 
     --info:   oklch(0.52 0.17 255);
+    /* What to write ON a solid tone fill.  Measured, not chosen: in the
+       dark themes the tones are light (warn is oklch(0.82 …)), so the
+       `text-white` these call sites used scored 1.77:1 on warn and never
+       beat 2.91:1 on any of them — a white-on-pale badge nobody could
+       read.  Near-black on the same fills scores 6.8–11.2.  Light theme
+       keeps white, which measures 5.1–6.2 there. */
+    --ok-foreground:     oklch(1 0 0);
+    --warn-foreground:   oklch(1 0 0);
+    --danger-foreground: oklch(1 0 0);
+    --info-foreground:   oklch(1 0 0);
 
     /* Derived soft-pill surfaces — same hue, fixed alpha for the
        `bg /15 + border /30` pill treatment.  Defined ONCE here (not
@@ -226,9 +256,7 @@
 
     --sidebar-foreground: oklch(0.145 0 0);
 
-    --sidebar-primary: oklch(0.205 0 0);
 
-    --sidebar-primary-foreground: oklch(0.985 0 0);
 
     --sidebar-accent: oklch(0.935 0.006 240);
 
@@ -236,9 +264,9 @@
 
     --sidebar-border: oklch(0.91 0.005 240);
 
-    --sidebar-ring: oklch(0.708 0 0)
   }
   .dark {
+    color-scheme: dark;
 
     /* ── Surface hierarchy — wider deltas so dark-mode contrast
        is as visible as light mode's white-vs-off-white gap.
@@ -303,11 +331,6 @@
     --pin-shadow-right:  4px 0 6px 0 rgb(0 0 0 / 0.35);
     --pin-shadow-left:  -4px 0 6px 0 rgb(0 0 0 / 0.35);
 
-    /* Focus ring uses primary at 50% alpha so it layers as a glow
-       around the focused element rather than replacing its colour.
-       Solid primary made focus look like an active state, confusing
-       keyboard users. */
-    --ring: oklch(0.62 0.21 264 / 50%);
 
     /* Dark-mode status hues — lifted to a ~400-weight lightness so
        they stay legible as solid text on the deep-black canvas,
@@ -320,6 +343,10 @@
     --danger: oklch(0.70 0.19 22);
 
     --info:   oklch(0.72 0.15 250);
+    --ok-foreground:     oklch(0.145 0 0);
+    --warn-foreground:   oklch(0.145 0 0);
+    --danger-foreground: oklch(0.145 0 0);
+    --info-foreground:   oklch(0.145 0 0);
 
     --chart-1: oklch(0.62 0.21 264);
 
@@ -345,9 +372,7 @@
 
     --sidebar-foreground: oklch(0.985 0 0);
 
-    --sidebar-primary: oklch(0.62 0.21 264);
 
-    --sidebar-primary-foreground: oklch(0.985 0 0);
 
     --sidebar-accent: oklch(0.30 0.025 240);
 
@@ -355,7 +380,6 @@
 
     --sidebar-border: oklch(1 0 0 / 10%);
 
-    --sidebar-ring: oklch(0.62 0.21 264 / 50%)
   }
   * {
     border-color: var(--border);
@@ -374,8 +398,16 @@
      `.dark` — a swatch answers "what would this option look like", which
      does not change with the theme you are currently in.  Each value is
      the `--primary` its preset installs below; `light` shows its canvas
-     instead, because Light is a mode, not an accent (its primary is
-     near-black, which would read as a broken dot). */
+     instead, because Light is a MODE and the three others are accents —
+     a row of swatches that mixes the two axes is the picker bug O1
+     exists to fix.
+
+     This used to justify itself with "light's primary is near-black,
+     which would read as a broken dot".  That has been false since the
+     fix recorded at the top of this file: light's --primary is
+     oklch(0.52 0.2 264), chromatic blue.  Light already HAS an accent —
+     worth knowing before designing the mode/accent split, because the
+     doc made it look like it could not have one. */
   :root {
     --swatch-dark-blue:   oklch(0.62 0.21 264);
     --swatch-dark-purple: oklch(0.62 0.20 300);
@@ -386,12 +418,10 @@
   /* ── Theme accent presets ───────────────────────────────── */
   .dark[data-theme="dark-purple"] {
     --primary: oklch(0.62 0.2 300);
-    --ring: oklch(0.62 0.2 300);
     --chart-1: oklch(0.62 0.2 300);
   }
   .dark[data-theme="dark-green"] {
     --primary: oklch(0.65 0.19 142);
-    --ring: oklch(0.65 0.19 142);
     --chart-1: oklch(0.65 0.19 142);
   }
 
@@ -453,6 +483,58 @@
  * root, so every other page prints exactly as it did before.
  */
 @media print {
+  /* Every colour token the dark themes override, put back to its `:root`
+     (light) value.  Without this a dark-mode user prints white text on a
+     background the printer drops, and the page comes out blank — the
+     geometry reset below never touched colour.  The selector carries
+     three simple selectors so it outweighs `.dark[data-theme="…"]`
+     (0,2,0); plain `:root` would tie with `.dark` and lose to a preset.
+
+     GENERATED from the `.dark` block — every token it overrides, at the
+     value `:root` gives it.  `chrome.test.ts` fails if the two sets
+     drift apart, so add a token to `.dark` and add it here too. */
+  :root, :root.dark, :root.dark[data-theme] {
+    color-scheme: light;
+    --background:                 oklch(1 0 0);
+    --foreground:                 oklch(0.145 0 0);
+    --card:                       oklch(1 0 0);
+    --card-foreground:            oklch(0.145 0 0);
+    --popover:                    oklch(1 0 0);
+    --popover-foreground:         oklch(0.145 0 0);
+    --primary:                    oklch(0.52 0.2 264);
+    --primary-foreground:         oklch(0.985 0 0);
+    --secondary:                  oklch(0.97 0 0);
+    --secondary-foreground:       oklch(0.205 0 0);
+    --muted:                      oklch(0.97 0 0);
+    --muted-foreground:           oklch(0.556 0 0);
+    --accent:                     oklch(0.97 0 0);
+    --accent-foreground:          oklch(0.205 0 0);
+    --destructive:                oklch(0.577 0.245 27.325);
+    --destructive-foreground:     oklch(0.985 0 0);
+    --border:                     oklch(0.922 0 0);
+    --input:                      oklch(0.922 0 0);
+    --pin-shadow-right:           4px 0 6px 0 rgb(0 0 0 / 0.20);
+    --pin-shadow-left:            -4px 0 6px 0 rgb(0 0 0 / 0.20);
+    --ok:                         oklch(0.52 0.15 150);
+    --warn:                       oklch(0.50 0.11 70);
+    --danger:                     oklch(0.52 0.20 25);
+    --info:                       oklch(0.52 0.17 255);
+    --ok-foreground:              oklch(1 0 0);
+    --warn-foreground:            oklch(1 0 0);
+    --danger-foreground:          oklch(1 0 0);
+    --info-foreground:            oklch(1 0 0);
+    --chart-1:                    oklch(0.55 0.20 264);
+    --chart-2:                    oklch(0.55 0.15 142);
+    --chart-3:                    oklch(0.65 0.14 95);
+    --chart-4:                    oklch(0.58 0.19 30);
+    --chart-5:                    oklch(0.55 0.12 200);
+    --sidebar:                    oklch(0.965 0.004 240);
+    --sidebar-foreground:         oklch(0.145 0 0);
+    --sidebar-accent:             oklch(0.935 0.006 240);
+    --sidebar-accent-foreground:  oklch(0.205 0 0);
+    --sidebar-border:             oklch(0.91 0.005 240);
+  }
+
   body:has([data-print-root]) * { visibility: hidden; }
   body:has([data-print-root]) [data-print-root],
   body:has([data-print-root]) [data-print-root] * { visibility: visible; }
@@ -502,5 +584,25 @@
 [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-button] { border-radius: var(--radius); }
 [data-sonner-toast] .sonner-loading-bar { border-radius: var(--radius); }
 .leaflet-container .leaflet-bar { border-radius: var(--radius); overflow: hidden; }
-.leaflet-container .leaflet-popup-content-wrapper { border-radius: var(--radius); }
-.leaflet-container .leaflet-tooltip { border-radius: var(--radius); }
+/* Leaflet hardcodes `background: white; color: #333` on its popups and
+   tooltips, so on the three dark themes a map popup was a white card in a
+   near-black page — and the only surface in the app that ignored the
+   theme.  The tip is the little arrow under the popup; leave it out and
+   the arrow stays white and points at nothing. */
+.leaflet-container .leaflet-popup-content-wrapper,
+.leaflet-container .leaflet-tooltip {
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+}
+.leaflet-container .leaflet-popup-tip { background: var(--popover); }
+/* Leaflet gives the tooltip a white border and paints its arrow with a
+   border-<side>-color chosen from the resolved direction. The app asks for
+   `direction: 'auto'`, which Leaflet only ever resolves to left or right —
+   so a border-TOP rule left the white arrow untouched AND painted a second
+   one beside it. All four sides, and the box border too. */
+.leaflet-container .leaflet-tooltip { border-color: var(--border); }
+.leaflet-container .leaflet-tooltip-left::before  { border-left-color:   var(--popover); }
+.leaflet-container .leaflet-tooltip-right::before { border-right-color:  var(--popover); }
+.leaflet-container .leaflet-tooltip-top::before    { border-top-color:    var(--popover); }
+.leaflet-container .leaflet-tooltip-bottom::before { border-bottom-color: var(--popover); }

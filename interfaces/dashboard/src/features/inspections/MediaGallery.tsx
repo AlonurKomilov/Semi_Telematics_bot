@@ -12,8 +12,15 @@ import { Badge } from '@/components/ui/badge';
 // the shared verdict→tone map so the dot can't drift from the item-list
 // pill colour; ``neutral`` has no solid hue so it falls back to the
 // muted-foreground fill.
+// Fill AND the text that sits on it. design.md §2 bans `text-white` on a
+// tone fill: the dark themes' tones are light, so white scored 1.77-2.91.
+// The tone foregrounds invert with the theme and score 9.84 (ok), 11.19
+// (warn), 6.79 (danger), 8.01 (info). `neutral` has no tone token, so it
+// takes `text-background`, which is the same inversion written by hand.
 const VERDICT_DOT_BG: Record<string, string> = {
-  ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger', info: 'bg-info', neutral: 'bg-muted-foreground',
+  ok: 'bg-ok text-ok-foreground', warn: 'bg-warn text-warn-foreground',
+  danger: 'bg-danger text-danger-foreground', info: 'bg-info text-info-foreground',
+  neutral: 'bg-muted-foreground text-background',
 };
 
 interface Props {
@@ -164,7 +171,7 @@ export function MediaGallery({ inspection }: Props) {
                     if (!v) return null;
                     return (
                       <span
-                        className={`absolute bottom-1 left-1 text-white text-2xs font-bold w-5 h-5 rounded-full flex items-center justify-center ${VERDICT_DOT_BG[verdictTone(v.verdict)]}`}
+                        className={`absolute bottom-1 left-1 text-2xs font-bold w-5 h-5 rounded-full flex items-center justify-center ${VERDICT_DOT_BG[verdictTone(v.verdict)]}`}
                         title={`AI: ${v.summary || v.verdict}`}
                       >
                         {VERDICT_EMOJI[v.verdict]}
@@ -181,15 +188,15 @@ export function MediaGallery({ inspection }: Props) {
                     const s = (m.storage_state || 'remote').toLowerCase();
                     if (s === 'remote') return null;
                     const ICON: Record<string, { glyph: string; bg: string; label: string }> = {
-                      local:   { glyph: '💾', bg: 'bg-muted-foreground', label: 'Stored locally · sync pending' },
-                      syncing: { glyph: '🔄', bg: 'bg-info',             label: 'Uploading to Google Drive…' },
-                      stuck:   { glyph: '⚠',  bg: 'bg-danger',           label: 'Sync blocked — reconnect Drive' },
+                      local:   { glyph: '💾', bg: 'bg-muted-foreground text-background', label: 'Stored locally · sync pending' },
+                      syncing: { glyph: '🔄', bg: 'bg-info text-info-foreground',          label: 'Uploading to Google Drive…' },
+                      stuck:   { glyph: '⚠',  bg: 'bg-danger text-danger-foreground',      label: 'Sync blocked — reconnect Drive' },
                     };
                     const cfg = ICON[s];
                     if (!cfg) return null;
                     return (
                       <span
-                        className={`absolute top-1 left-1 ${cfg.bg} text-white text-2xs font-semibold px-1.5 py-0.5 rounded shadow-sm`}
+                        className={`absolute top-1 left-1 ${cfg.bg} text-2xs font-semibold px-1.5 py-0.5 rounded shadow-sm`}
                         title={cfg.label}
                       >
                         {cfg.glyph}

@@ -1292,7 +1292,7 @@ export default function TeamManagement() {
                             <button
                               onClick={() => handleSaveAccess(selected.id, true)}
                               disabled={savingCompanies || savingVehicles}
-                              className="px-4 py-1.5 bg-warn text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
+                              className="px-4 py-1.5 bg-warn text-warn-foreground hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                             >
                               {savingCompanies || savingVehicles ? 'Saving…' : 'Confirm & save'}
                             </button>
@@ -1391,7 +1391,7 @@ export default function TeamManagement() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleRoleChange(selected.id, pendingRole)}
-                                className="px-4 py-1.5 bg-warn text-white hover:opacity-90 rounded text-xs font-medium transition min-h-tap"
+                                className="px-4 py-1.5 bg-warn text-warn-foreground hover:opacity-90 rounded text-xs font-medium transition min-h-tap"
                               >
                                 Confirm
                               </button>
@@ -1552,7 +1552,7 @@ export default function TeamManagement() {
                                     <button
                                       disabled={ownerBusy || !ownerPassword}
                                       onClick={() => handleDemoteOwner(selected.id)}
-                                      className="px-4 py-1.5 bg-danger text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
+                                      className="px-4 py-1.5 bg-danger text-danger-foreground hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                                     >Confirm removal</button>
                                     <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>

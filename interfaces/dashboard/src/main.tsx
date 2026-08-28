@@ -9,7 +9,7 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
 import PreferencesSync from './preferences/PreferencesSync';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
 import { applyPublicFormTheme } from './features/applications/public/theme';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
@@ -21,6 +21,12 @@ import './index.css';
  * top-right: one-time visitors have no preferences). */
 function AppToaster() {
   const position = useNotifPosition();
+  // Sonner paints its own surface and defaults to LIGHT. On the three
+  // dark themes that put a white toast over a near-black page — the
+  // one element on screen that ignored the theme entirely. `light`
+  // covers every non-dark colour, which today is just `light`.
+  const { theme } = useTheme();
+  const mode = theme.color === 'light' ? 'light' : 'dark';
   // Sonner starts a top-positioned toast 32px down the viewport, which
   // lands it squarely on the 48px topbar — the banner covered the
   // navigation it was often reporting about. Clear the header instead,
@@ -30,7 +36,9 @@ function AppToaster() {
   const offset = position.startsWith('top')
     ? 'calc(3rem * var(--size-control, 1) * var(--size-region-controls, 1) + 0.5rem)'
     : undefined;
-  return <Toaster richColors position={position} closeButton offset={offset} />;
+  return (
+    <Toaster richColors theme={mode} position={position} closeButton offset={offset} />
+  );
 }
 
 // Single shared QueryClient.  ``staleTime: 60s`` matches the server-side
@@ -94,7 +102,9 @@ if (_isApply) {
       <React.Suspense fallback={null}>
         {_isCarrierIntake ? <PublicCarrierIntake /> : _isStatus ? <ApplyStatus /> : <PublicApply />}
       </React.Suspense>
-      <Toaster richColors position="top-right" closeButton />
+      {/* Outside ThemeProvider by design (see above), and the public
+          apply pages are always light — so this one is pinned, not read. */}
+      <Toaster richColors theme="light" position="top-right" closeButton />
     </React.StrictMode>,
   );
 } else {

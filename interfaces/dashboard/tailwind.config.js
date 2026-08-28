@@ -1,3 +1,5 @@
+import tailwindcssAnimate from 'tailwindcss-animate';
+
 /** @type {import('tailwindcss').Config} */
 
 // The `.js` extension is required: this file is ESM and Node's resolver
@@ -174,8 +176,38 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
+      // Tailwind 3 ships aria-checked/disabled/expanded/… but NOT
+      // aria-invalid, so the five `aria-invalid:*` classes the form
+      // primitives carry compiled to nothing and every invalid field
+      // rendered with no error ring at all.  Measured with a probe
+      // build, not assumed.
+      //
+      // `invalid="true"` and not bare `invalid`: TriggerEditorForm
+      // writes `aria-invalid={!!rangeError()}`, which React renders as
+      // `aria-invalid="false"` — always present.  A presence selector
+      // would paint every one of those fields permanently invalid.
+      aria: { invalid: 'invalid="true"' },
+      // `font-heading` is written by the sheet and dialog titles and was
+      // generating no rule at all — the token existed in index.css, the
+      // utility never did, so both titles fell back to the body font.
+      // It resolves to `--font-sans` today; the point is that changing
+      // `--font-heading` now actually moves those two titles.
+      // tailwindcss-animate builds `slide-in-from-top-N` by prefixing the
+      // value with a literal '-'. Our spacing steps are `calc(…)` — the
+      // size engine multiplies every length — so it emitted `-calc(…)`,
+      // which is not valid CSS. Custom properties store it happily, then
+      // `transform: translate3d(var(--tw-enter-translate-y), …)` becomes
+      // invalid at computed-value time and the WHOLE transform is
+      // dropped, taking `zoom-in-95` with it. A downward-opening Select
+      // (the common case) faded in flat while an upward one animated.
+      //
+      // Plain rems here, so negation is textual and valid. The cost is
+      // that an 8px animation offset does not scale with the Size
+      // control, which is the right trade: the offset is motion, not
+      // layout, and nothing lines up against it.
+      animationTranslate: { 1: '0.25rem', 2: '0.5rem', 4: '1rem', 8: '2rem' },
+      fontFamily: { heading: ['var(--font-heading)', ...defaultTheme.fontFamily.sans] },
       colors: {
-        brand: { 50: '#eef7ff', 100: '#d9edff', 200: '#bce0ff', 300: '#8eccff', 400: '#59b0ff', 500: '#338cff', 600: '#1a6bf5', 700: '#1355e1', 800: '#1646b6', 900: '#183d8f' },
         // shadcn CSS-var tokens — wrapped in tokenColor() so `bg-primary`,
         // `text-muted-foreground/60`, `border-border/50`, etc. all work
         // (the bare class AND the `/<alpha>` modifier).
@@ -220,16 +252,16 @@ export default {
         // translucent CSS vars, so they stay as plain `var()` (no
         // modifier applied to them).  Reach for these (or toneClasses()
         // in lib/status.ts) for any status colour — see design.md §3.
-        ok: tokenColor('--ok'),
+        ok: { DEFAULT: tokenColor('--ok'), foreground: tokenColor('--ok-foreground') },
         'ok-bg': 'var(--ok-bg)',
         'ok-bd': 'var(--ok-bd)',
-        warn: tokenColor('--warn'),
+        warn: { DEFAULT: tokenColor('--warn'), foreground: tokenColor('--warn-foreground') },
         'warn-bg': 'var(--warn-bg)',
         'warn-bd': 'var(--warn-bd)',
-        danger: tokenColor('--danger'),
+        danger: { DEFAULT: tokenColor('--danger'), foreground: tokenColor('--danger-foreground') },
         'danger-bg': 'var(--danger-bg)',
         'danger-bd': 'var(--danger-bd)',
-        info: tokenColor('--info'),
+        info: { DEFAULT: tokenColor('--info'), foreground: tokenColor('--info-foreground') },
         'info-bg': 'var(--info-bg)',
         'info-bd': 'var(--info-bd)',
         border: tokenColor('--border'),
@@ -387,8 +419,15 @@ export default {
       // frozen box around growing text, so raising Size showed the user
       // LESS of a filename, not more.
       // `screen-*` and `prose` fall out via remValue() — not rem lengths.
+      // ...and EXTRA_STEPS, which every other dimension key already
+      // merges (width, height, minWidth, minHeight, maxHeight) and this
+      // one did not. So `max-w-55` and `max-w-65` emitted nothing, and
+      // the two call sites that pair them with `truncate` had no box to
+      // clip against — the same class of failure the paragraph above
+      // describes, one key over.
       maxWidth: dimensionScale({
         ...defaultTheme.spacing,
+        ...EXTRA_STEPS,
         ...defaultTheme.maxWidth({ theme: () => ({}), breakpoints: () => ({}) }),
       }),
 
@@ -426,5 +465,13 @@ export default {
       },
     },
   },
-  plugins: [],
+  // `animate-in`, `fade-in-0`, `zoom-in-95`, `slide-in-from-*` and their
+  // -out counterparts come from here.  index.css used to `@import
+  // "tw-animate-css"` for them, which is the TAILWIND 4 package: it
+  // ships 54 `@utility` blocks, and v3 has no such at-rule, so it passed
+  // them through untouched and the browser dropped every one.  The
+  // keyframes survived (plain CSS) and nothing else did, so 43 class
+  // usages across the dialog, select and tooltip animated nothing at
+  // all.  Guard 32 in chrome.test.ts now compiles these.
+  plugins: [tailwindcssAnimate],
 };

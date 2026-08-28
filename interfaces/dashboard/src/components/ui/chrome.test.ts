@@ -930,13 +930,22 @@ describe('UI chrome', () => {
 
   it('is counted correctly in design.md', () => {
     const doc = readFileSync(join(SRC, '..', 'design.md'), 'utf8');
-    const NUMBER: Record<string, number> = {
-      ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
-      fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
-      twenty: 20, 'twenty-one': 21, 'twenty-two': 22, 'twenty-three': 23,
-      'twenty-four': 24, 'twenty-five': 25, 'twenty-six': 26,
-      'twenty-seven': 27, 'twenty-eight': 28, 'twenty-nine': 29, thirty: 30,
-    };
+    // Built, not listed: the hand-written map ran out at every tenth
+    // guard, and the failure it produced ("expected undefined") named
+    // the map, not the missing table row.
+    const ONES = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
+      'eight', 'nine'];
+    const TEENS = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen',
+      'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty',
+      'seventy', 'eighty', 'ninety'];
+    const NUMBER: Record<string, number> = {};
+    ONES.forEach((w, i) => w && (NUMBER[w] = i));
+    TEENS.forEach((w, i) => (NUMBER[w] = 10 + i));
+    for (let t = 2; t <= 9; t++) {
+      NUMBER[TENS[t]] = t * 10;
+      ONES.forEach((w, u) => w && (NUMBER[`${TENS[t]}-${w}`] = t * 10 + u));
+    }
     const claimed = /\b([A-Za-z-]+) live in `src\/components\/ui\/chrome\.test\.ts`/
       .exec(doc)?.[1]?.toLowerCase();
     const actual = (readFileSync(join(SRC, 'components/ui/chrome.test.ts'), 'utf8')
@@ -1254,4 +1263,299 @@ describe('UI chrome', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  // ── Guard 31 ────────────────────────────────────────────────────────
+  // `@media print` re-declares, at its light value, every colour token
+  // the dark themes override.  That is a copy, and a copy drifts: add
+  // `--card-hover` to `.dark` alone and a dark-mode user prints one more
+  // invisible surface.  Nobody reads a print stylesheet, and nobody
+  // reviews a printout, so the drift would live for years.
+  //
+  // This asserts set equality both ways AND that each printed value is
+  // byte-identical to `:root`'s, which is the only thing that makes the
+  // duplication safe to keep.
+  it('the print block re-declares every dark-overridden token, at its light value', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const block = (name: string, re: RegExp): Record<string, string> => {
+      const m = re.exec(css);
+      if (!m) throw new Error(`index.css: the ${name} block moved or was renamed`);
+      const out: Record<string, string> = {};
+      for (const d of m[1].matchAll(/(--[a-z0-9-]+):\s*(.+?);/g)) {
+        if (!(d[1] in out)) out[d[1]] = d[2].trim();
+      }
+      return out;
+    };
+    // index.css splits `:root` across several blocks (fonts, colour,
+    // swatches, size).  Merge them in source order, exactly as the
+    // cascade does — reading only the first finds no colour at all.
+    const root: Record<string, string> = {};
+    for (const m of css.matchAll(/^ {2}:root \{$([\s\S]*?)^ {2}\}$/gm)) {
+      for (const d of m[1].matchAll(/(--[a-z0-9-]+):\s*(.+?);/g)) root[d[1]] = d[2].trim();
+    }
+    const dark = block('.dark', /^ {2}\.dark \{$([\s\S]*?)^ {2}\}$/m);
+    const print = block(
+      'print',
+      /^ {2}:root, :root\.dark, :root\.dark\[data-theme\] \{$([\s\S]*?)^ {2}\}$/m,
+    );
+
+    const problems: string[] = [];
+    for (const k of Object.keys(dark)) {
+      if (!(k in print)) problems.push(`${k}: .dark overrides it, print never puts it back`);
+      else if (print[k] !== root[k]) {
+        problems.push(`${k}: print says ${print[k]}, :root says ${root[k]}`);
+      }
+    }
+    for (const k of Object.keys(print)) {
+      if (!(k in dark)) problems.push(`${k}: print resets it, but .dark never touched it`);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  // ── Guard 32 ────────────────────────────────────────────────────────
+  // A class Tailwind never emits is invisible. There is no error and no
+  // warning; the element simply renders unstyled, and it looks like a
+  // design choice. This project is Tailwind 3 while its primitives were
+  // pasted from shadcn's v4 era, so classes across select, dialog, sheet,
+  // table, tooltip, avatar, button, badge, textarea and DataGrid
+  // compiled to nothing: invalid fields drew no error ring, disabled
+  // options did not dim, sheets did not animate, every modal scrim
+  // rendered without its blur, `truncate` sat next to a `max-w-55` that
+  // did not exist, and a Badge rendered as a link had no hover at all.
+  // Every one of those files reads correctly. Only compiling them finds
+  // it.
+  //
+  // The first version of this guard compiled only VARIANT-PREFIXED
+  // tokens, and reported one only when the bare utility compiled and the
+  // prefixed form did not — a trick that let prose filter itself out, at
+  // the price of being blind to a class that is dead on both halves.
+  // That blind spot was not theoretical: it hid `backdrop-blur-xs`,
+  // `field-sizing-content`, `max-w-55`, `underline-offset-3` and
+  // `outline-hidden`, five of the six real defects in the sweep that
+  // followed.
+  //
+  // So this compiles bare utilities too, and pays for it with three
+  // STRUCTURAL filters instead of an allowlist — an allowlist here would
+  // silently re-admit the exact bug the guard exists to catch:
+  //
+  //   1. comments are stripped first. An apostrophe in prose ("it's")
+  //      opens a fake string literal and swallows the sentence, which is
+  //      where 69 phantom candidates like `hand-rolled` and `read-only`
+  //      came from.
+  //   2. a quoted string immediately followed by `:` is an object KEY,
+  //      not a class — that is how cva's `"icon-sm":` variant names were
+  //      being read as dead utilities.
+  //   3. classes index.css defines itself (`.ai-response`) count as
+  //      emitted. They are ours; Tailwind is simply not the one that
+  //      emits them.
+  //
+  // With those three the candidate set is ~1050 and the dead set is 0,
+  // with nothing exempted by name.
+  //
+  // Two limits worth knowing before trusting a green run:
+  //   * it proves a rule is EMITTED, not that the rule is VALID.
+  //     tailwindcss-animate negates by string-prefixing `-`, and against
+  //     this repo's calc() spacing that produced `-calc(…)`: a rule
+  //     exists, the guard is happy, and the browser drops the whole
+  //     `transform`. That one is now pinned by a plain-rem
+  //     `animationTranslate` scale in the config.
+  //   * a module that builds class strings without `className`/`cn(`
+  //     nearby contributes nothing — `lib/status.ts` holds the tone
+  //     recipes in a bare Record and is invisible here.
+  it('never adds a raw form control below the tap floor', () => {
+    // The tap-floor guard above scans <button|a|summary> only, so every
+    // raw <input>, <textarea> and <select> in the app has always been
+    // invisible to it — including 32 bare checkboxes, which render ~13px
+    // and can never reach 24 without the token. That blind spot is why
+    // `min-h-tap` was missing from the <Input> primitive itself, and so
+    // from all 66 of its call sites, until it was added.
+    //
+    // A RATCHET rather than a pass/fail, because 241 raw controls
+    // predate this and a guard that fails 241 times is a guard someone
+    // deletes. It fails in BOTH directions on purpose: upward means a
+    // new offender was added, downward means debt was paid and the
+    // number below is now a lie. Same discipline as the exemption lists
+    // — no baseline may outlive its reason.
+    const BASELINE = { input: 241, textarea: 21, select: 19 };
+
+    const countBare = (tag: string) => {
+      let n = 0;
+      for (const { src } of TSX) {
+        // Walk to the element's own '>' ignoring any inside {...}, so an
+        // arrow function in onChange doesn't truncate the attributes.
+        const re = new RegExp(`<${tag}\\b`, 'g');
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src))) {
+          let i = m.index + m[0].length, depth = 0;
+          while (i < src.length) {
+            const ch = src[i];
+            if (ch === '{') depth++;
+            else if (ch === '}') depth--;
+            else if (ch === '>' && depth === 0) break;
+            i++;
+          }
+          if (!src.slice(m.index, i).includes('min-h-tap')) n++;
+        }
+      }
+      return n;
+    };
+
+    const now = {
+      input: countBare('input'),
+      textarea: countBare('textarea'),
+      select: countBare('select'),
+    };
+    expect(
+      now,
+      'raw form controls missing min-h-tap changed. UP means a new one ' +
+        'was added below the 24px floor (WCAG 2.5.8) — give it the token. ' +
+        'DOWN means debt was paid — lower the baseline so it keeps ' +
+        'guarding the real number.',
+    ).toEqual(BASELINE);
+  });
+
+  it('every class the code writes compiles to a real rule', async () => {
+    // `class=` as well as `className=`: formatAI.ts builds markup for
+    // dangerouslySetInnerHTML and its classes are as real as any JSX
+    // one. NOT `className:` — that is Leaflet's divIcon option, whose
+    // value is a marker identity hook (`vehicle-moving`), not a utility;
+    // five of those turned up the moment it was included.
+    const MARK = /(class(?:Name)?\s*=\s*)|(\b(?:cn|cva|clsx|twMerge)\s*\()/g;
+    // String literals reachable from a class-building context. A plain
+    // `className="…"` contributes exactly one literal — scanning past it
+    // walks into the next attribute, which is how `style="box-shadow:…"`
+    // used to arrive here as a candidate class.
+    const literals = (input: string): string[] => {
+      const s = codeOnly(input);
+      const out: string[] = [];
+      for (const m of s.matchAll(MARK)) {
+        let i = m.index! + m[0].length;
+        let depth: number;
+        if (m[1]) {
+          while (i < s.length && ' \t\n'.includes(s[i])) i++;
+          if (s[i] === '"' || s[i] === "'") {
+            let j = i + 1;
+            while (j < s.length && s[j] !== s[i]) j += s[j] === '\\' ? 2 : 1;
+            out.push(s.slice(i + 1, j));
+            continue;
+          }
+          if (s[i] !== '{') continue;
+          depth = 0;
+        } else {
+          depth = 1;
+        }
+        for (; i < s.length; i++) {
+          const c = s[i];
+          if (c === '{' || c === '(') depth++;
+          else if (c === '}' || c === ')') { if (--depth <= 0) break; }
+          else if (c === '"' || c === "'" || c === '`') {
+            let j = i + 1;
+            while (j < s.length && s[j] !== c) j += s[j] === '\\' ? 2 : 1;
+            // An object KEY, skipped: `"icon-sm": "…"`. Look BACKWARDS
+            // as well as forwards, or this eats the true branch of every
+            // ternary — `cond ? 'a' : 'b'` puts a colon after a real
+            // class string, and that dropped 115 live literals.
+            let k = j + 1;
+            while (k < s.length && ' \t\n'.includes(s[k])) k++;
+            let b = i - 1;
+            while (b >= 0 && ' \t\n'.includes(s[b])) b--;
+            const isKey = s[k] === ':' && (s[b] === '{' || s[b] === ',');
+            if (!isKey) out.push(s.slice(i + 1, j));
+            i = j;
+          }
+        }
+      }
+      return out;
+    };
+    // Split on colons at bracket depth zero, so `data-[a:b]:flex` keeps
+    // its arbitrary value intact.
+    const split = (t: string): [string[], string] => {
+      let depth = 0, cur = '';
+      const parts: string[] = [];
+      for (const ch of t) {
+        if (ch === '[' || ch === '(') depth++;
+        else if (ch === ']' || ch === ')') depth--;
+        if (ch === ':' && depth === 0) { parts.push(cur); cur = ''; }
+        else cur += ch;
+      }
+      return [parts, cur];
+    };
+    const UTIL = /^-?[a-z][a-z0-9]*(-[a-z0-9.]+)*(\/[0-9]+)?(\[[^\]]*\])?$/;
+    const cand = new Map<string, string>();
+    for (const { src } of FILES) {
+      for (const lit of literals(src)) {
+        for (const raw of lit.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/)) {
+          const t = raw.replace(/^["'`\\]+|["'`\\]+$/g, '');
+          const [v, u] = split(t);
+          if (!u || !UTIL.test(u)) continue;
+          // A bare word with no hyphen or bracket is almost always a
+          // stray identifier, and `flex`-shaped ones compile anyway.
+          if (v.length ? v.every(Boolean) : u.includes('-') || u.includes('[')) {
+            cand.set(t, u);
+          }
+        }
+      }
+    }
+
+    const probe = [...new Set([...cand.keys(), ...cand.values()])].join(' ');
+    const [{ default: postcss }, { default: tw }, cfgMod] = await Promise.all([
+      import('postcss'),
+      import('tailwindcss'),
+      // The Tailwind config is plain JS and ships no declarations; the
+      // guard only spreads it, so `unknown` costs nothing here.
+      // @ts-expect-error -- untyped JS config
+      import('../../../tailwind.config.js'),
+    ]);
+    const cfg = (cfgMod as { default: Record<string, unknown> }).default;
+    const { css } = await postcss([
+      tw({ ...cfg, content: [{ raw: `<i class="${probe}"></i>`, extension: 'html' }] }),
+    ]).process('@tailwind utilities;', { from: undefined });
+
+    // Read class names straight out of the emitted selectors, undoing
+    // CSS escaping, and stop at the first character that ends a class.
+    const emitted = new Set<string>();
+    for (let i = 0; i < css.length; i++) {
+      if (css[i] !== '.') continue;
+      let j = i + 1, name = '';
+      for (; j < css.length; j++) {
+        const c = css[j];
+        if (c === '\\') { name += css[++j] ?? ''; continue; }
+        if (' ,{>+~[:)\n\t'.includes(c)) break;
+        name += c;
+      }
+      if (name) emitted.add(name);
+      i = j;
+    }
+    // …plus the ones we write ourselves.
+    // Comments stripped first — index.css's prose mentions `.md`, `.ts`
+    // and `.config`, and harvesting those would bless a dead class that
+    // happened to share the name.
+    for (const m of readFileSync(join(SRC, 'index.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .matchAll(/\.([a-z][a-z0-9-]*)\b/g)) emitted.add(m[1]);
+    // …and CSS injected from TS. LiveMap builds a <style> holding
+    // `.vehicle-moving { animation: … }` and writes the class into a
+    // markup string, so the class is ours and defined, just not in a
+    // .css file. The `{` is required here so this cannot harvest a
+    // property access or a file extension out of ordinary code.
+    for (const { src } of FILES) {
+      for (const m of src.matchAll(/\.([a-z][a-z0-9-]{2,})\s*\{/g)) emitted.add(m[1]);
+    }
+
+    const dead = [...cand]
+      .filter(([t]) => !emitted.has(t))
+      .map(([t, u]) =>
+        t === u
+          ? `${t} — no such utility`
+          : `${t} — the variant emits nothing (bare \`${u}\` ${
+              emitted.has(u) ? 'compiles' : 'is dead too'
+            })`)
+      .sort();
+    expect(
+      dead,
+      'these classes are written but never generated. Check the spelling ' +
+        'against Tailwind 3: v4 idioms (`data-open:`, `**:`, `[a]:`, ' +
+        '`in-data-[…]:`, `backdrop-blur-xs`, `field-sizing-content`) and ' +
+        'steps the config never defined both produce no rule at all',
+    ).toEqual([]);
+  }, 20_000);
 });

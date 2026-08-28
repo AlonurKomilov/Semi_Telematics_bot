@@ -6,6 +6,7 @@ import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import type { MaintenanceTask } from '../../types';
 import { TaskTypeCell } from './badges';
+import { chartColor } from '@/lib/status';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
@@ -215,7 +216,7 @@ export function ServiceHistoryModal({
                       />
                       <YAxis hide />
                       <Tooltip
-                        cursor={{ fill: 'rgba(120,120,120,0.08)' }}
+                        cursor={{ fill: 'var(--muted)' }}
                         contentStyle={{
                           background: 'var(--card)',
                           border: '1px solid var(--border)',
@@ -224,7 +225,7 @@ export function ServiceHistoryModal({
                         }}
                         formatter={(v: unknown) => [String(v), 'services']}
                       />
-                      <Bar dataKey="count" fill="var(--chart-1)" shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
+                      <Bar dataKey="count" fill={chartColor(1)} shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

@@ -62,7 +62,7 @@ function AlertsBell(
         <Bell className="size-4.5" aria-hidden />
         {pending > 0 && (
           <span
-            className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-danger text-white text-2xs font-semibold tabular-nums"
+            className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-danger text-danger-foreground text-2xs font-semibold tabular-nums"
             aria-hidden
           >
             {badge}

@@ -952,7 +952,7 @@ export default function Scorecards() {
                   // badge four hundred lines up, which is a rectangle.
                   className={`text-xs px-3 py-1 rounded-md border transition ${
                       active
-                        ? 'border-transparent text-white'
+                        ? 'border-transparent text-background'
                         : 'border-border text-foreground/70 hover:bg-muted'
                     } min-h-tap`}
                     style={active ? { background: c.color } : undefined}
