@@ -400,9 +400,8 @@ class DriverProfileMixin(_MixinBase):
                     (user_id,),
                 )
                 row = await cur.fetchone()
-                prov = _parse_driver_provenance(row[0]) if row else {}
-                for f in pin:
-                    prov[f] = recon.MANUAL_SOURCE
+                prov = recon.pin_manual(
+                    _parse_driver_provenance(row[0]) if row else {}, pin)
                 clean["driver_field_provenance"] = json.dumps(prov)
             except Exception as e:
                 # Pre-migration DB (column absent) — the update itself
@@ -434,8 +433,7 @@ class DriverProfileMixin(_MixinBase):
         row = await cur.fetchone()
         if not row:
             return
-        prov = _parse_driver_provenance(row[0])
-        prov[field] = recon.MANUAL_SOURCE
+        prov = recon.pin_manual(_parse_driver_provenance(row[0]), [field])
         async with self.transaction():
             await self._db.execute(
                 f"UPDATE users SET {field} = ?, driver_field_provenance = ? "

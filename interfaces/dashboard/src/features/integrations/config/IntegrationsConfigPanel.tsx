@@ -90,12 +90,23 @@ export default function IntegrationsConfigPanel() {
     <div>
       <p className="mb-3 text-sm text-muted-foreground">
         Samsara and Datatruck both fill in vehicle details. Choose which
-        source wins each field — the other only fills it when it's empty.
-        Your hand-edits always win.{' '}
+        source wins each field — the other only fills it when it's empty.{' '}
         <span className="text-foreground">Applies to every vehicle</span>;
         existing values re-resolve on the next sync.
       </p>
       <ul className="divide-y divide-border">
+        {/* The rule above the choices, styled as one of them: an
+            operator's edit is a SOURCE — the highest-ranked one — not a
+            footnote.  A row rather than prose so it reads as part of
+            the same system the dropdowns configure; fixed text rather
+            than a disabled dropdown, because a greyed-out control reads
+            as broken while a stated rule reads as designed.  The rank
+            itself lives in code (capabilities/source): nothing this
+            panel could send can put a provider above a hand edit. */}
+        <li className="flex items-start justify-between gap-3 py-2 text-sm">
+          <span className="text-foreground">Manual edits</span>
+          <span className="text-muted-foreground">Always win</span>
+        </li>
         {data.fields.map((f) => (
           <li
             key={f.key}

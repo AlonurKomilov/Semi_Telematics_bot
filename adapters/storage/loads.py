@@ -635,9 +635,8 @@ class LoadsMixin(_MixinBase):
                     (load_id, account_id),
                 )
                 row = await cur.fetchone()
-                prov = _parse_load_provenance(row[0]) if row else {}
-                for f in pin:
-                    prov[f] = recon.MANUAL_SOURCE
+                prov = recon.pin_manual(
+                    _parse_load_provenance(row[0]) if row else {}, pin)
                 sets.append("field_provenance = ?")
                 params.append(json.dumps(prov))
             except Exception as e:
@@ -673,8 +672,7 @@ class LoadsMixin(_MixinBase):
         row = await cur.fetchone()
         if not row:
             return
-        prov = _parse_load_provenance(row[0])
-        prov[field] = recon.MANUAL_SOURCE
+        prov = recon.pin_manual(_parse_load_provenance(row[0]), [field])
         async with self.transaction():
             await self._db.execute(
                 f"UPDATE loads SET {field} = ?, field_provenance = ?, "

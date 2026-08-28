@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .engine import MANUAL_SOURCE
 from .registry import get_entity
 
 
@@ -42,7 +43,16 @@ async def get_precedence(
         if isinstance(override, dict):
             for f, order in override.items():
                 if f in merged and isinstance(order, list) and order:
-                    merged[f] = tuple(str(s) for s in order)
+                    # ``manual`` stripped defensively: nothing writes it
+                    # any more, but a stored order carrying it would lie
+                    # to the UI — the engine ranks manual -1 regardless
+                    # of any order, so an entry here is dead text that
+                    # LOOKS configurable.
+                    cleaned = tuple(
+                        str(s) for s in order if str(s) != MANUAL_SOURCE
+                    )
+                    if cleaned:
+                        merged[f] = cleaned
     return merged
 
 
@@ -55,10 +65,16 @@ async def set_precedence(
     if ent is None:
         return {}
     order_map: dict[str, list[str]] = {}
+    # ``provider_sources``, not ``sources``: manual is declared but not
+    # configurable.  Accepting it as a primary would store a no-op that
+    # reads as a choice, and expanding orders over the full set would
+    # write "manual" into config — the exact lie get_precedence strips.
     for f, primary in (primary_by_field or {}).items():
-        if f not in ent.default_precedence or primary not in ent.sources:
+        if f not in ent.default_precedence or primary not in ent.provider_sources:
             continue
-        order_map[f] = [primary] + [s for s in ent.sources if s != primary]
+        order_map[f] = (
+            [primary] + [s for s in ent.provider_sources if s != primary]
+        )
     await db.set_account_setting(
         account_id, _setting_key(entity_type), json.dumps(order_map),
     )
@@ -73,12 +89,15 @@ async def precedence_options(db: Any, account_id: int, entity_type: str) -> dict
         return {"sources": [], "fields": []}
     prec = await get_precedence(db, account_id, entity_type)
     return {
-        "sources": list(ent.sources),
+        # Providers only — this list feeds pick-lists.  Manual is a
+        # declared source but never an OPTION: the UI states it as a
+        # fixed rule ("Manual edits — always win"), not a choice.
+        "sources": list(ent.provider_sources),
         "fields": [
             {
                 "key": f,
                 "label": ent.field_labels.get(f, f),
-                "primary": (prec.get(f) or ent.sources)[0],
+                "primary": (prec.get(f) or ent.provider_sources)[0],
             }
             for f in ent.default_precedence
         ],

@@ -43,6 +43,7 @@ from .engine import (  # noqa: F401
     MergeResult,
     is_unset,
     merge_fields,
+    pin_manual,
     source_rank,
 )
 from .precedence import (  # noqa: F401

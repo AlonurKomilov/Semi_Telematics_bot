@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from capabilities.activity_trail import diff_rows
 from capabilities import source as recon
-from capabilities.source import MANUAL_SOURCE, is_unset
+from capabilities.source import MANUAL_SOURCE, is_unset, pin_manual
 
 logger = logging.getLogger(__name__)
 
@@ -544,9 +544,11 @@ class VehiclesRegistryMixin(_MixinBase):
                     (vehicle_id, account_id),
                 )
                 row = await cur.fetchone()
-                prov = _parse_provenance(dict(row).get("field_provenance")) if row else {}
-                for f in edited_spec:
-                    prov[f] = MANUAL_SOURCE
+                prov = pin_manual(
+                    _parse_provenance(dict(row).get("field_provenance"))
+                    if row else {},
+                    edited_spec,
+                )
                 sets.append("field_provenance = ?")
                 params.append(json.dumps(prov))
             sets.append("updated_at = ?")

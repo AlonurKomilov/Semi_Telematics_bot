@@ -20,6 +20,26 @@ def is_unset(v: Any) -> bool:
     return v is None or v == "" or v == 0
 
 
+def pin_manual(provenance: dict | None, fields) -> dict:
+    """Mark ``fields`` as operator-owned on a provenance map.
+
+    THE local write path's entry into this package.  A hand edit never
+    runs ``merge_fields`` — it writes its values directly and records
+    that an operator now owns those fields, which is what makes every
+    later sync yield to them (``source_rank`` puts manual above any
+    configured order).  Three mixins previously inlined this loop; one
+    helper means the pin semantics cannot drift per feature.
+
+    Returns a NEW dict — callers hold frozen rows and json blobs, and
+    mutating a shared provenance map in place is how a pin would leak
+    between two records.
+    """
+    prov = dict(provenance or {})
+    for f in fields:
+        prov[f] = MANUAL_SOURCE
+    return prov
+
+
 def source_rank(source: str, order: tuple[str, ...]) -> int:
     """Lower = higher priority.  ``manual`` (an operator edit) always wins; a
     source not named in the order is lowest (fills a gap, can't outrank)."""
