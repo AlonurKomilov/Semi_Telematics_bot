@@ -264,6 +264,8 @@ class ImportTarget:
     extra: dict = field(default_factory=dict)
 
 
+# test-safe: filled at import by each feature's import-target declaration.  Tests
+# read it; none registers a target.
 _IMPORT_TARGETS: dict[str, ImportTarget] = {}
 
 

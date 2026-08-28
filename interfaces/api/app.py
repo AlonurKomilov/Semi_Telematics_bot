@@ -90,6 +90,8 @@ logger = logging.getLogger(__name__)
 # The dedicated subdomains (dash/api/app/bot) replace the apex /dashboard
 # /api /miniapp /webhook paths.  Apex is kept in the allowlist so legacy
 # bookmarks still authenticate during the 301-redirect window.
+# test-safe: built once at import from env and read-only afterwards — a request
+# reads it, nothing writes it, so no value can cross a test boundary.
 _ALLOWED_ORIGINS = [
     "https://4truck.us",
     "https://www.4truck.us",

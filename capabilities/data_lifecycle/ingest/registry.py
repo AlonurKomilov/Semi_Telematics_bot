@@ -53,6 +53,11 @@ class IngestDataset:
     label: str = ""
 
 
+# test-safe: filled by `make_discover(_CONTRIBUTORS)`, which imports the
+# contributing modules on FIRST CALL.  Snapshot/restore is wrong here:
+# the snapshot is empty until discovery runs, so a teardown would wipe
+# what the test just discovered — measured, three ingest tests read an
+# empty registry.
 _DATASETS: dict[str, IngestDataset] = {}
 
 

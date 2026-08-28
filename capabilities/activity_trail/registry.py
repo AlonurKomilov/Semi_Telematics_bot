@@ -50,6 +50,9 @@ class EntityDescriptor:
     company_scoped: bool = False
 
 
+# test-safe: filled by @trail_entity across the feature packages at import.  Tests
+# READ the descriptors; none registers one, and stripping an entry a
+# late-imported feature added would break the next test instead.
 _ENTITIES: dict[str, EntityDescriptor] = {}
 
 

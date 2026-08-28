@@ -48,6 +48,8 @@ class NotificationCategory:
         return self.key.split(".", 1)[0] if "." in self.key else self.key
 
 
+# test-safe: categories are declared at import by the features that emit them;
+# tests assert coverage rather than registering a category.
 _CATEGORIES: dict[str, NotificationCategory] = {}
 
 

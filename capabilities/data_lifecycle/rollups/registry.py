@@ -74,6 +74,7 @@ class RollupCascade:
     reroll: "Callable[..., Awaitable[dict]] | None" = None
 
 
+# test-safe: cascades are declared at import by the packages that own the grain.
 _CASCADES: dict[str, RollupCascade] = {}
 
 

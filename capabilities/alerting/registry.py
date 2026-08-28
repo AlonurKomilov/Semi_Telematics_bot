@@ -30,6 +30,9 @@ class AlertSource:
     schedule: dict[str, Any]                       # trigger kwargs (minutes=, minute=, hours=…)
 
 
+# test-safe: filled by @register_alert_source across many feature modules at
+# import.  Restoring a snapshot would strip whatever a module first
+# imported inside a test had just registered.
 _ALERT_SOURCES: dict[str, AlertSource] = {}
 
 

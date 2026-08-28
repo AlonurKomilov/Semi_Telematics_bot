@@ -24,6 +24,9 @@ import threading
 logger = logging.getLogger(__name__)
 
 
+# test-safe: providers register via decorator when their module is imported,
+# which may first happen inside a test — restoring a snapshot taken
+# before that import would strip the provider.
 _registry: dict[str, type] = {}
 _lock = threading.Lock()
 

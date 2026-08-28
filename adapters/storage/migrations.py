@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 # Ordered list of (version_name, migration_function) pairs.
 # New migrations MUST be appended at the end — never reorder.
+# test-safe: appended once at import by the migration decorators.  A test never
+# registers a migration, and restoring this ordered list could empty the
+# sequence the whole schema is built from.
 _MIGRATIONS: list[tuple[str, ...]] = []
 
 

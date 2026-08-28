@@ -51,6 +51,7 @@ class CalloutSpec:
     owner: str
 
 
+# test-safe: declared per feature at import; tests read the specs.
 _REGISTRY: dict[str, CalloutSpec] = {}
 
 
@@ -119,6 +120,7 @@ class ConditionDetector:
     detect: DetectFn
 
 
+# test-safe: detectors are declared beside their specs at import; tests read them.
 _DETECTORS: dict[str, ConditionDetector] = {}
 
 

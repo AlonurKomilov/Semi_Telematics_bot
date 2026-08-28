@@ -43,6 +43,7 @@ class ReconciledEntity:
         return tuple(s for s in self.sources if s != MANUAL_SOURCE)
 
 
+# test-safe: reconciled entities are declared at import by their owning feature.
 _REGISTRY: dict[str, ReconciledEntity] = {}
 
 

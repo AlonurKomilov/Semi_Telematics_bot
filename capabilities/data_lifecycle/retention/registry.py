@@ -61,7 +61,9 @@ class ResolvedRetention:
     needs: tuple[RetentionNeed, ...]
 
 
+# test-safe: retention targets are declared at import by each owning package.
 _TARGETS: dict[str, RetentionTarget] = {}
+# test-safe: declared alongside _TARGETS at import by the same packages.
 _NEEDS: list[RetentionNeed] = []
 
 

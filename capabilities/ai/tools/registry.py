@@ -62,6 +62,8 @@ def get_tool_count() -> int:
 # endpoint after re-authorization.  Both are declared in the feature's
 # own ``ai_tool.py`` — this registry is the shared plumbing.
 
+# test-safe: each feature's ai_tool.py registers its executor at import.  Tests
+# assert the registry's SHAPE rather than adding to it.
 _ACTION_EXECUTORS: dict[str, Callable[..., Coroutine]] = {}
 
 
@@ -90,6 +92,8 @@ def get_action_executor(name: str) -> Callable[..., Coroutine] | None:
 # restore.  Actions without a recipe simply have no Undo.  The code
 # registry is the trust root, same as executors — a tampered proposal
 # row can't invent an undo path.
+# test-safe: same as _ACTION_EXECUTORS — declared per feature at import, and the
+# guard tests read it rather than register into it.
 _UNDO_EXECUTORS: dict[str, Callable[..., Coroutine]] = {}
 
 

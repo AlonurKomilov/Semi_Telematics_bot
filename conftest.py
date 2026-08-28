@@ -439,11 +439,42 @@ async def tenant_registry(core_platform):
 # capabilities/ai/tools/registry.py, which clears its three caches as one
 # unit — they share a key shape and a TTL, so isolating two of the three
 # leaves the same leak open on the third.
-_ACCOUNT_KEYED_CACHES = (
-    ("capabilities.permissions.roles", "_permissions_cache"),
+_PROCESS_CACHES = (
+    ("adapters.storage.object_storage", "_per_account_stores"),
+    ("adapters.storage.platform_settings", "_settings_cache"),
+    ("capabilities.ai.cache", "_response_cache"),
+    ("capabilities.ai.chat", "_chat_histories"),
+    ("capabilities.ai.models", "_account_models"),
+    ("capabilities.ai.models", "_account_vision_models"),
+    ("capabilities.ai.models", "_user_models"),
+    ("capabilities.ai.models", "_user_tiers"),
+    ("capabilities.ai.models", "_account_tiers"),
+    ("capabilities.ai.models", "_quota_cooldown"),
     ("capabilities.ai.tools.registry", "_cached_tools"),
     ("capabilities.ai.tools.registry", "_anthropic_tools_cache"),
     ("capabilities.ai.tools.registry", "_openai_tools_cache"),
+    ("capabilities.alerting.ai_maintenance", "_api_alert_sent"),
+    ("capabilities.alerting.triggers.evaluator", "_local_flags"),
+    ("capabilities.notifications.telegram", "_DEST_LOCKS"),
+    ("capabilities.object_storage.router", "_pending_oauth"),
+    ("capabilities.permissions.roles", "_permissions_cache"),
+    ("features.applications.carrier_lookup", "_CACHE"),
+    ("features.cameras.alert", "_known_camera_issues"),
+    ("features.events.alert", "_events_warmup_done"),
+    ("features.events.alert", "_known_event_ids"),
+    ("features.inspections.service", "_LAST_MANUAL_REMIND"),
+    ("features.location.service", "_engine_states_cache"),
+    ("features.overview.router", "_stats_cache"),
+    ("features.parking.check", "_vehicle_stopped_checks_local"),
+    ("infra.cache", "_inflight"),
+    ("infra.error_reporter", "_cooldown"),
+    ("infra.scan_rescan", "_cancel_flags"),
+    ("infra.services", "_client_cache"),
+    ("infra.services", "_provider_cache"),
+    ("interfaces.api.auth", "_SYSTEM_BOT_USERNAME_CACHE"),
+    ("interfaces.api.auth", "_LOGIN_BOT_USERNAME_CACHE"),
+    ("interfaces.api.deps", "_jti_ok_until"),
+    ("interfaces.bot.forum_setup", "_PENDING_RESET"),
 )
 
 # Global REGISTRIES, snapshot/restored rather than cleared: unlike the
@@ -453,6 +484,20 @@ _ACCOUNT_KEYED_CACHES = (
 # registration has already happened by the time any test runs, a snapshot
 # taken at test setup always contains the real channels, so restoring can
 # only ever strip what the test itself added.
+# Snapshot/restore is safe for exactly one shape of registry: every
+# entry is registered BEFORE any test runs.  These three qualify —
+# channels, action handlers and digest renderers are all registered at
+# module import (notifications/__init__.py, telegram.py,
+# spine_actions.py, spine_quiet.py), with no lazy first-use path.
+#
+# It is a footgun everywhere else, and this list is short because it was
+# measured rather than assumed.  _DATASETS was in it for one run: it is
+# filled by `make_discover(_CONTRIBUTORS)`, which imports the
+# contributing modules on FIRST CALL, so the snapshot taken at setup was
+# empty, the teardown wiped what discovery had just registered, and
+# three ingest tests read an empty registry.  Same shape for the
+# telematics provider registry.  Anything lazily discovered carries
+# `# test-safe:` instead — see tests/test_global_state_isolation.py.
 _GLOBAL_REGISTRIES = (
     ("capabilities.notifications.channels", "_CHANNELS"),
     ("capabilities.notifications.actions", "_HANDLERS"),
@@ -461,7 +506,7 @@ _GLOBAL_REGISTRIES = (
 
 
 def _clear_account_keyed_caches() -> None:
-    for mod_name, attr in _ACCOUNT_KEYED_CACHES:
+    for mod_name, attr in _PROCESS_CACHES:
         mod = sys.modules.get(mod_name)
         cache = getattr(mod, attr, None) if mod is not None else None
         if isinstance(cache, dict):
