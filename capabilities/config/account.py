@@ -128,13 +128,14 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
     # ── Integrations (Administration band, its own feature) ─────────
     SettingOwner(
         "vehicle_field_precedence", "can_manage_config_all",
-        "config", "integrations",
+        "config", "vehicles",
         "Which provider wins per vehicle field when Samsara and Datatruck "
-        "disagree.",
+        "disagree.  Engine: capabilities/source; surface: the Vehicles "
+        "page gear.",
     ),
     SettingOwner(
         "source_lifecycle:*", "can_manage_config_all",
-        "config", "integrations",
+        "config", "vehicles",
         "Which integration may auto-ADD vehicles and whose silence-sweep "
         "may auto-INACTIVATE them.  Booleans per source, clamped to the "
         "mechanisms that exist; defaults are today's unconditional "

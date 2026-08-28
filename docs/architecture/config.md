@@ -119,7 +119,8 @@ Current members:
 | KPI grade thresholds | `features/kpi/` (service + router + ThresholdsDialog) | `account_settings["kpi_thresholds"]` | `can_manage_config_all` |
 | Scorecard rules + pillar caps | `features/scorecards/config_router.py` + `/scorecard-rules` page | scorecards' own rows | `can_manage_config_all` (owner seeded; route/nav additionally module-masked safety/hr via featureCatalog) |
 | Storage backend + disk quota | `capabilities/object_storage/` | `account_settings["object_storage.*"]`, `["storage.disk_quota_bytes"]` | `can_manage_config_all` |
-| Provider precedence (Samsara vs Datatruck) | `capabilities/integrations/` | `account_settings["vehicle_field_precedence"]`, `["datatruck*"]` | `can_manage_config_all` |
+| Vehicle source policy — field precedence + auto-pilot | engine `capabilities/source/`, surface the Vehicles gear (`/vehicles/config`) | `account_settings["vehicle_field_precedence"]`, `["source_lifecycle:vehicle"]` | `can_manage_config_all` |
+| Datatruck connection settings | `capabilities/integrations/` | `account_settings["datatruck*"]` | `can_manage_config_all` |
 | Forum alert routing (AI column, sub-categories) | `capabilities/notifications/delivery_admin/forum.py` | `account_settings["forum_ai.*"]`, `["forum_subtypes.*"]` | `can_manage_config_all` |
 | General account settings | `features/settings/account/` | `account_settings["account_name"]`, `["language"]`, `["digest_hour"]`, `["alert_defaults"]`, `["scorecard_default_subject"]` | `can_manage_config_all` |
 

@@ -82,7 +82,7 @@ def _model_year(value: Any) -> int | None:
 # ── Source precedence + reconciliation (Layer 1) ──────────────────────
 #
 # The merge / precedence / conflict MECHANISM lives in the shared, integration-
-# owned hub (``capabilities/integrations/reconciliation``).  Here we only
+# owned hub (``capabilities/source``).  Here we only
 # declare the vehicle entity's reconcilable shape + how to APPLY a resolution;
 # the write paths below call ``recon.merge_fields`` / ``recon.sync_batch`` and
 # read precedence via ``recon.get_precedence``.
