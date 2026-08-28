@@ -49,10 +49,14 @@ export interface VerbBand { band: string; families: VerbFamily[] }
 // the matrix showed "–" in the Config column for settings that plainly
 // existed — the owner could not see what granting Config actually moved.
 const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_role', string]> = {
+  // Vehicle source policy — field precedence + auto-pilot.  On the
+  // VEHICLES row because that is where its gear lives now; it sat on
+  // Integrations while the panel did, and a tick must always point at
+  // the surface the grant actually opens.
+  can_vehicle_all: ['can_manage_config_all', 'source precedence + auto-pilot'],
   can_scorecard_all: ['can_manage_config_all', 'rules + pillar caps'],
   can_kpi: ['can_manage_config_all', 'grade thresholds'],
   can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
-  can_manage_integrations: ['can_manage_config_all', 'provider precedence + vehicle auto-pilot'],
   can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],
   can_manage_account: ['can_manage_config_all', 'account-wide values'],
 };

@@ -27,6 +27,8 @@ import type { AnyColumn } from '../../types';
 import UtilizationSummary from './UtilizationSummary';
 import Mileage from './Mileage';
 import VehicleManageDialog from './VehicleManageDialog';
+import VehiclesConfigPanel from './config/VehiclesConfigPanel';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import DeviceEventsCard from './DeviceEventsCard';
 import { Badge } from '@/components/ui/badge';
 
@@ -462,6 +464,16 @@ export default function Vehicles() {
         description={t('vehicles.page_description')}
         actions={
           <div className="flex items-center gap-2">
+            {/* The roster's own config: field precedence + auto-pilot.
+                Here and not on Integrations, because the settings are
+                vehicle_field_precedence / source_lifecycle:vehicle
+                (/vehicles/config — the URL-follows-the-domain-noun
+                rule), and because per-feature gears are the shape that
+                scales: driver and load source policies go to THEIR
+                pages.  The gear self-gates on can_manage_config_all. */}
+            <FeatureConfigGear feature="Vehicles" size="xl">
+              <VehiclesConfigPanel />
+            </FeatureConfigGear>
             {canManage && (
               <Button
                 type="button" variant="outline" size="sm"

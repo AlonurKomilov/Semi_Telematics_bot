@@ -1,21 +1,27 @@
 /**
- * "When sources disagree" — owner control for vehicle-field source
- * precedence.
+ * Vehicles config — who supplies this roster's values, and what each
+ * source may do to it on its own.
  *
- * Samsara and Datatruck both fill in vehicle spec fields (VIN, plate,
- * make, …).  This picks which source WINS each field when they carry
- * different values; the loser only fills the field when it's empty, and
- * an operator's hand-edit always wins regardless.
+ * Field precedence (which source WINS a spec field when two disagree;
+ * a hand-edit always wins regardless) plus Auto-pilot (may a source
+ * CREATE rows, may its silence-sweep retire them).
  *
- * Page-level on the Integrations page because precedence is a policy
- * BETWEEN providers, not a property of one card.  The parent renders it
- * only when 2+ vehicle-writing integrations are connected.
+ * On the VEHICLES page, where the backend has said it belongs all
+ * along: the endpoint is /vehicles/config because the settings are
+ * vehicle_field_precedence and source_lifecycle:vehicle — the config
+ * family's URL-follows-the-domain-noun rule.  It sat on the
+ * Integrations page while precedence was its only content ("a policy
+ * BETWEEN providers"); the moment auto-pilot joined, the panel became
+ * roster policy, and roster policy belongs to the roster's feature —
+ * which is also the shape that scales: driver and load lifecycle
+ * policies go to THEIR features' gears, not into one integrations
+ * dialog that slowly becomes every entity's junk drawer.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
-import { getIntegrationsConfig, putIntegrationsConfig } from '../api';
-import type { SourcePrecedence } from '../api';
+import { getVehiclesConfig, putVehiclesConfig } from './api';
+import type { SourcePrecedence } from './api';
 import { useRoleView } from '../../../context/RoleViewContext';
 import { Loader2 } from 'lucide-react';
 import { Switch } from '../../../components/ui/switch';
@@ -26,7 +32,7 @@ const SOURCE_LABEL: Record<string, string> = {
   samsara: 'Samsara',
 };
 
-export default function IntegrationsConfigPanel() {
+export default function VehiclesConfigPanel() {
   const qc = useQueryClient();
   // Precedence is CONFIG, not Manage — it decides which provider WINS per
   // field, so every vehicle read downstream resolves through it.  Both
@@ -38,7 +44,7 @@ export default function IntegrationsConfigPanel() {
 
   const { data, isLoading, error } = useQuery<SourcePrecedence>({
     queryKey: ['vehicles-config'],
-    queryFn: getIntegrationsConfig,
+    queryFn: getVehiclesConfig,
     enabled: canConfigure,
   });
 
@@ -46,7 +52,7 @@ export default function IntegrationsConfigPanel() {
     mutationFn: (args: {
       primary: Record<string, string>;
       lifecycle?: Record<string, Record<string, boolean>>;
-    }) => putIntegrationsConfig(args.primary, args.lifecycle),
+    }) => putVehiclesConfig(args.primary, args.lifecycle),
     onSuccess: (next) =>
       qc.setQueryData(['vehicles-config'], next),
   });

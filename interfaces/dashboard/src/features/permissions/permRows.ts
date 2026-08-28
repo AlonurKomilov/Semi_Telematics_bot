@@ -117,7 +117,7 @@ export const PERM_GROUPS: PermGroup[] = [
       // capabilities/ (like Alerts↔capabilities/alerting).  NOT Settings
       // components: consumed account-wide, each with its own page.
       { key: 'can_manage_permissions',  kind: 'feature', label: 'Permissions', description: 'This role matrix — the owner always keeps it' },
-      { key: 'can_manage_integrations', kind: 'feature', label: 'Integrations', description: 'Connecting and syncing Samsara / Datatruck. Provider precedence and vehicle auto-pilot are SETTINGS — Config, account-wide.' },
+      { key: 'can_manage_integrations', kind: 'feature', label: 'Integrations', description: 'Connecting and syncing Samsara / Datatruck. Source policy (precedence + auto-pilot) lives on the Vehicles page — Config, account-wide.' },
       { key: 'can_manage_storage',      kind: 'feature', label: 'Storage', description: 'Connecting Drive, retrying syncs, clearing orphans. Choosing the backend and the disk quota are settings — Config — account-wide.' },
 
       { key: 'can_manage_account',     kind: 'feature', label: 'General settings', description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },

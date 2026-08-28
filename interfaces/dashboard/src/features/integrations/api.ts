@@ -30,40 +30,10 @@ export async function listIntegrations(): Promise<IntegrationsListResponse> {
 // Lives under /vehicles (owner policy on vehicle data) but is surfaced on
 // the Integrations page, so the client wrapper lives here.
 
-export interface PrecedenceField {
-  key: string;
-  label: string;
-  primary: string;
-}
+// Vehicle source precedence + auto-pilot moved to
+// features/vehicles/config/api.ts — the settings are vehicle config
+// (/vehicles/config), and the panel now lives on the Vehicles page.
 
-export interface LifecycleSource {
-  key: string;
-  /** Only verbs whose MECHANISM exists — datatruck has no inactivate
-   *  path, so it never carries the flag and no dead switch renders. */
-  verbs: Record<string, boolean>;
-}
-
-export interface SourcePrecedence {
-  sources: string[];
-  fields: PrecedenceField[];
-  lifecycle?: { sources: LifecycleSource[] };
-}
-
-export async function getIntegrationsConfig(): Promise<SourcePrecedence> {
-  return apiJSON<SourcePrecedence>('/vehicles/config');
-}
-
-export async function putIntegrationsConfig(
-  primary: Record<string, string>,
-  lifecycle?: Record<string, Record<string, boolean>>,
-): Promise<SourcePrecedence> {
-  return apiJSON<SourcePrecedence>('/vehicles/config', {
-    method: 'PUT',
-    // `lifecycle` omitted = untouched server-side, so the
-    // precedence-only save this panel has always sent stays identical.
-    body: lifecycle ? { primary, lifecycle } : { primary },
-  });
-}
 
 // ── One-time Datatruck driver import (onboarding) ────────────────
 

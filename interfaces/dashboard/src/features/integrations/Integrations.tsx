@@ -19,8 +19,6 @@ import { useTranslation } from 'react-i18next';
 import { CardSkeleton, PageHeader } from '../../components/shell';
 import IntegrationCard from './IntegrationCard';
 import BackfillStatusBadge from './BackfillStatusBadge';
-import IntegrationsConfigPanel from './config/IntegrationsConfigPanel';
-import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import ConflictsPanel from './ConflictsPanel';
 import {
   connectIntegration,
@@ -102,9 +100,8 @@ export default function Integrations() {
     return (
       <div>
         <PageHeader icon={Plug} title={t('integrations.title', 'Integrations')} description={t('integrations.description', 'Connect your telematics platform and choose which data syncs.')} />
-        <ConfigMovedNotice what="Provider precedence" />
-
-      <div className="grid grid-cols-1 gap-4">
+        <ConfigMovedNotice what="Provider precedence & vehicle auto-pilot" />
+        <div className="grid grid-cols-1 gap-4">
           <CardSkeleton height="h-48" />
           <CardSkeleton height="h-32" />
           <CardSkeleton height="h-32" />
@@ -134,13 +131,10 @@ export default function Integrations() {
   const available = catalog.filter((c) => c.status === 'available' || c.status === 'beta');
   const upcoming = catalog.filter((c) => c.status === 'coming_soon');
 
-  // The source-precedence panel only makes sense when 2+ vehicle-writing
-  // integrations are connected (otherwise there's no source to disagree with).
   const VEHICLE_SOURCES = ['samsara', 'datatruck'];
-  const connectedVehicleSources = integrations.filter(
+  const showConflicts = integrations.filter(
     (ai) => VEHICLE_SOURCES.includes(ai.provider_id) && ai.status === 'connected',
-  );
-  const showPrecedence = connectedVehicleSources.length >= 2;
+  ).length >= 2;
 
   return (
     <div>
@@ -151,17 +145,16 @@ export default function Integrations() {
           'integrations.description',
           'Connect your telematics platform and choose which data syncs into 4truck.',
         )}
-        /* Provider precedence is this feature's config, so it moves to the
-           gear — the same header slot every feature uses. Still bound to
-           `showPrecedence`: with fewer than two vehicle-writing providers
-           nothing can disagree, and a gear opening onto an empty question
-           is worse than no gear. */
-        actions={showPrecedence ? (
-          <FeatureConfigGear feature="Integrations" size="xl">
-            <IntegrationsConfigPanel />
-          </FeatureConfigGear>
-        ) : undefined}
+        /* No gear here any more.  The settings this page used to open
+           (field precedence + auto-pilot) are VEHICLE config —
+           vehicle_field_precedence / source_lifecycle:vehicle, served
+           by /vehicles/config — so the gear lives on the Vehicles
+           page, and driver/load source policies will live on theirs.
+           The moved-notice below catches anyone who learned the old
+           location. */
       />
+
+      <ConfigMovedNotice what="Provider precedence & vehicle auto-pilot" />
 
       <div className="grid grid-cols-1 gap-4">
         {available.map((entry) =>
@@ -175,7 +168,10 @@ export default function Integrations() {
         )}
       </div>
 
-      {showPrecedence && <ConflictsPanel />}
+      {/* Conflicts need two sources that can disagree; this stays an
+          Integrations concern (the data-disagreement REVIEW), while the
+          policy that decides winners moved to the Vehicles gear. */}
+      {showConflicts && <ConflictsPanel />}
 
       {upcoming.length > 0 && (
         <>
