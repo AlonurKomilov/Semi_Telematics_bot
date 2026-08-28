@@ -160,8 +160,16 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
         codes = await db.get_user_company_codes(owner_user_id)
         if codes:
             ph = ", ".join("?" for _ in codes)
+            # `is_active = 1` for the same reason _target_scope carries
+            # it: a retired truck must not resolve into an allow-set, or
+            # the sweep keeps judging the one that left.  The wall only
+            # ever NARROWS, so leaving retired ids in it would not widen
+            # anyone's reach — but it would put this query at odds with
+            # its sibling, and the next person would have to work out
+            # which of the two meant it.
             cur = await tenant._db.execute(
                 f"SELECT id FROM vehicles WHERE account_id = ? "
+                f"  AND is_active = 1 "
                 f"  AND company_code IN ({ph})",
                 (account_id, *codes),
             )
