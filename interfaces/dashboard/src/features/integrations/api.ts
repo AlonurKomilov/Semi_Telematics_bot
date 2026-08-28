@@ -36,9 +36,17 @@ export interface PrecedenceField {
   primary: string;
 }
 
+export interface LifecycleSource {
+  key: string;
+  /** Only verbs whose MECHANISM exists — datatruck has no inactivate
+   *  path, so it never carries the flag and no dead switch renders. */
+  verbs: Record<string, boolean>;
+}
+
 export interface SourcePrecedence {
   sources: string[];
   fields: PrecedenceField[];
+  lifecycle?: { sources: LifecycleSource[] };
 }
 
 export async function getIntegrationsConfig(): Promise<SourcePrecedence> {
@@ -47,10 +55,13 @@ export async function getIntegrationsConfig(): Promise<SourcePrecedence> {
 
 export async function putIntegrationsConfig(
   primary: Record<string, string>,
+  lifecycle?: Record<string, Record<string, boolean>>,
 ): Promise<SourcePrecedence> {
   return apiJSON<SourcePrecedence>('/vehicles/config', {
     method: 'PUT',
-    body: { primary },
+    // `lifecycle` omitted = untouched server-side, so the
+    // precedence-only save this panel has always sent stays identical.
+    body: lifecycle ? { primary, lifecycle } : { primary },
   });
 }
 

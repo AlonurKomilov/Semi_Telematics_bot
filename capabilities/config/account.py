@@ -133,6 +133,14 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "disagree.",
     ),
     SettingOwner(
+        "source_lifecycle:*", "can_manage_config_all",
+        "config", "integrations",
+        "Which integration may auto-ADD vehicles and whose silence-sweep "
+        "may auto-INACTIVATE them.  Booleans per source, clamped to the "
+        "mechanisms that exist; defaults are today's unconditional "
+        "behaviour so existing accounts change nothing.",
+    ),
+    SettingOwner(
         "datatruck.*", "can_manage_config_all", "config", "integrations",
     ),
     SettingOwner(

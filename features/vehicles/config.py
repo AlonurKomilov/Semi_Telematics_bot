@@ -37,6 +37,10 @@ _config = require_permission("can_manage_config_all")
 class SourcePrecedenceUpdate(BaseModel):
     # {spec_field: primary_source}, e.g. {"vin": "datatruck", "make": "samsara"}.
     primary: dict[str, str] = Field(default_factory=dict)
+    # {source: {verb: bool}}, e.g. {"datatruck": {"add": false}}.  Omitted =
+    # untouched, so the precedence-only PUT the panel has always sent keeps
+    # working unchanged.
+    lifecycle: dict[str, dict[str, bool]] | None = None
 
 
 @router.get("/config")
@@ -55,7 +59,27 @@ async def get_config(user: dict = Depends(_config)):
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    return await reconciliation.precedence_options(tenant, account_id, "vehicle")
+    payload = await reconciliation.precedence_options(tenant, account_id, "vehicle")
+    payload["lifecycle"] = await _lifecycle_payload(tenant, account_id)
+    return payload
+
+
+async def _lifecycle_payload(tenant, account_id: int) -> dict:
+    """The auto-pilot matrix, shaped for switches.
+
+    Only verbs whose MECHANISM exists are emitted (LIFECYCLE_VERBS —
+    datatruck has no inactivate path), so the panel cannot render a
+    switch that stores a lie.  ``manual`` is absent by design: an
+    operator's own buttons are not auto-pilot.
+    """
+    policy = await reconciliation.get_lifecycle_policy(
+        tenant, account_id, "vehicle")
+    return {
+        "sources": [
+            {"key": src, "verbs": dict(flags)}
+            for src, flags in sorted(policy.items())
+        ],
+    }
 
 
 @router.put("/config")
@@ -79,5 +103,12 @@ async def put_config(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    await reconciliation.set_precedence(tenant, account_id, "vehicle", body.primary)
-    return await reconciliation.precedence_options(tenant, account_id, "vehicle")
+    if body.primary:
+        await reconciliation.set_precedence(
+            tenant, account_id, "vehicle", body.primary)
+    if body.lifecycle is not None:
+        await reconciliation.set_lifecycle_policy(
+            tenant, account_id, "vehicle", body.lifecycle)
+    payload = await reconciliation.precedence_options(tenant, account_id, "vehicle")
+    payload["lifecycle"] = await _lifecycle_payload(tenant, account_id)
+    return payload

@@ -18,6 +18,7 @@ import { getIntegrationsConfig, putIntegrationsConfig } from '../api';
 import type { SourcePrecedence } from '../api';
 import { useRoleView } from '../../../context/RoleViewContext';
 import { Loader2 } from 'lucide-react';
+import { Switch } from '../../../components/ui/switch';
 import { ErrorState } from '../../../components/shell';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -42,8 +43,10 @@ export default function IntegrationsConfigPanel() {
   });
 
   const mutation = useMutation({
-    mutationFn: (primary: Record<string, string>) =>
-      putIntegrationsConfig(primary),
+    mutationFn: (args: {
+      primary: Record<string, string>;
+      lifecycle?: Record<string, Record<string, boolean>>;
+    }) => putIntegrationsConfig(args.primary, args.lifecycle),
     onSuccess: (next) =>
       qc.setQueryData(['vehicles-config'], next),
   });
@@ -72,12 +75,28 @@ export default function IntegrationsConfigPanel() {
   // Every field picks from the same source list; build the item set once.
   const sourceItems = data.sources.map((s) => ({ value: s, label: SOURCE_LABEL[s] ?? s }));
 
-  const setPrimary = (field: string, source: string) => {
+  const currentPrimary = () => {
     const primary: Record<string, string> = {};
-    for (const f of data.fields) {
-      primary[f.key] = f.key === field ? source : f.primary;
+    for (const f of data.fields) primary[f.key] = f.primary;
+    return primary;
+  };
+
+  const setPrimary = (field: string, source: string) => {
+    const primary = currentPrimary();
+    primary[field] = source;
+    mutation.mutate({ primary });
+  };
+
+  const setLifecycle = (source: string, verb: string, allowed: boolean) => {
+    // The FULL matrix each save, not a delta: the server clamps to the
+    // verbs that exist, and sending everything keeps the stored policy
+    // equal to what the panel shows.
+    const lifecycle: Record<string, Record<string, boolean>> = {};
+    for (const srcRow of data.lifecycle?.sources ?? []) {
+      lifecycle[srcRow.key] = { ...srcRow.verbs };
     }
-    mutation.mutate(primary);
+    (lifecycle[source] ??= {})[verb] = allowed;
+    mutation.mutate({ primary: currentPrimary(), lifecycle });
   };
 
   // No card wrapper and no heading: FeatureConfigGear supplies the
@@ -127,6 +146,59 @@ export default function IntegrationsConfigPanel() {
           </li>
         ))}
       </ul>
+
+      {(data.lifecycle?.sources?.length ?? 0) > 0 && (
+        <>
+          {/* Auto-pilot: whether an integration may CHANGE THE ROSTER
+              on its own.  Separate switches per verb because "don't
+              create trucks I didn't create" and "don't retire trucks I
+              didn't retire" are different worries.  A verb a provider
+              has no mechanism for is simply absent — a switch that
+              stores a lie is worse than none (datatruck cannot
+              inactivate anything, so it never shows one).  Turning a
+              switch off stops CREATION/RETIREMENT only: matching,
+              enrichment and revival keep running, because "stop
+              auto-adding vehicles" never means "freeze the trucks I
+              already own". */}
+          <p className="mt-4 mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Auto-pilot
+          </p>
+          <p className="mb-2 text-sm text-muted-foreground">
+            What each integration may do to the vehicle list on its own.
+            Off means new units wait for you to add them, and silent
+            trucks are never retired automatically.
+          </p>
+          <ul className="divide-y divide-border">
+            {data.lifecycle!.sources.map((src) => (
+              <li
+                key={src.key}
+                className="flex items-center justify-between gap-3 py-2 text-sm"
+              >
+                <span className="text-foreground">
+                  {SOURCE_LABEL[src.key] ?? src.key}
+                </span>
+                <span className="flex items-center gap-4">
+                  {Object.entries(src.verbs).map(([verb, allowed]) => (
+                    <label
+                      key={verb}
+                      className="flex items-center gap-2 text-xs text-muted-foreground min-h-tap"
+                    >
+                      {verb === 'add' ? 'May add vehicles' : 'May auto-retire'}
+                      <Switch
+                        checked={allowed}
+                        disabled={mutation.isPending}
+                        onCheckedChange={(v) => setLifecycle(src.key, verb, v)}
+                        aria-label={`${SOURCE_LABEL[src.key] ?? src.key}: ${
+                          verb === 'add' ? 'may add vehicles' : 'may auto-retire'}`}
+                      />
+                    </label>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

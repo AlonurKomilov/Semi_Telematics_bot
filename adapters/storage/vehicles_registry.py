@@ -720,6 +720,11 @@ class VehiclesRegistryMixin(_MixinBase):
         if not rows:
             return 0
         precedence = await recon.get_precedence(self, account_id, "vehicle")
+        # Same gate as the ingest: `add` governs net-new creation only;
+        # matching and enrichment below run regardless — "stop
+        # auto-adding vehicles" never means "freeze the trucks I own".
+        allow_add = await recon.may_add(self, account_id, "vehicle", source)
+        skipped_add = 0
         # INCLUDING retired rows, for the same reason as
         # `upsert_from_integration`: a retired row still owns its VIN,
         # its plate and its (company, unit) in the unique index.  This
@@ -781,6 +786,9 @@ class VehiclesRegistryMixin(_MixinBase):
                     continue
 
                 # No match → insert new (provenance = this source per non-empty spec).
+                if not allow_add:
+                    skipped_add += 1
+                    continue
                 prov = {f: source for f in _SPEC_FILL if not is_unset(r.get(f))}
                 await self._db.execute(
                     """INSERT INTO vehicles
@@ -802,6 +810,11 @@ class VehiclesRegistryMixin(_MixinBase):
                 )
                 written += 1
         await recon.sync_batch(self, account_id, "vehicle", conflict_ops)
+        if skipped_add:
+            logger.info(
+                "vehicle projection acct=%d: %d net-new row(s) not created "
+                "— auto-add is OFF for %s", account_id, skipped_add, source,
+            )
         return written
 
     async def company_code_for_unit(
@@ -1129,6 +1142,13 @@ class VehiclesRegistryMixin(_MixinBase):
         if not rows:
             return 0
         precedence = await recon.get_precedence(self, account_id, "vehicle")
+        # May THIS source create net-new rows here?  Checked once per
+        # call, not per row.  `add` governs CREATION only — a source
+        # denied it still matches, enriches and revives existing rows
+        # below, because "stop auto-adding vehicles" never means
+        # "freeze the VINs and odometers of trucks I already own".
+        allow_add = await recon.may_add(self, account_id, "vehicle", source)
+        skipped_add = 0
         # INCLUDING retired rows.  A row that is no longer active still
         # OWNS its telematics ref, its VIN and its (company, unit) in the
         # unique index — those identities are taken whether the row shows
@@ -1212,6 +1232,9 @@ class VehiclesRegistryMixin(_MixinBase):
                         matched_by_vin = True
 
                 if match is None:
+                    if not allow_add:
+                        skipped_add += 1
+                        continue
                     # Net-new row — provenance starts as this source for each
                     # non-empty spec field it carries.
                     prov = {
@@ -1345,6 +1368,14 @@ class VehiclesRegistryMixin(_MixinBase):
                 if conflicts or cleared:
                     conflict_ops.append((match.id, conflicts, cleared))
         await recon.sync_batch(self, account_id, "vehicle", conflict_ops)
+        if skipped_add:
+            # Said out loud: a fleet where new trucks quietly never
+            # appear reads as an ingest bug, and the answer is a policy
+            # someone chose.
+            logger.info(
+                "vehicle upsert acct=%d: %d net-new row(s) not created — "
+                "auto-add is OFF for %s", account_id, skipped_add, source,
+            )
         return written
 
     async def get_identity_map(self, account_id: int) -> dict:

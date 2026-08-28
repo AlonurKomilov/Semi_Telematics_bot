@@ -54,6 +54,22 @@ class VehicleDepartureMixin:
         "skipped_all_stale": bool}`` — the departed list carries
         (vehicle_id, name, company) for the caller's log line.
         """
+        # The owner's off-switch for this mechanism.  The sweep judges
+        # TELEMATICS silence — the live rows it reads are samsara's
+        # ingest — so it consults samsara's `inactivate` verb; a second
+        # live-state provider must thread its own source here rather
+        # than inherit this one.  Fail-open inside the policy read: a
+        # transient settings error must not silently disable a
+        # lifecycle mechanism.
+        from capabilities.source import may_auto_inactivate
+
+        if not await may_auto_inactivate(self, account_id, "vehicle", "samsara"):
+            logger.info(
+                "departure sweep acct=%d: auto-inactivate is OFF — "
+                "nothing retired", account_id,
+            )
+            return {"departed": [], "registry_deactivated": 0,
+                    "skipped_all_stale": False, "skipped_policy": True}
         cutoff = (
             datetime.now(timezone.utc) - timedelta(days=silent_days)
         ).strftime("%Y-%m-%dT%H:%M:%S")

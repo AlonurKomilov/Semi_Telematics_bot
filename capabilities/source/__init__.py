@@ -46,6 +46,13 @@ from .engine import (  # noqa: F401
     pin_manual,
     source_rank,
 )
+from .lifecycle import (  # noqa: F401
+    LIFECYCLE_VERBS,
+    get_lifecycle_policy,
+    may_add,
+    may_auto_inactivate,
+    set_lifecycle_policy,
+)
 from .precedence import (  # noqa: F401
     get_precedence,
     precedence_options,
