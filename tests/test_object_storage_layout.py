@@ -29,10 +29,19 @@ from pathlib import Path
 import pytest
 from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 from tests._repo import scanned  # a guard that scans nothing must fail
+from tests._repo import is_test_path  # tests are not production source
 
 ROOT = _REPO
 
-# Where feature code lives.  Scripts are excluded on purpose: the repair
+# Where feature code lives.  Package-owned tests/ subdirectories are
+# pruned in _source_files(): these rules bind PRODUCTION code, and a
+# test that names the old placeholder is usually asserting the repair
+# path still handles it.  The prune is not new behaviour — it restores
+# what was true when every test lived in the root tests/ tree, outside
+# SOURCE_DIRS entirely.  Without it, moving tests next to the code they
+# guard silently enrolls them as production source.
+#
+# Scripts are excluded on purpose: the repair
 # tooling legitimately names the legacy layouts it exists to clean up.
 SOURCE_DIRS = ("features", "capabilities", "adapters", "interfaces", "infra")
 
@@ -56,7 +65,8 @@ def _source_files() -> list[Path]:
         base = ROOT / d
         if base.is_dir():
             out += [p for p in base.rglob("*.py")
-                    if "node_modules" not in p.parts]
+                    if "node_modules" not in p.parts
+                    and not is_test_path(p.relative_to(ROOT))]
     return scanned(out, "storage-layout sources")
 
 
@@ -256,9 +266,9 @@ class TestTestsDoNotWriteIntoTheLiveTree:
 
     The pin is moving to the REPO-ROOT conftest.py, and it has to.
     pytest resolves conftest.py by DIRECTORY ANCESTRY, and the root is
-    the only directory that is an ancestor of tests/, features/*/tests/
-    and capabilities/*/tests/ alike — a pin under tests/ would not apply
-    to a single co-located test.
+    the only directory that is an ancestor of tests/, features/*/tests/,
+    adapters/*/tests/ and capabilities/*/tests/ alike — a pin under
+    tests/ would not apply to a single co-located test.
 
     These read whichever conftest exists, so they stay green across the
     move itself, and they assert that EXACTLY ONE exists.  That last
