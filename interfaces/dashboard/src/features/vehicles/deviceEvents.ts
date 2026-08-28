@@ -22,9 +22,23 @@ export interface DeviceEvent {
   resolved_at: string;
 }
 
+/** A device reporting telemetry that resolves to no vehicle in the
+ *  registry. Not an identity CHANGE — an identity the registry never
+ *  had, so it carries no event and no id to resolve. */
+export interface IngestOrphan {
+  external_id: string;
+  name: string;
+  company_code: string;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
 export interface EventsResponse {
   events: DeviceEvent[];
   open_count: number;
+  orphans?: IngestOrphan[];
+  orphan_count?: number;
 }
 
 /** ``device_event_log.kind`` → the callout key that renders it.

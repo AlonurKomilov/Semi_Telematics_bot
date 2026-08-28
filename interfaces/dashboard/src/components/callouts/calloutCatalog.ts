@@ -88,6 +88,10 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
   // page all week, and the answer buttons stay exactly where they are.
   'vehicle.vin_changed':      { kind: 'condition', severity: 'warn' },
   'vehicle.gateway_swapped':  { kind: 'condition', severity: 'warn' },
+  // Not a CHANGE of identity — an identity the registry never had.
+  // It carries no event row and no id to resolve, so it is a
+  // condition that persists until someone adds or links a vehicle.
+  'vehicle.unlinked_device':  { kind: 'condition', severity: 'warn' },
   'vehicle.odometer_rebased': { kind: 'condition', severity: 'warn' },
 
   // ── The truck has left the fleet ────────────────────────────

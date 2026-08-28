@@ -492,13 +492,12 @@
     "system": "System",
     "group_color": "Color",
     "group_corners": "Corners",
-    "dark_blue": "Dark Blue",
-    "dark_purple": "Dark Purple",
-    "dark_green": "Dark Green",
+    "accent_blue": "Blue",
+    "accent_purple": "Purple",
+    "accent_green": "Green",
     "corners_sharp": "Sharp",
     "corners_rounded": "Rounded",
     "corners_pill": "Pill",
-    "color_light": "Light",
     "group_size": "Size",
     "size_label": "Interface size",
     "size_reset": "Reset",
@@ -1421,6 +1420,14 @@
       "why": "This truck went silent long enough that it was retired automatically — which can mean it left the account, or that the device in it stopped working.",
       "affects": "Position · Fuel · DEF · Engine · Faults — the last values received, not current ones",
       "do": "If the truck is still yours, have the device checked, then restore it from the Vehicles page."
+    },
+    "vehicle.unlinked_device": {
+      "title": "A device is reporting under a name no vehicle owns",
+      "short": "Unlinked device",
+      "where": "{{unit}}",
+      "changed": "{{count}} readings since {{since}}",
+      "why": "Telemetry is arriving that no registry vehicle claims, so it cannot be picked for a trigger, cannot raise an alert, and appears in no list. Usually the unit number exists twice — once as a manual vehicle and once as the telematics one — and the resolver will not guess between them.",
+      "do": "Open the vehicle and set its telematics link, or archive the duplicate."
     }
   }
 }

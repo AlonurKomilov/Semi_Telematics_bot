@@ -101,7 +101,14 @@ export default function DeviceEventsCard({
   const open = (data?.events ?? [])
     .filter((e) => e.status === 'open')
     .filter((e) => !vehicleName || e.vehicle_name === vehicleName);
-  if (!canManage || open.length === 0) return null;
+  // Devices reporting under a name the registry cannot place. Not
+  // identity CHANGES — identities the registry never had, so they carry
+  // no event and no id to resolve, only a count of how long they have
+  // been arriving. On a vehicle's own page they are irrelevant: an
+  // orphan by definition belongs to no vehicle, so there is no page it
+  // is "on".
+  const orphans = vehicleName ? [] : (data?.orphans ?? []);
+  if (!canManage || (open.length === 0 && orphans.length === 0)) return null;
 
   const resolveSimple = async (e: DeviceEvent, action: 'same_truck' | 'dismissed') => {
     setBusyId(e.id); setError('');
@@ -208,6 +215,29 @@ export default function DeviceEventsCard({
           actions={rowActions}
         />
       ))}
+      {/* Rendered through the callout catalog like every event above,
+          so the copy is translated and dismissal behaves the same. One
+          callout per device: the count and first-seen are what separate
+          a truck nobody linked from a blip, and a merged summary would
+          hide exactly that. */}
+      {orphans.length > 0 && (
+        <CalloutGroup
+          items={orphans}
+          callout={(o) => ({
+            key: 'vehicle.unlinked_device',
+            // No registry id to hang it on — that is the whole problem —
+            // so the device's own external id is the entity.
+            entity: `device:${o.external_id}`,
+            since: o.first_seen,
+            callout_id: `vehicle.unlinked_device@device:${o.external_id}`,
+            params: {
+              unit: o.company_code ? `${o.name} · ${o.company_code}` : o.name,
+              count: String(o.count),
+              since: o.first_seen.slice(0, 10),
+            },
+          })}
+        />
+      )}
       {error && !splitEvent && (
         <p className="mt-2 text-xs text-destructive">{error}</p>
       )}

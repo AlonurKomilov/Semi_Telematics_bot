@@ -362,12 +362,11 @@
     "light": "Clair",
     "dark": "Sombre",
     "system": "Système",
-    "color_light": "Clair",
     "group_color": "Couleur",
     "group_corners": "Coins",
-    "dark_blue": "Bleu foncé",
-    "dark_purple": "Violet foncé",
-    "dark_green": "Vert foncé",
+    "accent_blue": "Bleu",
+    "accent_purple": "Violet",
+    "accent_green": "Vert",
     "corners_sharp": "Droits",
     "corners_rounded": "Arrondis",
     "corners_pill": "Pilule",
@@ -1130,6 +1129,14 @@
       "why": "Le camion est resté muet assez longtemps pour être retiré automatiquement — soit il a quitté le compte, soit le boîtier a cessé de fonctionner.",
       "affects": "Position · Carburant · DEF · Moteur · Défauts — les dernières valeurs reçues, pas les actuelles",
       "do": "Si le camion est toujours le vôtre, faites vérifier le boîtier puis restaurez-le depuis la page Véhicules."
+    },
+    "vehicle.unlinked_device": {
+      "title": "Un appareil émet sous un nom qu’aucun véhicule ne possède",
+      "short": "Appareil non lié",
+      "where": "{{unit}}",
+      "changed": "{{count}} relevés depuis {{since}}",
+      "why": "De la télémétrie arrive sans qu’aucun véhicule du registre ne la revendique : elle ne peut pas être choisie pour un déclencheur, ne génère aucune alerte et n’apparaît dans aucune liste. En général le numéro d’unité existe deux fois — une fois en véhicule manuel, une fois en télématique — et le résolveur refuse de deviner.",
+      "do": "Ouvrez le véhicule et définissez son lien télématique, ou archivez le doublon."
     }
   }
 }

@@ -77,6 +77,35 @@ class WarehouseLedgersMixin(_MixinBase):
         await self._db.commit()
         return len(values)
 
+    async def list_ingest_orphans(
+        self, account_id: int, *, dataset_key: str = "vehicles.state",
+        min_count: int = 2, limit: int = 50,
+    ) -> list[dict]:
+        """Identities that keep reporting and still resolve to no vehicle.
+
+        The quarantine has always been WRITTEN and never read — which is
+        why two devices on the live account reported for eleven and four
+        days, 20,263 ticks between them, entirely invisibly. A row here
+        means telemetry is arriving that no vehicle owns: it cannot be
+        targeted by a trigger, cannot be picked, and produces no alert.
+
+        ``min_count`` is the difference between a mystery and a blip. A
+        brand-new vehicle stamps one orphan row on the tick before the
+        roster upsert reaches it and then resolves itself for good —
+        five of this account's seven rows are exactly that, count=1,
+        months old. Surfacing those would train people to ignore the
+        card. Something seen twice has outlived that explanation.
+        """
+        cur = await self._db.execute(
+            "SELECT external_id, name, company_code, count, "
+            "       first_seen, last_seen "
+            "  FROM ingest_orphans "
+            " WHERE account_id = ? AND dataset_key = ? AND count >= ? "
+            " ORDER BY count DESC, last_seen DESC LIMIT ?",
+            (account_id, dataset_key, int(min_count), max(1, min(int(limit), 200))),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def record_device_events(self, account_id: int, events) -> list:
         """Append identity events (vin_change / gateway_swap /
         odo_rebase) — deduped on the exact transition.

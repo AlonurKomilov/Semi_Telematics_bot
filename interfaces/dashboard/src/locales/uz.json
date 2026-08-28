@@ -329,13 +329,12 @@
     "system": "Tizim",
     "group_color": "Rang",
     "group_corners": "Burchaklar",
-    "dark_blue": "Toʻq koʻk",
-    "dark_purple": "Toʻq binafsha",
-    "dark_green": "Toʻq yashil",
+    "accent_blue": "Koʻk",
+    "accent_purple": "Binafsha",
+    "accent_green": "Yashil",
     "corners_sharp": "Oʻtkir",
     "corners_rounded": "Yumaloq",
     "corners_pill": "Tabletka",
-    "color_light": "Yorugʻ",
     "group_size": "Oʻlcham",
     "size_label": "Interfeys oʻlchami",
     "size_reset": "Tiklash",
@@ -760,6 +759,14 @@
       "why": "Mashina yetarlicha uzoq jim qoldi va avtomatik chiqarildi — bu hisobdan ketganini yoki undagi qurilma ishlamay qolganini bildirishi mumkin.",
       "affects": "Joylashuv · Yoqilg'i · DEF · Dvigatel · Nosozliklar — oxirgi olingan qiymatlar, joriy emas",
       "do": "Agar mashina hali sizniki bo‘lsa, qurilmani tekshirtiring va «Transport» sahifasidan tiklang."
+    },
+    "vehicle.unlinked_device": {
+      "title": "Qurilma hech bir transportga tegishli bo‘lmagan nom bilan ma’lumot yubormoqda",
+      "short": "Bog‘lanmagan qurilma",
+      "where": "{{unit}}",
+      "changed": "{{since}} dan beri {{count}} ta o‘lchov",
+      "why": "Reyestrdagi hech bir transport da’vo qilmaydigan telemetriya kelmoqda: uni trigger uchun tanlab bo‘lmaydi, ogohlantirish bermaydi va hech bir ro‘yxatda ko‘rinmaydi. Odatda birlik raqami ikki marta mavjud bo‘ladi — qo‘lda kiritilgan va telematik transport sifatida — resolver esa ular orasidan taxmin qilmaydi.",
+      "do": "Transportni oching va uning telematik bog‘lanishini kiriting yoki nusxani arxivlang."
     }
   }
 }

@@ -901,6 +901,14 @@
       "why": "Gaarigu wuxuu aamusay muddo ku filan in si otomaatig ah looga saaro — taasoo macnaheedu noqon karo inuu akoonka ka baxay ama qalabkii ku jiray uu shaqo joojiyay.",
       "affects": "Meesha · Shidaalka · DEF · Matoorka · Cilladaha — qiimayaashii ugu dambeeyay ee la helay, ee ma aha kuwa hadda",
       "do": "Haddii gaarigu weli kuu yahay, qalabka la baaro, ka dibna ka soo celi bogga Gawaarida."
+    },
+    "vehicle.unlinked_device": {
+      "title": "Qalab ayaa gudbinaya magac aan gaari lahayn",
+      "short": "Qalab aan la xirin",
+      "where": "{{unit}}",
+      "changed": "{{count}} akhris tan iyo {{since}}",
+      "why": "Waxaa imanaya xog telemetry ah oo aanay gaari diiwaangashan lahayn: lama dooran karo trigger, digniin ma abuuro, liis kastana kama muuqdo. Badanaa lambarka unug wuxuu jiraa laba jeer — mid gacanta lagu galiyay iyo mid telematics ah — resolver-kuna ma qiyaaso.",
+      "do": "Fur gaariga oo dhig xiriirkiisa telematics, ama kaydi nuqulka."
     }
   }
 }

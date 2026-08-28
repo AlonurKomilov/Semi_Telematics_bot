@@ -56,12 +56,16 @@ const LOCALES = readdirSync(DIR)
  * the exact event this file exists to catch.
  */
 const BEHIND: Record<string, number> = {
-  am: 492,
+  // am/pa/so dropped by one when `theme.color_light` was retired: it was
+  // a duplicate of `theme.light`, which every locale already has, and
+  // English losing a key those three never carried moves them a step
+  // closer for free. A ratchet down, which is the only direction allowed.
+  am: 491,
   es: 272,
   fr: 272,
-  pa: 492,
+  pa: 491,
   ru: 272,
-  so: 492,
+  so: 491,
   uk: 424,
   uz: 630,
 };

@@ -1109,9 +1109,25 @@ async def list_device_events(
         company_by_id = await _registry_company_map(tenant, account_id)
         events = filter_by_company_map(
             events, allowed, company_by_id, key="registry_id")
+    # Devices reporting telemetry that resolves to no vehicle.  The
+    # quarantine was written every tick and read by nothing, so two of
+    # them accumulated 20,263 ingest ticks over eleven and four days
+    # while being invisible everywhere: not pickable for a trigger, not
+    # alertable, not listed.  Same card, because it is the same question
+    # a person is already here to answer — "is my fleet's identity
+    # straight?" — and a second card would be a second place to forget.
+    try:
+        orphans = await tenant.list_ingest_orphans(account_id)
+    except Exception:
+        orphans = []                    # never fail the card for this
+    if allowed:
+        orphans = [o for o in orphans
+                   if company_allows(o.get("company_code") or "", allowed)]
     return {
         "events": events,
         "open_count": sum(1 for e in events if e.get("status") == "open"),
+        "orphans": orphans,
+        "orphan_count": len(orphans),
     }
 
 

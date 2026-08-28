@@ -362,12 +362,11 @@
     "light": "Claro",
     "dark": "Oscuro",
     "system": "Sistema",
-    "color_light": "Claro",
     "group_color": "Color",
     "group_corners": "Esquinas",
-    "dark_blue": "Azul oscuro",
-    "dark_purple": "Morado oscuro",
-    "dark_green": "Verde oscuro",
+    "accent_blue": "Azul",
+    "accent_purple": "Morado",
+    "accent_green": "Verde",
     "corners_sharp": "Rectas",
     "corners_rounded": "Redondeadas",
     "corners_pill": "Píldora",
@@ -1130,6 +1129,14 @@
       "why": "El camión estuvo en silencio el tiempo suficiente para retirarse automáticamente, lo que puede significar que dejó la cuenta o que su dispositivo dejó de funcionar.",
       "affects": "Posición · Combustible · DEF · Motor · Fallos: los últimos valores recibidos, no los actuales",
       "do": "Si el camión sigue siendo suyo, haga revisar el dispositivo y restáurelo desde la página de Vehículos."
+    },
+    "vehicle.unlinked_device": {
+      "title": "Un dispositivo transmite con un nombre que ningún vehículo posee",
+      "short": "Dispositivo sin vincular",
+      "where": "{{unit}}",
+      "changed": "{{count}} lecturas desde {{since}}",
+      "why": "Llega telemetría que ningún vehículo del registro reclama, así que no puede elegirse para un disparador, no genera alertas y no aparece en ninguna lista. Normalmente el número de unidad existe dos veces —una como vehículo manual y otra como el telemático— y el resolutor no adivina entre ellos.",
+      "do": "Abra el vehículo y defina su enlace telemático, o archive el duplicado."
     }
   }
 }
