@@ -207,7 +207,7 @@ export default function TripsDrawer({
       >
         <SheetHeader className="px-5 py-4 border-b border-border flex-row items-start gap-3 shrink-0">
           <div className="flex-1 min-w-0">
-            <SheetTitle className="text-base font-semibold flex items-center gap-2">
+            <SheetTitle className="flex items-center gap-2">
               Trips — {vehicleName}{company ? ` · ${company}` : ''}
               {flagCallout(rowFlag) && (
                 <CalloutChip callout={flagCallout(rowFlag)!} />

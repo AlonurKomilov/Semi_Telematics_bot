@@ -160,7 +160,7 @@ export default function StatementDrawer({
         className="p-0 gap-0 print:max-w-none print:border-0"
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3 print:hidden">
-          <SheetTitle className="text-base font-semibold text-foreground">Settlement statement</SheetTitle>
+          <SheetTitle>Settlement statement</SheetTitle>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="xs" onClick={() => window.print()}>
               <Printer className="mr-1" /> Print

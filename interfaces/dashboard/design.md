@@ -921,7 +921,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Thirty-two live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Thirty-three live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -953,6 +953,7 @@ this table has any chance of staying true.
 | no `text-3xs` (§7) | the 10px step is retired — it rendered 8.5px at the 85% floor. Aliased to `2xs` in the config so any straggler still renders, but nothing new may use it |
 | no corner outside the scale (§6) | `rounded-[Npx]` ignores the setting; `rounded-4xl` is worse — a step the scale never defined, so it compiles to nothing and falls back to square. Comments are stripped first, so StatusBadge's write-up of the old bug is not itself a bug |
 | a capsule is never a control (§3) | `rounded-full` on a text-bearing `<button>`/`<a>`. Circular BY GEOMETRY — an icon button in a square box — is exempt and detected by its own size classes |
+| raw form controls stay above the tap floor (§5.1) | the tap-floor guard scans `<button\|a\|summary>` only, so every raw `<input>`, `<textarea>` and `<select>` was invisible to it — which is how `min-h-tap` went missing from the `<Input>` primitive and all 66 of its call sites. A two-way ratchet: 243 raw controls predate it, so it fails when the number RISES (a new offender) and when it FALLS (debt paid, baseline now a lie) |
 | the three Corners presets stay wired | reads `index.css` — the first test in this repo to open a stylesheet. Without it a fourth preset ships as a silent no-op, and an existing one can be neutered by deleting a line |
 | `--radius` is assigned only in the stylesheet | a component redefining it would scope the picker to its own subtree, and the half-failure is invisible until someone tries Sharp |
 | the borderRadius scale still derives from `--radius` | reads `tailwind.config.js`; `none` and `full` are deliberately literal |

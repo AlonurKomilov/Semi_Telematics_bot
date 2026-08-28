@@ -20,6 +20,7 @@
  */
 import type { LucideIcon } from 'lucide-react';
 
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tip } from '@/components/tooltip';
 
 export function MatrixTh({ icon: Icon, label, hint }: {
@@ -56,18 +57,10 @@ export function MatrixCell({ checked, disabled, busy, hint, label, onChange }: {
   onChange: (v: boolean) => void | Promise<void>;
 }) {
   const box = (
-    <input
-      type="checkbox"
+    <Checkbox
       checked={checked}
       disabled={disabled}
       onChange={(e) => void onChange(e.target.checked)}
-      // A native checkbox renders ~13px, well under the 24px floor
-      // (WCAG 2.5.8), and the cell's padding is NOT the hit box — only
-      // the input is clickable.  The floor is the one step that does not
-      // scale with the Size control, which is why it has to be on the
-      // control itself.
-      className="accent-primary cursor-pointer disabled:cursor-not-allowed
-                 min-h-tap min-w-tap"
       aria-label={disabled && hint ? `${label} — ${hint}` : label}
       aria-busy={busy || undefined}
     />
