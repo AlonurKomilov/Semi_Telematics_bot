@@ -22,6 +22,14 @@ true for that to be safe, and none of them fails loudly on its own:
      features/<x>/test_foo.py would be scanned, imported and enforced as
      production source — 11 files write warehouse SQL that is legal only
      because they are test code.
+
+  4. Package-owned tests do not SHIP.  .dockerignore's ``tests/`` is
+     anchored to the build-context root, so it excluded the root suite
+     and nothing else: the moment tests moved next to the code they
+     guard, all 274 of them began landing in the production image.  A
+     build probe confirmed it — the root marker was excluded, the
+     nested one was copied in.  Nothing caught that, which is why this
+     rule now exists.
 """
 
 from __future__ import annotations
@@ -30,7 +38,7 @@ import configparser
 
 from tests._repo import REPO
 
-_ROOTS = ("features", "capabilities")
+_ROOTS = ("features", "capabilities", "adapters")
 
 
 def _package_test_dirs() -> list:
@@ -88,4 +96,22 @@ def test_no_loose_test_files_beside_package_source():
         + "\nMove them into that package's tests/ subdirectory — the "
           "guards prune by directory NAME, so a loose file is scanned "
           "and enforced as production code."
+    )
+
+
+def test_package_owned_tests_are_excluded_from_the_image():
+    """Docker anchors a bare ``tests/`` to the context root.
+
+    The recursive form is what covers features/<x>/tests/ and its
+    siblings; without it the image carries the whole suite.
+    """
+    patterns = [
+        ln.strip() for ln in
+        (REPO / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    assert "**/tests/" in patterns, (
+        "`**/tests/` is missing from .dockerignore, so every package-owned "
+        "tests/ dir ships in the production image.  A bare `tests/` does "
+        "NOT cover them — it matches the context root only."
     )

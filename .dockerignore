@@ -7,6 +7,14 @@ __pycache__/
 *.pyc
 *.pyo
 tests/
+# Package-owned tests (features/*/tests/, adapters/*/tests/, ...).
+# A bare `tests/` is anchored to the context root, so it excluded the
+# root suite ONLY -- once the test files moved next to the code they
+# guard, all 274 of them (3.0M) started shipping in the image.  Verified
+# with a build probe, not read off the docs.
+**/tests/
+conftest.py
+pytest.ini
 backups/
 *.log
 .bot.pid
