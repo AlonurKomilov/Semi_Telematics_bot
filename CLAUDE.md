@@ -79,9 +79,10 @@ Rules and the incident behind each: [scripts/githooks/README.md](scripts/githook
 
 A package owns its tests in its own `tests/` subfolder —
 `features/kpi/tests/`, `capabilities/alerting/tests/`,
-`adapters/storage/tests/`. Not beside the source (that clutters the
-package), and not in the repo-root `tests/` (that is how a test gets
-orphaned from the code it guards). 45 packages follow this.
+`adapters/storage/tests/`, `interfaces/bot/tests/`, `infra/tests/`.
+Not beside the source (that clutters the package), and not in the
+repo-root `tests/` (that is how a test gets orphaned from the code it
+guards). All five layers follow this — 48 packages.
 
 The root `tests/` keeps only what belongs to no single package:
 repo-wide structural guards, and tests that cross layers.
@@ -96,7 +97,9 @@ repo-wide structural guards, and tests that cross layers.
 2. Every package `tests/` dir has an `__init__.py`. Without it two files
    named `test_service.py` in different packages collide on module name.
 3. No loose `test_*.py` beside package source — the subdirectory form is
-   what the guards can see.
+   what the guards can see. Vendored `tests/` dirs under `node_modules`
+   are excluded: `interfaces/*/node_modules` carries 14 of them (zod,
+   redux-toolkit, …) and they are not packages of ours.
 4. `.dockerignore` carries `**/tests/`. A bare `tests/` is anchored to
    the build-context root, so it excludes the root suite and nothing
    else — package-owned tests then ship inside the production image

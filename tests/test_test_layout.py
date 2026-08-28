@@ -38,7 +38,7 @@ import configparser
 
 from tests._repo import REPO
 
-_ROOTS = ("features", "capabilities", "adapters")
+_ROOTS = ("features", "capabilities", "adapters", "interfaces", "infra")
 
 
 def _package_test_dirs() -> list:
@@ -47,7 +47,13 @@ def _package_test_dirs() -> list:
         base = REPO / root
         if base.is_dir():
             out += [d for d in base.rglob("tests")
-                    if d.is_dir() and "__pycache__" not in d.parts]
+                    if d.is_dir()
+                    and "__pycache__" not in d.parts
+                    # interfaces/*/node_modules carries 14 tests/ dirs of
+                    # its own (zod, redux-toolkit, ...).  They are vendored
+                    # JS, not packages of ours, and demanding they sit in
+                    # testpaths would fail rule 1 for code we do not own.
+                    and "node_modules" not in d.parts]
     return sorted(out)
 
 
