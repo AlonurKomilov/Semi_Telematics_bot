@@ -472,10 +472,27 @@ def _route_tenant(db, account_id=42):
     return rt, fake_get_tenant_db
 
 
+def _unrestricted(monkeypatch, rt):
+    """No Team Management company restriction for this caller.
+
+    The registry-admin routes now consult the company wall on every verb,
+    which needs the PLATFORM db — these tests call the handlers directly
+    with a hand-built user dict and never initialise it.  Returning []
+    is what an unrestricted user resolves to in production, so the routes
+    behave exactly as they did before the wall existed.  A test for the
+    RESTRICTED case lives in features/vehicles/tests/
+    test_registry_company_wall.py, which pins the wall itself.
+    """
+    async def _none(_user):
+        return []
+    monkeypatch.setattr(rt, "get_user_company_codes", _none)
+
+
 @pytest.mark.asyncio
 async def test_route_create_update_delete(db, monkeypatch):
     rt, fake_tdb = _route_tenant(db)
     monkeypatch.setattr(rt, "_get_tenant_db", fake_tdb)
+    _unrestricted(monkeypatch, rt)
     # ``uid`` is on every real token since the user-id rollout — the
     # activity trail resolves the actor from it, no platform DB needed.
     user = {"account_id": 42, "sub": "1", "uid": 1}
@@ -502,6 +519,7 @@ async def test_route_create_update_delete(db, monkeypatch):
 async def test_route_create_duplicate_is_409(db, monkeypatch):
     rt, fake_tdb = _route_tenant(db)
     monkeypatch.setattr(rt, "_get_tenant_db", fake_tdb)
+    _unrestricted(monkeypatch, rt)
     from fastapi import HTTPException
     # ``uid`` is on every real token since the user-id rollout — the
     # activity trail resolves the actor from it, no platform DB needed.
@@ -521,6 +539,7 @@ async def test_route_create_duplicate_is_409(db, monkeypatch):
 async def test_route_update_missing_is_404(db, monkeypatch):
     rt, fake_tdb = _route_tenant(db)
     monkeypatch.setattr(rt, "_get_tenant_db", fake_tdb)
+    _unrestricted(monkeypatch, rt)
     from fastapi import HTTPException
     with pytest.raises(HTTPException) as exc:
         await rt.update_registry_vehicle(

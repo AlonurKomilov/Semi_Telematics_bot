@@ -31,6 +31,7 @@ from interfaces.api.deps import (
     require_permission_any,
     get_user_company_codes,
     validate_company_access,
+    filter_by_company_map,
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
     require_permission,
@@ -1036,6 +1037,22 @@ class DeviceEventResolve(BaseModel):
     archive_old: bool = False
 
 
+async def _registry_company_map(tenant, account_id: int) -> dict:
+    """``registry_id -> company_code`` for this account's vehicles.
+
+    Rows with no company are omitted rather than mapped to '': absent
+    from the map means "unresolved", which `filter_by_company_map` keeps
+    — and an unscoped vehicle should be visible to anyone holding the
+    permission, which is the same answer.
+    """
+    try:
+        rows = await tenant.list_vehicles(account_id)
+    except Exception:
+        return {}                      # cold source -> helper fails open
+    return {v.id: v.company_code for v in rows
+            if getattr(v, "company_code", "")}
+
+
 @router.get("/device-events")
 async def list_device_events(
     user: dict = Depends(_manage_vehicles),
@@ -1046,6 +1063,18 @@ async def list_device_events(
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     events = await tenant.get_device_events(account_id)
+    # These rows carry no company column, so the company comes from the
+    # registry via `filter_by_company_map`.  Keyed on registry_id, not
+    # vehicle_name: unit numbers are reused across companies once a truck
+    # retires, so a name key would resolve some rows to the wrong wall.
+    # The helper's documented FAIL-OPEN posture applies — an unplaced row
+    # (registry_id NULL) is kept rather than hidden, because a device
+    # nobody has placed yet is exactly what this card exists to surface.
+    allowed = await get_user_company_codes(user)
+    if allowed:
+        company_by_id = await _registry_company_map(tenant, account_id)
+        events = filter_by_company_map(
+            events, allowed, company_by_id, key="registry_id")
     return {
         "events": events,
         "open_count": sum(1 for e in events if e.get("status") == "open"),
@@ -1632,6 +1661,17 @@ async def create_vehicle(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    # 403 here, not 404: the caller supplied the company themselves, so
+    # there is no resource whose existence a 404 would be hiding.
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, body.company_code)
+    if allowed and not body.company_code:
+        # Otherwise a restricted user could mint UNSCOPED vehicles, which
+        # pass every company wall in the product by design — creating a
+        # blind spot rather than crossing one.
+        raise HTTPException(
+            400, "Pick a company for this vehicle — your access is "
+                 "limited to specific companies")
     try:
         vid = await tenant.add_vehicle(
             account_id,
@@ -1672,6 +1712,14 @@ async def list_archived_vehicles(user: dict = Depends(_manage_vehicles)):
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     rows = await tenant.list_archived_vehicles(account_id)
+    # A list route walls by FILTERING, like the other reads in this file
+    # — never by 404, which has nothing to hide behind on a collection.
+    # A null company_code is unscoped and stays visible.
+    allowed = await get_user_company_codes(user)
+    if allowed:
+        rows = [v for v in rows
+                if not (getattr(v, "company_code", "") or "")
+                or (v.company_code in allowed)]
     return {
         # Shaped like a row from the vehicles LIST, not like the manage
         # dialog's `_vehicle_to_dict`.  These rows land in the same grid
@@ -1704,6 +1752,35 @@ async def list_archived_vehicles(user: dict = Depends(_manage_vehicles)):
     }
 
 
+async def _wall_registry_vehicle(tenant, account_id: int, vehicle_id: int,
+                                 user: dict):
+    """The registry row this caller may act on, or 404.
+
+    THE CONTRACT, written down because its absence is what let six
+    endpoints drift apart: company restriction binds EVERY VERB, not just
+    viewing.  Owners and unrestricted users pass; a null ``company_code``
+    is unscoped and passes for anyone holding the permission.
+
+    404 rather than 403, matching ``inventory/router.py::_resolve_vehicle``
+    — a 403 on a foreign id confirms that the id exists, which is the
+    disclosure the wall is there to prevent.
+
+    Managing was account-wide while VIEWING the same rows was walled, so
+    a user restricted to company A could rename, archive or read the VIN
+    and plate of company B's trucks — writes wider than reads, the same
+    defect shape as the alerting leak fixed in e7e5bb07.  Multi-company
+    accounts here are often separate legal entities sharing one login.
+    """
+    v = await tenant.get_vehicle(account_id, vehicle_id)
+    if v is None:
+        raise HTTPException(404, "no vehicle with that id")
+    allowed = await get_user_company_codes(user)
+    code = getattr(v, "company_code", "") or ""
+    if allowed and code and code not in allowed:
+        raise HTTPException(404, "no vehicle with that id")
+    return v
+
+
 @router.post("/registry/{vehicle_id}/restore")
 async def restore_registry_vehicle(
     vehicle_id: int,
@@ -1719,6 +1796,7 @@ async def restore_registry_vehicle(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    await _wall_registry_vehicle(tenant, account_id, vehicle_id, user)
     ok = await tenant.restore_vehicle(
         account_id, vehicle_id,
         actor_user_id=await resolve_user_id(user),
@@ -1741,7 +1819,14 @@ async def update_registry_vehicle(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    await _wall_registry_vehicle(tenant, account_id, vehicle_id, user)
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    # A restricted caller may not MOVE a vehicle out of their own
+    # companies either — the wall above proves they may touch this row,
+    # not that they may hand it to a company they cannot see.
+    if fields.get("company_code"):
+        validate_company_access(await get_user_company_codes(user),
+                                fields["company_code"])
     try:
         ok = await tenant.update_vehicle(
             account_id, vehicle_id,
@@ -1765,6 +1850,7 @@ async def delete_registry_vehicle(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    await _wall_registry_vehicle(tenant, account_id, vehicle_id, user)
     ok = await tenant.deactivate_vehicle(
         account_id, vehicle_id,
         actor_user_id=await resolve_user_id(user),
