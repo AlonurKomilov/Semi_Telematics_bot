@@ -19,7 +19,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import get_current_db_user, get_current_user
+from interfaces.api.deps import (
+    get_current_db_user, get_current_user, get_user_company_codes,
+)
 from interfaces.api.rate_limit import limiter
 
 from capabilities.alerting.triggers import catalog as cat
@@ -186,13 +188,14 @@ async def _validate_targets(user: dict, me, raw) -> str:
         # store an id the UI can never show again — and the sweep would
         # go on firing at it.
         cur = await tenant._db.execute(
-            f"SELECT id, unit_number, telematics_ref FROM vehicles "
+            f"SELECT id, unit_number, telematics_ref, company_code FROM vehicles "
             f"WHERE account_id = ? AND is_active = 1 "
             f"AND id IN ({placeholders})",
             (me.account_id, *ids),
         )
         found = {int(r[0]): {"registry_id": int(r[0]), "vehicle_id": r[2] or "",
-                             "name": r[1] or ""} for r in await cur.fetchall()}
+                             "name": r[1] or "", "company_code": r[3] or ""}
+                 for r in await cur.fetchall()}
     missing = [i for i in ids if i not in found]
     if missing:
         raise HTTPException(
@@ -201,16 +204,25 @@ async def _validate_targets(user: dict, me, raw) -> str:
                    "picker and choose again",
         )
     scope = await get_user_vehicle_scope(user)
-    if scope is not None:
-        denied = [i for i in ids if not scope.allows_row(found[i])]
-        if denied:
-            # Deliberately does NOT name which ones: the caller may not
-            # see them, and "vehicle 41 is not yours" confirms that
-            # vehicle 41 exists.
-            raise HTTPException(
-                status_code=403,
-                detail="That selection includes vehicles you can’t see",
-            )
+    # Both walls, because they restrict different people.  The vehicle
+    # scope narrows an assigned DRIVER; the company wall narrows everyone
+    # else, and without it a company-restricted dispatcher could store a
+    # target for a truck they cannot see anywhere in the product — and
+    # then be DM'd its readings every sweep.
+    allowed = await get_user_company_codes(user)
+    denied = [
+        i for i in ids
+        if (scope is not None and not scope.allows_row(found[i]))
+        or (allowed and (found[i]["company_code"] or "") not in allowed)
+    ]
+    if denied:
+        # Deliberately does NOT name which ones: the caller may not see
+        # them, and "vehicle 41 is not yours" confirms that vehicle 41
+        # exists.
+        raise HTTPException(
+            status_code=403,
+            detail="That selection includes vehicles you can’t see",
+        )
     return csv
 
 
@@ -250,8 +262,18 @@ async def list_targetable_vehicles(
         )
         rows = [dict(r) for r in await cur.fetchall()]
     scope = await get_user_vehicle_scope(user)
+    # The COMPANY wall, which the vehicle scope does not carry:
+    # get_user_vehicle_scope returns None for every role except an
+    # assigned driver, so on its own this endpoint was unrestricted for
+    # dispatchers, managers and accountants — strictly wider than
+    # GET /vehicles/, which walls the same rows.  An enumeration IS the
+    # disclosure here: unit number, type and company_code for the whole
+    # account, in one authenticated GET.
+    allowed = await get_user_company_codes(user)
     out = []
     for r in rows:
+        if allowed and (r["company_code"] or "") not in allowed:
+            continue
         shaped = {"registry_id": int(r["id"]), "vehicle_id": r["telematics_ref"] or "",
                   "name": r["unit_number"] or ""}
         if scope is not None and not scope.allows_row(shaped):

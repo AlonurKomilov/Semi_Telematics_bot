@@ -644,3 +644,42 @@ class TestEditingAPair:
 
     def test_an_unknown_metric_is_still_refused_on_edit(self):
         assert "not a metric" in validate("tyre_psi", 90)
+
+
+class TestCompanyWall:
+    """A trigger must not cross the Team Management company wall.
+
+    The vehicle scope narrows an assigned DRIVER and returns None for
+    every other role, so on its own it walls nobody who is restricted by
+    COMPANY instead — which on the live account is four dispatchers.
+    Three seams had to be closed, because each leaks on its own: the
+    picker enumerates, the validator stores, and the sweep delivers.
+    """
+
+    def test_every_wall_composes_rather_than_flattens(self):
+        """Each wall decides on the strongest rung it carries.  Merging
+        them into one id set would demote whichever rung the other lacked
+        — the company wall knows registry ids, the driver ladder also
+        knows external ids and names."""
+        from capabilities.alerting.triggers.evaluator import _AllOf
+        from capabilities.permissions.vehicle_scope import VehicleScope
+        company = VehicleScope(registry_ids=frozenset({1, 2}))
+        driver = VehicleScope(registry_ids=frozenset({2, 3}))
+        both = _AllOf([company, driver])
+        assert both.allows_row({"registry_id": 2, "vehicle_id": "x"})
+        assert not both.allows_row({"registry_id": 1, "vehicle_id": "x"})
+        assert not both.allows_row({"registry_id": 3, "vehicle_id": "x"})
+
+    def test_an_unrestricted_owner_is_still_unrestricted(self):
+        """No company codes and not a driver means no wall — composing an
+        empty list must not turn into deny-all."""
+        from capabilities.alerting.triggers.evaluator import _AllOf
+        assert _AllOf([]).allows_row({"registry_id": 99, "vehicle_id": "z"})
+
+    def test_the_wall_survives_a_row_with_no_registry_id(self):
+        """An unplaced row (registry_id NULL, first ingest tick) must not
+        pass a registry-keyed company wall by default — it cannot be
+        proven to be in an allowed company."""
+        from capabilities.permissions.vehicle_scope import VehicleScope
+        company = VehicleScope(registry_ids=frozenset({1}))
+        assert not company.allows_row({"registry_id": None, "vehicle_id": "new"})

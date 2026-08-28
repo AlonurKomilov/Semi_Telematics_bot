@@ -114,6 +114,23 @@ async def _latest_per_vehicle(tenant, account_id: int, columns: list[str]) -> li
     return [dict(r) for r in await cur.fetchall()]
 
 
+class _AllOf:
+    """Every wall must allow the row.
+
+    Composed rather than intersected into one id set, because each wall
+    decides on the strongest rung IT carries — the company wall knows
+    registry ids, the driver ladder also knows external ids and names.
+    Flattening them into a single set would silently demote whichever
+    rung the other one lacked.
+    """
+
+    def __init__(self, scopes):
+        self._scopes = [s for s in scopes if s is not None]
+
+    def allows_row(self, row, **kw) -> bool:
+        return all(s.allows_row(row, **kw) for s in self._scopes)
+
+
 async def _owner_scope(tenant, account_id: int, owner_user_id: int):
     """The trigger owner's vehicle scope, or None when unrestricted.
 
@@ -130,8 +147,30 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
         user = await db.get_user_by_id(owner_user_id)
         role = str(getattr(getattr(user, "role", ""), "value", "")
                    or getattr(user, "role", "") or "")
+
+        # THE COMPANY WALL, and it applies to every role.  The driver
+        # ladder below narrows one assigned person; this narrows everyone
+        # else, and without it the sweep DM'd a company-restricted
+        # dispatcher the display name and fuel/DEF/battery/oil reading of
+        # trucks in companies they cannot open anywhere in the product.
+        # ``_deliver`` calls notify_user directly rather than send_alert,
+        # so it never passed through filter_subscribers_by_company —
+        # the gate every other alert path applies.
+        walls = []
+        codes = await db.get_user_company_codes(owner_user_id)
+        if codes:
+            ph = ", ".join("?" for _ in codes)
+            cur = await tenant._db.execute(
+                f"SELECT id FROM vehicles WHERE account_id = ? "
+                f"  AND company_code IN ({ph})",
+                (account_id, *codes),
+            )
+            from capabilities.permissions.vehicle_scope import VehicleScope
+            walls.append(VehicleScope(
+                registry_ids=frozenset(int(r[0]) for r in await cur.fetchall())))
+
         if role != "driver":
-            return None
+            return _AllOf(walls) if walls else None
         trucks = await db.get_user_vehicle_nums(owner_user_id)
         if not trucks:
             # Legacy behaviour, kept deliberately and matching
@@ -139,9 +178,10 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
             # all is unrestricted rather than blind.
             trucks = [getattr(user, "truck_num", "")] if getattr(user, "truck_num", "") else []
         if not trucks:
-            return None
+            return _AllOf(walls) if walls else None
         from capabilities.permissions.vehicle_scope import build_vehicle_scope
-        return await build_vehicle_scope(tenant, account_id, trucks)
+        walls.append(await build_vehicle_scope(tenant, account_id, trucks))
+        return _AllOf(walls)
     except Exception as e:
         # Fail CLOSED for a restricted owner is not possible without
         # knowing they are restricted — so an unresolvable scope means we
