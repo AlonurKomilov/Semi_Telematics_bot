@@ -1626,9 +1626,26 @@ async def list_archived_vehicles(user: dict = Depends(_manage_vehicles)):
         raise HTTPException(503, "tenant DB unavailable")
     rows = await tenant.list_archived_vehicles(account_id)
     return {
+        # Shaped like a row from the vehicles LIST, not like the manage
+        # dialog's `_vehicle_to_dict`.  These rows land in the same grid
+        # as live trucks, so they must speak its column names: `name`
+        # and `company`, not `unit_number` and `company_code`.  And
+        # `registry_id` is what the row menu keys Restore off — without
+        # it the action never appears and the tab is a dead end.
         "vehicles": [
             {
-                **_vehicle_to_dict(v),
+                "id": v.id,
+                "name": v.unit_number,
+                "company": v.company_code,
+                "registry_id": v.id,
+                "vehicle_type": v.vehicle_type,
+                "source": v.source,
+                "status": v.status,
+                "vin": v.vin,
+                "plate_number": v.plate_number,
+                "make": v.make,
+                "model": v.model,
+                "year": v.year,
                 "archived_reason": v.archived_reason,
                 "status_before_archive": v.status_before_archive,
                 "archived_at": v.updated_at,

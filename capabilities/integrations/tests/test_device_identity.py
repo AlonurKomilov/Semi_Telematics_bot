@@ -684,3 +684,45 @@ async def test_restoring_a_live_truck_does_nothing(pg_db):
     assert await pg_db.restore_vehicle(acct, v.id) is False
     (still,) = await pg_db.list_vehicles(acct)
     assert still.status == "in_transit"
+
+
+@pytest.mark.asyncio
+async def test_archived_rows_speak_the_grids_column_names(pg_db, monkeypatch):
+    """The Archived tab renders in the SAME grid as live trucks.
+
+    So its rows have to answer to that grid's column keys — `name` and
+    `company`, not the registry's `unit_number` and `company_code`.
+    Shipped once with the manage-dialog shape instead: every row drew a
+    blank Vehicle and a dash for Company, eight identical empty lines.
+
+    `registry_id` is the sharper one: the row menu keys Restore off it,
+    so without it the action never appears and the tab is a dead end
+    you cannot act on.
+    """
+    from features.vehicles import router as vr
+
+    acct = 10009010
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "P7", "telematics_ref": "ref-p",
+         "vehicle_type": "truck"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    await pg_db.deactivate_vehicle(acct, v.id)
+
+    async def _fake_tenant(_account_id):
+        return pg_db
+    monkeypatch.setattr(vr, "_get_tenant_db", _fake_tenant)
+
+    out = await vr.list_archived_vehicles(user={"account_id": acct})
+    assert out["count"] == 1
+    row = out["vehicles"][0]
+
+    # The keys the grid's columns actually read.
+    assert row["name"] == "P7"
+    assert row["company"] == "PTG"
+    assert row["vehicle_type"] == "truck"
+    # Without this the Restore action is never offered.
+    assert row["registry_id"] == v.id
+    # And why it left, which the reader needs to tell "someone decided"
+    # from "its gateway went silent".
+    assert row["archived_reason"] == "operator"
