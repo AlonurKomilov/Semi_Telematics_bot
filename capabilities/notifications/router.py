@@ -251,7 +251,9 @@ async def get_account_activity_prefs(
     so the UI can lock their toggles on."""
     from infra.platform import get_platform_db
     from capabilities.notifications.categories import list_categories, TARGETED
-    from capabilities.notifications.channels import personal_channels
+    from capabilities.notifications.channels import (
+        channel_ready, personal_channels,
+    )
 
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)
@@ -271,14 +273,10 @@ async def get_account_activity_prefs(
             db_user.account_id, "user", db_user.id, ch.key)
         verified = bool(conn and conn.get("verified"))
         master = bool(conn.get("enabled_master")) if conn else True
-        if getattr(ch, "intrinsic", False):
-            ready = True                    # in-app inbox: nothing to connect
-        elif ch.key == "web_push":
-            devices = await db.list_push_subscriptions(
-                db_user.account_id, db_user.id)
-            ready = bool(devices) and master
-        else:
-            ready = verified and master
+        devices = (await db.list_push_subscriptions(
+                       db_user.account_id, db_user.id)
+                   if ch.key == "web_push" else [])
+        ready = channel_ready(ch, conn, len(devices))
         channels[ch.key] = {
             "connected": bool(conn), "verified": verified,
             "enabled_master": master, "ready": ready,

@@ -240,6 +240,29 @@ def register_channel(channel: Channel) -> Channel:
     return channel
 
 
+def channel_ready(ch: "Channel", conn: dict | None,
+                  device_count: int = 0) -> bool:
+    """Can this channel actually deliver to this person RIGHT NOW?
+
+    One definition, because the answer is asked in three places that must
+    not drift: the preferences matrix greys a column with it, the send
+    path refuses with it, and the trigger list states delivery with it.
+    A surface that says "this reaches you by email" while the send path
+    would skip email is not a cosmetic disagreement — it is the product
+    promising something it will not do.
+
+    Each channel's rule is its own: the in-app bell is intrinsic and
+    always ready, web push needs a subscribed device, everything else
+    needs a verified address.  All of them need their master switch.
+    """
+    if getattr(ch, "intrinsic", False):
+        return True                     # the bell: nothing to connect
+    master = bool(conn.get("enabled_master")) if conn else True
+    if ch.key == "web_push":
+        return device_count > 0 and master
+    return bool(conn and conn.get("verified")) and master
+
+
 def get_channel(key: str) -> Channel | None:
     return _CHANNELS.get(key)
 

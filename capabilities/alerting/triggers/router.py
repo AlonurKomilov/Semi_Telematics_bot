@@ -25,8 +25,8 @@ from interfaces.api.rate_limit import limiter
 from capabilities.alerting.triggers import catalog as cat
 from capabilities.alerting.triggers.models import (
     DEFAULT_CHANNELS, MAX_TRIGGERS_PER_USER, TRIGGER_CHANNELS, AlertTrigger,
-    DEFAULT_CHANNELS_CSV, clean_channels, clean_vehicle_ids, num_text,
-    validate,
+    ALWAYS, DEFAULT_CHANNELS_CSV, clean_channels, clean_vehicle_ids,
+    num_text, validate,
 )
 
 logger = logging.getLogger("api.alert_triggers")
@@ -82,7 +82,35 @@ async def _me(user: dict):
     return db, db_user
 
 
-def _shape(row: dict) -> dict:
+async def _ready_channels(db, account_id: int, user_id: int) -> set[str]:
+    """Which channels can actually reach this person right now.
+
+    Uses the notifications capability's own readiness rule rather than a
+    second copy of it — the trigger list was stating "Bell, Telegram and
+    email" from the trigger's CONFIGURED channels, which is what it wants
+    to send to, not what will arrive.  On live data that made six of
+    seven triggers claim email for an owner with no email connected, and
+    one claim Telegram for an owner whose master switch is off.
+    """
+    from capabilities.notifications.channels import (
+        channel_ready, get_channel, personal_channels,
+    )
+    ready: set[str] = set()
+    for ch in personal_channels():
+        conn = await db.get_notification_channel(account_id, "user", user_id, ch.key)
+        devices = (await db.list_push_subscriptions(account_id, user_id)
+                   if ch.key == "web_push" else [])
+        if channel_ready(ch, conn, len(devices)):
+            ready.add(ch.key)
+    # The bell is intrinsic and has no connection row; personal_channels()
+    # includes it, but be explicit rather than relying on that.
+    bell = get_channel(ALWAYS)
+    if bell is not None:
+        ready.add(ALWAYS)
+    return ready
+
+
+def _shape(row: dict, ready: set[str] | None = None) -> dict:
     """One trigger as the UI needs it — the row plus the sentence a person
     reads, so the client never rebuilds the phrasing from parts."""
     trig = AlertTrigger.from_row(row)
@@ -105,6 +133,11 @@ def _shape(row: dict) -> dict:
         "vehicles": trig.target_ids,
         "watches_all": trig.targets_all,
         "delivers_to": trig.delivery_channels,
+        # What of that will ACTUALLY arrive.  None = not resolved on this
+        # route (a write response), and the client falls back to
+        # delivers_to rather than rendering an empty promise.
+        "reaches_now": (None if ready is None
+                        else [c for c in trig.delivery_channels if c in ready]),
         # None when the catalog has moved on and this row names a metric
         # that no longer exists — the UI shows it as retired so the person
         # can delete it, rather than the row vanishing unexplained.
@@ -342,7 +375,10 @@ async def list_fired(
 async def list_my_triggers(request: Request, user: dict = Depends(get_current_user)):
     db, me = await _me(user)
     rows = await db.list_alert_triggers(me.account_id, owner_user_id=me.id)
-    return {"triggers": [_shape(r) for r in rows],
+    # Resolved ONCE for the caller, not per trigger — every row belongs to
+    # the same person, so their channel state is one lookup.
+    ready = await _ready_channels(db, me.account_id, me.id)
+    return {"triggers": [_shape(r, ready) for r in rows],
             "max_per_user": MAX_TRIGGERS_PER_USER}
 
 

@@ -40,6 +40,7 @@ import { toast } from 'sonner';
 import { BellRing, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
+import { toneText } from '@/lib/status';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton, SectionHeader } from '@/components/shell';
@@ -73,9 +74,14 @@ interface Trigger {
   direction: 'below' | 'above' | null;
   /** The EXTRA channels this trigger asked for. */
   channels: string[];
-  /** Everything it actually reaches, bell included — the server's list,
+  /** Everything it is SET to reach, bell included — the server's list,
    *  so the UI never has to know that the bell is implicit. */
   delivers_to: string[];
+  /** Of that, what will actually ARRIVE, judged by the notifications
+   *  capability's own readiness rule. null when a route did not resolve
+   *  it (write responses), in which case fall back to delivers_to
+   *  rather than rendering an empty promise. */
+  reaches_now: string[] | null;
 }
 
 /** Channel keys are wire values; these are the words a person reads.  A
@@ -101,6 +107,14 @@ function channelPhrase(keys: string[]): string {
   const names = keys.map((c) => CHANNEL_LABEL[c] ?? c);
   if (names.length <= 1) return names[0] ?? '';
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** Configured minus deliverable — what this trigger promises and cannot
+ *  keep.  Empty while `reaches_now` is null, because "not resolved" is
+ *  not the same as "nothing arrives". */
+function blockedFor(t: Trigger): string[] {
+  if (!t.reaches_now) return [];
+  return t.delivers_to.filter((c) => !t.reaches_now!.includes(c));
 }
 
 const API = '/alerts/triggers';
@@ -360,9 +374,20 @@ export default function AlertTriggersSection(
                     <Tip label="Change where this reaches you">
                       <Link to="/notifications/preferences"
                             className="text-primary hover:underline">
-                        {channelPhrase(t.delivers_to)}
+                        {channelPhrase(t.reaches_now ?? t.delivers_to)}
                       </Link>
                     </Tip>
+                    {/* A channel this trigger is SET to use that cannot
+                        deliver — no verified address, no device, master
+                        switch off.  Naming it is the whole point: the row
+                        used to list it as though it worked, so the only
+                        way to discover otherwise was not being told
+                        something. */}
+                    {blockedFor(t).length > 0 && (
+                      <span className={toneText('warn')}>
+                        {' · '}{channelPhrase(blockedFor(t))} not set up
+                      </span>
+                    )}
                   </span>
                 )}
                 {/* A row naming a metric the catalog no longer carries
