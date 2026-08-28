@@ -31,11 +31,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
-import { Send, Mail, MonitorSmartphone } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/shell';
 import { MatrixCell, MatrixTh } from './_shared/matrixCells';
+import { CHANNEL_META } from './_shared/channels';
 
 interface Trigger {
   id: number;
@@ -52,20 +52,6 @@ interface ChannelPrefs {
   devices?: { id: number }[];
 }
 
-/** Wire key → the word and glyph a person reads.
- *
- *  Which of these actually RENDER is the server's call: the grid shows the
- *  intersection of this map with `/alerts/triggers/metrics` → `channels`,
- *  so retiring a channel server-side removes its column here with no
- *  frontend change.  The map itself can't be server-driven — an icon is
- *  not a wire value — so a NEW channel does need one line added here, and
- *  until it is, the honest behaviour is no column rather than a nameless
- *  one. */
-const COLUMNS: { key: string; label: string; icon: typeof Send }[] = [
-  { key: 'telegram_dm', label: 'Telegram', icon: Send },
-  { key: 'email', label: 'Email', icon: Mail },
-  { key: 'web_push', label: 'Push', icon: MonitorSmartphone },
-];
 
 const API = '/alerts/triggers';
 
@@ -203,7 +189,7 @@ export default function TriggerDeliveryMatrix({
     chains.current.set(t.id, run.catch(() => {}));
   };
 
-  const columns = COLUMNS.filter((c) => channelKeys.includes(c.key));
+  const columns = CHANNEL_META.filter((c) => channelKeys.includes(c.key));
   const anyHint = columns.some((c) => colHint[c.key]);
 
   return (

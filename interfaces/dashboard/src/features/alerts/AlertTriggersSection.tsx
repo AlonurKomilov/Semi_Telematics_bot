@@ -41,6 +41,7 @@ import { BellRing, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 import { toneText } from '@/lib/status';
+import { CHANNEL_LABEL, CHANNEL_META, channelStateFor } from './_shared/channels';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton, SectionHeader } from '@/components/shell';
@@ -88,16 +89,6 @@ interface Trigger {
  *  key with no entry here still renders (as its key) rather than
  *  vanishing, so a channel added server-side is visible before this file
  *  catches up. */
-const CHANNEL_LABEL: Record<string, string> = {
-  // ``in_app`` is in ``delivers_to`` and never in ``channels`` — the bell
-  // is not a choice, so it has no checkbox anywhere, but the row still
-  // names it: "Telegram · Email" alone would read as if the bell were
-  // one more thing that could be switched off.
-  in_app: 'Bell',
-  telegram_dm: 'Telegram',
-  email: 'Email',
-  web_push: 'Push',
-};
 
 /** "Bell, Telegram and email" — a phrase, not a middot-joined stack.
  *  The row already uses · to separate the two FACTS about a trigger
@@ -371,18 +362,37 @@ export default function AlertTriggersSection(
                         middot now separates the two facts only; the
                         channels inside one of them are a list and read
                         like one. */}
+                    {/* Per-channel STATUS, in the same three names and
+                        glyphs as the matrix on notification preferences —
+                        so "is Telegram on for this trigger?" is answered
+                        the same way on both pages.  A phrase ("Bell,
+                        Telegram and email") could only list what is ON;
+                        it had no way to show that Push is available and
+                        deliberately off, which is half the answer. */}
                     <Tip label="Change where this reaches you">
                       <Link to="/notifications/preferences"
-                            className="text-primary hover:underline">
-                        {channelPhrase(t.reaches_now ?? t.delivers_to)}
+                            className="inline-flex items-center gap-2
+                                       hover:underline">
+                        {CHANNEL_META.map((c) => {
+                          const state = channelStateFor(
+                            c.key, t.delivers_to, t.reaches_now);
+                          const Icon = c.icon;
+                          return (
+                            <span key={c.key}
+                                  className={`inline-flex items-center gap-1 ${
+                                    state === 'on' ? 'text-foreground'
+                                    : state === 'blocked' ? toneText('warn')
+                                    : 'text-muted-foreground/40'}`}>
+                              <Icon className="size-3" aria-hidden />
+                              {c.label}
+                            </span>
+                          );
+                        })}
                       </Link>
                     </Tip>
-                    {/* A channel this trigger is SET to use that cannot
-                        deliver — no verified address, no device, master
-                        switch off.  Naming it is the whole point: the row
-                        used to list it as though it worked, so the only
-                        way to discover otherwise was not being told
-                        something. */}
+                    {/* Additional to the statuses above, not instead of
+                        them: the icons say Email is ON, this says why it
+                        still will not arrive. */}
                     {blockedFor(t).length > 0 && (
                       <span className={toneText('warn')}>
                         {' · '}{channelPhrase(blockedFor(t))} not set up
