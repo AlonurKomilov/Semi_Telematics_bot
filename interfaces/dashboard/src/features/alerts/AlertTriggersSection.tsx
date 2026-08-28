@@ -93,6 +93,16 @@ const CHANNEL_LABEL: Record<string, string> = {
   web_push: 'Push',
 };
 
+/** "Bell, Telegram and email" — a phrase, not a middot-joined stack.
+ *  The row already uses · to separate the two FACTS about a trigger
+ *  (which vehicles, where it goes); reusing it inside one of them made
+ *  four items read as one flat list of equal things. */
+function channelPhrase(keys: string[]): string {
+  const names = keys.map((c) => CHANNEL_LABEL[c] ?? c);
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 const API = '/alerts/triggers';
 
 export default function AlertTriggersSection(
@@ -321,23 +331,38 @@ export default function AlertTriggersSection(
                   )}
                 </span>
 
-                {/* Where it goes is STATED here, never edited here.  The
-                    controls live with every other delivery choice on
-                    notification preferences; a checkbox on this page would
-                    be the third screen a person has to visit to turn
-                    Telegram off.  Read-only, so the row still answers
-                    "did my change take" without owning the answer. */}
+                {/* Two facts about this trigger: which vehicles it
+                    watches, and where it reaches you.  The first is
+                    edited here (the pencil); the second is not — it is
+                    set with every other delivery choice on notification
+                    preferences, because a control here would be the third
+                    screen someone visits to turn Telegram off.  So the
+                    second is a link: it still answers "did my change
+                    take", and it goes where the answer can be changed. */}
                 {m && (
-                  // Two facts, two phrases.  Both are muted 2xs and sit
-                  // together at the end of the row, so each leads with a
-                  // preposition — without one they read as a single
-                  // string at narrow widths.
+                  // The middot separates the two FACTS and nothing else.
+                  // It used to separate the channels as well, which made
+                  // "on every vehicle · to Bell · Telegram · Email" read
+                  // as four things of equal rank instead of two, and left
+                  // "to Bell" standing where a phrase should be.
                   <span className="text-2xs text-muted-foreground shrink-0">
                     {t.watches_all
-                      ? 'on every vehicle'
-                      : `on ${t.vehicles.length} vehicle${t.vehicles.length === 1 ? '' : 's'}`}
-                    {' · to '}
-                    {t.delivers_to.map((c) => CHANNEL_LABEL[c] ?? c).join(' · ')}
+                      ? 'All vehicles'
+                      : `${t.vehicles.length} vehicle${t.vehicles.length === 1 ? '' : 's'}`}
+                    {' · '}
+                    {/* A LINK, because this half is not editable here —
+                        it is set on notification preferences, and inert
+                        text that can only be changed somewhere else is a
+                        dead end wearing the costume of a fact.  The
+                        middot now separates the two facts only; the
+                        channels inside one of them are a list and read
+                        like one. */}
+                    <Tip label="Change where this reaches you">
+                      <Link to="/notifications/preferences"
+                            className="text-primary hover:underline">
+                        {channelPhrase(t.delivers_to)}
+                      </Link>
+                    </Tip>
                   </span>
                 )}
                 {/* A row naming a metric the catalog no longer carries
