@@ -1,7 +1,7 @@
 /**
  * Write one trigger: what to watch, at what number, on which vehicles.
  *
- * A Sheet rather than the inline row it replaced, and the vehicle list is
+ * An inline panel inside the card that lists the triggers. The list is
  * the reason.  "Watch [metric] below [n] %" fitted on one line; a fleet
  * of 189 vehicles does not, and squeezing it into a popover on that line
  * would have made the most consequential choice in the form the smallest
@@ -44,10 +44,6 @@ import { toast } from 'sonner';
 import { Search } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { FEATURE_CATALOG } from '@/config/featureCatalog';
-import {
-  Sheet, SheetContent, SheetBody, SheetDescription, SheetFooter,
-  SheetHeader, SheetTitle,
-} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -93,8 +89,7 @@ export interface EditingTrigger {
   watches_all: boolean;
 }
 
-export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: {
-  open: boolean;
+export default function TriggerEditorForm({ editing, onClose, onSaved }: {
   editing?: EditingTrigger | null;
   onClose: () => void;
   onSaved: () => void;
@@ -134,8 +129,9 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
     }
   }, []);
 
+  // Mounted = open.  The parent renders this only while adding or
+  // editing, so there is no `open` prop to guard on any more.
   useEffect(() => {
-    if (!open) return;
     setQuery('');
     if (editing) {
       // Feature is derived from the metric rather than stored, so an edit
@@ -152,7 +148,7 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
     }
     void load();
     requestAnimationFrame(() => metricRef.current?.focus());
-  }, [open, editing, load]);
+  }, [editing, load]);
 
   const spec = metrics.find((m) => m.key === metric);
 
@@ -280,7 +276,7 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
   };
 
   // Anything typed or picked that would be lost.  Not a generic "dirty"
-  // flag: opening the Sheet and closing it again must not nag, so this
+  // flag: opening the form and closing it again must not nag, so this
   // asks whether there is WORK here, and picking 20 of 189 vehicles is
   // several minutes of it.
   const hasWork = editing
@@ -318,40 +314,25 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
   if (!open) return null;
 
   return (
-    // Escape and a backdrop click are the same intent as Cancel, so they
-    // get the same guard — a selection that took minutes to build must
-    // not vanish to a mis-aimed click.
-    <Sheet open onOpenChange={(o) => { if (!o) requestClose(); }}>
-      <SheetContent side="right" size="lg"
-                    aria-label={editing ? 'Edit an alert trigger'
-                                        : 'Add an alert trigger'}>
-        <SheetHeader className="px-5 py-4 border-b border-border shrink-0">
-          <SheetTitle>{editing ? 'Edit trigger' : 'Add a trigger'}</SheetTitle>
-          {/* SheetDescription, not a styled <p>: the primitive is what
-              wires aria-describedby onto the dialog, so this caveat —
-              the single most load-bearing sentence in the form — is
-              announced WITH the sheet rather than only seen. */}
-          <SheetDescription>
-            You hear on the <span className="text-foreground">crossing</span> —
-            a vehicle already past your number when you save stays quiet.
-            {editing && ' Saving a change re-reads the fleet, so anything '
-              + 'already past the new number stays quiet too.'}
-          </SheetDescription>
-        </SheetHeader>
-
-        {/* A real <form>, restored deliberately.  The inline row this
-            Sheet replaced was one, and its comment said why: "Enter
-            submits and Escape cancels, which is what anyone typing a
-            number expects.  A plain div of inputs answers neither key."
-            Moving to a Sheet dropped the form and with it Enter — a
-            regression against intent this feature had already written
-            down.  Escape is the Sheet's own. */}
+    // An inline panel in the card that lists the triggers, not a drawer.
+    // It was a Sheet first, on the reasoning that 189 vehicles cannot sit
+    // on a line — true of the LINE, and the wrong conclusion: the list
+    // scrolls inside its own well either way, and here it opens where the
+    // triggers already are instead of covering them. The card's own copy
+    // already states the crossing rule, so this panel repeats no heading
+    // and no caveat; it is the form, nothing else.
         <form
           onSubmit={(e) => { e.preventDefault(); void save(); }}
-          className="contents"
+          onKeyDown={(e) => {
+            // Escape cancels, the way it did before the drawer — and the
+            // drawer's own Escape is gone with it, so this is now the
+            // only thing answering that key.
+            if (e.key === 'Escape') { e.stopPropagation(); requestClose(); }
+          }}
+          aria-label={editing ? 'Edit trigger' : 'Add an alert trigger'}
+          className="flex flex-col gap-5 rounded-md border border-border p-3"
         >
-        <SheetBody label={editing ? 'Edit trigger' : 'Add a trigger'}
-                   className="px-5 py-4 flex flex-col gap-5">
+
           {/* FEATURE, then WATCH — the order the sentence is thought in:
               which part of the product, then which of its numbers.  It
               was a group heading inside the metric dropdown before, which
@@ -520,7 +501,8 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
                     which is past the "short picker list" carve-out. It
                     brings the focusability a plain overflow div lacks
                     (WCAG 2.1.1 — otherwise a keyboard user cannot scroll
-                    it at all), plus overscroll-contain inside a Sheet. */}
+                    it at all), plus overscroll-contain so a wheel at the
+                    list's end does not scroll the page behind it. */}
                 <ScrollRegion label="Vehicles"
                               className="max-h-64 rounded-md border
                                          border-border divide-y divide-border/60">
@@ -576,13 +558,10 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
               </div>
             )}
           </div>
-        </SheetBody>
 
-        <SheetFooter className="px-5 py-4 border-t border-border shrink-0
-                                flex-row justify-end gap-2">
-          {/* No icon: this is the only Cancel in the app that had one,
-              and the Sheet already draws a ✕ in the opposite corner —
-              two glyphs for one verb. */}
+          <div className="flex flex-wrap items-center justify-end gap-2
+                          border-t border-border pt-3">
+          {/* No icon: this was the only Cancel in the app with one. */}
           <Button type="button" variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
@@ -596,9 +575,7 @@ export default function TriggerEditorSheet({ open, editing, onClose, onSaved }: 
               {editing ? 'Save changes' : 'Add trigger'}
             </Button>
           </div>
-        </SheetFooter>
+          </div>
         </form>
-      </SheetContent>
-    </Sheet>
   );
 }

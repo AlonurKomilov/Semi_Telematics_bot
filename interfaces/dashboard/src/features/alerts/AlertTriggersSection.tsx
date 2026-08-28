@@ -44,8 +44,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CardSkeleton, SectionHeader } from '@/components/shell';
 import { Switch } from '@/components/ui/switch';
-import TriggerEditorSheet from './TriggerEditorSheet';
-import type { EditingTrigger } from './TriggerEditorSheet';
+import TriggerEditorForm from './TriggerEditorForm';
+import type { EditingTrigger } from './TriggerEditorForm';
 
 interface MetricSpec {
   key: string;
@@ -382,34 +382,18 @@ export default function AlertTriggersSection(
         </ul>
       )}
 
-      <div className="flex items-center gap-2">
-        <Button
-          ref={addBtnRef}
-          variant="outline"
-          size="sm"
-          aria-disabled={atCap}
-          onClick={() => { if (!atCap) { setEditing(null); setAdding(true); } }}
-        >
-          <Plus /> Add
-        </Button>
-        {atCap && (
-          <span className="text-2xs text-muted-foreground">
-            {maxPerUser} is the limit — remove one to add another.
-          </span>
-        )}
-      </div>
-
-      {/* A Sheet, not the inline row this replaced: a trigger now also
-          carries a vehicle selection, and a fleet of 189 does not fit on
-          the line that held "Watch [metric] below [n] %". */}
-      <TriggerEditorSheet
-        open={adding}
+      {/* The form takes the Add button's PLACE rather than covering the
+          list above it — same card, same flow, the way it worked before
+          the drawer.  Mounting is what opens it, so there is no `open`
+          prop and no stale state between one trigger and the next. */}
+      {adding ? (
+      <TriggerEditorForm
         editing={editing}
         onClose={() => {
           const wasEditing = editing?.id;
           setAdding(false);
           setEditing(null);
-          // Focus returns to whatever opened the sheet: the row's own
+          // Focus returns to whatever opened the form: the row's own
           // pencil for an edit, Add for a create.  Either way something
           // deliberate, never <body>.
           requestAnimationFrame(() => {
@@ -420,6 +404,24 @@ export default function AlertTriggersSection(
         }}
         onSaved={() => { void load(); onChanged?.(); }}
       />
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button
+            ref={addBtnRef}
+            variant="outline"
+            size="sm"
+            aria-disabled={atCap}
+            onClick={() => { if (!atCap) { setEditing(null); setAdding(true); } }}
+          >
+            <Plus /> Add
+          </Button>
+          {atCap && (
+            <span className="text-2xs text-muted-foreground">
+              {maxPerUser} is the limit — remove one to add another.
+            </span>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
