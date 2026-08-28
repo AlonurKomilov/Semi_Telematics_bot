@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "4"))
 
 # PostgreSQL DSN — REQUIRED.  Initialise() reads this at runtime so
-# tests can monkeypatch it (see tests/conftest.py pg_db fixture).
+# tests can monkeypatch it (see conftest.py pg_db fixture).
 _DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 

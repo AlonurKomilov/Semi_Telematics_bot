@@ -7,7 +7,7 @@ The SQL translator in ``adapters/storage/pg_adapter.py`` is the seam
 where divergence is most likely to creep in (``?`` → ``$1``,
 ``ON CONFLICT(col)``, ``datetime('now')`` → ``NOW()``, etc.), so we
 run a parity sweep against a real PG instance via the ``pg_db``
-fixture (testcontainers; see ``tests/conftest.py``).
+fixture (testcontainers; see ``conftest.py``).
 
 These tests SKIP automatically when Docker is unavailable and
 ``POSTGRES_TEST_URL`` isn't set — opt in by exporting that URL in CI

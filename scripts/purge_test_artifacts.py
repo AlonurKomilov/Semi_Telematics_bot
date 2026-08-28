@@ -2,7 +2,7 @@
 
 Why this exists
 ---------------
-``tests/conftest.py`` did not override ``OBJECT_STORE_ROOT``, and
+``conftest.py`` did not override ``OBJECT_STORE_ROOT``, and
 ``accounts.id`` starts at 10000001 by schema design — so the first
 account a fresh test database created shared a folder with the first
 REAL account, and every suite that stored a file wrote it into a live

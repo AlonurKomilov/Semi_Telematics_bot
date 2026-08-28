@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # The suite is Postgres-only.  Without a reachable database the
-    # ``pg_db`` fixture calls ``pytest.skip`` (tests/conftest.py), so
+    # ``pg_db`` fixture calls ``pytest.skip`` (conftest.py), so
     # ~132 of 277 test files turned into no-ops here while the build
     # stayed green — which is how nineteen failures and two live
     # production bugs accumulated unseen.  POSTGRES_TEST_URL is the path

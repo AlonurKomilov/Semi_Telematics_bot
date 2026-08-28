@@ -75,6 +75,45 @@ Rules and the incident behind each: [scripts/githooks/README.md](scripts/githook
   [docs/architecture/PERSONA.md](docs/architecture/PERSONA.md)
   §"Naming: role words vs domain nouns".
 
+# Tests live with the code they test
+
+A package owns its tests in its own `tests/` subfolder —
+`features/kpi/tests/`, `capabilities/alerting/tests/`,
+`adapters/storage/tests/`. Not beside the source (that clutters the
+package), and not in the repo-root `tests/` (that is how a test gets
+orphaned from the code it guards). 45 packages follow this.
+
+The root `tests/` keeps only what belongs to no single package:
+repo-wide structural guards, and tests that cross layers.
+
+**Four rules, enforced by `tests/test_test_layout.py`:**
+
+1. Every package `tests/` dir sits under a `testpaths` entry in
+   `pytest.ini`. A tests directory outside `testpaths` is *invisible* —
+   its tests do not run, nothing is skipped, and nothing turns red. The
+   suite just gets quietly smaller. This is not hypothetical: 206 of 277
+   files were silently skipping while CI reported green.
+2. Every package `tests/` dir has an `__init__.py`. Without it two files
+   named `test_service.py` in different packages collide on module name.
+3. No loose `test_*.py` beside package source — the subdirectory form is
+   what the guards can see.
+4. `.dockerignore` carries `**/tests/`. A bare `tests/` is anchored to
+   the build-context root, so it excludes the root suite and nothing
+   else — package-owned tests then ship inside the production image
+   (274 files, 3MB, confirmed with a build probe).
+
+**Adding a test dir to a package that has none:** create
+`<pkg>/tests/__init__.py`, and check the package's top-level name is
+already in `testpaths`. If it is not, add it — otherwise rule 1 fails
+and the guard tells you so.
+
+**Never compute the repo root from `__file__`.** Import `REPO` from
+`tests/_repo.py`; it walks up to the `pytest.ini` sentinel, so it
+survives a file moving between depths. Hand-rolled roots
+(`Path(__file__).parents[3]`) break silently on a move — one of them was
+resolving to `/home/abcdev` and auditing a home directory instead of the
+repo, passing vacuously the whole time.
+
 # Domain SSOTs — read before touching
 
 - **Tenant file layout** (anything that calls `ObjectStorage.put`, any

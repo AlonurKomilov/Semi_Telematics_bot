@@ -180,7 +180,7 @@ account a fresh test database creates shares a folder with the first
 real one. With `OBJECT_STORE_ROOT` unset, the suite writes into a live
 customer's tree — it did, for months.
 
-`tests/conftest.py` assigns `OBJECT_STORE_ROOT` to a temp dir before the
+`conftest.py` assigns `OBJECT_STORE_ROOT` to a temp dir before the
 first `adapters.storage` import. **Assignment, not `setdefault`**, so an
 exported production path cannot win.
 

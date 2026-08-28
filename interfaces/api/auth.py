@@ -40,7 +40,7 @@ TELEGRAM_TOKEN = TELEGRAM_SYSTEM_BOT_TOKEN
 # to TELEGRAM_TOKEN, but that meant any bot-token rotation silently
 # invalidated every issued JWT and logged out the whole fleet.  The
 # fail-fast at startup forces operators to set a stable, dedicated
-# secret.  Tests provide one via tests/conftest.py.
+# secret.  Tests provide one via conftest.py.
 JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
 if not JWT_SECRET:
     raise RuntimeError(
