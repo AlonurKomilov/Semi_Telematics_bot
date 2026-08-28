@@ -105,6 +105,11 @@ repo-wide structural guards, and tests that cross layers.
    else — package-owned tests then ship inside the production image
    (274 files, 3MB, confirmed with a build probe).
 
+**How the machinery works** — the database fixtures, what isolation
+every test gets for free, what `--dist loadfile` does and does not
+promise, and the traps that have already cost a day:
+[tests/CLAUDE.md](tests/CLAUDE.md).
+
 **Adding a test dir to a package that has none:** create
 `<pkg>/tests/__init__.py`, and check the package's top-level name is
 already in `testpaths`. If it is not, add it — otherwise rule 1 fails
