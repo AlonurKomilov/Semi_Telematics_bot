@@ -215,7 +215,8 @@
     "settings": "Settings",
     "vehicle_inventory": "Inventory",
     "object_storage": "Object Storage",
-    "my_payouts": "My payouts"
+    "my_payouts": "My payouts",
+    "vehicle_documents": "Documents"
   },
   "scorecards": {
     "page_title": "Scorecards",

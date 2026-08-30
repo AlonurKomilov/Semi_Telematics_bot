@@ -81,6 +81,7 @@ const Overview         = lazyWithReload(() => import('./features/overview/Overvi
 const Vehicles         = lazyWithReload(() => import('./features/vehicles/Vehicles'));
 const VehicleDetail    = lazyWithReload(() => import('./features/vehicles/VehicleDetail'));
 const VehicleInventory = lazyWithReload(() => import('./features/vehicles/inventory/InventoryPage'));
+const VehicleDocuments = lazyWithReload(() => import('./features/vehicles/documents/DocumentsPage'));
 const LiveMap          = lazyWithReload(() => import('./features/live-map/LiveMap'));
 const Alerts           = lazyWithReload(() => import('./features/alerts/Alerts'));
 const Geofences        = lazyWithReload(() => import('./features/geofences/Geofences'));
@@ -196,6 +197,10 @@ export default function AppRouter() {
         <Route path="live-map" element={L(<P perm={['can_location_map', 'can_location_vehicle']}><LiveMap /></P>)} />
         <Route path="vehicles" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><Vehicles /></P>)} />
         <Route path="vehicles/inventory" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><VehicleInventory /></P>)} />
+        {/* Before the parametric vehicle route for the same reason the
+            API mounts its list first — otherwise "documents" resolves
+            as a truck name. */}
+        <Route path="vehicles/documents" element={L(<P perm={['can_vehicle_docs']}><VehicleDocuments /></P>)} />
         <Route path="vehicles/:name" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><VehicleDetail /></P>)} />
         <Route path="routes" element={L(<P perm={['can_route_all', 'can_route_vehicle']}><RoutesPage /></P>)} />
         <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_vehicle']}><Geofences /></P>)} />

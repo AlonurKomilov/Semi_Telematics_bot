@@ -303,3 +303,20 @@ def test_the_endpoints_ask_for_the_document_flags_not_the_vehicle_ones():
         "a documents route still rides the rename/archive grant")
     assert 'require_permission_any(' not in src, (
         "the view gate went back to borrowing other features' flags")
+
+
+# ── /vehicles/documents must outrank /vehicles/{vehicle_name} ───────
+
+
+def test_the_fleet_list_route_is_mounted_before_the_parametric_one():
+    """``/vehicles/documents`` is one segment, so only mount order keeps
+    the vehicles router's ``/vehicles/{vehicle_name}`` from answering it
+    with a truck named "documents".  That trap once hid /vehicles/config;
+    this fails in CI instead of in production."""
+    import interfaces.api.app as app_mod
+
+    paths = [getattr(r, "path", "") for r in app_mod.app.routes]
+    assert "/api/vehicles/documents" in paths, "the fleet list route is gone"
+    assert paths.index("/api/vehicles/documents") < paths.index(
+        "/api/vehicles/{vehicle_name}"
+    ), "the parametric vehicle route now shadows the documents list"

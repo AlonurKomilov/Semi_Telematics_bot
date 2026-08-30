@@ -169,7 +169,8 @@
     "settings": "Настройки",
     "settings_group": "Настройки",
     "truck_anatomy": "Truck Anatomy",
-    "object_storage": "Object Storage"
+    "object_storage": "Object Storage",
+    "vehicle_documents": "Документы"
   },
   "scorecards": {
     "page_title": "Оценки транспорта",

@@ -9,9 +9,14 @@ different entity.
 
 Its own module, like ``config.py``: a self-contained sub-resource with
 its own permission shape, kept out of the 1,700-line feature router.
-Every route here has ≥2 path segments after the prefix, so none can be
-shadowed by the feature router's parametric ``/{vehicle_name}`` —
-verified by ``test_vehicle_documents.py`` resolving them.
+
+``GET /vehicles/documents`` is a ONE-segment route, so it lives or dies
+by MOUNT ORDER: this router is included before the vehicles router,
+whose parametric ``/vehicles/{vehicle_name}`` would otherwise swallow
+it and answer with a truck named "documents".  That is the trap that
+once hid ``/vehicles/config``, and ``test_vehicle_documents.py`` pins
+the order so a re-ordering in app.py fails there rather than in
+production.
 
 The archive/restore folder moves live in ``service.py`` — they are
 called by the vehicles router's lifecycle routes, not by these.
@@ -92,6 +97,29 @@ async def _bucket_for(tenant, account_id: int, v) -> str:
         tenant, account_id, v.company_code,
     )
     return vehicle_docs_bucket(company_folder, v.unit_number)
+
+
+@router.get("/documents")
+async def list_account_documents(user: dict = Depends(_view)):
+    """Every document across the account's live trucks — the fleet-wide
+    view behind the Documents page.
+
+    Mounted BEFORE the vehicles router, which is what keeps
+    ``/vehicles/documents`` from being swallowed by its parametric
+    ``/vehicles/{vehicle_name}`` — the trap that once hid
+    ``/vehicles/config``.
+    """
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    rows = await tenant.list_account_vehicle_documents(account_id)
+    # The company wall applies to a LIST the same way it applies to a
+    # row: a restricted operator sees their own companies' paperwork.
+    allowed = await get_user_company_codes(user)
+    rows = [r for r in rows
+            if company_allows(r.get("company_code") or "", allowed)]
+    return {"documents": rows, "doc_types": list(VEHICLE_DOC_TYPES)}
 
 
 @router.get("/registry/{vehicle_id}/documents")

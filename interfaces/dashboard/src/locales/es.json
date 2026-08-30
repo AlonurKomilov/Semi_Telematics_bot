@@ -169,7 +169,8 @@
     "settings": "Configuración",
     "settings_group": "Configuración",
     "truck_anatomy": "Truck Anatomy",
-    "object_storage": "Object Storage"
+    "object_storage": "Object Storage",
+    "vehicle_documents": "Documentos"
   },
   "scorecards": {
     "page_title": "Tarjetas de Vehículos",

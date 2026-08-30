@@ -208,6 +208,41 @@ class VehicleDocumentsMixin(_MixinBase):
             })
         return out
 
+    async def list_account_vehicle_documents(
+        self, account_id: int,
+    ) -> list[dict]:
+        """Every active document across the account's LIVE trucks.
+
+        The fleet-wide question a per-truck card cannot answer: which
+        papers expire this month, and which truck do I go to.  Same
+        join as the expiry query, without the window — the unit number
+        and company ride along so the page names the truck without a
+        second lookup.
+
+        Live trucks only.  A retired truck's paperwork stays reachable
+        from its own page (that is what archiving promises), but
+        counting it here would inflate every compliance figure with
+        trucks the carrier no longer runs.
+        """
+        cur = await self._db.execute(
+            "SELECT d.id, d.vehicle_id, d.doc_type, d.file_name, "
+            "       d.file_size, d.mime_type, d.issued_at, d.expires_at, "
+            "       d.uploaded_at, d.notes, "
+            "       v.unit_number, v.company_code, v.vehicle_type "
+            "  FROM vehicle_documents d "
+            "  JOIN vehicles v ON v.id = d.vehicle_id "
+            " WHERE d.account_id = ? AND d.status = 'active' "
+            "   AND v.is_active = 1 "
+            "   AND COALESCE(v.archived_reason, '') = '' "
+            " ORDER BY v.unit_number ASC, d.uploaded_at DESC",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        keys = ("id", "vehicle_id", "doc_type", "file_name", "file_size",
+                "mime_type", "issued_at", "expires_at", "uploaded_at",
+                "notes", "unit_number", "company_code", "vehicle_type")
+        return [dict(zip(keys, r)) for r in rows]
+
     async def record_vehicle_doc_notification(
         self, doc_id: int, bucket_days: int,
     ) -> bool:

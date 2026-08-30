@@ -148,6 +148,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Sits directly under Vehicles in the sidebar — a destination, unlike
   // the per-truck card (which is a detail-page section).
   { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_all', 'can_vehicle_vehicle'], navGroup: 'operations', parentId: 'vehicles' },
+  { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────
   { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: ['can_maintenance_all', 'can_maintenance_vehicle'], navGroup: 'operations' },
