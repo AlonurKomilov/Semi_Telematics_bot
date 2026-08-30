@@ -145,6 +145,11 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_poi_layers', kind: 'component', label: 'POI Layers', indented: true, description: 'Custom map overlays — the Live Map grant shows them, this one edits them' },
       { allKey: 'can_vehicle_all',  vehicleKey: 'can_vehicle_vehicle',  kind: 'feature', label: 'Vehicles', scoped: true },
       { key: 'can_manage_vehicles', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
+      // Filing a truck's papers is NOT the grant that renames and
+      // archives trucks — a compliance officer needs the first without
+      // the second.  Named rather than a second bare "Manage", which
+      // the verb grid would promote into the Vehicles row and hide.
+      { key: 'can_manage_vehicle_docs', kind: 'action', label: 'Manage documents', indented: true, description: "Upload and delete a truck's documents" },
       // SUB-FEATURES of the Vehicles family: each has its OWN home
       // (features/vehicles/<x>/ with report.py / ai_tool.py / alert.py /
       // scoring_signal.py) and gates the live tab + report + AI tool.
@@ -152,6 +157,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_faults',     kind: 'subfeature', label: 'Faults', indented: true, description: 'Active fault codes (DTCs) + the faults report' },
       { key: 'can_fuel',       kind: 'subfeature', label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
       { key: 'can_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
+      { key: 'can_vehicle_docs', kind: 'subfeature', label: 'Documents', indented: true, description: "Registration, title, insurance, annual inspections — read + download" },
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', kind: 'feature', label: 'Geofences', scoped: true },
       { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       // COMPENSATION, deliberately its own flag: can_kpi is shared

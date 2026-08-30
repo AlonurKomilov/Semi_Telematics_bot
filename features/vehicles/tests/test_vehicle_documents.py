@@ -266,3 +266,40 @@ async def test_a_shared_unit_number_only_claims_its_own_company(
         "SN-1", None, {"account_id": acct}, allowed=[])
     assert match["registry_id"] == rows["OSY"].id
     assert match["registry_id"] != rows["PTG"].id
+
+
+# ── The permission split took nothing from anybody ──────────────────
+
+
+def test_the_document_flags_were_seeded_to_the_access_they_replaced():
+    """Vehicle documents used to ride ``can_manage_vehicles`` (manage)
+    and ``can_faults`` OR ``can_vehicle_vehicle`` (view).  Splitting
+    them into their own pair is only safe if every role keeps exactly
+    what it had — the same rule the auto-pilot defaults follow.  A
+    future role edit that diverges should be a DECISION, so it fails
+    here first.
+    """
+    from capabilities.permissions.roles import ROLE_PERMISSIONS
+
+    for role, f in ROLE_PERMISSIONS.items():
+        could_view = f.can_faults or f.can_vehicle_vehicle
+        assert f.can_vehicle_docs == could_view, (
+            f"{role.value}: document VIEW drifted from the gate it replaced")
+        assert f.can_manage_vehicle_docs == f.can_manage_vehicles, (
+            f"{role.value}: document MANAGE drifted from can_manage_vehicles")
+
+
+def test_the_endpoints_ask_for_the_document_flags_not_the_vehicle_ones():
+    """The point of the split: filing a truck's papers must not require
+    the grant that renames and archives trucks."""
+    import inspect
+
+    from features.vehicles.documents import router as doc
+
+    src = inspect.getsource(doc)
+    assert 'require_permission("can_manage_vehicle_docs")' in src
+    assert 'require_permission("can_vehicle_docs")' in src
+    assert 'require_permission("can_manage_vehicles")' not in src, (
+        "a documents route still rides the rename/archive grant")
+    assert 'require_permission_any(' not in src, (
+        "the view gate went back to borrowing other features' flags")

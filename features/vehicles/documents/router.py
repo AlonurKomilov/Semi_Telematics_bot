@@ -1,4 +1,4 @@
-"""Vehicle documents — the paperwork one truck carries.
+"""The vehicle-documents endpoints.
 
 Registration, title, insurance, annual-inspection certificates: files
 that belong to a REGISTRY row and live in the company's own folder tree
@@ -13,12 +13,8 @@ Every route here has ≥2 path segments after the prefix, so none can be
 shadowed by the feature router's parametric ``/{vehicle_name}`` —
 verified by ``test_vehicle_documents.py`` resolving them.
 
-Archive/restore integration: retiring a truck moves its folder to
-``vehicles/_archive/{date}/{unit}/`` and restore moves it back — the
-same move-folder-then-rewrite-rows recipe the driver company-change
-uses, so a retired truck's paperwork stays reachable from its (still
-readable) detail page and the original location frees up for a future
-truck that reuses the number.
+The archive/restore folder moves live in ``service.py`` — they are
+called by the vehicles router's lifecycle routes, not by these.
 """
 
 from __future__ import annotations
@@ -46,8 +42,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
-_manage = require_permission("can_manage_vehicles")
-_view = require_permission_any("can_faults", "can_vehicle_vehicle")
+# Its own pair, not can_manage_vehicles: that grant renames and
+# ARCHIVES trucks, and filing an insurance certificate should not
+# require the power to retire a tractor.  Seeded to exactly today's
+# access, so this split took nothing from anybody — it made the
+# narrowing possible.
+_manage = require_permission("can_manage_vehicle_docs")
+_view = require_permission("can_vehicle_docs")
 
 # Layer 1 of the three-layer cap (route → middleware → nginx) — same
 # number as driver documents: paperwork is PDFs and phone photos.
@@ -269,62 +270,3 @@ async def delete_vehicle_document(
         logger.warning("vehicle doc object not removed doc=%d", doc_id,
                        exc_info=True)
     return {"deleted": True, "id": doc_id}
-
-
-async def move_documents_on_archive(
-    tenant, account_id: int, vehicle_id: int,
-) -> str | None:
-    """Move a retiring truck's folder to the archive tree.
-
-    Best-effort by contract: the archive itself already happened, and a
-    folder that failed to move is a cosmetic misfiling, not a data
-    loss — the rows still point at the old bucket, so downloads keep
-    working either way.  Returns the new bucket, or None."""
-    return await _move_documents(tenant, account_id, vehicle_id,
-                                 to_archive=True)
-
-
-async def move_documents_on_restore(
-    tenant, account_id: int, vehicle_id: int,
-) -> str | None:
-    """The reverse — a restored truck's paperwork comes home."""
-    return await _move_documents(tenant, account_id, vehicle_id,
-                                 to_archive=False)
-
-
-async def _move_documents(
-    tenant, account_id: int, vehicle_id: int, *, to_archive: bool,
-) -> str | None:
-    from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import (
-        resolve_company_folder, vehicle_docs_archive_bucket,
-        vehicle_docs_bucket,
-    )
-
-    docs = await tenant.list_vehicle_documents(account_id, vehicle_id)
-    if not docs:
-        return None
-    v = await tenant.get_vehicle(account_id, vehicle_id)
-    if v is None:
-        return None
-    company_folder = await resolve_company_folder(
-        tenant, account_id, v.company_code,
-    )
-    live = vehicle_docs_bucket(company_folder, v.unit_number)
-    if to_archive:
-        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        src, dst = live, vehicle_docs_archive_bucket(
-            company_folder, v.unit_number, date)
-    else:
-        # Restore: the CURRENT bucket on the rows is the archive
-        # location (whatever date it carries); home is the live path.
-        src, dst = docs[0].bucket, live
-        if src == dst:
-            return None
-    store = await get_object_storage_for_account(account_id, tenant)
-    moved = store.move_folder(src, dst)
-    if moved:
-        await tenant.move_vehicle_documents_bucket(
-            account_id, vehicle_id, src, dst)
-        return dst
-    return None

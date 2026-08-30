@@ -152,7 +152,7 @@ class TestTheSharedVerdict:
         the shape this file exists to catch."""
         import inspect
         from features.vehicles import router as reg
-        from features.vehicles import documents as doc
+        from features.vehicles.documents import router as doc
         from features.vehicles.inventory import router as inv
         assert "company_allows" in inspect.getsource(reg._wall_registry_vehicle)
         assert "company_allows" in inspect.getsource(inv._resolve_vehicle)
@@ -166,7 +166,7 @@ class TestDocumentsAndLinksAreWalled:
 
     @pytest.mark.asyncio
     async def test_a_foreign_trucks_documents_are_not_listed(self, pg_db):
-        from features.vehicles import documents as doc
+        from features.vehicles.documents import router as doc
 
         acct = (await pg_db.create_account("Wall Docs Co")).id
         await pg_db.upsert_from_integration(acct, [
@@ -205,7 +205,7 @@ class TestDocumentsAndLinksAreWalled:
         """The download route takes a DOCUMENT id, so the wall has to be
         applied to the vehicle behind it — the id alone is the caller's
         whole input."""
-        from features.vehicles import documents as doc
+        from features.vehicles.documents import router as doc
 
         acct = (await pg_db.create_account("Wall Doc Id Co")).id
         await pg_db.upsert_from_integration(acct, [

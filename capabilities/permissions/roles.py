@@ -91,6 +91,15 @@ class FeatureSet:
     can_fuel: bool = False           # /fuel
     can_efficiency: bool = False     # /efficiency
     can_health: bool = False         # /health
+    # Vehicle DOCUMENTS — registration, title, insurance, annual
+    # inspection certificates, per truck.  Its own pair rather than
+    # riding ``can_manage_vehicles``, which is the grant to RENAME and
+    # ARCHIVE trucks: filing a carrier's insurance certificate and
+    # retiring a tractor are different risks, and a compliance officer
+    # needs the first without the second.  Mirrors the driver-documents
+    # pair (``can_manage_driver_docs`` / ``can_driver_docs_own``).
+    can_vehicle_docs: bool = False        # read + download a truck's papers
+    can_manage_vehicle_docs: bool = False # upload / delete them
     can_vehicle_all: bool = False      # /vehicle <any>
     can_vehicle_vehicle: bool = False      # /vehicle <own> (driver)
 
@@ -258,6 +267,7 @@ DARK_FEATURE_FIELDS: frozenset[str] = frozenset({"can_truck_anatomy"})
 
 ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.OWNER: FeatureSet(
+        can_vehicle_docs=True, can_manage_vehicle_docs=True,
         can_faults=True, can_fuel=True, can_cameras=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
@@ -293,6 +303,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.ADMIN: FeatureSet(
+        can_vehicle_docs=True, can_manage_vehicle_docs=True,
         can_faults=True, can_fuel=True, can_cameras=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
@@ -326,6 +337,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.FLEET: FeatureSet(
+        can_vehicle_docs=True, can_manage_vehicle_docs=True,
         can_faults=True, can_fuel=True, can_cameras=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
@@ -358,6 +370,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_inspections_all=True, can_inspections_vehicle=False,
     ),
     Role.SAFETY: FeatureSet(
+        can_vehicle_docs=True,
         can_faults=True, can_fuel=False, can_cameras=True,
         can_efficiency=False, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
@@ -383,6 +396,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_inspections_all=True, can_inspections_vehicle=False,
     ),
     Role.DISPATCHER: FeatureSet(
+        can_vehicle_docs=True,
         can_faults=False, can_fuel=True,
         can_efficiency=False, can_health=False,
         can_vehicle_all=True, can_vehicle_vehicle=True,
@@ -451,6 +465,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True,                  # Vehicle list for asset accounting
     ),
     Role.DRIVER: FeatureSet(
+        can_vehicle_docs=True,
         can_faults=False, can_fuel=False,
         can_efficiency=False, can_health=False,
         can_vehicle_all=False, can_vehicle_vehicle=True,

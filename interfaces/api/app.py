@@ -73,7 +73,7 @@ from features.applications import config as applications_config
 from features.kpi import config as kpi_config
 from features.kpi import router as kpi_routes
 from features.vehicles import config as vehicles_config
-from features.vehicles import documents as vehicles_documents
+from features.vehicles.documents import router as vehicles_documents
 from features.inspections import router as inspections_routes
 from features.knowledge import router as knowledge_routes
 from features.coaching import config as coaching_config

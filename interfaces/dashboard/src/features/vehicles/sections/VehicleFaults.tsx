@@ -165,7 +165,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
                   {count != null && (
                     <span>× {count} occurrence{count !== 1 ? 's' : ''}</span>
                   )}
-                  {src && <span>Source: {src}</span>}
+                  {src && <span>Reported by: {src}</span>}
                 </div>
                 {canCreateWorkOrder && (
                   <button

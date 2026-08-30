@@ -25,8 +25,8 @@ import {
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
-import { useVehicle } from './_shared/useVehicle';
-import type { VehicleSectionProps } from './_shared/types';
+import { useVehicle } from '../sections/_shared/useVehicle';
+import type { VehicleSectionProps } from '../sections/_shared/types';
 
 interface Doc {
   id: number;
@@ -53,9 +53,9 @@ function fmtSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function VehicleDocuments({ vehicleName, company }: VehicleSectionProps) {
+export default function DocumentsCard({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
-  const canManage = has('can_manage_vehicles');
+  const canManage = has('can_manage_vehicle_docs');
   const qc = useQueryClient();
   const { vehicle } = useVehicle(vehicleName, company);
   const registryId = vehicle?.registry_id ?? null;
