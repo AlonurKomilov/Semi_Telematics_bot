@@ -145,6 +145,23 @@ function whoWhen(name: string, when: string | undefined, tz?: string): string {
   return when ? `${name} — ${formatDate(when, { timeZone: tz })}` : name;
 }
 
+/** The trio's multi-person tooltip: a heading and ONE LINE PER PERSON,
+ *  in the order they acted (the server sorts by time and "just now"
+ *  appends last, so reading down the list IS reading the timeline).
+ *  It was a flat middot-joined run first, which stopped being scannable
+ *  at exactly two people — with a crew on a busy alert it would have
+ *  been a paragraph. */
+function WhoWhenTip({ verb, lines }: { verb: string; lines: string[] }) {
+  return (
+    <span className="block text-left">
+      <span className="block font-medium">{verb}</span>
+      {lines.map((l, i) => (
+        <span key={i} className="block">{l}</span>
+      ))}
+    </span>
+  );
+}
+
 /**
  * The one Status cell an ACTIVE row gets: "New" until somebody's screen
  * has actually shown it, then "👁 AK, JD" — the people who saw it, in
@@ -194,7 +211,7 @@ export function SeenMarker({ alert }: { alert: Alert }) {
   const shown = names.slice(0, 3);
   const extra = names.length - shown.length;
   return (
-    <Tip label={`Seen by ${lines.join(' · ')}`}>
+    <Tip label={<WhoWhenTip verb="Seen by" lines={lines} />}>
       {/* The SAME avatar recipe as the Acknowledged state below, so a
           person renders as the same chip in both — only the tone
           differs: seen is neutral exposure, acknowledged is the green
@@ -205,7 +222,7 @@ export function SeenMarker({ alert }: { alert: Alert }) {
           {shown.map((n, i) => (
             <Avatar key={`${n}-${i}`} size="sm"
                     className="shrink-0 ring-1 ring-card">
-              <AvatarFallback className="bg-primary/15 text-primary text-2xs font-semibold">
+              <AvatarFallback className="bg-primary/15 text-foreground text-2xs font-semibold ring-1 ring-primary">
                 {initialsOf(n)}
               </AvatarFallback>
             </Avatar>
@@ -348,7 +365,7 @@ export function WorkMarker({ alert }: { alert: Alert }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       {names.length > 0 && (
-        <Tip label={`Working on it: ${lines.join(' · ')}`}>
+        <Tip label={<WhoWhenTip verb="Working on it" lines={lines} />}>
           <span className="inline-flex items-center gap-1.5">
             <span className="flex -space-x-1.5">
               {names.slice(0, 3).map((n, i) => (
