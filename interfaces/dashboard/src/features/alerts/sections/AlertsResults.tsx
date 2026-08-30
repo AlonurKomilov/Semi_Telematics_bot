@@ -488,12 +488,15 @@ export default function AlertsResults() {
         },
       },
     ];
-    if (ackState !== 'active') {
-      cols.push({
-        key: 'acknowledged_at', label: 'Status', sortable: true,
-        render: (_v, row) => <AckMarker alert={row as unknown as Alert} tz={tz} />,
-      });
-    }
+    // Unconditional now: on the active tab the Status cell is where the
+    // seen lifecycle lives (New → 👁 seen-by), and it is also the cell
+    // that OBSERVES the row for visibility — the honest source of the
+    // seen ledger.  It used to be hidden there because active rows had
+    // nothing to say; they do now.
+    cols.push({
+      key: 'acknowledged_at', label: 'Status', sortable: true,
+      render: (_v, row) => <AckMarker alert={row as unknown as Alert} tz={tz} />,
+    });
     return cols;
   }, [ackState, tz, t, openDrillIn]);
 

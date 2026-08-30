@@ -44,6 +44,7 @@ import {
 import { apiJSON, ApiError } from '../../../api/client';
 import { Button } from '../../../components/ui/button';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
+import { reportSeen } from '../_shared/seenReporter';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAckAlerts } from '../useRecentAlerts';
 import {
@@ -59,6 +60,14 @@ import type { Alert } from '../../../types';
 export default function IncidentDrillInDrawer() {
   const { t } = useTranslation();
   const { drillInAlert, closeDrillIn } = useAlertsSelection();
+  // Opening the drawer is the strongest form of "seen" there is — a
+  // deliberate look at ONE alert — so it reports directly, no dwell
+  // clock.  This is also the bell's seen path: a bell row click lands
+  // here via ?alertId=.
+  useEffect(() => {
+    const id = Number(drillInAlert?.id);
+    if (Number.isFinite(id)) reportSeen(id);
+  }, [drillInAlert]);
   // Close on Escape — global listener bound only while the drawer is open.
   useEffect(() => {
     if (!drillInAlert) return;

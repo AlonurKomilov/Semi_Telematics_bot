@@ -9,12 +9,16 @@ import re
 
 from datetime import datetime, timezone
 
+import logging
+
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view, get_user_company_codes, filter_by_company_map, vehicle_company_map as _deps_vehicle_company_map
 from capabilities.alerting.service import filter_alerts_by_access
+
+logger = logging.getLogger("api.alerts")
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -223,6 +227,77 @@ def _attach_company(alerts: list[dict], veh_map: dict) -> list[dict]:
     return alerts
 
 
+class SeenRequest(BaseModel):
+    ids: list[int]
+
+
+async def _me_user_id(user: dict) -> int | None:
+    """The caller's users.id, or None when it cannot be resolved.
+
+    Seen rows key on users.id rather than telegram_id (which is what
+    ``acknowledged_by`` stores) because a seen ledger should survive a
+    person changing Telegram accounts — it is about the person, not the
+    address that delivered to them.
+    """
+    from interfaces.api.deps import get_current_db_user
+    from infra.platform import get_platform_db
+    db_user = await get_current_db_user(user, get_platform_db())
+    return db_user.id if db_user else None
+
+
+async def _attach_seen(tenant_db, account_id: int, rows: list[dict],
+                       me_id: int | None) -> None:
+    """Stamp ``seen_by`` / ``seen_by_me`` onto one page of board rows.
+
+    ADDITIVE fields — every existing consumer of these rows keeps
+    working unread.  One query per page, resolved after pagination so
+    the join never runs over the whole account.  Failure leaves the
+    rows without the fields rather than failing the board: seen is a
+    garnish on this endpoint, not its content.
+    """
+    try:
+        ids = [int(r["id"]) for r in rows if r.get("id")]
+        seen = await tenant_db.get_seen_for_alerts(account_id, ids)
+        for r in rows:
+            viewers = seen.get(int(r.get("id") or 0), [])
+            r["seen_by"] = [{"name": v["name"], "user_id": v["user_id"]}
+                            for v in viewers]
+            r["seen_by_me"] = (me_id is not None
+                               and any(v["user_id"] == me_id for v in viewers))
+    except Exception:
+        logger.exception("seen attach failed acct=%s — rows served without it",
+                         account_id)
+
+
+@router.post("/seen")
+async def mark_alerts_seen(
+    body: SeenRequest,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """These alerts were actually on my screen.
+
+    Written by the board when a row has genuinely been visible — never
+    "page loaded, mark a hundred seen" — and by the drawer and the bell.
+    Idempotent and append-only: re-viewing changes nothing, because the
+    fact recorded ("this person has seen it") cannot become truer.
+
+    Seen NEVER stops escalation.  Eyes are exposure; acknowledge is
+    responsibility; a critical that stopped paging because someone
+    scrolled past it would be a safety regression, so the re-page job
+    keeps keying on acknowledged_at alone.
+
+    The tenancy wall is in storage: ids are joined against this
+    account's own alert_history, so a foreign id inserts nothing.
+    """
+    me_id = await _me_user_id(user)
+    if me_id is None:
+        return {"marked": 0}
+    marked = await tenant_db.mark_alerts_seen(
+        user["account_id"], me_id, body.ids)
+    return {"marked": marked}
+
+
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter by stored alert_type (comma-separated for multi-select)"),
@@ -306,6 +381,8 @@ async def pending_alerts(
             alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
         _attach_company(alerts, display_map)
         paged = paginate(alerts, page, page_size)
+        await _attach_seen(tenant_db, user["account_id"], paged["items"],
+                           await _me_user_id(user))
         return {"alerts": paged["items"], "count": paged["total"],
                 "page": paged["page"], "page_size": paged["page_size"],
                 "total_pages": paged["total_pages"]}
@@ -325,6 +402,8 @@ async def pending_alerts(
     )
     alerts = _attach_company(
         [_shape_history_for_pending_api(r) for r in rows], display_map)
+    await _attach_seen(tenant_db, user["account_id"], alerts,
+                       await _me_user_id(user))
     total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
     return {"alerts": alerts, "count": total,
             "page": page, "page_size": page_size,

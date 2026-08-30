@@ -6,12 +6,14 @@
  * + SeverityDot to keep the visual language consistent across the
  * feature.
  */
-import { CheckCircle2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Eye } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
 import { Tip } from '../../../components/tooltip';
+import { observeSeen, wasSeenThisSession } from './seenReporter';
 
 // Raw alert_type → the row's noun when no per-row kind is stored.  The
 // Feature column carries the family, so the type label names the THING
@@ -125,17 +127,71 @@ export function SeverityDot({ severity }: { severity?: string }) {
   );
 }
 
+function initialsOf(name: string): string {
+  return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
 /**
- * Resolution marker for a non-active alert.  A human ack carries a
- * name (acknowledged_by > 0, resolved server-side to a display name)
- * and renders as an initials AVATAR + name — attribution at a glance,
- * and the human/machine contrast does the work: people get a face,
- * a self-cleared alert stays muted "Auto-resolved" text (owner
- * decision 2026-07-27).  The ack time lives in the tooltip.  Active
- * alerts render nothing here.
+ * The one Status cell an ACTIVE row gets: "New" until somebody's screen
+ * has actually shown it, then "👁 AK, JD" — the people who saw it, in
+ * the order they looked (owner decision 2026-08-30: one shared column
+ * for the whole account, no per-viewer tabs; your own absence from the
+ * list IS your "new to me").
+ *
+ * The cell observes ITSELF for visibility, which is what makes "Seen"
+ * honest: reported only after this row was ≥50% on screen for ≥1s,
+ * batched by the shared reporter — never "page loaded, mark a hundred
+ * seen".  Nothing here touches acknowledgment: eyes are exposure,
+ * acknowledge is responsibility, and escalation keys on the latter
+ * alone.
+ */
+function SeenMarker({ alert }: { alert: Alert }) {
+  // Alert.id is string|number across the two feeds; the ledger keys on
+  // the numeric history id.
+  const aid = Number(alert.id);
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [mineNow, setMineNow] = useState(() => wasSeenThisSession(aid));
+  useEffect(() => {
+    if (!ref.current || !Number.isFinite(aid)) return;
+    return observeSeen(ref.current, aid, () => setMineNow(true));
+  }, [aid]);
+
+  const viewers = alert.seen_by ?? [];
+  const mine = mineNow || !!alert.seen_by_me;
+  const names = viewers.map((v) => v.name).filter(Boolean);
+  // A view this session that the server response predates still shows —
+  // otherwise the row you are looking at claims nobody has looked at it.
+  if (mine && !alert.seen_by_me) names.push('You');
+
+  if (names.length === 0 && !mine) {
+    return <span ref={ref} className="text-xs font-medium text-foreground">New</span>;
+  }
+  const shown = names.slice(0, 3).map(initialsOf).join(', ');
+  const extra = names.length - 3;
+  return (
+    <Tip label={`Seen by ${names.join(', ')}`}>
+      <span ref={ref}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Eye className="size-3.5" aria-hidden />
+        {shown}{extra > 0 && ` +${extra}`}
+      </span>
+    </Tip>
+  );
+}
+
+/**
+ * The Status cell — the row's whole lifecycle in one column, in order:
+ * New → 👁 seen-by → Acknowledged by a person / Auto-resolved.  A human
+ * ack carries a name (acknowledged_by > 0, resolved server-side) and
+ * renders as an initials AVATAR + name — attribution at a glance, and
+ * the human/machine contrast does the work: people get a face, a
+ * self-cleared alert stays muted "Auto-resolved" text (owner decision
+ * 2026-07-27).  The ack time lives in the tooltip.
  */
 export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
-  if ((alert.status ?? 'active') === 'active') return null;
+  if ((alert.status ?? 'active') === 'active') {
+    return <SeenMarker alert={alert} />;
+  }
   const human = (alert.acknowledged_by ?? 0) > 0;
   const when = alert.acknowledged_at
     ? formatDate(alert.acknowledged_at, { timeZone: tz })

@@ -362,6 +362,10 @@ export interface Alert {
   acknowledged_at?: string | null;
   /** Resolved display name for acknowledged_by (server LEFT JOIN). Blank when auto-resolved. */
   acknowledged_by_name?: string;
+  /** Who has SEEN this alert — passive, per person, in the order they
+   *  looked. Additive fields: absent on older responses. */
+  seen_by?: { name: string; user_id: number }[];
+  seen_by_me?: boolean;
 }
 
 export interface AlertsResponse {

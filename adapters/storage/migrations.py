@@ -9303,3 +9303,33 @@ async def migrate_vehicle_documents(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 202: vehicle documents ready")
+
+@_register("203_alert_seen")
+async def migrate_alert_seen(conn) -> None:
+    """Per-user seen ledger for alerts — who VIEWED, not who handled.
+
+    85% of the board was never acknowledged, because acknowledging was
+    demanded on every alert while only the escalating class needs it.
+    Seen is the passive replacement for everything else: written when a
+    row was actually on someone's screen, shown as "Seen by AK, JD" on
+    the row itself.  Append-only; first-seen wins; a duplicate view is
+    ON CONFLICT DO NOTHING, not an update — the fact recorded is "this
+    person has seen it", which cannot become truer.
+    """
+    await conn.execute(
+        """CREATE TABLE IF NOT EXISTS alert_seen (
+               id BIGSERIAL PRIMARY KEY,
+               account_id INTEGER NOT NULL,
+               alert_history_id INTEGER NOT NULL,
+               user_id INTEGER NOT NULL,
+               seen_at TEXT NOT NULL DEFAULT '',
+               UNIQUE(account_id, alert_history_id, user_id)
+           )"""
+    )
+    # The board attaches seen rows to each page by alert id.
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_seen_alert "
+        "ON alert_seen(account_id, alert_history_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 203: alert_seen — who viewed, demanded of no one")

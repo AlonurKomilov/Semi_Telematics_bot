@@ -654,6 +654,66 @@ class AlertsMixin(_MixinBase):
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def mark_alerts_seen(
+        self, account_id: int, user_id: int, alert_ids: list[int],
+    ) -> int:
+        """Record that this person's screen actually showed these alerts.
+
+        The INSERT..SELECT is the tenancy wall: ids are joined against
+        this account's own ``alert_history`` rows, so a foreign or
+        invented id inserts nothing rather than poisoning the ledger —
+        the caller never gets to assert "alert 5 exists", only to view
+        what its account owns.  ON CONFLICT DO NOTHING because first-seen
+        wins: "this person has seen it" cannot become truer, and a busy
+        board would otherwise rewrite the same fact on every scroll.
+        """
+        ids = [int(i) for i in alert_ids][:200]
+        if not ids:
+            return 0
+        ph = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"INSERT INTO alert_seen (account_id, alert_history_id, user_id, seen_at) "
+            f"SELECT account_id, id, ?, ? FROM alert_history "
+            f" WHERE account_id = ? AND id IN ({ph}) "
+            f"ON CONFLICT (account_id, alert_history_id, user_id) DO NOTHING",
+            (int(user_id), self._now(), account_id, *ids),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0
+
+    async def get_seen_for_alerts(
+        self, account_id: int, alert_ids: list[int],
+    ) -> dict[int, list[dict]]:
+        """``alert_id -> [{user_id, name, seen_at}...]`` for one page.
+
+        Names resolve through ``users`` at read time, the same way
+        ``acknowledged_by_name`` does — a rename flows through without a
+        backfill.  Ordered by seen_at so "Seen by AK, JD" reads in the
+        order people actually saw it.
+        """
+        ids = [int(i) for i in alert_ids]
+        if not ids:
+            return {}
+        ph = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"SELECT s.alert_history_id, s.user_id, s.seen_at, "
+            f"       COALESCE(u.display_name, '') AS name "
+            f"  FROM alert_seen s "
+            f"  LEFT JOIN users u ON u.id = s.user_id "
+            f" WHERE s.account_id = ? AND s.alert_history_id IN ({ph}) "
+            f" ORDER BY s.seen_at",
+            (account_id, *ids),
+        )
+        out: dict[int, list[dict]] = {}
+        for r in await cur.fetchall():
+            row = dict(r)
+            out.setdefault(int(row["alert_history_id"]), []).append({
+                "user_id": int(row["user_id"]),
+                "name": row["name"] or "",
+                "seen_at": row["seen_at"],
+            })
+        return out
+
     async def list_grouped_alerts(
         self, account_id: int, *, days: int = 7,
         allowed_vehicle_names: list[str] | None = None,
