@@ -1,15 +1,15 @@
 /**
  * Every tour the app can offer, in one map — the drift anchor.
  *
- * spotlight.test.ts walks this catalog and fails the build when a
+ * tour.test.ts walks this catalog and fails the build when a
  * step's anchor no longer exists in the source, or a tour's copy is
  * missing from any locale.  A tour someone forgot to register here
  * simply never runs, which is the safe failure.
  */
-import { MAINTENANCE_TOURS } from '../../features/maintenance/spotlights';
-import { isEligible, type SpotlightState, type TourCtx, type TourSpec } from './types';
+import { MAINTENANCE_TOURS } from '../../features/maintenance/tours';
+import { isEligible, type TourState, type TourCtx, type TourSpec } from './types';
 
-export const SPOTLIGHT_CATALOG: readonly TourSpec[] = [
+export const TOUR_CATALOG: readonly TourSpec[] = [
   ...MAINTENANCE_TOURS,
 ];
 
@@ -17,9 +17,9 @@ export const SPOTLIGHT_CATALOG: readonly TourSpec[] = [
 export function eligibleTour(
   feature: string,
   ctx: TourCtx,
-  state: SpotlightState,
+  state: TourState,
 ): TourSpec | null {
-  for (const spec of SPOTLIGHT_CATALOG) {
+  for (const spec of TOUR_CATALOG) {
     if (spec.feature === feature && isEligible(spec, ctx, state)) return spec;
   }
   return null;

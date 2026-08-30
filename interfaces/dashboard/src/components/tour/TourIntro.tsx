@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import type { TourSpec } from './types';
 
-export default function SpotlightIntro({
+export default function TourIntro({
   tour,
   onShowMe,
   onSkip,
@@ -36,10 +36,10 @@ export default function SpotlightIntro({
             <span className="flex size-8 items-center justify-center rounded-md bg-info-bg">
               <Lightbulb className="size-4.5 text-info" />
             </span>
-            <DialogTitle>{t(`spotlight.${tour.key}.title`)}</DialogTitle>
+            <DialogTitle>{t(`tour.${tour.key}.title`)}</DialogTitle>
           </div>
           <DialogDescription className="pt-1">
-            {t(`spotlight.${tour.key}.body`)}
+            {t(`tour.${tour.key}.body`)}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -48,7 +48,7 @@ export default function SpotlightIntro({
             onClick={onSkip}
             className="inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap"
           >
-            {t('spotlight.labels.skip')}
+            {t('tour.labels.skip')}
           </button>
           <button
             type="button"
@@ -61,7 +61,7 @@ export default function SpotlightIntro({
             onClick={onShowMe}
             className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition min-h-tap"
           >
-            {t('spotlight.labels.show_me')}
+            {t('tour.labels.show_me')}
           </button>
         </DialogFooter>
       </DialogContent>

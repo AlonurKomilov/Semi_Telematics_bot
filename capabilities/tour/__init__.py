@@ -1,6 +1,6 @@
-"""Spotlight — the backend half of interactive product tours.
+"""Tour — the backend half of interactive product tours.
 
-The ENGINE is client-side by design (components/spotlight on the
+The ENGINE is client-side by design (components/tour on the
 dashboard): tours point at DOM elements, which is frontend knowledge,
 and the client-first rule for dismissible advice is recorded in the
 callouts capability's history.  What the backend owns is the one thing
@@ -26,7 +26,7 @@ counts the "does it one at a time" signal.
 """
 
 # Every signal a tour may ask about.  Adding a pair is a deliberate,
-# reviewed act — capabilities/spotlight/tests enforces that the
+# reviewed act — capabilities/tour/tests enforces that the
 # dashboard's tour data asks for nothing outside this set.
 ALLOWED_SIGNALS: frozenset[tuple[str, str]] = frozenset({
     ("maintenance_task", "create"),

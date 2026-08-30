@@ -1140,7 +1140,7 @@
       "do": "Ouvrez le véhicule et définissez son lien télématique, ou archivez le doublon."
     }
   },
-  "spotlight": {
+  "tour": {
     "labels": {
       "show_me": "Montrez-moi",
       "skip": "Ignorer",

@@ -1,5 +1,5 @@
 /**
- * Spotlight — interactive product tours.
+ * Tour — interactive product tours.
  *
  * A tour is a statement plus a walk: "did you know X?" (the intro), and
  * on Show me, a guided pass through the user's OWN work on the live
@@ -8,19 +8,19 @@
  * real write the user wanted to make anyway.
  *
  * Engine (this folder) knows no feature.  Each feature contributes its
- * tours as data in `features/<x>/spotlights.ts` and registers them in
- * `spotlightCatalog.ts`; every rendered word lives in the locale files
- * under `spotlight.<key>.*`.  Mirrors the callouts split: structure
+ * tours as data in `features/<x>/tours.ts` and registers them in
+ * `tourCatalog.ts`; every rendered word lives in the locale files
+ * under `tour.<key>.*`.  Mirrors the callouts split: structure
  * here, words in locales, so re-wording or a ninth language never
  * touches the engine.
  */
 
 export interface TourStep {
   /**
-   * The `data-spotlight` attribute value of the element this step
+   * The `data-tour` attribute value of the element this step
    * lights.  Declared, never a CSS selector — selectors rot silently
    * when a page is restyled, an attribute is grep-able, and the guard
-   * in spotlight.test.ts fails the build if a referenced anchor stops
+   * in tour.test.ts fails the build if a referenced anchor stops
    * existing in the source.
    */
   anchor: string;
@@ -59,7 +59,7 @@ export interface TourStep {
    */
   commit?: boolean;
   /**
-   * Anchor whose `data-spotlight-count` attribute carries the live
+   * Anchor whose `data-tour-count` attribute carries the live
    * blast radius ("27 vehicles selected").  Read at render; when the
    * element or attribute is absent the consequence line simply drops
    * its number — never a guessed one.
@@ -79,7 +79,7 @@ export interface TourCtx {
   canCreate: boolean;
   /**
    * The caller's OWN recent action counts, per `entity:action` pair —
-   * fetched from /me/spotlight-signals for the pairs this feature's
+   * fetched from /me/tour-signals for the pairs this feature's
    * tours declare.  Absent when the endpoint was unreachable, so a
    * `relevant()` reading it must degrade to page-local evidence
    * rather than to silence.  `solo` = one-at-a-time events, `grouped`
@@ -102,7 +102,7 @@ export interface TourSpec {
   relevant: (ctx: TourCtx) => boolean;
   /**
    * Signal pairs this tour wants (must be in the backend's
-   * ALLOWED_SIGNALS — a guard in capabilities/spotlight/tests parses
+   * ALLOWED_SIGNALS — a guard in capabilities/tour/tests parses
    * this file's consumers and refuses strangers).
    */
   signals?: readonly string[];
@@ -123,7 +123,7 @@ export interface TourStateEntry {
   t: string;
 }
 
-export type SpotlightState = Record<string, TourStateEntry>;
+export type TourState = Record<string, TourStateEntry>;
 
 /** Snoozed tours re-offer after this many days; skip/done are final. */
 export const SNOOZE_DAYS = 14;
@@ -131,7 +131,7 @@ export const SNOOZE_DAYS = 14;
 export function isEligible(
   spec: TourSpec,
   ctx: TourCtx,
-  state: SpotlightState,
+  state: TourState,
   now = new Date(),
 ): boolean {
   if (spec.adopted?.(ctx)) return false;

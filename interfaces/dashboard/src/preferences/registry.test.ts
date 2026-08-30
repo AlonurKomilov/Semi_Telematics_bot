@@ -22,7 +22,7 @@ const FROZEN_KEYS: readonly string[] = [
   'prefs.syncEnabled',
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
-  'spotlight.state',
+  'tour.state',
   'theme',
   // Size replaced the theme's `density` FIELD. `theme` itself is
   // untouched — removing a field is safe where removing a key is not.

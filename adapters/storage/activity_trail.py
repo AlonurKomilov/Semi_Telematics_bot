@@ -379,14 +379,14 @@ class ActivityTrailMixin(_MixinBase):
         self, account_id: int, actor_user_id: int,
         entity_type: str, action: str, *, days: int = 14,
     ) -> dict:
-        """One user's OWN recent action counts — the spotlight signals.
+        """One user's OWN recent action counts — the tour signals.
 
         Returns ``{"total": n, "solo": s, "grouped": g}`` where solo is
         events written with no group_id (one-at-a-time work) and
         grouped is events that rode a bulk group — the "already uses
         the bulk path" signal.  Self-scope is the caller's contract:
         this is only ever called with the REQUESTING user's id
-        (capabilities/spotlight/router.py), never to profile others.
+        (capabilities/tour/router.py), never to profile others.
         """
         from datetime import datetime, timedelta, timezone
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()

@@ -7,13 +7,13 @@
  */
 import { useCallback } from 'react';
 import { usePreference } from '../../preferences';
-import type { SpotlightState, TourStatus } from './types';
+import type { TourState, TourStatus } from './types';
 
-export function useSpotlightState(): {
-  state: SpotlightState;
+export function useTourState(): {
+  state: TourState;
   record: (tourKey: string, s: TourStatus) => void;
 } {
-  const { value, setValue } = usePreference('spotlight.state');
+  const { value, setValue } = usePreference('tour.state');
   const record = useCallback(
     (tourKey: string, s: TourStatus) => {
       setValue((prev) => ({

@@ -1,5 +1,5 @@
 /**
- * The spotlight drift guards — what keeps a tour honest over time.
+ * The tour drift guards — what keeps a tour honest over time.
  *
  * A tour points at real DOM elements and speaks nine languages; both
  * halves rot silently.  An anchor whose element was deleted leaves the
@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { SPOTLIGHT_CATALOG } from './spotlightCatalog';
+import { TOUR_CATALOG } from './tourCatalog';
 
 const SRC = join(__dirname, '..', '..');
 const LOCALE_DIR = join(SRC, 'locales');
@@ -29,16 +29,16 @@ const LOCALES = readdirSync(LOCALE_DIR).filter((f) => f.endsWith('.json'));
 const load = (f: string) =>
   JSON.parse(readFileSync(join(LOCALE_DIR, f), 'utf-8')) as Record<string, unknown>;
 
-describe('spotlight catalog', () => {
-  it('every step anchor exists in the source as a data-spotlight attribute', () => {
+describe('tour catalog', () => {
+  it('every step anchor exists in the source as a data-tour attribute', () => {
     // THE tour-rot guard.  Anchors are declared attributes precisely so
     // this test can see them; a redesign that drops one fails here, at
     // build time, instead of in front of a user mid-tour.
     const missing: string[] = [];
-    for (const tour of SPOTLIGHT_CATALOG) {
+    for (const tour of TOUR_CATALOG) {
       for (const step of tour.steps) {
         for (const anchor of [step.anchor, step.countFrom].filter(Boolean)) {
-          const needle = `data-spotlight="${anchor}"`;
+          const needle = `data-tour="${anchor}"`;
           if (!SOURCES.some((s) => s.includes(needle))) {
             missing.push(`${tour.key}: ${needle}`);
           }
@@ -49,7 +49,7 @@ describe('spotlight catalog', () => {
   });
 
   it('keys are namespaced <feature>.<name> and match their feature field', () => {
-    for (const tour of SPOTLIGHT_CATALOG) {
+    for (const tour of TOUR_CATALOG) {
       expect(tour.key).toMatch(/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/);
       expect(tour.key.split('.')[0]).toBe(tour.feature);
     }
@@ -65,7 +65,7 @@ describe('spotlight catalog', () => {
     // exactly one forgotten flag.
     const undeclared: string[] = [];
     const misplaced: string[] = [];
-    for (const tour of SPOTLIGHT_CATALOG) {
+    for (const tour of TOUR_CATALOG) {
       const last = tour.steps[tour.steps.length - 1];
       if (typeof last.commit !== 'boolean') undeclared.push(tour.key);
       for (const step of tour.steps.slice(0, -1)) {
@@ -80,33 +80,33 @@ describe('spotlight catalog', () => {
   });
 
   it('a countFrom step reads a LIVE attribute, not a guess', () => {
-    // The consequence line's number comes from data-spotlight-count on
+    // The consequence line's number comes from data-tour-count on
     // the declared element; the attribute must be written in source or
     // the card silently loses its number on every render.
     const missing: string[] = [];
-    for (const tour of SPOTLIGHT_CATALOG) {
+    for (const tour of TOUR_CATALOG) {
       for (const step of tour.steps) {
         if (!step.countFrom) continue;
-        const el = `data-spotlight="${step.countFrom}"`;
+        const el = `data-tour="${step.countFrom}"`;
         const withCount = SOURCES.some(
-          (s) => s.includes(el) && s.includes('data-spotlight-count='));
+          (s) => s.includes(el) && s.includes('data-tour-count='));
         if (!withCount) missing.push(`${tour.key}: ${step.countFrom}`);
       }
     }
-    expect(missing, 'countFrom anchors without a data-spotlight-count').toEqual([]);
+    expect(missing, 'countFrom anchors without a data-tour-count').toEqual([]);
   });
 
   it('tours stay walkable: 1-6 steps', () => {
     // Above six the tour stops being a shortcut and becomes a course;
     // the cap is a design decision, not a technical one.
-    for (const tour of SPOTLIGHT_CATALOG) {
+    for (const tour of TOUR_CATALOG) {
       expect(tour.steps.length).toBeGreaterThanOrEqual(1);
       expect(tour.steps.length).toBeLessThanOrEqual(6);
     }
   });
 });
 
-describe('spotlight locales', () => {
+describe('tour locales', () => {
   const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of', 'finish'];
 
   it('every locale answers every tour completely', () => {
@@ -114,12 +114,12 @@ describe('spotlight locales', () => {
     // nine languages, so no locale silently shows a raw key.
     const problems: string[] = [];
     for (const f of LOCALES) {
-      const spot = load(f).spotlight as Record<string, Record<string, string>> | undefined;
-      if (!spot) { problems.push(`${f}: no spotlight section`); continue; }
+      const spot = load(f).tour as Record<string, Record<string, string>> | undefined;
+      if (!spot) { problems.push(`${f}: no tour section`); continue; }
       for (const label of REQUIRED_LABELS) {
         if (!spot.labels?.[label]) problems.push(`${f}: labels.${label}`);
       }
-      for (const tour of SPOTLIGHT_CATALOG) {
+      for (const tour of TOUR_CATALOG) {
         const entry = spot[tour.key];
         if (!entry) { problems.push(`${f}: ${tour.key}`); continue; }
         const last = tour.steps[tour.steps.length - 1];
@@ -144,15 +144,15 @@ describe('spotlight locales', () => {
     // task", "Create") legitimately stay English INSIDE a translated
     // sentence; a whole VALUE identical to English means the
     // translation never happened.
-    const en = load('en.json').spotlight as Record<string, Record<string, string>>;
+    const en = load('en.json').tour as Record<string, Record<string, string>>;
     const problems: string[] = [];
     for (const f of LOCALES) {
       if (f === 'en.json') continue;
-      const spot = load(f).spotlight as Record<string, Record<string, string>>;
+      const spot = load(f).tour as Record<string, Record<string, string>>;
       for (const [section, fields] of Object.entries(en)) {
         for (const [field, value] of Object.entries(fields)) {
           if (spot?.[section]?.[field] === value) {
-            problems.push(`${f}: spotlight.${section}.${field}`);
+            problems.push(`${f}: tour.${section}.${field}`);
           }
         }
       }

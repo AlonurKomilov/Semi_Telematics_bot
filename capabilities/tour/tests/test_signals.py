@@ -1,4 +1,4 @@
-"""The spotlight signals endpoint — self-scoped, allowlisted, honest.
+"""The tour signals endpoint — self-scoped, allowlisted, honest.
 
 The contract worth pinning is the privacy one: this endpoint lets a
 page ask "what have I done here?" and can NEVER be bent into "what
@@ -68,7 +68,7 @@ async def test_counts_split_solo_from_grouped(api):
     s = api
     await _seed(s["db"], s["acct"].id, s["a"].id, n_solo=6, n_grouped=3)
     r = await s["client"].get(
-        "/api/me/spotlight-signals?pairs=maintenance_task:create",
+        "/api/me/tour-signals?pairs=maintenance_task:create",
         headers=_hdr(s["tok_a"]),
     )
     assert r.status_code == 200
@@ -83,7 +83,7 @@ async def test_a_user_only_ever_sees_their_own_actions(api):
     s = api
     await _seed(s["db"], s["acct"].id, s["b"].id, n_solo=20)
     r = await s["client"].get(
-        "/api/me/spotlight-signals?pairs=maintenance_task:create",
+        "/api/me/tour-signals?pairs=maintenance_task:create",
         headers=_hdr(s["tok_a"]),
     )
     assert r.json()["signals"]["maintenance_task:create"]["total"] == 0
@@ -95,7 +95,7 @@ async def test_unknown_pair_is_refused_not_zeroed(api):
     teaches them the allowlist exists."""
     s = api
     r = await s["client"].get(
-        "/api/me/spotlight-signals?pairs=users:delete",
+        "/api/me/tour-signals?pairs=users:delete",
         headers=_hdr(s["tok_a"]),
     )
     assert r.status_code == 400
@@ -105,7 +105,7 @@ async def test_unknown_pair_is_refused_not_zeroed(api):
 @pytest.mark.asyncio
 async def test_requires_auth(api):
     r = await api["client"].get(
-        "/api/me/spotlight-signals?pairs=maintenance_task:create")
+        "/api/me/tour-signals?pairs=maintenance_task:create")
     assert r.status_code in (401, 403)
 
 
@@ -113,12 +113,12 @@ def test_dashboard_tours_ask_only_allowlisted_signals():
     """The frontend's tour data may not request a pair the backend
     would refuse — parsed from the source, the callouts way."""
     import re
-    from capabilities.spotlight import ALLOWED_SIGNALS
+    from capabilities.tour import ALLOWED_SIGNALS
     from tests._repo import REPO
     allowed = {f"{e}:{a}" for e, a in ALLOWED_SIGNALS}
     offenders = []
     feat_dir = REPO / "interfaces" / "dashboard" / "src" / "features"
-    for f in feat_dir.rglob("spotlights.ts"):
+    for f in feat_dir.rglob("tours.ts"):
         text = f.read_text(encoding="utf-8")
         for m in re.finditer(r"signals:\s*\[([^\]]*)\]", text):
             for pair in re.findall(r"'([^']+)'", m.group(1)):

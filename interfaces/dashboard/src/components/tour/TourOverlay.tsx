@@ -7,7 +7,7 @@
  * Escape (or the always-visible Exit button) ends the tour instantly.
  * A teacher stands beside you; a teacher does not hold your hands.
  *
- * Mechanics, in one breath: resolve the step's `data-spotlight` anchor
+ * Mechanics, in one breath: resolve the step's `data-tour` anchor
  * (waiting for it to APPEAR — step 2's checkbox only exists after step
  * 1 opens the form), scroll it into view, draw the cutout + step card,
  * advance on a capture-phase click inside the anchor, and when an
@@ -45,7 +45,7 @@ function measure(el: Element): Rect {
 }
 
 const find = (anchor: string): Element | null =>
-  document.querySelector(`[data-spotlight="${anchor}"]`);
+  document.querySelector(`[data-tour="${anchor}"]`);
 
 export default function TourOverlay({
   tour,
@@ -177,7 +177,7 @@ export default function TourOverlay({
     if (celebrating) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as Element | null;
-      if (!target?.closest(`[data-spotlight="${step.anchor}"]`)) return;
+      if (!target?.closest(`[data-tour="${step.anchor}"]`)) return;
       // A step may demand the click land on something REAL inside the
       // anchor — step 3 anchors the chip well, but only pressing a
       // chip picks a vehicle; the well's own padding does not.
@@ -214,16 +214,16 @@ export default function TourOverlay({
           <CheckCircle2 className="size-5 text-ok" />
           <div>
             <p className="text-sm font-semibold text-foreground">
-              {t('spotlight.labels.done_title')}
+              {t('tour.labels.done_title')}
             </p>
             <p className="text-xs text-muted-foreground">
-              {t(`spotlight.${tour.key}.done`)}
+              {t(`tour.${tour.key}.done`)}
             </p>
           </div>
           <button
             type="button"
             onClick={onDone}
-            aria-label={t('spotlight.labels.close')}
+            aria-label={t('tour.labels.close')}
             className="ml-2 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap min-w-tap"
           >
             <X className="size-4" />
@@ -243,7 +243,7 @@ export default function TourOverlay({
   // The blast radius, read live — never cached, never guessed.  An
   // absent element or attribute drops the number, not the honesty.
   const liveCount = step.countFrom
-    ? find(step.countFrom)?.getAttribute('data-spotlight-count') ?? null
+    ? find(step.countFrom)?.getAttribute('data-tour-count') ?? null
     : null;
   const cardH = cardRef.current?.offsetHeight ?? 120;
   const cardW = cardRef.current?.offsetWidth ?? 320;
@@ -279,7 +279,7 @@ export default function TourOverlay({
       >
         <div className="flex items-start justify-between gap-3">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('spotlight.labels.step_of', {
+            {t('tour.labels.step_of', {
               n: String(stepIdx + 1), total: String(total),
             })}
           </p>
@@ -289,16 +289,16 @@ export default function TourOverlay({
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap"
           >
             <X className="size-3.5" />
-            {t('spotlight.labels.exit')}
+            {t('tour.labels.exit')}
           </button>
         </div>
         <p className="mt-1 text-sm text-foreground">
-          {t(`spotlight.${tour.key}.step${stepIdx + 1}`)}
+          {t(`tour.${tour.key}.step${stepIdx + 1}`)}
         </p>
         {step.commit && (
           <>
             <p className="mt-2 text-xs text-warn">
-              {t(`spotlight.${tour.key}.commit`, { count: liveCount ?? '' })}
+              {t(`tour.${tour.key}.commit`, { count: liveCount ?? '' })}
             </p>
             {/* The hand-over.  Reaching the line IS completing the
                 tour; the write beyond it is the user's own act, so
@@ -309,7 +309,7 @@ export default function TourOverlay({
               onClick={onDone}
               className="mt-2 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition min-h-tap"
             >
-              {t('spotlight.labels.finish')}
+              {t('tour.labels.finish')}
             </button>
           </>
         )}

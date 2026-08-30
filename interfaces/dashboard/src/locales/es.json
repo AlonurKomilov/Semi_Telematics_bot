@@ -1140,7 +1140,7 @@
       "do": "Abra el vehículo y defina su enlace telemático, o archive el duplicado."
     }
   },
-  "spotlight": {
+  "tour": {
     "labels": {
       "show_me": "Muéstrame",
       "skip": "Omitir",

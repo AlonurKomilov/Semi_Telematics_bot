@@ -1,19 +1,19 @@
-"""GET /me/spotlight-signals — a user's own action counts, nothing else."""
+"""GET /me/tour-signals — a user's own action counts, nothing else."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from capabilities.spotlight import ALLOWED_SIGNALS
+from capabilities.tour import ALLOWED_SIGNALS
 from interfaces.api.deps import get_current_user, get_tenant_db, resolve_user_id
 
-router = APIRouter(prefix="/me", tags=["spotlight"])
+router = APIRouter(prefix="/me", tags=["tour"])
 
 _MAX_WINDOW_DAYS = 90
 
 
-@router.get("/spotlight-signals")
-async def spotlight_signals(
+@router.get("/tour-signals")
+async def tour_signals(
     pairs: str = Query(..., min_length=1, max_length=500),
     days: int = Query(14, ge=1, le=_MAX_WINDOW_DAYS),
     user: dict = Depends(get_current_user),
@@ -35,7 +35,7 @@ async def spotlight_signals(
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown signal pair {raw!r} — add it to "
-                       f"capabilities/spotlight ALLOWED_SIGNALS first",
+                       f"capabilities/tour ALLOWED_SIGNALS first",
             )
         wanted.append((entity_type, action))
 

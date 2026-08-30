@@ -29,7 +29,7 @@ const tour = (steps: TourSpec['steps']): TourSpec => ({
 
 function mountAnchor(anchor: string, tag = 'button'): HTMLElement {
   const el = document.createElement(tag);
-  el.setAttribute('data-spotlight', anchor);
+  el.setAttribute('data-tour', anchor);
   document.body.appendChild(el);
   return el;
 }
@@ -57,11 +57,11 @@ describe('TourOverlay', () => {
         onExit={() => {}}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     a.click();
     a.click();          // the browser-forwarded duplicate
     await waitFor(() =>
-      expect(screen.getByText('spotlight.maintenance.bulk_add.step2')).toBeTruthy());
+      expect(screen.getByText('tour.maintenance.bulk_add.step2')).toBeTruthy());
   });
 
   it('advanceWithin refuses clicks on the container itself', async () => {
@@ -76,12 +76,12 @@ describe('TourOverlay', () => {
         onExit={() => {}}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     well.click();                       // the well's own padding — picks nothing
-    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+    expect(screen.queryByText('tour.labels.done_title')).toBeNull();
     chip.click();                       // a real chip
     await waitFor(() =>
-      expect(screen.getByText('spotlight.labels.done_title')).toBeTruthy());
+      expect(screen.getByText('tour.labels.done_title')).toBeTruthy());
   });
 
   it('an anchor that leaves the DOM sends the tour back to waiting, and it recovers', async () => {
@@ -96,13 +96,13 @@ describe('TourOverlay', () => {
         onExit={() => {}}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     a.remove();
     await waitFor(() =>
-      expect(screen.queryByText('spotlight.labels.step_of')).toBeNull());
+      expect(screen.queryByText('tour.labels.step_of')).toBeNull());
     mountAnchor('gone');                // the user reopened the form
     await waitFor(() =>
-      expect(screen.getByText('spotlight.labels.step_of')).toBeTruthy());
+      expect(screen.getByText('tour.labels.step_of')).toBeTruthy());
   });
 
   it('the last step celebrates once, and rapid clicks stay idempotent', async () => {
@@ -115,10 +115,10 @@ describe('TourOverlay', () => {
         onExit={() => {}}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     a.click(); a.click(); a.click();
     await waitFor(() =>
-      expect(screen.getByText('spotlight.labels.done_title')).toBeTruthy());
+      expect(screen.getByText('tour.labels.done_title')).toBeTruthy());
     expect(onDone).not.toHaveBeenCalled();   // the card waits for its close
   });
 
@@ -132,7 +132,7 @@ describe('TourOverlay', () => {
         onExit={onExit}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(onExit).toHaveBeenCalledTimes(1);
   });
@@ -148,14 +148,14 @@ describe("advanceOn: 'click-gone' — celebrate the outcome, not the click", () 
         onExit={() => {}}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     btn.click();                    // validation refuses — button stays
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
-    expect(screen.getByText('spotlight.labels.step_of')).toBeTruthy();
+    expect(screen.queryByText('tour.labels.done_title')).toBeNull();
+    expect(screen.getByText('tour.labels.step_of')).toBeTruthy();
     btn.remove();                   // the form closed itself: real success
     await waitFor(() =>
-      expect(screen.getByText('spotlight.labels.done_title')).toBeTruthy());
+      expect(screen.getByText('tour.labels.done_title')).toBeTruthy());
   });
 
   it('an UNARMED disappearance is the user closing the form — no celebration', async () => {
@@ -167,14 +167,14 @@ describe("advanceOn: 'click-gone' — celebrate the outcome, not the click", () 
         onExit={() => {}}
       />,
     );
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     btn.remove();                   // never clicked Create — cancelled
     await waitFor(() =>
-      expect(screen.queryByText('spotlight.labels.step_of')).toBeNull());
-    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+      expect(screen.queryByText('tour.labels.step_of')).toBeNull());
+    expect(screen.queryByText('tour.labels.done_title')).toBeNull();
     mountAnchor('create');          // reopened — the step comes back
     await waitFor(() =>
-      expect(screen.getByText('spotlight.labels.step_of')).toBeTruthy());
+      expect(screen.getByText('tour.labels.step_of')).toBeTruthy());
   });
 });
 
@@ -186,28 +186,28 @@ describe('commit steps — the hands-off ending', () => {
   it('shows the consequence with the LIVE count and a Finish button', async () => {
     mountAnchor('create');
     const well = mountAnchor('well', 'div');
-    well.setAttribute('data-spotlight-count', '27');
+    well.setAttribute('data-tour-count', '27');
     const onDone = vi.fn();
     render(<TourOverlay tour={commitTour} onDone={onDone} onExit={() => {}} />);
-    await screen.findByText('spotlight.labels.step_of');
-    expect(screen.getByText('spotlight.maintenance.bulk_add.commit')).toBeTruthy();
+    await screen.findByText('tour.labels.step_of');
+    expect(screen.getByText('tour.maintenance.bulk_add.commit')).toBeTruthy();
     // Finishing at the line is completion — WITHOUT the "created" card,
     // because nothing was created and the goodbye must not claim it.
-    screen.getByText('spotlight.labels.finish').click();
+    screen.getByText('tour.labels.finish').click();
     expect(onDone).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+    expect(screen.queryByText('tour.labels.done_title')).toBeNull();
   });
 
   it('clicking the real control does NOT advance — only genuine success celebrates', async () => {
     const btn = mountAnchor('create');
     mountAnchor('well', 'div');
     render(<TourOverlay tour={commitTour} onDone={() => {}} onExit={() => {}} />);
-    await screen.findByText('spotlight.labels.step_of');
+    await screen.findByText('tour.labels.step_of');
     btn.click();                    // arms; the card must NOT celebrate yet
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+    expect(screen.queryByText('tour.labels.done_title')).toBeNull();
     btn.remove();                   // form closed itself: the real success
     await waitFor(() =>
-      expect(screen.getByText('spotlight.labels.done_title')).toBeTruthy());
+      expect(screen.getByText('tour.labels.done_title')).toBeTruthy());
   });
 });

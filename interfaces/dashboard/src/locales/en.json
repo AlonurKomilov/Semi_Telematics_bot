@@ -1427,7 +1427,7 @@
       "do": "Open the vehicle and set its telematics link, or archive the duplicate."
     }
   },
-  "spotlight": {
+  "tour": {
     "labels": {
       "show_me": "Show me",
       "skip": "Skip",

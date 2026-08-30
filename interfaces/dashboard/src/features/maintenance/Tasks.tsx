@@ -39,7 +39,7 @@ import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { makeColumns } from './columns';
 import AddTaskDialog from './AddTaskDialog';
-import { SpotlightHost } from '../../components/spotlight';
+import { TourHost } from '../../components/tour';
 import TaskDetailSheet from './TaskDetailSheet';
 import {
   STATUS_OPTIONS,
@@ -421,7 +421,7 @@ export default function Tasks() {
                 DOT Binder tab) in 2026-06 — the binder is a
                 stakeholder-facing compliance PDF, not a maintenance-
                 editing surface. */}
-            <button data-spotlight="maintenance.new-task" onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
+            <button data-tour="maintenance.new-task" onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
               <Plus className="size-3.5" />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
@@ -452,9 +452,9 @@ export default function Tasks() {
           for that and was deleted with this move. */}
       {/* Tours for this page — at most one offer per visit, decided at
           mount so a dialog never pops over someone's half-filled form.
-          The engine lives in components/spotlight; this page only says
+          The engine lives in components/tour; this page only says
           who it is and what it can see. */}
-      <SpotlightHost
+      <TourHost
         feature="maintenance"
         // canCreate: adding a TASK is gated by the page permission
         // itself (can_maintenance_*) — anyone standing here can press

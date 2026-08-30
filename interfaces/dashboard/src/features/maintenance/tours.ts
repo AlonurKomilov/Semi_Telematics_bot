@@ -1,10 +1,10 @@
 /**
  * Maintenance's tours — data only; the engine lives in
- * components/spotlight.  Words live in the locale files under
- * `spotlight.maintenance.*`; anchors live on the real controls as
- * `data-spotlight` attributes (Tasks.tsx, AddTaskDialog.tsx).
+ * components/tour.  Words live in the locale files under
+ * `tour.maintenance.*`; anchors live on the real controls as
+ * `data-tour` attributes (Tasks.tsx, AddTaskDialog.tsx).
  */
-import type { TourSpec } from '../../components/spotlight/types';
+import type { TourSpec } from '../../components/tour/types';
 
 export const MAINTENANCE_TOURS: readonly TourSpec[] = [
   {

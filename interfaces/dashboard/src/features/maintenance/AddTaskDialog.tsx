@@ -352,7 +352,7 @@ export default function AddTaskDialog({
           {/* Multi-vehicle toggle — checkbox at the top so the user
               sees it before they start filling fields.  Spans the
               full row so it doesn't get lost. */}
-          <label data-spotlight="maintenance.multi-toggle" className="col-span-full inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <label data-tour="maintenance.multi-toggle" className="col-span-full inline-flex items-center gap-2 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={fMultiMode}
@@ -369,7 +369,7 @@ export default function AddTaskDialog({
               <span className="block text-xs text-muted-foreground mb-1">
                 Vehicles ({fMultiVehicles.size} selected)
               </span>
-              <div data-spotlight="maintenance.vehicle-chips" data-spotlight-count={fMultiVehicles.size} className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
+              <div data-tour="maintenance.vehicle-chips" data-tour-count={fMultiVehicles.size} className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
                 {fleetLoading && (
                   <span className="text-xs text-muted-foreground">Loading…</span>
                 )}
@@ -606,7 +606,7 @@ export default function AddTaskDialog({
           </div>
           <div className="flex items-end">
             {confirm === null ? (
-              <button data-spotlight="maintenance.create" type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
+              <button data-tour="maintenance.create" type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
                 {saving ? 'Saving...' : 'Create'}
               </button>
             ) : (() => {
@@ -632,14 +632,14 @@ export default function AddTaskDialog({
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">
                     {fresh > 0 && confirm.duplicates.length > 0 && (
-                      <button data-spotlight="maintenance.create" type="button" disabled={saving}
+                      <button data-tour="maintenance.create" type="button" disabled={saving}
                         onClick={() => doCreate(true)}
                         className="px-3 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap">
                         Create {fresh} — skip {confirm.duplicates.length} existing
                       </button>
                     )}
                     {fresh > 0 && confirm.duplicates.length === 0 && (
-                      <button data-spotlight="maintenance.create" type="button" disabled={saving}
+                      <button data-tour="maintenance.create" type="button" disabled={saving}
                         onClick={() => doCreate(false)}
                         className="px-3 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap">
                         Create {confirm.targets.length} tasks
@@ -653,7 +653,7 @@ export default function AddTaskDialog({
                           // renders — the tour's anchor rides the only
                           // committing button left, or the engine would
                           // read the pause as the step completing.
-                          ? { 'data-spotlight': 'maintenance.create' } : {})}
+                          ? { 'data-tour': 'maintenance.create' } : {})}
                         className="px-3 py-1.5 rounded border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap">
                         Create {many ? `all ${confirm.targets.length} ` : ''}anyway
                       </button>
