@@ -678,7 +678,11 @@ export default function Vehicles() {
           vehicle={dialog.vehicle}
           existingVehicles={vehicles}
           onClose={() => setDialog(null)}
-          onSaved={() => refetch()}
+          // Restore reached from inside the dialog moves a truck
+          // BETWEEN the two lists, so both refetch — an add touches
+          // only the live one, and the extra request rides an action a
+          // person takes by hand.
+          onSaved={() => { void refetch(); void refetchArchived(); }}
         />
       )}
     </div>

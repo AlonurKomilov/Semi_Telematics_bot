@@ -533,6 +533,38 @@ async def test_route_create_duplicate_is_409(db, monkeypatch):
             rt.VehicleCreate(unit_number="DUP", company_code="X"), user=user,
         )
     assert exc.value.status_code == 409
+    # The message names the collision.  It used to forward the DB
+    # driver's error text, which told the operator nothing they could
+    # act on and handed schema detail to the client.
+    detail = str(exc.value.detail)
+    assert "DUP" in detail and "already exists" in detail
+    assert "UNIQUE" not in detail and "constraint" not in detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_route_create_over_an_archived_unit_says_restore(db, monkeypatch):
+    """The unit is spoken for by a truck that LEFT, and the answer is
+    Restore — not a second row, which the unique index would refuse
+    anyway.  A raw collision error sent the operator looking for a bug
+    instead of to the Archived tab."""
+    rt, fake_tdb = _route_tenant(db)
+    monkeypatch.setattr(rt, "_get_tenant_db", fake_tdb)
+    _unrestricted(monkeypatch, rt)
+    from fastapi import HTTPException
+    user = {"account_id": 42, "sub": "1", "uid": 1}
+
+    created = await rt.create_vehicle(
+        rt.VehicleCreate(unit_number="GONE", company_code="X"), user=user,
+    )
+    await db.deactivate_vehicle(42, created["id"])
+
+    with pytest.raises(HTTPException) as exc:
+        await rt.create_vehicle(
+            rt.VehicleCreate(unit_number="GONE", company_code="X"), user=user,
+        )
+    assert exc.value.status_code == 409
+    detail = str(exc.value.detail)
+    assert "archived" in detail and "restore" in detail.lower()
 
 
 @pytest.mark.asyncio

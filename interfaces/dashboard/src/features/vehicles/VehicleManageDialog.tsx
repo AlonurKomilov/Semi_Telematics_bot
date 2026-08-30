@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { Loader2, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -42,6 +42,26 @@ type Draft = {
   year: string;
   notes: string;
 };
+
+/** The wire says `manual`; a person reading it gets "Local" — the same
+ *  word the Source column uses.  One value, one name. */
+const sourceLabel = (x: string) =>
+  x === 'manual' ? 'Local' : x.charAt(0).toUpperCase() + x.slice(1);
+
+/** "Samsara" · "Samsara and Datatruck" · "A, B and C" */
+const joinNames = (xs: string[]) =>
+  xs.length <= 1
+    ? (xs[0] ?? '')
+    : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+
+/** What the typed identity already matches in the registry.  `exists`
+ *  and `archived` are unit+company hits; `vin` is the same physical
+ *  truck under another number; `ambiguous` means the unit number alone
+ *  cannot say which truck is meant. */
+type RegistryMatch =
+  | { kind: 'exists' | 'archived' | 'vin'; vehicle: Vehicle }
+  | { kind: 'ambiguous'; vehicles: Vehicle[] }
+  | null;
 
 const EMPTY: Draft = {
   unit_number: '', vehicle_type: 'truck', company_code: '', vin: '',
@@ -73,6 +93,7 @@ export default function VehicleManageDialog({
   // Samsara details) instead of creating a duplicate.
   const [promoted, setPromoted] = useState<Vehicle | null>(null);
   const [pulling, setPulling] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const target = vehicle ?? promoted;
   const editId = target?.registry_id ?? null;
@@ -103,25 +124,74 @@ export default function VehicleManageDialog({
     }
   }, [open, target]);
 
-  // In create mode, does the typed unit already exist in the registry?
-  const existingMatch = useMemo(() => {
+  // What the typed identity already matches.  The registry MIRRORS
+  // every provider vehicle, so this answers "does Samsara already have
+  // this truck?" with no provider round-trip — and instantly, from
+  // rows the page already holds.
+  //
+  // A unit number is a LABEL, reused across companies (this account
+  // runs 001 in two of them and 103 in three).  Matching it without
+  // the company is how this dialog offered the WRONG truck: the same
+  // identity-vs-label mistake that once mis-linked four devices.  So
+  // the company must agree when it is typed, and when it is not, only
+  // an unambiguous single row can be meant.
+  const registryMatch = useMemo<RegistryMatch>(() => {
     if (isEdit) return null;
-    const u = draft.unit_number.trim().toLowerCase();
-    if (!u) return null;
-    return existingVehicles.find(
-      (v) => (v.name ?? '').trim().toLowerCase() === u,
-    ) ?? null;
-  }, [isEdit, draft.unit_number, existingVehicles]);
+    const unit = draft.unit_number.trim().toLowerCase();
+    const company = draft.company_code.trim().toLowerCase();
+    const vin = draft.vin.trim().toUpperCase();
+
+    if (unit) {
+      const named = existingVehicles.filter(
+        (v) => (v.name ?? '').trim().toLowerCase() === unit,
+      );
+      const scoped = company
+        ? named.filter(
+            (v) => (v.company ?? v._org ?? '').trim().toLowerCase() === company)
+        : named;
+      if (scoped.length === 1) {
+        const hit = scoped[0];
+        return { kind: hit.archived ? 'archived' : 'exists', vehicle: hit };
+      }
+      if (!company && named.length > 1) {
+        return { kind: 'ambiguous', vehicles: named };
+      }
+    }
+    // A VIN names the PHYSICAL truck, so it matches across companies
+    // and across the archive line — this is the check that catches a
+    // second row for a truck we already have.  Length-guarded: a
+    // half-typed VIN must not claim a match, and list rows carry the
+    // literal "N/A" where a provider exposes none.
+    if (vin.length >= 11 && vin !== 'N/A') {
+      const byVin = existingVehicles.find(
+        (v) => (v.vin ?? '').trim().toUpperCase() === vin);
+      if (byVin) return { kind: 'vin', vehicle: byVin };
+    }
+    return null;
+  }, [isEdit, draft.unit_number, draft.company_code, draft.vin,
+      existingVehicles]);
+
+  // Which providers actually supply vehicles here — derived from the
+  // rows in hand (each carries its creator + enrichers), so it costs
+  // no fetch and no config permission, and it states what HAS happened
+  // rather than what is merely configured.
+  const supplying = useMemo(() => {
+    const found = new Set<string>();
+    for (const v of existingVehicles) {
+      for (const x of v.sources ?? []) if (x && x !== 'manual') found.add(x);
+    }
+    return [...found].sort().map(sourceLabel);
+  }, [existingVehicles]);
 
   // Pull the matched vehicle's full Samsara spec and switch to editing
   // it — the comfort helper: VIN / make / model / plate fill in.
-  const pullExisting = async () => {
-    if (!existingMatch || pulling) return;
+  const pullExisting = async (match: Vehicle) => {
+    if (pulling) return;
     setPulling(true);
     setError('');
     try {
-      const name = existingMatch.name ?? '';
-      const company = existingMatch.company ?? existingMatch._org ?? '';
+      const name = match.name ?? '';
+      const company = match.company ?? match._org ?? '';
       const qs = company ? `?company=${encodeURIComponent(company)}` : '';
       const detail = await apiJSON<Vehicle>(
         `/vehicles/${encodeURIComponent(name)}${qs}`,
@@ -138,12 +208,31 @@ export default function VehicleManageDialog({
         license_plate: clean(detail.license_plate ?? detail.licensePlate),
         // Carry the registry_id from the matched row (the detail
         // endpoint is keyed by name; the registry id rides on the row).
-        registry_id: existingMatch.registry_id,
+        registry_id: match.registry_id,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load details');
     } finally {
       setPulling(false);
+    }
+  };
+
+  // The archived truck IS the row being asked for — bring it back
+  // instead of minting a second one that would collide on the unique
+  // (company, unit) anyway.  Its history and documents come with it.
+  const restoreArchived = async (match: Vehicle) => {
+    if (restoring || match.registry_id == null) return;
+    setRestoring(true);
+    setError('');
+    try {
+      await apiJSON(`/vehicles/registry/${match.registry_id}/restore`,
+                    { method: 'POST' });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Restore failed');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -204,9 +293,9 @@ export default function VehicleManageDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit vehicle' : 'Add vehicle'}</DialogTitle>
           <DialogDescription>
-            Vehicles live in your 4truck registry. Telematics (Samsara)
-            enriches them — a trailer or a truck without a device works
-            here on its own.
+            Vehicles live in your 4truck registry. A trailer or a truck
+            with no device works here on its own; telematics enriches a
+            truck it recognises.
           </DialogDescription>
         </DialogHeader>
 
@@ -222,8 +311,7 @@ export default function VehicleManageDialog({
             Sources:{' '}
             <span className="text-foreground">
               {target!.sources!
-                .map((s) => s === 'manual' ? 'Manual edits'
-                  : s.charAt(0).toUpperCase() + s.slice(1))
+                .map(sourceLabel)
                 .join(' · ')}
             </span>
           </p>
@@ -286,25 +374,99 @@ export default function VehicleManageDialog({
             <Input value={draft.notes} onChange={set('notes')} placeholder="optional" />
           </div>
 
-          {/* Already-registered helper: the typed unit matches a
-              vehicle an integration already reports.  Offer to pull its
-              details and edit it rather than create a duplicate (409). */}
-          {existingMatch && (
+          {/* The typed identity already names something we have.  Each
+              state gets the action that actually resolves it — and the
+              ambiguous one gets no action at all, because the only
+              honest answer there is "tell me which company". */}
+          {registryMatch?.kind === 'ambiguous' && (
+            <div className={`${toneClasses('info')} rounded-md px-2.5 py-2 text-2xs`}>
+              {registryMatch.vehicles.length} vehicles are numbered{' '}
+              <span className="font-medium">{draft.unit_number.trim()}</span>
+              {' '}({registryMatch.vehicles
+                .map((v) => v.company || '—').join(', ')}). Type the company
+              code so this matches the right one.
+            </div>
+          )}
+
+          {registryMatch?.kind === 'exists' && (
             <div className={`${toneClasses('info')} rounded-md px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
               <span>
-                Unit <span className="font-medium">{existingMatch.name}</span> is
-                already in your vehicles
-                {existingMatch.company ? ` (${existingMatch.company})` : ''} —
-                pull its details to edit instead of adding a duplicate.
+                Unit <span className="font-medium">{registryMatch.vehicle.name}</span>
+                {registryMatch.vehicle.company ? ` (${registryMatch.vehicle.company})` : ''}
+                {' '}already exists
+                {(registryMatch.vehicle.sources?.length ?? 0) > 0
+                  ? ` — ${registryMatch.vehicle.sources!.map(sourceLabel).join(' · ')}`
+                  : ''}. Use its details instead of adding a second row.
               </span>
               <Button
                 type="button" variant="outline" size="xs"
-                onClick={pullExisting} disabled={pulling}
+                onClick={() => pullExisting(registryMatch.vehicle)} disabled={pulling}
               >
                 {pulling ? <Loader2 className="animate-spin" /> : <Sparkles />}
                 Use its details
               </Button>
             </div>
+          )}
+
+          {registryMatch?.kind === 'vin' && (
+            <div className={`${toneClasses('warn')} rounded-md px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
+              <span>
+                This VIN is already on unit{' '}
+                <span className="font-medium">{registryMatch.vehicle.name}</span>
+                {registryMatch.vehicle.company ? ` (${registryMatch.vehicle.company})` : ''}
+                {' '}— the same truck, under another number. Adding this row
+                would give one truck two records.
+              </span>
+              <Button
+                type="button" variant="outline" size="xs"
+                onClick={() => pullExisting(registryMatch.vehicle)} disabled={pulling}
+              >
+                {pulling ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                Use its details
+              </Button>
+            </div>
+          )}
+
+          {registryMatch?.kind === 'archived' && (
+            <div className={`${toneClasses('warn')} rounded-md px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
+              <span>
+                Unit <span className="font-medium">{registryMatch.vehicle.name}</span>
+                {registryMatch.vehicle.company ? ` (${registryMatch.vehicle.company})` : ''}
+                {' '}is archived. Restore it — its history and documents come
+                back with it — instead of adding a second row.
+              </span>
+              <Button
+                type="button" variant="outline" size="xs"
+                onClick={() => restoreArchived(registryMatch.vehicle)}
+                disabled={restoring}
+              >
+                {restoring ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+                Restore
+              </Button>
+            </div>
+          )}
+
+          {/* What happens after Add — the question this dialog never
+              answered.  Derived from the rows in hand, so it names the
+              providers that really supply this account rather than a
+              provider hardcoded in the copy. */}
+          {!isEdit && !registryMatch && (
+            <p className="text-2xs text-muted-foreground">
+              {supplying.length > 0 ? (
+                <>
+                  {joinNames(supplying)}{' '}
+                  {supplying.length > 1 ? 'supply' : 'supplies'} vehicles here.
+                  If {supplying.length > 1 ? 'one of them' : 'it'} reports this
+                  unit in this company — or this VIN — the truck links
+                  automatically, and Local stays its creator.
+                </>
+              ) : (
+                <>
+                  No integration supplies vehicles here yet, so this truck
+                  stays Local until one reports it.
+                </>
+              )}
+            </p>
           )}
 
           {error && <p className="text-xs text-danger">{error}</p>}

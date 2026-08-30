@@ -1745,9 +1745,39 @@ async def create_vehicle(
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
-        # UNIQUE(account_id, company_code, unit_number) collision, etc.
-        raise HTTPException(409, f"could not add vehicle: {e}")
+    except Exception:
+        # Almost always the UNIQUE(account_id, company_code, unit_number)
+        # collision.  Name the collision instead of forwarding the
+        # driver's error text: the raw string tells the operator nothing
+        # they can act on, and it hands schema detail to the client.
+        # The archived case misled worst — the truck EXISTS, the unit is
+        # spoken for, and the answer is Restore, not a second row.
+        logger.warning(
+            "manual add failed acct=%d %s/%s",
+            account_id, body.company_code, body.unit_number, exc_info=True,
+        )
+        clash = None
+        try:
+            rows = await tenant.list_vehicles(
+                account_id, company_code=body.company_code or None,
+                include_inactive=True,
+            )
+            needle = body.unit_number.strip().lower()
+            clash = next(
+                (v for v in rows
+                 if v.unit_number.strip().lower() == needle), None)
+        except Exception:
+            logger.debug("collision lookup failed", exc_info=True)
+        if clash is not None and not clash.is_active:
+            raise HTTPException(
+                409,
+                f"Unit {clash.unit_number} is archived — restore it from "
+                f"the Archived tab instead of adding a second row.")
+        if clash is not None:
+            where = f" in {clash.company_code}" if clash.company_code else ""
+            raise HTTPException(
+                409, f"Unit {clash.unit_number} already exists{where}.")
+        raise HTTPException(409, "Could not add this vehicle.")
     v = await tenant.get_vehicle(account_id, vid)
     return _vehicle_to_dict(v)
 
