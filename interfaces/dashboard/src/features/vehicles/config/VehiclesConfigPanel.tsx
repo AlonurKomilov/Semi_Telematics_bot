@@ -174,37 +174,78 @@ export default function VehiclesConfigPanel() {
             Off means new units wait for you to add them, and silent
             trucks are never retired automatically.
           </p>
-          <ul className="divide-y divide-border">
+          {/* One aligned grid, matrix grammar: sources down, verbs
+              across, every switch in its verb's column.  The first cut
+              put label+switch pairs inline per row, so Datatruck's lone
+              switch floated right while Samsara's two crammed with
+              wrapped labels — five controls, three visual positions.
+              A verb a source has no mechanism for renders a DASH in its
+              column: "no such mechanism exists", never an off switch
+              (the omitted-vs-zero rule). */}
+          <div
+            className="grid items-center gap-x-4 gap-y-1"
+            style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto' }}
+          >
+            <span />
+            <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">
+              May add
+            </span>
+            <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">
+              May auto-retire
+            </span>
             {data.lifecycle!.sources.map((src) => (
-              <li
+              <VerbRow
                 key={src.key}
-                className="flex items-center justify-between gap-3 py-2 text-sm"
-              >
-                <span className="text-foreground">
-                  {SOURCE_LABEL[src.key] ?? src.key}
-                </span>
-                <span className="flex items-center gap-4">
-                  {Object.entries(src.verbs).map(([verb, allowed]) => (
-                    <label
-                      key={verb}
-                      className="flex items-center gap-2 text-xs text-muted-foreground min-h-tap"
-                    >
-                      {verb === 'add' ? 'May add vehicles' : 'May auto-retire'}
-                      <Switch
-                        checked={allowed}
-                        disabled={mutation.isPending}
-                        onCheckedChange={(v) => setLifecycle(src.key, verb, v)}
-                        aria-label={`${SOURCE_LABEL[src.key] ?? src.key}: ${
-                          verb === 'add' ? 'may add vehicles' : 'may auto-retire'}`}
-                      />
-                    </label>
-                  ))}
-                </span>
-              </li>
+                label={SOURCE_LABEL[src.key] ?? src.key}
+                verbs={src.verbs}
+                disabled={mutation.isPending}
+                onToggle={(verb, v) => setLifecycle(src.key, verb, v)}
+              />
             ))}
-          </ul>
+          </div>
         </>
       )}
     </div>
+  );
+}
+
+
+/** One source's row in the auto-pilot grid: name, then a cell per
+ *  verb column — a Switch where the mechanism exists, a dash where it
+ *  does not. */
+function VerbRow({
+  label, verbs, disabled, onToggle,
+}: {
+  label: string;
+  verbs: Record<string, boolean>;
+  disabled: boolean;
+  onToggle: (verb: string, value: boolean) => void;
+}) {
+  return (
+    <>
+      <span className="text-sm text-foreground py-2 min-h-tap">{label}</span>
+      {(['add', 'inactivate'] as const).map((verb) =>
+        verb in verbs ? (
+          <span key={verb} className="flex justify-center py-2">
+            <Switch
+              checked={verbs[verb]}
+              disabled={disabled}
+              onCheckedChange={(v) => onToggle(verb, v)}
+              aria-label={`${label}: ${
+                verb === 'add' ? 'may add vehicles' : 'may auto-retire'}`}
+            />
+          </span>
+        ) : (
+          <span
+            key={verb}
+            className="text-center text-muted-foreground py-2"
+            aria-label={`${label} has no ${
+              verb === 'add' ? 'add' : 'auto-retire'} mechanism`}
+          >
+            —
+          </span>
+        ),
+      )}
+    </>
   );
 }

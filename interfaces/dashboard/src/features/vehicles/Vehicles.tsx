@@ -36,6 +36,13 @@ const TYPE_LABEL: Record<string, string> = {
   truck: 'Truck', trailer: 'Trailer', other: 'Other',
 };
 
+// The wire says `manual`; a person reading the grid gets "Local" —
+// somebody on 4truck added this truck by hand.  Provider names are
+// simply themselves.
+const SOURCE_VALUE_LABEL: Record<string, string> = {
+  samsara: 'Samsara', datatruck: 'Datatruck', manual: 'Local',
+};
+
 // Personas that benefit from the 30-day utilization roll-up at the top
 // of the Vehicles page.  Drivers + Dispatch don't need it (drivers care
 // about their own vehicle only; dispatch lives in the live view).
@@ -103,6 +110,29 @@ const ALL_COLUMNS: AnyColumn[] = [
     filterValue: (row) => String((row as Vehicle).vehicle_type ?? 'truck'),
     filterLabel: (row) => TYPE_LABEL[String((row as Vehicle).vehicle_type ?? 'truck')] ?? 'Truck',
     render: (v) => TYPE_LABEL[(v as string) || 'truck'] ?? 'Truck',
+  },
+  {
+    // Where the truck CAME FROM, and who has contributed since.
+    // Filter = the creator (that answers "show me what Datatruck
+    // added"); the cell renders every contributor, because one truck
+    // is routinely created by one integration and enriched by another
+    // — the single value lied about exactly this for weeks.
+    // `manual` reads as "Local": a person on 4truck added it.
+    key: 'source', label: 'Source', sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as Vehicle).source ?? ''),
+    filterLabel: (row) =>
+      SOURCE_VALUE_LABEL[String((row as Vehicle).source ?? '')]
+      ?? ((row as Vehicle).source || '(unknown)'),
+    render: (_v, row) => {
+      const r = row as Vehicle;
+      const list = (r.sources?.length ? r.sources : [r.source])
+        .filter(Boolean)
+        .map((x) => SOURCE_VALUE_LABEL[x!] ?? x);
+      return list.length
+        ? <span className="text-muted-foreground">{list.join(' · ')}</span>
+        : <span className="text-muted-foreground">—</span>;
+    },
   },
   {
     key: 'company', label: 'Company', sortable: true,
