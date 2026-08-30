@@ -77,6 +77,15 @@ export interface TourCtx {
   count: number;
   /** The caller may create the thing the tour teaches. */
   canCreate: boolean;
+  /**
+   * The caller's OWN recent action counts, per `entity:action` pair —
+   * fetched from /me/spotlight-signals for the pairs this feature's
+   * tours declare.  Absent when the endpoint was unreachable, so a
+   * `relevant()` reading it must degrade to page-local evidence
+   * rather than to silence.  `solo` = one-at-a-time events, `grouped`
+   * = events that rode a bulk group.
+   */
+  signals?: Record<string, { total: number; solo: number; grouped: number }>;
 }
 
 export interface TourSpec {
@@ -91,6 +100,18 @@ export interface TourSpec {
    * with the Phase B signals.
    */
   relevant: (ctx: TourCtx) => boolean;
+  /**
+   * Signal pairs this tour wants (must be in the backend's
+   * ALLOWED_SIGNALS — a guard in capabilities/spotlight/tests parses
+   * this file's consumers and refuses strangers).
+   */
+  signals?: readonly string[];
+  /**
+   * The user already DOES what this tour teaches — retire it unseen.
+   * A tour about bulk-add shown to someone who bulk-adds weekly is
+   * how people learn to close tours without reading them.
+   */
+  adopted?: (ctx: TourCtx) => boolean;
 }
 
 /** Per-user verdicts, kept in the preferences service (synced). */
@@ -113,6 +134,7 @@ export function isEligible(
   state: SpotlightState,
   now = new Date(),
 ): boolean {
+  if (spec.adopted?.(ctx)) return false;
   if (!spec.relevant(ctx)) return false;
   const entry = state[spec.key];
   if (!entry) return true;

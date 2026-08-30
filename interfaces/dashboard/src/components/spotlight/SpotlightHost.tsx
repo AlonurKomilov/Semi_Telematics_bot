@@ -11,8 +11,9 @@
  * permission, and the tour's `relevant()` sees the ctx.
  */
 import { useEffect, useRef, useState } from 'react';
+import { apiJSON } from '../../api/client';
 import { useSyncLoaded } from '../../preferences';
-import { eligibleTour } from './spotlightCatalog';
+import { SPOTLIGHT_CATALOG, eligibleTour } from './spotlightCatalog';
 import SpotlightIntro from './SpotlightIntro';
 import TourOverlay from './TourOverlay';
 import { useSpotlightState } from './useSpotlightState';
@@ -39,7 +40,28 @@ export default function SpotlightHost({
   useEffect(() => {
     if (!syncLoaded || decided.current) return;
     decided.current = true;
-    setOffered(eligibleTour(feature, ctx, state));
+    let cancelled = false;
+    (async () => {
+      // Behavioural signals, when any of this feature's tours declare
+      // them — one request for the union of pairs.  The endpoint being
+      // unreachable degrades to page-local evidence inside each tour's
+      // relevant(); it must never degrade to a thrown offer.
+      const pairs = [...new Set(
+        SPOTLIGHT_CATALOG
+          .filter((t) => t.feature === feature)
+          .flatMap((t) => t.signals ?? []),
+      )];
+      let signals: TourCtx['signals'];
+      if (pairs.length) {
+        try {
+          const res = await apiJSON<{ signals: NonNullable<TourCtx['signals']> }>(
+            `/me/spotlight-signals?pairs=${encodeURIComponent(pairs.join(','))}`);
+          signals = res.signals;
+        } catch { /* degrade, don't silence */ }
+      }
+      if (!cancelled) setOffered(eligibleTour(feature, { ...ctx, signals }, state));
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- decide-once: later ctx/state changes are deliberately ignored
   }, [syncLoaded]);
   const [phase, setPhase] = useState<'intro' | 'touring' | 'off'>('intro');

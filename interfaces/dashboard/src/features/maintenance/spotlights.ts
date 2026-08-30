@@ -28,9 +28,20 @@ export const MAINTENANCE_TOURS: readonly TourSpec[] = [
       { anchor: 'maintenance.create', advanceOn: 'click-gone',
         commit: true, countFrom: 'maintenance.vehicle-chips' },
     ],
-    // Offered once the page shows real use — a handful of tasks says
-    // "this person adds tasks", and that is who the shortcut helps.
-    // An empty account gets the EmptyState's own onboarding instead.
-    relevant: (ctx) => ctx.canCreate && ctx.count >= 5,
+    signals: ['maintenance_task:create'],
+    // With signals: offered to the person who created five or more
+    // tasks ONE AT A TIME recently — the exact person the shortcut
+    // helps.  Without them (endpoint unreachable): degrade to the
+    // page-local evidence, never to silence.
+    relevant: (ctx) => {
+      if (!ctx.canCreate) return false;
+      const sig = ctx.signals?.['maintenance_task:create'];
+      return sig ? sig.solo >= 5 : ctx.count >= 5;
+    },
+    // Already bulk-adds — trail events riding a group id ARE the bulk
+    // path.  Retire the tour unseen; teaching this person costs their
+    // attention and pays nothing.
+    adopted: (ctx) =>
+      (ctx.signals?.['maintenance_task:create']?.grouped ?? 0) > 0,
   },
 ];

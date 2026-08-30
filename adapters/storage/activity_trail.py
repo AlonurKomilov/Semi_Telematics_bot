@@ -375,6 +375,33 @@ class ActivityTrailMixin(_MixinBase):
             raise RestoreConflict(f"vehicle {entity_id} not found")
         return entity_id
 
+    async def count_actor_actions(
+        self, account_id: int, actor_user_id: int,
+        entity_type: str, action: str, *, days: int = 14,
+    ) -> dict:
+        """One user's OWN recent action counts — the spotlight signals.
+
+        Returns ``{"total": n, "solo": s, "grouped": g}`` where solo is
+        events written with no group_id (one-at-a-time work) and
+        grouped is events that rode a bulk group — the "already uses
+        the bulk path" signal.  Self-scope is the caller's contract:
+        this is only ever called with the REQUESTING user's id
+        (capabilities/spotlight/router.py), never to profile others.
+        """
+        from datetime import datetime, timedelta, timezone
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cur = await self._db.execute(
+            "SELECT COUNT(*), "
+            "       COUNT(*) FILTER (WHERE group_id IS NULL OR group_id = ''), "
+            "       COUNT(*) FILTER (WHERE group_id IS NOT NULL AND group_id <> '') "
+            "FROM activity_events "
+            "WHERE account_id = ? AND actor_user_id = ? "
+            "  AND entity_type = ? AND action = ? AND created_at >= ?",
+            (account_id, actor_user_id, entity_type, action, since),
+        )
+        row = await cur.fetchone()
+        return {"total": row[0], "solo": row[1], "grouped": row[2]}
+
     async def prune_activity_events(
         self, account_id: int, days_keep: int,
     ) -> int:
