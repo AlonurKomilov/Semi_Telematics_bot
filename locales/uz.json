@@ -126,7 +126,7 @@
     "company_count": "{count} ta kompaniyada"
   },
   "alert_actions": {
-    "acknowledge": "✅ Tasdiqlash",
+    "acknowledge": "✅ Bajarildi",
     "ai_diagnose": "🤖 AI Diagnostika",
     "open_in_samsara": "🔗 Samsarada ochish",
     "watch_video": "🎥 Videoni ko'rish",

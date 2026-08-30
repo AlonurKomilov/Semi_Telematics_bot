@@ -237,4 +237,4 @@ async def test_spine_reminder_edits_dm_copies_only(monkeypatch):
     assert calls["correlation_key"] == "alert:42"
     assert calls["clear"] is False
     # the DM reminder KEEPS the personal Acknowledge action
-    assert [a["id"] for a in calls["actions"]] == ["ack"]
+    assert [a["id"] for a in calls["actions"]] == ["work", "ack"]

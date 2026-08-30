@@ -225,12 +225,12 @@ async def test_alert_ack_acks_history_and_updates_deliveries(monkeypatch):
 
     monkeypatch.setattr(spine_actions, "update_delivery", fake_update)
     toast = await spine_actions._handle_ack(_ctx())
-    assert toast == "Acknowledged ✅"
+    assert toast == "Resolved ✅"
     assert tenant.history_calls == [(77, 555, 4)]
     assert tenant.delivery_calls == []            # history ack sufficed
     account_id, key, content, kw = updates[0]
     assert (account_id, key) == (4, "alert:77")
-    assert "Acknowledged by AK" in content.body
+    assert "Resolved by AK" in content.body
     assert "🔴 Fault" in content.body             # original text preserved
     assert kw.get("clear") is True                # final edit → ledger clear
 
@@ -247,7 +247,7 @@ async def test_alert_ack_falls_back_to_delivery_ack(monkeypatch):
 
     monkeypatch.setattr(spine_actions, "update_delivery", fake_update)
     toast = await spine_actions._handle_ack(_ctx())
-    assert toast == "Acknowledged ✅"
+    assert toast == "Resolved ✅"
     assert tenant.delivery_calls == [(77, 555, 4)]
 
 
@@ -258,7 +258,7 @@ async def test_alert_ack_already_acked(monkeypatch):
         return tenant
     monkeypatch.setattr("infra.platform.get_tenant_db", _fake_tenant_db)
     toast = await spine_actions._handle_ack(_ctx())
-    assert toast == "Already acknowledged"
+    assert toast == "Already resolved"
 
 
 @pytest.mark.asyncio
@@ -273,7 +273,7 @@ async def test_alert_ack_edit_failure_does_not_undo_ack(monkeypatch):
 
     monkeypatch.setattr(spine_actions, "update_delivery", broken_update)
     toast = await spine_actions._handle_ack(_ctx())
-    assert toast == "Acknowledged ✅"             # ack stands
+    assert toast == "Resolved ✅"                 # the resolve stands
 
 
 @pytest.mark.asyncio

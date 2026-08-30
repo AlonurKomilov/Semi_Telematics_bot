@@ -127,7 +127,7 @@
     "company_count": "across {count} company(ies)"
   },
   "alert_actions": {
-    "acknowledge": "✅ Acknowledge",
+    "acknowledge": "✅ Done",
     "ai_diagnose": "🤖 AI Diagnose",
     "open_in_samsara": "🔗 Open in Samsara",
     "watch_video": "🎥 Watch Video",

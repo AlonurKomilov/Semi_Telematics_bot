@@ -126,7 +126,7 @@
     "company_count": "pour {count} entreprise(s)"
   },
   "alert_actions": {
-    "acknowledge": "✅ Accuser réception",
+    "acknowledge": "✅ Terminé",
     "ai_diagnose": "🤖 Diagnostic IA",
     "open_in_samsara": "🔗 Ouvrir dans Samsara",
     "watch_video": "🎥 Voir la vidéo",

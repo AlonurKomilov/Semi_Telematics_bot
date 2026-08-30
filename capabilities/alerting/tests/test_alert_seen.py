@@ -147,3 +147,82 @@ class TestWorkingOn:
             "  FROM alert_history WHERE id = ?", (aid,))
         row = dict(await cur.fetchone())
         assert row["status"] == "active" and not row["acknowledged_at"]
+
+
+class TestBotClaim:
+    """The Telegram side of Working-on — the last Acknowledge retired.
+
+    The spine routes a button press by correlation key (alert:{history_id})
+    to the handler registered for its action id.  These pin that the new
+    "work" action exists next to "ack", that a press claims for the
+    PLATFORM user behind the telegram id, and that a presser from another
+    account claims nothing — a forwarded message must not become a
+    cross-tenant write.
+    """
+
+    def test_both_actions_are_registered(self):
+        from capabilities.notifications.actions import get_action_handler
+        import capabilities.alerting.spine_actions  # noqa: F401 — registers
+        assert get_action_handler("alert.ack") is not None
+        assert get_action_handler("alert.work") is not None
+
+    def test_the_buttons_say_the_trio_verbs(self):
+        from capabilities.alerting.spine_actions import ACK_ACTION, WORK_ACTION
+        assert WORK_ACTION["label"] == "🔧 Work on it"
+        assert ACK_ACTION["label"] == "✅ Done"
+        # The wire id "ack" survives on purpose: delivered messages
+        # already carry it, and renaming would orphan every button
+        # sitting in a chat.
+        assert ACK_ACTION["id"] == "ack" and WORK_ACTION["id"] == "work"
+
+    async def test_a_press_claims_for_the_platform_user(self, pg_db, monkeypatch):
+        from types import SimpleNamespace
+        from capabilities.alerting import spine_actions as sa
+        acct, uid, aid = await _seed(pg_db, tg=9970)
+
+        async def fake_tenant(_):
+            return pg_db
+        import infra.platform as plat
+        monkeypatch.setattr(plat, "get_tenant_db", fake_tenant)
+        monkeypatch.setattr(plat, "get_platform_db", lambda: pg_db)
+
+        edits = []
+        async def fake_update(*a, **kw):
+            edits.append(kw)
+        monkeypatch.setattr(sa, "update_delivery", fake_update)
+
+        ctx = SimpleNamespace(
+            correlation_key=f"alert:{aid}", account_id=acct,
+            presser_telegram_id=9970, presser_name="Sean Alex",
+            message_text="Low fuel: 17%")
+        out = await sa._handle_work(ctx)
+        assert "on it" in out.lower()
+        workers = await pg_db.get_workers_for_alerts(acct, [aid])
+        assert [w["user_id"] for w in workers[aid]] == [uid]
+        # The annotation edits copies but never CLEARS the ledger — the
+        # alert is owned, not over, and Done must stay pressable.
+        assert edits and edits[0].get("clear") is False
+
+        # Idempotent, like every claim.
+        assert (await sa._handle_work(ctx)) == "Already on it"
+
+    async def test_a_foreign_presser_claims_nothing(self, pg_db, monkeypatch):
+        from types import SimpleNamespace
+        from capabilities.alerting import spine_actions as sa
+        acct, _, aid = await _seed(pg_db, tg=9971)
+        other = await pg_db.create_account("Foreign Press Co")
+        outsider = await pg_db.create_user(telegram_id=9972, account_id=other.id)
+
+        import infra.platform as plat
+        async def fake_tenant(_):
+            return pg_db
+        monkeypatch.setattr(plat, "get_tenant_db", fake_tenant)
+        monkeypatch.setattr(plat, "get_platform_db", lambda: pg_db)
+
+        ctx = SimpleNamespace(
+            correlation_key=f"alert:{aid}", account_id=acct,
+            presser_telegram_id=outsider.telegram_id, presser_name="X",
+            message_text="")
+        out = await sa._handle_work(ctx)
+        assert "identify" in out.lower()
+        assert await pg_db.get_workers_for_alerts(acct, [aid]) == {}

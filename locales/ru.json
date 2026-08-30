@@ -126,7 +126,7 @@
     "company_count": "для {count} компании(й)"
   },
   "alert_actions": {
-    "acknowledge": "✅ Подтвердить",
+    "acknowledge": "✅ Готово",
     "ai_diagnose": "🤖 ИИ-диагностика",
     "open_in_samsara": "🔗 Открыть в Samsara",
     "watch_video": "🎥 Смотреть видео",

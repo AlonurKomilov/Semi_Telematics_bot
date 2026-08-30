@@ -385,8 +385,11 @@ async def _spine_dm_fanout(
         except Exception as ke:
             logger.debug("spine-dm keyboard build failed: %s", ke)
 
-        actions = [{"id": "ack", "label": "✅ Acknowledge"}] \
-            if (needs_ack and correlation_key) else []
+        # Work-on first (the pager's ask is finding an owner), Done
+        # beside it.  Specs imported so a relabel happens in ONE place.
+        from capabilities.alerting.spine_actions import ACK_ACTION, WORK_ACTION
+        actions = ([dict(WORK_ACTION), dict(ACK_ACTION)]
+                   if (needs_ack and correlation_key) else [])
         base_body = _strip_alert_html(alert_text)
 
         def _content(body: str) -> "_NotifContent":

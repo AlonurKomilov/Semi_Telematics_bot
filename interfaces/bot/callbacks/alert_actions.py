@@ -35,7 +35,13 @@ logger = logging.getLogger("bot")
 
 
 async def handle_alert_ack(update, context, ack_id: int):
-    """Handle the ✅ Acknowledge button press on a critical alert."""
+    """Handle the ✅ Done press on a critical alert — the RESOLUTION.
+
+    The legacy per-delivery path, kept for buttons already sitting in
+    chats.  Same mechanics as always; the verb wears its honest name
+    now (owner decision 2026-08-30): this was always the resolution
+    record, so nothing changes but the words.
+    """
     query = update.callback_query
     try:
         user = context.user_data.get("_db_user")
@@ -54,7 +60,7 @@ async def handle_alert_ack(update, context, ack_id: int):
             original_text = query.message.text_html or query.message.text or ""
             ack_name = query.from_user.full_name or str(tid)
             ack_chip = (
-                f"  ·  ✅ Acked by "
+                f"  ·  ✅ Resolved by "
                 f"<a href='tg://user?id={tid}'>{ack_name}</a>"
             )
             lines = original_text.split("\n")
@@ -65,7 +71,7 @@ async def handle_alert_ack(update, context, ack_id: int):
                     patched = True
                     break
             ack_text = "\n".join(lines) if patched else (
-                original_text + f"\n\n✅ <b>Acknowledged</b> by "
+                original_text + f"\n\n✅ <b>Resolved</b> by "
                 f"<a href='tg://user?id={tid}'>{ack_name}</a>"
             )
             # Keep only the truck view button
@@ -81,7 +87,7 @@ async def handle_alert_ack(update, context, ack_id: int):
             )
         except Exception:
             logger.debug("Failed to edit ack message for alert %d", ack_id)
-        await query.answer("✅ Alert acknowledged!", show_alert=False)
+        await query.answer("✅ Resolved", show_alert=False)
 
         # Trail — the ack came from a human tapping the bot button;
         # ``user.id`` is already the platform users.id.
@@ -94,7 +100,7 @@ async def handle_alert_ack(update, context, ack_id: int):
             )
     except Exception as e:
         logger.error("ACK alert %d failed: %s", ack_id, e, exc_info=True)
-        await query.answer("Error acknowledging alert", show_alert=True)
+        await query.answer("Couldn’t resolve it — try again", show_alert=True)
 
 
 

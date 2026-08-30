@@ -401,7 +401,7 @@ def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) ->
 async def _spine_remind(tenant, account_id: int, history_id: int, *,
                         vname: str, atype: str, age_str: str,
                         attempt_n: int) -> bool:
-    """Edit the spine-delivered PERSONAL copies of an unacknowledged
+    """Edit the spine-delivered PERSONAL copies of an unclaimed
     alert into reminder text, keeping the ✅ Acknowledge action.
 
     DM copies ONLY (owner decision 2026-07-27, same rule as the
@@ -414,11 +414,11 @@ async def _spine_remind(tenant, account_id: int, history_id: int, *,
         NotificationContent as _NotifContent,
         update_delivery as _update_delivery,
     )
-    from capabilities.alerting.spine_actions import ACK_ACTION
+    from capabilities.alerting.spine_actions import ACK_ACTION, WORK_ACTION
     from infra.config import REESCALATE_MAX_ATTEMPTS
     _plain = (
         f"🟡 Reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS}"
-        " — unacknowledged alert\n"
+        " — no one is working on this yet\n"
         f"🚛 Vehicle #{vname}\n"
         f"⏱ {atype.title()} active for {age_str}\n"
         "💡 Acknowledge or mute — auto-clears when the "
@@ -428,7 +428,7 @@ async def _spine_remind(tenant, account_id: int, history_id: int, *,
     results = await _update_delivery(
         tenant, account_id, f"alert:{history_id}",
         _NotifContent(title="", body=_plain, severity="warning",
-                      actions=[dict(ACK_ACTION)]),
+                      actions=[dict(WORK_ACTION), dict(ACK_ACTION)]),
         channels=("telegram_dm",),
     )
     return any(r.ok for r in results)
@@ -568,7 +568,7 @@ async def re_escalate_critical_alerts(app=None):
             # so dispatch sees how aggressive the loop has been.
             from capabilities.formatting.severity import badge as _badge
             reminder_lines: list[str] = [
-                f"<b>{_badge('reminder')}</b> — Unacknowledged Alert  "
+                f"<b>{_badge('reminder')}</b> — No One Working On This  "
                 f"<i>(reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS})</i>",
                 "",
                 f"🚛 <b>Vehicle #{vname}</b>",

@@ -90,7 +90,13 @@ async def test_dispatches_telegram_dm_with_correlation_and_ack(monkeypatch):
     assert call["channels"] == ("telegram_dm",)
     assert call["correlation_key"] == "alert:77"
     assert call["content"].category == "alert.faults"
-    assert call["content"].actions == [{"id": "ack", "label": "✅ Acknowledge"}]
+    # The trio's two verbs (owner decision 2026-08-30): the claim
+    # first — the pager's ask is finding an owner — then Done, the
+    # resolution the old ack always was.
+    assert call["content"].actions == [
+        {"id": "work", "label": "🔧 Work on it"},
+        {"id": "ack", "label": "✅ Done"},
+    ]
     assert "<b>" not in call["content"].body          # HTML stripped
 
 

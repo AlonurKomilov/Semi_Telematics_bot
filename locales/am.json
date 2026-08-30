@@ -126,7 +126,7 @@
     "company_count": "በ {count} ኩባንያ(ዎች) ውስጥ"
   },
   "alert_actions": {
-    "acknowledge": "✅ አረጋግጥ",
+    "acknowledge": "✅ ተጠናቀቀ",
     "ai_diagnose": "🤖 AI ምርመራ",
     "open_in_samsara": "🔗 በSamsara ውስጥ ክፈት",
     "watch_video": "🎥 ቪዲዮ ይመልከቱ",
