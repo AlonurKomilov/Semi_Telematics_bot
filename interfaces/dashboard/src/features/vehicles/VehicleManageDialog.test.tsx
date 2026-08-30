@@ -110,6 +110,27 @@ describe('Add vehicle — matching the typed identity', () => {
     expect(body()).toMatch(/links automatically/);
   });
 
+  it('suggests the company codes this operator can actually mean', () => {
+    open();
+    const codes = [...document.querySelectorAll('#registry-companies option')]
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(codes).toEqual(['CFT', 'G1', 'OSY', 'PTG']);
+  });
+
+  it('fills the company when only one is possible, asks when several are', () => {
+    // The company-restricted operator's case: the API scopes their rows
+    // to one code, and it is also the field the API REFUSES to accept
+    // blank from them — so it must not arrive empty.
+    open([row({ name: '5', company: 'PTG', registry_id: 9 })]);
+    expect((screen.getByPlaceholderText('PTG') as HTMLInputElement).value)
+      .toBe('PTG');
+    cleanup();
+    // Several companies: guessing one would be worse than asking.
+    open();
+    expect((screen.getByPlaceholderText('PTG') as HTMLInputElement).value)
+      .toBe('');
+  });
+
   it('promises nothing when no integration supplies vehicles', () => {
     open([row({ name: '5', company: 'PTG', registry_id: 9,
                 sources: ['manual'] })]);

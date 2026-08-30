@@ -11,7 +11,7 @@
  * Remove  → DELETE /vehicles/registry/{id}  (soft delete)
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
@@ -120,7 +120,12 @@ export default function VehicleManageDialog({
         notes: '',
       });
     } else {
-      setDraft(EMPTY);
+      // One possible company = not a question worth asking.  This is
+      // also the company-restricted user's case: their rows carry one
+      // code, so the field they MUST fill (the API refuses a blank one
+      // from them) arrives filled.
+      const opts = companyOptionsRef.current;
+      setDraft({ ...EMPTY, company_code: opts.length === 1 ? opts[0] : '' });
     }
   }, [open, target]);
 
@@ -170,6 +175,32 @@ export default function VehicleManageDialog({
     return null;
   }, [isEdit, draft.unit_number, draft.company_code, draft.vin,
       existingVehicles]);
+
+  // The company codes this operator can actually mean, from the rows
+  // in hand — which the API already scoped to their access, so a
+  // PTG-only user is never shown OSY.  Deliberately NOT /admin/companies:
+  // that needs can_manage_companies (a gate this dialog does not want)
+  // and returns the account's full list, which would name companies to
+  // someone walled off from them.
+  //
+  // It is a datalist, so it SUGGESTS without restricting — the first
+  // truck of a brand-new company (no rows yet, nothing to derive from)
+  // is still typed in freely.
+  const companyOptions = useMemo(() => {
+    const found = new Set<string>();
+    for (const v of existingVehicles) {
+      const c = (v.company ?? v._org ?? '').trim();
+      if (c) found.add(c);
+    }
+    return [...found].sort();
+  }, [existingVehicles]);
+
+  // Read through a ref by the reset effect below: depending on the
+  // array directly would re-run that effect on every background
+  // refetch and wipe a half-typed form.
+  const companyOptionsRef = useRef(companyOptions);
+  useEffect(() => { companyOptionsRef.current = companyOptions; },
+            [companyOptions]);
 
   // Which providers actually supply vehicles here — derived from the
   // rows in hand (each carries its creator + enrichers), so it costs
@@ -346,7 +377,17 @@ export default function VehicleManageDialog({
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Company code</label>
-              <Input value={draft.company_code} onChange={set('company_code')} placeholder="PTG" />
+              <Input
+                value={draft.company_code} onChange={set('company_code')}
+                placeholder="PTG"
+                list={isEdit ? undefined : 'registry-companies'}
+                autoComplete="off"
+              />
+              {!isEdit && (
+                <datalist id="registry-companies">
+                  {companyOptions.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              )}
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Year</label>
