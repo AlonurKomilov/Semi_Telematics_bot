@@ -32,9 +32,11 @@ from fastapi.responses import StreamingResponse
 
 from adapters.storage.vehicle_documents import VEHICLE_DOC_TYPES
 from infra.platform import get_tenant_db as _get_tenant_db
+from features.vehicles.scope import company_allows
 from interfaces.api.deps import (
     get_platform_db,
     get_tenant_db,
+    get_user_company_codes,
     require_permission,
     require_permission_any,
     resolve_user_id,
@@ -63,9 +65,20 @@ def _safe_filename(name: str) -> str:
     return keep[:120] or "document.bin"
 
 
-async def _vehicle_or_404(tenant, account_id: int, vehicle_id: int):
+async def _vehicle_or_404(tenant, account_id: int, vehicle_id: int, user):
+    """The vehicle this caller may act on, or 404.
+
+    Account scope alone is NOT the wall: a company-restricted operator
+    must not reach another company's paperwork by guessing a registry
+    id.  404 rather than 403, matching every other id-referencing
+    vehicle route — a 403 would confirm the row exists, which is the
+    disclosure the wall exists to prevent.
+    """
     v = await tenant.get_vehicle(account_id, vehicle_id)
     if v is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    allowed = await get_user_company_codes(user)
+    if not company_allows(getattr(v, "company_code", "") or "", allowed):
         raise HTTPException(status_code=404, detail="Vehicle not found")
     return v
 
@@ -92,7 +105,7 @@ async def list_vehicle_documents(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    await _vehicle_or_404(tenant, account_id, vehicle_id)
+    await _vehicle_or_404(tenant, account_id, vehicle_id, user)
     docs = await tenant.list_vehicle_documents(account_id, vehicle_id)
     return {
         "documents": [
@@ -145,7 +158,7 @@ async def upload_vehicle_document(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    v = await _vehicle_or_404(tenant, account_id, vehicle_id)
+    v = await _vehicle_or_404(tenant, account_id, vehicle_id, user)
 
     # Quota rail — meaningful for the local-disk backend; Drive accounts
     # cap on Google's side.  Same rail, same wording as driver docs.
@@ -198,6 +211,10 @@ async def download_vehicle_document(
     doc = await tenant.get_vehicle_document(account_id, doc_id)
     if doc is None or doc.status != "active":
         raise HTTPException(status_code=404, detail="Document not found")
+    # The document id is the caller's only input, so the wall has to be
+    # applied to the vehicle BEHIND it — otherwise a company-restricted
+    # operator reads another company's title by guessing a number.
+    await _vehicle_or_404(tenant, account_id, doc.vehicle_id, user)
 
     store = await get_object_storage_for_account(account_id, tenant_db)
     try:
@@ -234,6 +251,11 @@ async def delete_vehicle_document(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    # Walled before the delete, not after: the flip is the damage.
+    peek = await tenant.get_vehicle_document(account_id, doc_id)
+    if peek is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await _vehicle_or_404(tenant, account_id, peek.vehicle_id, user)
     doc = await tenant.delete_vehicle_document(account_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")

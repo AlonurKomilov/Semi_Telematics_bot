@@ -141,11 +141,96 @@ class TestTheSharedVerdict:
         from features.vehicles.scope import company_allows
         assert company_allows("G1", ["G1", "CFT"])
 
-    def test_both_resolvers_use_it(self):
-        """Pinned: if either grows its own copy of the predicate again,
-        this fails."""
+    def test_every_resolver_uses_it(self):
+        """Pinned: if any grows its own copy of the predicate again,
+        this fails.
+
+        It did.  The vehicle-documents module arrived with a resolver
+        that checked the ACCOUNT only, so a company-restricted operator
+        could read another company's title by guessing a registry id —
+        drift into a route written after the contract, which is exactly
+        the shape this file exists to catch."""
         import inspect
         from features.vehicles import router as reg
+        from features.vehicles import documents as doc
         from features.vehicles.inventory import router as inv
         assert "company_allows" in inspect.getsource(reg._wall_registry_vehicle)
         assert "company_allows" in inspect.getsource(inv._resolve_vehicle)
+        assert "company_allows" in inspect.getsource(doc._vehicle_or_404)
+
+
+class TestDocumentsAndLinksAreWalled:
+    """The paperwork routes and the provider-link route take the same
+    wall as every other id-referencing vehicle route — and 404, because
+    a 403 would confirm the row exists."""
+
+    @pytest.mark.asyncio
+    async def test_a_foreign_trucks_documents_are_not_listed(self, pg_db):
+        from features.vehicles import documents as doc
+
+        acct = (await pg_db.create_account("Wall Docs Co")).id
+        await pg_db.upsert_from_integration(acct, [
+            {"company_code": "OSY", "unit_number": "W-1",
+             "telematics_ref": "w1"},
+        ], source="samsara")
+        (v,) = await pg_db.list_vehicles(acct)
+
+        async def _tenant(_aid):
+            return pg_db
+
+        async def _restricted_to_g1(_user):
+            return ["G1"]
+
+        doc._get_tenant_db = _tenant                       # type: ignore[assignment]
+        doc.get_user_company_codes = _restricted_to_g1     # type: ignore[assignment]
+        try:
+            with pytest.raises(HTTPException) as e:
+                await doc.list_vehicle_documents(
+                    v.id, user={"account_id": acct, "sub": "1", "uid": 1})
+            assert e.value.status_code == 404
+
+            # And the operator's OWN company still passes.
+            async def _restricted_to_osy(_user):
+                return ["OSY"]
+            doc.get_user_company_codes = _restricted_to_osy  # type: ignore[assignment]
+            out = await doc.list_vehicle_documents(
+                v.id, user={"account_id": acct, "sub": "1", "uid": 1})
+            assert out["documents"] == []
+        finally:
+            import importlib
+            importlib.reload(doc)
+
+    @pytest.mark.asyncio
+    async def test_a_document_id_cannot_reach_across_the_wall(self, pg_db):
+        """The download route takes a DOCUMENT id, so the wall has to be
+        applied to the vehicle behind it — the id alone is the caller's
+        whole input."""
+        from features.vehicles import documents as doc
+
+        acct = (await pg_db.create_account("Wall Doc Id Co")).id
+        await pg_db.upsert_from_integration(acct, [
+            {"company_code": "OSY", "unit_number": "W-2",
+             "telematics_ref": "w2"},
+        ], source="samsara")
+        (v,) = await pg_db.list_vehicles(acct)
+        d = await pg_db.add_vehicle_document(
+            acct, v.id, doc_type="title", bucket="OSY/vehicles/W-2",
+            object_key="t.pdf", file_name="t.pdf", file_size=3)
+
+        async def _tenant(_aid):
+            return pg_db
+
+        async def _restricted_to_g1(_user):
+            return ["G1"]
+
+        doc._get_tenant_db = _tenant                       # type: ignore[assignment]
+        doc.get_user_company_codes = _restricted_to_g1     # type: ignore[assignment]
+        try:
+            with pytest.raises(HTTPException) as e:
+                await doc.download_vehicle_document(
+                    d.id, user={"account_id": acct, "sub": "1", "uid": 1},
+                    tenant_db=pg_db)
+            assert e.value.status_code == 404
+        finally:
+            import importlib
+            importlib.reload(doc)
