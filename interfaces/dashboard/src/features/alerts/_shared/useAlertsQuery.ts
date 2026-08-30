@@ -65,7 +65,9 @@ export function buildAlertsFilterParams(f: {
   // solely within the rows already loaded — which quietly meant "some
   // of your alerts".  One box, one meaning, whole queue.
   if (f.vehicleSearch) params.set('q', f.vehicleSearch);
-  params.set('ack_state', f.ackState);
+  // ``view`` is the seen/working dimension; the server keeps the old
+  // ack_state for its other consumers, and view overrides it there.
+  params.set('view', f.ackState);
   params.set('days', String(f.days));
   if (f.sort) { params.set('sort', f.sort); params.set('dir', f.dir); }
   return params;

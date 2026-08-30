@@ -124,7 +124,17 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
 } {
   const typeFilter = params.get('typeFilter') || defaults.typeFilter;
   const severityFilter = params.get('severityFilter') || defaults.severityFilter;
-  const ackState = (params.get('ackState') as AlertAckState) || defaults.ackState;
+  // Bookmarks and saved tabs minted before the seen/working rename still
+  // carry the ack vocabulary.  A URL is a promise, so they land on the
+  // nearest surviving meaning instead of a broken cast: the open queue
+  // becomes New, the resolved views become All.
+  const LEGACY_ACK: Record<string, AlertAckState> = {
+    active: 'new', acknowledged: 'all',
+  };
+  const rawAck = params.get('ackState') || '';
+  const ackState = (LEGACY_ACK[rawAck]
+    ?? ((['new', 'all', 'mine_working'].includes(rawAck)
+      ? rawAck : defaults.ackState) as AlertAckState));
   const vehicleSearch = params.get('vehicleSearch') ?? defaults.vehicleSearch;
   const daysRaw = parseInt(params.get('days') ?? '', 10);
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : defaults.days;

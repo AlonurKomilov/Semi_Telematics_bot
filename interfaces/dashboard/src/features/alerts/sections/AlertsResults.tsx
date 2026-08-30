@@ -33,7 +33,7 @@
  */
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, CheckCircle2 } from 'lucide-react';
+import { Bell, Wrench } from 'lucide-react';
 import {
   EmptyState,
   ErrorState,
@@ -54,7 +54,7 @@ import { useTimezone } from '../../../hooks/useTimezone';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery, buildAlertsFilterParams } from '../_shared/useAlertsQuery';
-import { apiFetch } from '../../../api/client';
+import { apiFetch, apiJSON } from '../../../api/client';
 import { toast } from 'sonner';
 import { useAckAlerts } from '../useRecentAlerts';
 import { addStagedAcks, removeStagedAcks, useStagedAckIds } from '../stagedAcks';
@@ -85,7 +85,6 @@ const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 //
 // Below it the window carries the protection alone, which is right: a
 // modal an operator meets all shift becomes a reflex click.
-const ACK_CONFIRM_THRESHOLD = 25;
 
 // Declared filter options for the two server-backed column filters.
 //
@@ -116,9 +115,13 @@ const SEVERITY_OPTIONS: { value: string; label: string }[] = [
 // isn't in the response at all while viewing the open queue), which is
 // why it can't be a column filter even in principle.
 const ACK_SEGMENTS = [
-  { key: 'active', label: 'Not acknowledged' },
-  { key: 'acknowledged', label: 'Acknowledged' },
+  // Three tabs, three questions (owner decision 2026-08-30): what has
+  // nobody looked at, everything, and what have I claimed.  The old
+  // Not-acknowledged/Acknowledged split keyed on a verb nobody used —
+  // 4,629 demanded acks, 9 given.
+  { key: 'new', label: 'New' },
   { key: 'all', label: 'All' },
+  { key: 'mine_working', label: 'My working on' },
 ];
 
 // The API caps the window at 90 days (days: ge=1, le=90), so this is the
@@ -260,86 +263,29 @@ export default function AlertsResults() {
     [selected],
   );
 
-  // Acknowledging is STAGED, not immediate.  It writes an accountability
-  // record per alert under this operator's name and there is no
-  // un-acknowledge, so the protection has to come BEFORE the write: the
-  // request fires when the countdown ends, and Cancel means nothing was
-  // ever sent — no reversal, no "acked then un-acked" noise in a trail
-  // someone may have to produce in an audit.
-  //
-  // Same primitive and same store as the bell's "Acknowledge all", so the
-  // two surfaces behave identically and a window survives either one
-  // unmounting.
-  const ackSelected = (rows: Record<string, unknown>[]) => {
-    const ids = rows.map((r) => (r as unknown as Alert).id);
-    if (!ids.length) return;
-    const strIds = ids.map(String);
-    const n = ids.length;
-    const noun = `${n} alert${n === 1 ? '' : 's'}`;
-
-    setBulkError('');
-    addStagedAcks(strIds);            // rows vanish for the window
-    // Selection clears now: the operator is done with these rows, and
-    // leaving them ticked behind a banner invites a second click.
-    setSelected(new Set());
-
-    stagedAction({
-      label: `Acknowledging ${noun}`,
-      detail: 'Each acknowledgement is recorded under your name.',
-      commit: async (hint) => {
-        setAcking(true);
-        try {
-          // The shared helper invalidates BOTH ['alerts'] (board + hero
-          // counts) and ['shell','overview-stats'] (bell badge, Overview
-          // card), so no surface is left claiming work already done.
-          await ackAlerts(ids, hint);
-          // Explicit "an ack landed" event for LiveAckPanel's
-          // "Last acknowledged" chip.
-          markAckCompleted();
-        } catch (e) {
-          // The staged banner is transient and offers Retry; AlertsBulkError
-          // is the PERSISTENT inline surface, mounted in every layout for
-          // exactly this.  Feeding only the banner left it permanently
-          // blank and the failure easy to scroll past.
-          setBulkError(e instanceof Error ? e.message : 'Bulk acknowledge failed');
-          throw e;      // let stagedAction show its Retry banner too
-        } finally {
-          // Committed: the refetch proves it.  Failed: the rows come
-          // BACK rather than staying hidden behind a banner offering
-          // Retry — a hidden row the operator thinks is handled is the
-          // worse of the two failures.
-          removeStagedAcks(strIds);
-          setAcking(false);
-        }
-      },
-      successMessage: `Acknowledged ${noun}`,
-      onCancel: () => removeStagedAcks(strIds),
-    });
-  };
-
   const bulkActions: BulkAction[] = [
     {
-      label: t('alerts.acknowledge', { defaultValue: 'Acknowledge' }),
-      icon: CheckCircle2,
-      // Acknowledging is a COMPLIANCE record — it stamps the operator's
-      // name on each alert and takes it out of the open queue, and there
-      // is no un-acknowledge.  So the scope gets confirmed above a
-      // handful: working through a few rows stays friction-free, while
-      // "select all, then click" — the accident this guards — is
-      // questioned with the number spelled out.
-      //
-      // Deliberately NOT a prompt on every action: a modal an operator
-      // sees twenty times a shift becomes a reflex click, which protects
-      // less than no modal at all while feeling like it protects more.
-      // NOT "this cannot be undone" any more — that stopped being true
-      // the moment the action became staged, and a warning that overstates
-      // the stakes is its own kind of dishonesty.
-      confirm: (count) => (count >= ACK_CONFIRM_THRESHOLD
-        ? `Acknowledge ${count} alerts?\n\n`
-          + 'Each is recorded under your name and leaves the open queue. '
-          + 'You get a few seconds to cancel before anything is sent.'
-        : ''),
-      onRun: ackSelected,
+      // The bulk bar's verb followed the row's (owner decision
+      // 2026-08-30): claiming replaced acknowledging.  No staged-undo
+      // window and no confirm threshold, deliberately — acknowledging
+      // needed both because it was a one-way compliance record, but a
+      // claim is cheap, additive and honest to repeat.  The old staged
+      // machinery (stagedAcks) stays for the bell's legacy flow until
+      // the removal sweep retires it.
+      label: t('alerts.workOn', { defaultValue: 'Work on these' }),
+      icon: Wrench,
+      onRun: async (rows) => {
+        const ids = rows.map((r) => Number((r as unknown as Alert).id))
+          .filter(Number.isFinite);
+        if (!ids.length) return;
+        try {
+          await apiJSON('/alerts/work', { method: 'POST', body: { ids } });
+          setSelected(new Set());
+          await refetch();
+        } catch (e) {
+          setBulkError(e instanceof Error ? e.message : 'Could not claim these');
+        }
+      },
     },
   ];
 
@@ -547,9 +493,9 @@ export default function AlertsResults() {
             // "this window" would be a lie on the open queue, which is
             // unwindowed — only the acknowledged / all views are bounded
             // by the date range.
-            ackState === 'active'
-              ? 'Other alerts may still be pending — clear the filters to see the whole open queue.'
-              : 'Other alerts may still be pending — clear the filters to see everything in this window.'
+            ackState === 'new'
+              ? 'Other alerts may exist that someone has already seen — clear the filters, or check All.'
+              : 'Other alerts may still exist — clear the filters to see everything.'
           }
           action={clearFilters}
         />
@@ -559,7 +505,7 @@ export default function AlertsResults() {
     // active view genuinely means nothing is open — the all-clear can be
     // stated without a date caveat again.  The acknowledged / all views ARE
     // windowed, so they say so and offer to widen.
-    const widen = ackState !== 'active' && days < MAX_WINDOW_DAYS ? (
+    const widen = ackState !== 'new' && days < MAX_WINDOW_DAYS ? (
       <button
         onClick={() => setDays(MAX_WINDOW_DAYS)}
         className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary-hover transition-colors"
@@ -571,16 +517,18 @@ export default function AlertsResults() {
       <EmptyState
         icon={Bell}
         title={
-          ackState === 'active'
-            ? 'No open alerts'
-            : ackState === 'acknowledged'
-              ? 'No acknowledged alerts in this window'
+          ackState === 'new'
+            ? 'Nothing unseen'
+            : ackState === 'mine_working'
+              ? 'You aren’t working on anything here'
               : 'No alerts in this window'
         }
         description={
-          ackState === 'active'
-            ? 'Every alert has been acknowledged — including older ones, which the open queue never hides.'
-            : 'Try widening the date range.'
+          ackState === 'new'
+            ? 'Every alert has been seen by someone — the whole queue has had eyes on it.'
+            : ackState === 'mine_working'
+              ? 'Claim a task with “Work on it” and it will appear here.'
+              : 'Try widening the date range.'
         }
         action={widen}
       />

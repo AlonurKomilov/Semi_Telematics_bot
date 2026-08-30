@@ -305,6 +305,34 @@ async def mark_alerts_seen(
     return {"marked": marked}
 
 
+class WorkBatchRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/work")
+async def work_on_alerts(
+    body: WorkBatchRequest,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Claim a handful at once — the bulk bar's verb.
+
+    Same semantics as the single claim, same tenancy wall per id, capped
+    like every batch write here.  No staged-undo window, deliberately:
+    acknowledging needed one because it was a one-way compliance record,
+    but a claim is cheap, additive and honest to repeat — un-claiming, if
+    it ever earns its place, is a feature and not an accident to defuse.
+    """
+    me_id = await _me_user_id(user)
+    if me_id is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    claimed = 0
+    for aid in [int(i) for i in body.ids][:200]:
+        if await tenant_db.claim_alert(user["account_id"], me_id, aid):
+            claimed += 1
+    return {"claimed": claimed, "total": min(len(body.ids), 200)}
+
+
 @router.post("/{history_id:int}/work")
 async def work_on_alert(
     history_id: int,
@@ -345,7 +373,11 @@ async def pending_alerts(
     severity: str | None = Query(None, description="Filter: critical, warning, info"),
     # Ack-state tab: 'active' (not acknowledged, default), 'acknowledged'
     # (human-acked or auto-resolved), or 'all'.
-    ack_state: str | None = Query(None, description="active | acknowledged | all"),
+    ack_state: str | None = Query(None, description="active | acknowledged | all (legacy)"),
+    # The seen/working dimension that replaced the ack tabs (owner
+    # decision 2026-08-30).  Overrides ack_state when present; ack_state
+    # stays for the endpoint's other consumers.
+    view: str | None = Query(None, description="new | all | mine_working"),
     # Date window on first_seen — bounds the acknowledged / all views only.
     # 'active' is deliberately UNWINDOWED so a chronic unresolved alert
     # can't fall off the open queue just because it started long ago; see
@@ -406,6 +438,7 @@ async def pending_alerts(
             user["account_id"],
             alert_type=alert_type, vehicle_substring=vehicle,
             severity=severity, text_search=q, ack_state=state, days=days,
+            view=view, viewer_user_id=await _me_user_id(user) if view else None,
             sort_by=sort, sort_dir=dir,
         )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
@@ -424,14 +457,17 @@ async def pending_alerts(
 
     # Non-driver path: push everything to SQL.
     offset = (page - 1) * page_size
+    _viewer = await _me_user_id(user) if view else None
     total = await tenant_db.count_active_alert_history_for_account_filtered(
         user["account_id"], alert_type=alert_type, vehicle_substring=vehicle,
         severity=severity, text_search=q, ack_state=state, days=days,
+        view=view, viewer_user_id=_viewer,
     )
     rows = await tenant_db.get_active_alert_history_for_account_paged(
         user["account_id"],
         alert_type=alert_type, vehicle_substring=vehicle,
         severity=severity, text_search=q, ack_state=state, days=days,
+        view=view, viewer_user_id=_viewer,
         sort_by=sort, sort_dir=dir,
         limit=page_size, offset=offset,
     )
@@ -901,7 +937,13 @@ async def pending_alerts_segment_counts(
     is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
     company_codes = await get_user_company_codes(user)
 
-    states = ("active", "acknowledged", "all")
+    # The seen/working tabs (owner decision 2026-08-30): New is what
+    # nobody has looked at, All is everything, My-working-on is the
+    # caller's own claimed tasks.  Counted as (view, ack_state) pairs so
+    # the storage clause's override rule does the work.
+    _viewer = await _me_user_id(user)
+    states = (("new", "new", "all"), ("all", "all", "all"),
+              ("mine_working", "mine_working", "all"))
 
     # Driver / company scope can't be expressed in SQL (no company column;
     # the truck filter joins user→vehicle in Python), so those paths count
@@ -917,10 +959,11 @@ async def pending_alerts_segment_counts(
         veh_map = (await _vehicle_company_map(user["account_id"], tenant_db)
                    if company_codes else {})
         counts: dict[str, int] = {}
-        for state in states:
+        for key, vw, state in states:
             rows = await tenant_db.get_active_alert_history_for_account_paged(
                 user["account_id"], alert_type=alert_type, severity=severity,
                 text_search=q, ack_state=state, days=days,
+                view=vw, viewer_user_id=_viewer,
             )
             alerts = [_shape_history_for_pending_api(r) for r in rows]
             if is_driver_scope:
@@ -929,14 +972,15 @@ async def pending_alerts_segment_counts(
             if company_codes:
                 alerts = filter_by_company_map(
                     alerts, company_codes, veh_map, key="vehicle_id")
-            counts[state] = len(alerts)
+            counts[key] = len(alerts)
         return {"counts": counts}
 
     counts = {}
-    for state in states:
-        counts[state] = await tenant_db.count_active_alert_history_for_account_filtered(
+    for key, vw, state in states:
+        counts[key] = await tenant_db.count_active_alert_history_for_account_filtered(
             user["account_id"], alert_type=alert_type, severity=severity,
             text_search=q, ack_state=state, days=days,
+            view=vw, viewer_user_id=_viewer,
         )
     return {"counts": counts}
 

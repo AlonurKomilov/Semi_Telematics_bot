@@ -20,11 +20,12 @@ import { useAlertsQuery } from '../_shared/useAlertsQuery';
 export default function AlertsControlBar() {
   const { days, setDays, ackState } = useAlertsFilters();
   const { isFetching } = useAlertsQuery();
-  // The open queue is unwindowed by design (an unacknowledged alert is open
-  // regardless of age), so the range picker genuinely does nothing here.
-  // Disabled WITH THE REASON rather than hidden: a control that vanishes
-  // between states is harder to learn than one that explains itself.
-  const windowApplies = ackState !== 'active';
+  // The window bounds RESOLVED history per-row (open rows are never
+  // hidden by age — see _alert_filter_clause), and under the seen/working
+  // tabs every tab can hold open rows.  The picker therefore always
+  // applies to the resolved part of what is shown; the note below keeps
+  // saying the half that does not move.
+  const windowApplies = ackState !== 'new';
 
   // The old "Per vehicle / Per alert" toggle lived here.  It was a
   // hardcoded special case of something the grid already does better:

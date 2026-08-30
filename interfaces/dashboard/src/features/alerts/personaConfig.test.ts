@@ -25,11 +25,11 @@ import { STORED_ALERT_TYPES } from './_shared/components';
 afterEach(cleanup);
 
 describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
-  it('Dispatcher lands on the flat ack queue (list view, 7 days, active)', () => {
+  it('Dispatcher lands on the flat ack queue (list view, 7 days, new)', () => {
     expect(PERSONA_FILTER_DEFAULTS.dispatcher).toEqual({
       typeFilter: 'all',
       severityFilter: 'all',
-      ackState: 'active',
+      ackState: 'new',
       vehicleSearch: '',
       days: 7,
     });
@@ -39,7 +39,7 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
     expect(PERSONA_FILTER_DEFAULTS.safety).toEqual({
       typeFilter: 'events',
       severityFilter: 'all',
-      ackState: 'active',
+      ackState: 'new',
       vehicleSearch: '',
       days: 7,
     });
@@ -57,7 +57,7 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
 
   it('Driver lands on a short own-truck window (Mini App is primary)', () => {
     expect(PERSONA_FILTER_DEFAULTS.driver.days).toBe(7);
-    expect(PERSONA_FILTER_DEFAULTS.driver.ackState).toBe('active');
+    expect(PERSONA_FILTER_DEFAULTS.driver.ackState).toBe('new');
   });
 });
 

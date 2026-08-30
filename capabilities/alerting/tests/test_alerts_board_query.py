@@ -171,15 +171,22 @@ class TestOneSearchBox:
 
 
 class TestSegmentCounts:
+    """The tabs speak the seen/working vocabulary now (owner decision
+    2026-08-30): New = nobody has looked, All = everything, mine_working
+    = the caller's claims.  The invariants these guarded survive the
+    rename — a badge must match its list, and tabs must not disagree
+    about the same rows."""
+
     async def test_counts_match_the_list_they_label(self, seeded):
         app, token = seeded["app"], seeded["token"]
         counts = (await _get(app, token, "/api/alerts/pending/segment-counts"))["counts"]
-        assert counts["active"] == 5
-        assert counts["acknowledged"] == 0
+        # Fresh account: nothing seen, nothing claimed.
+        assert counts["new"] == 5
         assert counts["all"] == 5
+        assert counts["mine_working"] == 0
         # The tab badge and the list under it must not disagree.
-        listed = await _pending(app, token, "ack_state=active")
-        assert listed["count"] == counts["active"]
+        listed = await _pending(app, token, "view=new")
+        assert listed["count"] == counts["new"]
 
     async def test_counts_follow_the_other_filters(self, seeded):
         """Switching tabs must change ONLY the ack-state, so each tab
@@ -189,19 +196,22 @@ class TestSegmentCounts:
             seeded["app"], seeded["token"],
             "/api/alerts/pending/segment-counts?alert_type=fault",
         ))["counts"]
-        assert counts["active"] == 2
+        assert counts["new"] == 2
         assert counts["all"] == 2
 
-    async def test_acknowledging_moves_a_row_between_tabs(self, seeded):
+    async def test_seeing_moves_a_row_out_of_new(self, seeded, pg_db):
+        """The tab transition under the new vocabulary: a SEEN row leaves
+        New and stays in All — acknowledging no longer moves anything,
+        because the tabs stopped keying on a verb nobody used."""
         app, token, db, acct = (
             seeded["app"], seeded["token"], seeded["db"], seeded["acct"])
         rows = await db.get_active_alert_history_for_account(acct.id)
-        await db.acknowledge_alert_history(rows[0]["id"], 9101, account_id=acct.id)
+        viewer = await pg_db.create_user(9109, acct.id)
+        await db.mark_alerts_seen(acct.id, viewer.id, [int(rows[0]["id"])])
 
         counts = (await _get(app, token, "/api/alerts/pending/segment-counts"))["counts"]
-        assert counts["active"] == 4
-        assert counts["acknowledged"] == 1
-        assert counts["all"] == 5      # 'all' spans both, never double-counts
+        assert counts["new"] == 4
+        assert counts["all"] == 5      # All never loses a row to a view
 
     async def test_requires_auth(self, seeded):
         async with AsyncClient(
@@ -257,8 +267,10 @@ class TestAllIsTheUnionOfItsParts:
         counts = (await _get(
             seeded["app"], seeded["token"],
             "/api/alerts/pending/segment-counts?days=30"))["counts"]
-        assert counts["all"] == counts["active"] + counts["acknowledged"]
-        assert counts["all"] >= counts["active"]
+        # Under the seen/working tabs the identity is containment, not
+        # partition: New is a subset of All, and nothing is double-counted.
+        assert counts["all"] >= counts["new"]
+        assert counts["all"] >= counts["mine_working"]
 
     async def test_an_old_RESOLVED_alert_is_still_windowed_out(self, seeded, pg_db):
         """The window must keep doing its job on history — otherwise 'all'
@@ -297,10 +309,10 @@ class TestSegmentCountsUnderRestrictedScope:
 
         counts = (await _get(
             seeded["app"], token, "/api/alerts/pending/segment-counts"))["counts"]
-        listed = await _pending(seeded["app"], token, "ack_state=active")
-        assert counts["active"] == listed["count"] == len(listed["alerts"])
+        listed = await _pending(seeded["app"], token, "view=new")
+        assert counts["new"] == listed["count"] == len(listed["alerts"])
         # Only their own truck, not the account's five alerts.
-        assert counts["active"] == 1
+        assert counts["new"] == 1
 
     async def test_company_restricted_badge_matches_its_list(self, seeded, pg_db):
         acct = seeded["acct"]
@@ -310,8 +322,8 @@ class TestSegmentCountsUnderRestrictedScope:
 
         counts = (await _get(
             seeded["app"], token, "/api/alerts/pending/segment-counts"))["counts"]
-        listed = await _pending(seeded["app"], token, "ack_state=active")
-        assert counts["active"] == listed["count"]
+        listed = await _pending(seeded["app"], token, "view=new")
+        assert counts["new"] == listed["count"]
 
 
 class TestServerSideSort:

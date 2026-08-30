@@ -28,7 +28,12 @@ export type AlertType =
   | 'all' | 'fault' | 'health' | 'fuel' | 'events' | 'camera' | 'parking'
   | 'geofence' | 'maintenance' | 'documents' | 'scorecard';
 export type AlertSeverity = 'all' | 'critical' | 'warning' | 'info';
-export type AlertAckState = 'active' | 'acknowledged' | 'all';
+// The seen/working tabs that replaced the ack-state tabs (owner
+// decision 2026-08-30): New = nobody has looked, All = everything,
+// mine_working = the caller's own claimed tasks. The name AlertAckState
+// survives as the URL/state key — renaming it would orphan every
+// bookmarked ?ackState= URL for a type alias.
+export type AlertAckState = 'new' | 'all' | 'mine_working';
 
 export interface FilterDefaults {
   typeFilter: AlertType;
@@ -53,63 +58,63 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
   owner: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 7,
   },
   admin: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 7,
   },
   fleet: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 30,
   },
   dispatcher: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 7,
   },
   safety: {
     typeFilter: 'events',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 7,
   },
   hr: {
     typeFilter: 'events',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 30,
   },
   accounting: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 30,
   },
   recruiter: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 30,
   },
   driver: {
     typeFilter: 'all',
     severityFilter: 'all',
-    ackState: 'active',
+    ackState: 'new',
     vehicleSearch: '',
     days: 7,
   },

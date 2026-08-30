@@ -1101,6 +1101,8 @@ class AlertsMixin(_MixinBase):
         vehicle_substring: str | None = None,
         text_search: str | None = None,
         ack_state: str = "active",
+        view: str | None = None,
+        viewer_user_id: int | None = None,
         days: int | None = None,
         alias: str = "",
     ) -> tuple[str, list]:
@@ -1135,7 +1137,42 @@ class AlertsMixin(_MixinBase):
         p = f"{alias}." if alias else ""
         clauses: list[str] = []
         params: list = []
-        if ack_state == "active":
+        # ``view`` is the seen/working dimension that replaced the
+        # ack-state tabs (owner decision 2026-08-30), and it OVERRIDES
+        # ``ack_state`` when present — the two describe the same axis of
+        # the board and composing them would make tabs that mean two
+        # things at once.  ``ack_state`` survives untouched for the
+        # endpoint's other consumers.
+        #
+        #   "new"           → nobody has seen it, whatever its status —
+        #                     including things that auto-resolved before
+        #                     anyone looked, which is itself information.
+        #   "mine_working"  → the caller has hands on it, open or done:
+        #                     a person's own task list, and the shape a
+        #                     per-shift KPI reads later.
+        #   "all" / None    → everything.
+        # The correlated subqueries MUST use a qualified outer reference.
+        # With no alias, a bare ``id`` inside ``EXISTS (... FROM alert_seen
+        # sn ...)`` resolves against the INNER table first — alert_seen has
+        # its own ``id`` and ``account_id`` — so the correlation silently
+        # compared alert_seen to itself and "new" equalled "all".  The
+        # outer table's NAME is a legal qualifier in both dialects.
+        outer = alias if alias else "alert_history"
+        if view == "new":
+            clauses.append(
+                f"NOT EXISTS (SELECT 1 FROM alert_seen sn "
+                f" WHERE sn.account_id = {outer}.account_id "
+                f"   AND sn.alert_history_id = {outer}.id)")
+        elif view == "mine_working" and viewer_user_id is not None:
+            clauses.append(
+                f"EXISTS (SELECT 1 FROM alert_workers wk "
+                f" WHERE wk.account_id = {outer}.account_id "
+                f"   AND wk.alert_history_id = {outer}.id "
+                f"   AND wk.user_id = ?)")
+            params.append(int(viewer_user_id))
+        elif view in ("all", "new", "mine_working"):
+            pass                        # "all", or mine_working w/o a viewer
+        elif ack_state == "active":
             clauses.append(f"{p}status = 'active'")
         elif ack_state == "acknowledged":
             clauses.append(f"{p}status <> 'active'")
@@ -1219,6 +1256,8 @@ class AlertsMixin(_MixinBase):
         severity: str | None = None,
         text_search: str | None = None,
         ack_state: str = "active",
+        view: str | None = None,
+        viewer_user_id: int | None = None,
         days: int | None = None,
         sort_by: str | None = None,
         sort_dir: str = "desc",
@@ -1262,7 +1301,8 @@ class AlertsMixin(_MixinBase):
         frag, fp = self._alert_filter_clause(
             alert_type=alert_type, severity=severity,
             vehicle_substring=vehicle_substring, text_search=text_search,
-            ack_state=ack_state, days=days, alias="h",
+            ack_state=ack_state, view=view,
+            viewer_user_id=viewer_user_id, days=days, alias="h",
         )
         sql += frag + " "
         params += fp
@@ -1281,6 +1321,8 @@ class AlertsMixin(_MixinBase):
         severity: str | None = None,
         text_search: str | None = None,
         ack_state: str = "active",
+        view: str | None = None,
+        viewer_user_id: int | None = None,
         days: int | None = None,
     ) -> int:
         """Filtered COUNT(*) matching the same WHERE as the paged query.
@@ -1297,7 +1339,8 @@ class AlertsMixin(_MixinBase):
         frag, fp = self._alert_filter_clause(
             alert_type=alert_type, severity=severity,
             vehicle_substring=vehicle_substring, text_search=text_search,
-            ack_state=ack_state, days=days,
+            ack_state=ack_state, view=view,
+            viewer_user_id=viewer_user_id, days=days,
         )
         sql += frag
         params += fp
@@ -1317,6 +1360,8 @@ class AlertsMixin(_MixinBase):
         vehicle_substring: str | None = None,
         severity: str | None = None,
         ack_state: str = "active",
+        view: str | None = None,
+        viewer_user_id: int | None = None,
         days: int | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -1340,7 +1385,8 @@ class AlertsMixin(_MixinBase):
         frag, fargs = self._alert_filter_clause(
             alert_type=alert_type, severity=severity,
             vehicle_substring=vehicle_substring,
-            ack_state=ack_state, days=days,
+            ack_state=ack_state, view=view,
+            viewer_user_id=viewer_user_id, days=days,
         )
         where_sql = "account_id = ?" + frag
         args: list[Any] = [account_id, *fargs]
@@ -1391,7 +1437,8 @@ class AlertsMixin(_MixinBase):
         h_frag, h_fargs = self._alert_filter_clause(
             alert_type=alert_type, severity=severity,
             vehicle_substring=vehicle_substring,
-            ack_state=ack_state, days=days, alias="h",
+            ack_state=ack_state, view=view,
+            viewer_user_id=viewer_user_id, days=days, alias="h",
         )
         sql_alerts = (
             f"SELECT h.*, "

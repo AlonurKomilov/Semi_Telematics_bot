@@ -67,7 +67,7 @@ describe('useAlertsFilters — first-land persona defaults', () => {
     // First-load effect runs after mount; values reflect Safety defaults.
     expect(result.current.typeFilter).toBe('events');
     expect(result.current.days).toBe(7);
-    expect(result.current.ackState).toBe('active');
+    expect(result.current.ackState).toBe('new');
   });
 
   it('writes Fleet defaults (30 days) when persona=fleet and URL is empty', () => {
@@ -85,7 +85,7 @@ describe('useAlertsFilters — first-land persona defaults', () => {
     });
     expect(result.current.days).toBe(7);
     expect(result.current.typeFilter).toBe('all');
-    expect(result.current.ackState).toBe('active');
+    expect(result.current.ackState).toBe('new');
   });
 
   it('does NOT overwrite URL when URL already has filter params (bookmark deep link)', () => {
@@ -94,7 +94,7 @@ describe('useAlertsFilters — first-land persona defaults', () => {
       wrapper: makeWrapper('/alerts?ackState=acknowledged&days=14'),
     });
     // URL wins — safety would default to active/7d but URL pinned different.
-    expect(result.current.ackState).toBe('acknowledged');
+    expect(result.current.ackState).toBe('all');
     expect(result.current.days).toBe(14);
   });
 });
@@ -139,8 +139,8 @@ describe('useAlertsFilters — compound setter behavior', () => {
     // Selection clear is handled by useAlertsSelection().clearSelection()
     // at the call site — verified by the absence of a clearSelection
     // arg on this setter.
-    act(() => result.current.setAckState('acknowledged'));
-    expect(result.current.ackState).toBe('acknowledged');
+    act(() => result.current.setAckState('all'));
+    expect(result.current.ackState).toBe('all');
   });
 });
 
@@ -268,13 +268,13 @@ describe('useAlertsFilters — saved tabs', () => {
       typeFilter: 'fault,health',
       severityFilter: 'critical',
       vehicleSearch: 'Battle',
-      ackState: 'acknowledged',
+      ackState: 'all',
     }));
     expect(result.current.tab).toBe('t1');
     expect(result.current.typeFilter).toBe('fault,health');
     expect(result.current.severityFilter).toBe('critical');
     expect(result.current.vehicleSearch).toBe('Battle');
-    expect(result.current.ackState).toBe('acknowledged');
+    expect(result.current.ackState).toBe('all');
     expect(result.current.page).toBe(1);      // a new scope starts at page 1
   });
 

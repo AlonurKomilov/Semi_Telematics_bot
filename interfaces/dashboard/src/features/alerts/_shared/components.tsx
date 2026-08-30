@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, Eye, Wrench } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';
@@ -183,7 +183,6 @@ export function SeenMarker({ alert }: { alert: Alert }) {
           "handled".  Chips overlap like any seen-by stack; the ring is
           what keeps the overlap legible on both themes. */}
       <span ref={ref} className="inline-flex items-center gap-1.5">
-        <Eye className="size-3.5 text-muted-foreground" aria-hidden />
         <span className="flex -space-x-1.5">
           {shown.map((n, i) => (
             <Avatar key={`${n}-${i}`} size="sm"
@@ -297,7 +296,6 @@ export function WorkMarker({ alert }: { alert: Alert }) {
       {names.length > 0 && (
         <Tip label={`Working on it: ${names.join(', ')}`}>
           <span className="inline-flex items-center gap-1.5">
-            <Wrench className="size-3.5 text-muted-foreground" aria-hidden />
             <span className="flex -space-x-1.5">
               {names.slice(0, 3).map((n, i) => (
                 <Avatar key={`${n}-${i}`} size="sm"
