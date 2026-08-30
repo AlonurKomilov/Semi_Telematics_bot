@@ -226,11 +226,18 @@ class Vehicle:
 
         Definition, decided rather than defaulted: a provider that
         synced this row but owns no field and did not create it is NOT
-        a source.  Sorted, so equal rows render identically.
+        a source.
+
+        CREATOR FIRST, then the enrichers sorted — the order is a fact,
+        not decoration: "Datatruck · Samsara" says Datatruck created
+        this truck and Samsara enriches it.  It is NOT a fill-priority:
+        which source wins a field is per-FIELD and configurable
+        (vehicle_field_precedence), so no single per-row ordering could
+        state it truthfully.  Still deterministic: equal rows render
+        identically.
         """
-        return tuple(sorted(
-            {self.source} | set(self.field_provenance.values()) - {""}
-        ))
+        others = set(self.field_provenance.values()) - {"", self.source}
+        return (self.source, *sorted(others))
 
 
 def _parse_provenance(raw: Any) -> dict:

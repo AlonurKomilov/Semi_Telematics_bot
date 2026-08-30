@@ -127,11 +127,33 @@ const ALL_COLUMNS: AnyColumn[] = [
     render: (_v, row) => {
       const r = row as Vehicle;
       const list = (r.sources?.length ? r.sources : [r.source])
-        .filter(Boolean)
-        .map((x) => SOURCE_VALUE_LABEL[x!] ?? x);
-      return list.length
-        ? <span className="text-muted-foreground">{list.join(' · ')}</span>
-        : <span className="text-muted-foreground">—</span>;
+        .filter((x): x is string => Boolean(x))
+        .map((x) => SOURCE_VALUE_LABEL[x] ?? x);
+      if (!list.length) return <span className="text-muted-foreground">—</span>;
+      const [creator, ...enrichers] = list;
+      // Creator leads and reads a shade stronger; the order is a FACT
+      // (created-by, then enriched-by), stated in the tooltip so
+      // nobody mistakes it for fill-priority — that is per-field and
+      // lives in the Vehicles config gear.
+      return (
+        <Tip
+          label={
+            enrichers.length
+              ? `Created by ${creator}, enriched by ${enrichers.join(', ')}. `
+                + 'Which source wins each field is set in Vehicles → Config.'
+              : `Created by ${creator}.`
+          }
+        >
+          <span>
+            <span className="text-foreground">{creator}</span>
+            {enrichers.length > 0 && (
+              <span className="text-muted-foreground">
+                {' · '}{enrichers.join(' · ')}
+              </span>
+            )}
+          </span>
+        </Tip>
+      );
     },
   },
   {

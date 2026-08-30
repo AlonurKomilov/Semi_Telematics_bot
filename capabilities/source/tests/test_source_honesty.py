@@ -29,17 +29,23 @@ def _v(**kw) -> Vehicle:
     return Vehicle(**base)
 
 
-def test_sources_is_creator_plus_provenance_owners():
+def test_sources_is_creator_first_then_enrichers():
+    """The order is a fact: creator leads, enrichers follow sorted.
+    NOT a fill-priority — that is per-field and configurable, so no
+    single row ordering could state it truthfully."""
     v = _v(source="samsara", field_provenance={
         "vin": "datatruck", "plate_number": "datatruck",
         "make": "samsara", "model": "datatruck",
     })
-    assert v.sources == ("datatruck", "samsara")
+    assert v.sources == ("samsara", "datatruck")
 
 
 def test_a_hand_edit_shows_up_as_a_source():
     v = _v(source="datatruck", field_provenance={"vin": "manual"})
     assert v.sources == ("datatruck", "manual")
+    # And a hand-CREATED truck leads with Local, whoever enriched it.
+    v2 = _v(source="manual", field_provenance={"vin": "samsara"})
+    assert v2.sources == ("manual", "samsara")
 
 
 def test_a_provider_that_owns_nothing_is_not_a_source():
@@ -77,4 +83,5 @@ async def test_a_sync_touching_a_row_never_changes_its_creator(pg_db):
         "is back"
     )
     # And the honest answer now names both.
-    assert "samsara" in after.sources and "datatruck" in after.sources
+    assert after.sources[0] == "datatruck", "the creator must lead"
+    assert "samsara" in after.sources
