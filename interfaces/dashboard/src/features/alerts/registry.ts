@@ -40,6 +40,13 @@ export const ALERTS_SECTIONS: SectionRegistry<AlertsSectionProps> = {
     label: 'Bulk-action error banner',
     required: true,
   },
+  // Additive beside the queue, never instead of it: same rows, read as
+  // situations rather than deliveries.  Off unless a person adds it, so
+  // the board nobody asked to change does not change.
+  groups: {
+    Component: lazy(() => import('./sections/AlertGroups')),
+    label: 'Grouped by situation',
+  },
   results: {
     Component: lazy(() => import('./sections/AlertsResults')),
     label: 'Alerts queue',

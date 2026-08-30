@@ -654,6 +654,110 @@ class AlertsMixin(_MixinBase):
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def list_grouped_alerts(
+        self, account_id: int, *, days: int = 7,
+        allowed_vehicle_names: list[str] | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """The board as SITUATIONS rather than deliveries.
+
+        Every fire writes its own ``alert_history`` row on purpose: the
+        subkey carries a timestamp so each delivered message keeps a
+        unique id, and a dispatcher quoting "Alert #13066" finds exactly
+        that message. Nothing here changes that — the rows are untouched
+        and every id stays valid. This only READS them differently.
+
+        The cost of per-delivery rows is what an operator sees: 12,970
+        rows for 1,015 real situations on the live account, one truck
+        contributing 354 for a single kind of event. A queue nobody can
+        finish stops being a queue, which is why 85% were never
+        acknowledged — not carelessness, an unusable pile.
+
+        THE GROUPING KEY is (alert_type, vehicle, first segment of
+        last_detail). ``last_detail`` is already the subkey minus the
+        timestamp, so no parsing is needed, and its first segment is the
+        right grain — verified against real rows:
+
+          fault    SPN520640:Manufacturer...  -> SPN520640, so two DTCs
+                                                 on one truck stay apart
+          events   followingDistance:2814     -> followingDistance, kept
+                                                 apart from rollingStop
+          fuel     fuel:17 / fuel:19          -> fuel, so one truck
+                                                 running low is ONE
+                                                 situation, not one per
+                                                 reading
+          health   coolant_dtc                -> coolant_dtc
+
+        ``days`` bounds the COUNT, not the history. "×32 in 7d" is a
+        number that means something operationally; "×912 ever" is a
+        number people stop reading.
+        """
+        scope_sql, scope_args = "", ()
+        if allowed_vehicle_names is not None:
+            names = [n.strip().lower() for n in allowed_vehicle_names if n and n.strip()]
+            if not names:
+                return []                      # scoped to nothing — fail closed
+            ph = ",".join("?" for _ in names)
+            scope_sql = f" AND LOWER(vehicle_name) IN ({ph})"
+            scope_args = tuple(names)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))).isoformat()
+        cur = await self._db.execute(
+            "SELECT alert_type, vehicle_id, "
+            "       MAX(vehicle_name) AS vehicle_name, "
+            "       split_part(last_detail, ':', 1) AS subtype, "
+            "       COUNT(*) AS deliveries, "
+            "       SUM(occurrence_count) AS occurrences, "
+            "       MIN(first_seen) AS first_seen, "
+            "       MAX(last_seen) AS last_seen, "
+            "       MAX(id) AS newest_id, "
+            "       COUNT(*) FILTER (WHERE acknowledged_at IS NULL "
+            "                           OR acknowledged_at = '') AS unacked, "
+            "       COUNT(*) FILTER (WHERE severity = 'critical') AS critical, "
+            "       COUNT(*) FILTER (WHERE severity = 'warning') AS warning "
+            "  FROM alert_history "
+            " WHERE account_id = ? AND last_seen >= ?" + scope_sql +
+            " GROUP BY alert_type, vehicle_id, split_part(last_detail, ':', 1) "
+            " ORDER BY MAX(last_seen) DESC "
+            " LIMIT ?",
+            (account_id, cutoff, *scope_args, max(1, min(int(limit), 1000))),
+        )
+        out = []
+        for r in await cur.fetchall():
+            g = dict(r)
+            # Severity is the WORST in the group, not the newest: a group
+            # holding one critical is a critical row, however many
+            # warnings arrived after it.
+            g["severity"] = ("critical" if g.pop("critical", 0)
+                             else "warning" if g.pop("warning", 0) else "info")
+            g["group_key"] = (f"{g['alert_type']}|{g['vehicle_id']}|"
+                              f"{g.get('subtype') or ''}")
+            out.append(g)
+        return out
+
+    async def grouped_alert_member_ids(
+        self, account_id: int, alert_type: str, vehicle_id: str,
+        subtype: str, *, days: int = 7, only_unacked: bool = True,
+    ) -> list[int]:
+        """The alert ids behind one grouped row.
+
+        Resolved SERVER-side from the group's identity rather than taken
+        from the client, so acknowledging a group cannot be turned into
+        "acknowledge these arbitrary ids" by editing a request. Bounded
+        by the same window the count used, so a person acknowledges what
+        the number in front of them actually said.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))).isoformat()
+        ack_sql = (" AND (acknowledged_at IS NULL OR acknowledged_at = '')"
+                   if only_unacked else "")
+        cur = await self._db.execute(
+            "SELECT id FROM alert_history "
+            " WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
+            "   AND split_part(last_detail, ':', 1) = ? AND last_seen >= ?"
+            + ack_sql,
+            (account_id, alert_type, vehicle_id, subtype, cutoff),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
     async def get_recent_alerts_for_resolution(
         self, account_id: int, alert_type: str, vehicle_id: str,
     ) -> list[dict]:

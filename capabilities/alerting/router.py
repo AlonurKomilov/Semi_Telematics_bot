@@ -331,6 +331,108 @@ async def pending_alerts(
             "total_pages": total_pages}
 
 
+class GroupAckRequest(BaseModel):
+    alert_type: str
+    vehicle_id: str
+    subtype: str = ""
+    days: int = 7
+
+
+@router.get("/grouped")
+async def grouped_alerts(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The board as SITUATIONS instead of deliveries.
+
+    ADDITIVE on purpose. ``/pending`` is 391 lines of filters, sort
+    allow-list, ack tabs, windows, scoping and pagination, and eight
+    surfaces read its rows — the grid, the bell, both count endpoints,
+    the health summary, the live watcher, deep links, CSV. Grouping
+    changes what a ROW IS, so folding it into that path would move all
+    eight at once. This sits beside it: the board can offer it as a view
+    and fall back in one click, and nothing that exists today changes.
+
+    Every underlying row keeps its id. A dispatcher quoting "Alert
+    #13066" still finds exactly that message; this only reads the same
+    rows a second way.
+    """
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    allowed = await get_user_company_codes(user)
+    veh_map = (await _vehicle_company_map(user["account_id"], tenant_db)
+               if allowed else {})
+    groups = await tenant_db.list_grouped_alerts(user["account_id"], days=days)
+    # The SAME two walls the ungrouped board applies, in the same order.
+    # A grouped row is still one truck's row, so neither filter needed a
+    # grouped variant — which is the point of keeping the key
+    # (type, vehicle, subtype) rather than collapsing across vehicles.
+    if is_driver_scope:
+        groups = _filter_types_by_permission(user, groups)
+        groups = await _filter_own(user, groups)
+    if allowed:
+        groups = filter_by_company_map(groups, allowed, veh_map, key="vehicle_id")
+    return {
+        "groups": groups,
+        "count": len(groups),
+        "days": days,
+        # What the same rows would have looked like ungrouped, so the
+        # view toggle can say what it is saving a person from.
+        "deliveries": sum(int(g.get("deliveries") or 0) for g in groups),
+    }
+
+
+@router.post("/grouped/acknowledge")
+async def acknowledge_group(
+    body: GroupAckRequest,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Acknowledge every delivery behind one grouped row.
+
+    The ids are resolved SERVER-side from the group's identity, never
+    taken from the request — otherwise "acknowledge this group" becomes
+    "acknowledge these arbitrary ids" for anyone willing to edit a body.
+    Bounded by the same window the count used, so a person acknowledges
+    exactly what the number in front of them said.
+
+    Whole-group is the owner's decision and the honest reading of the
+    gesture: someone clearing "Truck 132 · following distance ×32" has
+    judged the SITUATION, not the newest message in it. Per-delivery
+    acking is what left 85% of the board unacknowledged — clearing one
+    truck's following-distance history meant 354 clicks.
+    """
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    allowed = await get_user_company_codes(user)
+    # Prove the caller may see this group BEFORE touching anything: a
+    # group they cannot read is a group they cannot acknowledge, and the
+    # walls live on the read path.
+    visible = await tenant_db.list_grouped_alerts(user["account_id"], days=body.days)
+    if is_driver_scope:
+        visible = _filter_types_by_permission(user, visible)
+        visible = await _filter_own(user, visible)
+    if allowed:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        visible = filter_by_company_map(visible, allowed, veh_map, key="vehicle_id")
+    wanted = f"{body.alert_type}|{body.vehicle_id}|{body.subtype}"
+    if not any(g.get("group_key") == wanted for g in visible):
+        raise HTTPException(status_code=404, detail="No such alert group")
+
+    ids = await tenant_db.grouped_alert_member_ids(
+        user["account_id"], body.alert_type, body.vehicle_id, body.subtype,
+        days=body.days,
+    )
+    if not ids:
+        return {"acked": 0, "total": 0}
+    telegram_id = int(user["sub"])
+    results = await asyncio.gather(
+        *(_ack_one(tenant_db, i, telegram_id, user["account_id"]) for i in ids),
+        return_exceptions=True,
+    )
+    acked = sum(1 for r in results if r is True)
+    return {"acked": acked, "total": len(ids)}
+
+
 @router.get("/active-among")
 async def alerts_active_among(
     ids: str = Query("", description="Comma-separated alert ids to check"),
