@@ -227,7 +227,7 @@
   },
   "alerts": {
     "page_title": "Alertas",
-    "page_description_pending": "Cada alerta de su flota: quién la vio, quién trabaja en ella y cómo se resolvió. Marque filas y pulse Work on these para reclamarlas.",
+    "page_description_pending": "Cada alerta de su flota: quién la vio, quién trabaja en ella y cómo se resolvió. Marque filas y pulse Work on these para reclamarlas. «Visto» se registra automáticamente cuando las filas aparecen en su pantalla.",
     "page_description_history": "Alertas pasadas y cómo se resolvieron. Use filtros para acotar por vehículo o tipo.",
     "tab_pending": "Pendientes",
     "tab_history": "Historial",

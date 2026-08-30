@@ -226,3 +226,41 @@ class TestBotClaim:
         out = await sa._handle_work(ctx)
         assert "identify" in out.lower()
         assert await pg_db.get_workers_for_alerts(acct, [aid]) == {}
+
+
+class TestLeavingAClaim:
+    """Claims are voluntary, so leaving must be too.
+
+    The exit door matters because of what it prevents: without one, the
+    only way out of a stray claim was pressing Done and falsely
+    resolving a live alert — or carrying the task into the KPI forever.
+    """
+
+    async def test_leaving_releases_only_your_own_row(self, pg_db):
+        acct, uid, aid = await _seed(pg_db, tg=9980)
+        second = await pg_db.create_user(telegram_id=9981, account_id=acct)
+        await pg_db.claim_alert(acct, uid, aid)
+        await pg_db.claim_alert(acct, second.id, aid)
+        assert await pg_db.release_claim(acct, uid, aid) is True
+        workers = await pg_db.get_workers_for_alerts(acct, [aid])
+        assert [w["user_id"] for w in workers[aid]] == [second.id]
+        # Releasing what you never claimed is a no-op, not an error.
+        assert await pg_db.release_claim(acct, uid, aid) is False
+
+    async def test_the_pager_resumes_when_the_last_worker_leaves(self, pg_db):
+        """The resume needs no code of its own — the candidate query is a
+        NOT EXISTS over the workers table, so an empty table IS the
+        resume.  This pins that construction."""
+        acct, uid, _ = await _seed(pg_db, tg=9982)
+        crit = await pg_db.upsert_alert_history(
+            acct, "fault", "veh-l", "301", alert_subkey="l:SPN2",
+            severity="critical")
+        cid = int(crit["id"])
+        await pg_db.claim_alert(acct, uid, cid)
+        rows = await pg_db.get_active_unacked_history_for_reescalation(
+            acct, "9999-01-01T00:00:00", max_attempts=4)
+        assert cid not in {int(r["id"]) for r in rows}      # claimed → silent
+        await pg_db.release_claim(acct, uid, cid)
+        rows = await pg_db.get_active_unacked_history_for_reescalation(
+            acct, "9999-01-01T00:00:00", max_attempts=4)
+        assert cid in {int(r["id"]) for r in rows}          # left → paging again

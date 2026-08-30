@@ -111,6 +111,12 @@ export function useAlertsQuery(): UseAlertsQueryResult {
         `/alerts/pending?${params.toString()}`,
       );
     },
+    // The anti-double-work signal needs delivery: "the second dispatcher
+    // sees the chips and stands down" only works if the chips ARRIVE.
+    // Without this, a colleague's claim reached an idle board never —
+    // the app disables refetch-on-focus.  placeholderData keeps the
+    // table stable through each refetch.
+    refetchInterval: 60_000,
     placeholderData: (prev) => prev,
   });
 

@@ -273,7 +273,7 @@
   },
   "alerts": {
     "page_title": "Alerts",
-    "page_description_pending": "Every alert across your fleet — who has seen it, who is working on it, and how it was resolved. Tick rows and click Work on these to claim them.",
+    "page_description_pending": "Every alert across your fleet — who has seen it, who is working on it, and how it was resolved. Tick rows and click Work on these to claim them. Seen is recorded automatically as rows appear on your screen.",
     "page_description_history": "Past alerts and how they were resolved. Use filters to narrow down by vehicle or type.",
     "tab_pending": "Pending",
     "tab_history": "History",
@@ -334,7 +334,7 @@
       "title": "Escalation status",
       "older_than_n_min": "older than {{n}}m",
       "past_due": "past due",
-      "past_due_hint": "unacked > {{n}}m — re-pinging",
+      "past_due_hint": "unclaimed > {{n}}m — re-pinging",
       "breached": "breached",
       "breached_hint": "hit max attempts — no longer paging",
       "past_due_by_persona": "Past-due by persona",

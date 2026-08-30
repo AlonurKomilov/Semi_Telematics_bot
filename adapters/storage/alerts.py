@@ -736,6 +736,26 @@ class AlertsMixin(_MixinBase):
         await self._db.commit()
         return (cur.rowcount or 0) > 0
 
+    async def release_claim(
+        self, account_id: int, user_id: int, alert_id: int,
+    ) -> bool:
+        """Take your own name off an alert.
+
+        Claims are voluntary, so leaving must be too — the only exit from
+        a stray "Work on it" cannot be pressing Done and falsely
+        resolving a live alert.  Deletes only the CALLER's row; the
+        escalation pager resumes by construction the moment no workers
+        remain, because its candidate query is a NOT EXISTS over this
+        table.
+        """
+        cur = await self._db.execute(
+            "DELETE FROM alert_workers "
+            " WHERE account_id = ? AND alert_history_id = ? AND user_id = ?",
+            (account_id, int(alert_id), int(user_id)),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) > 0
+
     async def get_workers_for_alerts(
         self, account_id: int, alert_ids: list[int],
     ) -> dict[int, list[dict]]:

@@ -123,7 +123,7 @@ export default function AlertGroups() {
           <span className="tabular-nums">
             {g.deliveries}
             {g.unacked > 0 && g.unacked !== g.deliveries && (
-              <span className="text-muted-foreground"> · {g.unacked} new</span>
+              <span className="text-muted-foreground"> · {g.unacked} unclaimed</span>
             )}
           </span>
         );
@@ -144,7 +144,7 @@ export default function AlertGroups() {
                   onClick={() => { void ack(g); }}
                   aria-disabled={busy === g.group_key}
                   aria-busy={busy === g.group_key}>
-            Acknowledge {g.unacked}
+            Work on these
           </Button>
         );
       },

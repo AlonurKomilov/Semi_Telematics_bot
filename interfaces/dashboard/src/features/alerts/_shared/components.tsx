@@ -206,6 +206,12 @@ export function SeenMarker({ alert }: { alert: Alert }) {
   }
 
   if (names.length === 0 && !mine) {
+    // "New" is a live claim; a RESOLVED row nobody saw is history, and
+    // "New" beside "Auto-resolved" in one row was the word meaning two
+    // things at once.
+    if ((alert.status ?? 'active') !== 'active') {
+      return <span ref={ref} className="text-xs text-muted-foreground/50">—</span>;
+    }
     return <span ref={ref} className="text-xs font-medium text-foreground">New</span>;
   }
   const shown = names.slice(0, 3);
@@ -334,6 +340,13 @@ export function WorkMarker({ alert }: { alert: Alert }) {
   // migration.  Machine auto-resolve is the other writer, untouched.
   const done = async () => {
     if (busy || !Number.isFinite(aid)) return;
+    // The one press in the trio that speaks for the whole account, so it
+    // is the one that stops to ask.  This also closes the morph hazard:
+    // "Work on it" flips to "Done" at the same coordinates, and a slow
+    // double-click's second press would otherwise claim AND resolve in
+    // one gesture — the confirm absorbs it.
+    if (!window.confirm(
+      'Resolve this alert for everyone?\n\nRecorded under your name.')) return;
     setBusy(true);
     try {
       await apiJSON(`/alerts/${aid}/acknowledge`, { method: 'POST' });
@@ -356,6 +369,20 @@ export function WorkMarker({ alert }: { alert: Alert }) {
       setExtraMe(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not claim this');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const leave = async () => {
+    if (busy || !Number.isFinite(aid)) return;
+    setBusy(true);
+    try {
+      await apiJSON(`/alerts/${aid}/work`, { method: 'DELETE' });
+      setExtraMe(false);
+      void qc.invalidateQueries({ queryKey: ['alerts'] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Couldn’t leave it');
     } finally {
       setBusy(false);
     }
@@ -393,20 +420,41 @@ export function WorkMarker({ alert }: { alert: Alert }) {
           type="button"
           onClick={(e) => { e.stopPropagation(); void claim(); }}
           aria-busy={busy || undefined}
-          className="text-2xs text-primary hover:underline min-h-tap"
+          className="inline-flex items-center justify-center text-2xs
+                     text-primary hover:underline min-h-tap min-w-tap"
         >
           {names.length ? 'Join' : 'Work on it'}
         </button>
       )}
       {active && mine && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); void done(); }}
-          aria-busy={busy || undefined}
-          className="text-2xs text-primary hover:underline min-h-tap"
-        >
-          Done
-        </button>
+        <>
+          <Tip label="Resolves it for everyone — recorded under your name">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); void done(); }}
+              aria-busy={busy || undefined}
+              className="inline-flex items-center justify-center text-2xs
+                         text-primary hover:underline min-h-tap min-w-tap"
+            >
+              Done
+            </button>
+          </Tip>
+          {/* The claim's exit door.  Without it a stray "Work on it"
+              could only end in a false resolution, or ride into the KPI
+              forever.  The pager resumes on its own if you were the
+              last hands. */}
+          <Tip label="Take your name off this — the pager resumes if no one else has it">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); void leave(); }}
+              aria-busy={busy || undefined}
+              className="inline-flex items-center justify-center text-2xs
+                         text-muted-foreground hover:underline min-h-tap min-w-tap"
+            >
+              Leave
+            </button>
+          </Tip>
+        </>
       )}
       {!active && names.length === 0 && (
         <span className="text-xs text-muted-foreground/50">—</span>

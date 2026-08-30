@@ -241,7 +241,7 @@
     "first_seen": "Birinchi",
     "last_seen": "Oxirgi",
     "notification_prefs": "Bildirishnoma sozlamalari",
-    "page_description_pending": "Avtoparkdagi barcha ogohlantirishlar: kim ko‘rgan, kim ustida ishlayapti va qanday hal bo‘lgan. Qatorlarni belgilab, olish uchun Work on these tugmasini bosing.",
+    "page_description_pending": "Avtoparkdagi barcha ogohlantirishlar: kim ko‘rgan, kim ustida ishlayapti va qanday hal bo‘lgan. Qatorlarni belgilab, olish uchun Work on these tugmasini bosing. «Ko‘rildi» qatorlar ekraningizda paydo bo‘lganda avtomatik yoziladi.",
     "live_ack": {
       "last_ack": "Oxirgi hal qilingan",
       "hotkey_action": "Work on these"

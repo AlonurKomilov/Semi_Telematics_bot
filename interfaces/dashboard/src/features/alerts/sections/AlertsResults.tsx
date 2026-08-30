@@ -497,7 +497,7 @@ export default function AlertsResults() {
             // unwindowed — only the acknowledged / all views are bounded
             // by the date range.
             ackState === 'new'
-              ? 'Other alerts may exist that someone has already seen — clear the filters, or check All.'
+              ? 'Other alerts may exist that you have already seen — clear the filters, or check All.'
               : 'Other alerts may still exist — clear the filters to see everything.'
           }
           action={clearFilters}
@@ -528,7 +528,8 @@ export default function AlertsResults() {
         }
         description={
           ackState === 'new'
-            ? 'Every alert has been seen by someone — the whole queue has had eyes on it.'
+            ? 'You’ve seen everything here — every alert has crossed your own '
+            + 'screen. Teammates’ coverage shows in the Seen column.'
             : ackState === 'mine_working'
               ? 'Claim a task with “Work on it” and it will appear here.'
               : 'Try widening the date range.'

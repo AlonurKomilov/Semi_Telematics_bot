@@ -202,6 +202,13 @@ export function NotificationsPanel(
   // would be theatre.  The stagedAcks store stays only for rows mid-
   // window from before the verb changed.
   const ackAllStaged = (ids: (string | number)[]) => {
+    // One-click batch-claiming a dozen alerts — criticals included —
+    // silences their pagers with zero friction, and there is no undo
+    // wide enough for a slip at that scale.  A count-confirm above a
+    // handful, same threshold reasoning as the old bulk flow.
+    if (ids.length >= 5 && !window.confirm(
+      `Claim ${ids.length} alerts as yours?\n\nEach quiets its pager and `
+      + 'lands in My working on.')) return;
     void ack(ids);
   };
 
@@ -472,7 +479,7 @@ function TabPill({ active, onClick, dim, children }: {
       // BEFORE it's clicked (no count needed, no wasted click).
       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
         active
-          ? 'bg-primary/15 text-primary'
+          ? 'bg-primary/15 text-foreground ring-1 ring-primary'
           : `hover:bg-muted hover:text-foreground ${
               dim ? 'text-muted-foreground/50' : 'text-muted-foreground'}`
       } min-h-tap`}
@@ -535,7 +542,18 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
                 </span>
               )}
             </span>
-            <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
+            {/* Ownership at the glance surface: the bell receives the
+              claim data with every row, and hiding it made the second
+              dispatcher's stand-down signal invisible exactly where
+              quick triage happens. */}
+          {(alert.working?.length ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-2xs text-warn shrink-0">
+              <Wrench className="size-3" aria-hidden />
+              {alert.working![0].name.split(' ')[0]}
+              {alert.working!.length > 1 && ` +${alert.working!.length - 1}`}
+            </span>
+          )}
+          <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
           </span>
           {detail && (
             <span className="block text-xs text-muted-foreground truncate mt-0.5">{detail}</span>

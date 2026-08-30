@@ -361,6 +361,29 @@ async def work_on_alert(
                         for w in workers.get(history_id, [])]}
 
 
+@router.delete("/{history_id:int}/work")
+async def leave_alert(
+    history_id: int,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Take my own name off this alert.
+
+    The claim's exit door.  Without one, the only way out of a stray
+    "Work on it" was pressing Done and falsely resolving a live alert —
+    or carrying the task in "My working on" forever, straight into the
+    KPI.  Deletes only the caller's own row; if no workers remain the
+    escalation pager resumes on its own, because its candidate query is
+    a NOT EXISTS over the workers table.
+    """
+    me_id = await _me_user_id(user)
+    if me_id is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    released = await tenant_db.release_claim(
+        user["account_id"], me_id, history_id)
+    return {"released": released}
+
+
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter by stored alert_type (comma-separated for multi-select)"),

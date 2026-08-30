@@ -40,6 +40,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   X, ExternalLink, Truck, BarChart3, GraduationCap, Video, CheckCircle2,
+  Wrench,
 } from 'lucide-react';
 import { apiJSON, ApiError } from '../../../api/client';
 import { Button } from '../../../components/ui/button';
@@ -165,9 +166,10 @@ function DrawerFooter({ alert, onAcknowledged }: {
 }) {
   const ackAlerts = useAckAlerts();
   const [busy, setBusy] = useState(false);
+  const [claimedNow, setClaimedNow] = useState(false);
 
-  // Already acknowledged / auto-resolved: state the outcome instead of
-  // offering an action that would no-op.
+  // Already resolved: state the outcome instead of offering an action
+  // that would no-op.
   if (!isAckable(alert)) {
     return (
       <footer className="px-5 py-4 border-t border-border shrink-0">
@@ -176,36 +178,71 @@ function DrawerFooter({ alert, onAcknowledged }: {
     );
   }
 
-  const acknowledge = async () => {
+  const mine = claimedNow || !!alert.working_me;
+
+  // The drawer is the FIRST surface most people meet after a row click,
+  // so it teaches the trio or teaches the dead model — there is no
+  // neutral.  Primary follows your relationship to the task: not yours
+  // yet → "Work on it" (the claim); yours → "Done" (the resolution).
+  const claim = async () => {
+    setBusy(true);
+    try {
+      await apiJSON(`/alerts/${alert.id}/work`, { method: 'POST' });
+      setClaimedNow(true);
+      toast.success('You’re on it — it’s in My working on');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Couldn’t claim it');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolve = async () => {
+    // A one-way write that speaks for the whole account — the one press
+    // in the trio that earns a stop-and-confirm.
+    if (!window.confirm(
+      'Resolve this alert for everyone?\n\nRecorded under your name.')) return;
     setBusy(true);
     try {
       // The shared helper, not a local POST: it also invalidates
       // ['shell','overview-stats'], which is where the bell badge and the
-      // Overview card read from.  Invalidating ['alerts'] alone refreshes
-      // the board and the hero counts but leaves the badge stale for up
-      // to a minute — it doesn't even refetch on focus.
+      // Overview card read from.
       await ackAlerts([alert.id]);
-      toast.success(`Alert #${alert.id} acknowledged`);
+      toast.success(`Alert #${alert.id} resolved`);
       onAcknowledged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Couldn’t acknowledge');
+      toast.error(e instanceof Error ? e.message : 'Couldn’t resolve it');
       setBusy(false);   // stay open so the operator can retry
     }
   };
 
   return (
     <footer className="px-5 py-4 border-t border-border shrink-0">
-      <Button
-        size="lg"
-        onClick={() => { void acknowledge(); }}
-        disabled={busy}
-        className="w-full"
-      >
-        <CheckCircle2 aria-hidden />
-        {busy ? 'Acknowledging…' : 'Acknowledge'}
-      </Button>
+      {mine ? (
+        <Button size="lg" onClick={() => { void resolve(); }}
+                disabled={busy} className="w-full">
+          <CheckCircle2 aria-hidden />
+          {busy ? 'Resolving…' : 'Done'}
+        </Button>
+      ) : (
+        <div className="flex gap-2">
+          <Button size="lg" onClick={() => { void claim(); }}
+                  disabled={busy} className="flex-1">
+            <Wrench aria-hidden />
+            {busy ? 'Claiming…' : 'Work on it'}
+          </Button>
+          <Button size="lg" variant="outline"
+                  onClick={() => { void resolve(); }}
+                  disabled={busy}>
+            Done
+          </Button>
+        </div>
+      )}
       <p className="text-2xs text-muted-foreground mt-2 text-center">
-        Recorded under your name, and the alert leaves the open queue.
+        {mine
+          ? 'Done resolves it for everyone — recorded under your name.'
+          : 'Work on it claims the task and quiets the pager. Done resolves '
+            + 'it for everyone, recorded under your name.'}
       </p>
     </footer>
   );

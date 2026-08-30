@@ -227,7 +227,7 @@
   },
   "alerts": {
     "page_title": "Alertes",
-    "page_description_pending": "Chaque alerte de votre flotte : qui l’a vue, qui y travaille et comment elle a été résolue. Cochez des lignes puis cliquez Work on these pour les prendre.",
+    "page_description_pending": "Chaque alerte de votre flotte : qui l’a vue, qui y travaille et comment elle a été résolue. Cochez des lignes puis cliquez Work on these pour les prendre. « Vu » s’enregistre automatiquement quand les lignes apparaissent à l’écran.",
     "page_description_history": "Anciennes alertes et leur résolution. Utilisez les filtres pour cibler un véhicule ou un type.",
     "tab_pending": "En attente",
     "tab_history": "Historique",
