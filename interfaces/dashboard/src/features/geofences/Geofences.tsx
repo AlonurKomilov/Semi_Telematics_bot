@@ -13,7 +13,7 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';
-import { GEOFENCE } from '../../config/mapColors';
+import { GEOFENCE, MARKER_HALO, MARKER_SHADOW } from '../../config/mapColors';
 import { toneClasses } from '../../lib/status';
 import { Card } from '@/components/ui/card';
 import { Tip } from '../../components/tooltip';
@@ -169,7 +169,7 @@ export default function Geofences() {
     } else {
       const icon = Leaf.divIcon({
         className: '',
-        html: `<div style="width:12px;height:12px;background:${PREVIEW_COLOR};border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
+        html: `<div style="width:12px;height:12px;background:${PREVIEW_COLOR};border:2px solid ${MARKER_HALO};border-radius:50%;box-shadow:0 1px 4px ${MARKER_SHADOW}"></div>`,
         iconSize: [12, 12], iconAnchor: [6, 6],
       });
       previewMarkerRef.current = Leaf.marker([lat, lng], { icon, interactive: false })

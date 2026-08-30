@@ -17,6 +17,7 @@
  */
 
 import { useState } from 'react';
+import { MAP_TYPE_PREVIEW } from '../../config/mapColors';
 import { Check, ChevronDown, ChevronUp, Map as MapIcon, Mountain, Satellite, type LucideIcon } from 'lucide-react';
 import type { MapType } from '@/hooks/useLeafletMap';
 import { cn } from '@/lib/utils';
@@ -41,22 +42,19 @@ const MAP_TYPES: {
   {
     id:      'standard',
     label:   'Default',
-    // Green represents road/greenspace colors of OSM
-    preview: 'linear-gradient(135deg, #4a8c5e 0%, #6aab7e 40%, #c8d8a0 100%)',
+    preview: MAP_TYPE_PREVIEW.standard,
     icon:    MapIcon,
   },
   {
     id:      'satellite',
     label:   'Satellite',
-    // Dark blue-grey represents aerial/space photography
-    preview: 'linear-gradient(135deg, #1a2332 0%, #243447 50%, #2e4060 100%)',
+    preview: MAP_TYPE_PREVIEW.satellite,
     icon:    Satellite,
   },
   {
     id:      'terrain',
     label:   'Terrain',
-    // Brown/green represents elevation contours
-    preview: 'linear-gradient(135deg, #6b4c1e 0%, #8b6a2e 40%, #7a9c4a 100%)',
+    preview: MAP_TYPE_PREVIEW.terrain,
     icon:    Mountain,
   },
 ];

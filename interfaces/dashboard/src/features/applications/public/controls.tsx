@@ -7,6 +7,7 @@
 // its dropdown is themed + drops below the field (a native <select> opened
 // an OS-styled list that ignored the form theme — see the State picker).
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SIGNATURE_INK, SIGNATURE_PAPER } from '../../../config/documentColors';
 import type { ReactNode } from 'react';
 import { UploadCloud, Camera, X, FileText, Check } from 'lucide-react';
 import { formatPhone, formatSsn } from './lib';
@@ -246,13 +247,25 @@ export function SignatureBlock({ mode, name, dataUrl, fullName, onMode, onName, 
     const rect = c.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width * dpr));
     const h = Math.max(1, Math.round(rect.height * dpr));
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const resized = c.width !== w || c.height !== h;
+    if (resized) { c.width = w; c.height = h; }
     const ctx = c.getContext('2d');
     if (!ctx) return null;
+    // Paper the canvas. It used to be left transparent, which meant the
+    // applicant signed onto `bg-card` — and on this form `--card` is the
+    // CARRIER's chosen surface colour, which migration 129 backfills to
+    // #0a0a0a for every dark-base carrier. Near-black ink on a near-black
+    // surface is a signature nobody can see themselves writing.
+    //
+    // Only on resize: a repaint on every stroke would erase the drawing.
+    if (resized) {
+      ctx.fillStyle = SIGNATURE_PAPER;
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
     ctx.lineWidth = 2.2 * dpr;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = SIGNATURE_INK;
     return ctx;
   }, []);
 
@@ -299,7 +312,11 @@ export function SignatureBlock({ mode, name, dataUrl, fullName, onMode, onName, 
   };
   const clear = () => {
     const c = canvasRef.current!;
-    c.getContext('2d')!.clearRect(0, 0, c.width, c.height);
+    // Re-paper rather than clear: `clearRect` would leave the canvas
+    // transparent again and undo the fill above.
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = SIGNATURE_PAPER;
+    ctx.fillRect(0, 0, c.width, c.height);
     onDraw(null);
   };
 

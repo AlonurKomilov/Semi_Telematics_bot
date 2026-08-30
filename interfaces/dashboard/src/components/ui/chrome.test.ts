@@ -282,7 +282,7 @@ export function tapWidth(cls: string, children: string): number | null {
 
 /* ── The exemption lists, each paired with the offence it exempts ──
  *
- * All eleven live here, at module scope, next to the predicate that
+ * All twelve live here, at module scope, next to the predicate that
  * decides whether an entry still has a reason to exist. That pairing is
  * the whole point. Five of these used to be declared inside their own
  * `it()`, out of the staleness check's reach — and they rotted there,
@@ -504,9 +504,70 @@ const inlineLengthAllows = (rel: string, prop: string) =>
 
 /** Source with comments removed — a rule that explains a past bug must
  *  not read as the bug. */
-const codeOnly = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
+/**
+ * Source with its comments blanked.
+ *
+ * It has to be a scanner, not a pair of regexes, because a regex cannot
+ * tell a comment from a string that merely looks like one. The attribute
+ * `accept="image/` plus a star and a quote opens what a regex reads as a
+ * block comment, and it then runs to the next genuine close-comment: it
+ * swallowed 714 lines of the public FMCSA applicant form, so every guard
+ * built on this — radius, inset, emoji, colour literals, the chart-ramp
+ * ban — was silently blind to that file's whole body.
+ *
+ * Newlines are preserved so line numbers survive; anything that reports
+ * a location depends on that.
+ */
+const codeOnly = (src: string): string => {
+  const out: string[] = [];
+  // A stack, because a template literal is not opaque: `${...}` holds
+  // CODE, and this codebase writes comments in there. Those comments use
+  // backticks for inline code, and a scanner that skips a template
+  // wholesale reads the first of them as the template's close — after
+  // which every following comment looks like a string and survives.
+  const stack: string[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (stack[stack.length - 1] === '`') {
+      if (c === '\\') { out.push(src.slice(i, i + 2)); i += 2; continue; }
+      if (c === '`') { stack.pop(); out.push(c); i++; continue; }
+      if (c === '$' && n === '{') { stack.push('{'); out.push('${'); i += 2; continue; }
+      out.push(c); i++; continue;
+    }
+    if (c === '}' && stack[stack.length - 1] === '{') { stack.pop(); out.push(c); i++; continue; }
+    if (c === '`') { stack.push('`'); out.push(c); i++; continue; }
+    if (c === '"' || c === "'") {
+      // A quoted string cannot span a newline in JS, so if the close is
+      // not on this line the quote was not opening one: it was an
+      // apostrophe in JSX text ("Driver's name"), and consuming to the
+      // next apostrophe in the file swallows real code.
+      let j = i + 1;
+      while (j < src.length && src[j] !== c) {
+        if (src[j] === '\\') { j += 2; continue; }
+        if (src[j] === '\n') break;
+        j++;
+      }
+      if (j < src.length && src[j] === c) { out.push(src.slice(i, j + 1)); i = j + 1; continue; }
+      out.push(c); i++; continue;
+    }
+    if (c === '/' && n === '*') {
+      const e = src.indexOf('*/', i + 2);
+      const stop = e === -1 ? src.length : e + 2;
+      out.push(src.slice(i, stop).replace(/[^\n]/g, ' '));
+      i = stop; continue;
+    }
+    if (c === '/' && n === '/') {
+      let j = i;
+      while (j < src.length && src[j] !== '\n') j++;
+      out.push(' '.repeat(j - i)); i = j; continue;
+    }
+    out.push(c); i++;
+  }
+  return out.join('');
+};
+
 
 /**
  * A corner that ignores the Corners setting.
@@ -643,6 +704,50 @@ const nestedRadiusSites = (src: string): string[] => {
   return out;
 };
 
+/**
+ * Files allowed a colour literal, and why. By FILE because the reasons
+ * cluster; anything not here has to use a token or a config SSOT.
+ */
+const COLOUR_LITERAL_ALLOWED: { file: string; why: string }[] = [
+  { file: 'config/mapColors.ts',
+    why: 'the map SSOT — painted over tile imagery, must not follow the theme' },
+  { file: 'config/poiLayers.ts',
+    why: 'the POI SSOT, same reason' },
+  { file: 'config/documentColors.ts',
+    why: 'signature ink: a PNG kept against an FMCSA application outlives the session' },
+  { file: 'features/truck-anatomy/colors.ts',
+    why: 'reads the tokens off the element for WebGL; these are the fallbacks for the frame before they are there' },
+  { file: 'features/truck-anatomy/AssemblyNode.tsx',
+    why: 'the black lerp target for a THREE material — design.md §8' },
+  { file: 'features/applications/public/theme.ts',
+    why: 'computes a readable label for a colour the CUSTOMER chose at runtime' },
+];
+
+/** Colour literals in CODE — comments stripped, data shapes excluded. */
+const colourLiteralSites = (src: string): { n: number; hit: string }[] => {
+  const out: { n: number; hit: string }[] = [];
+  // NOT `codeOnly` — it deletes a block comment outright, which removes
+  // its newlines and shifts every line number after it. This reports
+  // line numbers, and a wrong one sends the next reader to the wrong
+  // place, so the comment is blanked in place instead.
+  const stripped = src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
+  stripped.split('\n').forEach((line, i) => {
+    // A colour INPUT's default, and the placeholder that shows its
+    // format, are values the USER picks — not chrome we chose.
+    if (/type="color"|placeholder="#/.test(line)) return;
+    for (const m of line.matchAll(/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(/g)) {
+      // `#123` in prose — "WO #123", "error #310" — is not a colour, so
+      // the hex has to be 3, 4, 6 or 8 digits long to count.
+      const hit = m[0];
+      if (hit.startsWith('#') && ![4, 5, 7, 9].includes(hit.length)) continue;
+      out.push({ n: i + 1, hit });
+    }
+  });
+  return out;
+};
+
 type DebtList = {
   name: string;
   entries: string[];
@@ -663,6 +768,8 @@ const DEBT: DebtList[] = [
   { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
   { name: 'CARD_NOT_A_CARD',             entries: CARD_NOT_A_CARD,             match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
   { name: 'INLINE_LENGTH_ALLOWED',       entries: INLINE_LENGTH_ALLOWED.map((e) => e.file), match: 'exact', scope: FILES, offends: (f) => inlineLengthSites(f.src).length > 0 },
+  { name: 'COLOUR_LITERAL_ALLOWED',      entries: COLOUR_LITERAL_ALLOWED.map((e) => e.file), match: 'exact',
+    scope: FILES, offends: (f) => colourLiteralSites(f.src).length > 0 },
   { name: 'RADIUS_ARBITRARY_ALLOWED',    entries: RADIUS_ARBITRARY_ALLOWED,    match: 'exact',     scope: FILES, offends: (f) => radiusClassSites(f.src).length > 0 },
 ];
 
@@ -1628,5 +1735,123 @@ describe('UI chrome', () => {
     );
     expect(dots, 'a chip whose swatch token does not exist renders a colourless dot')
       .toEqual([]);
+  });
+
+  // ── Guard 35 ────────────────────────────────────────────────────────
+  // A colour literal in a component is a colour that cannot follow the
+  // theme, cannot be retuned, and is invisible to every guard in
+  // lib/colour.test.ts — which measures TOKENS. `#666` inside a Leaflet
+  // popup string sat at 2.21:1 on the dark themes for as long as it
+  // existed, and no amount of token work would have found it.
+  //
+  // Legitimate literals exist, and the allowlist is by FILE because they
+  // cluster: a map marker is painted over someone else's photograph of
+  // the world and must not follow the theme; a signature is a document
+  // that outlives the session; a WebGL reader needs a fallback for the
+  // moment before the tokens are on the element. Each entry says which.
+  //
+  // Two things are data rather than chrome and are excluded by SHAPE,
+  // not by file — a file-level entry would have exempted everything else
+  // in those files too, which is the mistake INLINE_LENGTH_ALLOWED
+  // recorded when it excused a `borderRadius` it never meant to:
+  //   • `<input type="color">`'s default value
+  //   • a `placeholder="#2563EB"` showing the user what to type
+  it('no colour literal outside the files that are allowed one', () => {
+    const offenders: string[] = [];
+    for (const { rel, src } of FILES) {
+      if (COLOUR_LITERAL_ALLOWED.some((e) => rel === e.file)) continue;
+      for (const line of colourLiteralSites(src)) {
+        offenders.push(`${rel}:${line.n} → ${line.hit}`);
+      }
+    }
+    expect(
+      offenders,
+      'a literal colour cannot follow the theme and no contrast guard can ' +
+        'see it. Move it to a config SSOT, or use a token',
+    ).toEqual([]);
+  });
+
+  // The allowlist is by file, so a file on it could quietly grow a
+  // literal in a part that SHOULD be tokens — which is exactly what
+  // mapColors.ts did: its popup section carried four, two of them
+  // failing AA, under a comment explaining that popups could not use
+  // tokens. They can; popup markup becomes real DOM.
+  it('the map SSOT keeps its popup section token-only', () => {
+    const src = srcOf('config/mapColors.ts');
+    const popup = /export const POPUP[\s\S]*?\} as const;/.exec(src)?.[0] ?? '';
+    expect(popup, 'POPUP block not found — did it move?').not.toBe('');
+    expect(
+      [...codeOnly(popup).matchAll(/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(/g)].map((m) => m[0]),
+      'a popup is themed DOM under a `var(--popover)` wrapper, so these ' +
+        'are tokens. The rest of the file is literal for a reason that ' +
+        'does not apply here',
+    ).toEqual([]);
+  });
+
+  // ── Guard 37 ────────────────────────────────────────────────────────
+  // `var(--chart-N)` written straight into a component bypasses
+  // chartColor(), which is the only place that knows the ramp wraps —
+  // `chartColor(0)` deliberately returns slot 5, so a caller counting
+  // from zero still gets a colour. More to the point, the ramp now
+  // ROTATES with the accent: slot 2 is green under most accents and blue
+  // under a green one. A raw var pins a component to a slot NUMBER and
+  // silently opts it out of that, and nothing else greps for it —
+  // ServiceHistoryModal held one for as long as it existed.
+  it('nothing reads the chart ramp except the tone layer', () => {
+    const offenders: string[] = [];
+    for (const { rel, src } of FILES) {
+      if (rel === 'lib/status.ts') continue;          // the door itself
+      for (const m of codeOnly(src).matchAll(/var\(--chart-[1-5]\)/g)) {
+        offenders.push(`${rel} → ${m[0]}, use chartColor(n)`);
+      }
+    }
+    expect(
+      offenders,
+      'the ramp rotates with the accent, so a component pinned to a slot ' +
+        'number opts out of that without saying so',
+    ).toEqual([]);
+  });
+
+  // ── Guard 38 ────────────────────────────────────────────────────────
+  // `codeOnly` is the floor every source-reading guard here stands on,
+  // and it was wrong in three ways at once — each of which made guards
+  // silently pass over code they were supposed to read:
+  //
+  //   1. an `accept="image/…"` attribute opened what a regex reads as a
+  //      block comment, and it ran to the next real close-comment: 714
+  //      lines of the public FMCSA applicant form went unseen.
+  //   2. an apostrophe in JSX text ("Driver's name") opened a string
+  //      that ran to the next apostrophe anywhere in the file.
+  //   3. a template literal was treated as opaque, but `${…}` holds
+  //      CODE — and this codebase writes comments in there, with
+  //      backticks around inline code. The first such backtick read as
+  //      the template's close, and every comment after it survived.
+  //
+  // None of that is visible in a passing suite, which is the point.
+  it('codeOnly blanks exactly the comments, and nothing else', () => {
+    const F = (s: string) => codeOnly(s);
+
+    // 1 — a star inside a string attribute is not a comment
+    expect(F('<input accept="image/*" />\nconst c = "#abcdef";'))
+      .toContain('#abcdef');
+    // 2 — an apostrophe in prose is not a string
+    expect(F("<p>Driver's name</p>\nconst c = '#abcdef';"))
+      .toContain('#abcdef');
+    // 3 — a comment inside an interpolation, with backticks in it
+    expect(F('cn(`a ${x\n  // `foo`, not `bar`\n  ? "#abcdef" : ""}`)'))
+      .toContain('#abcdef');
+    expect(F('cn(`a ${x\n  // `foo`, not `bar`\n  ? "y" : ""}`)'))
+      .not.toContain('foo');
+
+    // comments really do go
+    expect(F('const a = 1; // #abcdef')).not.toContain('#abcdef');
+    expect(F('/* #abcdef */ const a = 1;')).not.toContain('#abcdef');
+    // …and a URL in a string is not a comment
+    expect(F(`const u = 'https://x/#abcdef';`)).toContain('#abcdef');
+
+    // line numbers survive, or every guard that reports one lies
+    const src = '/* a\n b\n c */\nconst x = 1;';
+    expect(F(src).split('\n').length).toBe(src.split('\n').length);
+    expect(F(src).split('\n')[3]).toBe('const x = 1;');
   });
 });

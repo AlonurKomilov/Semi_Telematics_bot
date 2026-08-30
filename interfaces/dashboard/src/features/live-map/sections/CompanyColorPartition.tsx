@@ -21,7 +21,7 @@
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
-import { COMPANY_PALETTE } from '../../../config/mapColors';
+import { COMPANY_PALETTE, MARKER_HALO, MARKER_SHADOW } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
 /** Deterministic color hash so the SAME company name always gets the
@@ -92,8 +92,8 @@ export default function CompanyColorPartition({
         icon: Leaf.divIcon({
           html: `<div style="
             width:8px;height:8px;border-radius:50%;
-            background:${color};border:1.5px solid #fff;
-            box-shadow:0 0 2px rgba(0,0,0,.5);
+            background:${color};border:1.5px solid ${MARKER_HALO};
+            box-shadow:0 0 2px ${MARKER_SHADOW};
             margin-left:14px;margin-top:-22px;
           "></div>`,
           className: 'company-partition-dot',

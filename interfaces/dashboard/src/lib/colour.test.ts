@@ -559,4 +559,86 @@ describe('colour values', () => {
         'display that changes nothing, because it is already what paints',
     ).toEqual([]);
   });
+
+  // The chart ramp is five CATEGORIES, so what matters is not each
+  // colour's contrast but whether any two can be told apart. Slot 1
+  // follows the accent, which means a preset can walk one series onto
+  // another: with a green accent, slot 1 landed on the same hue 142 as
+  // slot 2 and the two adjacent series became one colour — dE2000 6.70
+  // on dark, 7.79 on light.
+  //
+  // It is not only charts. 41 `*-chart-N` classes across 7 feature files
+  // use the ramp as a categorical BADGE palette, and two of them put the
+  // colliding slots side by side — settings/WorkHours' owner and admin
+  // rows, scorecards/DriverInsights' compliance and efficiency.
+  //
+  // Measured post-gamut-mapping: five of these tokens are authored
+  // outside sRGB, so a distance computed in oklch would claim separation
+  // the screen does not have.
+  it('no two chart series collide, in any theme cell', () => {
+    const toLab = (rgb: RGB): [number, number, number] => {
+      const inv = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const [r, g, b] = rgb.map(inv);
+      const X = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
+      const Y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+      const Z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b;
+      const f = (t: number) => (t > (6 / 29) ** 3 ? Math.cbrt(t) : t / (3 * (6 / 29) ** 2) + 4 / 29);
+      const [fx, fy, fz] = [f(X / 0.95047), f(Y), f(Z / 1.08883)];
+      return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+    };
+    const de2000 = (c1: [number, number, number], c2: [number, number, number]) => {
+      const [L1, a1, b1] = c1, [L2, a2, b2] = c2;
+      const C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2), Cb = (C1 + C2) / 2;
+      const G = Cb > 0 ? 0.5 * (1 - Math.sqrt(Cb ** 7 / (Cb ** 7 + 25 ** 7))) : 0;
+      const a1p = (1 + G) * a1, a2p = (1 + G) * a2;
+      const C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2);
+      const h1 = ((Math.atan2(b1, a1p) * 180) / Math.PI + 360) % 360;
+      const h2 = ((Math.atan2(b2, a2p) * 180) / Math.PI + 360) % 360;
+      const dLp = L2 - L1, dCp = C2p - C1p;
+      let dh = 0;
+      if (C1p * C2p !== 0) {
+        dh = h2 - h1;
+        if (dh > 180) dh -= 360; else if (dh < -180) dh += 360;
+      }
+      const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dh * Math.PI) / 360);
+      const Lb = (L1 + L2) / 2, Cbp = (C1p + C2p) / 2;
+      let hbp: number;
+      if (C1p * C2p === 0) hbp = h1 + h2;
+      else if (Math.abs(h1 - h2) <= 180) hbp = (h1 + h2) / 2;
+      else hbp = h1 + h2 < 360 ? (h1 + h2 + 360) / 2 : (h1 + h2 - 360) / 2;
+      const rad = (d: number) => (d * Math.PI) / 180;
+      const T = 1 - 0.17 * Math.cos(rad(hbp - 30)) + 0.24 * Math.cos(rad(2 * hbp))
+        + 0.32 * Math.cos(rad(3 * hbp + 6)) - 0.20 * Math.cos(rad(4 * hbp - 63));
+      const SL = 1 + (0.015 * (Lb - 50) ** 2) / Math.sqrt(20 + (Lb - 50) ** 2);
+      const SC = 1 + 0.045 * Cbp, SH = 1 + 0.015 * Cbp * T;
+      const RT = -2 * Math.sqrt(Cbp ** 7 / (Cbp ** 7 + 25 ** 7))
+        * Math.sin(rad(60 * Math.exp(-(((hbp - 275) / 25) ** 2))));
+      return Math.sqrt((dLp / SL) ** 2 + (dCp / SC) ** 2 + (dHp / SH) ** 2
+        + RT * (dCp / SC) * (dHp / SH));
+    };
+
+    // Today's minimum is 26.89. 20 leaves room to retune without
+    // pretending a pair at 21 is as distinct as one at 40.
+    const FLOOR_DE = 20;
+    const tight: string[] = [];
+    for (const cell of CELLS) {
+      const ramp = [1, 2, 3, 4, 5].map((n) => resolve(cell.tokens, `--chart-${n}`));
+      for (let i = 0; i < 5; i++) {
+        for (let j = i + 1; j < 5; j++) {
+          const a = ramp[i], b = ramp[j];
+          if (!a || !b) continue;
+          const d = de2000(toLab(a.rgb), toLab(b.rgb));
+          if (d < FLOOR_DE) {
+            tight.push(`${cell.name} | chart-${i + 1} vs chart-${j + 1} — dE2000 ${d.toFixed(2)}`);
+          }
+        }
+      }
+    }
+    expect(
+      tight,
+      'two series this close read as one colour. If an accent has walked ' +
+        'slot 1 onto another slot, that slot takes the hue the accent ' +
+        'displaced — see the accent blocks in index.css',
+    ).toEqual([]);
+  });
 });

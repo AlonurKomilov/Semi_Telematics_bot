@@ -490,6 +490,24 @@
     --primary: oklch(0.48 0.15 142);
     --primary-hover: oklch(0.43 0.14 142);
     --chart-1: oklch(0.48 0.15 142);
+    /* The ramp rotates with the accent, and only here.
+       Slot 1 IS the accent — that is the rule, and the accent blocks
+       above already do it.  Slots 2-5 then have to drop whichever base
+       hue the accent has just duplicated: with a green accent, slot 2
+       was ALSO hue 142, which put two adjacent series at dE2000 6.70
+       on dark and 7.79 on light, while every other pair in every theme
+       is >= 26.9.  Two chart lines the same colour, and two role badges
+       beside each other in settings/WorkHours and
+       scorecards/DriverInsights.
+       Blue is the hue that leaves — it is slot 1 in the base ramp, and a
+       green accent has already taken slot 1 — so it comes back here.
+       Blue and purple accents need no swap: the base ramp's slot 1 is
+       the hue they displace, and nothing else is near either of them.
+       Chroma is the SLOT's, clipped to what sRGB holds at the slot's
+       lightness for the new hue — never the accent's.  Light keeps 0.15
+       outright (the ceiling there is 0.2484, so it never binds); dark's
+       0.18 does not fit under 0.1449 and comes down to 0.142. */
+    --chart-2: oklch(0.55 0.15 264);
   }
   .dark[data-accent="purple"] {
     --primary: oklch(0.62 0.2 300);
@@ -500,6 +518,8 @@
     --primary: oklch(0.65 0.19 142);
     --primary-hover: oklch(0.71 0.19 142);
     --chart-1: oklch(0.65 0.19 142);
+    /* See the light block above for why only green swaps slot 2. */
+    --chart-2: oklch(0.72 0.142 264);
   }
 
   /* ── Size axes ──────────────────────────────────────────────

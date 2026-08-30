@@ -4,13 +4,23 @@
  * polygons, utilisation heatmaps, route lines and popup links.
  *
  * WHY THIS IS SEPARATE FROM THE CSS DESIGN TOKENS (index.css):
- * Leaflet draws markers to <canvas> or takes colours as plain STRINGS
- * passed to its APIs (L.circleMarker({color}), divIcon HTML, heatmap
- * gradients).  In those contexts `var(--ok)` cannot resolve, so map
- * colours must be literal values.  This file is the ONE place they live
- * — never inline a hex inside a *Layer / map component again (design.md
- * §8).  Theme-aware UI chrome still uses the CSS tokens; only the map
- * canvas uses these.
+ * these are painted OVER map tiles — someone else's photograph of the
+ * world — and a colour that follows the theme would disappear against
+ * half of it.  A marker has to read on snow and on asphalt, so it does
+ * not get to be theme-aware.
+ *
+ * That is the reason for most of what is here, not all of it:
+ * MAP_TYPE_PREVIEW is a picture OF the tiles rather than something drawn
+ * on them, and it sits in ordinary themed chrome.  And this is not the
+ * only file allowed a literal — COLOUR_LITERAL_ALLOWED in
+ * components/ui/chrome.test.ts is the enumerated list, each entry with
+ * its own reason.
+ *
+ * It is NOT that `var()` cannot resolve, which this note used to say.
+ * Leaflet renders vectors as SVG and `fill="var(--x)"` resolves there,
+ * and popup markup becomes real DOM under a themed wrapper — which is
+ * why POPUP below is tokens.  Only `HEATMAP_GRADIENT` genuinely cannot:
+ * it is read by a canvas renderer.
  *
  * MAP_STATUS carries the same MEANING as the --ok/--warn/--danger/--info
  * design tokens but uses the vivid 500-weight variants — saturated dots
@@ -42,6 +52,66 @@ export const COMPANY_PALETTE: string[] = [
   '#9333ea', // purple
   '#65a30d', // lime
 ];
+
+/**
+ * The halo that separates a coloured marker from the tiles under it.
+ *
+ * White, and always white: the marker sits on satellite imagery, street
+ * tiles and terrain, so the outline cannot follow the theme any more
+ * than the fill can.  It was inlined at nine sites across six files —
+ * three as an SVG `stroke`, four as `2px solid`, one `1.5px` and one
+ * `1px` — one decision written nine times, in four widths, and
+ * therefore one decision nobody could change.  (Five further `#fff`
+ * were the GLYPH below, which is a different job.)
+ */
+export const MARKER_HALO = '#fff';
+
+/**
+ * The glyph drawn ON a marker — the icon, the "P", the count.
+ *
+ * The same white, but a different job: HALO separates the marker from
+ * the tiles, GLYPH has to read against the marker's own saturated fill.
+ * They are equal today and may one day diverge — if MAP_STATUS ever gains a
+ * pale member, its glyph has to go dark while its halo stays white.
+ */
+export const MARKER_GLYPH = '#fff';
+
+/**
+ * The "DEF" corner badge on a POI that stocks DEF.
+ *
+ * Teal on purpose: it must not read as any of MAP_STATUS's four
+ * meanings — a driver scanning the map for a fault should not stop at a
+ * fuel stop because its badge was green.
+ */
+export const POI_DEF_BADGE = '#0d9488';
+
+/**
+ * The drop shadow that lifts a marker off the tiles.
+ *
+ * Six sites had written it themselves at three different alphas — .4,
+ * .45 and .5 — which is drift, not three decisions: nothing distinguishes
+ * a marker that needs 40% shade from one that needs 50%. One value, and
+ * the blur radius stays a per-marker choice because a 12px dot and a
+ * 40px cluster genuinely do want different softness.
+ */
+export const MARKER_SHADOW = 'rgba(0,0,0,.45)';
+
+/**
+ * The gradient swatches in the map-type switcher.
+ *
+ * These PREVIEW the tiles — a green street map, a dark satellite, a
+ * sepia terrain — so they are pictures of someone else's colours, not
+ * ours.
+ * Nothing here should ever become a token.
+ */
+export const MAP_TYPE_PREVIEW = {
+  /** OSM road + greenspace. */
+  standard:  'linear-gradient(135deg, #4a8c5e 0%, #6aab7e 40%, #c8d8a0 100%)',
+  /** Aerial photography. */
+  satellite: 'linear-gradient(135deg, #1a2332 0%, #243447 50%, #2e4060 100%)',
+  /** Elevation contours. */
+  terrain:   'linear-gradient(135deg, #6b4c1e 0%, #8b6a2e 40%, #7a9c4a 100%)',
+} as const;
 
 /** Geofence overlay colours — categorical identity by source/state. */
 export const GEOFENCE = {

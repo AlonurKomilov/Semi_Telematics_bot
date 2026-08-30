@@ -20,7 +20,7 @@ import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
-import { MAP_STATUS, POPUP_LINK } from '../../../config/mapColors';
+import { MAP_STATUS, MARKER_GLYPH, MARKER_HALO, POPUP_LINK } from '../../../config/mapColors';
 import type { ParkingEventsResponse } from '../../../types';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -57,8 +57,8 @@ export default function UnsafeParkingMarkers({
       const color = severity === 'unsafe' ? MAP_STATUS.danger : MAP_STATUS.warn;
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
-          <path d="M12 2 L21 20 L3 20 Z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-          <text x="12" y="17" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">P</text>
+          <path d="M12 2 L21 20 L3 20 Z" fill="${color}" stroke="${MARKER_HALO}" stroke-width="1.5"/>
+          <text x="12" y="17" text-anchor="middle" font-size="11" font-weight="bold" fill="${MARKER_GLYPH}">P</text>
         </svg>
       `;
       return Leaf.divIcon({

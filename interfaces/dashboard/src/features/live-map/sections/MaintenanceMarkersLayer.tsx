@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
-import { MAP_STATUS, POPUP_LINK } from '../../../config/mapColors';
+import { MAP_STATUS, MARKER_GLYPH, MARKER_HALO, POPUP_LINK } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
 interface DueRow {
@@ -121,8 +121,8 @@ export default function MaintenanceMarkersLayer({
       const color = row.overdue_count > 0 ? COLOR_OVERDUE : COLOR_PENDING;
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-          <circle cx="12" cy="12" r="10" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-          <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-3.6 3.6 1.4 1.4 3.6-3.6a4 4 0 0 0 5.4-5.4l-2 2-1.4-1.4z" fill="#fff"/>
+          <circle cx="12" cy="12" r="10" fill="${color}" stroke="${MARKER_HALO}" stroke-width="1.5"/>
+          <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-3.6 3.6 1.4 1.4 3.6-3.6a4 4 0 0 0 5.4-5.4l-2 2-1.4-1.4z" fill="${MARKER_GLYPH}"/>
         </svg>
       `;
       const marker = Leaf.marker(pos, {

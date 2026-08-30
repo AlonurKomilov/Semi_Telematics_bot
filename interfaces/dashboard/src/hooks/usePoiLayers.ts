@@ -22,7 +22,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { apiFetch, apiJSON } from '../api/client';
 import { POI_LAYERS } from '../config/poiLayers';
 import type { PoiLayerDef, PoiFeature, PoiIconSpec } from '../config/poiLayers';
-import { POPUP } from '../config/mapColors';
+import { MARKER_GLYPH, MARKER_HALO, MARKER_SHADOW, POI_DEF_BADGE, POPUP } from '../config/mapColors';
 import type L from 'leaflet';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ function poiIconHtml(icon: PoiIconSpec, sizePx: number): string {
   let html = _iconHtmlCache.get(key);
   if (!html) {
     html = renderToStaticMarkup(
-      createElement(icon, { size: sizePx, color: '#fff', strokeWidth: 2.5, 'aria-hidden': true }),
+      createElement(icon, { size: sizePx, color: MARKER_GLYPH, strokeWidth: 2.5, 'aria-hidden': true }),
     );
     _iconHtmlCache.set(key, html);
   }
@@ -548,9 +548,9 @@ export function usePoiLayers(
           html: `<div style="
             display:flex;align-items:center;justify-content:center;
             width:${size}px;height:${size}px;border-radius:50%;
-            background:${def.color};color:#fff;font-weight:700;
+            background:${def.color};color:${MARKER_GLYPH};font-weight:700;
             font-size:${fontSize}px;line-height:1;
-            border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
+            border:2px solid ${MARKER_HALO};box-shadow:0 1px 4px ${MARKER_SHADOW};
             gap:2px;
           ">${poiIconHtml(def.icon, fontSize + 1)}<span>${n}</span></div>`,
           iconSize: [size, size],
@@ -600,11 +600,11 @@ export function usePoiLayers(
         className: '',
         html: `<div style="
           position:relative;width:${sz}px;height:${sz}px;border-radius:50%;
-          background:${def.color};border:2px solid #fff;
-          box-shadow:0 1px 4px rgba(0,0,0,.45);
+          background:${def.color};border:2px solid ${MARKER_HALO};
+          box-shadow:0 1px 4px ${MARKER_SHADOW};
           display:flex;align-items:center;justify-content:center;
           font-size:${fs}px;line-height:1;
-        ">${poiIconHtml(def.icon, Math.round(sz * 0.55))}${hasDef ? '<span style="position:absolute;bottom:-3px;right:-5px;background:#0d9488;color:#fff;font-size:6px;padding:1px 3px;border-radius:2px;font-weight:700;line-height:1.2;border:1px solid #fff">DEF</span>' : ''}</div>`,
+        ">${poiIconHtml(def.icon, Math.round(sz * 0.55))}${hasDef ? `<span style="position:absolute;bottom:-3px;right:-5px;background:${POI_DEF_BADGE};color:${MARKER_GLYPH};font-size:6px;padding:1px 3px;border-radius:2px;font-weight:700;line-height:1.2;border:1px solid ${MARKER_HALO}">DEF</span>` : ''}</div>`,
         iconSize: [sz, sz],
         iconAnchor: [sz / 2, sz / 2],
       });

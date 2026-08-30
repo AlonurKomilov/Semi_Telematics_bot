@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SIGNATURE_INK, SIGNATURE_PAPER } from '../../config/documentColors';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -36,9 +37,9 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
     ctx.scale(dpr, dpr);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#0a0a0a';
+    ctx.strokeStyle = SIGNATURE_INK;
     ctx.lineWidth = 2.5;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = SIGNATURE_PAPER;
     ctx.fillRect(0, 0, rect.width, rect.height);
   }, []);
 

@@ -760,6 +760,45 @@ them next to a comment saying so.
 
 ## 8. Charts & maps
 
+### The ramp rotates with the accent
+
+Slot 1 **is** the accent — pick green in the picker and `--chart-1` is
+green, in both modes, and guard 34 fails if an accent block re-points
+`--primary` and forgets it.
+
+That creates a problem the base ramp does not have. The five base hues
+are 264 / 142 / 95 / 30 / 200, and slot 1 is already one of them, so an
+accent that matches a LATER slot duplicates it. Green did: slot 1 and
+slot 2 both landed on hue 142 — dE2000 **6.70** on dark and **7.79** on
+light — where every other pair in
+every cell is ≥ 26.9. Two chart lines the same colour — and it is not
+only charts, because 41 `*-chart-N` classes across 7 feature files use
+the ramp as a categorical BADGE palette, two of them putting the
+colliding slots side by side (`settings/WorkHours`' owner and admin rows,
+`scorecards/DriverInsights`' compliance and efficiency).
+
+The rule, and it is one line: **slot 1 takes the accent, and whichever
+base hue that duplicates is replaced by the hue slot 1 displaced.** Blue
+is the base slot-1 hue, so:
+
+| accent | slot 2 | why |
+|---|---|---|
+| blue | green (142) | slot 1 was already blue — nothing moved |
+| purple | green (142) | purple displaced blue, and nothing else is near purple |
+| green | **blue (264)** | green would have repeated slot 2, so blue comes back |
+
+Chroma is the SLOT's, clipped to what sRGB holds at the slot's lightness
+for the new hue — never the accent's. Light keeps 0.15 outright (the
+ceiling there is 0.2484, so it never binds); dark's 0.18 does not fit
+under 0.1449 and comes down to 0.142. Worst pair across all six cells is
+now 26.89.
+
+Never write `var(--chart-N)` in a component. It pins that component to a
+slot NUMBER, which the rotation makes a moving target, and it bypasses
+`chartColor()` — the only place that knows the ramp wraps (`chartColor(0)`
+deliberately returns slot 5). Guard 37 fails on it.
+
+
 
 **Vendor chrome follows the axis; three vendor circles do not.** Leaflet's
 popup, tooltip and zoom bar and sonner's toast, action button and loading
@@ -872,11 +911,23 @@ like any other text and rides `--size-text` through `lib/chartText.ts`.
 
 **Scope: any colour consumer CSS cannot reach** — charts, map markers,
 canvas, and 3D materials. All of them take tokens through a helper or a
-config constant, never an inline literal. The one sanctioned literal is
-a value that is not a colour at all: `new THREE.Color('#000000')` as a
-"no emissive" lerp target in `AssemblyNode`. Mark such a site with a
-comment saying why — an unmarked literal is indistinguishable from a
-forgotten one.
+config constant, never an inline literal in a component.
+
+Six files are allowed literals, and `COLOUR_LITERAL_ALLOWED` in
+`components/ui/chrome.test.ts` is the enumerated list — each entry
+carries its own reason, and guard 35 fails on a literal anywhere else:
+
+| file | why |
+|---|---|
+| `config/mapColors.ts`, `config/poiLayers.ts` | painted over tile imagery; a themed marker disappears against half the world |
+| `config/documentColors.ts` | signature ink — a PNG filed against an FMCSA application outlives the session that drew it |
+| `features/truck-anatomy/colors.ts` | reads the tokens off the element for WebGL; these are the fallbacks for the frame before they are there |
+| `features/truck-anatomy/AssemblyNode.tsx` | `new THREE.Color('#000000')`, a "no emissive" lerp target — not a colour anyone sees |
+| `features/applications/public/theme.ts` | computes a readable label for a colour the CUSTOMER chose at runtime |
+
+Two shapes are data rather than chrome and are excluded by shape, not by
+file: a `<input type="color">` default, and a `placeholder="#2563EB"`
+showing the user the format.
 These need literal colour strings (Recharts `fill`, Leaflet markers) —
 they can't take Tailwind classes. **Still don't hardcode hex:**
 
@@ -985,7 +1036,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Thirty-four live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Thirty-eight live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -1007,7 +1058,7 @@ this table has any chance of staying true.
 | don't restate what a primitive already ships (§7) | the call site repeating a base the component already applies |
 | don't hand-roll a Badge (§11) | a `<span>` wearing a status colour plus badge geometry — both the `toneClasses` and `statusClasses` doors |
 | chart text rides the text axis (§5.1) | recharts takes `fontSize` as a number and writes an SVG attribute no class reaches; `lib/chartText.ts` holds the replacements |
-| every exemption list stays honest | each of the eleven debt lists is paired with the predicate it exempts from, so an entry that no longer offends is reported by name |
+| every exemption list stays honest | each of the twelve debt lists is paired with the predicate it exempts from, so an entry that no longer offends is reported by name |
 | modals are never hand-rolled | `scrolling/backdrops.test.ts` |
 | the sheet ✕ is suppressed where the header has one | `components/ui/sheetClose.test.ts` |
 | a locale never falls further behind English | `locales/parity.test.ts` — per-locale ceilings, plus: a translation may not carry a key English does not have |
@@ -1031,6 +1082,10 @@ this table has any chance of staying true.
 | every accent the picker offers has CSS, in both modes (§2) | reads `THEME_ACCENTS` out of the registry and requires a `--primary`, a `--chart-1` AND a `--primary-hover` under both `:root:not(.dark)[data-accent=…]` and `.dark[data-accent=…]`, plus a swatch in each mode. An accent needs a value per mode — a `--primary` bright enough for near-black is too pale to clear AA on white — so shipping only the dark half makes the chip a no-op in Light, silently |
 | every rendered colour pair meets its WCAG floor (§2) | `src/lib/colour.test.ts` — resolves every token through the six mode×accent cells, composites alpha fills over each ground the way a browser does (a tone pill on a card is not the same colour as the same pill on the canvas), and applies 4.5 for text / 3.0 for non-text UI. It cannot land green: the failures it still carries are listed WITH the reason each one stays, and the guard fails if a listed pair starts passing, so the list is a work queue rather than an allowlist |
 | no colour token drifts further outside sRGB (§2) | same file — an out-of-gamut oklch is not the colour on screen, so any ratio computed on the authored value is arithmetic about a colour nobody has seen, and nudging the chroma of a clipped token moves nothing except on a P3 display. A ratchet, keyed per THEME CELL rather than per token: eight tokens clip today, and taking the worst across cells would let a regression in one hide behind a bigger number in another. A new offender, or an existing one clipping harder, fails |
+| no colour literal outside the files allowed one (§8) | a hex in a component cannot follow the theme, cannot be retuned, and is invisible to the contrast guard, which measures TOKENS — `#666` inside a Leaflet popup string sat at 2.21:1 on the dark themes for as long as it existed. The allowlist is by FILE because the legitimate reasons cluster (painted over tile imagery; a signature PNG that outlives the session; a WebGL fallback for the frame before the tokens land), and each entry states its reason. A colour INPUT's default and a `placeholder="#2563EB"` are excluded by SHAPE, not by file — a file entry would have excused everything else in those files, the mistake `INLINE_LENGTH_ALLOWED` already recorded |
+| the map SSOT keeps its popup section token-only (§8) | the allowlist is per file, so an allowed file can grow a literal in the part that should be tokens — which mapColors.ts did: four literals under a comment explaining that popups could not use tokens. They can; popup markup becomes real DOM under a `var(--popover)` wrapper, and two of the four were failing AA |
+| nothing reads the chart ramp except the tone layer (§8) | `var(--chart-N)` in a component pins it to a slot NUMBER, and the ramp rotates with the accent — slot 2 is green under most accents and blue under a green one, so a raw var silently opts that component out. It also bypasses `chartColor()`, which is the only place that knows the ramp wraps. Nothing else greps for this |
+| `codeOnly` blanks exactly the comments (§11) | it is the floor every source-reading guard stands on, and it was wrong three ways at once, each of which made guards pass silently over code: `accept="image/…"` opened what a regex reads as a block comment and swallowed 714 lines of the public applicant form; an apostrophe in JSX text opened a string that ran to the next apostrophe in the file; and a template literal was treated as opaque although `${…}` holds CODE, so the first backtick in a comment written there read as the template's close. A fixture now pins all three, plus that line numbers survive — anything reporting a location depends on that |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

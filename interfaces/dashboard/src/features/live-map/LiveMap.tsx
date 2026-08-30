@@ -7,7 +7,7 @@ import { useShellConfig } from '../../hooks/useShellConfig';
 import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import MapTypeControl from '@/features/live-map/MapTypeControl';
 import { POI_LAYERS } from '../../config/poiLayers';
-import { MAP_STATUS } from '../../config/mapColors';
+import { MAP_STATUS, MARKER_HALO, MARKER_SHADOW } from '../../config/mapColors';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
 import type L from 'leaflet';
@@ -163,10 +163,10 @@ function makeIcon(
     const svg  = [
       `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"`,
       ` class="vehicle-moving"`,
-      ` style="overflow:visible;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))"`,
+      ` style="overflow:visible;filter:drop-shadow(0 1px 2px ${MARKER_SHADOW})"`,
       ` viewBox="0 0 ${size} ${size}">`,
       `<polygon points="${pts}"`,
-      ` fill="${color}" stroke="#fff" stroke-width="1.5"`,
+      ` fill="${color}" stroke="${MARKER_HALO}" stroke-width="1.5"`,
       ` transform="rotate(${rot},${half},${half})"/>`,
       `</svg>`,
     ].join('');
@@ -188,8 +188,8 @@ function makeIcon(
       `<div style="position:relative;width:14px;height:14px">`,
       warn ? `<div style="${ring}"></div>` : '',
       `<div style="position:absolute;inset:0;border-radius:50%;`,
-      `background:${color};border:2px solid #fff;`,
-      `box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+      `background:${color};border:2px solid ${MARKER_HALO};`,
+      `box-shadow:0 1px 3px ${MARKER_SHADOW}"></div>`,
       `</div>`,
     ].join(''),
     iconSize:   [14, 14],
