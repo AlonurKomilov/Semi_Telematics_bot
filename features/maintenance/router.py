@@ -548,6 +548,10 @@ class BulkTaskCreate(BaseModel):
     recur_interval_miles: Optional[float] = Field(None, ge=1)
     recur_interval_engine_hours: Optional[float] = Field(None, ge=1)
     priority: str = Field("medium", pattern=r"^(low|medium|high|critical)$")
+    # Re-checked AT CREATE TIME, not trusted from the preflight: a task
+    # created between the preflight and the submit is still skipped, so
+    # the answer the user confirmed cannot rot in the gap.
+    skip_duplicates: bool = False
 
     _validate_due_date = field_validator("due_date")(
         lambda cls, v: _coerce_due_date(v),
@@ -563,6 +567,31 @@ class BulkTaskCreate(BaseModel):
                 "otherwise the task will never become overdue."
             )
         return self
+
+
+class BulkPreflight(BaseModel):
+    vehicle_names: list[str] = Field(..., min_length=1, max_length=100)
+    task_type: str = Field(..., min_length=1)
+
+
+@router.post("/tasks/bulk/preflight")
+async def bulk_create_preflight(
+    body: BulkPreflight,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Which of these vehicles ALREADY have an open task of this type?
+
+    The form asks before creating so the confirmation can say "7 of
+    these already have an open Oil change" with the server's numbers —
+    the client's own task list is capped at one page and would
+    silently under-count on a large account.  Read-only; the create
+    call re-checks, so this answer going stale costs nothing.
+    """
+    open_set = await tenant_db.get_open_task_vehicles(
+        user["account_id"], body.task_type)
+    wanted = [v.strip() for v in body.vehicle_names if (v or "").strip()]
+    return {"duplicates": [v for v in wanted if v in open_set]}
 
 
 @router.post("/tasks/bulk/create")
@@ -585,9 +614,20 @@ async def bulk_create_tasks(
     group = new_group_id()      # one bulk action, N events, one group
     created: list[dict] = []
     failed: list[dict] = []
+    skipped: list[str] = []
+    open_set: set[str] = (
+        await tenant_db.get_open_task_vehicles(user["account_id"], body.task_type)
+        if body.skip_duplicates else set()
+    )
     for vname in body.vehicle_names:
         vname = (vname or "").strip()
         if not vname:
+            continue
+        if vname in open_set:
+            # The rule the fault auto-creator has applied to itself
+            # since service.py grew it: an open task of the same type
+            # means this vehicle is already covered, not under-served.
+            skipped.append(vname)
             continue
         try:
             last_odo, last_hrs = await fetch_current_telemetry_for_vehicle(
@@ -615,7 +655,7 @@ async def bulk_create_tasks(
         except Exception as e:
             failed.append({"vehicle_name": vname, "error": str(e)})
 
-    return {"created": created, "failed": failed}
+    return {"created": created, "failed": failed, "skipped": skipped}
 
 
 @router.put("/tasks/{task_id}")

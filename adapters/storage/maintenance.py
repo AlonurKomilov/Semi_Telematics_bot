@@ -1134,6 +1134,31 @@ class MaintenanceMixin(_MixinBase):
         row = await cur.fetchone()
         return row[0] > 0
 
+    async def get_open_task_vehicles(
+        self, account_id: int, task_type: str,
+    ) -> set[str]:
+        """Vehicles that already carry an OPEN task of this type.
+
+        The duplicate rule the fault auto-creator has enforced for
+        itself all along ("only creates a task if one doesn't already
+        exist, pending/overdue, same vehicle and type"), exposed so the
+        HUMAN bulk path can finally apply it too.  Matches on the raw
+        key OR the resolved slug, because form-created tasks store the
+        key directly while older/auto rows may only resolve through
+        service_tasks.
+        """
+        cur = await self._db.execute(
+            "SELECT DISTINCT m.vehicle_name "
+            "FROM maintenance_tasks m" + self._TASK_TYPE_JOIN +
+            "WHERE m.account_id = ? "
+            "  AND m.status IN ('pending', 'overdue') "
+            "  AND (m.task_type = ? "
+            "       OR COALESCE(NULLIF(st.canonical_key, ''), "
+            "                   REPLACE(st.name_key, ' ', '_')) = ?)",
+            (account_id, task_type, task_type),
+        )
+        return {str(r[0]) for r in await cur.fetchall()}
+
     async def get_vehicles_in_maintenance(
         self, account_id: int,
     ) -> set[str]:

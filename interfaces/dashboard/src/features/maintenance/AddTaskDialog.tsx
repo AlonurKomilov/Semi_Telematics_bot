@@ -15,7 +15,7 @@
 // now, so closing discards the state and the reset is gone — a
 // half-typed task no longer reappears on the next open.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -34,6 +34,10 @@ import {
 } from './taskFields';
 import type { MaintenanceTemplate } from '../../types';
 import { Card } from '@/components/ui/card';
+
+/** Fan-outs above this pause for a count confirmation even with no
+ *  duplicates — "Create 27 tasks?" is a decision, not a click. */
+const BULK_CONFIRM_THRESHOLD = 5;
 
 export interface AddTaskDialogProps {
   open: boolean;
@@ -70,6 +74,15 @@ export default function AddTaskDialog({
 }: AddTaskDialogProps) {
   const [saving, setSaving] = useState(false);
 
+  // The pre-create pause.  Set when the submit needs a human decision
+  // first — a big fan-out, or vehicles already covered by an open task
+  // of the same type (the SERVER's answer, deliberately: the page's
+  // own task list is capped at one page and would under-count).
+  // null = no pause pending.
+  const [confirm, setConfirm] = useState<{
+    targets: string[]; duplicates: string[];
+  } | null>(null);
+
   // Add form
   const [fVehicle, setFVehicle] = useState('');
   // Company the picked vehicle belongs to.  Persists through the POST
@@ -93,6 +106,14 @@ export default function AddTaskDialog({
   // the same oil schedule".
   const [fMultiMode, setFMultiMode] = useState(false);
   const [fMultiVehicles, setFMultiVehicles] = useState<Set<string>>(new Set());
+  // W3 from review: a confirmation describes the form AS CONFIRMED.
+  // Editing anything that changes what would be created — vehicles,
+  // type, mode — makes that description stale, so the panel dismisses
+  // itself and the next submit re-asks with fresh numbers.  Cheaper
+  // and more honest than locking every field.
+  useEffect(() => {
+    setConfirm(null);
+  }, [fType, fVehicle, fMultiMode, fMultiVehicles]);
   const [fTriggerMode, setFTriggerMode] = useState<TriggerMode>('date');
   // Single "repeat after completion" checkbox — replaces three
   // recurrence inputs.  When checked, the next auto-spawned task
@@ -163,6 +184,34 @@ export default function AddTaskDialog({
       onError('Pick at least one vehicle for the bulk-create.');
       return;
     }
+    // The pre-create pause.  Two hazards earn one: a fan-out past the
+    // threshold ("Create 27 tasks" is a decision, not a click), and
+    // vehicles ALREADY covered by an open task of this type — asked of
+    // the server, because the page's own list is capped at one page.
+    // The preflight failing must not block creation (fail open, no
+    // duplicate info); the create call re-checks anyway when skipping.
+    if (saving) return;            // double-Enter during the preflight
+    setSaving(true);
+    const targets = fMultiMode ? Array.from(fMultiVehicles) : [fVehicle];
+    let duplicates: string[] = [];
+    try {
+      const pf = await apiJSON<{ duplicates: string[] }>(
+        '/maintenance/tasks/bulk/preflight',
+        { method: 'POST', body: { task_type: fType, vehicle_names: targets } },
+      );
+      duplicates = pf.duplicates;
+    } catch { /* fail open — the hazard check is a courtesy */ }
+    if (duplicates.length > 0
+        || (fMultiMode && targets.length > BULK_CONFIRM_THRESHOLD)) {
+      setSaving(false);            // the pause hands control back
+      setConfirm({ targets, duplicates });
+      return;
+    }
+    await doCreate(false);
+  };
+
+  const doCreate = async (skipDuplicates: boolean) => {
+    setConfirm(null);
     // Convert ONLY the active trigger's period to an absolute value.
     // The other two stay undefined so the API receives a clean,
     // single-trigger task.  Miles & hours fall back to "period as
@@ -214,12 +263,19 @@ export default function AddTaskDialog({
         const res = await apiJSON<{
           created: { id: number }[];
           failed: { vehicle_name: string; error: string }[];
+          skipped: string[];
         }>('/maintenance/tasks/bulk/create', {
           method: 'POST',
-          body: { ...shared, vehicle_names: Array.from(fMultiVehicles) },
+          body: {
+            ...shared,
+            vehicle_names: Array.from(fMultiVehicles),
+            skip_duplicates: skipDuplicates,
+          },
         });
         toast.success(
           `Created ${res.created.length} task${res.created.length === 1 ? '' : 's'}`
+          + (res.skipped?.length
+              ? ` · ${res.skipped.length} already covered` : '')
           + (res.failed.length ? ` · ${res.failed.length} failed` : ''),
         );
         if (res.failed.length) {
@@ -549,9 +605,68 @@ export default function AddTaskDialog({
             </span>
           </div>
           <div className="flex items-end">
-            <button data-spotlight="maintenance.create" type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
-              {saving ? 'Saving...' : 'Create'}
-            </button>
+            {confirm === null ? (
+              <button data-spotlight="maintenance.create" type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
+                {saving ? 'Saving...' : 'Create'}
+              </button>
+            ) : (() => {
+              // The pause the submit asked for.  Skip-those is the
+              // default (create only where nothing is open); "anyway"
+              // is a real choice, spelled out, never pre-selected.
+              const fresh = confirm.targets.length - confirm.duplicates.length;
+              const many = confirm.targets.length !== 1;
+              return (
+                <div className="w-full rounded-md border border-warn-bd bg-warn-bg p-3 text-xs">
+                  <p className="font-medium text-foreground">
+                    {many
+                      ? `This will create ${confirm.targets.length} tasks — one per selected vehicle.`
+                      : `“${confirm.targets[0]}” already has an open task of this type.`}
+                  </p>
+                  {many && confirm.duplicates.length > 0 && (
+                    <p className="mt-1 text-muted-foreground">
+                      {confirm.duplicates.length} of these vehicles already
+                      {confirm.duplicates.length === 1 ? ' has' : ' have'} an
+                      open task of this type: {confirm.duplicates.slice(0, 6).join(', ')}
+                      {confirm.duplicates.length > 6 ? '…' : ''}
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {fresh > 0 && confirm.duplicates.length > 0 && (
+                      <button data-spotlight="maintenance.create" type="button" disabled={saving}
+                        onClick={() => doCreate(true)}
+                        className="px-3 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap">
+                        Create {fresh} — skip {confirm.duplicates.length} existing
+                      </button>
+                    )}
+                    {fresh > 0 && confirm.duplicates.length === 0 && (
+                      <button data-spotlight="maintenance.create" type="button" disabled={saving}
+                        onClick={() => doCreate(false)}
+                        className="px-3 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap">
+                        Create {confirm.targets.length} tasks
+                      </button>
+                    )}
+                    {confirm.duplicates.length > 0 && (
+                      <button type="button" disabled={saving}
+                        onClick={() => doCreate(false)}
+                        {...(fresh === 0
+                          // Every target is already covered, so no primary
+                          // renders — the tour's anchor rides the only
+                          // committing button left, or the engine would
+                          // read the pause as the step completing.
+                          ? { 'data-spotlight': 'maintenance.create' } : {})}
+                        className="px-3 py-1.5 rounded border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap">
+                        Create {many ? `all ${confirm.targets.length} ` : ''}anyway
+                      </button>
+                    )}
+                    <button type="button" disabled={saving}
+                      onClick={() => setConfirm(null)}
+                      className="px-3 py-1.5 rounded text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition min-h-tap">
+                      Back
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Card>
   );
