@@ -316,7 +316,7 @@ export default function Inspections() {
           <button
             type="button"
             onClick={() => setShowNewDialog(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
           >
             <Plus className="size-3.5" />
             {t('inspections.new.button')}

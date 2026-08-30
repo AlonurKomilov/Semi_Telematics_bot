@@ -899,7 +899,7 @@ export default function TaskDetailSheet({
                 <button
                   onClick={handleUpdate}
                   disabled={saving}
-                  className="flex-1 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap"
+                  className="flex-1 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap"
                 >
                   {saving ? 'Saving...' : 'Update Task'}
                 </button>

@@ -220,7 +220,7 @@ export default function ObjectStorageBackendCard() {
                 type="button"
                 onClick={handleConnect}
                 disabled={connecting}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
               >
                 {connecting ? <Loader2 className="animate-spin size-3" /> : <ExternalLink className="size-3" />}
                 {connecting ? t('storage.redirecting') : t('storage.connect_button')}

@@ -215,7 +215,18 @@ export default {
         foreground: tokenColor('--foreground'),
         card: { DEFAULT: tokenColor('--card'), foreground: tokenColor('--card-foreground') },
         popover: { DEFAULT: tokenColor('--popover'), foreground: tokenColor('--popover-foreground') },
-        primary: { DEFAULT: tokenColor('--primary'), foreground: tokenColor('--primary-foreground') },
+        primary: {
+          DEFAULT: tokenColor('--primary'),
+          foreground: tokenColor('--primary-foreground'),
+          // Not `bg-primary/90`, nor the `/80` the primitives used. An
+          // alpha fade blends toward whatever is BEHIND the button, so
+          // the same class darkens it on a dark canvas and lightens it on
+          // a light one. Against the near-black label, dark blue reads
+          // 5.19 at rest and would fall to 4.34 at /90 and 3.60 at /80 —
+          // both under AA. This token moves the right way in each mode
+          // and measures 6.74.
+          hover: tokenColor('--primary-hover'),
+        },
         secondary: { DEFAULT: tokenColor('--secondary'), foreground: tokenColor('--secondary-foreground') },
         muted: { DEFAULT: tokenColor('--muted'), foreground: tokenColor('--muted-foreground') },
         accent: { DEFAULT: tokenColor('--accent'), foreground: tokenColor('--accent-foreground') },

@@ -257,7 +257,7 @@ export default function Parking() {
                 setConfirming(null);
                 if (ev) doResolve([ev]);
               }}
-              className="px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium text-primary-foreground transition"
+              className="px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-lg text-sm font-medium text-primary-foreground transition"
             >
               Resolve
             </button>

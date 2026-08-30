@@ -82,7 +82,9 @@ export function readableTextOn(hex: string): string {
 // links) to the carrier colour with a legible foreground — or undefined for
 // a generic (untinted) form.  Overriding `--primary` is safe with the faded
 // states (`bg-primary/90`): tokenColor() builds them with color-mix(), which
-// accepts any CSS colour for var(--primary).
+// accepts any CSS colour for var(--primary) — but a token DERIVED from
+// --primary at :root does not follow a tint applied here, so each one has
+// to be set explicitly. See --ring and --primary-hover below.
 //
 // It used to also set `--brand` "for the header accents" — nothing ever
 // read var(--brand), so it was a write with no reader. The header takes
@@ -99,7 +101,20 @@ export function brandTintStyle(brandColor?: string): import('react').CSSProperti
     // value. This tint lands on the form-root <div>, so without its own
     // derivation every field on a fully brand-tinted page drew a
     // 4truck-blue focus ring.
-    ['--ring']: `color-mix(in oklab, ${brandColor} 72%, transparent)`,
+    ['--ring']: brandColor,
+    // `hover:bg-primary-hover` compiles to a bare `var(--primary-hover)`,
+    // NOT a color-mix off --primary — so without this line a carrier's
+    // amber CTA hovered to 4truck blue, at 2.75:1 against its own label.
+    // (`hover:bg-primary/90`, which it replaced, composited --primary and
+    // followed the tint for free. That is the trap: swapping an alpha
+    // fade for a token silently breaks every element-scoped override.)
+    //
+    // 12% toward black, because this form is always light: darkening is
+    // the light-mode hover direction, and measured across eight brand
+    // colours it never lowers the label's contrast below the rest
+    // state's — where the rest state is already weak (#22c55e at 2.28)
+    // the hover improves it to 2.93.
+    ['--primary-hover']: `color-mix(in oklab, ${brandColor} 88%, black)`,
     ['--primary-foreground']: readableTextOn(brandColor),
   } as import('react').CSSProperties;
 }

@@ -521,7 +521,7 @@ export default function AlertsResults() {
     const clearFilters = (
       <button
         onClick={resetToDefaults}
-        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/80 transition-colors"
+        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary-hover transition-colors"
       >
         Clear all filters
       </button>
@@ -550,7 +550,7 @@ export default function AlertsResults() {
     const widen = ackState !== 'active' && days < MAX_WINDOW_DAYS ? (
       <button
         onClick={() => setDays(MAX_WINDOW_DAYS)}
-        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/80 transition-colors"
+        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary-hover transition-colors"
       >
         Check the last {MAX_WINDOW_DAYS} days
       </button>

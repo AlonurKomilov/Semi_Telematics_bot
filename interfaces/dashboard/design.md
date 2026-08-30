@@ -138,7 +138,7 @@ Rules that fall out of this:
 | `secondary` | Secondary buttons / quiet fills |
 | `accent` | Hover/active background for interactive rows |
 | `border` / `input` | Hairlines and field outlines |
-| `ring` | Focus indicator — `--primary` at **72%**, derived once in index.css. Never re-declare it in a stylesheet; an element-scoped tint must derive its own (see below) |
+| `ring` | Focus indicator — **solid** `var(--primary)`, declared once in index.css. Never re-declare it in a stylesheet; an element-scoped tint must set its own (see below) |
 | `destructive` | Destructive **actions** (delete buttons). Not for status — use `danger`. |
 
 There is no literal brand ramp. A `brand.50…900` scale of ten hardcoded
@@ -209,8 +209,21 @@ tones are LIGHT (`--warn` is `oklch(0.82 …)`), so white-on-warn scored
 **1.77:1** and no tone beat 2.91:1 — a badge nobody could read. The same
 fills take near-black at 6.8–11.2:1. Light theme keeps white (5.1–6.2:1).
 
-**Never re-declare `--ring` in a stylesheet.** It is derived once, as
-`--primary` at **72%**, so a new accent preset gets a correct ring free.
+**Never re-declare `--ring` in a stylesheet.** It is `var(--primary)`,
+so a new accent preset gets a correct ring for free.
+
+It is **solid**, and that took three tries. WCAG 1.4.11 wants 3.0 for a
+focus indicator. At the inherited 50% it measured 2.21 / 2.06 / 2.02 /
+2.37 — failing in every theme. 72% cleared 3.0 against `--background`
+but not against `--card`, which is lighter: dark blue landed at 2.67 and
+dark purple at 2.59, so focus was unreadable on exactly the surface most
+focusable things sit on. The alpha that clears both grounds in all six
+cells is 84%, which is indistinguishable from opaque — so it is opaque.
+The "glow, not a block" intent lives in `ring-ring/50`, the soft 3px
+halo, which is decorative; the indicator 1.4.11 is about is
+`focus-visible:border-ring`. **A control with the halo and no
+`border-ring` has no compliant focus ring** — `slider.tsx` and
+`kpi/dispatch/board/DayCells.tsx` are both in that position today.
 
 **An element-scoped tint is the exception, and it is forced.** A custom
 property's `var()` is substituted when that property is computed *on the
@@ -218,30 +231,26 @@ element that declares it* — `--ring` on `:root` resolves against
 `:root`'s `--primary`, and descendants inherit the already-resolved
 value. An element that re-points `--primary` (the public apply form
 tinting itself to a carrier's brand colour, on a form-root `<div>`) does
-**not** move the ring and must derive its own. Deleting that derivation
-as a "duplicate" put a 4truck-blue focus ring on every field of a fully
+**not** move the ring and must set its own. Deleting that as a
+"duplicate" put a 4truck-blue focus ring on every field of a fully
 brand-tinted page.
 
-The weight is measured, not chosen. At 50% the ring scored 2.21 / 2.06 /
-2.02 / 2.37 against its own background in light / dark / purple / green —
-below WCAG 1.4.11's 3.0 floor in **every** theme, so keyboard users could
-not see where focus was. The thresholds are 66.6 / 68.7 / 70.3 / 60.3 %,
-so 72 clears all four: 3.33 / 3.21 / 3.10 / 3.89. It was written as 70
-first, from a measurement whose own `printf` rounded 70.3 down — purple
-lands at 2.98 there and still fails. A number in a comment is
-load-bearing; round it in the display and you ship the rounding.
+**`--primary-foreground` inverts with the mode**, for the same measured
+reason the tone foregrounds do: light's `--primary` is 0.52 and dark's is
+0.62–0.65, so one is a dark fill and the other a bright one. Near-white
+on the dark fills scored 3.65 / 3.81 / **2.89** — that is the primary
+button label, below AA on all three dark themes and below even the 3.0
+floor on green.
 
-`ring-ring/50` and friends compose multiplicatively through `tokenColor()`,
-so the soft halo paints `--primary` at 0.72 × 0.50 and is decorative. The
-identifiable indicator is `focus-visible:border-ring` at the full weight —
-a control that has the halo and no `border-ring` has no usable focus ring.
-
-There is a trap in the history worth keeping. The two accent presets used
-to copy `--ring` from their own `--primary` and drop the alpha; that looks
-exactly like a copy-paste omission and was "fixed" by deriving it — which
-took purple from 5.18 to 2.02 and green from 6.83 to 2.37. The omission
-was the only reason those two accents passed. Deriving was still right;
-doing it at the inherited 50% was not.
+**Hover is a token, not `bg-primary/90`.** An alpha fade blends toward
+whatever is *behind* the button, so the same class darkens it on a dark
+canvas and lightens it on a light one. On dark that dragged the label
+from 5.19:1 to 3.60:1 — hovering a control is not supposed to make it
+harder to read. `--primary-hover` moves the right way in each mode
+(darker in light, lighter in dark) and every accent block carries one;
+guard 34 fails if an accent re-points `--primary` and leaves its hover
+behind, because the button would then jump to the *blue* hover on
+pointer-over.
 
 **Anything the dark themes override, `@media print` must put back.** A
 dark-mode user otherwise prints white text on a background the printer
@@ -1019,7 +1028,9 @@ this table has any chance of staying true.
 | a child is never rounder than the parent it sits against (§6) | the steps are fixed OFFSETS, so an `xl` is rounder than an `lg` at every preset — no measurement needed. Adjacency is approximated by source proximity (8 lines); loosen it and the rule dissolves — 0 hits at 8, 9 at 20, 41 at no limit, the furthest pair 325 lines apart with arcs that never meet |
 | print puts the light palette back (§6) | `@media print` re-declares, at its `:root` value, every colour token the dark themes override, and the guard asserts that set equality both ways plus byte-equal values. Without the reset a dark-mode user prints white-on-a-background-the-printer-drops — a blank page. Nobody reviews a printout, so the drift would live for years |
 | every class the code writes actually compiles (§6) | compiles every class the codebase writes — variant-prefixed AND bare — against the real config, and fails on any that emits no rule. Three structural filters keep it allowlist-free (comments stripped, so an apostrophe in prose cannot open a fake string; a literal followed by `:` is an object key, not a class; index.css's own classes count as emitted). Found 36 dead classes: nine primitives' v4 variants, plus `backdrop-blur-xs` on every modal scrim, `max-w-55` beside a `truncate`, `field-sizing-content`, `outline-hidden`, `underline-offset-3` and `[a]:hover:` on every Badge rendered as a link. Reading the files cannot find any of it |
-| every accent the picker offers has CSS, in both modes (§2) | reads `THEME_ACCENTS` out of the registry and requires a `--primary` AND a `--chart-1` under both `:root[data-accent=…]` and `.dark[data-accent=…]`, plus a swatch in each mode. An accent needs a value per mode — a `--primary` bright enough for near-black is too pale to clear AA on white — so shipping only the dark half makes the chip a no-op in Light, silently |
+| every accent the picker offers has CSS, in both modes (§2) | reads `THEME_ACCENTS` out of the registry and requires a `--primary`, a `--chart-1` AND a `--primary-hover` under both `:root:not(.dark)[data-accent=…]` and `.dark[data-accent=…]`, plus a swatch in each mode. An accent needs a value per mode — a `--primary` bright enough for near-black is too pale to clear AA on white — so shipping only the dark half makes the chip a no-op in Light, silently |
+| every rendered colour pair meets its WCAG floor (§2) | `src/lib/colour.test.ts` — resolves every token through the six mode×accent cells, composites alpha fills over each ground the way a browser does (a tone pill on a card is not the same colour as the same pill on the canvas), and applies 4.5 for text / 3.0 for non-text UI. It cannot land green: the failures it still carries are listed WITH the reason each one stays, and the guard fails if a listed pair starts passing, so the list is a work queue rather than an allowlist |
+| no colour token drifts further outside sRGB (§2) | same file — an out-of-gamut oklch is not the colour on screen, so any ratio computed on the authored value is arithmetic about a colour nobody has seen, and nudging the chroma of a clipped token moves nothing except on a P3 display. A ratchet, keyed per THEME CELL rather than per token: eight tokens clip today, and taking the worst across cells would let a regression in one hide behind a bigger number in another. A new offender, or an existing one clipping harder, fails |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

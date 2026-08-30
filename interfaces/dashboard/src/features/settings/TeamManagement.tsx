@@ -1309,7 +1309,7 @@ export default function TeamManagement() {
                         <button
                           onClick={() => handleSaveAccess(selected.id)}
                           disabled={savingCompanies || savingVehicles}
-                          className="w-full py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-semibold transition"
+                          className="w-full py-2.5 bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 rounded-lg text-sm font-semibold transition"
                         >
                           {savingCompanies || savingVehicles ? 'Saving…' : 'Save Access'}
                         </button>
@@ -1503,7 +1503,7 @@ export default function TeamManagement() {
                                     <button
                                       disabled={ownerBusy || !ownerPassword}
                                       onClick={() => handlePromoteOwnerRequest(selected.id)}
-                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
+                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                                     >Send code</button>
                                     <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
@@ -1522,7 +1522,7 @@ export default function TeamManagement() {
                                     <button
                                       disabled={ownerBusy || ownerCode.length < 6}
                                       onClick={() => handlePromoteOwnerConfirm(selected.id)}
-                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
+                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium transition min-h-tap"
                                     >Confirm co-owner</button>
                                     <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition min-h-tap">Cancel</button>
                                   </div>
@@ -1637,8 +1637,15 @@ export default function TeamManagement() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleToggleActive(selected.id, !selected.is_active)}
-                                className={`px-4 py-1.5 rounded text-xs font-medium transition text-primary-foreground ${
-                                  selected.is_active ? 'bg-danger hover:opacity-90' : 'bg-ok hover:opacity-90'
+                                // The foreground moves WITH the fill. It used to
+                                // sit outside the branches as
+                                // `text-primary-foreground` on a `bg-danger` /
+                                // `bg-ok` fill — two different families — which
+                                // measured 2.78 and 1.93 on the dark themes.
+                                className={`px-4 py-1.5 rounded text-xs font-medium transition ${
+                                  selected.is_active
+                                    ? 'bg-danger text-danger-foreground hover:opacity-90'
+                                    : 'bg-ok text-ok-foreground hover:opacity-90'
                                 } min-h-tap`}
                               >
                                 {selected.is_active ? 'Deactivate' : 'Activate'}

@@ -256,7 +256,7 @@ export default function ParkingDetailSheet({
             {canResolve && !shown.resolved && (
               <button
                 onClick={() => onResolve(shown)}
-                className="px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-lg text-xs font-medium text-primary-foreground transition min-h-tap"
+                className="px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-lg text-xs font-medium text-primary-foreground transition min-h-tap"
               >
                 Resolve
               </button>

@@ -103,7 +103,7 @@ export default function ApplyStatus() {
                 placeholder="you@example.com" className={inputCls} />
             </label>
             <button type="submit" disabled={loading || !reference.trim() || !email.trim()}
-              className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 min-h-tap">
+              className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-60 min-h-tap">
               <Search className="size-3.5" /> {loading ? 'Checking…' : 'Check status'}
             </button>
           </div>

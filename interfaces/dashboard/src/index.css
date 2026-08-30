@@ -100,7 +100,22 @@
        billing safety line reading as ordinary body text because of it. */
     --primary: oklch(0.52 0.2 264);
 
+    /* Near-white here and near-BLACK in .dark, for the same measured
+       reason the tone foregrounds invert: light's --primary is 0.52 and
+       dark's is 0.62-0.65, so one is a dark fill and the other a bright
+       one.  Near-white on the dark fills scored 3.65 / 3.81 / 2.89 —
+       that is the primary BUTTON LABEL, below AA on all three dark
+       themes and below even the 3.0 floor on green. */
     --primary-foreground: oklch(0.985 0 0);
+    /* Hover DARKENS in light and LIGHTENS in dark, which is why it is a
+       token and not `bg-primary/90` — nor `/80`, which the primitives
+       used.  An alpha fade blends toward the GROUND, so on a near-black
+       canvas the hover makes the button DARKER.  Against the near-black
+       label this token now pairs with, dark blue reads 5.19 at rest and
+       would fall to 4.34 at /90 and 3.60 at /80 — both under AA, and a
+       control is not supposed to get harder to read because the pointer
+       is over it.  The token measures 6.74. */
+    --primary-hover: oklch(0.47 0.20 264);
 
     --secondary: oklch(0.97 0 0);
 
@@ -140,24 +155,37 @@
        follows whatever --primary the active preset installs, and a new
        accent gets a correct ring without remembering to add one.
 
-       72%, not 50%.  WCAG 1.4.11 wants 3.0 for a focus indicator and at
-       50% the ring measured 2.21 (light), 2.06 (dark), 2.02 (purple),
-       2.37 (green) against its own background — it failed in every
-       theme.  The thresholds are 66.6 / 68.7 / 70.3 / 60.3 percent, so
-       72 clears all four with a little margin: 3.33 / 3.21 / 3.10 / 3.89.
-       (70 was written here first, from a measurement whose own printf
-       rounded 70.3 down to "70" — purple lands at 2.98 there, still
-       failing.  The number in a comment is load-bearing.)
+       SOLID, and that took three tries.  WCAG 1.4.11 wants 3.0 for a
+       focus indicator.  At the inherited 50% the ring measured 2.21 /
+       2.06 / 2.02 / 2.37 — failing in every theme.  72% cleared 3.0
+       against --background but NOT against --card, which is lighter:
+       dark blue landed at 2.67 and dark purple at 2.59, so focus was
+       unreadable on exactly the surface most focusable things sit on.
+       The alpha that clears both grounds in all six cells is 84%, which
+       is visually indistinguishable from opaque — so this is opaque, and
+       the token stops being a magic number.
 
-       This is the ring BORDER.  `ring-ring/50` and friends compose
-       multiplicatively through tokenColor(), so the soft halo paints
-       --primary at 0.72 x 0.50 and is decorative; the identifiable
-       indicator is `focus-visible:border-ring` at the full weight.
-       Deriving it had briefly made this WORSE: purple and green were
-       re-declared at full opacity, which measured 5.18 and 6.83, so the
-       omission this comment calls a bug was the only reason those two
-       accents had a visible focus ring at all. */
-    --ring: color-mix(in oklab, var(--primary) 72%, transparent);
+       Going solid also LIFTS the halo, which is worth knowing before
+       you look at a screenshot and wonder: `ring-ring/50` composed to
+       0.72 x 0.50 = 0.36 and is now 0.50, `/40` 0.288 -> 0.40, `/20`
+       0.144 -> 0.20, and a bare `ring-ring` goes opaque.  Nothing
+       breaks; it is simply heavier than it was.
+
+       The "glow, not a solid block" intent the alpha used to carry is
+       not lost: it lives in `ring-ring/50`, the soft 3px halo, which
+       composes multiplicatively through tokenColor() and is decorative.
+       The IDENTIFIABLE indicator is `focus-visible:border-ring`, and
+       that is the one 1.4.11 is about.  A control that has the halo and
+       no `border-ring` has no compliant focus ring — slider.tsx and
+       kpi/dispatch/board/DayCells.tsx are both in that position.
+
+       Deriving it had briefly made things WORSE: purple and green were
+       re-declared at full opacity, measuring 5.18 and 6.83, so the
+       missing alpha this comment first called a bug was the only reason
+       those two accents had a visible focus ring at all.  And it was
+       written as 70% for a while, from a measurement whose own printf
+       rounded 70.3 down.  A number in a comment is load-bearing. */
+    --ring: var(--primary);
 
     /* Pin-boundary shadow — paints a soft drop-shadow off the freeze
        edge of the pinned column cluster (DataGrid).  Tight offset +
@@ -183,14 +211,20 @@
        border /30) — see lib/status.ts and design.md. */
     --ok:     oklch(0.52 0.15 150);
 
-    /* 0.11, not 0.13 — sRGB caps chroma near 0.12 at this hue and
-       lightness, so the old value CLIPPED, and clipping desaturates:
+    /* 0.11, not 0.13 — at the OLD L .55 sRGB caps chroma near 0.12 at
+       this hue, so the old value CLIPPED, and clipping desaturates:
        the browser painted rgb(161,97,0), a brown-tan. A browser audit
        read it as "tan on cream" and noticed the idle chip looking
        fainter than the stopped chip beside it, which is backwards for
-       peers. In gamut at L .50 it is 6.15:1 on white — level with
-       danger's 6.12 — so the two amber-and-red steps now carry the
-       same weight instead of one looking half-off. */
+       peers. At L .50 it is 6.15:1 on white — level with danger's 6.12 —
+       so the two amber-and-red steps carry the same weight instead of
+       one looking half-off.
+
+       It is NOT in gamut, which this comment used to claim. sRGB caps
+       chroma at 0.1083 here, so 0.11 still overflows — by 0.0017, far
+       too little to see, but a claim in a comment gets believed and the
+       next person nudges the chroma expecting it to move. lib/colour
+       .test.ts holds the real number, and holds it as a ceiling. */
     --warn:   oklch(0.50 0.11 70);
 
     --danger: oklch(0.52 0.20 25);
@@ -299,8 +333,9 @@
     --popover-foreground: oklch(0.985 0 0);
 
     --primary: oklch(0.62 0.21 264);
+    --primary-hover: oklch(0.68 0.163 264);
 
-    --primary-foreground: oklch(0.985 0 0);
+    --primary-foreground: oklch(0.145 0 0);
 
     /* ── Interaction states — each distinct, fitting the wider
        elevation ladder above so hover/muted/accent backgrounds
@@ -448,18 +483,22 @@
      shipped all along. */
   :root:not(.dark)[data-accent="purple"] {
     --primary: oklch(0.52 0.20 300);
+    --primary-hover: oklch(0.47 0.20 300);
     --chart-1: oklch(0.52 0.20 300);
   }
   :root:not(.dark)[data-accent="green"] {
     --primary: oklch(0.48 0.15 142);
+    --primary-hover: oklch(0.43 0.14 142);
     --chart-1: oklch(0.48 0.15 142);
   }
   .dark[data-accent="purple"] {
     --primary: oklch(0.62 0.2 300);
+    --primary-hover: oklch(0.68 0.195 300);
     --chart-1: oklch(0.62 0.2 300);
   }
   .dark[data-accent="green"] {
     --primary: oklch(0.65 0.19 142);
+    --primary-hover: oklch(0.71 0.19 142);
     --chart-1: oklch(0.65 0.19 142);
   }
 
@@ -541,6 +580,7 @@
     --popover-foreground:         oklch(0.145 0 0);
     --primary:                    oklch(0.52 0.2 264);
     --primary-foreground:         oklch(0.985 0 0);
+    --primary-hover:              oklch(0.47 0.20 264);
     --secondary:                  oklch(0.97 0 0);
     --secondary-foreground:       oklch(0.205 0 0);
     --muted:                      oklch(0.97 0 0);

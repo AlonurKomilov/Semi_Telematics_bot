@@ -274,7 +274,7 @@ function ScheduleEditor({
         <button
           onClick={() => onSave({ reportType, frequency, sendHour, timezone, channels, reportTypeLocked: initial.reportTypeLocked })}
           disabled={submitDisabled}
-          className="flex-1 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50"
+          className="flex-1 py-2 rounded-lg bg-primary hover:bg-primary-hover text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving…' : initial.reportTypeLocked ? 'Update Schedule' : 'Save Schedule'}
         </button>

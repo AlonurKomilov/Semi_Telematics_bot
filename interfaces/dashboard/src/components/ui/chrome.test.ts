@@ -1598,14 +1598,18 @@ describe('UI chrome', () => {
     }
     expect(missing, 'an accent with no override does nothing at all').toEqual([]);
 
-    // Each accent block must move --chart-1 with --primary. The ramp's
-    // first series IS the accent — leave it behind and a green-accented
-    // dashboard draws blue bars next to green buttons.
+    // Each accent block must move --chart-1 AND --primary-hover with
+    // --primary. The ramp's first series IS the accent — leave it behind
+    // and a green-accented dashboard draws blue bars next to green
+    // buttons. Leave the hover behind and the button jumps to the BLUE
+    // hover on pointer-over, which is worse than no hover at all.
     const lagging = [...css.matchAll(
-      /(?::root|\.dark)\[data-accent="([a-z]+)"\]\s*\{([^}]*)\}/g,
+      /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="([a-z]+)"\]\s*\{([^}]*)\}/g,
     )]
-      .filter((m) => m[2].includes('--primary:') && !m[2].includes('--chart-1:'))
-      .map((m) => `${m[1]} re-points --primary without --chart-1`);
+      .filter((m) => m[2].includes('--primary:'))
+      .flatMap((m) => ['--chart-1', '--primary-hover']
+        .filter((t) => !m[2].includes(`${t}:`))
+        .map((t) => `${m[1]} re-points --primary without ${t}`));
     expect(lagging).toEqual([]);
 
     // The swatch the picker paints has to exist for every accent, in both

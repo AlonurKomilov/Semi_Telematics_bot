@@ -183,7 +183,7 @@ export default function Vendors() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-xs font-medium transition min-h-tap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary-hover rounded-md text-xs font-medium transition min-h-tap"
           >
             <Plus className="size-3.5" />
             Add vendor

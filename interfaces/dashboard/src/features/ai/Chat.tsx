@@ -2277,7 +2277,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     onClick={() => submit(input)}
                     disabled={!input.trim() || preparing.length > 0}
                     aria-label={t('chat.send')}
-                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowUp className="size-4" />
                   </button>

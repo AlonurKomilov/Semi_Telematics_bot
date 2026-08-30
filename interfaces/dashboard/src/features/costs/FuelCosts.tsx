@@ -159,7 +159,7 @@ export default function FuelCosts() {
         actions={
           <button
             onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap"
           >
             <Plus className="size-3.5" />
             {showForm ? 'Cancel' : 'Add entry'}
@@ -208,7 +208,7 @@ export default function FuelCosts() {
             </div>
             <button
               type="submit" disabled={saving}
-              className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition whitespace-nowrap min-h-tap"
+              className="px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition whitespace-nowrap min-h-tap"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -264,7 +264,7 @@ export default function FuelCosts() {
             tab === 'entries' ? (
               <button
                 onClick={() => setShowForm(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap"
               >
                 <Plus className="size-3.5" />
                 Add entry

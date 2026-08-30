@@ -1220,7 +1220,7 @@ export default function WorkOrderForm() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
             >
               <Save className="size-3.5" />
               {saving ? t('work_orders_page.saving') : isEdit ? t('work_orders_page.save_changes') : t('work_orders_page.create_draft')}
@@ -1805,7 +1805,7 @@ export default function WorkOrderForm() {
             <button
               type="button"
               onClick={applyScanOverwrites}
-              className="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
+              className="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap"
             >
               {t('work_orders_page.scan_apply', { defaultValue: 'Overwrite selected' })}
             </button>

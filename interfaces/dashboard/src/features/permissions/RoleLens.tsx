@@ -96,7 +96,12 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           className={`inline-flex items-center justify-center w-5 h-5 rounded border transition ${
             changed ? 'ring-2 ring-primary/30 ' : ''
           }${lock
-            ? 'bg-primary/40 border-primary/40 text-primary-foreground'
+            // `text-foreground`, not `text-primary-foreground`: the note
+            // on the sibling branch below already explains why the label
+            // token cannot sit on a wash, and this branch was doing it
+            // anyway — 1.78:1 on the light theme. text-foreground reads
+            // on both (10.68 light, 8.42 dark).
+            ? 'bg-primary/40 border-primary/40 text-foreground'
             : on
               ? soft
                 // Derived tick: a primary-coloured check on a light primary
@@ -419,7 +424,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 </div>
                 <div className="text-center">
                   <span
-                    className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-primary-foreground"
+                    className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-foreground"
                     aria-label={`${sv.label} — always on for this role`}
                   >
                     <CheckMark />
@@ -460,7 +465,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 </div>
                 <div className="text-center">
                   {seniorView
-                    ? <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-primary-foreground" aria-label="held"><CheckMark /></span>
+                    ? <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-foreground" aria-label="held"><CheckMark /></span>
                     : noflag}
                 </div>
                 {emptyCell}

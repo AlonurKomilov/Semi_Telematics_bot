@@ -292,7 +292,7 @@ export default function WorkOrders() {
         actions={
           <Link
             to="/work-orders/new"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition"
           >
             <Plus className="size-3.5" />
             {t('work_orders_page.new_button')}
@@ -371,7 +371,7 @@ export default function WorkOrders() {
           action={
             <Link
               to="/work-orders/new"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition"
             >
               <Plus className="size-3.5" />
               {t('work_orders_page.new_button')}

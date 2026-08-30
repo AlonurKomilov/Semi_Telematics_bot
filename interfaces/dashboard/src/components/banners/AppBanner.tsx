@@ -195,7 +195,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
                 }}
                 className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${
                   a.primary
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/80'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
                     : 'border border-border text-foreground hover:bg-muted'
                 } min-h-tap`}
               >

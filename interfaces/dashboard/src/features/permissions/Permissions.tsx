@@ -371,7 +371,7 @@ export default function Permissions() {
           </span>
           <div className="flex items-center gap-2">
             <button onClick={() => { setEdits({}); setModuleEdits({}); }} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">Discard</button>
-            <button onClick={() => setConfirmOpen(true)} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition">
+            <button onClick={() => setConfirmOpen(true)} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary-hover transition">
               Review &amp; Save
             </button>
           </div>
@@ -424,7 +424,7 @@ export default function Permissions() {
             </div>
             <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
               <button onClick={() => setConfirmOpen(false)} disabled={saving} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
-              <button onClick={applyChanges} disabled={saving} className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50 min-h-tap">
+              <button onClick={applyChanges} disabled={saving} className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary-hover transition disabled:opacity-50 min-h-tap">
                 {saving ? 'Saving…' : 'Confirm & apply'}
               </button>
             </div>

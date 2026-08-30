@@ -425,7 +425,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                     type="button"
                     onClick={submitReview}
                     disabled={submitting}
-                    className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap"
+                    className="w-full py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap"
                   >
                     {submitting ? t('common.saving') : t('inspections.submit_review')}
                   </button>

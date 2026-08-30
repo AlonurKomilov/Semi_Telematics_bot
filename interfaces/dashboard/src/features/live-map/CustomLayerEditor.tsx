@@ -631,7 +631,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           <button
             onClick={handleSubmit}
             disabled={busy}
-            className="px-3 py-1.5 text-xs font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50 min-h-tap"
+            className="px-3 py-1.5 text-xs font-semibold rounded bg-primary text-primary-foreground hover:bg-primary-hover transition disabled:opacity-50 min-h-tap"
           >
             {busy ? 'Saving…' : mode === 'edit' ? 'Save' : 'Create'}
           </button>

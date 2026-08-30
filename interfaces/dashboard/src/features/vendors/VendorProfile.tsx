@@ -452,7 +452,7 @@ export default function VendorProfile() {
                   </p>
                   {canManageAccount && (
                     <button type="button" onClick={enableSharing} disabled={dirBusy}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition min-h-tap">
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary-hover transition min-h-tap">
                       Enable sharing
                     </button>
                   )}

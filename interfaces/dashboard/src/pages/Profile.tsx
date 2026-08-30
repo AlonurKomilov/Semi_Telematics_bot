@@ -332,7 +332,7 @@ export default function Profile() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="mt-5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition min-h-tap"
+          className="mt-5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium transition min-h-tap"
         >
           {saving ? 'Saving…' : 'Save preferences'}
         </button>
@@ -649,7 +649,7 @@ function SignInMethods() {
                   type="button"
                   onClick={submitCredentials}
                   disabled={savingCreds || !newEmail || !newPassword}
-                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
+                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 min-h-tap"
                 >
                   {savingCreds
                     ? t('profile.signin_saving', 'Saving…')
@@ -888,7 +888,7 @@ function DataExport() {
       <button
         onClick={download}
         disabled={downloading}
-        className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition min-h-tap"
+        className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 transition min-h-tap"
       >
         <ExternalLink className="size-3.5" />
         {downloading

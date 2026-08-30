@@ -704,7 +704,7 @@ export default function DateRangePresets({
                 <button
                   onClick={applyCustom}
                   disabled={!pickedStart}
-                  className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed min-h-tap"
+                  className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed min-h-tap"
                 >
                   Apply
                 </button>

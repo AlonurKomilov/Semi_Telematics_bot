@@ -175,7 +175,7 @@ export default function Companies() {
         actions={
           <button
             onClick={() => { setShowAdd(!showAdd); setError(''); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap"
           >
             <Plus className="size-3.5" />
             {showAdd ? 'Cancel' : 'Add company'}
@@ -228,7 +228,7 @@ export default function Companies() {
             <p className="mt-1 text-2xs text-muted-foreground">USDOT number — immutable id, reusable across integrations.</p>
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
+            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
               {saving ? 'Saving...' : 'Add'}
             </button>
           </div>
@@ -245,7 +245,7 @@ export default function Companies() {
           action={
             <button
               onClick={() => setShowAdd(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap"
             >
               <Plus className="size-3.5" />
               Add company
@@ -347,7 +347,7 @@ export default function Companies() {
                 </div>
               </div>
 
-              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition min-h-tap">
+              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium transition min-h-tap">
                 {saving ? 'Saving...' : 'Update Company'}
               </button>
               {selected.is_active && (

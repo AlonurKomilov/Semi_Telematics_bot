@@ -720,7 +720,7 @@ export default function KnowledgeBase() {
           canCreate ? (
             <button
               onClick={() => { resetForm(); setShowForm(true); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap"
             >
               <Plus className="size-3.5" />
               {t('knowledge.new_article')}
@@ -948,7 +948,7 @@ export default function KnowledgeBase() {
               <button
                 type="submit"
                 disabled={saving || !fTitle.trim()}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors min-h-tap"
+                className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors min-h-tap"
               >
                 {saving
                   ? t('knowledge.btn_saving')
@@ -992,7 +992,7 @@ export default function KnowledgeBase() {
             canCreate ? (
               <button
                 onClick={() => { resetForm(); setShowForm(true); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap"
               >
                 <Plus className="size-3.5" />
                 {t('knowledge.new_article')}

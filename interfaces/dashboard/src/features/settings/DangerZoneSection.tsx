@@ -144,7 +144,7 @@ export default function DangerZoneSection() {
           <button
             onClick={cancelDeletion}
             disabled={busy}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50 min-h-tap"
           >
             {busy ? '…' : 'Reactivate account'}
           </button>

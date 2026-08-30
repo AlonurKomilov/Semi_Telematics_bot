@@ -76,7 +76,7 @@ export default function VerifyEmail() {
             </p>
             <Link
               to="/login"
-              className="inline-block w-full bg-primary text-primary-foreground rounded-md py-2 text-sm font-medium hover:bg-primary/90"
+              className="inline-block w-full bg-primary text-primary-foreground rounded-md py-2 text-sm font-medium hover:bg-primary-hover"
             >
               {t('auth.go_to_login')}
             </Link>

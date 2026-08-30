@@ -417,7 +417,7 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
         onClick={onUpgrade}
         disabled={current || loading}
         className={`w-full py-2 min-h-tap rounded-lg text-sm font-semibold transition ${
-          current ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+          current ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-primary-foreground'
         }`}
       >
         {loading ? 'Redirecting…' : current ? 'Current Plan' : `Switch to ${name}`}

@@ -225,7 +225,7 @@ function AddItemDialog({
             type="button"
             onClick={save}
             disabled={saving || !label.trim() || !finalKey}
-            className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 min-h-tap"
+            className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 min-h-tap"
           >
             {saving ? t('common.saving') : t('inspections.add_item_btn')}
           </button>

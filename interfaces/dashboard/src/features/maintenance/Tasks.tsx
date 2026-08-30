@@ -420,7 +420,7 @@ export default function Tasks() {
                 DOT Binder tab) in 2026-06 — the binder is a
                 stakeholder-facing compliance PDF, not a maintenance-
                 editing surface. */}
-            <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
+            <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
               <Plus className="size-3.5" />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
@@ -486,7 +486,7 @@ export default function Tasks() {
           title="No maintenance tasks yet"
           description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
           action={(
-            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition min-h-tap">
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap">
               <Plus className="size-3.5" />
               New task
             </button>

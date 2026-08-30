@@ -213,7 +213,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition min-h-tap"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-primary-foreground rounded-md text-xs font-medium transition min-h-tap"
           >
             <Plus className="size-3.5" />
             New template
@@ -331,7 +331,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex-1 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
+                className="flex-1 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition min-h-tap"
               >
                 {saving ? 'Saving…' : 'Save template'}
               </button>

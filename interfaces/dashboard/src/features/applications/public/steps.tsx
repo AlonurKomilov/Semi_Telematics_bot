@@ -176,7 +176,7 @@ function CdlFastFill({ token, data, set, setIfEmpty }: {
         <label className={busy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}>
           <input type="file" accept="image/*" className="hidden" disabled={busy}
             onChange={(e) => { onPick(e.target.files?.[0]); e.currentTarget.value = ''; }} />
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover">
             {busy
               ? <><Loader2 className="animate-spin size-3.5" /> Reading…</>
               : <><Camera className="size-3.5" /> {hasDoc ? 'Retake photo' : 'Add photo'}</>}
