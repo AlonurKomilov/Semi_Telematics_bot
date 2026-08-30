@@ -3,12 +3,16 @@
 Living ledger. If a run shows ONLY these, your change is clean.
 Fix one → delete its row in the same commit.
 
+*(empty — the suite is green)*
+
 | suite | count | cause | owner |
 |---|---|---|---|
-| test_object_storage_reference_registry | 2 | `vehicle_documents` writes to object storage but declares no reference column in `capabilities/object_storage/references.py` — the orphan purge would read every uploaded document as unreferenced | co-dev (vehicle Documents card) |
 
-Verified 2026-08-28 against the full suite: 3582 passed, 15 skipped, and
-only the row above red.
+A row here is a debt, not a status. If you are about to add one, first
+ask whether the failure is actually understood: two of the three rows
+this file has carried turned out to be process-global leaks rather than
+the "fixture interplay" they were filed as, and one was a test that had
+EXPIRED rather than broken.
 
 ## Cleared on 2026-08-28
 
@@ -25,3 +29,9 @@ honest and still described a symptom rather than a cause, because a
 baseline worktree reproduces a leak that lives in the CODE just as
 faithfully as the branch does. Confirming a failure is not new is not
 the same as knowing what it is.
+
+The `test_object_storage_reference_registry` pair (vehicle_documents
+declaring no reference column) was fixed in b7e7df97, and
+`test_in_progress_trip_duration_is_sane` in 7f4c3b33 — it had not broken,
+it had expired: a fixed trip start measured against `now` crossed its own
+400-day bound on 2026-08-30.
