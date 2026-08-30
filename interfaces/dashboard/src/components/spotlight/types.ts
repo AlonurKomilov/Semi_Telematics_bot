@@ -28,8 +28,16 @@ export interface TourStep {
    * What ends the step.  'click' advances on the user's real click
    * anywhere inside the anchored element (capture-phase, so a
    * component calling stopPropagation cannot strand the tour).
+   *
+   * 'click-gone' is for a step whose click can FAIL — a submit that
+   * native validation refuses.  The click only ARMS the step; it
+   * completes when the anchor then leaves the DOM, which for a form
+   * that closes itself on success is the success signal.  A live run
+   * proved the need: Create was refused ("Please fill out this
+   * field") while the tour congratulated the user on a task that was
+   * never created.
    */
-  advanceOn: 'click';
+  advanceOn: 'click' | 'click-gone';
   /**
    * Narrows WHERE inside the anchor the click must land — a CSS
    * selector the target must match via `closest()`.  A step whose

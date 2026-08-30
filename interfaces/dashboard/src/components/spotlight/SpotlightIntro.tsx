@@ -52,6 +52,12 @@ export default function SpotlightIntro({
           </button>
           <button
             type="button"
+            // Dialog focuses the first focusable, which is Skip — and a
+            // focus ring on Skip at open reads as EMPHASIS on skipping
+            // (visible in the first live screenshot).  The offer's
+            // primary action takes initial focus instead; Skip stays
+            // one Tab (or Escape) away.
+            autoFocus
             onClick={onShowMe}
             className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition min-h-tap"
           >

@@ -18,7 +18,11 @@ export const MAINTENANCE_TOURS: readonly TourSpec[] = [
       // A chip, not the well: its padding and 'Loading…' text are
       // inside the anchor too, and touching those picks nothing.
       { anchor: 'maintenance.vehicle-chips', advanceOn: 'click', advanceWithin: 'button' },
-      { anchor: 'maintenance.create', advanceOn: 'click' },
+      // click-gone: Create can be REFUSED (Description is required —
+      // a live run hit exactly that while the old click-advance was
+      // already congratulating).  The form closes itself on success,
+      // so the anchor leaving the DOM is the honest completion signal.
+      { anchor: 'maintenance.create', advanceOn: 'click-gone' },
     ],
     // Offered once the page shows real use — a handful of tasks says
     // "this person adds tasks", and that is who the shortcut helps.

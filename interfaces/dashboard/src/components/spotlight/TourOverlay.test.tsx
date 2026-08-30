@@ -137,3 +137,43 @@ describe('TourOverlay', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("advanceOn: 'click-gone' — celebrate the outcome, not the click", () => {
+  it('a refused submit holds the step; success (anchor gone after click) celebrates', async () => {
+    const btn = mountAnchor('create');
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'create', advanceOn: 'click-gone' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    await screen.findByText('spotlight.labels.step_of');
+    btn.click();                    // validation refuses — button stays
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+    expect(screen.getByText('spotlight.labels.step_of')).toBeTruthy();
+    btn.remove();                   // the form closed itself: real success
+    await waitFor(() =>
+      expect(screen.getByText('spotlight.labels.done_title')).toBeTruthy());
+  });
+
+  it('an UNARMED disappearance is the user closing the form — no celebration', async () => {
+    const btn = mountAnchor('create');
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'create', advanceOn: 'click-gone' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    await screen.findByText('spotlight.labels.step_of');
+    btn.remove();                   // never clicked Create — cancelled
+    await waitFor(() =>
+      expect(screen.queryByText('spotlight.labels.step_of')).toBeNull());
+    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+    mountAnchor('create');          // reopened — the step comes back
+    await waitFor(() =>
+      expect(screen.getByText('spotlight.labels.step_of')).toBeTruthy());
+  });
+});

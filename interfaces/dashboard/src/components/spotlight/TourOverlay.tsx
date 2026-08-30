@@ -24,6 +24,9 @@ import type { TourSpec } from './types';
 
 /** How long a step's anchor may stay absent before the tour exits. */
 const ANCHOR_TIMEOUT_MS = 15_000;
+/** A 'click-gone' arm expires: the anchor vanishing long after the
+ *  click is the user closing the form, not the submit succeeding. */
+const ARM_WINDOW_MS = 8_000;
 /** Hairline breathing room between the lit element and the cutout —
  *  a visual inset like a border width, not a rendered size, so it
  *  deliberately does not ride the Size multipliers. */
@@ -65,6 +68,10 @@ export default function TourOverlay({
   // stay frozen over empty space.
   const [generation, setGeneration] = useState(0);
   const elRef = useRef<Element | null>(null);
+  // 'click-gone' arming — the moment the user clicked the anchor.
+  // Success is "armed AND the anchor then left the DOM"; a validation
+  // refusal leaves the element in place, so the step honestly holds.
+  const armedAtRef = useRef(0);
   // The step index a click has already advanced.  One label click
   // dispatches TWO native click events (the label's own and the one
   // the browser forwards to its input) — both land here, and without
@@ -74,6 +81,11 @@ export default function TourOverlay({
 
   const step = tour.steps[stepIdx];
   const total = tour.steps.length;
+  // The position tracker closes over these via refs: its dep list is
+  // deliberately narrow, and a stale `advance` there would celebrate
+  // with an old step index.
+  const stepRef = useRef(step);
+  stepRef.current = step;
 
   // ── Resolve the anchor, waiting for it to appear ────────────────
   useEffect(() => {
@@ -115,10 +127,18 @@ export default function TourOverlay({
       const el = elRef.current;
       if (!el) return;
       if (!el.isConnected) {
-        // The lit control was unmounted under us.  Hide the chrome and
-        // send the resolver back to waiting — it may come back (the
-        // user reopens the form), or the timeout ends the tour.
+        // The lit control was unmounted under us.  For an ARMED
+        // 'click-gone' step this IS the outcome we were waiting for —
+        // the form closed itself on a successful submit.  Beyond the
+        // window, or with no arm at all, it is the user closing the
+        // form: hide the chrome and send the resolver back to waiting.
         elRef.current = null;
+        if (stepRef.current.advanceOn === 'click-gone'
+            && armedAtRef.current
+            && Date.now() - armedAtRef.current < ARM_WINDOW_MS) {
+          advanceRef.current();
+          return;
+        }
         setRect(null);
         setGeneration((g) => g + 1);
         return;
@@ -141,6 +161,7 @@ export default function TourOverlay({
   const advance = useCallback(() => {
     if (advancedRef.current === stepIdx) return;   // label double-dispatch
     advancedRef.current = stepIdx;
+    armedAtRef.current = 0;
     if (stepIdx + 1 >= total) {
       setCelebrating(true);
     } else {
@@ -149,6 +170,8 @@ export default function TourOverlay({
       setStepIdx((i) => i + 1);
     }
   }, [stepIdx, total]);
+  const advanceRef = useRef(advance);
+  advanceRef.current = advance;
 
   useEffect(() => {
     if (celebrating) return;
@@ -159,6 +182,13 @@ export default function TourOverlay({
       // anchor — step 3 anchors the chip well, but only pressing a
       // chip picks a vehicle; the well's own padding does not.
       if (step.advanceWithin && !target.closest(step.advanceWithin)) return;
+      if (step.advanceOn === 'click-gone') {
+        // The click alone proves nothing — validation may refuse it.
+        // Arm, and let the anchor's disappearance be the verdict.  A
+        // re-click after a refusal simply re-arms.
+        armedAtRef.current = Date.now();
+        return;
+      }
       advance();
     };
     // Capture phase: the click reaches us even when the control's own
