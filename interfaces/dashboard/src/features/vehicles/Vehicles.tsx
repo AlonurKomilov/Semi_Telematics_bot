@@ -290,6 +290,10 @@ const ALL_COLUMNS: AnyColumn[] = [
 // they start ``defaultHidden`` so they don't crowd the default view.
 const UNIVERSAL_COLUMN_KEYS = new Set([
   'name', 'vehicle_type', 'company', 'status', 'address', '_city', '_state',
+  // Where the truck came from (creator · enrichers).  Universal so any
+  // persona can unhide + filter it, but defaultHidden below for the
+  // non-roster personas — the same _city/_state treatment.
+  'source',
 ]);
 
 // Per-persona column visibility.  Mirrors the strict-binding rule from
@@ -302,9 +306,9 @@ const UNIVERSAL_COLUMN_KEYS = new Set([
 // executive view; if they want a persona-tuned view they switch via
 // "View dashboard as…" → subdomain navigation → persona's view loads.
 const PERSONA_EXTRA_COLUMNS: Record<string, ReadonlyArray<string>> = {
-  owner:      ['fuel_percent', 'def_percent', 'fault_count', 'odometer_miles', 'engine_hours'],
-  admin:      ['fuel_percent', 'def_percent', 'fault_count', 'odometer_miles', 'engine_hours'],
-  fleet:      ['def_percent', 'fault_count', 'odometer_miles', 'engine_hours'],
+  owner:      ['fuel_percent', 'def_percent', 'fault_count', 'odometer_miles', 'engine_hours', 'source'],
+  admin:      ['fuel_percent', 'def_percent', 'fault_count', 'odometer_miles', 'engine_hours', 'source'],
+  fleet:      ['def_percent', 'fault_count', 'odometer_miles', 'engine_hours', 'source'],
   dispatcher: ['fuel_percent'],
   safety:     [],
   hr:         [],
@@ -369,6 +373,13 @@ export default function Vehicles() {
       ...extras,
     ]);
     const cols = ALL_COLUMNS.filter((c) => allowed.has(c.key)).map((c) => {
+      // Source is universal (anyone may unhide + filter it) but starts
+      // hidden for personas that did not opt in via extras — the same
+      // crowd-control _city/_state get, decided per persona because
+      // defaultHidden is a column property, not a persona one.
+      if (c.key === 'source' && !extras.includes('source')) {
+        return { ...c, defaultHidden: true };
+      }
       if (c.key !== 'name') return c;
       return {
         ...c,
