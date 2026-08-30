@@ -137,7 +137,7 @@ export const CUSTOM_LAYER_SWATCHES: string[] = [
 ];
 
 /** Link colour for <a> tags inside Leaflet popup HTML strings. */
-export const POPUP_LINK = 'var(--primary)';
+export const POPUP_LINK = 'var(--primary-text)';
 
 /** Neutral chrome inside Leaflet popup HTML strings (badges + secondary
  *  text).

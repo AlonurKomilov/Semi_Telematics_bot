@@ -1705,16 +1705,19 @@ describe('UI chrome', () => {
     }
     expect(missing, 'an accent with no override does nothing at all').toEqual([]);
 
-    // Each accent block must move --chart-1 AND --primary-hover with
-    // --primary. The ramp's first series IS the accent — leave it behind
-    // and a green-accented dashboard draws blue bars next to green
-    // buttons. Leave the hover behind and the button jumps to the BLUE
-    // hover on pointer-over, which is worse than no hover at all.
+    // Each accent block must move --chart-1, --primary-hover AND
+    // --primary-text with --primary. The ramp's first series IS the
+    // accent — leave it behind and a green-accented dashboard draws blue
+    // bars next to green buttons. Leave the hover behind and the button
+    // jumps to the BLUE hover on pointer-over. Leave the text token
+    // behind and every `text-primary` on the page stays blue while the
+    // buttons around it turn green, which reads as a bug rather than a
+    // theme.
     const lagging = [...css.matchAll(
       /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="([a-z]+)"\]\s*\{([^}]*)\}/g,
     )]
       .filter((m) => m[2].includes('--primary:'))
-      .flatMap((m) => ['--chart-1', '--primary-hover']
+      .flatMap((m) => ['--chart-1', '--primary-hover', '--primary-text']
         .filter((t) => !m[2].includes(`${t}:`))
         .map((t) => `${m[1]} re-points --primary without ${t}`));
     expect(lagging).toEqual([]);
@@ -1853,5 +1856,62 @@ describe('UI chrome', () => {
     const src = '/* a\n b\n c */\nconst x = 1;';
     expect(F(src).split('\n').length).toBe(src.split('\n').length);
     expect(F(src).split('\n')[3]).toBe('const x = 1;');
+  });
+
+  // ── Guard 39 ────────────────────────────────────────────────────────
+  // An element-scoped tint has to set EVERY accent-derived token itself,
+  // and this has now been got wrong three times running — once each for
+  // `--ring`, `--primary-hover` and `--primary-text`.
+  //
+  // The reason it keeps happening is that the failure is invisible. A
+  // custom property's `var()` is substituted when that property is
+  // computed ON THE ELEMENT THAT DECLARES IT, so `--ring: var(--primary)`
+  // on `:root` resolves against `:root`'s primary and children inherit
+  // the answer, not the recipe. The public apply form re-points
+  // `--primary` on a form-root div; every token it forgets keeps the
+  // 4truck accent on a page painted in the carrier's. Nothing throws,
+  // and the page looks deliberate.
+  //
+  // The required set is READ from index.css rather than listed here —
+  // a hand-written list is what would go stale on the fourth token.
+  it('the public brand tint sets every accent-derived token', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+
+    // What an accent block re-points…
+    const fromAccents = new Set<string>();
+    for (const m of css.matchAll(
+      /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="[a-z]+"\]\s*\{([^}]*)\}/g,
+    )) {
+      for (const d of m[1].matchAll(/(--[a-z0-9-]+):/g)) fromAccents.add(d[1]);
+    }
+    // …plus anything :root derives FROM --primary, which is the same
+    // trap by a different route.
+    for (const m of css.matchAll(/(--[a-z0-9-]+):\s*([^;]*var\(--primary\)[^;]*);/g)) {
+      fromAccents.add(m[1]);
+    }
+    expect(fromAccents.size, 'no accent-derived tokens found — did the blocks move?')
+      .toBeGreaterThan(3);
+
+    // The public form renders no charts, so the whole ramp is genuinely
+    // not its problem — slot 1 follows the accent and slot 2 rotates
+    // with it. Everything else is. Matched by SHAPE rather than listed,
+    // because the ramp is five slots and a list would go stale the first
+    // time another one moved.
+    const notOnThisForm = (t: string) => /^--chart-\d$/.test(t);
+
+    const tint = srcOf('features/applications/public/theme.ts');
+    const body = /export function brandTintStyle[\s\S]*?\n\}/.exec(tint)?.[0] ?? '';
+    expect(body, 'brandTintStyle not found — did it move or get renamed?').not.toBe('');
+
+    const missing = [...fromAccents]
+      .filter((t) => !notOnThisForm(t))
+      .filter((t) => !body.includes(`['${t}']`))
+      .sort();
+    expect(
+      missing,
+      'these follow the accent, and a tint that re-points --primary must ' +
+        'set each one itself — a token derived at :root cannot see an ' +
+        'element-scoped override',
+    ).toEqual([]);
   });
 });

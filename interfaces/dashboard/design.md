@@ -242,6 +242,25 @@ on the dark fills scored 3.65 / 3.81 / **2.89** — that is the primary
 button label, below AA on all three dark themes and below even the 3.0
 floor on green.
 
+**The accent as TEXT is a different colour from the accent as a FILL.**
+`--primary` has to be bright enough to read on the near-black canvas,
+which makes it too pale to clear AA as text on the lighter surfaces
+stacked above it — `text-primary` measured 3.33:1 on `--popover` and
+3.89:1 on `--card` in dark blue, across ~270 call sites including the link
+variant of both primitives. One value cannot serve both jobs; that
+overload is the shape of defect this whole layer kept producing.
+
+So `--primary-text` exists, per mode and per accent, and
+`tailwind.config.js` overrides `textColor.primary` to point at it. **No
+call site changed** — `text-primary` and `bg-primary` simply stop being
+the same colour, which is the honest answer to them never having been
+the same job. `text-primary-foreground` has to be restated in that
+override or it would be lost with the key it lives under.
+
+It lands close to `--primary-hover`, and they are still two tokens on
+purpose: fold them and a hover retune silently moves every piece of body
+text.
+
 **Hover is a token, not `bg-primary/90`.** An alpha fade blends toward
 whatever is *behind* the button, so the same class darkens it on a dark
 canvas and lightens it on a light one. On dark that dragged the label
@@ -1036,7 +1055,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Thirty-eight live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Thirty-nine live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -1079,13 +1098,14 @@ this table has any chance of staying true.
 | a child is never rounder than the parent it sits against (§6) | the steps are fixed OFFSETS, so an `xl` is rounder than an `lg` at every preset — no measurement needed. Adjacency is approximated by source proximity (8 lines); loosen it and the rule dissolves — 0 hits at 8, 9 at 20, 41 at no limit, the furthest pair 325 lines apart with arcs that never meet |
 | print puts the light palette back (§6) | `@media print` re-declares, at its `:root` value, every colour token the dark themes override, and the guard asserts that set equality both ways plus byte-equal values. Without the reset a dark-mode user prints white-on-a-background-the-printer-drops — a blank page. Nobody reviews a printout, so the drift would live for years |
 | every class the code writes actually compiles (§6) | compiles every class the codebase writes — variant-prefixed AND bare — against the real config, and fails on any that emits no rule. Three structural filters keep it allowlist-free (comments stripped, so an apostrophe in prose cannot open a fake string; a literal followed by `:` is an object key, not a class; index.css's own classes count as emitted). Found 36 dead classes: nine primitives' v4 variants, plus `backdrop-blur-xs` on every modal scrim, `max-w-55` beside a `truncate`, `field-sizing-content`, `outline-hidden`, `underline-offset-3` and `[a]:hover:` on every Badge rendered as a link. Reading the files cannot find any of it |
-| every accent the picker offers has CSS, in both modes (§2) | reads `THEME_ACCENTS` out of the registry and requires a `--primary`, a `--chart-1` AND a `--primary-hover` under both `:root:not(.dark)[data-accent=…]` and `.dark[data-accent=…]`, plus a swatch in each mode. An accent needs a value per mode — a `--primary` bright enough for near-black is too pale to clear AA on white — so shipping only the dark half makes the chip a no-op in Light, silently |
+| every accent the picker offers has CSS, in both modes (§2) | reads `THEME_ACCENTS` out of the registry and requires a `--primary`, a `--chart-1`, a `--primary-hover` AND a `--primary-text` under both `:root:not(.dark)[data-accent=…]` and `.dark[data-accent=…]`, plus a swatch in each mode. An accent needs a value per mode — a `--primary` bright enough for near-black is too pale to clear AA on white — so shipping only the dark half makes the chip a no-op in Light, silently |
 | every rendered colour pair meets its WCAG floor (§2) | `src/lib/colour.test.ts` — resolves every token through the six mode×accent cells, composites alpha fills over each ground the way a browser does (a tone pill on a card is not the same colour as the same pill on the canvas), and applies 4.5 for text / 3.0 for non-text UI. It cannot land green: the failures it still carries are listed WITH the reason each one stays, and the guard fails if a listed pair starts passing, so the list is a work queue rather than an allowlist |
 | no colour token drifts further outside sRGB (§2) | same file — an out-of-gamut oklch is not the colour on screen, so any ratio computed on the authored value is arithmetic about a colour nobody has seen, and nudging the chroma of a clipped token moves nothing except on a P3 display. A ratchet, keyed per THEME CELL rather than per token: eight tokens clip today, and taking the worst across cells would let a regression in one hide behind a bigger number in another. A new offender, or an existing one clipping harder, fails |
 | no colour literal outside the files allowed one (§8) | a hex in a component cannot follow the theme, cannot be retuned, and is invisible to the contrast guard, which measures TOKENS — `#666` inside a Leaflet popup string sat at 2.21:1 on the dark themes for as long as it existed. The allowlist is by FILE because the legitimate reasons cluster (painted over tile imagery; a signature PNG that outlives the session; a WebGL fallback for the frame before the tokens land), and each entry states its reason. A colour INPUT's default and a `placeholder="#2563EB"` are excluded by SHAPE, not by file — a file entry would have excused everything else in those files, the mistake `INLINE_LENGTH_ALLOWED` already recorded |
 | the map SSOT keeps its popup section token-only (§8) | the allowlist is per file, so an allowed file can grow a literal in the part that should be tokens — which mapColors.ts did: four literals under a comment explaining that popups could not use tokens. They can; popup markup becomes real DOM under a `var(--popover)` wrapper, and two of the four were failing AA |
 | nothing reads the chart ramp except the tone layer (§8) | `var(--chart-N)` in a component pins it to a slot NUMBER, and the ramp rotates with the accent — slot 2 is green under most accents and blue under a green one, so a raw var silently opts that component out. It also bypasses `chartColor()`, which is the only place that knows the ramp wraps. Nothing else greps for this |
 | `codeOnly` blanks exactly the comments (§11) | it is the floor every source-reading guard stands on, and it was wrong three ways at once, each of which made guards pass silently over code: `accept="image/…"` opened what a regex reads as a block comment and swallowed 714 lines of the public applicant form; an apostrophe in JSX text opened a string that ran to the next apostrophe in the file; and a template literal was treated as opaque although `${…}` holds CODE, so the first backtick in a comment written there read as the template's close. A fixture now pins all three, plus that line numbers survive — anything reporting a location depends on that |
+| an element-scoped tint sets every accent-derived token (§2) | got wrong three times running — `--ring`, then `--primary-hover`, then `--primary-text` — because the failure is invisible: a custom property's `var()` resolves on the element that DECLARES it, so `:root`'s derivation cannot see a tint applied to a div, and the public apply form keeps the 4truck accent on a carrier-branded page while looking deliberate. The required set is read out of index.css, not listed in the test, because a hand-written list is what goes stale on the fourth token |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

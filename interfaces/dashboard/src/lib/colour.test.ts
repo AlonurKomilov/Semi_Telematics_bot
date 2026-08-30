@@ -238,11 +238,12 @@ const PAIRS: Pair[] = [
   { fg: '--ring', bg: '--card', role: 'ui' },
   { fg: '--input', bg: '--background', role: 'ui' },
   { fg: '--input', bg: '--card', role: 'ui' },
-  // `text-primary` is body text — 267 sites, including the link variant
+  // `text-primary` is body text — ~270 sites, including the link variant
   // of both primitives — so it is judged at 4.5, not the 3.0 an accent
-  // shape would get.
+  // shape would get. It resolves to `--primary-text`, NOT `--primary`:
+  // tailwind.config overrides textColor.primary for exactly this reason.
   ...(['--background', '--card', '--popover', '--sidebar'] as const).map((g) => ({
-    fg: '--primary', bg: g, role: 'text' as Role,
+    fg: '--primary-text', bg: g, role: 'text' as Role,
   })),
   // The primitives' soft destructive variant: `bg-destructive/10
   // text-destructive`, and /20 in dark. This is what button.tsx and
@@ -251,8 +252,15 @@ const PAIRS: Pair[] = [
     { fg: '--destructive', bg: '--destructive', ground: g, bgAlpha: 0.1, role: 'text' as Role },
     { fg: '--destructive', bg: '--destructive', ground: g, bgAlpha: 0.2, role: 'text' as Role },
   ]),
-  // The sidebar's active nav item.
-  { fg: '--primary', bg: '--primary', ground: '--sidebar', bgAlpha: 0.15, role: 'text' },
+  // A tinted "ghost" fill with the accent as its label — the sidebar's
+  // active nav item, the theme picker's own selected chip, a DataGrid
+  // column pill. 92 lines pair `bg-primary/N` with `text-primary`, and
+  // the ground matters: the same chip is a different colour inside a
+  // popover than on the canvas.
+  ...(['--background', '--card', '--popover', '--sidebar'] as const).flatMap((g) =>
+    [0.1, 0.15, 0.2].map((a) => ({
+      fg: '--primary-text', bg: '--primary', ground: g, bgAlpha: a, role: 'text' as Role,
+    }))),
   ...[1, 2, 3, 4, 5].flatMap((n) => (['--background', '--card'] as const).map((g) => ({
     fg: `--chart-${n}`, bg: g, role: 'ui' as Role,
   }))),
@@ -287,12 +295,15 @@ const DESTRUCTIVE_SOFT =
   'is tuned to sit BEHIND a label, and is being read AS text on a 10-20% ' +
   'wash of itself. Needs a `--destructive-bg` twin of the tone washes, which ' +
   'is a new token, not a nudge.';
-const PRIMARY_OVERLOADED =
-  'taxonomy — `--primary` is a fill behind a label AND body text at 267 ' +
-  'sites, and one value cannot serve both: bright enough to read on the dark ' +
-  'canvas is too light to read as text on the lighter surfaces above it. The ' +
-  'fix is to split it (`--primary` fill, `--primary-text`), which touches ' +
   'every accent cell and both primitives.';
+
+const GHOST_CHIP =
+  'call sites — a `bg-primary/N text-primary` chip puts the accent on a ' +
+  'wash of itself, which is low-contrast by construction. ~92 lines do it. ' +
+  'Fixing it in the TOKEN needs --primary-text at L .78, which drops blue ' +
+  'chroma 0.153 -> 0.108 and pales every link in the app to rescue a chip; ' +
+  'the fill is what is wrong, so those sites want a denser fill or ' +
+  '`text-foreground`.';
 
 const KNOWN: Record<string, string> = Object.fromEntries([
   // Hairlines. A visible redesign, not a nudge — see 6.2.
@@ -343,20 +354,6 @@ const KNOWN: Record<string, string> = Object.fromEntries([
     'light purple | --destructive on --destructive/20 over --card',
     'light purple | --destructive on --destructive/20 over --popover',
   ] as const).map((k) => [k, DESTRUCTIVE_SOFT] as const),
-  // One token doing a fill job and a body-text job.
-  ...([
-    'dark blue | --primary on --card',
-    'dark blue | --primary on --popover',
-    'dark blue | --primary on --primary/15 over --sidebar',
-    'dark green | --primary on --popover',
-    'dark purple | --primary on --card',
-    'dark purple | --primary on --popover',
-    'dark purple | --primary on --primary/15 over --sidebar',
-    'dark purple | --primary on --sidebar',
-    'light blue | --primary on --primary/15 over --sidebar',
-    'light green | --primary on --primary/15 over --sidebar',
-    'light purple | --primary on --primary/15 over --sidebar',
-  ] as const).map((k) => [k, PRIMARY_OVERLOADED] as const),
   // AA-marginal, and each fix moves a token with thousands of call sites.
   ...([
     'dark blue | --danger on --danger-bg over --card',
@@ -396,6 +393,27 @@ const KNOWN: Record<string, string> = Object.fromEntries([
     'light purple | --ok on --ok-bg over --card',
     'light purple | --ok on --ok-bg over --popover',
   ] as const).map((k) => [k, RETUNE_MARGINAL] as const),
+  // A tinted fill with the accent as its own label, on the two lightest
+  // surfaces. Raising --primary-text until these clear needs L .78,
+  // which takes blue's chroma from 0.153 to 0.108 — every link in the
+  // app goes pale to fix a chip. The fill is the thing at fault: a
+  // `bg-primary/N text-primary` chip is low-contrast by construction,
+  // and the fix is a denser fill or `text-foreground` on those ~92
+  // sites, not a weaker link colour everywhere.
+  ...([
+    'dark blue | --primary-text on --primary/10 over --popover',
+    'dark blue | --primary-text on --primary/15 over --popover',
+    'dark blue | --primary-text on --primary/20 over --card',
+    'dark blue | --primary-text on --primary/20 over --popover',
+    'dark green | --primary-text on --primary/10 over --popover',
+    'dark green | --primary-text on --primary/15 over --popover',
+    'dark green | --primary-text on --primary/20 over --card',
+    'dark green | --primary-text on --primary/20 over --popover',
+    'dark purple | --primary-text on --primary/10 over --popover',
+    'dark purple | --primary-text on --primary/15 over --popover',
+    'dark purple | --primary-text on --primary/20 over --card',
+    'dark purple | --primary-text on --primary/20 over --popover',
+  ] as const).map((k) => [k, GHOST_CHIP] as const),
 ]);
 
 /**

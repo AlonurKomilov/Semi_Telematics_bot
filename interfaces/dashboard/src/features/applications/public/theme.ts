@@ -89,7 +89,12 @@ export function readableTextOn(hex: string): string {
 // It used to also set `--brand` "for the header accents" — nothing ever
 // read var(--brand), so it was a write with no reader. The header takes
 // its accent from --primary like everything else.
-export function brandTintStyle(brandColor?: string): import('react').CSSProperties | undefined {
+export function brandTintStyle(
+  brandColor?: string,
+  /** The carrier's Surface colour, because `--primary-text` has to be
+   *  legible ON it and the brand colour alone cannot say what that is. */
+  surface?: string,
+): import('react').CSSProperties | undefined {
   if (!brandColor) return undefined;
   return {
     ['--primary']: brandColor,
@@ -115,6 +120,22 @@ export function brandTintStyle(brandColor?: string): import('react').CSSProperti
     // state's — where the rest state is already weak (#22c55e at 2.28)
     // the hover improves it to 2.93.
     ['--primary-hover']: `color-mix(in oklab, ${brandColor} 88%, black)`,
+    // The accent AS TEXT — a third token that does not follow the two
+    // above, and the third time this exact trap has been sprung here: a
+    // token derived at `:root` resolves against `:root`'s `--primary`,
+    // so an element-scoped tint has to set every one of them itself.
+    // `text-primary` is on ten sites of this form, including the active
+    // step's number, which sits inside a `border-primary` ring — leave
+    // it out and the ring is the carrier's colour and the digit inside
+    // it is 4truck blue.
+    //
+    // 40% brand, 60% toward whatever reads on the surface. Not the brand
+    // itself: amber on a white surface is 2.15:1, which is the same
+    // one-value-two-jobs overload the app-side split just removed. 40%
+    // is what survives the worst pairing measured across seven brand
+    // colours and four surfaces (5.59:1); at 50% it drops to 4.05.
+    ['--primary-text']:
+      `color-mix(in oklab, ${brandColor} 40%, ${readableTextOn(surface || '#ffffff')})`,
     ['--primary-foreground']: readableTextOn(brandColor),
   } as import('react').CSSProperties;
 }

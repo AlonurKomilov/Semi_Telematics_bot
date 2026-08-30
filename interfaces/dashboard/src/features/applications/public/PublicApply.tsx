@@ -335,7 +335,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   // is the single base now.
   const merged: React.CSSProperties = {
     ...(surfaceThemeStyle(brand?.surface_color) || {}),
-    ...(brandTintStyle(brand?.brand_color) || {}),
+    ...(brandTintStyle(brand?.brand_color, brand?.surface_color) || {}),
     ...(brand?.bg_color ? { backgroundColor: brand.bg_color } : {}),
   };
   const brandStyle: React.CSSProperties | undefined = Object.keys(merged).length ? merged : undefined;

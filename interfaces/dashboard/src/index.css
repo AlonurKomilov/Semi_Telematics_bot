@@ -116,6 +116,20 @@
        control is not supposed to get harder to read because the pointer
        is over it.  The token measures 6.74. */
     --primary-hover: oklch(0.47 0.20 264);
+    /* The accent AS TEXT, which is not the same colour as the accent as
+       a FILL and cannot be.  A --primary bright enough to read on the
+       near-black canvas is too pale to clear AA as text on the lighter
+       surfaces stacked above it — `text-primary` measured 3.33 on
+       --popover and 3.89 on --card in dark blue, and it is written at
+       roughly 270 call
+       sites including the link variant of both primitives.  Trying to
+       serve both with one value is the overload this arc kept meeting;
+       one token per job is the answer.
+
+       It sits close to --primary-hover today, and they are still two
+       tokens: fold them together and a hover retune silently moves every
+       pieces of body text, which is the exact bug being fixed. */
+    --primary-text: oklch(0.48 0.20 264);
 
     --secondary: oklch(0.97 0 0);
 
@@ -334,6 +348,7 @@
 
     --primary: oklch(0.62 0.21 264);
     --primary-hover: oklch(0.68 0.163 264);
+    --primary-text: oklch(0.70 0.153 264);
 
     --primary-foreground: oklch(0.145 0 0);
 
@@ -484,11 +499,13 @@
   :root:not(.dark)[data-accent="purple"] {
     --primary: oklch(0.52 0.20 300);
     --primary-hover: oklch(0.47 0.20 300);
+    --primary-text: oklch(0.48 0.20 300);
     --chart-1: oklch(0.52 0.20 300);
   }
   :root:not(.dark)[data-accent="green"] {
     --primary: oklch(0.48 0.15 142);
     --primary-hover: oklch(0.43 0.14 142);
+    --primary-text: oklch(0.44 0.145 142);
     --chart-1: oklch(0.48 0.15 142);
     /* The ramp rotates with the accent, and only here.
        Slot 1 IS the accent — that is the rule, and the accent blocks
@@ -512,11 +529,13 @@
   .dark[data-accent="purple"] {
     --primary: oklch(0.62 0.2 300);
     --primary-hover: oklch(0.68 0.195 300);
+    --primary-text: oklch(0.72 0.169 300);
     --chart-1: oklch(0.62 0.2 300);
   }
   .dark[data-accent="green"] {
     --primary: oklch(0.65 0.19 142);
     --primary-hover: oklch(0.71 0.19 142);
+    --primary-text: oklch(0.69 0.19 142);
     --chart-1: oklch(0.65 0.19 142);
     /* See the light block above for why only green swaps slot 2. */
     --chart-2: oklch(0.72 0.142 264);
@@ -557,7 +576,7 @@
 .ai-response li { margin: 0.125rem 0; }
 .ai-response strong { font-weight: 600; }
 .ai-response em { font-style: italic; }
-.ai-response a { color: var(--primary); text-decoration: underline; }
+.ai-response a { color: var(--primary-text); text-decoration: underline; }
 /* ── Printing ─────────────────────────────────────────────────
  *
  * A surface that is MEANT for paper marks itself with
@@ -601,6 +620,7 @@
     --primary:                    oklch(0.52 0.2 264);
     --primary-foreground:         oklch(0.985 0 0);
     --primary-hover:              oklch(0.47 0.20 264);
+    --primary-text:               oklch(0.48 0.20 264);
     --secondary:                  oklch(0.97 0 0);
     --secondary-foreground:       oklch(0.205 0 0);
     --muted:                      oklch(0.97 0 0);

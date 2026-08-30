@@ -206,6 +206,22 @@ export default {
       // control, which is the right trade: the offset is motion, not
       // layout, and nothing lines up against it.
       animationTranslate: { 1: '0.25rem', 2: '0.5rem', 4: '1rem', 8: '2rem' },
+      // `text-primary` resolves to a DIFFERENT token than `bg-primary`,
+      // and that is the point rather than an accident. The accent as a
+      // fill and the accent as text cannot be one value: bright enough
+      // to read on the dark canvas is too pale to clear AA as text on
+      // the lighter surfaces above it. Overriding here means the call
+      // sites keep the name they already use and simply become legible.
+      //
+      // Only DEFAULT. `extend` deep-merges, so `foreground` and `hover`
+      // reach through from `colors.primary` untouched — restating them
+      // here would be a second hand-written copy that can drift from the
+      // first with nothing to catch it. (Under a bare `theme:` rather
+      // than `theme.extend:` the whole key WOULD be replaced and they
+      // would need restating; that distinction is the whole difference.)
+      textColor: {
+        primary: { DEFAULT: tokenColor('--primary-text') },
+      },
       fontFamily: { heading: ['var(--font-heading)', ...defaultTheme.fontFamily.sans] },
       colors: {
         // shadcn CSS-var tokens — wrapped in tokenColor() so `bg-primary`,
