@@ -1144,9 +1144,15 @@ class AlertsMixin(_MixinBase):
         # things at once.  ``ack_state`` survives untouched for the
         # endpoint's other consumers.
         #
-        #   "new"           → nobody has seen it, whatever its status —
-        #                     including things that auto-resolved before
-        #                     anyone looked, which is itself information.
+        #   "new"           → the CALLER has not seen it (owner decision
+        #                     2026-08-31: the tab is personal even though
+        #                     the Seen COLUMN is account-wide — a
+        #                     colleague reading the board must not empty
+        #                     everyone else's New).  Falls back to
+        #                     nobody-has-seen when the viewer cannot be
+        #                     resolved.  Status is ignored either way —
+        #                     an auto-resolved row you never saw is still
+        #                     news to you.
         #   "mine_working"  → the caller has hands on it, open or done:
         #                     a person's own task list, and the shape a
         #                     per-shift KPI reads later.
@@ -1159,10 +1165,14 @@ class AlertsMixin(_MixinBase):
         # outer table's NAME is a legal qualifier in both dialects.
         outer = alias if alias else "alert_history"
         if view == "new":
+            me_sql = ""
+            if viewer_user_id is not None:
+                me_sql = " AND sn.user_id = ?"
+                params.append(int(viewer_user_id))
             clauses.append(
                 f"NOT EXISTS (SELECT 1 FROM alert_seen sn "
                 f" WHERE sn.account_id = {outer}.account_id "
-                f"   AND sn.alert_history_id = {outer}.id)")
+                f"   AND sn.alert_history_id = {outer}.id{me_sql})")
         elif view == "mine_working" and viewer_user_id is not None:
             clauses.append(
                 f"EXISTS (SELECT 1 FROM alert_workers wk "

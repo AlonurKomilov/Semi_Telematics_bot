@@ -199,19 +199,28 @@ class TestSegmentCounts:
         assert counts["new"] == 2
         assert counts["all"] == 2
 
-    async def test_seeing_moves_a_row_out_of_new(self, seeded, pg_db):
-        """The tab transition under the new vocabulary: a SEEN row leaves
-        New and stays in All — acknowledging no longer moves anything,
-        because the tabs stopped keying on a verb nobody used."""
+    async def test_new_is_personal_a_colleagues_view_moves_nothing(self, seeded, pg_db):
+        """New is PER-VIEWER (owner decision 2026-08-31), even though the
+        Seen COLUMN is account-wide: a colleague reading the board must
+        not empty everyone else's New tab.  So my own view moves a row
+        out of MY New; someone else's view moves nothing of mine."""
         app, token, db, acct = (
             seeded["app"], seeded["token"], seeded["db"], seeded["acct"])
         rows = await db.get_active_alert_history_for_account(acct.id)
-        viewer = await pg_db.create_user(9109, acct.id)
-        await db.mark_alerts_seen(acct.id, viewer.id, [int(rows[0]["id"])])
 
+        # A colleague reads two alerts — my New is untouched.
+        colleague = await pg_db.create_user(9109, acct.id)
+        await db.mark_alerts_seen(
+            acct.id, colleague.id, [int(rows[0]["id"]), int(rows[1]["id"])])
+        counts = (await _get(app, token, "/api/alerts/pending/segment-counts"))["counts"]
+        assert counts["new"] == 5
+
+        # I read one — MY New drops, All never loses a row to a view.
+        me = await pg_db.get_user_by_telegram_id(9101)
+        await db.mark_alerts_seen(acct.id, me.id, [int(rows[0]["id"])])
         counts = (await _get(app, token, "/api/alerts/pending/segment-counts"))["counts"]
         assert counts["new"] == 4
-        assert counts["all"] == 5      # All never loses a row to a view
+        assert counts["all"] == 5
 
     async def test_requires_auth(self, seeded):
         async with AsyncClient(

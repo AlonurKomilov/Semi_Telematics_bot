@@ -10,6 +10,7 @@
  * one dimension, so each tab has to answer "how many, if I switched to
  * you, with everything else as it is".
  */
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../../api/client';
 import { useAlertsFilters } from './useAlertsFilters';
@@ -37,6 +38,16 @@ export function useAlertSegmentCounts(): {
     },
     placeholderData: (prev) => prev,
   });
+
+  // New is per-viewer, so reading the board changes YOUR count.  The
+  // seen reporter announces each successful flush; refetching the
+  // counts here (and only the counts) lets the badge drain as the
+  // person reads, a few seconds behind their eyes.
+  useEffect(() => {
+    const onFlush = () => { void q.refetch(); };
+    window.addEventListener('alerts:seen-flushed', onFlush);
+    return () => window.removeEventListener('alerts:seen-flushed', onFlush);
+  }, [q]);
 
   return { counts: q.data?.counts };
 }

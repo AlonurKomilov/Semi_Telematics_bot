@@ -36,10 +36,21 @@ function flush() {
   if (queue.size === 0) return;
   const ids = [...queue];
   queue.clear();
-  apiJSON('/alerts/seen', { method: 'POST', body: { ids } }).catch(() => {
-    /* garnish — the next view of the same rows tries again */
-    ids.forEach((i) => reported.delete(i));
-  });
+  apiJSON('/alerts/seen', { method: 'POST', body: { ids } })
+    .then(() => {
+      // The New tab is PERSONAL (owner decision 2026-08-31), so the
+      // badge should follow the reader's own eyes without a manual
+      // refresh.  A window event keeps this module framework-free; the
+      // counts hook listens and refetches ONLY the counts — refetching
+      // the rows would reshuffle the table under the person reading it.
+      try {
+        window.dispatchEvent(new CustomEvent('alerts:seen-flushed'));
+      } catch { /* non-browser context */ }
+    })
+    .catch(() => {
+      /* garnish — the next view of the same rows tries again */
+      ids.forEach((i) => reported.delete(i));
+    });
 }
 
 function enqueue(id: number) {
