@@ -14,6 +14,7 @@ import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
 import { Tip } from '../../../components/tooltip';
 import { observeSeen, wasSeenThisSession } from './seenReporter';
+import { useAuth } from '../../../context/AuthContext';
 
 // Raw alert_type → the row's noun when no per-row kind is stored.  The
 // Feature column carries the family, so the type label names the THING
@@ -156,24 +157,44 @@ function SeenMarker({ alert }: { alert: Alert }) {
     return observeSeen(ref.current, aid, () => setMineNow(true));
   }, [aid]);
 
+  const { user } = useAuth();
   const viewers = alert.seen_by ?? [];
   const mine = mineNow || !!alert.seen_by_me;
   const names = viewers.map((v) => v.name).filter(Boolean);
   // A view this session that the server response predates still shows —
   // otherwise the row you are looking at claims nobody has looked at it.
-  if (mine && !alert.seen_by_me) names.push('You');
+  // With the viewer's OWN name, not "You": these chips are the same
+  // person-attribution grammar the Acknowledged state uses, and "You"
+  // initialised to "Y" — a chip for someone who does not exist.
+  if (mine && !alert.seen_by_me) names.push(user?.display_name || 'You');
 
   if (names.length === 0 && !mine) {
     return <span ref={ref} className="text-xs font-medium text-foreground">New</span>;
   }
-  const shown = names.slice(0, 3).map(initialsOf).join(', ');
-  const extra = names.length - 3;
+  const shown = names.slice(0, 3);
+  const extra = names.length - shown.length;
   return (
     <Tip label={`Seen by ${names.join(', ')}`}>
-      <span ref={ref}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <Eye className="size-3.5" aria-hidden />
-        {shown}{extra > 0 && ` +${extra}`}
+      {/* The SAME avatar recipe as the Acknowledged state below, so a
+          person renders as the same chip in both — only the tone
+          differs: seen is neutral exposure, acknowledged is the green
+          "handled".  Chips overlap like any seen-by stack; the ring is
+          what keeps the overlap legible on both themes. */}
+      <span ref={ref} className="inline-flex items-center gap-1.5">
+        <Eye className="size-3.5 text-muted-foreground" aria-hidden />
+        <span className="flex -space-x-1.5">
+          {shown.map((n, i) => (
+            <Avatar key={`${n}-${i}`} size="sm"
+                    className="shrink-0 ring-1 ring-card">
+              <AvatarFallback className="bg-primary/15 text-primary text-2xs font-semibold">
+                {initialsOf(n)}
+              </AvatarFallback>
+            </Avatar>
+          ))}
+        </span>
+        {extra > 0 && (
+          <span className="text-2xs text-muted-foreground">+{extra}</span>
+        )}
       </span>
     </Tip>
   );
