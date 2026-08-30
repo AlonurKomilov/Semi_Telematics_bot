@@ -131,3 +131,12 @@ knew what to hold still.
 
 Check in this order: run it alone → run its file → run its file with the
 suspected neighbour → check `KNOWN_FAILURES.md`.
+
+**And a failure can be neither flaky nor new — it can have EXPIRED.**
+`test_in_progress_trip_duration_is_sane` pinned a trip's start to a
+fixed epoch and asserted `start → now` stayed under 400 days.  That is a
+countdown, not an assertion: it passed for 400 days and then failed
+every run, for a reason with nothing to do with the code under test.
+A value measured against `now` must have its fixture derived from `now`
+too.  Suspect this whenever a test starts failing on a day nobody
+deployed anything.

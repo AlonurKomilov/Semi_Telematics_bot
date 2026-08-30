@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 import pytest
 import pytest_asyncio
@@ -218,8 +219,15 @@ class TestVehicleTrips:
         # Samsara marks an unfinished trip with endMs = int64 max;
         # trusting it printed a 2.5-trillion-hour duration.
         import infra.services as _svc
+        # The start is RELATIVE to now, and has to be: this assertion is
+        # about start → now, so a FIXED epoch turns the bound into a
+        # countdown.  The previous hardcoded start (2025-07-26) crossed
+        # the 400-day bound on 2026-08-30 and the test began failing
+        # every run, for a reason that had nothing to do with the code
+        # under test — the calendar moved, not the behaviour.
+        started_ms = int(time.time() * 1000) - 3 * 60 * 60 * 1000   # 3h ago
         stub = self._stub_client(trips=[
-            {"startMs": 1_753_500_000_000, "endMs": 9_223_372_036_854_775_807,
+            {"startMs": started_ms, "endMs": 9_223_372_036_854_775_807,
              "startLocation": "I-84, Ontario OR",
              "distanceMeters": 16_093},
         ])
@@ -235,9 +243,13 @@ class TestVehicleTrips:
         t = body["trips"][0]
         assert t["in_progress"] is True
         assert t["end_ms"] == 0
-        # start → now, not start → int64 max; and never negative.
-        assert 0 <= t["duration_min"] < 60 * 24 * 400
-        assert body["driving_min"] < 60 * 24 * 400
+        # start → now, not start → int64 max; and never negative.  Pinned
+        # to the three hours the fixture actually describes rather than a
+        # loose upper bound: the old `< 400 days` would have passed just
+        # as happily on a duration computed from the wrong end of the
+        # trip, which is the bug this test exists to catch.
+        assert abs(t["duration_min"] - 180) < 5
+        assert abs(body["driving_min"] - 180) < 5
 
 
 class TestUnitMerge:
