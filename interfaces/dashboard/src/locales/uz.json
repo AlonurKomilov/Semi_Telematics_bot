@@ -233,14 +233,18 @@
     "filter_vehicle": "Transport",
     "filter_status": "Holat",
     "filter_severity": "Muhimlik",
-    "acknowledge": "Tasdiqlash",
     "mute": "Ovozsiz",
     "unmute": "Yoqish",
     "no_alerts": "Ogohlantirishlar yoʻq",
     "occurrences": "{{count}} marta",
     "first_seen": "Birinchi",
     "last_seen": "Oxirgi",
-    "notification_prefs": "Bildirishnoma sozlamalari"
+    "notification_prefs": "Bildirishnoma sozlamalari",
+    "page_description_pending": "Avtoparkdagi barcha ogohlantirishlar: kim ko‘rgan, kim ustida ishlayapti va qanday hal bo‘lgan. Qatorlarni belgilab, olish uchun Work on these tugmasini bosing.",
+    "live_ack": {
+      "last_ack": "Oxirgi hal qilingan",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "Transport",

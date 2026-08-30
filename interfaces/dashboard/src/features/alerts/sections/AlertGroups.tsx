@@ -78,17 +78,17 @@ export default function AlertGroups() {
       // The server resolves which ids this clears from the group's
       // identity — the client never sends a list, so "acknowledge this
       // group" cannot become "acknowledge these ids".
-      const r = await apiJSON<{ acked: number }>('/alerts/grouped/acknowledge', {
+      const r = await apiJSON<{ claimed: number }>('/alerts/grouped/work', {
         method: 'POST',
         body: {
           alert_type: g.alert_type, vehicle_id: g.vehicle_id,
           subtype: g.subtype, days: WINDOW_DAYS,
         },
       });
-      toast.success(`Acknowledged ${r.acked} alert${r.acked === 1 ? '' : 's'}`);
+      toast.success(`You’re on it — ${r.claimed} alert${r.claimed === 1 ? '' : 's'} claimed`);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not acknowledge');
+      toast.error(e instanceof Error ? e.message : 'Could not claim these');
     } finally {
       setBusy(null);
     }
@@ -184,8 +184,8 @@ export default function AlertGroups() {
           ? `Nothing in the last ${WINDOW_DAYS} days.`
           : `${groups.length} situation${groups.length === 1 ? '' : 's'} `
             + `behind ${deliveries} alert${deliveries === 1 ? '' : 's'} in the `
-            + `last ${WINDOW_DAYS} days. Acknowledging one clears every alert `
-            + `in it.`}
+            + `last ${WINDOW_DAYS} days. Working on one puts your name on `
+            + `every alert in it.`}
       </p>
 
       {groups.length > 0 && (

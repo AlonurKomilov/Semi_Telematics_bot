@@ -449,7 +449,10 @@ export default function AlertsResults() {
       render: (_v, row) => <WorkMarker alert={row as unknown as Alert} />,
     });
     cols.push({
-      key: 'acknowledged_at', label: 'Status', sortable: true,
+      // 'Resolved by', not 'Status' — the trio Seen / Working on /
+      // Resolved-by IS the status, and this column holds only the
+      // third fact: how it ended, by machine or by name.
+      key: 'acknowledged_at', label: 'Resolved by', sortable: true,
       render: (_v, row) => <AckMarker alert={row as unknown as Alert} tz={tz} />,
     });
     return cols;

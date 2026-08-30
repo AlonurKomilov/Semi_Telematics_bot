@@ -226,7 +226,7 @@
   },
   "alerts": {
     "page_title": "ਅਲਰਟ",
-    "page_description_pending": "ਉਹ ਸੂਚਨਾਵਾਂ ਜਿਨ੍ਹਾਂ ਲਈ ਅਜੇ ਪੁਸ਼ਟੀ ਲੋੜੀਂਦੀ ਹੈ। ਬਲਕ ਪੁਸ਼ਟੀ ਲਈ ਕਤਾਰਾਂ ਚੁਣੋ।",
+    "page_description_pending": "ਤੁਹਾਡੇ ਫਲੀਟ ਦੀ ਹਰ ਅਲਰਟ: ਕਿਸਨੇ ਵੇਖੀ, ਕੌਣ ਕੰਮ ਕਰ ਰਿਹਾ ਹੈ ਅਤੇ ਕਿਵੇਂ ਹੱਲ ਹੋਈ। ਕਤਾਰਾਂ ਚੁਣੋ ਅਤੇ ਲੈਣ ਲਈ Work on these ਦਬਾਓ।",
     "page_description_history": "ਪਿਛਲੇ ਅਲਰਟ ਅਤੇ ਉਹ ਕਿਵੇਂ ਹੱਲ ਹੋਏ। ਵਾਹਨ ਜਾਂ ਕਿਸਮ ਦੁਆਰਾ ਫਿਲਟਰ ਕਰੋ।",
     "tab_pending": "ਬਾਕੀ",
     "tab_history": "ਇਤਿਹਾਸ",
@@ -236,9 +236,6 @@
     "filter_severity": "ਗੰਭੀਰਤਾ",
     "vehicle_placeholder": "ਵਾਹਨ ਦਾ ਨਾਮ…",
     "days_window": "{{n}} ਦਿਨ",
-    "acknowledge": "ਪੁਸ਼ਟੀ ਕਰੋ",
-    "acknowledging": "ਪੁਸ਼ਟੀ ਹੋ ਰਹੀ…",
-    "acknowledge_n": "ਪੁਸ਼ਟੀ ਕਰੋ ({{n}})",
     "total_occurrences": "ਕੁੱਲ ਘਟਨਾਵਾਂ",
     "mute": "ਚੁੱਪ",
     "unmute": "ਚਾਲੂ",
@@ -250,7 +247,11 @@
     "severity_critical": "ਨਾਜ਼ੁਕ",
     "severity_warning": "ਚੇਤਾਵਨੀ",
     "severity_info": "ਜਾਣਕਾਰੀ",
-    "notification_prefs": "ਸੂਚਨਾ ਤਰਜੀਹਾਂ"
+    "notification_prefs": "ਸੂਚਨਾ ਤਰਜੀਹਾਂ",
+    "live_ack": {
+      "last_ack": "ਆਖਰੀ ਹੱਲ ਹੋਈ",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "ਵਾਹਨ",

@@ -226,7 +226,7 @@
   },
   "alerts": {
     "page_title": "Alertas",
-    "page_description_pending": "Notificaciones que aún requieren confirmación. Marque filas para confirmar en lote.",
+    "page_description_pending": "Cada alerta de su flota: quién la vio, quién trabaja en ella y cómo se resolvió. Marque filas y pulse Work on these para reclamarlas.",
     "page_description_history": "Alertas pasadas y cómo se resolvieron. Use filtros para acotar por vehículo o tipo.",
     "tab_pending": "Pendientes",
     "tab_history": "Historial",
@@ -236,9 +236,6 @@
     "filter_severity": "Severidad",
     "vehicle_placeholder": "Nombre del vehículo…",
     "days_window": "{{n}} días",
-    "acknowledge": "Confirmar",
-    "acknowledging": "Confirmando…",
-    "acknowledge_n": "Confirmar ({{n}})",
     "total_occurrences": "Total de ocurrencias",
     "mute": "Silenciar",
     "unmute": "Reactivar",
@@ -250,7 +247,11 @@
     "severity_critical": "Crítica",
     "severity_warning": "Advertencia",
     "severity_info": "Información",
-    "notification_prefs": "Preferencias de notificaciones"
+    "notification_prefs": "Preferencias de notificaciones",
+    "live_ack": {
+      "last_ack": "Última resuelta",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "Vehículos",

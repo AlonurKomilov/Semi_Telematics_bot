@@ -226,7 +226,7 @@
   },
   "alerts": {
     "page_title": "Digniino",
-    "page_description_pending": "Ogeysiisyada weli u baahan xaqiijin. Calaamadi safafka si aad u xaqiijiso ku dhowaad.",
+    "page_description_pending": "Digniin kasta oo raxankaaga ah: yaa arkay, yaa ka shaqeynaya, sideese loo xalliyay. Calaamadee safafka oo taabo Work on these si aad u qaadato.",
     "page_description_history": "Digniinada hore iyo sida la xaliyey. Adeegso shaandheeyaha aad ugu kala saarto gaari ama nooc ahaan.",
     "tab_pending": "Sugaya",
     "tab_history": "Taariikh",
@@ -236,9 +236,6 @@
     "filter_severity": "Halis",
     "vehicle_placeholder": "Magaca gaariga…",
     "days_window": "{{n}} maalmood",
-    "acknowledge": "Xaqiiji",
-    "acknowledging": "Xaqiijinaya…",
-    "acknowledge_n": "Xaqiiji ({{n}})",
     "total_occurrences": "Wadarta dhacdooyinka",
     "mute": "Aamus",
     "unmute": "Furo",
@@ -250,7 +247,11 @@
     "severity_critical": "Halis",
     "severity_warning": "Digniin",
     "severity_info": "Macluumaad",
-    "notification_prefs": "Doorbidyada ogeysiiska"
+    "notification_prefs": "Doorbidyada ogeysiiska",
+    "live_ack": {
+      "last_ack": "Kii u dambeeyay ee la xalliyay",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "Gawaarida",

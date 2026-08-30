@@ -60,14 +60,14 @@ const BEHIND: Record<string, number> = {
   // a duplicate of `theme.light`, which every locale already has, and
   // English losing a key those three never carried moves them a step
   // closer for free. A ratchet down, which is the only direction allowed.
-  am: 491,
-  es: 272,
-  fr: 272,
-  pa: 491,
-  ru: 272,
-  so: 491,
-  uk: 424,
-  uz: 630,
+  am: 489,
+  es: 270,
+  fr: 270,
+  pa: 489,
+  ru: 270,
+  so: 489,
+  uk: 419,
+  uz: 625,
 };
 
 /**

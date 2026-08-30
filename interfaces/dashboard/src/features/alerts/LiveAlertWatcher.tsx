@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiJSON } from '../../api/client';
 import { toast } from 'sonner';
 import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
@@ -154,17 +155,20 @@ export default function LiveAlertWatcher() {
         actions: [
           { label: 'View', onClick: () => navRef.current('/alerts') },
           {
-            // The action that RESOLVES the alert — filled, so the eye
-            // doesn't have to read both buttons to find the real one.
+            // The claim, not a resolution — a banner is the pager's face,
+            // and the pager's job is finding an owner.  Resolving from a
+            // popup without doing the work was exactly the old lie;
+            // claiming says the honest thing ("I have it"), retires the
+            // banner, and silences the re-page.
             primary: true,
-            label: 'Acknowledge',
+            label: 'Work on it',
             onClick: async () => {
               try {
-                await ackRef.current([a.id]);
-                shownRef.current.delete(String(a.id));   // resolved by me
-                toast.success('Acknowledged');
+                await apiJSON(`/alerts/${a.id}/work`, { method: 'POST' });
+                shownRef.current.delete(String(a.id));   // owned by me
+                toast.success('You’re on it — it’s in My working on');
               } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Couldn’t acknowledge');
+                toast.error(e instanceof Error ? e.message : 'Couldn’t claim it');
               }
             },
           },

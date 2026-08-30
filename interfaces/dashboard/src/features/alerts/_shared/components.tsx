@@ -16,7 +16,10 @@ import type { Alert } from '../../../types';
 import { Tip } from '../../../components/tooltip';
 import { observeSeen, wasSeenThisSession } from './seenReporter';
 import { useAuth } from '../../../context/AuthContext';
+import { useTimezone } from '../../../hooks/useTimezone';
 import { apiJSON } from '../../../api/client';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAlertsSelection } from './AlertsSelectionContext';
 
 // Raw alert_type → the row's noun when no per-row kind is stored.  The
 // Feature column carries the family, so the type label names the THING
@@ -134,6 +137,14 @@ function initialsOf(name: string): string {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+/** "Sean Alex — Aug 5, 2026, 09:45 AM" — the one line every tooltip in
+ *  the Seen / Working on / Resolved-by trio speaks, so hovering any of
+ *  the three columns answers the same three questions the same way:
+ *  who, and when. */
+function whoWhen(name: string, when: string | undefined, tz?: string): string {
+  return when ? `${name} — ${formatDate(when, { timeZone: tz })}` : name;
+}
+
 /**
  * The one Status cell an ACTIVE row gets: "New" until somebody's screen
  * has actually shown it, then "👁 AK, JD" — the people who saw it, in
@@ -160,15 +171,22 @@ export function SeenMarker({ alert }: { alert: Alert }) {
   }, [aid]);
 
   const { user } = useAuth();
+  const tz = useTimezone();
   const viewers = alert.seen_by ?? [];
   const mine = mineNow || !!alert.seen_by_me;
   const names = viewers.map((v) => v.name).filter(Boolean);
+  const lines = viewers.filter((v) => v.name)
+    .map((v) => whoWhen(v.name, v.seen_at, tz));
   // A view this session that the server response predates still shows —
   // otherwise the row you are looking at claims nobody has looked at it.
   // With the viewer's OWN name, not "You": these chips are the same
   // person-attribution grammar the Acknowledged state uses, and "You"
   // initialised to "Y" — a chip for someone who does not exist.
-  if (mine && !alert.seen_by_me) names.push(user?.display_name || 'You');
+  if (mine && !alert.seen_by_me) {
+    const me = user?.display_name || 'You';
+    names.push(me);
+    lines.push(`${me} — just now`);
+  }
 
   if (names.length === 0 && !mine) {
     return <span ref={ref} className="text-xs font-medium text-foreground">New</span>;
@@ -176,7 +194,7 @@ export function SeenMarker({ alert }: { alert: Alert }) {
   const shown = names.slice(0, 3);
   const extra = names.length - shown.length;
   return (
-    <Tip label={`Seen by ${names.join(', ')}`}>
+    <Tip label={`Seen by ${lines.join(' · ')}`}>
       {/* The SAME avatar recipe as the Acknowledged state below, so a
           person renders as the same chip in both — only the tone
           differs: seen is neutral exposure, acknowledged is the green
@@ -210,6 +228,10 @@ export function SeenMarker({ alert }: { alert: Alert }) {
  * self-cleared alert stays muted "Auto-resolved" text (owner decision
  * 2026-07-27).  The ack time lives in the tooltip.
  */
+/** The Resolved-by cell — third of the trio.  Auto-resolved is the
+ *  machine's resolution and a person's name is a human one; both are
+ *  read from the legacy acknowledge columns, which were always the
+ *  resolution record wearing the wrong name. */
 export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
   // Three columns, three kinds of fact (owner decision 2026-08-30):
   // Seen is eyes, THIS is the alert's own state, Working on is hands.
@@ -232,7 +254,7 @@ export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
       .slice(0, 2)
       .toUpperCase();
     return (
-      <Tip label={when ? `Acknowledged ${when}` : ''}>
+      <Tip label={when ? `Resolved by ${who} — ${when}` : `Resolved by ${who}`}>
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
           <Avatar size="sm" className="shrink-0">
             <AvatarFallback className="bg-ok/20 text-ok text-2xs font-semibold">
@@ -245,7 +267,7 @@ export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
     );
   }
   return (
-    <Tip label={when ? `Auto-resolved ${when}` : ''}>
+    <Tip label={when ? `Auto-resolved — ${when}` : 'Auto-resolved'}>
       <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
         <CheckCircle2 className="size-3.5" aria-hidden />
         Auto-resolved
@@ -272,10 +294,42 @@ export function WorkMarker({ alert }: { alert: Alert }) {
   const [busy, setBusy] = useState(false);
   const { user } = useAuth();
 
+  const tz = useTimezone();
+  const qc = useQueryClient();
+  // Context no-ops outside the provider, so the marker stays portable.
+  const { markAckCompleted } = useAlertsSelection();
   const hands = alert.working ?? [];
   const mine = extraMe || !!alert.working_me;
   const names = hands.map((w) => w.name).filter(Boolean);
-  if (extraMe && !alert.working_me) names.push(user?.display_name || 'You');
+  const lines = hands.filter((w) => w.name)
+    .map((w) => whoWhen(w.name, w.claimed_at, tz));
+  if (extraMe && !alert.working_me) {
+    const me = user?.display_name || 'You';
+    names.push(me);
+    lines.push(`${me} — just now`);
+  }
+
+  // The RESOLUTION — the third state of the trio, writable by a worker.
+  // It rides the legacy acknowledge write on purpose: those columns were
+  // always the resolution record wearing the wrong name, so "Done" stamps
+  // the same fields the old acks did, stops the pager the same way, and
+  // every historical ack reads correctly as a resolution with no
+  // migration.  Machine auto-resolve is the other writer, untouched.
+  const done = async () => {
+    if (busy || !Number.isFinite(aid)) return;
+    setBusy(true);
+    try {
+      await apiJSON(`/alerts/${aid}/acknowledge`, { method: 'POST' });
+      markAckCompleted();
+      // The row's Resolved-by cell is served data — refetch the board so
+      // the state moves where the person is looking.
+      void qc.invalidateQueries({ queryKey: ['alerts'] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not resolve');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const claim = async () => {
     if (busy || mine || !Number.isFinite(aid)) return;
@@ -294,7 +348,7 @@ export function WorkMarker({ alert }: { alert: Alert }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       {names.length > 0 && (
-        <Tip label={`Working on it: ${names.join(', ')}`}>
+        <Tip label={`Working on it: ${lines.join(' · ')}`}>
           <span className="inline-flex items-center gap-1.5">
             <span className="flex -space-x-1.5">
               {names.slice(0, 3).map((n, i) => (
@@ -325,6 +379,16 @@ export function WorkMarker({ alert }: { alert: Alert }) {
           className="text-2xs text-primary hover:underline min-h-tap"
         >
           {names.length ? 'Join' : 'Work on it'}
+        </button>
+      )}
+      {active && mine && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void done(); }}
+          aria-busy={busy || undefined}
+          className="text-2xs text-primary hover:underline min-h-tap"
+        >
+          Done
         </button>
       )}
       {!active && names.length === 0 && (

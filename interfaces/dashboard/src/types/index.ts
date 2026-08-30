@@ -364,11 +364,11 @@ export interface Alert {
   acknowledged_by_name?: string;
   /** Who has SEEN this alert — passive, per person, in the order they
    *  looked. Additive fields: absent on older responses. */
-  seen_by?: { name: string; user_id: number }[];
+  seen_by?: { name: string; user_id: number; seen_at?: string }[];
   seen_by_me?: boolean;
   /** Who has HANDS on this alert — the voluntary claim that replaced
    *  Acknowledge. Multi-person: a big task takes several. */
-  working?: { name: string; user_id: number }[];
+  working?: { name: string; user_id: number; claimed_at?: string }[];
   working_me?: boolean;
 }
 

@@ -226,7 +226,7 @@
   },
   "alerts": {
     "page_title": "ማንቂያዎች",
-    "page_description_pending": "እስካሁን ማረጋገጫ የሚፈልጉ ማስታወቂያዎች። በብዛት ለማረጋገጥ ረድፎችን ይምረጡ።",
+    "page_description_pending": "የመርከብዎ ማንቂያዎች ሁሉ፦ ማን እንዳየው፣ ማን እየሠራበት እንዳለ እና እንዴት እንደተፈታ። ረድፎችን ምልክት አድርገው Work on these ን ይጫኑ።",
     "page_description_history": "ያለፉ ማንቂያዎችና እንዴት እንደተፈቱ። በተሽከርካሪ ወይም በዓይነት ለመጥበብ ማጣሪያዎችን ይጠቀሙ።",
     "tab_pending": "በመጠባበቅ",
     "tab_history": "ታሪክ",
@@ -236,9 +236,6 @@
     "filter_severity": "ክብደት",
     "vehicle_placeholder": "የተሽከርካሪ ስም…",
     "days_window": "{{n}} ቀናት",
-    "acknowledge": "አረጋግጥ",
-    "acknowledging": "በማረጋገጥ ላይ…",
-    "acknowledge_n": "አረጋግጥ ({{n}})",
     "total_occurrences": "ጠቅላላ ክስተቶች",
     "mute": "ዝምታ",
     "unmute": "አስነሳ",
@@ -250,7 +247,11 @@
     "severity_critical": "አሳሳቢ",
     "severity_warning": "ማስጠንቀቂያ",
     "severity_info": "መረጃ",
-    "notification_prefs": "የማሳወቂያ ምርጫዎች"
+    "notification_prefs": "የማሳወቂያ ምርጫዎች",
+    "live_ack": {
+      "last_ack": "የመጨረሻ የተፈታ",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "ተሽከርካሪዎች",

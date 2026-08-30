@@ -226,7 +226,7 @@
   },
   "alerts": {
     "page_title": "Alertes",
-    "page_description_pending": "Notifications nécessitant un accusé de réception. Cochez les lignes pour accuser en masse.",
+    "page_description_pending": "Chaque alerte de votre flotte : qui l’a vue, qui y travaille et comment elle a été résolue. Cochez des lignes puis cliquez Work on these pour les prendre.",
     "page_description_history": "Anciennes alertes et leur résolution. Utilisez les filtres pour cibler un véhicule ou un type.",
     "tab_pending": "En attente",
     "tab_history": "Historique",
@@ -236,9 +236,6 @@
     "filter_severity": "Sévérité",
     "vehicle_placeholder": "Nom du véhicule…",
     "days_window": "{{n}} jours",
-    "acknowledge": "Accuser",
-    "acknowledging": "Accusation…",
-    "acknowledge_n": "Accuser ({{n}})",
     "total_occurrences": "Total d’occurrences",
     "mute": "Mettre en sourdine",
     "unmute": "Réactiver",
@@ -250,7 +247,11 @@
     "severity_critical": "Critique",
     "severity_warning": "Avertissement",
     "severity_info": "Info",
-    "notification_prefs": "Préférences de notification"
+    "notification_prefs": "Préférences de notification",
+    "live_ack": {
+      "last_ack": "Dernière résolue",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "Véhicules",

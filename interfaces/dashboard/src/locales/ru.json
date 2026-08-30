@@ -226,7 +226,7 @@
   },
   "alerts": {
     "page_title": "Оповещения",
-    "page_description_pending": "Оповещения, ожидающие подтверждения. Отметьте строки для массового подтверждения.",
+    "page_description_pending": "Все оповещения автопарка: кто видел, кто работает над этим и как оно решено. Отметьте строки и нажмите Work on these, чтобы взять их.",
     "page_description_history": "Прошлые оповещения и как они были обработаны. Используйте фильтры по транспорту или типу.",
     "tab_pending": "Активные",
     "tab_history": "История",
@@ -236,9 +236,6 @@
     "filter_severity": "Важность",
     "vehicle_placeholder": "Имя транспорта…",
     "days_window": "{{n}} дн.",
-    "acknowledge": "Подтвердить",
-    "acknowledging": "Подтверждение…",
-    "acknowledge_n": "Подтвердить ({{n}})",
     "total_occurrences": "Всего срабатываний",
     "mute": "Заглушить",
     "unmute": "Включить",
@@ -250,7 +247,11 @@
     "severity_critical": "Критично",
     "severity_warning": "Предупреждение",
     "severity_info": "Информация",
-    "notification_prefs": "Настройки уведомлений"
+    "notification_prefs": "Настройки уведомлений",
+    "live_ack": {
+      "last_ack": "Последнее решённое",
+      "hotkey_action": "Work on these"
+    }
   },
   "vehicles": {
     "page_title": "Транспорт",

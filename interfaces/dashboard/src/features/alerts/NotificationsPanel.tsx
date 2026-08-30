@@ -12,20 +12,20 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Settings, RefreshCw, Check, CheckCheck, ArrowRight, Bell, BellOff,
+  Settings, RefreshCw, CheckCheck, ArrowRight, Bell, BellOff,
   Wrench, HeartPulse, Fuel, MapPin, ShieldAlert, Camera, CircleParking,
   AlertTriangle, Loader2, Users, Server, Bot, UserPlus, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiJSON } from '../../api/client';
 import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
 import { toneText } from '../../lib/status';
 import { formatAgoShort } from '../../utils/datetime';
 import { formatAlertDetailInline } from '../../utils/alertDescription';
 import { Tip } from '../../components/tooltip';
-import { stagedAction } from '../../components/banners';
-import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
-import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
+import { useRecentAlerts } from './useRecentAlerts';
+import { useStagedAckIds } from './stagedAcks';
 import { useInbox, useInboxActions, type InboxNotice } from './useInbox';
 import { ScrollRegion } from '../../components/scrolling';
 import { cn } from '@/lib/utils';
@@ -78,16 +78,12 @@ export function NotificationsPanel(
   const navigate = useNavigate();
   const [src, setSrc] = useState<Source>('all');
   const [tab, setTab] = useState<Tab>('all');
-  // Locally hide alerts the moment they're acked so the row doesn't linger
-  // through the refetch round-trip.
-  const [acked, setAcked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
   // A vehicle-less role (recruiter, HR) has no alerts access — the bell is
   // still their Notifications door; they just have no Alerts tab.  Don't
   // fetch a feed they can't read.
   const { data, isLoading, isFetching, refetch } = useRecentAlerts(canAlerts);
-  const ackAlerts = useAckAlerts();
 
   // The persisted inbox (panel mounts only while the dropdown is open).
   const { data: inbox, isLoading: inboxLoading } = useInbox(true);
@@ -129,10 +125,12 @@ export function NotificationsPanel(
   // must not allow a second overlapping stage of the same ids).
   const stagedIds = useStagedAckIds();
 
+  // Claims don't hide rows (owned ≠ gone), so the only local hide left
+  // is the staged store — rows mid-window from before the verb changed.
   const alerts = useMemo(
     () => (data?.alerts ?? []).filter(
-      (a) => !acked.has(String(a.id)) && !stagedIds.has(String(a.id))),
-    [data, acked, stagedIds],
+      (a) => !stagedIds.has(String(a.id))),
+    [data, stagedIds],
   );
   const criticalCount = useMemo(
     () => alerts.filter((a) => a.severity === 'critical').length,
@@ -179,50 +177,32 @@ export function NotificationsPanel(
   const goto = (path: string) => { onClose(); navigate(path); };
 
   const ack = async (ids: (string | number)[]) => {
+    // A CLAIM now, not an acknowledge (owner decision 2026-08-30).  A
+    // claimed alert is owned, not gone — so nothing is hidden and there
+    // is nothing to optimistically roll back; the board's Working-on
+    // column is where the claim shows.
     if (!ids.length || busy) return;
-    const strIds = ids.map(String);
     setBusy(true);
-    setAcked((prev) => new Set([...prev, ...strIds]));   // optimistic hide
     try {
-      await ackAlerts(ids);
-    } catch (e) {
-      setAcked((prev) => {                                // roll back on failure
-        const next = new Set(prev);
-        strIds.forEach((id) => next.delete(id));
-        return next;
+      await apiJSON('/alerts/work', {
+        method: 'POST',
+        body: { ids: ids.map(Number).filter(Number.isFinite) },
       });
-      toast.error(e instanceof Error ? e.message : 'Couldn’t acknowledge');
+      toast.success('You’re on it — see My working on');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Couldn’t claim it');
     } finally {
       setBusy(false);
     }
   };
 
-  // Bulk ack is a STAGED action (the pending-action primitive's worked
-  // example): acknowledging N alerts writes N accountability records
-  // under this user's name, so it gets a cancel window — the request
-  // fires only when the countdown ends.  Single-row acks stay instant
-  // (one deliberate click on one row).  Hide-state lives in the
-  // module-level stagedAcks store, NOT component state — this panel
-  // unmounts when the dropdown closes, and the window must survive that.
+  // "Work on all" is a straight batch claim.  The staged countdown
+  // existed because acknowledging was a one-way accountability write;
+  // a claim is cheap, additive and honest to repeat, so the window
+  // would be theatre.  The stagedAcks store stays only for rows mid-
+  // window from before the verb changed.
   const ackAllStaged = (ids: (string | number)[]) => {
-    if (!ids.length || busy) return;
-    const strIds = ids.map(String);
-    addStagedAcks(strIds);                               // hide during window
-    stagedAction({
-      label: `Acknowledging ${ids.length} alert${ids.length !== 1 ? 's' : ''}`,
-      detail: 'Each acknowledgement is recorded under your name.',
-      commit: async (hint) => {
-        try {
-          await ackAlerts(ids, hint);
-        } finally {
-          // Success: rows are truly acked (the refetch confirms).
-          // Failure: rows REAPPEAR honestly while the banner offers Retry.
-          removeStagedAcks(strIds);
-        }
-      },
-      successMessage: `Acknowledged ${ids.length} alert${ids.length !== 1 ? 's' : ''}`,
-      onCancel: () => removeStagedAcks(strIds),          // rows come back
-    });
+    void ack(ids);
   };
 
   return (
@@ -383,7 +363,7 @@ export function NotificationsPanel(
               disabled={busy || shown.length === 0}
               className="inline-flex items-center gap-1.5 py-1 -my-1 min-h-tap text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors py-1 -my-1 min-h-tap"
             >
-              <CheckCheck className="size-3.5" aria-hidden /> Acknowledge all
+              <Wrench className="size-3.5" aria-hidden /> Work on all
             </button>
             <button
               onClick={() => goto('/alerts')}
@@ -475,7 +455,7 @@ function MarkAllReadButton({ unread, onClick }: {
     </button>
   );
   return unread === 0
-    ? <Tip label="No unread notices — alerts are cleared with Acknowledge">
+    ? <Tip label="No unread notices — alerts resolve on the board, not here">
         <span>{btn}</span>
       </Tip>
     : btn;
@@ -562,16 +542,19 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
           )}
         </span>
       </button>
+      {/* A CLAIM, not a resolution — the bell's quick action follows the
+          board's verb (owner decision 2026-08-30).  Wrench, not check:
+          the row is not being cleared, it is being taken. */}
       <button
         onClick={onAck}
         disabled={busy}
-        aria-label="Acknowledge"
+        aria-label="Work on it"
         // Always visible (dimmed) — NOT hover-only: this app runs on cab
         // tablets with no hover, where a reveal-on-hover action is
         // unreachable.  Solid on hover/focus.
-        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-ok-bg hover:text-ok focus:text-ok transition-colors shrink-0 disabled:opacity-40 min-h-tap min-w-tap"
+        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-warn-bg hover:text-warn focus:text-warn transition-colors shrink-0 disabled:opacity-40 min-h-tap min-w-tap"
       >
-        <Check className="size-3.5" aria-hidden />
+        <Wrench className="size-3.5" aria-hidden />
       </button>
     </li>
   );

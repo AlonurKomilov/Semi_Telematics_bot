@@ -262,13 +262,13 @@ async def _attach_seen(tenant_db, account_id: int, rows: list[dict],
         for r in rows:
             rid = int(r.get("id") or 0)
             viewers = seen.get(rid, [])
-            r["seen_by"] = [{"name": v["name"], "user_id": v["user_id"]}
-                            for v in viewers]
+            r["seen_by"] = [{"name": v["name"], "user_id": v["user_id"],
+                             "seen_at": v["seen_at"]} for v in viewers]
             r["seen_by_me"] = (me_id is not None
                                and any(v["user_id"] == me_id for v in viewers))
             hands = working.get(rid, [])
-            r["working"] = [{"name": w["name"], "user_id": w["user_id"]}
-                            for w in hands]
+            r["working"] = [{"name": w["name"], "user_id": w["user_id"],
+                             "claimed_at": w["claimed_at"]} for w in hands]
             r["working_me"] = (me_id is not None
                                and any(w["user_id"] == me_id for w in hands))
     except Exception:
@@ -530,6 +530,46 @@ async def grouped_alerts(
         # view toggle can say what it is saving a person from.
         "deliveries": sum(int(g.get("deliveries") or 0) for g in groups),
     }
+
+
+@router.post("/grouped/work")
+async def work_on_group(
+    body: GroupAckRequest,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Claim every delivery behind one grouped row.
+
+    The grouped section's verb follows the board's: claiming replaced
+    acknowledging (owner decision 2026-08-30).  Same shape as
+    /grouped/acknowledge — visibility proven on the read path first, ids
+    resolved server-side from the group's identity, the same window that
+    produced the number the person clicked.
+    """
+    me_id = await _me_user_id(user)
+    if me_id is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    allowed = await get_user_company_codes(user)
+    visible = await tenant_db.list_grouped_alerts(user["account_id"], days=body.days)
+    if is_driver_scope:
+        visible = _filter_types_by_permission(user, visible)
+        visible = await _filter_own(user, visible)
+    if allowed:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        visible = filter_by_company_map(visible, allowed, veh_map, key="vehicle_id")
+    wanted = f"{body.alert_type}|{body.vehicle_id}|{body.subtype}"
+    if not any(g.get("group_key") == wanted for g in visible):
+        raise HTTPException(status_code=404, detail="No such alert group")
+    ids = await tenant_db.grouped_alert_member_ids(
+        user["account_id"], body.alert_type, body.vehicle_id, body.subtype,
+        days=body.days, only_unacked=False,
+    )
+    claimed = 0
+    for aid in ids[:200]:
+        if await tenant_db.claim_alert(user["account_id"], me_id, aid):
+            claimed += 1
+    return {"claimed": claimed, "total": len(ids)}
 
 
 @router.post("/grouped/acknowledge")
