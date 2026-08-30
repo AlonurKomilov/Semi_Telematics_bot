@@ -80,3 +80,70 @@ class TestTheLedger:
         marked = await pg_db.mark_alerts_seen(
             acct, uid, [aid] + list(range(1000000, 1000499)))
         assert marked <= 1
+
+
+class TestWorkingOn:
+    """The claim — voluntary, multi-person, and what stops the pager.
+
+    Working-on replaced Acknowledge as the user verb (owner decision
+    2026-08-30): nobody is asked to press it, an employee claims a task
+    because they judge it theirs.  These pin the three promises: claims
+    add rather than replace, the tenancy wall holds, and a claimed
+    alert leaves the escalation candidate list while an unclaimed
+    critical stays on it.
+    """
+
+    async def test_two_claims_join_rather_than_replace(self, pg_db):
+        acct, uid, aid = await _seed(pg_db, tg=9960)
+        second = await pg_db.create_user(telegram_id=9961, account_id=acct)
+        assert await pg_db.claim_alert(acct, uid, aid) is True
+        assert await pg_db.claim_alert(acct, second.id, aid) is True
+        # Re-claiming is idempotent, not an error.
+        assert await pg_db.claim_alert(acct, uid, aid) is False
+        workers = await pg_db.get_workers_for_alerts(acct, [aid])
+        assert [w["user_id"] for w in workers[aid]] == [uid, second.id]
+
+    async def test_a_foreign_id_claims_nothing(self, pg_db):
+        acct, uid, _ = await _seed(pg_db, tg=9962)
+        other = await pg_db.create_account("Other Work Co")
+        theirs = await pg_db.upsert_alert_history(
+            other.id, "fault", "veh-x", "777", alert_subkey="w:SPN1")
+        assert await pg_db.claim_alert(acct, uid, int(theirs["id"])) is False
+        assert await pg_db.get_workers_for_alerts(
+            other.id, [int(theirs["id"])]) == {}
+
+    async def test_a_claim_silences_the_pager_an_unclaimed_critical_stays(self, pg_db):
+        """The pager's job is finding an owner; a claim IS an owner.
+        And the same query is where warning-level paging ended: 420
+        reminders went to warnings and none was ever answered, so only
+        criticals page at all now."""
+        acct, uid, _ = await _seed(pg_db, tg=9963)
+        claimed = await pg_db.upsert_alert_history(
+            acct, "fault", "veh-a", "201", alert_subkey="e:SPN9",
+            severity="critical")
+        unclaimed = await pg_db.upsert_alert_history(
+            acct, "fault", "veh-b", "202", alert_subkey="e:SPN10",
+            severity="critical")
+        warning = await pg_db.upsert_alert_history(
+            acct, "fault", "veh-c", "203", alert_subkey="e:SPN11",
+            severity="warning")
+        await pg_db.claim_alert(acct, uid, int(claimed["id"]))
+
+        rows = await pg_db.get_active_unacked_history_for_reescalation(
+            acct, "9999-01-01T00:00:00", max_attempts=4)
+        ids = {int(r["id"]) for r in rows}
+        assert int(unclaimed["id"]) in ids          # still searching for an owner
+        assert int(claimed["id"]) not in ids        # has one — silent
+        assert int(warning["id"]) not in ids        # warnings never page
+
+    async def test_a_claim_still_never_touches_acknowledgment(self, pg_db):
+        """Same invariant as seen: the ledger records hands, the ack
+        columns stay whatever they were — legacy acks and auto-resolve
+        keep their own meaning untouched."""
+        acct, uid, aid = await _seed(pg_db, tg=9964)
+        await pg_db.claim_alert(acct, uid, aid)
+        cur = await pg_db._db.execute(
+            "SELECT status, acknowledged_at, acknowledged_by "
+            "  FROM alert_history WHERE id = ?", (aid,))
+        row = dict(await cur.fetchone())
+        assert row["status"] == "active" and not row["acknowledged_at"]

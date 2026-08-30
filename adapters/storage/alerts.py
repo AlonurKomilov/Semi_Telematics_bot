@@ -714,6 +714,58 @@ class AlertsMixin(_MixinBase):
             })
         return out
 
+    async def claim_alert(
+        self, account_id: int, user_id: int, alert_id: int,
+    ) -> bool:
+        """One person claims one alert: "I'm working on this."
+
+        Voluntary — nothing asks for it — and additive: a second claim
+        by a second person joins the first rather than replacing it,
+        because a big task takes several hands.  Same tenancy wall as
+        the seen ledger: the id joins against this account's own
+        alert_history, so a foreign id claims nothing.  Idempotent for
+        the same person (first claim wins).
+        """
+        cur = await self._db.execute(
+            "INSERT INTO alert_workers (account_id, alert_history_id, user_id, claimed_at) "
+            "SELECT account_id, id, ?, ? FROM alert_history "
+            " WHERE account_id = ? AND id = ? "
+            "ON CONFLICT (account_id, alert_history_id, user_id) DO NOTHING",
+            (int(user_id), self._now(), account_id, int(alert_id)),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) > 0
+
+    async def get_workers_for_alerts(
+        self, account_id: int, alert_ids: list[int],
+    ) -> dict[int, list[dict]]:
+        """``alert_id -> [{user_id, name, claimed_at}...]`` — who has
+        hands on each alert, in the order they claimed it.  Same
+        name-at-read-time join as the seen ledger and acknowledged_by:
+        a rename flows through without a backfill."""
+        ids = [int(i) for i in alert_ids]
+        if not ids:
+            return {}
+        ph = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"SELECT w.alert_history_id, w.user_id, w.claimed_at, "
+            f"       COALESCE(u.display_name, '') AS name "
+            f"  FROM alert_workers w "
+            f"  LEFT JOIN users u ON u.id = w.user_id "
+            f" WHERE w.account_id = ? AND w.alert_history_id IN ({ph}) "
+            f" ORDER BY w.claimed_at",
+            (account_id, *ids),
+        )
+        out: dict[int, list[dict]] = {}
+        for r in await cur.fetchall():
+            row = dict(r)
+            out.setdefault(int(row["alert_history_id"]), []).append({
+                "user_id": int(row["user_id"]),
+                "name": row["name"] or "",
+                "claimed_at": row["claimed_at"],
+            })
+        return out
+
     async def list_grouped_alerts(
         self, account_id: int, *, days: int = 7,
         allowed_vehicle_names: list[str] | None = None,
@@ -1671,11 +1723,29 @@ class AlertsMixin(_MixinBase):
         if max_attempts <= 0:
             return []
         rows = await self.read_all(
-            "SELECT * FROM alert_history "
-            "WHERE account_id = ? AND status = 'active' "
-            "AND reescalate_count < ? "
-            "AND (reescalate_last_sent_at IS NULL OR reescalate_last_sent_at < ?) "
-            "ORDER BY first_seen ASC",
+            # Two conditions beyond the originals, both owner decisions
+            # (2026-08-30, from live data):
+            #
+            # CLAIMED alerts stop paging.  The pager's true job was
+            # always finding an owner, and a claim IS an owner — the
+            # "Working on" ledger replaced Acknowledge as the user verb,
+            # so an alert someone has hands on needs no more reminders.
+            # Legacy acks still stop it too, via acknowledged-status.
+            #
+            # CRITICAL only.  420 reminders went out for warnings and
+            # not one was ever answered — warning-level paging was pure
+            # Telegram noise.  The 30-day window held zero criticals in
+            # the escalating types, so this net is dormant until the
+            # night it matters, at zero cost meanwhile.
+            "SELECT * FROM alert_history h "
+            "WHERE h.account_id = ? AND h.status = 'active' "
+            "AND h.severity = 'critical' "
+            "AND h.reescalate_count < ? "
+            "AND (h.reescalate_last_sent_at IS NULL OR h.reescalate_last_sent_at < ?) "
+            "AND NOT EXISTS (SELECT 1 FROM alert_workers w "
+            "                 WHERE w.account_id = h.account_id "
+            "                   AND w.alert_history_id = h.id) "
+            "ORDER BY h.first_seen ASC",
             (account_id, max_attempts, cutoff_iso),
         )
         return [dict(r) for r in rows]

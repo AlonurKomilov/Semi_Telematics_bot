@@ -9333,3 +9333,31 @@ async def migrate_alert_seen(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 203: alert_seen — who viewed, demanded of no one")
+
+@_register("204_alert_workers")
+async def migrate_alert_workers(conn) -> None:
+    """The Working-on ledger — the claim that replaces Acknowledge.
+
+    Owner decision 2026-08-30: three columns, three kinds of fact —
+    Seen is eyes, Status is the alert's own state, Working on is hands.
+    A claim is voluntary and multi-person (a big task takes several),
+    stops the escalation pager (its true job was always finding an
+    owner), and survives resolution so a later KPI can read who worked
+    what per shift.
+    """
+    await conn.execute(
+        """CREATE TABLE IF NOT EXISTS alert_workers (
+               id BIGSERIAL PRIMARY KEY,
+               account_id INTEGER NOT NULL,
+               alert_history_id INTEGER NOT NULL,
+               user_id INTEGER NOT NULL,
+               claimed_at TEXT NOT NULL DEFAULT '',
+               UNIQUE(account_id, alert_history_id, user_id)
+           )"""
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_workers_alert "
+        "ON alert_workers(account_id, alert_history_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 204: alert_workers — claims, not demands")

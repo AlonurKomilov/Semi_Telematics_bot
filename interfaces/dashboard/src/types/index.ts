@@ -366,6 +366,10 @@ export interface Alert {
    *  looked. Additive fields: absent on older responses. */
   seen_by?: { name: string; user_id: number }[];
   seen_by_me?: boolean;
+  /** Who has HANDS on this alert — the voluntary claim that replaced
+   *  Acknowledge. Multi-person: a big task takes several. */
+  working?: { name: string; user_id: number }[];
+  working_me?: boolean;
 }
 
 export interface AlertsResponse {

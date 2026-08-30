@@ -258,12 +258,19 @@ async def _attach_seen(tenant_db, account_id: int, rows: list[dict],
     try:
         ids = [int(r["id"]) for r in rows if r.get("id")]
         seen = await tenant_db.get_seen_for_alerts(account_id, ids)
+        working = await tenant_db.get_workers_for_alerts(account_id, ids)
         for r in rows:
-            viewers = seen.get(int(r.get("id") or 0), [])
+            rid = int(r.get("id") or 0)
+            viewers = seen.get(rid, [])
             r["seen_by"] = [{"name": v["name"], "user_id": v["user_id"]}
                             for v in viewers]
             r["seen_by_me"] = (me_id is not None
                                and any(v["user_id"] == me_id for v in viewers))
+            hands = working.get(rid, [])
+            r["working"] = [{"name": w["name"], "user_id": w["user_id"]}
+                            for w in hands]
+            r["working_me"] = (me_id is not None
+                               and any(w["user_id"] == me_id for w in hands))
     except Exception:
         logger.exception("seen attach failed acct=%s — rows served without it",
                          account_id)
@@ -296,6 +303,34 @@ async def mark_alerts_seen(
     marked = await tenant_db.mark_alerts_seen(
         user["account_id"], me_id, body.ids)
     return {"marked": marked}
+
+
+@router.post("/{history_id:int}/work")
+async def work_on_alert(
+    history_id: int,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """I'm working on this — the voluntary claim that replaced
+    Acknowledge as the user verb.
+
+    Nobody is asked to press it; an employee claims a task because they
+    judge it theirs.  The claim is what a second dispatcher stands down
+    on, what the escalation pager stops searching after, and what a
+    per-shift KPI reads later.  Additive: a second person joins the
+    first, because a big task takes several hands.  One-way in v1,
+    matching the ack-undo owner decision — releasing a claim can come
+    with the KPI work if it earns its place.
+    """
+    me_id = await _me_user_id(user)
+    if me_id is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    claimed = await tenant_db.claim_alert(user["account_id"], me_id, history_id)
+    workers = await tenant_db.get_workers_for_alerts(
+        user["account_id"], [history_id])
+    return {"claimed": claimed,
+            "workers": [{"name": w["name"], "user_id": w["user_id"]}
+                        for w in workers.get(history_id, [])]}
 
 
 @router.get("/pending")

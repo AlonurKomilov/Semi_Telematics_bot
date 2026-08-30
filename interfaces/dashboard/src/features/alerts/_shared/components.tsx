@@ -7,7 +7,8 @@
  * feature.
  */
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { CheckCircle2, Eye, Wrench } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';
@@ -15,6 +16,7 @@ import type { Alert } from '../../../types';
 import { Tip } from '../../../components/tooltip';
 import { observeSeen, wasSeenThisSession } from './seenReporter';
 import { useAuth } from '../../../context/AuthContext';
+import { apiJSON } from '../../../api/client';
 
 // Raw alert_type → the row's noun when no per-row kind is stored.  The
 // Feature column carries the family, so the type label names the THING
@@ -146,7 +148,7 @@ function initialsOf(name: string): string {
  * acknowledge is responsibility, and escalation keys on the latter
  * alone.
  */
-function SeenMarker({ alert }: { alert: Alert }) {
+export function SeenMarker({ alert }: { alert: Alert }) {
   // Alert.id is string|number across the two feeds; the ledger keys on
   // the numeric history id.
   const aid = Number(alert.id);
@@ -210,8 +212,11 @@ function SeenMarker({ alert }: { alert: Alert }) {
  * 2026-07-27).  The ack time lives in the tooltip.
  */
 export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
+  // Three columns, three kinds of fact (owner decision 2026-08-30):
+  // Seen is eyes, THIS is the alert's own state, Working on is hands.
+  // An active row simply has no state worth a word yet.
   if ((alert.status ?? 'active') === 'active') {
-    return <SeenMarker alert={alert} />;
+    return <span className="text-xs text-muted-foreground/50">—</span>;
   }
   const human = (alert.acknowledged_by ?? 0) > 0;
   const when = alert.acknowledged_at
@@ -249,6 +254,88 @@ export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
     </Tip>
   );
 }
+
+/**
+ * The Working-on cell: who has hands on this alert, and the claim
+ * button when nobody does (or you don't yet).
+ *
+ * The claim is VOLUNTARY — the whole point of retiring Acknowledge was
+ * that nothing on this board demands an action any more.  An employee
+ * presses this because they judge the task theirs; the second
+ * dispatcher sees the chips and stands down; the escalation pager stops
+ * searching for an owner.  Claims add rather than replace (a big task
+ * takes several hands) and survive resolution, which is what a
+ * per-shift KPI will read later.
+ */
+export function WorkMarker({ alert }: { alert: Alert }) {
+  const aid = Number(alert.id);
+  const [extraMe, setExtraMe] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const { user } = useAuth();
+
+  const hands = alert.working ?? [];
+  const mine = extraMe || !!alert.working_me;
+  const names = hands.map((w) => w.name).filter(Boolean);
+  if (extraMe && !alert.working_me) names.push(user?.display_name || 'You');
+
+  const claim = async () => {
+    if (busy || mine || !Number.isFinite(aid)) return;
+    setBusy(true);
+    try {
+      await apiJSON(`/alerts/${aid}/work`, { method: 'POST' });
+      setExtraMe(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not claim this');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const active = (alert.status ?? 'active') === 'active';
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {names.length > 0 && (
+        <Tip label={`Working on it: ${names.join(', ')}`}>
+          <span className="inline-flex items-center gap-1.5">
+            <Wrench className="size-3.5 text-muted-foreground" aria-hidden />
+            <span className="flex -space-x-1.5">
+              {names.slice(0, 3).map((n, i) => (
+                <Avatar key={`${n}-${i}`} size="sm"
+                        className="shrink-0 ring-1 ring-card">
+                  <AvatarFallback className="bg-warn/20 text-warn text-2xs font-semibold">
+                    {initialsOf(n)}
+                  </AvatarFallback>
+                </Avatar>
+              ))}
+            </span>
+            {names.length > 3 && (
+              <span className="text-2xs text-muted-foreground">
+                +{names.length - 3}
+              </span>
+            )}
+          </span>
+        </Tip>
+      )}
+      {/* Joining an already-claimed task is as legitimate as starting
+          one, so the button stays until YOU are on it — only resolution
+          retires it. */}
+      {active && !mine && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void claim(); }}
+          aria-busy={busy || undefined}
+          className="text-2xs text-primary hover:underline min-h-tap"
+        >
+          {names.length ? 'Join' : 'Work on it'}
+        </button>
+      )}
+      {!active && names.length === 0 && (
+        <span className="text-xs text-muted-foreground/50">—</span>
+      )}
+    </span>
+  );
+}
+
 
 export function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;

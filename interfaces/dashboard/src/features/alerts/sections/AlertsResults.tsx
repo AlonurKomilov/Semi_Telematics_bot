@@ -64,7 +64,7 @@ import { toGridFilters, fromGridFilters } from '../_shared/gridFilterAdapters';
 import { familyText,
   STORED_ALERT_TYPES,
   typeText,
-  AckMarker,
+  AckMarker, SeenMarker, WorkMarker,
   SeverityDot,
   TypeBadge,
   isAckable,
@@ -488,11 +488,20 @@ export default function AlertsResults() {
         },
       },
     ];
-    // Unconditional now: on the active tab the Status cell is where the
-    // seen lifecycle lives (New → 👁 seen-by), and it is also the cell
-    // that OBSERVES the row for visibility — the honest source of the
-    // seen ledger.  It used to be hidden there because active rows had
-    // nothing to say; they do now.
+    // Three columns, three kinds of fact (owner decision 2026-08-30):
+    // Seen is eyes, Status is the alert's own state, Working on is
+    // hands.  They coexist deliberately — three people can have SEEN a
+    // task while one WORKS it — which is why one column could never
+    // carry all of them.  The Seen cell is also what OBSERVES the row
+    // for visibility: the honest source of the seen ledger.
+    cols.push({
+      key: 'seen', label: 'Seen', sortable: false,
+      render: (_v, row) => <SeenMarker alert={row as unknown as Alert} />,
+    });
+    cols.push({
+      key: 'working', label: 'Working on', sortable: false,
+      render: (_v, row) => <WorkMarker alert={row as unknown as Alert} />,
+    });
     cols.push({
       key: 'acknowledged_at', label: 'Status', sortable: true,
       render: (_v, row) => <AckMarker alert={row as unknown as Alert} tz={tz} />,

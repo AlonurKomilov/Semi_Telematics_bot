@@ -442,6 +442,24 @@ async def create_tables(conn) -> None:
             PRIMARY KEY (user_id, key)
         );
 
+        -- Who is WORKING each alert.  The voluntary claim that replaced
+        -- Acknowledge as the user verb: nobody is asked to press it — an
+        -- employee claims a task because they judge it theirs, and the
+        -- claim is what tells the second dispatcher to stand down and
+        -- the escalation pager to stop searching for an owner.  Multiple
+        -- workers per alert on purpose (a big task takes several hands),
+        -- which is why this is not the single-claimer acknowledged_by
+        -- column.  Rows survive resolution: "who worked what" is the
+        -- record a per-shift KPI reads later.
+        CREATE TABLE IF NOT EXISTS alert_workers (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id       INTEGER NOT NULL REFERENCES accounts(id),
+            alert_history_id INTEGER NOT NULL,
+            user_id          INTEGER NOT NULL,
+            claimed_at       TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, alert_history_id, user_id)
+        );
+
         -- Who has SEEN each alert.  Append-only, first-seen wins, and a
         -- row demands nothing of anyone: it is written passively when an
         -- alert was actually on a person's screen.  Deliberately NOT more
