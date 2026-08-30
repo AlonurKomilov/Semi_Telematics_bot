@@ -140,6 +140,11 @@ ARCHIVED_STANCE: dict[str, str] = {
     "alert_triggers_sweep": "filters",   # _target_scope + vehicle_gate
     "camera_check": "filters",           # gather_snapshots drops by ref
     "events_check": "filters",           # safety events drop by ref
+    # The expiry query JOINs vehicles and drops is_active=0 and any
+    # archived_reason, so a retired truck's paperwork never speaks —
+    # archiving stops every alert about a truck, and a document alert
+    # is an alert.
+    "vehicle_doc_expiry_check": "filters",
     # Vehicle-scoped, silenced by the ingest gate: with no fresh live
     # row, each of these closes on its own staleness bar.
     "fault_check": "gated",

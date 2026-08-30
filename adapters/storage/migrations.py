@@ -9361,3 +9361,24 @@ async def migrate_alert_workers(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 204: alert_workers — claims, not demands")
+
+
+@_register("203_vehicle_document_notifications")
+async def migrate_vehicle_document_notifications(conn) -> None:
+    """Dedup ledger for vehicle-document expiry alerts.
+
+    Mirrors ``driver_document_notifications`` — same composite key, same
+    job — but a SEPARATE table, because the two id spaces are
+    independent: vehicle document 5 and driver document 5 are different
+    papers, and one shared ledger would silence whichever fired second.
+    """
+    await conn.execute(
+        """CREATE TABLE IF NOT EXISTS vehicle_document_notifications (
+               doc_id INTEGER NOT NULL,
+               bucket_days INTEGER NOT NULL,
+               notified_at TEXT NOT NULL DEFAULT '',
+               PRIMARY KEY (doc_id, bucket_days)
+           )"""
+    )
+    await conn.commit()
+    logger.info("Migration 203: vehicle document notification ledger ready")

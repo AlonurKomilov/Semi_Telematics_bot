@@ -14,14 +14,13 @@
  */
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Loader2, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, FileText, Loader2, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiFetch, apiJSON } from '../../../api/client';
+import { toneText } from '../../../lib/status';
 import { Button } from '../../../components/ui/button';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '../../../components/ui/select';
+import { ActionMenu } from '../../../components/ui/context-menu';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
@@ -46,6 +45,29 @@ const TYPE_LABEL: Record<string, string> = {
   purchase: 'Purchase',
   other: 'Other',
 };
+
+/** How an expiry date should READ, not just what it says.
+ *
+ *  The date rendered in the same muted grey as the file size, so a
+ *  lapsed insurance certificate looked exactly like a current one and
+ *  the first anyone learned of it was a roadside inspection.  The
+ *  alert now warns ahead of time; this is the same fact on the page
+ *  the operator is already looking at. */
+function expiryTone(iso: string | null): { text: string; cls: string } | null {
+  if (!iso) return null;
+  const day = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(day.getTime())) return null;
+  const today = new Date();
+  const days = Math.round(
+    (day.getTime() - Date.UTC(
+      today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(),
+    )) / 86_400_000,
+  );
+  if (days < 0) return { text: `expired ${iso}`, cls: toneText('danger') };
+  if (days === 0) return { text: 'expires today', cls: toneText('danger') };
+  if (days <= 30) return { text: `expires in ${days}d`, cls: toneText('warn') };
+  return { text: `expires ${iso}`, cls: 'text-muted-foreground' };
+}
 
 function fmtSize(bytes: number | null): string {
   if (!bytes) return '';
@@ -128,25 +150,7 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
       <div className="flex items-center justify-between mb-3">
         <SectionHeader>Documents</SectionHeader>
         {canManage && (
-          <div className="flex items-center gap-2">
-            <Select
-              value={docType}
-              onValueChange={setDocType}
-              items={(data?.doc_types ?? Object.keys(TYPE_LABEL)).map(
-                (t) => ({ value: t, label: TYPE_LABEL[t] ?? t }),
-              )}
-            >
-              <SelectTrigger aria-label="Document type for upload">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(data?.doc_types ?? Object.keys(TYPE_LABEL)).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {TYPE_LABEL[t] ?? t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <>
             <input
               ref={fileRef} type="file" className="hidden"
               accept="application/pdf,image/*"
@@ -155,15 +159,30 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
                 if (f) void upload(f);
               }}
             />
-            <Button
-              type="button" variant="outline" size="sm"
-              disabled={busy}
-              onClick={() => fileRef.current?.click()}
+            {/* The type is part of DECIDING to upload, not a setting
+                parked beside the button.  It used to be a Select in the
+                header — the shape this app uses for FILTERING
+                everywhere else — so it read as "show me registrations"
+                while it actually meant "file the next one as a
+                registration".  One control now: pick the kind, the
+                picker opens. */}
+            <ActionMenu
+              items={(data?.doc_types ?? Object.keys(TYPE_LABEL)).map((t) => ({
+                key: t,
+                label: TYPE_LABEL[t] ?? t,
+                onSelect: () => {
+                  setDocType(t);
+                  fileRef.current?.click();
+                },
+              }))}
             >
-              {busy ? <Loader2 className="animate-spin" /> : <Upload />}
-              Upload
-            </Button>
-          </div>
+              <Button type="button" variant="outline" size="sm" disabled={busy}>
+                {busy ? <Loader2 className="animate-spin" /> : <Upload />}
+                Upload
+                <ChevronDown />
+              </Button>
+            </ActionMenu>
+          </>
         )}
       </div>
 
@@ -189,7 +208,12 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
                 <span className="block truncate text-foreground">{d.file_name}</span>
                 <span className="block text-xs text-muted-foreground">
                   {TYPE_LABEL[d.doc_type] ?? d.doc_type}
-                  {d.expires_at ? ` · expires ${d.expires_at}` : ''}
+                  {(() => {
+                    const e = expiryTone(d.expires_at);
+                    return e ? (
+                      <> · <span className={e.cls}>{e.text}</span></>
+                    ) : null;
+                  })()}
                   {d.file_size ? ` · ${fmtSize(d.file_size)}` : ''}
                 </span>
               </button>

@@ -146,6 +146,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     import features.parking.check                # noqa: F401  parking_check
     import interfaces.bot.geofences              # noqa: F401  geofence_check
     import interfaces.bot.maintenance            # noqa: F401  maintenance_* (x4)
+    import features.vehicles.documents.alert     # noqa: F401  vehicle_doc_expiry_check
     import features.drivers.documents.alert      # noqa: F401  driver_doc_expiry_check
     import features.drivers.onboarding.alert     # noqa: F401  driver_onboarding_stale_check
     import interfaces.bot.driver_samsara_sync    # noqa: F401  driver_samsara_sync

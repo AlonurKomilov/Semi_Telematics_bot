@@ -174,6 +174,61 @@ class VehicleDocumentsMixin(_MixinBase):
                 )
         return doc
 
+    async def get_expiring_vehicle_documents(
+        self, account_id: int, *, within_days: int = 30,
+    ) -> list[dict]:
+        """Active documents on LIVE trucks whose expiry falls inside the
+        window (past-due included, so the expired bucket can fire).
+
+        Joined to ``vehicles`` and filtered there rather than in the
+        caller: an archived truck raises no alerts of any kind — that is
+        what archiving means — and a document alert is an alert.  The
+        unit number and company ride along so the alert can name the
+        truck without a second query.
+        """
+        cur = await self._db.execute(
+            "SELECT d.id, d.vehicle_id, d.doc_type, d.file_name, "
+            "       d.expires_at, v.unit_number, v.company_code "
+            "  FROM vehicle_documents d "
+            "  JOIN vehicles v ON v.id = d.vehicle_id "
+            " WHERE d.account_id = ? AND d.status = 'active' "
+            "   AND d.expires_at IS NOT NULL AND d.expires_at != '' "
+            "   AND v.is_active = 1 "
+            "   AND COALESCE(v.archived_reason, '') = '' "
+            " ORDER BY d.expires_at ASC",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        out: list[dict] = []
+        for r in rows:
+            out.append({
+                "id": r[0], "vehicle_id": r[1], "doc_type": r[2],
+                "file_name": r[3], "expires_at": r[4],
+                "unit_number": r[5], "company_code": r[6],
+            })
+        return out
+
+    async def record_vehicle_doc_notification(
+        self, doc_id: int, bucket_days: int,
+    ) -> bool:
+        """Claim the T-``bucket_days`` alert for this document.
+
+        True = newly inserted, so the caller sends.  False = a row
+        already exists, so somebody already sent it.  Claimed BEFORE
+        sending: a duplicate alert is noise, a missed one is a truck
+        running on expired paper — but re-running a scheduler tick must
+        not re-notify, and the composite PK settles it at the DB even
+        with concurrent schedulers.
+        """
+        now = self._now()
+        async with self.transaction():
+            cur = await self._db.execute(
+                "INSERT OR IGNORE INTO vehicle_document_notifications "
+                "(doc_id, bucket_days, notified_at) VALUES (?, ?, ?)",
+                (doc_id, bucket_days, now),
+            )
+        return (cur.rowcount or 0) > 0
+
     async def move_vehicle_documents_bucket(
         self, account_id: int, vehicle_id: int,
         old_bucket: str, new_bucket: str,
