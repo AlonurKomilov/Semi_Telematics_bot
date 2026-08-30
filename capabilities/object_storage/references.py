@@ -148,6 +148,13 @@ REFERENCES: tuple[FileReference, ...] = (
         "driver_documents", "drive_file_id", "object_id", "drivers",
         "Drive id; the local counterpart lives under bucket/object_key",
     ),
+    # ── vehicle documents ───────────────────────────────────────────
+    FileReference(
+        "vehicle_documents", "drive_file_id", "object_id", "vehicles",
+        "Drive id; the local counterpart lives under bucket/object_key. "
+        "Same shape as driver_documents — a truck's paperwork follows it "
+        "into the archive, so these outlive the vehicle being active",
+    ),
     # ── company branding (recruiter apply-host) ─────────────────────
     FileReference(
         "companies", "logo_object_id", "object_id", "applications",
@@ -168,6 +175,11 @@ REFERENCES: tuple[FileReference, ...] = (
 NOT_REFERENCES: dict[str, str] = {
     "driver_documents.doc_type": "an enum (cdl / medical), not a path",
     "driver_documents.file_name": "display name only; the path is bucket+object_key",
+    "vehicle_documents.doc_type": (
+        "an enum (registration / title / insurance / annual_inspection / "
+        "lease / purchase / other — VEHICLE_DOC_TYPES), not a path"
+    ),
+    "vehicle_documents.file_name": "display name only; the path is bucket+object_key",
     "knowledge_base.media_type": "a MIME type",
     "object_storage_sync_queue.local_path": (
         "the sync queue's own bookkeeping — but see orphans.py: a file "
