@@ -49,6 +49,13 @@ export interface SectionDef<P = Record<string, never>> {
    *  floor idea as DataGrid's can't-hide-to-zero-columns: a page you can
    *  configure into uselessness strands whoever did it. */
   required?: boolean;
+  /** Available, but deliberately in NO persona default — a section a
+   *  person adds to their own page from the layout gear.  The opposite
+   *  pole from ``required``, and it exists so the coverage audit can
+   *  tell a deliberate opt-in from an accident: a section registered
+   *  into no layout by mistake is invisible, and looks alive in the
+   *  diff.  Two shipped that way before this flag existed. */
+  optIn?: boolean;
 }
 
 /**

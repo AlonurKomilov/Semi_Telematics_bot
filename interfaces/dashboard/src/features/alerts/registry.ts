@@ -46,6 +46,11 @@ export const ALERTS_SECTIONS: SectionRegistry<AlertsSectionProps> = {
   groups: {
     Component: lazy(() => import('./sections/AlertGroups')),
     label: 'Grouped by situation',
+    // Declares what the comment above already says: in no default
+    // layout ON PURPOSE, added by a person from the layout gear.  The
+    // flag is what lets the coverage audit fail an ACCIDENTAL orphan
+    // without failing this one.
+    optIn: true,
   },
   results: {
     Component: lazy(() => import('./sections/AlertsResults')),

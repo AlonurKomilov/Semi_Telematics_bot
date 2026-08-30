@@ -22,26 +22,26 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // Superset — preserves the original page order so Owner / Admin
   // see byte-identical output to pre-Pattern-B.  Used as the runtime
   // fallback for any persona that doesn't have an entry below.
-  owner: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'documents', 'timeline', 'usage', 'mileage'],
-  admin: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'documents', 'timeline', 'usage', 'mileage'],
+  owner: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'documents', 'source', 'timeline', 'usage', 'mileage'],
+  admin: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'documents', 'source', 'timeline', 'usage', 'mileage'],
 
   // Fleet — vehicle health + maintenance signals lead.  Faults bubbles
   // above Location because a fleet manager opening a truck is usually
   // chasing a fault code; coordinates can wait.  Usage trends sit at
   // the bottom for utilization review.
-  fleet: ['header', 'info', 'inventory', 'health', 'faults', 'inspections', 'documents', 'location', 'timeline', 'usage', 'mileage'],
+  fleet: ['header', 'info', 'inventory', 'health', 'faults', 'inspections', 'documents', 'source', 'location', 'timeline', 'usage', 'mileage'],
 
   // Dispatcher — "where is this truck right now and what's it doing
   // over the next few hours."  Health / Faults / Inspections are
   // omitted; Dispatch doesn't action vehicle ops.
-  dispatcher: ['header', 'info', 'location', 'timeline'],
+  dispatcher: ['header', 'info', 'location', 'documents', 'source', 'timeline'],
 
   // Safety — drilling into a truck during an incident review.
   // Inspections (CSA history proxy) and Timeline (where was the
   // truck during the incident) matter most; Faults are omitted
   // because Safety doesn't action mechanical issues directly.  Usage
   // trends added for harsh-event totals over the recent window.
-  safety: ['header', 'info', 'location', 'inventory', 'inspections', 'timeline', 'usage', 'mileage'],
+  safety: ['header', 'info', 'location', 'inventory', 'inspections', 'documents', 'source', 'timeline', 'usage', 'mileage'],
 
   // Driver — uses the Mini App in practice; this is a fallback for the
   // unlikely web-dashboard visit by a driver role.  Minimal: identity

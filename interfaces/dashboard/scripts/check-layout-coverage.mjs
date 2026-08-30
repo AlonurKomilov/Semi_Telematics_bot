@@ -10,6 +10,15 @@
  *      Missing personas fall back to the owner-superset layout at
  *      runtime via PageLayoutHost — this is non-fatal, but worth
  *      knowing so the persona isn't accidentally invisible.
+ *   3. ERROR if a layout names a section id that ``registry.ts``
+ *      does not register — it would render nothing, silently.
+ *   4. ERROR if a REGISTERED section appears in no layout at all and
+ *      is not flagged ``optIn`` (a section a person adds themselves).
+ *      layouts.ts already claimed this audit caught section drift; it
+ *      did not, and two sections shipped invisible because of it —
+ *      written, imported, registered, reachable by nobody.  A section
+ *      nobody can open looks alive in the diff and is dead on the
+ *      page.
  *
  * Run as part of CI:
  *
@@ -111,6 +120,51 @@ for (const feature of features) {
         `  ✗ ${feature}: unknown persona "${key}" in layouts.ts — typo or stale Persona type?`,
       );
       errors++;
+    }
+  }
+
+  // ── Sections: registered vs actually laid out ────────────────
+  const registryFile = join(FEATURES_DIR, feature, 'registry.ts');
+  if (existsSync(registryFile)) {
+    const regSrc = readFileSync(registryFile, 'utf8');
+    // ``documents: {\n    Component:`` — the shape every entry has.
+    const registered = new Set(
+      [...regSrc.matchAll(/([a-z_][a-z_0-9]*)\s*:\s*\{\s*\n\s*Component:/g)]
+        .map((m) => m[1]),
+    );
+    // Section ids as they appear inside each persona's array literal.
+    const laidOut = new Set();
+    for (const arr of src.matchAll(
+      /^\s*['"]?[a-z_][a-z_0-9]*['"]?\s*:\s*\[([^\]]*)\]/gm,
+    )) {
+      for (const id of arr[1].matchAll(/'([a-z_][a-z_0-9]*)'/g)) {
+        laidOut.add(id[1]);
+      }
+    }
+    if (registered.size > 0) {
+      for (const id of laidOut) {
+        if (!registered.has(id)) {
+          console.error(
+            `  ✗ ${feature}: layout names section "${id}", which registry.ts does not register — it renders nothing`,
+          );
+          errors++;
+        }
+      }
+      // A section flagged ``optIn`` is in no default layout ON
+      // PURPOSE — a person adds it from the layout gear.  Only an
+      // UNDECLARED orphan is the accident this check exists for.
+      const optIn = new Set(
+        [...regSrc.matchAll(/([a-z_][a-z_0-9]*)\s*:\s*\{[^}]*?optIn:\s*true/gs)]
+          .map((m) => m[1]),
+      );
+      for (const id of registered) {
+        if (!laidOut.has(id) && !optIn.has(id)) {
+          console.error(
+            `  ✗ ${feature}: section "${id}" is registered but in no layout — nobody can see it`,
+          );
+          errors++;
+        }
+      }
     }
   }
 
