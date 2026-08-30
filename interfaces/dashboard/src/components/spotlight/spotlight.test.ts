@@ -37,9 +37,11 @@ describe('spotlight catalog', () => {
     const missing: string[] = [];
     for (const tour of SPOTLIGHT_CATALOG) {
       for (const step of tour.steps) {
-        const needle = `data-spotlight="${step.anchor}"`;
-        if (!SOURCES.some((s) => s.includes(needle))) {
-          missing.push(`${tour.key}: ${needle}`);
+        for (const anchor of [step.anchor, step.countFrom].filter(Boolean)) {
+          const needle = `data-spotlight="${anchor}"`;
+          if (!SOURCES.some((s) => s.includes(needle))) {
+            missing.push(`${tour.key}: ${needle}`);
+          }
         }
       }
     }
@@ -53,6 +55,47 @@ describe('spotlight catalog', () => {
     }
   });
 
+  it('every tour DECLARES whether it ends in a write', () => {
+    // The question an author must not be able to skip.  A final step
+    // that fires a write gets `commit: true` and the hands-off card —
+    // the tour suggested the idea, so it does not also press the
+    // trigger.  A benign ending says `commit: false` out loud.  An
+    // UNDECLARED final step fails the build, because the difference
+    // between "teaching" and "walking a user into 100 real tasks" is
+    // exactly one forgotten flag.
+    const undeclared: string[] = [];
+    const misplaced: string[] = [];
+    for (const tour of SPOTLIGHT_CATALOG) {
+      const last = tour.steps[tour.steps.length - 1];
+      if (typeof last.commit !== 'boolean') undeclared.push(tour.key);
+      for (const step of tour.steps.slice(0, -1)) {
+        // A mid-tour write would strand the user between a real
+        // consequence and more instructions — a tour ends AT a write
+        // or not at all.
+        if (step.commit) misplaced.push(`${tour.key}: ${step.anchor}`);
+      }
+    }
+    expect(undeclared, 'final step missing commit: true|false').toEqual([]);
+    expect(misplaced, 'commit steps must be final').toEqual([]);
+  });
+
+  it('a countFrom step reads a LIVE attribute, not a guess', () => {
+    // The consequence line's number comes from data-spotlight-count on
+    // the declared element; the attribute must be written in source or
+    // the card silently loses its number on every render.
+    const missing: string[] = [];
+    for (const tour of SPOTLIGHT_CATALOG) {
+      for (const step of tour.steps) {
+        if (!step.countFrom) continue;
+        const el = `data-spotlight="${step.countFrom}"`;
+        const withCount = SOURCES.some(
+          (s) => s.includes(el) && s.includes('data-spotlight-count='));
+        if (!withCount) missing.push(`${tour.key}: ${step.countFrom}`);
+      }
+    }
+    expect(missing, 'countFrom anchors without a data-spotlight-count').toEqual([]);
+  });
+
   it('tours stay walkable: 1-6 steps', () => {
     // Above six the tour stops being a shortcut and becomes a course;
     // the cap is a design decision, not a technical one.
@@ -64,7 +107,7 @@ describe('spotlight catalog', () => {
 });
 
 describe('spotlight locales', () => {
-  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of'];
+  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of', 'finish'];
 
   it('every locale answers every tour completely', () => {
     // title + body + one line per step + done — same questions in all
@@ -79,7 +122,9 @@ describe('spotlight locales', () => {
       for (const tour of SPOTLIGHT_CATALOG) {
         const entry = spot[tour.key];
         if (!entry) { problems.push(`${f}: ${tour.key}`); continue; }
+        const last = tour.steps[tour.steps.length - 1];
         const want = ['title', 'body', 'done',
+          ...(last.commit ? ['commit'] : []),
           ...tour.steps.map((_, i) => `step${i + 1}`)];
         for (const field of want) {
           if (!entry[field]) problems.push(`${f}: ${tour.key}.${field}`);

@@ -177,3 +177,37 @@ describe("advanceOn: 'click-gone' — celebrate the outcome, not the click", () 
       expect(screen.getByText('spotlight.labels.step_of')).toBeTruthy());
   });
 });
+
+describe('commit steps — the hands-off ending', () => {
+  const commitTour = tour([
+    { anchor: 'create', advanceOn: 'click-gone', commit: true, countFrom: 'well' },
+  ]);
+
+  it('shows the consequence with the LIVE count and a Finish button', async () => {
+    mountAnchor('create');
+    const well = mountAnchor('well', 'div');
+    well.setAttribute('data-spotlight-count', '27');
+    const onDone = vi.fn();
+    render(<TourOverlay tour={commitTour} onDone={onDone} onExit={() => {}} />);
+    await screen.findByText('spotlight.labels.step_of');
+    expect(screen.getByText('spotlight.maintenance.bulk_add.commit')).toBeTruthy();
+    // Finishing at the line is completion — WITHOUT the "created" card,
+    // because nothing was created and the goodbye must not claim it.
+    screen.getByText('spotlight.labels.finish').click();
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+  });
+
+  it('clicking the real control does NOT advance — only genuine success celebrates', async () => {
+    const btn = mountAnchor('create');
+    mountAnchor('well', 'div');
+    render(<TourOverlay tour={commitTour} onDone={() => {}} onExit={() => {}} />);
+    await screen.findByText('spotlight.labels.step_of');
+    btn.click();                    // arms; the card must NOT celebrate yet
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('spotlight.labels.done_title')).toBeNull();
+    btn.remove();                   // form closed itself: the real success
+    await waitFor(() =>
+      expect(screen.getByText('spotlight.labels.done_title')).toBeTruthy());
+  });
+});

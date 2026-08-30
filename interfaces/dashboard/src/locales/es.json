@@ -1146,16 +1146,18 @@
       "exit": "Salir del tour",
       "done_title": "¡Buen trabajo!",
       "close": "Cerrar",
-      "step_of": "Paso {{n}} de {{total}}"
+      "step_of": "Paso {{n}} de {{total}}",
+      "finish": "Terminar el tour"
     },
     "maintenance.bulk_add": {
       "title": "Una tarea para varios vehículos",
       "body": "¿Agregando tareas una por una? Una tarea puede crearse para varios vehículos — o todo un grupo — en un solo paso. ¿Quiere verlo con su próxima tarea real?",
       "step1": "Pulse “New task” para abrir el formulario.",
       "step2": "Marque “Apply to multiple vehicles at once”.",
-      "step3": "Elija los vehículos — toque las unidades para esta tarea.",
+      "step3": "Elija los vehículos — pruebe con uno o dos primero; el mismo paso sirve para cien.",
       "step4": "Elija el tipo de servicio y pulse “Create”. La tarea se crea en cada vehículo seleccionado.",
-      "done": "La tarea se creó para todos los vehículos seleccionados."
+      "done": "La tarea se creó para todos los vehículos seleccionados.",
+      "commit": "Esto creará {{count}} tareas reales — una por vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión."
     }
   }
 }

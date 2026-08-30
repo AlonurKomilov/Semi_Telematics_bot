@@ -918,16 +918,18 @@
       "exit": "Ka bax socdaalka",
       "done_title": "Shaqo wanaagsan!",
       "close": "Xir",
-      "step_of": "Tallaabo {{n}} ee {{total}}"
+      "step_of": "Tallaabo {{n}} ee {{total}}",
+      "finish": "Dhammee socdaalka"
     },
     "maintenance.bulk_add": {
       "title": "Hal hawl — gawaari badan",
       "body": "Hawlaha mid mid ma u dartaa? Hal hawl waxaa loo abuuri karaa gawaari badan — ama koox dhan — hal tallaabo. Ma rabtaa inaan kugu tusno hawshaada xigta?",
       "step1": "Riix “New task” si foomku u furmo.",
       "step2": "Calaamadee “Apply to multiple vehicles at once”.",
-      "step3": "Dooro gawaarida — taabo unugyada hawshani khusayso.",
+      "step3": "Dooro gawaarida — marka hore hal ama laba ku tijaabi; isla tallaabadaasi boqol bay u shaqaysaa.",
       "step4": "Dooro nooca adeegga oo riix “Create”. Hawshu waxay ku abuurmaysaa gaari kasta oo la doortay.",
-      "done": "Hawsha waxaa loo abuuray dhammaan gawaarida aad dooratay."
+      "done": "Hawsha waxaa loo abuuray dhammaan gawaarida aad dooratay.",
+      "commit": "Tani waxay abuuri doontaa {{count}} hawlood oo dhab ah — mid gaari kasta oo la doortay. Socdaalku halkan buu ku eg yahay; “Create” riixiddu waa go'aankaaga."
     }
   }
 }

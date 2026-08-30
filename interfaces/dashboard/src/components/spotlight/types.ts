@@ -46,6 +46,25 @@ export interface TourStep {
    * padding — or its "Loading…" text — would count as picking.
    */
   advanceWithin?: string;
+  /**
+   * This step fires a REAL WRITE.  The engine changes its contract:
+   * it never asks for the click — the card states the consequence
+   * (with the live count when `countFrom` resolves) and offers
+   * "Finish tour" instead, because a tour that suggested an idea must
+   * not also press the trigger.  The user commits alone, and only a
+   * genuine success (armed click + the form closing itself) earns the
+   * "created" goodbye.  The guard forces every tour's LAST step to
+   * declare this field true or false — an author cannot add a tour
+   * without answering "does this end in a write?".
+   */
+  commit?: boolean;
+  /**
+   * Anchor whose `data-spotlight-count` attribute carries the live
+   * blast radius ("27 vehicles selected").  Read at render; when the
+   * element or attribute is absent the consequence line simply drops
+   * its number — never a guessed one.
+   */
+  countFrom?: string;
 }
 
 /**

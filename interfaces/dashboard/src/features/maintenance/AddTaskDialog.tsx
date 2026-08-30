@@ -313,7 +313,7 @@ export default function AddTaskDialog({
               <span className="block text-xs text-muted-foreground mb-1">
                 Vehicles ({fMultiVehicles.size} selected)
               </span>
-              <div data-spotlight="maintenance.vehicle-chips" className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
+              <div data-spotlight="maintenance.vehicle-chips" data-spotlight-count={fMultiVehicles.size} className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
                 {fleetLoading && (
                   <span className="text-xs text-muted-foreground">Loading…</span>
                 )}

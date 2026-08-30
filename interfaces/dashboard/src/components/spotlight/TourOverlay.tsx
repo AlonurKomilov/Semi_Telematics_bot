@@ -240,6 +240,11 @@ export default function TourOverlay({
   // the user's Size setting, so a pixel constant here would be wrong
   // at every multiplier but one).  First paint uses a conservative
   // guess; the re-render after `cardRef` mounts corrects it.
+  // The blast radius, read live — never cached, never guessed.  An
+  // absent element or attribute drops the number, not the honesty.
+  const liveCount = step.countFrom
+    ? find(step.countFrom)?.getAttribute('data-spotlight-count') ?? null
+    : null;
   const cardH = cardRef.current?.offsetHeight ?? 120;
   const cardW = cardRef.current?.offsetWidth ?? 320;
   const below = rect.top + rect.height + cardH + 20 < window.innerHeight;
@@ -290,6 +295,24 @@ export default function TourOverlay({
         <p className="mt-1 text-sm text-foreground">
           {t(`spotlight.${tour.key}.step${stepIdx + 1}`)}
         </p>
+        {step.commit && (
+          <>
+            <p className="mt-2 text-xs text-warn">
+              {t(`spotlight.${tour.key}.commit`, { count: liveCount ?? '' })}
+            </p>
+            {/* The hand-over.  Reaching the line IS completing the
+                tour; the write beyond it is the user's own act, so
+                this button ends the tour without a word about tasks
+                being created — only a real success may claim that. */}
+            <button
+              type="button"
+              onClick={onDone}
+              className="mt-2 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition min-h-tap"
+            >
+              {t('spotlight.labels.finish')}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

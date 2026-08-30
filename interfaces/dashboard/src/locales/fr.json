@@ -1146,16 +1146,18 @@
       "exit": "Quitter le guide",
       "done_title": "Bien joué !",
       "close": "Fermer",
-      "step_of": "Étape {{n}} sur {{total}}"
+      "step_of": "Étape {{n}} sur {{total}}",
+      "finish": "Terminer le guide"
     },
     "maintenance.bulk_add": {
       "title": "Une tâche pour plusieurs véhicules",
       "body": "Vous ajoutez les tâches une par une ? Une tâche peut être créée pour plusieurs véhicules — ou tout un ensemble — en une seule fois. Voir comment, sur votre prochaine tâche ?",
       "step1": "Appuyez sur « New task » pour ouvrir le formulaire.",
       "step2": "Cochez « Apply to multiple vehicles at once ».",
-      "step3": "Choisissez les véhicules — touchez les unités concernées.",
+      "step3": "Choisissez les véhicules — essayez avec un ou deux d’abord ; le même geste vaut pour cent.",
       "step4": "Choisissez le type de service puis « Create ». La tâche est créée sur chaque véhicule sélectionné.",
-      "done": "La tâche a été créée pour chaque véhicule sélectionné."
+      "done": "La tâche a été créée pour chaque véhicule sélectionné.",
+      "commit": "Ceci créera {{count}} tâches réelles — une par véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient."
     }
   }
 }

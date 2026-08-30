@@ -22,7 +22,11 @@ export const MAINTENANCE_TOURS: readonly TourSpec[] = [
       // a live run hit exactly that while the old click-advance was
       // already congratulating).  The form closes itself on success,
       // so the anchor leaving the DOM is the honest completion signal.
-      { anchor: 'maintenance.create', advanceOn: 'click-gone' },
+      // commit: the tour suggested this idea, so it does not also
+      // press the trigger — the card shows the real count and hands
+      // over.  countFrom reads the chip well's live selection size.
+      { anchor: 'maintenance.create', advanceOn: 'click-gone',
+        commit: true, countFrom: 'maintenance.vehicle-chips' },
     ],
     // Offered once the page shows real use — a handful of tasks says
     // "this person adds tasks", and that is who the shortcut helps.
