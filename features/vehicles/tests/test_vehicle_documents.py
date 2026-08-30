@@ -191,3 +191,78 @@ async def test_a_live_truck_that_inherited_the_name_still_gets_live_data(
 
     await vr._resolve_vehicle("IN-1", None, {"account_id": acct}, allowed=[])
     assert called, "a live truck sharing the name was denied its provider data"
+
+
+# ── A LIVE truck's detail must carry its registry identity ──────────
+
+
+@pytest.mark.asyncio
+async def test_a_reporting_trucks_detail_carries_registry_id_and_sources(
+    pg_db, monkeypatch,
+):
+    """Documents and Source key off ``registry_id``; Source also reads
+    ``sources``.  The provider answers by NAME and knows neither, so a
+    LIVE truck's detail payload carried neither — and both cards
+    rendered nothing on exactly the trucks that report, while working
+    on trailers and manual rows.  The list endpoint has overlaid the
+    registry since it was built; this path had not.
+    """
+    from features.vehicles import router as vr
+
+    acct = (await pg_db.create_account("Live Detail Co")).id
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "LD-1",
+         "telematics_ref": "ref-ld1", "vin": "1HGLIVE000000001"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+
+    # What the provider returns: a live row, by name, with no idea the
+    # registry exists.
+    async def _provider(_aid, _name, company=None):
+        return [{"name": "LD-1", "_org": "PTG", "make": "FREIGHTLINER"}]
+    monkeypatch.setattr(vr, "_svc_vehicle_detail", _provider)
+
+    async def _tenant(_aid):
+        return pg_db
+    monkeypatch.setattr(vr, "_get_tenant_db", _tenant)
+
+    (match,) = await vr._resolve_vehicle(
+        "LD-1", None, {"account_id": acct}, allowed=[])
+    assert match["registry_id"] == v.id, "the card has nothing to ask about"
+    assert "samsara" in match["sources"]
+
+    # And through the normalizer the endpoint actually returns.
+    out = vr._normalize_detail(match)
+    assert out["registry_id"] == v.id
+
+
+@pytest.mark.asyncio
+async def test_a_shared_unit_number_only_claims_its_own_company(
+    pg_db, monkeypatch,
+):
+    """A unit number is a reusable LABEL.  With two live trucks named
+    the same, a provider match may take identity only from the row in
+    ITS company — the mistake that mis-linked four devices."""
+    from features.vehicles import router as vr
+
+    acct = (await pg_db.create_account("Shared Name Co")).id
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "SN-1",
+         "telematics_ref": "ref-sn-ptg"},
+        {"company_code": "OSY", "unit_number": "SN-1",
+         "telematics_ref": "ref-sn-osy"},
+    ], source="samsara")
+    rows = {v.company_code: v for v in await pg_db.list_vehicles(acct)}
+
+    async def _provider(_aid, _name, company=None):
+        return [{"name": "SN-1", "_org": "OSY"}]
+    monkeypatch.setattr(vr, "_svc_vehicle_detail", _provider)
+
+    async def _tenant(_aid):
+        return pg_db
+    monkeypatch.setattr(vr, "_get_tenant_db", _tenant)
+
+    (match,) = await vr._resolve_vehicle(
+        "SN-1", None, {"account_id": acct}, allowed=[])
+    assert match["registry_id"] == rows["OSY"].id
+    assert match["registry_id"] != rows["PTG"].id

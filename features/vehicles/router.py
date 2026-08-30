@@ -286,7 +286,47 @@ def _normalize_detail(v: dict) -> dict:
         "latitude": loc.get("latitude"),
         "longitude": loc.get("longitude"),
         "licensePlate": v.get("licensePlate") or v.get("license_plate") or "N/A",
+        # The list row publishes this as ``registry_id`` (_simplify);
+        # the detail payload spread ``**v`` and left it under the
+        # merge's private ``_registry_id``, so every consumer keyed on
+        # the public name saw nothing.
+        "registry_id": v.get("registry_id") or v.get("_registry_id"),
     }
+
+
+def _with_registry_identity(matches: list[dict], rows: list) -> list[dict]:
+    """Attach the registry row's identity to a provider-sourced match.
+
+    The provider answers by NAME and knows nothing of our registry, so
+    a LIVE truck's detail payload carried no ``registry_id`` and no
+    ``sources`` — and every surface keyed on those (Documents, Source)
+    rendered nothing on exactly the trucks that report, while working
+    on trailers and manual rows.  The list endpoint has overlaid the
+    registry since it was built; this path never did.
+
+    Fill-don't-wipe: a match that already carries identity keeps it.
+    """
+    live = {(r.company_code or "").lower(): r for r in rows if r.is_active}
+    if not live:
+        return matches
+    # One live row answering to the name = the truck, whatever the
+    # provider called its org.  With several, only an exact company
+    # match may claim a row — a unit number is a reusable LABEL.
+    sole = next(iter(live.values())) if len(live) == 1 else None
+    for m in matches:
+        co = str(
+            m.get("company") or m.get("_org") or m.get("company_code") or ""
+        ).lower()
+        row = live.get(co) or sole
+        if row is None:
+            continue
+        if not m.get("registry_id"):
+            m["registry_id"] = row.id
+        if not m.get("sources"):
+            m["sources"] = list(row.sources)
+        if not m.get("source"):
+            m["source"] = row.source
+    return matches
 
 
 # ── Routes ───────────────────────────────────────────────────────
@@ -828,6 +868,7 @@ async def _resolve_vehicle(
     # does the short-circuit fire (door numbers are reused, and the
     # truck that inherited one deserves live data).
     tenant_pre = await _get_tenant_db(user["account_id"])
+    named: list = []
     if tenant_pre is not None:
         try:
             all_rows = await tenant_pre.list_vehicles(
@@ -862,7 +903,9 @@ async def _resolve_vehicle(
         matches = filter_by_allowed_companies(matches, allowed)
         matches = await filter_by_assigned_trucks(matches, user)
         if matches:
-            return matches
+            # The rows the archived pre-check already fetched — reused,
+            # not re-queried.
+            return _with_registry_identity(matches, named)
 
     # merge_registry_with_live([v], []) synthesizes the same
     # no-telemetry overview row the list builds for a registry-only
