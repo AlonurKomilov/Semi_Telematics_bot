@@ -41,6 +41,10 @@ export const VEHICLE_SECTIONS: SectionRegistry<VehicleSectionProps> = {
     Component: lazy(() => import('./sections/VehicleFaults')),
     label: 'Active Fault Codes',
   },
+  source: {
+    Component: lazy(() => import('./sections/VehicleSource')),
+    label: 'Source',
+  },
   documents: {
     Component: lazy(() => import('./sections/VehicleDocuments')),
     label: 'Documents',

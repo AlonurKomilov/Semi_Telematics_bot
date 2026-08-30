@@ -1782,6 +1782,59 @@ async def create_vehicle(
     return _vehicle_to_dict(v)
 
 
+@router.get("/registry/{vehicle_id}/links")
+async def vehicle_provider_links(
+    vehicle_id: int,
+    user: dict = Depends(
+        require_permission_any("can_faults", "can_vehicle_vehicle")),
+):
+    """Where to open this truck at the provider that supplies it.
+
+    Gated like the detail page it sits on, not like the registry-admin
+    routes: knowing where a truck lives at its provider is part of
+    reading that truck.  The company wall still applies underneath, so
+    a restricted operator cannot reach a foreign truck's link by id.
+
+    Its own endpoint, deliberately NOT folded into the detail payload:
+    resolving a Samsara org id can cost a /me call per company on a
+    cold process, and the detail page is the one that just stopped
+    waiting on the provider.  Here a slow or failed lookup costs a
+    missing BUTTON, never a slow page.
+
+    A source appears only when a real per-vehicle URL exists for it.
+    Datatruck has none published, so it contributes no link rather
+    than a button that lands on somebody's dashboard root — the truck
+    the operator clicked must be the truck they get.
+    """
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    v = await _wall_registry_vehicle(tenant, account_id, vehicle_id, user)
+
+    links: list[dict[str, str]] = []
+    if v.telematics_ref:
+        try:
+            from adapters.samsara.client import samsara_vehicle_url
+            from infra.services import get_client
+            client = await get_client(account_id)
+            # Idempotent and instance-cached: the first call per process
+            # fetches, the rest are free.
+            await client.ensure_org_ids()
+            url = samsara_vehicle_url(
+                client.org_ids.get(v.company_code, ""), v.telematics_ref)
+            if url:
+                links.append({
+                    "source": "samsara",
+                    "label": "Open in Samsara",
+                    "url": url,
+                })
+        except Exception:
+            logger.debug("samsara link unavailable acct=%d v=%d",
+                         account_id, vehicle_id, exc_info=True)
+    return {"links": links}
+
+
 @router.get("/registry/archived")
 async def list_archived_vehicles(user: dict = Depends(_manage_vehicles)):
     """Trucks that have left the fleet.
