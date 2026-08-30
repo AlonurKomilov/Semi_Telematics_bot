@@ -394,6 +394,35 @@ export const DEFS = {
   // SYNCED, not device: the user learned where config went — they should
   // not be re-taught on their laptop after dismissing it on their desktop.
   // Delete this entry and its banner once the release has landed.
+  // Spotlight tour verdicts — done / skipped are final, snoozed
+  // re-offers after SNOOZE_DAYS (components/spotlight/types.ts).  Keyed
+  // by tour key ('maintenance.bulk_add').  Synced: a person who skipped
+  // a tour on the desktop has answered it; the laptop asking again
+  // would teach them to stop reading the intro.  The backend never
+  // reads this — eligibility is computed client-side at page open.
+  'spotlight.state': def<Record<string, { s: 'done' | 'skipped' | 'snoozed'; t: string }> | null>({
+    default: null,
+    scope: 'synced',
+    // Round-trips through the server and other tabs, so rebuild it
+    // field by field like every Record-shaped synced entry here.  A
+    // malformed row would not crash — isEligible treats garbage as
+    // "never re-offer" — but silently muting a tour forever is exactly
+    // the failure this file's convention exists to catch.
+    sanitize: (raw: unknown) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+      const out: Record<string, { s: 'done' | 'skipped' | 'snoozed'; t: string }> = {};
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        const e = v as { s?: unknown; t?: unknown } | null;
+        if (!k || !e || typeof e !== 'object') continue;
+        if ((e.s === 'done' || e.s === 'skipped' || e.s === 'snoozed')
+            && typeof e.t === 'string' && !Number.isNaN(Date.parse(e.t))) {
+          out[k] = { s: e.s, t: e.t };
+        }
+      }
+      return Object.keys(out).length ? out : null;
+    },
+  }),
+
   'config.moved_notice_dismissed': def<boolean>({
     default: false,
     scope: 'synced',

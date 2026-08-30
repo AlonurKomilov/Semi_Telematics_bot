@@ -39,6 +39,7 @@ import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { makeColumns } from './columns';
 import AddTaskDialog from './AddTaskDialog';
+import { SpotlightHost } from '../../components/spotlight';
 import TaskDetailSheet from './TaskDetailSheet';
 import {
   STATUS_OPTIONS,
@@ -420,7 +421,7 @@ export default function Tasks() {
                 DOT Binder tab) in 2026-06 — the binder is a
                 stakeholder-facing compliance PDF, not a maintenance-
                 editing surface. */}
-            <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
+            <button data-spotlight="maintenance.new-task" onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover rounded-md text-xs font-medium text-primary-foreground transition min-h-tap">
               <Plus className="size-3.5" />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
@@ -449,6 +450,20 @@ export default function Tasks() {
           keeps the state and the next open shows the last half-typed
           task.  ``handleAdd``'s fourteen-line manual reset used to cover
           for that and was deleted with this move. */}
+      {/* Tours for this page — at most one offer per visit, decided at
+          mount so a dialog never pops over someone's half-filled form.
+          The engine lives in components/spotlight; this page only says
+          who it is and what it can see. */}
+      <SpotlightHost
+        feature="maintenance"
+        // canCreate: adding a TASK is gated by the page permission
+        // itself (can_maintenance_*) — anyone standing here can press
+        // "New task".  `canCreateTasks` above is a different right
+        // (defining new service-task TYPES in the picker) and would
+        // wrongly hide the tour from most maintenance users.
+        ctx={{ count: allTasks.length, canCreate: true }}
+      />
+
       {showAdd && (
       <AddTaskDialog
         open={showAdd}

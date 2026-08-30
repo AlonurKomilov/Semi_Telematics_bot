@@ -768,5 +768,24 @@
       "why": "Reyestrdagi hech bir transport da’vo qilmaydigan telemetriya kelmoqda: uni trigger uchun tanlab bo‘lmaydi, ogohlantirish bermaydi va hech bir ro‘yxatda ko‘rinmaydi. Odatda birlik raqami ikki marta mavjud bo‘ladi — qo‘lda kiritilgan va telematik transport sifatida — resolver esa ular orasidan taxmin qilmaydi.",
       "do": "Transportni oching va uning telematik bog‘lanishini kiriting yoki nusxani arxivlang."
     }
+  },
+  "spotlight": {
+    "labels": {
+      "show_me": "Ko'rsating",
+      "skip": "O'tkazib yuborish",
+      "exit": "Turdan chiqish",
+      "done_title": "Ajoyib ish!",
+      "close": "Yopish",
+      "step_of": "{{total}} qadamdan {{n}}-qadam"
+    },
+    "maintenance.bulk_add": {
+      "title": "Bitta vazifa — bir nechta mashinaga",
+      "body": "Vazifalarni bittalab qo'shyapsizmi? Bitta vazifani bir nechta mashina uchun — yoki butun guruh uchun — bitta qadamda yaratish mumkin. Keyingi vazifangizda ko'rsatib beraylikmi?",
+      "step1": "Formani ochish uchun “New task” tugmasini bosing.",
+      "step2": "“Apply to multiple vehicles at once” belgisini qo'ying.",
+      "step3": "Mashinalarni tanlang — shu vazifa tegishli yunitlarni belgilang.",
+      "step4": "Servis turini tanlab, “Create” tugmasini bosing. Vazifa tanlangan har bir mashinada paydo bo'ladi.",
+      "done": "Vazifa siz tanlagan barcha mashinalar uchun yaratildi."
+    }
   }
 }

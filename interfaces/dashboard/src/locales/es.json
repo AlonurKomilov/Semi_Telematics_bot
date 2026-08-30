@@ -1138,5 +1138,24 @@
       "why": "Llega telemetría que ningún vehículo del registro reclama, así que no puede elegirse para un disparador, no genera alertas y no aparece en ninguna lista. Normalmente el número de unidad existe dos veces —una como vehículo manual y otra como el telemático— y el resolutor no adivina entre ellos.",
       "do": "Abra el vehículo y defina su enlace telemático, o archive el duplicado."
     }
+  },
+  "spotlight": {
+    "labels": {
+      "show_me": "Muéstrame",
+      "skip": "Omitir",
+      "exit": "Salir del tour",
+      "done_title": "¡Buen trabajo!",
+      "close": "Cerrar",
+      "step_of": "Paso {{n}} de {{total}}"
+    },
+    "maintenance.bulk_add": {
+      "title": "Una tarea para varios vehículos",
+      "body": "¿Agregando tareas una por una? Una tarea puede crearse para varios vehículos — o todo un grupo — en un solo paso. ¿Quiere verlo con su próxima tarea real?",
+      "step1": "Pulse “New task” para abrir el formulario.",
+      "step2": "Marque “Apply to multiple vehicles at once”.",
+      "step3": "Elija los vehículos — toque las unidades para esta tarea.",
+      "step4": "Elija el tipo de servicio y pulse “Create”. La tarea se crea en cada vehículo seleccionado.",
+      "done": "La tarea se creó para todos los vehículos seleccionados."
+    }
   }
 }

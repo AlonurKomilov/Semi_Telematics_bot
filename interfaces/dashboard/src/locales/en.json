@@ -1429,5 +1429,24 @@
       "why": "Telemetry is arriving that no registry vehicle claims, so it cannot be picked for a trigger, cannot raise an alert, and appears in no list. Usually the unit number exists twice — once as a manual vehicle and once as the telematics one — and the resolver will not guess between them.",
       "do": "Open the vehicle and set its telematics link, or archive the duplicate."
     }
+  },
+  "spotlight": {
+    "labels": {
+      "show_me": "Show me",
+      "skip": "Skip",
+      "exit": "Exit tour",
+      "done_title": "Nice work!",
+      "close": "Close",
+      "step_of": "Step {{n}} of {{total}}"
+    },
+    "maintenance.bulk_add": {
+      "title": "Add one task to many vehicles",
+      "body": "Adding tasks one by one? One task can be created for several vehicles — or a whole set of them — in a single step. Want to see how, on your own next task?",
+      "step1": "Press “New task” to open the form.",
+      "step2": "Check “Apply to multiple vehicles at once”.",
+      "step3": "Pick the vehicles — tap the units this task is for.",
+      "step4": "Choose the service task and press “Create”. The task lands on every selected vehicle.",
+      "done": "The task was created for every vehicle you selected."
+    }
   }
 }

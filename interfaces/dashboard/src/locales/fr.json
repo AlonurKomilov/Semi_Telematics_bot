@@ -1138,5 +1138,24 @@
       "why": "De la télémétrie arrive sans qu’aucun véhicule du registre ne la revendique : elle ne peut pas être choisie pour un déclencheur, ne génère aucune alerte et n’apparaît dans aucune liste. En général le numéro d’unité existe deux fois — une fois en véhicule manuel, une fois en télématique — et le résolveur refuse de deviner.",
       "do": "Ouvrez le véhicule et définissez son lien télématique, ou archivez le doublon."
     }
+  },
+  "spotlight": {
+    "labels": {
+      "show_me": "Montrez-moi",
+      "skip": "Ignorer",
+      "exit": "Quitter le guide",
+      "done_title": "Bien joué !",
+      "close": "Fermer",
+      "step_of": "Étape {{n}} sur {{total}}"
+    },
+    "maintenance.bulk_add": {
+      "title": "Une tâche pour plusieurs véhicules",
+      "body": "Vous ajoutez les tâches une par une ? Une tâche peut être créée pour plusieurs véhicules — ou tout un ensemble — en une seule fois. Voir comment, sur votre prochaine tâche ?",
+      "step1": "Appuyez sur « New task » pour ouvrir le formulaire.",
+      "step2": "Cochez « Apply to multiple vehicles at once ».",
+      "step3": "Choisissez les véhicules — touchez les unités concernées.",
+      "step4": "Choisissez le type de service puis « Create ». La tâche est créée sur chaque véhicule sélectionné.",
+      "done": "La tâche a été créée pour chaque véhicule sélectionné."
+    }
   }
 }

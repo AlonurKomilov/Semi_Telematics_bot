@@ -1,0 +1,117 @@
+/**
+ * The spotlight drift guards — what keeps a tour honest over time.
+ *
+ * A tour points at real DOM elements and speaks nine languages; both
+ * halves rot silently.  An anchor whose element was deleted leaves the
+ * engine pointing at nothing (it exits gracefully — so nothing ever
+ * turns red for the USER, which is exactly why the build must).  A
+ * locale that misses a step renders a raw key mid-tour.
+ */
+import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { SPOTLIGHT_CATALOG } from './spotlightCatalog';
+
+const SRC = join(__dirname, '..', '..');
+const LOCALE_DIR = join(SRC, 'locales');
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) walk(path, out);
+    else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(path);
+  }
+  return out;
+}
+
+const SOURCES = walk(SRC).map((p) => readFileSync(p, 'utf-8'));
+const LOCALES = readdirSync(LOCALE_DIR).filter((f) => f.endsWith('.json'));
+const load = (f: string) =>
+  JSON.parse(readFileSync(join(LOCALE_DIR, f), 'utf-8')) as Record<string, unknown>;
+
+describe('spotlight catalog', () => {
+  it('every step anchor exists in the source as a data-spotlight attribute', () => {
+    // THE tour-rot guard.  Anchors are declared attributes precisely so
+    // this test can see them; a redesign that drops one fails here, at
+    // build time, instead of in front of a user mid-tour.
+    const missing: string[] = [];
+    for (const tour of SPOTLIGHT_CATALOG) {
+      for (const step of tour.steps) {
+        const needle = `data-spotlight="${step.anchor}"`;
+        if (!SOURCES.some((s) => s.includes(needle))) {
+          missing.push(`${tour.key}: ${needle}`);
+        }
+      }
+    }
+    expect(missing, 'anchors referenced by tours but absent from src').toEqual([]);
+  });
+
+  it('keys are namespaced <feature>.<name> and match their feature field', () => {
+    for (const tour of SPOTLIGHT_CATALOG) {
+      expect(tour.key).toMatch(/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/);
+      expect(tour.key.split('.')[0]).toBe(tour.feature);
+    }
+  });
+
+  it('tours stay walkable: 1-6 steps', () => {
+    // Above six the tour stops being a shortcut and becomes a course;
+    // the cap is a design decision, not a technical one.
+    for (const tour of SPOTLIGHT_CATALOG) {
+      expect(tour.steps.length).toBeGreaterThanOrEqual(1);
+      expect(tour.steps.length).toBeLessThanOrEqual(6);
+    }
+  });
+});
+
+describe('spotlight locales', () => {
+  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of'];
+
+  it('every locale answers every tour completely', () => {
+    // title + body + one line per step + done — same questions in all
+    // nine languages, so no locale silently shows a raw key.
+    const problems: string[] = [];
+    for (const f of LOCALES) {
+      const spot = load(f).spotlight as Record<string, Record<string, string>> | undefined;
+      if (!spot) { problems.push(`${f}: no spotlight section`); continue; }
+      for (const label of REQUIRED_LABELS) {
+        if (!spot.labels?.[label]) problems.push(`${f}: labels.${label}`);
+      }
+      for (const tour of SPOTLIGHT_CATALOG) {
+        const entry = spot[tour.key];
+        if (!entry) { problems.push(`${f}: ${tour.key}`); continue; }
+        const want = ['title', 'body', 'done',
+          ...tour.steps.map((_, i) => `step${i + 1}`)];
+        for (const field of want) {
+          if (!entry[field]) problems.push(`${f}: ${tour.key}.${field}`);
+        }
+        // A field no step reads is a promise the engine won't keep.
+        const extra = Object.keys(entry).filter((k) => !want.includes(k));
+        for (const k of extra) problems.push(`${f}: ${tour.key}.${k} (nothing reads it)`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('no locale silently ships the English string', () => {
+    // Field parity is not translation parity — the callouts guards
+    // learned this when six caveats sat in English across eight
+    // locales for months.  Product names quoted from the UI ("New
+    // task", "Create") legitimately stay English INSIDE a translated
+    // sentence; a whole VALUE identical to English means the
+    // translation never happened.
+    const en = load('en.json').spotlight as Record<string, Record<string, string>>;
+    const problems: string[] = [];
+    for (const f of LOCALES) {
+      if (f === 'en.json') continue;
+      const spot = load(f).spotlight as Record<string, Record<string, string>>;
+      for (const [section, fields] of Object.entries(en)) {
+        for (const [field, value] of Object.entries(fields)) {
+          if (spot?.[section]?.[field] === value) {
+            problems.push(`${f}: spotlight.${section}.${field}`);
+          }
+        }
+      }
+    }
+    expect(problems, 'byte-identical to English').toEqual([]);
+  });
+});

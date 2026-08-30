@@ -296,7 +296,7 @@ export default function AddTaskDialog({
           {/* Multi-vehicle toggle — checkbox at the top so the user
               sees it before they start filling fields.  Spans the
               full row so it doesn't get lost. */}
-          <label className="col-span-full inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <label data-spotlight="maintenance.multi-toggle" className="col-span-full inline-flex items-center gap-2 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={fMultiMode}
@@ -313,7 +313,7 @@ export default function AddTaskDialog({
               <span className="block text-xs text-muted-foreground mb-1">
                 Vehicles ({fMultiVehicles.size} selected)
               </span>
-              <div className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
+              <div data-spotlight="maintenance.vehicle-chips" className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
                 {fleetLoading && (
                   <span className="text-xs text-muted-foreground">Loading…</span>
                 )}
@@ -549,7 +549,7 @@ export default function AddTaskDialog({
             </span>
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
+            <button data-spotlight="maintenance.create" type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition min-h-tap">
               {saving ? 'Saving...' : 'Create'}
             </button>
           </div>
