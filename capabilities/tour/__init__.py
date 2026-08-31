@@ -25,7 +25,7 @@ grouped counts ARE the "already uses the bulk path" signal and solo
 counts the "does it one at a time" signal.
 
 The MAP of the whole system — four homes, cross-layer contracts, the
-decision log — is docs/architecture/tours.md; frontend authoring rules
+decision log — is ARCHITECTURE.md beside this file; frontend authoring rules
 are interfaces/dashboard/src/components/tour/CLAUDE.md.
 """
 

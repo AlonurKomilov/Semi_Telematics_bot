@@ -10,8 +10,13 @@ small beacon invites, the user knocks, and only then may the system say
 what it observed.
 
 This document is the MAP and the LAW — where the pieces live, the
-contracts that cross layers, and the decisions with their reasons.  The
-working rules live next to the code they bind:
+contracts that cross layers, and the decisions with their reasons.  It
+lives IN the package, not in root docs, by owner rule: a doc rots where
+nobody working sees it, and the seam this file guards changes from this
+side (the endpoint, the allowlist) — the same freshness-over-filing
+logic that moved tests next to the code they guard.  The root
+docs/architecture/README.md indexes it.  The working rules live next to
+the code they bind:
 
   * authoring + engine rules (frontend):
     `interfaces/dashboard/src/components/tour/CLAUDE.md`

@@ -236,7 +236,8 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   anchors as `data-tour` attributes, words ×9 locales, and the engine,
   guards, library page and beacon come free. Full authoring rules +
   the honesty contract (consent-gated observation, commit steps,
-  plural families): [components/tour/CLAUDE.md](src/components/tour/CLAUDE.md).
+  plural families): [components/tour/CLAUDE.md](src/components/tour/CLAUDE.md);
+  the cross-layer map: [capabilities/tour/ARCHITECTURE.md](../../capabilities/tour/ARCHITECTURE.md).
 - **Per-user UI state = the preferences service, never raw `localStorage`.**
   `usePreference('notif.position')` (or `preferences.get(…)` outside React);
   add ONE entry to [`src/preferences/registry.ts`](src/preferences/registry.ts)
