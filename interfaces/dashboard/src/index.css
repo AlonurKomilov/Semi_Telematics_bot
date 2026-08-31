@@ -347,6 +347,19 @@
 
     --sidebar-border: oklch(0.91 0.005 240);
 
+    /* The MATERIAL axis — what a surface is made of, as opposed to what
+       colour it is. Defaults are SOLID and reproduce today exactly:
+       alpha 1 is the base colour untouched, blur 0 with no
+       backdrop-filter rule at all, and `none` for the shadow because the
+       card primitive has never had one.
+       Shadows had no token before this. Every `shadow-*` in the app is
+       Tailwind's stock black, identical in light and dark, and no mod
+       could ever reach it. */
+    --surface-alpha: 1;
+    --surface-blur: 0px;
+    --surface-saturate: 1;
+    --surface-shadow: none;
+
   }
   .dark {
     color-scheme: dark;
@@ -476,6 +489,12 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
 
     --sidebar-border: oklch(1 0 0 / 10%);
+
+    /* No material tokens here on purpose. `.dark` overrides only what it
+       CHANGES, and the solid defaults are identical in both modes — so
+       `:root`'s values apply and the print block has nothing extra to
+       mirror. Only the glass block below differs by mode, because a
+       shadow that reads on white is invisible on near-black. */
 
   }
   * {
@@ -795,3 +814,81 @@
 .leaflet-container .leaflet-tooltip-right::before { border-right-color:  var(--popover); }
 .leaflet-container .leaflet-tooltip-top::before    { border-top-color:    var(--popover); }
 .leaflet-container .leaflet-tooltip-bottom::before { border-bottom-color: var(--popover); }
+
+/* ─── MATERIAL ─────────────────────────────────────────────────────────
+   Deliberately outside every `@layer`. Tailwind v3 orders its output
+   rather than emitting native cascade layers, so a rule written here —
+   after `@tailwind utilities` in source — wins a specificity tie against
+   a utility. Inside `@layer components` it would be hoisted above the
+   utilities and `bg-card` would beat it.
+
+   The material is a static block keyed on an attribute, exactly like the
+   accent presets, and for the same reason: `colour.test.ts` and the
+   chrome guards read this file off disk. A material that existed only at
+   runtime would be invisible to all of them. The injector
+   (`lib/modStyle.ts`) then tunes the VALUES inside this structure — that
+   is the division: the stylesheet says which properties apply and where,
+   the injector says how much. */
+
+/* The base a surface is made from. `--card` unless a variant says
+   otherwise, so the common case needs one class. NOT inside a media
+   query: a card still needs a background when it is printed. */
+.surface {
+  background-color: var(--surface-base, var(--card));
+}
+.surface-popover { --surface-base: var(--popover); }
+.surface-sidebar { --surface-base: var(--sidebar); }
+
+/* Everything GLASS is screen-only, for the same reason the injector is:
+   the `@media print` reset puts the light palette back through selector
+   specificity alone, with no `!important` anywhere in this codebase. A
+   glass rule that applied during print would blur and thin a page that
+   is about to become paper. Print is always solid. */
+@media screen {
+  :root[data-material="glass"] {
+    --surface-alpha: 0.72;
+    --surface-blur: 14px;
+    /* Glass without a saturation boost reads as fog. */
+    --surface-saturate: 1.5;
+    --surface-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 12px 32px -16px rgb(0 0 0 / 18%);
+  }
+  .dark[data-material="glass"] {
+    /* Lower, because a dark surface has to let more of the ground
+       through before the eye reads it as translucent at all. */
+    --surface-alpha: 0.62;
+    --surface-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 12px 32px -14px rgb(0 0 0 / 55%);
+  }
+
+  /* `backdrop-filter` is applied ONLY under glass. At blur 0 it would
+     still promote every one of 178 cards to its own compositing layer
+     for no visual effect — the solid path must cost exactly nothing. */
+  :root[data-material="glass"] .surface {
+    background-color: color-mix(
+      in oklab,
+      var(--surface-base, var(--card)) calc(var(--surface-alpha) * 100%),
+      transparent
+    );
+    -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    /* Only here, never on `.surface` itself. This rule is unlayered and
+       so outranks a utility — putting the shadow on the base class would
+       beat the `shadow-lg` that dialogs, sheets and menus already carry
+       and silently flatten every one of them. */
+    box-shadow: var(--surface-shadow);
+  }
+}
+
+/* The escape hatch, and it is not optional.
+   21 sticky and pinned elements use their fill to OCCLUDE the content
+   scrolling underneath — the grid's frozen columns, pinned headers, the
+   pivot's left rail. A translucent surface makes them see-through and
+   the table becomes unreadable. Those sites opt out explicitly. */
+/* Only under glass. In the solid path there is no translucency to
+   cancel, so a bare `.surface-opaque` rule would be a no-op — and a
+   no-op rule is one a mutation can delete without any guard noticing,
+   which is how it was found. */
+:root[data-material="glass"] .surface-opaque {
+  background-color: var(--surface-base, var(--card));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

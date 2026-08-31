@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils"
  * grid item with its own ref) still gets the one definition by calling
  * `cn(cardVariants({ padding: 'none' }), …)`.
  */
-const cardVariants = cva("bg-card border border-border rounded-lg", {
+const cardVariants = cva("surface border border-border rounded-lg", {
   variants: {
     padding: {
       /**

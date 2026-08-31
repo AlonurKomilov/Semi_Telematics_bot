@@ -5,11 +5,13 @@ import { Palette, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Tip } from './tooltip';
-import { useTheme, applySize, type Mode, type Accent, type RadiusVariant } from '../context/ThemeContext';
+import {
+  useTheme, applySize, type Mode, type Accent, type RadiusVariant, type Material,
+} from '../context/ThemeContext';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
-  THEME_PACKS, THEME_MODS, activeModId, modById, type ThemeMod,
+  THEME_PACKS, THEME_MODS, THEME_MATERIALS, activeModId, modById, type ThemeMod,
 } from '../lib/themePacks';
 
 // ── Option rows ──────────────────────────────────────────────
@@ -69,6 +71,15 @@ const MOD_OPTIONS = THEME_MODS.map((m) => ({
   mod: m,
 }));
 
+/** What surfaces are made of. An axis, so it sits beside Corners rather
+ *  than inside a look — a mod may set it, and so may the person. */
+const MATERIAL_OPTIONS: { value: Material; key: string; label: string }[] =
+  THEME_MATERIALS.map((m) => ({
+    value: m,
+    key: `theme.material_${m}`,
+    label: m === 'solid' ? 'Solid' : 'Glass',
+  }));
+
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
   { value: 'sharp',   key: 'theme.corners_sharp',   label: 'Sharp' },
   { value: 'rounded', key: 'theme.corners_rounded', label: 'Rounded' },
@@ -123,13 +134,14 @@ export function ThemeToggle() {
   // A mod is "on" only while every axis it declares still matches. Tweak
   // the corners and it goes off — what is applied is the axes, and the
   // mod was only the thing that wrote them.
-  const activeMod = activeModId(theme.accent, theme.radius, size.global);
+  const activeMod = activeModId(theme.accent, theme.radius, size.global, theme.material);
   const activeWhy = modById(activeMod)?.why ?? '';
 
   const applyMod = (m: ThemeMod) => {
     setTheme({
       accent: m.accent as Accent,
       ...(m.radius === undefined ? {} : { radius: m.radius }),
+      ...(m.material === undefined ? {} : { material: m.material }),
     });
     if (m.size !== undefined) setSize({ global: m.size });
   };
@@ -304,6 +316,21 @@ export function ThemeToggle() {
               {RADIUS_OPTIONS.map((o) => (
                 <Chip key={o.value} value={o.value} current={theme.radius} label={t(o.key, o.label)}
                   onClick={(v) => setTheme({ radius: v })} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              {t('theme.group_material', 'Material')}
+            </p>
+            {/* Beside Corners, not inside Look: it is a property of the
+                whole app, and a person may want glass without taking a
+                mod's size and colour with it. */}
+            <div className="flex flex-wrap gap-1">
+              {MATERIAL_OPTIONS.map((o) => (
+                <Chip key={o.value} value={o.value} current={theme.material} label={t(o.key, o.label)}
+                  onClick={(v) => setTheme({ material: v })} />
               ))}
             </div>
           </div>

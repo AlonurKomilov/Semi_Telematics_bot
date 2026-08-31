@@ -8,6 +8,7 @@ import type {
   ThemeMode,
   ThemeAccent,
   ThemeRadius,
+  ThemeMaterial,
   ThemeSetting,
   SizeSetting,
 } from '../preferences';
@@ -20,6 +21,7 @@ export type ColorTheme = ThemeColor;
 export type Mode = ThemeMode;
 export type Accent = ThemeAccent;
 export type RadiusVariant = ThemeRadius;
+export type Material = ThemeMaterial;
 export type Theme = ThemeSetting;
 export type Size = SizeSetting;
 
@@ -57,6 +59,10 @@ export function applyTheme(theme: Theme) {
   // spelling keeps working while it is being migrated.
   root.dataset.theme = themeColorAlias(theme.mode, theme.accent);
   root.dataset.radius = theme.radius;
+  // The material axis. Static CSS keyed on this attribute, exactly like
+  // the accent presets — so `colour.test.ts` and the chrome guards can
+  // still see every value off disk.
+  root.dataset.material = theme.material;
 }
 
 /**

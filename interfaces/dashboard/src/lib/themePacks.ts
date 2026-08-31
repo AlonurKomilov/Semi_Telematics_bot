@@ -58,6 +58,19 @@ export const THEME_PACKS: readonly ThemePack[] = [
  *  separation, which is a property of all five slots together. */
 export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as const;
 
+/**
+ * What a surface is MADE OF, as opposed to what colour it is.
+ *
+ * An axis, not a pack field — it belongs beside corners in the panel,
+ * because it is a property of the whole app rather than of one look. A
+ * mod may set it, the same way a mod sets corners.
+ *
+ * Kept here rather than in the preferences registry for the same reason
+ * the accent set is: one list, and the registry derives from it.
+ */
+export const THEME_MATERIALS = ['solid', 'glass'] as const;
+export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
+
 export const packById = (id: string): ThemePack | undefined =>
   THEME_PACKS.find((p) => p.id === id);
 
@@ -93,6 +106,8 @@ export interface ThemeMod {
    *  24px hit-target floor (design.md §5.1), and a mod must not reach
    *  somewhere the control cannot follow it back from. */
   readonly size?: number;
+  /** What surfaces are made of. Omit and the person's own choice stands. */
+  readonly material?: ThemeMaterial;
   /** One line, shown under the label. Says who the look is FOR. */
   readonly why: string;
 }
@@ -124,11 +139,12 @@ export const modById = (id: string): ThemeMod | undefined =>
  * invalidated, the sum simply stops matching and the chip goes quiet.
  */
 export const activeModId = (
-  accent: string, radius: string, size: number,
+  accent: string, radius: string, size: number, material: string,
 ): string =>
   THEME_MODS.find((m) =>
     m.accent === accent
     && (m.radius === undefined || m.radius === radius)
+    && (m.material === undefined || m.material === material)
     // Float compare: the size arrives from a slider and a stored JSON
     // round-trip, so `===` against 1.25 is a coin toss.
     && (m.size === undefined || Math.abs(m.size - size) < 1e-6))?.id ?? '';

@@ -24,6 +24,7 @@ export {
   type ThemeAccent,
   type ThemeColor,
   type ThemeRadius,
+  type ThemeMaterial,
   type SizeSetting,
   type SizeRegion,
   SIZE_MIN,

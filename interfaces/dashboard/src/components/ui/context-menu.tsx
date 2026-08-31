@@ -52,7 +52,7 @@ const ITEM =
   'data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed';
 
 const POPUP =
-  'min-w-48 max-h-[min(20rem,70vh)] overflow-y-auto bg-popover ' +
+  'min-w-48 max-h-[min(20rem,70vh)] overflow-y-auto surface surface-popover ' +
   'text-popover-foreground border border-border rounded-md shadow-lg ' +
   'py-1 outline-none';
 
