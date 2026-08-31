@@ -18,6 +18,31 @@ else:
     _MixinBase = object
 
 
+# Which alerts the escalation pager considers its own — ONE definition,
+# shared by the job that pages and by the card that reports on the job.
+#
+# Both rules past `status` are owner decisions (2026-08-30, from live
+# data).  CLAIMED alerts stop paging: the pager's true job was always
+# finding an owner, and a claim IS an owner — the "Working on" ledger
+# replaced Acknowledge as the user verb, so an alert someone has hands
+# on needs no more reminders.  CRITICAL only: 420 reminders went out for
+# warnings and not one was ever answered, so warning-level paging was
+# pure Telegram noise.  Legacy acks still stop it too, via status.
+#
+# It is a shared constant rather than two matching queries because the
+# copy that drifted was the reporting one: the oversight card counted
+# warnings, claimed alerts and every alert type, and told the owner 222
+# alerts were being re-pinged while the pager was touching almost none.
+# Expects the caller's first bound parameter to be ``account_id``.
+PAGER_SCOPE_SQL = (
+    "WHERE h.account_id = ? AND h.status = 'active' "
+    "AND h.severity = 'critical' "
+    "AND NOT EXISTS (SELECT 1 FROM alert_workers w "
+    "                 WHERE w.account_id = h.account_id "
+    "                   AND w.alert_history_id = h.id)"
+)
+
+
 class AlertsMixin(_MixinBase):
 
     # ── Alert Acknowledgments ─────────────────────────────────────
@@ -1859,30 +1884,35 @@ class AlertsMixin(_MixinBase):
         if max_attempts <= 0:
             return []
         rows = await self.read_all(
-            # Two conditions beyond the originals, both owner decisions
-            # (2026-08-30, from live data):
-            #
-            # CLAIMED alerts stop paging.  The pager's true job was
-            # always finding an owner, and a claim IS an owner — the
-            # "Working on" ledger replaced Acknowledge as the user verb,
-            # so an alert someone has hands on needs no more reminders.
-            # Legacy acks still stop it too, via acknowledged-status.
-            #
-            # CRITICAL only.  420 reminders went out for warnings and
-            # not one was ever answered — warning-level paging was pure
-            # Telegram noise.  The 30-day window held zero criticals in
-            # the escalating types, so this net is dormant until the
-            # night it matters, at zero cost meanwhile.
             "SELECT * FROM alert_history h "
-            "WHERE h.account_id = ? AND h.status = 'active' "
-            "AND h.severity = 'critical' "
-            "AND h.reescalate_count < ? "
-            "AND (h.reescalate_last_sent_at IS NULL OR h.reescalate_last_sent_at < ?) "
-            "AND NOT EXISTS (SELECT 1 FROM alert_workers w "
-            "                 WHERE w.account_id = h.account_id "
-            "                   AND w.alert_history_id = h.id) "
-            "ORDER BY h.first_seen ASC",
+            + PAGER_SCOPE_SQL +
+            " AND h.reescalate_count < ? "
+            " AND (h.reescalate_last_sent_at IS NULL "
+            "      OR h.reescalate_last_sent_at < ?) "
+            " ORDER BY h.first_seen ASC",
             (account_id, max_attempts, cutoff_iso),
+        )
+        return [dict(r) for r in rows]
+
+    async def get_pager_scope_rows(self, account_id: int) -> list[dict]:
+        """Every alert the pager considers ITS OWN, whatever state its
+        attempt counter is in — the oversight card's population.
+
+        Shares ``PAGER_SCOPE_SQL`` with the candidate query above rather
+        than restating the rules, because the card restating them is
+        exactly how it came to report 222 alerts as "re-pinging" when
+        the pager had stopped touching warnings, claimed alerts and
+        every type outside the escalating set.  A summary that describes
+        a job must ask the job's own question.
+
+        The one rule NOT here is the alert-TYPE set: it lives in config
+        (``REESCALATE_ALERT_TYPES``) and the job applies it in Python, so
+        the caller applies the same constant to these rows.
+        """
+        rows = await self.read_all(
+            "SELECT * FROM alert_history h " + PAGER_SCOPE_SQL
+            + " ORDER BY h.first_seen ASC",
+            (account_id,),
         )
         return [dict(r) for r in rows]
 

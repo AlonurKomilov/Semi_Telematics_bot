@@ -1597,13 +1597,25 @@ async def escalation_summary(
     """Owner/admin oversight: how many active alerts are past their
     re-escalation window or have hit the max-attempts cap.
 
-    Computed from ``alert_history`` (one row per logical alert) and
-    the env-tuned re-escalation knobs.  ``past_due`` means the alert
-    is older than ``REESCALATE_AFTER_MINUTES`` and unacked (the
-    pipeline is currently re-pinging it).  ``breached`` means it hit
-    ``REESCALATE_MAX_ATTEMPTS`` and the pipeline stopped paging — the
-    alert is still in the dashboard queue but no longer interrupting
-    operators.  Both counts are CRITICAL/WARNING only.
+    THIS CARD DESCRIBES A JOB, so it asks the job's own question.  It
+    used to restate the pager's rules in its own words and the two drifted
+    apart: it counted every severity and every alert type, and knew
+    nothing about claims, so it reported 222 alerts as "unclaimed > 60m —
+    re-pinging" on an account where the pager was touching almost none.
+    A summary that overstates what a safety mechanism is doing is worse
+    than no summary — it reads as coverage.
+
+    The population now comes from ``get_pager_scope_rows``, which shares
+    ``PAGER_SCOPE_SQL`` with the candidate query the job itself runs:
+    active, critical, and nobody working on it.  The one rule that lives
+    outside that SQL is the alert-TYPE set, applied here from the same
+    ``REESCALATE_ALERT_TYPES`` constant the job applies.
+
+    ``past_due`` means the pager is currently chasing it (older than
+    ``REESCALATE_AFTER_MINUTES``, cap not yet reached).  ``breached``
+    means it hit ``REESCALATE_MAX_ATTEMPTS`` and the pager gave up — still
+    in the queue, no longer interrupting anyone, and nobody has claimed
+    it, which is precisely the alert most likely to be forgotten.
 
     The ``by_persona`` map groups past_due counts by the persona that
     owns each alert_type (per ``capabilities.alerting.persona_mapping``)
@@ -1613,11 +1625,13 @@ async def escalation_summary(
     from datetime import datetime, timezone, timedelta
     from infra.config import (
         REESCALATE_AFTER_MINUTES, REESCALATE_MAX_ATTEMPTS,
+        REESCALATE_ALERT_TYPES,
     )
     from capabilities.alerting import persona_mapping
 
     account_id = user["account_id"]
-    rows = await tenant_db.get_active_alert_history_for_account(account_id)
+    rows = await tenant_db.get_pager_scope_rows(account_id)
+    qualified_types = set(REESCALATE_ALERT_TYPES)
 
     now = datetime.now(timezone.utc)
     cutoff_minutes = max(REESCALATE_AFTER_MINUTES, 0)
@@ -1627,8 +1641,8 @@ async def escalation_summary(
     breached = 0
     by_persona: dict[str, int] = {}
     for r in rows:
-        sev = (r.get("severity") or "").lower()
-        if sev not in ("critical", "warning"):
+        # The job's own type gate (escalation.py), from the same constant.
+        if (r.get("alert_type") or "") not in qualified_types:
             continue
         # `last_seen` is the latest re-fire timestamp — use it as the
         # age anchor so a chronic alert that fired again 5 minutes ago
@@ -1641,13 +1655,16 @@ async def escalation_summary(
         except Exception:
             continue
         reesc = int(r.get("reescalate_count") or 0)
-        is_past_due = cutoff_minutes > 0 and ts < cutoff
-        if is_past_due:
+        # The two buckets are EXCLUSIVE: past the cap the pager has
+        # stopped, so counting such a row as "re-pinging" would be the
+        # same overstatement in miniature.
+        if reesc >= REESCALATE_MAX_ATTEMPTS:
+            breached += 1
+            continue
+        if cutoff_minutes > 0 and ts < cutoff:
             past_due += 1
             persona = persona_mapping.persona_for_alert(r.get("alert_type") or "")
             by_persona[persona] = by_persona.get(persona, 0) + 1
-        if reesc >= REESCALATE_MAX_ATTEMPTS:
-            breached += 1
 
     return {
         "past_due_count":   past_due,
