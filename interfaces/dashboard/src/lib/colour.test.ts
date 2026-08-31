@@ -50,72 +50,20 @@ import { join } from 'node:path';
 const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
-// ── colour maths, self-contained ────────────────────────────────────
-// No dependency: a package added for a guard is a package in the test
-// loop, and this is ~60 lines.
-type RGB = [number, number, number];
-
-const oklabToLinear = (L: number, a: number, b: number): RGB => {
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-  const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
-  ];
-};
-
-const linearToOklab = ([r, g, b]: RGB): RGB => {
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
-    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
-  ];
-};
-
-const encode = (c: number) =>
-  c <= 0.0031308 ? 12.92 * c : 1.055 * Math.max(c, 0) ** (1 / 2.4) - 0.055;
-const inGamut = ([r, g, b]: RGB, eps = 1e-6) =>
-  [r, g, b].every((c) => c >= -eps && c <= 1 + eps);
-const clamp = ([r, g, b]: RGB): RGB =>
-  [r, g, b].map((c) => Math.min(1, Math.max(0, c))) as RGB;
-
-/** CSS Color 4 gamut mapping. Returns the painted colour, and whether
- *  the authored one needed mapping at all. */
-function oklchToSrgb(L: number, C: number, H: number): { rgb: RGB; mapped: boolean } {
-  const h = (H * Math.PI) / 180;
-  const lin = oklabToLinear(L, C * Math.cos(h), C * Math.sin(h));
-  if (inGamut(lin)) return { rgb: clamp(lin).map(encode) as RGB, mapped: false };
-  if (L <= 0) return { rgb: [0, 0, 0], mapped: true };
-  if (L >= 1) return { rgb: [1, 1, 1], mapped: true };
-  let lo = 0, hi = C, best = clamp(lin);
-  const JND = 0.02;
-  while (hi - lo > 1e-5) {
-    const mid = (lo + hi) / 2;
-    const cand = oklabToLinear(L, mid * Math.cos(h), mid * Math.sin(h));
-    if (inGamut(cand)) { lo = mid; best = clamp(cand); continue; }
-    const clipped = clamp(cand);
-    const [dl, da, db] = linearToOklab(clipped);
-    const d = Math.hypot(dl - L, da - mid * Math.cos(h), db - mid * Math.sin(h));
-    if (d < JND) { best = clipped; lo = mid; } else { hi = mid; }
-  }
-  return { rgb: best.map(encode) as RGB, mapped: true };
-}
-const relLum = ([r, g, b]: RGB) => {
-  const f = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-};
-const ratio = (a: RGB, b: RGB) => {
-  const [hi, lo] = [relLum(a), relLum(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-};
-/** What the browser paints when `fg` at `alpha` sits on `bg`. */
-const over = (fg: RGB, alpha: number, bg: RGB): RGB =>
-  fg.map((c, i) => c * alpha + bg[i] * (1 - alpha)) as RGB;
+// ── colour maths ────────────────────────────────────────────────────
+// Imported, NOT redefined. This suite and the runtime theme engine have
+// to agree bit for bit: a guard that proves a ratio with one
+// implementation while the browser computes it with another is proving
+// something about the guard. `src/lib/contrast.ts` is the single copy,
+// and it ships — which is the point, because everything measured below
+// is measured at BUILD time, and a theme that arrives at runtime moves
+// these values out from under every assertion in this file.
+//
+// `ratio` keeps its short local name; it appears too often here for the
+// longer one to read well.
+import {
+  oklchToSrgb, relLum, contrastRatio as ratio, over, maxChroma, type RGB,
+} from './contrast';
 
 // ── token resolution ────────────────────────────────────────────────
 type Val =
@@ -432,16 +380,6 @@ describe('colour values', () => {
     // above would be arithmetic about the wrong one. It also makes a
     // retune silently inert — nudge the chroma of a clipped token and
     // nothing moves except on a P3 display.
-    const maxChroma = (L: number, H: number) => {
-      let lo = 0, hi = 0.5;
-      for (let i = 0; i < 50; i++) {
-        const mid = (lo + hi) / 2;
-        const h = (H * Math.PI) / 180;
-        if (inGamut(oklabToLinear(L, mid * Math.cos(h), mid * Math.sin(h)))) lo = mid;
-        else hi = mid;
-      }
-      return lo;
-    };
     const worse: string[] = [];
     const better: string[] = [];
     // Keyed per CELL, not per token. Taking the max across cells lets a
