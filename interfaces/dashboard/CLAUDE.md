@@ -230,6 +230,13 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   DataGrid's `rowActions` prop; a feature's action list lives in
   `features/<x>/contextMenu.tsx`. Full rule + contracts:
   [components/ui/CLAUDE.md](src/components/ui/CLAUDE.md).
+- **Interactive walkthroughs = the tour engine.** A feature never
+  hand-rolls an overlay/coach-mark: tour DATA goes in
+  `features/<x>/tour/` (one spec per file, `index.ts` collects),
+  anchors as `data-tour` attributes, words ×9 locales, and the engine,
+  guards, library page and beacon come free. Full authoring rules +
+  the honesty contract (consent-gated observation, commit steps,
+  plural families): [components/tour/CLAUDE.md](src/components/tour/CLAUDE.md).
 - **Per-user UI state = the preferences service, never raw `localStorage`.**
   `usePreference('notif.position')` (or `preferences.get(…)` outside React);
   add ONE entry to [`src/preferences/registry.ts`](src/preferences/registry.ts)

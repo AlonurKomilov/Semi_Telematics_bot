@@ -118,7 +118,15 @@ def test_dashboard_tours_ask_only_allowlisted_signals():
     allowed = {f"{e}:{a}" for e, a in ALLOWED_SIGNALS}
     offenders = []
     feat_dir = REPO / "interfaces" / "dashboard" / "src" / "features"
-    for f in feat_dir.rglob("tours.ts"):
+    # The convention moved from a flat features/<x>/tours.ts to a
+    # features/<x>/tour/ folder (one spec per file, index collects);
+    # both shapes stay scanned so a straggler in the old shape cannot
+    # hide from the allowlist.
+    tour_files = [
+        *feat_dir.rglob("tours.ts"),
+        *(f for f in feat_dir.rglob("*.ts") if f.parent.name == "tour"),
+    ]
+    for f in tour_files:
         text = f.read_text(encoding="utf-8")
         for m in re.finditer(r"signals:\s*\[([^\]]*)\]", text):
             for pair in re.findall(r"'([^']+)'", m.group(1)):

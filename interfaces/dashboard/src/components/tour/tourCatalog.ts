@@ -6,7 +6,7 @@
  * missing from any locale.  A tour someone forgot to register here
  * simply never runs, which is the safe failure.
  */
-import { MAINTENANCE_TOURS } from '../../features/maintenance/tours';
+import { MAINTENANCE_TOURS } from '../../features/maintenance/tour';
 import { isEligible, type TourState, type TourCtx, type TourSpec } from './types';
 
 export const TOUR_CATALOG: readonly TourSpec[] = [
