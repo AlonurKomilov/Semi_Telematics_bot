@@ -360,6 +360,20 @@
     --surface-saturate: 1;
     --surface-shadow: none;
 
+    /* MOTION. Every duration in tailwind.config.js is
+       `calc(<literal> * var(--motion-scale))`, so this one number
+       reaches all 189 `transition-*` utilities — and nothing else has to
+       change, because only 9 sites name a duration explicitly.
+       Infinite loops are NOT on this axis: `animate-spin` compiles to
+       `animation: spin 1s linear infinite`, the duration lives in the
+       shorthand, and scaling it would turn 89 spinners into a strobe. */
+    --motion-scale: 1;
+    --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* The mono family joins the token layer. All 106 existing
+       `font-mono` sites keep their class name and start following it. */
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
   }
   .dark {
     color-scheme: dark;
@@ -775,7 +789,7 @@
  * None of that matters here, because none of these is at equal
  * specificity. One extra ancestor class outranks order outright, and it
  * was measured that way — in Chrome, with the app's CSS in the LOSING
- * position and no `!important` anywhere. The rule this encodes is not
+ * position and no `!important` on either side. The rule this encodes is not
  * "verify vendor overrides against a real build"; it is "never write a
  * vendor override at equal specificity".
  *
@@ -841,9 +855,11 @@
 
 /* Everything GLASS is screen-only, for the same reason the injector is:
    the `@media print` reset puts the light palette back through selector
-   specificity alone, with no `!important` anywhere in this codebase. A
-   glass rule that applied during print would blur and thin a page that
-   is about to become paper. Print is always solid. */
+   specificity alone, and no colour anywhere in this file is `!important`
+   — the single exception is the reduced-motion floor at the end, which
+   sets durations and no colours. A glass rule that applied during print
+   would blur and thin a page that is about to become paper. Print is
+   always solid. */
 @media screen {
   :root[data-material="glass"] {
     --surface-alpha: 0.72;
@@ -891,4 +907,32 @@
   background-color: var(--surface-base, var(--card));
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+/* ─── MOTION AXIS ──────────────────────────────────────────────────────
+   Multipliers, not three sets of literals, so a mod can dial the scale
+   to any value the injector accepts rather than picking from what we
+   happened to write. */
+:root[data-motion="calm"]   { --motion-scale: 1.6; }
+:root[data-motion="snappy"] { --motion-scale: 0.6; }
+
+/* The accessibility floor, and the ONLY `!important` in this stylesheet.
+   It is deliberate: this is a guarantee to someone whose vestibular
+   system is at stake, not a preference to be outranked by a mod, an
+   inline style or a later rule.
+
+   `animation-iteration-count: 1` is the load-bearing line. Scaling
+   durations toward zero is what a naive reduced-motion rule does, and on
+   an infinite animation that is not "no motion" — it is 89 spinners
+   flickering at 10ms, which is worse than leaving them alone. Ending the
+   loop is what stops the motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

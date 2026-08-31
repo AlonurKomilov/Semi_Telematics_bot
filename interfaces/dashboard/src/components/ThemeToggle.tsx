@@ -7,11 +7,13 @@ import { Slider } from './ui/slider';
 import { Tip } from './tooltip';
 import {
   useTheme, applySize, type Mode, type Accent, type RadiusVariant, type Material,
+  type Motion,
 } from '../context/ThemeContext';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
-  THEME_PACKS, THEME_MODS, THEME_MATERIALS, activeModId, modById, type ThemeMod,
+  THEME_PACKS, THEME_MODS, THEME_MATERIALS, THEME_MOTIONS,
+  activeModId, modById, type ThemeMod,
 } from '../lib/themePacks';
 
 // ── Option rows ──────────────────────────────────────────────
@@ -80,6 +82,13 @@ const MATERIAL_OPTIONS: { value: Material; key: string; label: string }[] =
     label: m === 'solid' ? 'Solid' : 'Glass',
   }));
 
+const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
+  THEME_MOTIONS.map((m) => ({
+    value: m,
+    key: `theme.motion_${m}`,
+    label: m === 'default' ? 'Normal' : m === 'calm' ? 'Calm' : 'Snappy',
+  }));
+
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
   { value: 'sharp',   key: 'theme.corners_sharp',   label: 'Sharp' },
   { value: 'rounded', key: 'theme.corners_rounded', label: 'Rounded' },
@@ -134,7 +143,7 @@ export function ThemeToggle() {
   // A mod is "on" only while every axis it declares still matches. Tweak
   // the corners and it goes off — what is applied is the axes, and the
   // mod was only the thing that wrote them.
-  const activeMod = activeModId(theme.accent, theme.radius, size.global, theme.material);
+  const activeMod = activeModId(theme.accent, theme.radius, size.global, theme.material, theme.motion);
   const activeWhy = modById(activeMod)?.why ?? '';
 
   const applyMod = (m: ThemeMod) => {
@@ -142,6 +151,7 @@ export function ThemeToggle() {
       accent: m.accent as Accent,
       ...(m.radius === undefined ? {} : { radius: m.radius }),
       ...(m.material === undefined ? {} : { material: m.material }),
+      ...(m.motion === undefined ? {} : { motion: m.motion }),
     });
     if (m.size !== undefined) setSize({ global: m.size });
   };
@@ -331,6 +341,20 @@ export function ThemeToggle() {
               {MATERIAL_OPTIONS.map((o) => (
                 <Chip key={o.value} value={o.value} current={theme.material} label={t(o.key, o.label)}
                   onClick={(v) => setTheme({ material: v })} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              {t('theme.group_motion', 'Motion')}
+            </p>
+            {/* A multiplier on every transition. Spinners and pulses are
+                deliberately not on it — see index.css. */}
+            <div className="flex flex-wrap gap-1">
+              {MOTION_OPTIONS.map((o) => (
+                <Chip key={o.value} value={o.value} current={theme.motion} label={t(o.key, o.label)}
+                  onClick={(v) => setTheme({ motion: v })} />
               ))}
             </div>
           </div>

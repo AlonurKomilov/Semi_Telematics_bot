@@ -14,7 +14,8 @@
  * `<html>` beat every selector, which sounds convenient until you meet
  * the `@media print` reset: 44 literals that put the light palette back
  * so a dark-mode user does not print white-on-nothing. It carries no
- * `!important` — nothing in this codebase does — so an inline token
+ * `!important` — no COLOUR in this codebase does; the one exception is
+ * the reduced-motion floor, which sets durations — so an inline token
  * silently defeats it and a dark mod prints dark. Wrapping the injected
  * rule in `@media screen` sidesteps that entirely: the rule does not
  * exist during print, and the reset keeps winning by being the only

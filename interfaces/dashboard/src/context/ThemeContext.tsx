@@ -9,6 +9,7 @@ import type {
   ThemeAccent,
   ThemeRadius,
   ThemeMaterial,
+  ThemeMotion,
   ThemeSetting,
   SizeSetting,
 } from '../preferences';
@@ -22,6 +23,7 @@ export type Mode = ThemeMode;
 export type Accent = ThemeAccent;
 export type RadiusVariant = ThemeRadius;
 export type Material = ThemeMaterial;
+export type Motion = ThemeMotion;
 export type Theme = ThemeSetting;
 export type Size = SizeSetting;
 
@@ -63,6 +65,7 @@ export function applyTheme(theme: Theme) {
   // the accent presets — so `colour.test.ts` and the chrome guards can
   // still see every value off disk.
   root.dataset.material = theme.material;
+  root.dataset.motion = theme.motion;
 }
 
 /**

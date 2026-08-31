@@ -26,6 +26,17 @@ import defaultTheme from 'tailwindcss/defaultTheme.js';
  * bare `bg-card` stays the simple `var(--card)` it always was — and we
  * don't pay color-mix on the thousands of unmodified token usages.
  */
+/**
+ * Wrap every duration in the motion multiplier.
+ *
+ * `calc()` rather than a set of literals per setting, so a mod can dial
+ * `--motion-scale` to any value the injector will accept rather than
+ * choosing from three we happened to write.
+ */
+const scaleMotion = (scale) =>
+  Object.fromEntries(Object.entries(scale).map(
+    ([k, v]) => [k, `calc(${v} * var(--motion-scale, 1))`]));
+
 const tokenColor = (cssVar) => ({ opacityValue }) =>
   (opacityValue === undefined || String(opacityValue).startsWith('var('))
     ? `var(${cssVar})`
@@ -227,7 +238,17 @@ export default {
         // — do not restate it.
         destructive: { DEFAULT: tokenColor('--destructive-text') },
       },
-      fontFamily: { heading: ['var(--font-heading)', ...defaultTheme.fontFamily.sans] },
+      fontFamily: {
+        heading: ['var(--font-heading)', ...defaultTheme.fontFamily.sans],
+        /* `sans` closes a trap rather than fixing a bug: no site writes
+           `font-sans` today, so this changes nothing now and stops the
+           first one that does from silently escaping the token. */
+        sans: ['var(--font-sans)', ...defaultTheme.fontFamily.sans],
+        /* `mono` is the opposite — it reaches 106 existing `font-mono`
+           sites across 52 files, none of which change: they keep the
+           class name and start following a token. */
+        mono: ['var(--font-mono)', ...defaultTheme.fontFamily.mono],
+      },
       colors: {
         // shadcn CSS-var tokens — wrapped in tokenColor() so `bg-primary`,
         // `text-muted-foreground/60`, `border-border/50`, etc. all work
@@ -363,6 +384,35 @@ export default {
        */
       transitionProperty: {
         control: 'color, background-color, border-color, box-shadow, opacity, transform',
+      },
+
+      /**
+       * MOTION, on a token.
+       *
+       * Nothing about motion was reachable before this. Every duration
+       * and easing in the app was a baked literal — index.css contained
+       * no @keyframes, no transition, no easing token and no
+       * prefers-reduced-motion block at all — so a mod could change what
+       * the app looks like and nothing about how it moves.
+       *
+       * Scaling the DEFAULT is what makes it free: there are 189
+       * `transition-*` utilities in the app and only 9 explicit
+       * `duration-*`, so almost everything rides the default and one
+       * value reaches it. Zero call sites change.
+       *
+       * The infinite loops are deliberately NOT on this axis, and the
+       * distinction matters. `animate-spin` compiles to
+       * `animation: spin 1s linear infinite` — the duration lives in the
+       * shorthand, which `animationDuration` does not touch. Had they
+       * been included, a "fast" setting would turn 89 spinners and 18
+       * pulses into a 10ms strobe: worse than no setting at all, and the
+       * kind of thing that ships because it was reasoned about rather
+       * than compiled.
+       */
+      transitionDuration: scaleMotion(defaultTheme.transitionDuration),
+      animationDuration: scaleMotion(defaultTheme.transitionDuration),
+      transitionTimingFunction: {
+        DEFAULT: 'var(--motion-ease, cubic-bezier(0.4, 0, 0.2, 1))',
       },
 
       borderRadius: {

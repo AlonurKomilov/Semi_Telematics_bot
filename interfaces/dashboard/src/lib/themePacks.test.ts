@@ -201,25 +201,25 @@ describe('a look is on only while it adds up', () => {
   const cab = modById('cab')!;
 
   it('recognises its own axes', () => {
-    expect(activeModId(cab.accent, cab.radius!, cab.size!, 'solid')).toBe('cab');
+    expect(activeModId(cab.accent, cab.radius!, cab.size!, 'solid', 'default')).toBe('cab');
   });
 
   it('goes quiet the moment any axis is tweaked', () => {
     // The behaviour that means there is no "modified" state to store:
     // change a corner and the chip un-highlights by itself.
-    expect(activeModId(cab.accent, 'sharp', cab.size!, 'solid')).toBe('');
-    expect(activeModId(cab.accent, cab.radius!, 1, 'solid')).toBe('');
-    expect(activeModId('blue', cab.radius!, cab.size!, 'solid')).not.toBe('cab');
+    expect(activeModId(cab.accent, 'sharp', cab.size!, 'solid', 'default')).toBe('');
+    expect(activeModId(cab.accent, cab.radius!, 1, 'solid', 'default')).toBe('');
+    expect(activeModId('blue', cab.radius!, cab.size!, 'solid', 'default')).not.toBe('cab');
   });
 
   it('survives a float round-trip', () => {
     // The size comes back from a slider and from stored JSON; `=== 1.25`
     // is a coin toss on a value that has been through both.
-    expect(activeModId(cab.accent, cab.radius!, cab.size! + 1e-9, 'solid')).toBe('cab');
-    expect(activeModId(cab.accent, cab.radius!, cab.size! + 0.01, 'solid')).toBe('');
+    expect(activeModId(cab.accent, cab.radius!, cab.size! + 1e-9, 'solid', 'default')).toBe('cab');
+    expect(activeModId(cab.accent, cab.radius!, cab.size! + 0.01, 'solid', 'default')).toBe('');
   });
 
   it('answers empty when the axes match nothing', () => {
-    expect(activeModId('blue', 'rounded', 1, 'solid')).toBe('');
+    expect(activeModId('blue', 'rounded', 1, 'solid', 'default')).toBe('');
   });
 });

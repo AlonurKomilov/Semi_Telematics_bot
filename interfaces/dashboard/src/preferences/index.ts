@@ -25,6 +25,7 @@ export {
   type ThemeColor,
   type ThemeRadius,
   type ThemeMaterial,
+  type ThemeMotion,
   type SizeSetting,
   type SizeRegion,
   SIZE_MIN,

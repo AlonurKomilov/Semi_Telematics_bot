@@ -69,7 +69,11 @@ export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as
  * the accent set is: one list, and the registry derives from it.
  */
 export const THEME_MATERIALS = ['solid', 'glass'] as const;
+/** How fast the app moves. A multiplier on every transition — see the
+ *  motion tokens in index.css for why the infinite loops are excluded. */
+export const THEME_MOTIONS = ['calm', 'default', 'snappy'] as const;
 export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
+export type ThemeMotion = (typeof THEME_MOTIONS)[number];
 
 export const packById = (id: string): ThemePack | undefined =>
   THEME_PACKS.find((p) => p.id === id);
@@ -108,6 +112,8 @@ export interface ThemeMod {
   readonly size?: number;
   /** What surfaces are made of. Omit and the person's own choice stands. */
   readonly material?: ThemeMaterial;
+  /** How fast it moves. Omit and the person's own choice stands. */
+  readonly motion?: ThemeMotion;
   /** One line, shown under the label. Says who the look is FOR. */
   readonly why: string;
 }
@@ -139,12 +145,13 @@ export const modById = (id: string): ThemeMod | undefined =>
  * invalidated, the sum simply stops matching and the chip goes quiet.
  */
 export const activeModId = (
-  accent: string, radius: string, size: number, material: string,
+  accent: string, radius: string, size: number, material: string, motion: string,
 ): string =>
   THEME_MODS.find((m) =>
     m.accent === accent
     && (m.radius === undefined || m.radius === radius)
     && (m.material === undefined || m.material === material)
+    && (m.motion === undefined || m.motion === motion)
     // Float compare: the size arrives from a slider and a stored JSON
     // round-trip, so `===` against 1.25 is a coin toss.
     && (m.size === undefined || Math.abs(m.size - size) < 1e-6))?.id ?? '';

@@ -33,7 +33,7 @@
  * not "tidy" one without checking the surface that consumes it.
  */
 
-import { THEME_PACKS, THEME_MATERIALS } from '../lib/themePacks';
+import { THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS } from '../lib/themePacks';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -159,12 +159,15 @@ export type ThemeColor = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
 export type ThemeRadius = 'sharp' | 'rounded' | 'pill';
 /** Derived from the catalogue, like ThemeAccent — see lib/themePacks.ts. */
 export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
+export type ThemeMotion = (typeof THEME_MOTIONS)[number];
 export interface ThemeSetting {
   mode: ThemeMode;
   accent: ThemeAccent;
   radius: ThemeRadius;
   /** What surfaces are made of — solid, or translucent and blurred. */
   material: ThemeMaterial;
+  /** How fast the app moves. */
+  motion: ThemeMotion;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -227,7 +230,7 @@ export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
 export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const THEME_DEFAULT: ThemeSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
-  color: 'dark-blue',
+  motion: 'default', color: 'dark-blue',
 };
 
 /** @deprecated Only the migration and the alias use this. */
@@ -251,6 +254,7 @@ const LEGACY_COLOR: Record<ThemeColor, { mode: ThemeMode; accent: ThemeAccent }>
 };
 export const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
 export const THEME_MATERIAL_LIST: ThemeMaterial[] = [...THEME_MATERIALS];
+export const THEME_MOTION_LIST: ThemeMotion[] = [...THEME_MOTIONS];
 
 export const SIZE_REGIONS: SizeRegion[] = [
   'text', 'tables', 'controls', 'overlays', 'navigation', 'assistant',
@@ -337,6 +341,8 @@ export const DEFS = {
       // falls to `solid` — which is what it was rendering anyway.
       const material = THEME_MATERIAL_LIST.includes(o.material as ThemeMaterial)
         ? o.material as ThemeMaterial : THEME_DEFAULT.material;
+      const motion = THEME_MOTION_LIST.includes(o.motion as ThemeMotion)
+        ? o.motion as ThemeMotion : THEME_DEFAULT.motion;
 
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
@@ -352,7 +358,7 @@ export const DEFS = {
         : LEGACY_COLOR[o.color as ThemeColor]
           ?? { mode: THEME_DEFAULT.mode, accent: THEME_DEFAULT.accent };
 
-      return { mode, accent, radius, material, color: themeColorAlias(mode, accent) };
+      return { mode, accent, radius, material, motion, color: themeColorAlias(mode, accent) };
     },
     note: 'Colour scheme and corner radius.',
   }),

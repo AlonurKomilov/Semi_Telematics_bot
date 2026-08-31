@@ -47,6 +47,7 @@
         };
         var radius = pick(t.radius, ['sharp', 'rounded', 'pill'], 'rounded');
         var material = pick(t.material, ['solid', 'glass'], 'solid');
+        var motion = pick(t.motion, ['calm', 'default', 'snappy'], 'default');
 
         // Mode and accent, with the pre-split `color` as the fallback —
         // the same migration registry.ts's sanitiser does, written a
@@ -78,6 +79,7 @@
         root.dataset.theme = mode === 'light' ? 'light' : 'dark-' + accent;
         root.dataset.radius = radius;
         root.dataset.material = material;
+        root.dataset.motion = motion;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts
         // — themeBoot.test.ts asserts that it does. 1 is "as designed".

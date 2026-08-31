@@ -25,6 +25,7 @@ import { applyTheme, applySize } from '../context/ThemeContext';
 import {
   THEME_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, THEME_RADII,
   THEME_MATERIAL_LIST,
+  THEME_MOTION_LIST,
   themeColorAlias,
   SIZE_DEFAULT, SIZE_REGIONS, SIZE_MIN, SIZE_MAX, clampSize,
 } from '../preferences/registry';
@@ -150,8 +151,9 @@ describe('theme-boot ↔ applyTheme', () => {
       // disagree on it and the first painted frame is one theme while
       // the app snaps to another after hydration.
       for (const material of THEME_MATERIAL_LIST) {
+      for (const motion of THEME_MOTION_LIST) {
         const theme: ThemeSetting = {
-          mode, accent, radius, material, color: themeColorAlias(mode, accent),
+          mode, accent, radius, material, motion, color: themeColorAlias(mode, accent),
         };
 
         resetRoot();
@@ -162,6 +164,7 @@ describe('theme-boot ↔ applyTheme', () => {
         const applied = runApply(theme);
 
         expect(booted, `boot disagrees for ${JSON.stringify(theme)}`).toEqual(applied);
+      }
       }
       }
       }
@@ -200,6 +203,7 @@ describe('theme-boot ↔ applyTheme', () => {
           // A pre-split value has no material either; both sides must
           // land on the same default.
           material: 'solid',
+          motion: 'default',
           color: themeColorAlias(mode as ThemeSetting['mode'], accent as ThemeSetting['accent']),
         });
 
@@ -251,14 +255,16 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
-      mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid', color: 'light',
+      mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid',
+      motion: 'default', color: 'light',
     }));
   });
 
   it('prefers the canonical key over the legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
     const canonical: ThemeSetting = {
-      mode: 'dark', accent: 'green', radius: 'pill', material: 'solid', color: 'dark-green',
+      mode: 'dark', accent: 'green', radius: 'pill', material: 'solid',
+      motion: 'default', color: 'dark-green',
     };
     storeTheme(canonical);
     const booted = runBoot();

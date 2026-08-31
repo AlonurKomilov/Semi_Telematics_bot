@@ -712,6 +712,50 @@ pill) reshapes the whole UI from it.
 
 ---
 
+## 6.1 Motion — an axis, with one thing deliberately off it ⭐
+
+Every duration and easing in the app is
+`calc(<literal> * var(--motion-scale, 1))`, wired once in
+`tailwind.config.js` through `scaleMotion()`. Nothing else changed:
+there are 189 `transition-*` utilities and only 9 that name a duration,
+so almost everything rides the default and one token reaches it. The
+easing is `var(--motion-ease, …)` on the same principle.
+
+**The infinite loops are NOT on the axis, and that is the whole point.**
+`animate-spin` compiles to `animation: spin 1s linear infinite` — the
+duration lives in the shorthand, which `animationDuration` never
+touches. Put them on the axis and a "snappy" setting turns 89 spinners
+and 18 pulses into a strobe. `theme.extend` must therefore never gain an
+`animation` or `keyframes` key; `motion.test.ts` fails if it does.
+
+**Reduced motion ends the loop, it does not speed it up.** The floor is
+a `@media (prefers-reduced-motion: reduce)` block, and
+`animation-iteration-count: 1` is its load-bearing line — scaling an
+infinite animation toward zero is the same motion, faster. It is also
+the **only `!important` in the stylesheet**, deliberately: a guarantee
+to someone whose vestibular system is at stake is not a preference for a
+mod or an inline style to outrank. The guard asserts both that it is
+there and that it is still the only one.
+
+The two named settings are multipliers rather than sets of literals
+(`calm` 1.6, `snappy` 0.6), so a mod can dial any value the injector
+accepts instead of choosing among the three we happened to write.
+
+**Typography joined the token layer at the same time.** `--font-mono`
+now exists and `tailwind.config.js` points `mono` at it, so all 106
+`font-mono` sites follow a token without changing their class. `sans`
+was added for the opposite reason — no site writes `font-sans` today,
+and the key stops the first one that does from bypassing the family the
+whole document inherits from `html`.
+
+A mod cannot yet CARRY a font, and that is not an oversight: there is no
+runtime font loader, and `colWidths` is a synced map of absolute pixel
+widths snapshotted from live DOM measurement, so a different font's
+metrics would make every saved column wrong on every device with no
+invalidation hook.
+
+---
+
 ## 7. Components
 
 Build from the canonical primitives in

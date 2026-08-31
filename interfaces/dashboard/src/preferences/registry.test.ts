@@ -130,10 +130,10 @@ describe('legacy migration', () => {
     // object field by field, so it is dropped rather than carried forward.
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
     expect(readPref('theme')).toEqual(
-      { mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid', color: 'light' });
+      { mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid', motion: 'default', color: 'light' });
     // Copied forward under the canonical key, so the next read is direct.
     expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}theme`)!)).toEqual(
-      { mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid', color: 'light' });
+      { mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid', motion: 'default', color: 'light' });
     // Legacy entry deliberately left in place (roll-back safety).
     expect(localStorage.getItem('dashboard-theme')).not.toBeNull();
   });
@@ -155,9 +155,9 @@ describe('legacy migration', () => {
 
   it('prefers the canonical value over a stale legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    writePref('theme', { mode: 'dark', accent: 'green', radius: 'pill', material: 'solid', color: 'dark-green' });
+    writePref('theme', { mode: 'dark', accent: 'green', radius: 'pill', material: 'solid', motion: 'default', color: 'dark-green' });
     expect(readPref('theme')).toEqual(
-      { mode: 'dark', accent: 'green', radius: 'pill', material: 'solid', color: 'dark-green' });
+      { mode: 'dark', accent: 'green', radius: 'pill', material: 'solid', motion: 'default', color: 'dark-green' });
   });
 });
 
@@ -225,7 +225,7 @@ describe('store semantics', () => {
     // Written before a field existed / hand-edited.
     localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color: 'light' }));
     expect(readPref('theme')).toEqual(
-      { mode: 'light', accent: 'blue', radius: 'rounded', material: 'solid', color: 'light' });
+      { mode: 'light', accent: 'blue', radius: 'rounded', material: 'solid', motion: 'default', color: 'light' });
   });
 
   it('adoptRaw() rejects an invalid cross-tab value', () => {
@@ -238,7 +238,7 @@ describe('store semantics', () => {
     localStorage.clear();
     store.adoptRaw('theme', JSON.stringify({ color: 'light', radius: 'rounded' }));
     expect(store.get('theme')).toEqual(
-      { mode: 'light', accent: 'blue', radius: 'rounded', material: 'solid', color: 'light' });
+      { mode: 'light', accent: 'blue', radius: 'rounded', material: 'solid', motion: 'default', color: 'light' });
     // Came from another tab / the server — must not be written back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
   });
@@ -345,26 +345,26 @@ describe('resetAll sweeps family keys', () => {
         // No material in the stored value either — a pre-split browser
         // predates the axis entirely, and must come back complete.
         expect(sanitize({ color, radius: 'pill' }), `stored ${color}`)
-          .toEqual({ ...want, radius: 'pill', material: 'solid', color });
+          .toEqual({ ...want, radius: 'pill', material: 'solid', motion: 'default', color });
       }
     });
 
     it('keeps a post-split value untouched', () => {
-      expect(sanitize({ mode: 'light', accent: 'green', radius: 'sharp', material: 'solid', color: 'light' }))
-        .toEqual({ mode: 'light', accent: 'green', radius: 'sharp', material: 'solid', color: 'light' });
+      expect(sanitize({ mode: 'light', accent: 'green', radius: 'sharp', material: 'solid', motion: 'default', color: 'light' }))
+        .toEqual({ mode: 'light', accent: 'green', radius: 'sharp', material: 'solid', motion: 'default', color: 'light' });
     });
 
     it('re-derives the deprecated alias rather than trusting it', () => {
       // A stored object whose alias disagrees with its own mode/accent —
       // what a rolled-back build followed by a roll-forward can leave.
       // The alias is output, never input.
-      expect(sanitize({ mode: 'dark', accent: 'green', radius: 'rounded', material: 'solid', color: 'light' }))
-        .toEqual({ mode: 'dark', accent: 'green', radius: 'rounded', material: 'solid', color: 'dark-green' });
+      expect(sanitize({ mode: 'dark', accent: 'green', radius: 'rounded', material: 'solid', motion: 'default', color: 'light' }))
+        .toEqual({ mode: 'dark', accent: 'green', radius: 'rounded', material: 'solid', motion: 'default', color: 'dark-green' });
     });
 
     it('falls back to the default for a value that is neither shape', () => {
       expect(sanitize({ color: 'chartreuse', radius: 'pill' }))
-        .toEqual({ mode: 'dark', accent: 'blue', radius: 'pill', material: 'solid', color: 'dark-blue' });
+        .toEqual({ mode: 'dark', accent: 'blue', radius: 'pill', material: 'solid', motion: 'default', color: 'dark-blue' });
     });
 
     it('cannot express light + a non-blue accent in the alias, and says so', () => {
