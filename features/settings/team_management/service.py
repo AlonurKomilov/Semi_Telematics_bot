@@ -21,8 +21,11 @@ async def _archive_driver_folders(
     """
     from datetime import datetime, timezone
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import (
-        driver_docs_archive_bucket, driver_docs_bucket, resolve_company_folder,
+    from capabilities.object_storage.paths import (
+        resolve_company_folder,
+    )
+    from features.drivers.documents.paths import (
+        driver_docs_archive_bucket, driver_docs_bucket,
     )
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

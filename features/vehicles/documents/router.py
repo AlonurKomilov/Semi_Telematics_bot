@@ -93,9 +93,8 @@ async def _vehicle_or_404(tenant, account_id: int, vehicle_id: int, user):
 
 
 async def _bucket_for(tenant, account_id: int, v) -> str:
-    from features.work_orders.storage import (
-        resolve_company_folder, vehicle_docs_bucket,
-    )
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.vehicles.documents.paths import vehicle_docs_bucket
     company_folder = await resolve_company_folder(
         tenant, account_id, v.company_code,
     )

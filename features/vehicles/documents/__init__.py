@@ -10,7 +10,8 @@ Files live in the company's own folder tree,
 ``{COMPANY}/vehicles/{unit}/`` — mirrored into the customer's Drive and
 browsed by hand, which is why the folder is named by unit number.
 ``capabilities/object_storage/LAYOUT.md`` is the law for that path; the
-bucket helpers stay in ``features/work_orders/storage.py`` beside the
+bucket helpers live in ``paths.py`` beside this file; they used to
+sit in ``features/work_orders/storage.py`` beside the
 driver and work-order ones, because tenant path composition has ONE
 home and splitting it is this repo's recurring incident.
 

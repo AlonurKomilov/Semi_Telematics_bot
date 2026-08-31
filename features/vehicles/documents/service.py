@@ -43,9 +43,9 @@ async def _move_documents(
     tenant, account_id: int, vehicle_id: int, *, to_archive: bool,
 ) -> str | None:
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import (
-        resolve_company_folder, vehicle_docs_archive_bucket,
-        vehicle_docs_bucket,
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.vehicles.documents.paths import (
+        vehicle_docs_archive_bucket, vehicle_docs_bucket,
     )
 
     docs = await tenant.list_vehicle_documents(account_id, vehicle_id)
