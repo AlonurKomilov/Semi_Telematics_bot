@@ -176,8 +176,10 @@ NOT_REFERENCES: dict[str, str] = {
     "driver_documents.doc_type": "an enum (cdl / medical), not a path",
     "driver_documents.file_name": "display name only; the path is bucket+object_key",
     "vehicle_documents.doc_type": (
-        "an enum (registration / title / insurance / annual_inspection / "
-        "lease / purchase / other — VEHICLE_DOC_TYPES), not a path"
+        "an enum, not a path — VEHICLE_DOC_TYPES in "
+        "adapters/storage/vehicle_documents.py is the list.  Named "
+        "rather than copied: the copy here went stale the day cab_card, "
+        "ifta, permit, emissions and warranty joined it"
     ),
     "vehicle_documents.file_name": "display name only; the path is bucket+object_key",
     "knowledge_base.media_type": "a MIME type",
