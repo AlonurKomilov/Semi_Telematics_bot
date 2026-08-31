@@ -8,6 +8,7 @@ feature that owns it, or in the object-storage capability.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -56,3 +57,24 @@ def work_order_folder(
         f"_{_slugify(vendor_name, 30) if vendor_name else 'no-vendor'}"
     )
     return f"{company_folder}/work-orders/{year}/{month}/{folder_name}"
+
+
+def safe_attachment_name(filename: str, *, fallback: str = "file") -> str:
+    """Return a filesystem-safe variant of the uploaded filename while
+    preserving the original extension (so downstream viewers route by
+    type correctly — invoice.pdf stays a PDF).
+
+    Strips path separators that would let a hostile name escape the
+    work-order folder, normalises spaces, and caps total length at
+    180 chars.
+    """
+    base = (filename or "").replace("/", "_").replace("\\", "_").strip()
+    if not base:
+        return fallback
+    # Split extension so we can sanitise the stem without losing ``.pdf``.
+    if "." in base:
+        stem, dot, ext = base.rpartition(".")
+        stem = re.sub(r"[^A-Za-z0-9._ -]+", "-", stem).strip(" -") or fallback
+        ext = re.sub(r"[^A-Za-z0-9]+", "", ext).lower()[:8] or "bin"
+        return f"{stem[:170]}.{ext}" if ext else stem[:180]
+    return re.sub(r"[^A-Za-z0-9._ -]+", "-", base).strip(" -")[:180] or fallback

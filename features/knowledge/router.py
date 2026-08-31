@@ -34,7 +34,7 @@ from capabilities.permissions.roles import (
     is_kb_approver_role, is_kb_author_role,
 )
 from features.knowledge.service import can_view_article as _can_view_article
-from features.work_orders.storage import safe_attachment_name
+from features.work_orders.paths import safe_attachment_name
 from interfaces.api.deps import (
     get_current_user, get_platform_db, get_tenant_db, resolve_user_id,
 )
@@ -936,7 +936,7 @@ async def upload_file(
     # Account-level, not company-level: an article serves the whole
     # account.  It still must not sit at the account root — see
     # capabilities/object_storage/LAYOUT.md.
-    from features.work_orders.storage import ACCOUNT_LEVEL_FOLDER
+    from capabilities.object_storage.paths import ACCOUNT_LEVEL_FOLDER
     file_path = store.put(f"{ACCOUNT_LEVEL_FOLDER}/knowledge", safe_name, raw)
     if not file_path:
         raise HTTPException(

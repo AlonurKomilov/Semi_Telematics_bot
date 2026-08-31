@@ -57,8 +57,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from features.work_orders.storage import (  # noqa: E402
-    GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+from capabilities.object_storage.paths import (  # noqa: E402
+    GENERIC_COMPANY_FOLDER,
+    sanitize_company_folder,
 )
 
 from dotenv import load_dotenv  # noqa: E402

@@ -258,7 +258,7 @@ async def _inspection_company_folder(
     docs.  Drivers without a company assignment (legacy / unassigned)
     land under the generic holding folder so writes never fail.
     """
-    from features.work_orders.storage import resolve_company_folder
+    from capabilities.object_storage.paths import resolve_company_folder
     user_id = int(inspection.get("user_id") or 0)
     company_code = ""
     if user_id:
@@ -1069,7 +1069,7 @@ async def upload_reference_image(
     # ``template_refs/`` beside the customer's business names reads as
     # another business when they browse their Drive.  See
     # capabilities/object_storage/LAYOUT.md.
-    from features.work_orders.storage import ACCOUNT_LEVEL_FOLDER
+    from capabilities.object_storage.paths import ACCOUNT_LEVEL_FOLDER
     folder = f"{ACCOUNT_LEVEL_FOLDER}/inspection-templates"
 
     store = await get_object_storage_for_account(user["account_id"], tenant_db)
@@ -1123,7 +1123,7 @@ async def stream_reference_image(
     # ``template_refs/`` beside the customer's business names reads as
     # another business when they browse their Drive.  See
     # capabilities/object_storage/LAYOUT.md.
-    from features.work_orders.storage import ACCOUNT_LEVEL_FOLDER
+    from capabilities.object_storage.paths import ACCOUNT_LEVEL_FOLDER
     folder = f"{ACCOUNT_LEVEL_FOLDER}/inspection-templates"
     data = store.get(folder, safe_name)
     if data is None:

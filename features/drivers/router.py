@@ -566,9 +566,8 @@ async def upload_driver_document(
     # the admin route triggers the archive flow which moves this
     # folder to ``{company}/drivers/_archive/{date}/user-{id}/`` and
     # rewrites bucket paths on existing rows.
-    from features.work_orders.storage import (
-        driver_docs_bucket, resolve_company_folder,
-    )
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.drivers.documents.paths import driver_docs_bucket
     user_companies = await platform_db.get_user_companies(user_id)
     driver_company_code = user_companies[0].company_code if user_companies else ""
     company_folder = await resolve_company_folder(

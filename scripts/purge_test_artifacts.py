@@ -77,7 +77,9 @@ except ImportError:  # pragma: no cover
     sys.stderr.write("ERROR: asyncpg not installed.\n")
     sys.exit(1)
 
-from features.work_orders.storage import GENERIC_COMPANY_FOLDER  # noqa: E402
+from capabilities.object_storage.paths import (  # noqa: E402
+    GENERIC_COMPANY_FOLDER,
+)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 USERDATA = os.path.join(PROJECT_ROOT, "data", "userdata")
@@ -183,7 +185,9 @@ async def main() -> int:
         companies: dict[int, set[str]] = {}
         for r in await conn.fetch(
                 "SELECT account_id, display_name, code FROM companies"):
-            from features.work_orders.storage import sanitize_company_folder
+            from capabilities.object_storage.paths import (
+                sanitize_company_folder,
+            )
             companies.setdefault(r["account_id"], set()).add(
                 sanitize_company_folder(r["display_name"] or r["code"] or ""))
     finally:

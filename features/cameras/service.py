@@ -210,7 +210,7 @@ async def save_camera_image(
     """
     try:
         from adapters.storage.object_storage import get_object_storage_for_account
-        from features.work_orders.storage import resolve_company_folder
+        from capabilities.object_storage.paths import resolve_company_folder
         safe_name = vehicle_name.replace("/", "_").replace("\\", "_")
         if not company_code:
             try:

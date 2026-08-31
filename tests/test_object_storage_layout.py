@@ -73,7 +73,7 @@ def _source_files() -> list[Path]:
 class TestOnlyOneHoldingPen:
     def test_the_pen_is_declared_once_and_starts_with_underscore(self):
         """A name without the underscore reads like a business."""
-        from features.work_orders.storage import GENERIC_COMPANY_FOLDER
+        from capabilities.object_storage.paths import GENERIC_COMPANY_FOLDER
         assert GENERIC_COMPANY_FOLDER == CANONICAL_PEN
         assert GENERIC_COMPANY_FOLDER.startswith("_"), (
             "the pen must not be mistakable for a company name — that is "
@@ -100,7 +100,7 @@ class TestOnlyOneHoldingPen:
                             f"{path.relative_to(ROOT)}:{n}: {banned!r}")
         assert not offenders, (
             "a second placeholder folder was introduced — import "
-            "GENERIC_COMPANY_FOLDER from features.work_orders.storage "
+            "GENERIC_COMPANY_FOLDER from capabilities.object_storage.paths "
             "instead:\n  " + "\n  ".join(offenders)
         )
 
@@ -114,8 +114,9 @@ class TestTheTwoUnderscoreFoldersStaySeparate:
     """
 
     def test_they_are_distinct_and_neither_looks_like_a_business(self):
-        from features.work_orders.storage import (
-            ACCOUNT_LEVEL_FOLDER, GENERIC_COMPANY_FOLDER,
+        from capabilities.object_storage.paths import (
+            ACCOUNT_LEVEL_FOLDER,
+            GENERIC_COMPANY_FOLDER,
         )
         assert ACCOUNT_LEVEL_FOLDER != GENERIC_COMPANY_FOLDER
         for name in (ACCOUNT_LEVEL_FOLDER, GENERIC_COMPANY_FOLDER):
@@ -245,12 +246,12 @@ class TestSanitizerRefusesToEscapeItsFolder:
     ])
     def test_path_components_and_separators_are_neutralised(
             self, name, expected):
-        from features.work_orders.storage import sanitize_company_folder
+        from capabilities.object_storage.paths import sanitize_company_folder
         assert sanitize_company_folder(name) == expected
 
     def test_a_company_name_can_never_traverse_upward(self):
         """No input may produce a folder that climbs out of the account."""
-        from features.work_orders.storage import sanitize_company_folder
+        from capabilities.object_storage.paths import sanitize_company_folder
         for hostile in ("../x", "..\\x", "a/../../b", "/etc/passwd",
                         "\x00evil", "./."):
             got = sanitize_company_folder(hostile)

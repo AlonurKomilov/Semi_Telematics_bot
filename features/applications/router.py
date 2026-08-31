@@ -172,8 +172,9 @@ async def submit_application(
     # logged.
     from adapters.storage.object_storage import get_object_storage_for_account
     from capabilities.object_storage.tracking import track_for_sync_if_hybrid
-    from features.work_orders.storage import (
-        GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+    from capabilities.object_storage.paths import (
+        GENERIC_COMPANY_FOLDER,
+        sanitize_company_folder,
     )
     store = await get_object_storage_for_account(account_id, platform_db)
     company_folder = ""
@@ -864,7 +865,7 @@ async def upload_company_logo(
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Logo must be a JPG, PNG, or WEBP image under 2 MB")
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import sanitize_company_folder
+    from capabilities.object_storage.paths import sanitize_company_folder
     store = await get_object_storage_for_account(user["account_id"], platform_db)
     # Brand assets live IN the company's folder ({COMPANY}/branding/) —
     # a logo belongs to exactly one company.  The row id stays in the
@@ -942,7 +943,7 @@ async def upload_company_banner(
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Photo must be a JPG, PNG, or WEBP image under 4 MB")
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import sanitize_company_folder
+    from capabilities.object_storage.paths import sanitize_company_folder
     store = await get_object_storage_for_account(user["account_id"], platform_db)
     folder = sanitize_company_folder(co.display_name or getattr(co, "code", "") or "")
     try:

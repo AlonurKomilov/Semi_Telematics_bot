@@ -47,9 +47,8 @@ from interfaces.api.deps import (
 )
 from capabilities.activity_trail import delete_changes, diff_rows, new_group_id, record_simple
 from capabilities.permissions.roles import can_for_account, Role
-from features.work_orders.storage import (
-    resolve_company_folder, safe_attachment_name, work_order_folder,
-)
+from capabilities.object_storage.paths import resolve_company_folder
+from features.work_orders.paths import safe_attachment_name, work_order_folder
 
 router = APIRouter(prefix="/work-orders", tags=["work-orders"])
 

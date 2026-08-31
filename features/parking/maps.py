@@ -134,7 +134,7 @@ async def _save_parking_map(
     try:
         from adapters.storage.object_storage import get_object_storage_for_account
         from capabilities.object_storage.tracking import track_for_sync_if_hybrid
-        from features.work_orders.storage import resolve_company_folder
+        from capabilities.object_storage.paths import resolve_company_folder
         safe_vid = vehicle_id.replace("/", "_").replace("\\", "_")
         # Mirrors the work-orders + camera-images layout so a user
         # browsing their Drive sees consistent ``{COMPANY}/...``

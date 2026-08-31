@@ -852,9 +852,8 @@ async def upload_task_attachment(
     """
     from adapters.storage.object_storage import get_object_storage_for_account
     from capabilities.object_storage.tracking import track_for_sync_if_hybrid
-    from features.work_orders.storage import (
-        resolve_company_folder, safe_attachment_name,
-    )
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.work_orders.paths import safe_attachment_name
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
@@ -928,7 +927,7 @@ async def download_task_attachment(
     browser; PDFs render too.
     """
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import resolve_company_folder
+    from capabilities.object_storage.paths import resolve_company_folder
     from fastapi.responses import StreamingResponse
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -975,7 +974,7 @@ async def delete_task_attachment(
     captured, only a manager removes it (audit-trail intent).
     """
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import resolve_company_folder
+    from capabilities.object_storage.paths import resolve_company_folder
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

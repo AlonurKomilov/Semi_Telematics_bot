@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from features.work_orders.storage import (
+from features.vehicles.documents.paths import (
     vehicle_docs_archive_bucket,
     vehicle_docs_bucket,
 )
@@ -78,9 +78,8 @@ async def test_archive_moves_the_folder_and_restore_brings_it_home(
 
     # A real object in the real (test-pinned) store.
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import (
-        resolve_company_folder, vehicle_docs_bucket,
-    )
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.vehicles.documents.paths import vehicle_docs_bucket
     store = await get_object_storage_for_account(acct, pg_db)
     company_folder = await resolve_company_folder(pg_db, acct, "PTG")
     live = vehicle_docs_bucket(company_folder, "M-1")

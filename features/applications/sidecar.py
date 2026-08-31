@@ -185,8 +185,9 @@ async def refresh_sidecar(tenant_db, platform_db, account_id: int, app_id: int) 
         )
         if not app:
             return
-        from features.work_orders.storage import (
-            GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+        from capabilities.object_storage.paths import (
+            GENERIC_COMPANY_FOLDER,
+            sanitize_company_folder,
         )
 
         # Account-scoped lookup, not a bare by-id: the folder this resolves
@@ -243,8 +244,9 @@ async def reexport_ssn_only(
     sync does not matter here.
     """
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import (
-        GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+    from capabilities.object_storage.paths import (
+        GENERIC_COMPANY_FOLDER,
+        sanitize_company_folder,
     )
 
     result = {"scanned": 0, "written": 0, "skipped": 0, "failed": 0}

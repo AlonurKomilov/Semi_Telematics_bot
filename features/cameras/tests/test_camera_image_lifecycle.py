@@ -369,8 +369,9 @@ class TestPhotosLandUnderTheirCompany:
         """When nothing can resolve, the folder must not read like a
         company — a customer browsing their Drive treats every top-level
         folder as one of their businesses."""
-        from features.work_orders.storage import (
-            GENERIC_COMPANY_FOLDER, resolve_company_folder,
+        from capabilities.object_storage.paths import (
+            GENERIC_COMPANY_FOLDER,
+            resolve_company_folder,
         )
         assert GENERIC_COMPANY_FOLDER.startswith("_")
         got = await resolve_company_folder(None, 1, "")
