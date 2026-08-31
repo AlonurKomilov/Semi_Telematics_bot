@@ -1,6 +1,6 @@
 """Notification preference matrix — the multi-channel prefs store.
 
-ONE row per rule (docs/architecture/notifications.md §6): "recipient
+ONE row per rule (capabilities/notifications/docs/ARCHITECTURE.md §6): "recipient
 wants CATEGORY on channel (+ cadence)".  Replaces the per-channel column
 explosion the legacy ``users.alert_*`` booleans would have become once
 Email/Push arrived.  The column shipped as ``alert_type`` and was renamed

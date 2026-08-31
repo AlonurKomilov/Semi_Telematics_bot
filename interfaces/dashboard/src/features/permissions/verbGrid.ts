@@ -12,7 +12,7 @@
  *  - a single write-level flag renders as ONE merged View+Manage cell
  *    ("one flag") — never a fake split;
  *  - Config cells appear only on features that HAVE config, and they
- *    ride the two family flags (docs/architecture/config.md) — the
+ *    ride the two family flags (capabilities/config/docs/ARCHITECTURE.md) — the
  *    cell edits the cross-feature row, visibly shared.
  */
 import { FEATURE_CATALOG } from '../../config/featureCatalog';
@@ -39,7 +39,7 @@ export interface VerbFamily {
 export interface VerbBand { band: string; families: VerbFamily[] }
 
 // Feature → which config-family flag tunes it (grows as features gain
-// config; docs/architecture/config.md is the SSOT of members).
+// config; capabilities/config/docs/ARCHITECTURE.md is the SSOT of members).
 // Every entry here is a feature whose account_settings rows are owned by
 // the config family rather than by the feature's own Manage — which, per
 // capabilities/settings_registry.py, is now ALL of them.  A feature

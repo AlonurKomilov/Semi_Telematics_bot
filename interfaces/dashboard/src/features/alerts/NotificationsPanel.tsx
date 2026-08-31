@@ -1,5 +1,5 @@
 /**
- * The bell-dropdown notification centre (docs/architecture/notifications.md
+ * The bell-dropdown notification centre (capabilities/notifications/docs/ARCHITECTURE.md
  * §13a) — a quick recent-alerts glance without leaving the page.
  *
  * "Unread" here means un-acknowledged: the feed shows the newest pending

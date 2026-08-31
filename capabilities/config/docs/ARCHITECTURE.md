@@ -1,5 +1,9 @@
 # The config family — per-feature configuration, one system
 
+**Homes:** `capabilities/config/` (store + matrix) · each feature's config surface (`features/<x>/config*.py`) · dashboard config pages.
+**Data it touches:** `account_settings` (the Config store), `page_layouts`.
+
+
 SSOT for how features expose configuration, who may change it for whom,
 and the opt-in recipes. Shipped 2026-07-28/29 (page layouts:
 `81781aa` → `4f6abe0` → permission-driven rework; family unification:

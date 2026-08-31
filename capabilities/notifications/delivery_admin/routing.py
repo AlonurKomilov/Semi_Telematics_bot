@@ -3,7 +3,7 @@
 Moved from features/settings/account (the alert-routing slice): group
 bindings, delivery mode, Sub-bot instances, per-persona topics and
 custom topics are CHANNEL/destination configuration — notifications'
-side of the boundary (docs/architecture/alert-dm-migration.md).  URLs
+side of the boundary (capabilities/alerting/docs/alert-dm-migration.md).  URLs
 keep the historical ``/admin`` prefix byte-for-byte; wire contracts
 unchanged.
 

@@ -8,7 +8,7 @@ DQF LIVES INSIDE THIS CONFIG; it is not a config of its own.  There is no
 ``/applications/dqf-config`` any more (only the deprecated alias) because
 the DQF export is one thing this feature can be CONFIGURED to do, not a
 peer feature.  A component of a feature's config never becomes a config
-itself — docs/architecture/config.md, "Naming".
+itself — capabilities/config/docs/ARCHITECTURE.md, "Naming".
 
 ⚠️  MOUNT THIS ROUTER BEFORE ``features.applications.router``.  That
 module carries nine parametric routes; FastAPI matches in registration
@@ -44,7 +44,7 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 # with a protected SSN file and some without.  Follows the account-scope
 # recipe exactly — feature-owned account_settings key, gated on
 # can_manage_config_all, ZERO new permissions and ZERO new tables.
-# SSOT: docs/architecture/config.md.
+# SSOT: capabilities/config/docs/ARCHITECTURE.md.
 
 
 class DqfPassphraseRequest(BaseModel):

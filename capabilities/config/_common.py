@@ -18,7 +18,7 @@ because a permission that does not exist is simply absent from a
 FeatureSet and ``getattr(perms, flag, False)`` returns False without
 complaint.
 
-SSOT for the rules themselves: docs/architecture/config.md.
+SSOT for the rules themselves: capabilities/config/docs/ARCHITECTURE.md.
 """
 
 from __future__ import annotations

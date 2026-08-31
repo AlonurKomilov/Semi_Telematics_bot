@@ -32,7 +32,7 @@ _MATRIX_FILE = os.path.join(
 _EXEMPT: dict[str, str] = {
     # Managed on the Alerts → Group delivery page (per-persona bot rows);
     # manager-tier hard-check, deliberately outside the matrix + the
-    # config family (docs/architecture/config.md).
+    # config family (capabilities/config/docs/ARCHITECTURE.md).
     "can_manage_role_bot": "features/alerts/GroupDelivery.tsx",
 }
 

@@ -73,7 +73,7 @@ class ChatAttachment(BaseModel):
 
     The file itself stays on the user's device (browser storage); the
     server parses this transiently and persists nothing (see
-    docs/architecture/ai-import-assistant.md).  Caps mirror the
+    capabilities/ai/docs/ai-import-assistant.md).  Caps mirror the
     attachments module; the 2MB body middleware is the outer ceiling.
     """
     name: str = Field(..., min_length=1, max_length=120)
@@ -446,7 +446,7 @@ async def ai_chat_stream(
     # Transient attachments: parse the device-held file text into grids
     # (spreadsheets, import-gated) and text docs (PDF/TXT, read-only)
     # that live ONLY in this request's scope (nothing persists — see
-    # docs/architecture/ai-import-assistant.md).
+    # capabilities/ai/docs/ai-import-assistant.md).
     if body.attachments:
         from capabilities.ai.attachments import (
             AttachmentError, parse_attachments_for_request,

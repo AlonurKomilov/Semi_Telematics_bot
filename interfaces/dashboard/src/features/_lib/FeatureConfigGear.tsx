@@ -69,7 +69,7 @@ export function FeatureConfigGear({
   const [open, setOpen] = useState(false);
 
   // Account-wide config. Not the feature's own Manage — View / Manage /
-  // Config are three actions (docs/architecture/config.md).
+  // Config are three actions (capabilities/config/docs/ARCHITECTURE.md).
   if (!viewHas('can_manage_config_all')) return null;
 
   // "KPI configuration" — the whole word.

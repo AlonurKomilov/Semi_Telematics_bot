@@ -1,6 +1,6 @@
 """Alerting's quiet-hours + digest registrations with the spine.
 
-Part of the alert-DM migration (docs/architecture/alert-dm-migration.md):
+Part of the alert-DM migration (capabilities/alerting/docs/alert-dm-migration.md):
 the spine owns the deferral MECHANICS (queue under the 'quiet' cadence,
 hourly flush); THIS module hands it the two domain pieces it must stay
 blind to:

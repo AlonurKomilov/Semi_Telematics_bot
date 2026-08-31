@@ -1,7 +1,7 @@
 """``migrate_config_perm_keys`` — legacy permission keys become the config
 FAMILY keys inside stored ``role_permissions`` JSON.
 
-The three mappings (docs/architecture/config.md §History):
+The three mappings (capabilities/config/docs/ARCHITECTURE.md §History):
   can_manage_role_pages / can_manage_role_config → can_manage_config_role
   can_manage_scorecard_rules                     → can_manage_config_all
 

@@ -117,7 +117,7 @@ async def _auto_resolve_vehicle_alerts(
     # update verb — final edit for the occurrence, so the ledger rows
     # clear with it.  No-op for accounts still on the legacy DM path
     # (their ledger is empty); a failed edit never blocks the legacy
-    # receipts below.  docs/architecture/alert-dm-migration.md.
+    # receipts below.  capabilities/alerting/docs/alert-dm-migration.md.
     try:
         from capabilities.notifications import (
             NotificationContent as _NotifContent,

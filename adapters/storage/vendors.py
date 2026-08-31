@@ -1,6 +1,6 @@
 """Vendor registry — per-account master data for repair shops.
 
-Phase A of docs/architecture/vendor-parts-master-data.md: one row per
+Phase A of capabilities/platform/docs/vendor-parts-master-data.md: one row per
 real-world vendor, keyed by a normalized ``name_key`` so reports and
 the picker stop splitting "Bob's Repair" / "bobs repair" spend.
 

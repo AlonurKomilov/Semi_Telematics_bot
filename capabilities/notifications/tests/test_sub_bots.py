@@ -1,6 +1,6 @@
 """Role Sub bots ("Sub bot" mode) — storage, permissions, sender pick.
 
-The contract under test (docs/architecture/bot-topology.md):
+The contract under test (interfaces/bot/docs/ARCHITECTURE.md):
 - one IDENTITY bot per account; a Sub bot is a per-persona SENDER only
 - owner/admin manage all Sub bots; a role manager (is_manager on the
   matching base role) manages exactly their own role's

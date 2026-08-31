@@ -49,7 +49,7 @@ is written; provider precedence decides which value wins.  Those are
 settings, not operations.
 
   CONFIG      the config family's account scope — ``can_manage_config_all``
-              (docs/architecture/config.md).  The default, and now the
+              (capabilities/config/docs/ARCHITECTURE.md).  The default, and now the
               only answer for an account_settings key.
   SYSTEM      platform infrastructure with no account-level action at all.
               AI model pinning is here: AI is a SERVICE, and services
@@ -185,7 +185,7 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
     # ── Per-user preference — in the WRONG store, declared to be found ──
     SettingOwner(
         "user:*", SELF_ONLY, "preference", "ai",
-        "Per-user tier/model choice.  docs/architecture/config.md puts "
+        "Per-user tier/model choice.  capabilities/config/docs/ARCHITECTURE.md puts "
         "per-user state in the preferences service, not account_settings; "
         "declared so the misplacement is visible rather than invisible.",
     ),

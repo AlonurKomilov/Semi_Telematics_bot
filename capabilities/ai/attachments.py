@@ -1,6 +1,6 @@
 """Universal AI attachment pipeline — transient, feature-agnostic.
 
-Design (docs/architecture/ai-import-assistant.md): the FILE lives on the
+Design (capabilities/ai/docs/ai-import-assistant.md): the FILE lives on the
 user's device; its text rides inline on the chat request and is parsed
 HERE, in memory, per turn.  Nothing in this module persists anything —
 no disk, no DB.  The parsed grid travels the request scope

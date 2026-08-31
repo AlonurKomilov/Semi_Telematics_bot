@@ -1,5 +1,9 @@
 # Vendor & Parts Master Data → Global Directory → Market Intelligence
 
+**Homes:** `capabilities/platform/{vendor,part}_directory/` (shared layers) · `features/vendors/`, `features/parts/` (account-side) · `features/service_tasks/` + `adapters/storage/service_{taxonomy,assemblies}.py`.
+**Data it touches:** vendors/parts account tables, the shared directory tables, `service_tasks`, service assemblies (VMRS).
+
+
 **Status:** Phases A–B SHIPPED 2026-07-13 · Phase C1 (directory core:
 platform table, operator curation on system.4truck.us, suggestion
 queue, account linking) SHIPPED 2026-07-13 · C2-reviews (anonymous

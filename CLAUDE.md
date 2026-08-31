@@ -137,7 +137,7 @@ repo, passing vacuously the whole time.
 
 - **The warehouse** (anything named `warehouse`, tiered history,
   grains live·minute·hour·day·week, the `warehouse.*` Postgres
-  schema): [docs/architecture/warehouse.md](docs/architecture/warehouse.md)
+  schema): [capabilities/data_lifecycle/docs/warehouse.md](capabilities/data_lifecycle/docs/warehouse.md)
   is the law — orientation, reading rules (surfaces + `source_ts`
   staleness + `registry_id` joins), and the add-a-dataset recipe.
   Physical warehouse tables are machinery-internal (CI-guarded);

@@ -1,5 +1,9 @@
 # Notifications architecture — multi-channel delivery
 
+**Homes:** `capabilities/notifications/` (spine: channels, categories, digests, actions, quiet hours) · `capabilities/alerting/` (largest producer) · `interfaces/bot/` (Telegram transport) · dashboard notification surfaces.
+**Data it touches:** notification channel/pref/delivery/digest tables, `webpush` subscriptions, platform settings (VAPID keypair).
+
+
 > **Status: SHIPPED — this document is the SSOT for the notification
 > spine.** The vocabulary, domain model, schema and channel contract
 > below are what `capabilities/notifications/` implements today (26

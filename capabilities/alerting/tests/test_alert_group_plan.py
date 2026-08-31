@@ -1,6 +1,6 @@
 """Group-topic delivery through the notifications plan.
 
-Pins the flip's contract (docs/architecture/alert-dm-migration.md):
+Pins the flip's contract (capabilities/alerting/docs/alert-dm-migration.md):
 
   • resolved AlertTargets become plan Targets: address "<chat>[:thread]",
     sender_hint = persona (aggregate → primary bot via ""), stable id

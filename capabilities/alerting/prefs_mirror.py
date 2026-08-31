@@ -1,7 +1,7 @@
 """Mirror legacy alert-pref writes into the notification matrix.
 
 Since the DM fanout moved to the notifications spine
-(docs/architecture/alert-dm-migration.md), the matrix
+(capabilities/alerting/docs/alert-dm-migration.md), the matrix
 (``notification_pref`` + ``notification_channel``) is the DELIVERY SSOT
 for personal Telegram alerts.  The legacy ``users.alert_*`` /
 ``alerts_on`` columns remain as a write-mirrored cache — the bot's

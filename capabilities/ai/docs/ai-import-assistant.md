@@ -1,5 +1,9 @@
 # AI Import Assistant — spreadsheet → Inventory through the copilot
 
+**Homes:** `capabilities/ai/` (extraction engine) · importing features (inventory, work orders) · dashboard import surfaces.
+**Data it touches:** staging rows, then the target feature's tables in one transaction.
+
+
 *Design doc (pre-implementation). Drafted 2026-07-16. Companion to
 [ai-copilot-phase4-write-actions.md](ai-copilot-phase4-write-actions.md);
 its other companion, the July copilot plan, was deleted 2026-08-31 as
@@ -334,7 +338,7 @@ PHASE D — frontend attach flow
   MOD  interfaces/dashboard/src/locales/*.json   (×7) attach/skip/import strings
 
 PHASE E — verification
-  MOD  docs/architecture/ai-import-assistant.md  as-built section (§ like
+  MOD  capabilities/ai/docs/ai-import-assistant.md  as-built section (§ like
                                                  phase-4 doc got)
   loc  docs/ux-audits/<date>-ai-import.md        UX-psychology pass (local)
 ```

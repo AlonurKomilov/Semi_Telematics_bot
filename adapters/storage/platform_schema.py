@@ -565,7 +565,7 @@ async def create_tables(conn) -> None:
         -- may update later ("reminder 2/4", "acked").  handle = the
         -- channel's opaque JSON (Telegram: chat_id/message_id/kind);
         -- correlation_key = the source's stable event key
-        -- (docs/architecture/alert-dm-migration.md).  Rows only
+        -- (capabilities/alerting/docs/alert-dm-migration.md).  Rows only
         -- exist when the dispatch caller passed a correlation_key.
         CREATE TABLE IF NOT EXISTS notification_deliveries (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,

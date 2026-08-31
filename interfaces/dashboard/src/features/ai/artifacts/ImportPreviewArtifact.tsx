@@ -1,7 +1,7 @@
 /**
  * Shared `import_preview` artifact — ONE renderer for every import
  * target (Inventory today, any future adapter tomorrow; the universal
- * mechanism, per docs/architecture/ai-import-assistant.md §4).
+ * mechanism, per capabilities/ai/docs/ai-import-assistant.md §4).
  *
  * Shows the staged rows the user is about to approve (bounded display
  * sample — the executor writes the full staged set server-side), the

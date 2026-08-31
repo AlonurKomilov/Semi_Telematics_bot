@@ -196,7 +196,7 @@ class TestConfigLivesInConfigPy:
             "config endpoints defined outside a config.py:\n  "
             + "\n  ".join(sorted(offenders))
             + "\nA feature's config belongs in features/<x>/config.py beside "
-              "its router — see docs/architecture/config.md."
+              "its router — see capabilities/config/docs/ARCHITECTURE.md."
         )
 
 

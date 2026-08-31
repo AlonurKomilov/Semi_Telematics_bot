@@ -2,7 +2,7 @@
 
 The universal pipeline (capabilities/ai/attachments.py + propose_import)
 handles parsing, mapping, preview, staging, and approval; this module
-supplies only the domain pieces (docs/architecture/ai-import-assistant.md
+supplies only the domain pieces (capabilities/ai/docs/ai-import-assistant.md
 §4 layering law):
 
   * the ``inventory`` ImportTarget — field vocabulary + ``build_rows``

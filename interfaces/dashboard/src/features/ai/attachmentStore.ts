@@ -2,7 +2,7 @@
  * Browser-local store for chat attachments — PENDING (composing) and
  * CONVERSATION-BOUND (already sent).
  *
- * Policy (docs/architecture/ai-import-assistant.md §3, owner directive):
+ * Policy (capabilities/ai/docs/ai-import-assistant.md §3, owner directive):
  * the FILE lives on the user's device — never server disk, never the DB.
  * Its derived text rides inline on each chat request; the server parses
  * it transiently and keeps only what the user later APPROVES (the

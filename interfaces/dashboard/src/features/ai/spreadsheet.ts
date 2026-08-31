@@ -2,7 +2,7 @@
  * Spreadsheet file → CSV text, entirely ON THE DEVICE.
  *
  * The import pipeline's wire contract is CSV text riding inline on the
- * chat request (docs/architecture/ai-import-assistant.md §3) — that
+ * chat request (capabilities/ai/docs/ai-import-assistant.md §3) — that
  * contract doesn't change for Excel support.  Instead the browser
  * converts .xlsx/.xls workbooks to CSV here (SheetJS, lazy-loaded so
  * the chat bundle doesn't carry it), which keeps the owner directive

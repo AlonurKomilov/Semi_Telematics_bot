@@ -1,6 +1,6 @@
 """Notification actions — button presses routed back to the source.
 
-Part of the alert-DM migration (docs/architecture/alert-dm-migration.md):
+Part of the alert-DM migration (capabilities/alerting/docs/alert-dm-migration.md):
 the spine renders a content's ``actions`` as buttons and, when one is
 pressed, dispatches the press to the SOURCE's registered handler.  The
 spine never knows what "acknowledge" means — it only carries the press.

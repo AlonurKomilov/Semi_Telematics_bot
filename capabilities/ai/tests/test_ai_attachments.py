@@ -4,7 +4,7 @@ proposal plumbing.
 
 The parser/mapping fixtures mirror the REAL source sheet that drove the
 design: a matrix of vehicle units × item columns with status cells and
-mixed-language notes (docs/architecture/ai-import-assistant.md §1).
+mixed-language notes (capabilities/ai/docs/ai-import-assistant.md §1).
 """
 
 from __future__ import annotations

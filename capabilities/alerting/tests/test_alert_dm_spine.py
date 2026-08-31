@@ -1,6 +1,6 @@
 """Alert DMs through the notifications spine — the reader/writer switch.
 
-Pins the fanout contract (docs/architecture/alert-dm-migration.md):
+Pins the fanout contract (capabilities/alerting/docs/alert-dm-migration.md):
 
   • ``_spine_dm_fanout``: dispatches on the ``telegram_dm`` channel only,
     correlation key ``alert:{history_id}``, ✅ Acknowledge action only for

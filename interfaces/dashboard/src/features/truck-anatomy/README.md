@@ -31,7 +31,7 @@ delete both and the feature is fully gone.
 - **Node naming (future component level)**: name meshes inside the
   GLB after component concepts (`impeller`, `housing`, `pulley`) —
   when the CK33 component vocabulary lands (see the VMRS adoption
-  runbook in docs/architecture/vendor-parts-master-data.md), named
+  runbook in capabilities/platform/docs/vendor-parts-master-data.md), named
   nodes become individually selectable without remodeling.
 - **License**: only sources whose license allows use inside a web
   app (GrabCAD per-model terms, TurboSquid standard license or

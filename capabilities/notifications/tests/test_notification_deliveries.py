@@ -1,6 +1,6 @@
 """Delivery handles + the edit verb on the notifications spine.
 
-Pins the contract docs/architecture/alert-dm-migration.md rests on:
+Pins the contract capabilities/alerting/docs/alert-dm-migration.md rests on:
 
   • a successful Telegram send returns an edit ``handle``
     (chat_id / message_id / kind, + thread_id for topics)

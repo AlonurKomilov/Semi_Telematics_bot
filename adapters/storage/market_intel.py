@@ -1,5 +1,5 @@
 """Anonymized market-price rollups (Phase D of
-docs/architecture/vendor-parts-master-data.md).
+capabilities/platform/docs/vendor-parts-master-data.md).
 
 The six hard rules, all enforced HERE so no caller can skip one:
   1. SHARING accounts only (accounts.share_market_data = 1) feed the

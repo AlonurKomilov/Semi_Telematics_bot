@@ -1,5 +1,9 @@
 # AI Copilot — Phase 4: Write Actions ("Hands")
 
+**Homes:** `capabilities/ai/` (registry, proposal spine) · each feature's `ai_tool.py` / `ai_actions.py` (executors + undo).
+**Data it touches:** AI action/proposal tables, the advertised-tool caches.
+
+
 **Status:** design for review · **Author:** session 2026-07-12 · **Prereq:** Phases 1–3 landed
 **Risk class:** HIGH — this is the first time the AI *mutates* tenant data (tasks, acknowledgements, later payroll/invites). It gets a dedicated design + a security review + fable-advisor sign-off on the confirmation contract **before any code**, per the repo's CLAUDE.md escalation rules.
 

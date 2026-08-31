@@ -73,7 +73,7 @@ class TestManagerTier:
              "can_manage_role_bot", "can_manage_config_role"})
         # Safety's scoring-config ownership rode can_manage_scorecard_rules
         # until that flag folded into the account-scope config permission
-        # (docs/architecture/config.md).
+        # (capabilities/config/docs/ARCHITECTURE.md).
         assert TIER_GRANTS[Role.SAFETY].grants == frozenset(
             {"can_manage_config_all", "can_invite", "can_manage_role_bot",
              "can_manage_config_role"})

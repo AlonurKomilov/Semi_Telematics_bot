@@ -1,6 +1,6 @@
 """The config family's ACCOUNT scope (``can_manage_config_all``).
 
-What must hold (SSOT: docs/architecture/config.md):
+What must hold (SSOT: capabilities/config/docs/ARCHITECTURE.md):
   * KPI thresholds accept BOTH gates — ``can_manage_account`` keeps its
     historical reach (owner/Full-Admin), ``can_manage_config_all`` is the
     family's delegatable flag.

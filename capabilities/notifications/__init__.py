@@ -1,6 +1,6 @@
 """Notifications — the cross-cutting multi-channel delivery layer.
 
-Design SSOT: docs/architecture/notifications.md.  Event sources (alerts
+Design SSOT: capabilities/notifications/docs/ARCHITECTURE.md.  Event sources (alerts
 today; more later) resolve recipients + preferences and hand each
 delivery to a registered ``Channel``.  This package imports only
 ``infra`` + transport libs — never an event source — so any event

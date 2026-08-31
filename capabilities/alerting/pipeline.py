@@ -1333,7 +1333,7 @@ async def send_alert(
     # ── Personal DMs: the notifications spine, always ────────────
     # Matrix prefs decide recipients; quiet hours defer; the delivery
     # ledger + ✅ Acknowledge action ride along.  The legacy per-sub
-    # loop is gone (docs/architecture/alert-dm-migration.md — legacy
+    # loop is gone (capabilities/alerting/docs/alert-dm-migration.md — legacy
     # cleanup): a False here (unregistered category / spine error)
     # means DMs are skipped for THIS occurrence — logged loudly; the
     # group post and alert_history above are unaffected.

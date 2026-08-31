@@ -126,7 +126,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_companies',   kind: 'feature', label: 'Manage Companies', description: 'Sub-companies in the account — codes, names, per-company data scope' },
       { key: 'can_manage_work_hours',  kind: 'feature', label: 'Working Hours', description: 'Shift schedules — they also drive the alert do-not-disturb window' },
       { header: 'Configuration', description: 'cross-feature settings — one flag each, covering every feature they touch' },
-      // The config FAMILY (docs/architecture/config.md).  Under its OWN
+      // The config FAMILY (capabilities/config/docs/ARCHITECTURE.md).  Under its OWN
       // header, not Settings': these span features, so calling them
       // Settings components would misplace them (and the role lens
       // already bands them apart — the two lenses must agree).

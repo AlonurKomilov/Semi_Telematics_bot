@@ -494,7 +494,7 @@ async def migrate_notification_category_rename(conn) -> None:
 async def migrate_notification_matrix(conn) -> None:
     """Create ``notification_pref`` + ``notification_channel`` and
     backfill the PERSONAL Telegram-DM prefs from the legacy per-user
-    columns (docs/architecture/notifications.md, phase 2a).
+    columns (capabilities/notifications/docs/ARCHITECTURE.md, phase 2a).
 
     Additive + idempotent: creates the tables, then backfills one
     ``telegram_dm`` row per (user, alert_type) from ``users.alert_*``
@@ -599,7 +599,7 @@ async def migrate_notification_deliveries(conn) -> None:
     ``update_delivery()`` (edit-addresses of sent messages, keyed by the
     source's correlation_key).  Additive; nothing writes until a dispatch
     caller passes a ``correlation_key``
-    (docs/architecture/alert-dm-migration.md)."""
+    (capabilities/alerting/docs/alert-dm-migration.md)."""
     try:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS notification_deliveries (
@@ -4187,7 +4187,7 @@ async def migrate_driver_deductions(conn) -> None:
 
 async def migrate_vendor_directory(conn) -> None:
     """Global vendor-directory table (Phase C1 of
-    docs/architecture/vendor-parts-master-data.md) — platform-owned,
+    capabilities/platform/docs/vendor-parts-master-data.md) — platform-owned,
     no account_id, no RLS (system routes gate operator access; account
     routes only ever read ACTIVE rows' identity fields).  Idempotent:
     CREATE IF NOT EXISTS mirrors platform_schema for upgraded DBs.
@@ -4258,7 +4258,7 @@ async def migrate_vendor_directory_geo(conn) -> None:
 
 async def migrate_vendor_directory_chain(conn) -> None:
     """Chain label for multi-location brands (foundation slice of chain
-    support — docs/architecture/vendor-parts-master-data.md §5d).  One
+    support — capabilities/platform/docs/vendor-parts-master-data.md §5d).  One
     directory entry per LOCATION; ``chain`` groups a brand's locations
     ('' = independent shop).  Grouping UI / market-intel pooling /
     bulk import build on this later."""

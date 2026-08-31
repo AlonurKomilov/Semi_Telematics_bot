@@ -1,7 +1,7 @@
 """Delivery plans — one hand-off from a source to every destination.
 
 The last seam of the alert-delivery migration
-(docs/architecture/alert-dm-migration.md): a source (alerting today,
+(capabilities/alerting/docs/alert-dm-migration.md): a source (alerting today,
 any domain tomorrow) builds a PLAN — pure data, zero transport — and
 the spine executes all of it:
 

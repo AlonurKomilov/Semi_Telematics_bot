@@ -21,15 +21,15 @@ This folder keeps only what belongs to NO package:
 |---|---|
 | Tenant file layout | `capabilities/object_storage/docs/LAYOUT.md` |
 | Tours (walkthroughs) | `capabilities/tour/docs/ARCHITECTURE.md` |
-| Warehouse | `docs/architecture/warehouse.md` |
-| Config family | `docs/architecture/config.md` |
-| Notifications spine | `docs/architecture/notifications.md` |
+| Warehouse | `capabilities/data_lifecycle/docs/warehouse.md` |
+| Config family | `capabilities/config/docs/ARCHITECTURE.md` |
+| Notifications spine | `capabilities/notifications/docs/ARCHITECTURE.md` |
 | Persona naming | `docs/architecture/PERSONA.md` |
-| Bot topology | `docs/architecture/bot-topology.md` |
-| Vendor/parts master data | `docs/architecture/vendor-parts-master-data.md` |
-| AI copilot write-actions | `docs/architecture/ai-copilot-phase4-write-actions.md` |
-| AI import assistant | `docs/architecture/ai-import-assistant.md` |
-| Alert-DM migration (record) | `docs/architecture/alert-dm-migration.md` |
+| Bot topology | `interfaces/bot/docs/ARCHITECTURE.md` |
+| Vendor/parts master data | `capabilities/platform/docs/vendor-parts-master-data.md` |
+| AI copilot write-actions | `capabilities/ai/docs/ai-copilot-write-actions.md` |
+| AI import assistant | `capabilities/ai/docs/ai-import-assistant.md` |
+| Alert-DM migration (record) | `capabilities/alerting/docs/alert-dm-migration.md` |
 
 Records of past worlds live under `archive/` folders (tracked, and the
 dead-reference guard exempts them — a completed rollout's references

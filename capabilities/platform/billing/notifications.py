@@ -56,7 +56,7 @@ def _billing_audience(role) -> bool:
     permission SSOT.  Accepts a raw role string or a Role.
 
     STATIC role defaults by design-for-now: per-account matrix overrides /
-    module masking are not consulted (docs/architecture/notifications.md
+    module masking are not consulted (capabilities/notifications/docs/ARCHITECTURE.md
     §9d — fixed in one sweep with the alert audiences; don't copy this
     pattern into an authorization context)."""
     from capabilities.permissions.roles import get_permissions

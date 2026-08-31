@@ -74,10 +74,14 @@ def test_every_in_package_law_is_indexed():
     index = (REPO / "docs/architecture/README.md").read_text(encoding="utf-8")
     missing = []
     for f in _tracked_docs():
-        if f.endswith("/docs/ARCHITECTURE.md"):
-            pkg_path = f
-            if pkg_path not in index:
-                missing.append(pkg_path)
+        if not f.startswith("docs/") and "/docs/" in f:
+            # any law directly under a package docs/ — runbooks and
+            # archives are shelves, not laws, and stay un-indexed.
+            tail = f.split("/docs/", 1)[1]
+            if "/" in tail:
+                continue
+            if f not in index:
+                missing.append(f)
     assert not missing, (
         "laws that moved in-package but never joined the index — the "
         "census must survive the scattering:\n  " + "\n  ".join(missing))

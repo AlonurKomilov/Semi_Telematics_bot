@@ -1,6 +1,6 @@
 """Alerting's spine action handlers — the MEANING side of a button press.
 
-Part of the alert-DM migration (docs/architecture/alert-dm-migration.md):
+Part of the alert-DM migration (capabilities/alerting/docs/alert-dm-migration.md):
 the notifications spine renders the buttons and routes the press here;
 THIS module decides what "acknowledge" means — the same storage cascade
 the dashboard's bulk-ack runs — then asks the spine to update every

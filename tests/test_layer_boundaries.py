@@ -20,7 +20,7 @@ dispatch — never the reverse: the spine must stay source-blind, or the
 next domain (work orders, loads) can't reuse it.  Sources hand the spine
 closures (``audience``, ``recipient_filter``, renderers) instead of being
 imported.  Decision + DM-migration plan:
-docs/architecture/alert-dm-migration.md.
+capabilities/alerting/docs/alert-dm-migration.md.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@
  * pipeline), PDFs and plain text become extracted text of kind 'text'
  * (the read-only lane the AI reads through bounded windows).  The wire
  * stays derived text either way — the FILE never leaves the device
- * (docs/architecture/ai-import-assistant.md §3, owner directive).
+ * (capabilities/ai/docs/ai-import-assistant.md §3, owner directive).
  *
  * PDF extraction uses Mozilla's pdf.js, lazy-loaded like SheetJS so the
  * chat bundle carries neither until a matching file is attached.

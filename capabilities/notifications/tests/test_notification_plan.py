@@ -1,6 +1,6 @@
 """Delivery plans — the one hand-off from a source to every destination.
 
-Pins the plan contract (docs/architecture/alert-dm-migration.md):
+Pins the plan contract (capabilities/alerting/docs/alert-dm-migration.md):
 
   • shared targets render + send through their channel with the
     sender hint (declared via accepts_sender_hint), the prefix applied

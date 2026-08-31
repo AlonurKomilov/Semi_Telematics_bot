@@ -10,7 +10,7 @@ import { Input } from '../../../components/ui/input';
 import { generatePassphrase } from '../passphrase';
 
 /**
- * The DQF export passphrase — account-scope config (docs/architecture/config.md).
+ * The DQF export passphrase — account-scope config (capabilities/config/docs/ARCHITECTURE.md).
  *
  * Every application's documents are written into the carrier's own cloud
  * storage alongside a self-contained driver qualification file, so the

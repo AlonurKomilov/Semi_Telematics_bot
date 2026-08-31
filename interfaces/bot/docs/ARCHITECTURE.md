@@ -1,5 +1,9 @@
 # ADR — Telegram bot topology: one identity bot per account; Sub bots are senders
 
+**Homes:** `interfaces/bot/` (handlers, scheduler, forum setup) · `infra/bot_registry.py` (multi-bot lifecycle) · `capabilities/notifications/telegram.py` (transport).
+**Data it touches:** bot registry/config tables, forum topic mappings, delivery destinations.
+
+
 Decided 2026-07-17 (owner + advisor consult). Status: ACCEPTED, shipped.
 
 ## Decision

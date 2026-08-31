@@ -5,7 +5,7 @@ restore on reminder edits.
 Moved from capabilities/alerting/escalation.py: these manipulate
 Telegram Update/Message objects directly, which is interface-layer
 work — the alerting capability no longer imports the transport
-(docs/architecture/alert-dm-migration.md, the wall).  New spine posts
+(capabilities/alerting/docs/alert-dm-migration.md, the wall).  New spine posts
 carry ``notif_act:`` buttons routed by capabilities/notifications/
 actions.py instead; these handlers serve messages sent before that.
 """

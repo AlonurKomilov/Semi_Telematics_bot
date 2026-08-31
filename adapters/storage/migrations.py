@@ -6210,7 +6210,7 @@ async def migrate_work_order_parts_service_task(conn) -> None:
 async def migrate_vendors_registry(conn) -> None:
     """Per-account vendor registry (master data) + ``work_orders.vendor_id``.
 
-    Three steps, per docs/architecture/vendor-parts-master-data.md
+    Three steps, per capabilities/platform/docs/vendor-parts-master-data.md
     (Phase A; shape confirmed 2026-07-13):
 
     1. **Table** — ``vendors`` with a stored normalized ``name_key``
@@ -6379,7 +6379,7 @@ async def migrate_vendors_registry(conn) -> None:
 async def migrate_parts_catalog(conn) -> None:
     """Per-account parts catalog (master data) + ``work_order_parts.part_id``.
 
-    Phase B of docs/architecture/vendor-parts-master-data.md — the same
+    Phase B of capabilities/platform/docs/vendor-parts-master-data.md — the same
     recipe migration 149 used for vendors: catalog table with a stored
     normalized ``name_key`` + per-account uniqueness, alias tombstones
     for merge+resync correctness, a nullable app-level FK on the line
@@ -8363,7 +8363,7 @@ async def migrate_asset_grain_surfaces(conn) -> None:
             f"COMMENT ON VIEW warehouse.{name} IS "
             f"'warehouse surface: {stream} · grain {grain} — read here; "
             f"writers use the physical tables. "
-            f"SSOT docs/architecture/warehouse.md'"
+            f"SSOT capabilities/data_lifecycle/docs/warehouse.md'"
         )
     await conn.commit()
     logger.info("Migration 185: 10 asset grain surfaces ready")
@@ -8480,7 +8480,7 @@ async def migrate_grain_physical_tables(conn) -> None:
     having per-grain writers/pruners/builders, the one-table
     ``granularity`` label had become pure predicate overhead plus a
     permanent two-vocabulary tax.  REVERSES "shape decides the table"
-    for the timeline family — rationale in docs/architecture/warehouse.md.
+    for the timeline family — rationale in capabilities/data_lifecycle/docs/warehouse.md.
 
       vehicle_state           -> vehicle_state_live      (rename)
       vehicle_state_snapshot  -> vehicle_state_minute    (rename)

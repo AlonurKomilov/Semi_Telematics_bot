@@ -84,7 +84,7 @@ is the enforced mirror of this section; `permMatrix.test.ts` and
 | **Sub-feature** | own HOME — a folder with its own hub contributions (`report.py` / `ai_tool.py` / `alert.py` / `scoring_signal.py`) — nested under a parent family; rides the parent's router/service | Health, Faults, Fuel, Efficiency under `features/vehicles/<x>/` |
 | **Component** | flag-gated part of the parent's surface, NO home of its own | POI Layers (of Live Map), Driver roster (of Drivers), Fuel Costs · Cost per Mile (of Costs) |
 | **Feature action** | a do/write verb on one feature.  A generic one renders as the parent's **Manage column**, not a row; only a SPECIFIC verb no column can express stays a row | Manage (Vehicles · Loads · Carrier Directory) → columns; **Hire Applicant** → the one action row |
-| **Cross-feature** | a do-verb that spans features, owned by none.  Never nested, never per-feature.  NOT called "capability" — that word is the four hubs' | the config family (`can_manage_config_role` / `_all`, docs/architecture/config.md) |
+| **Cross-feature** | a do-verb that spans features, owned by none.  Never nested, never per-feature.  NOT called "capability" — that word is the four hubs' | the config family (`can_manage_config_role` / `_all`, capabilities/config/docs/ARCHITECTURE.md) |
 
 **Row = noun, column = verb.**  The Permissions page puts features down and
 verbs across (View · Manage · Config), so a row that names its own verb
@@ -161,12 +161,12 @@ department, so it was always surfaced anyway.
 | **Drivers** | profiles · documents (+ Own Documents → Personal) · **Driver roster** (component: invite, assign trucks, TMS links) · expiry |
 | **Live Map** | map · overlays · **POI Layers** (component — the Live Map grant shows them, its own flag edits them) |
 | **Geofences** | zones CRUD · entry/exit alert contribution |
-| **Scorecards** | scoreboard (viewer) · **Scorecard Rules** (config component — gated by the config family's `can_manage_config_all`, docs/architecture/config.md) · scoring engine + signals (backend) · drop-alert contribution |
+| **Scorecards** | scoreboard (viewer) · **Scorecard Rules** (config component — gated by the config family's `can_manage_config_all`, capabilities/config/docs/ARCHITECTURE.md) · scoring engine + signals (backend) · drop-alert contribution |
 
 ### 🟪 Role
 | Department | Features (components) |
 |---|---|
-| Fleet | Maintenance (tasks · calendar · custom types) · Work Orders (+ invoice upload · cost-report contribution) · **Vendors** (registry · profile w/ spend history · merge — referenced by Work Orders, never owned by it; global directory is a platform sub-family sibling, see docs/architecture/vendor-parts-master-data.md) · **Parts** (catalog · per-part analytics: recurrence per vehicle, price per vendor · merge — graduated from a Work Orders component 2026-07-16, feature-owned `can_parts`; WO consumes it via line resolve + autocomplete) · PTI Inspections (+ template) · **Truck Anatomy** (3D learning model of the rig, taxonomy-as-scene-graph — DARK FEATURE: `can_truck_anatomy` seeded to NOBODY incl. owner; self-granted on the Permissions page when marketed) |
+| Fleet | Maintenance (tasks · calendar · custom types) · Work Orders (+ invoice upload · cost-report contribution) · **Vendors** (registry · profile w/ spend history · merge — referenced by Work Orders, never owned by it; global directory is a platform sub-family sibling, see capabilities/platform/docs/vendor-parts-master-data.md) · **Parts** (catalog · per-part analytics: recurrence per vehicle, price per vendor · merge — graduated from a Work Orders component 2026-07-16, feature-owned `can_parts`; WO consumes it via line resolve + autocomplete) · PTI Inspections (+ template) · **Truck Anatomy** (3D learning model of the rig, taxonomy-as-scene-graph — DARK FEATURE: `can_truck_anatomy` seeded to NOBODY incl. owner; self-granted on the Permissions page when marketed) |
 | Dispatch | Routes |
 | Safety | Safety Events · Cameras · **Parking** (unsafe-parking events only) · **Risk Summary** (the stakeholder/personnel risk report — a Reports-hub *tab*, owned here; `can_risk_report_*`) |
 | HR | Coaching (+ View Own) |

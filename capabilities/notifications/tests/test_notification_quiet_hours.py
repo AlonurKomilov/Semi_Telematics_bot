@@ -1,6 +1,6 @@
 """Quiet hours on the notifications spine.
 
-Pins the contract (docs/architecture/alert-dm-migration.md):
+Pins the contract (capabilities/alerting/docs/alert-dm-migration.md):
 
   • dispatch() defers an IMMEDIATE send into the 'quiet' cadence ONLY
     when: the channel disturbs (respects_quiet_hours), the recipient's

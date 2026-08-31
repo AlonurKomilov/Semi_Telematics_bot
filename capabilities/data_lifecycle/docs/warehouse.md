@@ -1,5 +1,9 @@
 # The warehouse — architecture (SSOT)
 
+**Homes:** `adapters/storage/warehouse/` (grain tables + mixins) · `capabilities/data_lifecycle/` (ingest/rollup/retention engines + registries) · `features/<x>/warehouse/` + `features/<x>/lifecycle.py` (per-feature datasets).
+**Data it touches:** the `warehouse.*` Postgres schema — live·minute·hour·day·week grain tables, `vehicle_conditions`, `device_event_log`, `odometer_eod`.
+
+
 The platform's analytical store: every stream of history the product
 keeps and learns from.  Telemetry was its first family; safety events,
 driver stats, and geofence definitions already live here too, and any

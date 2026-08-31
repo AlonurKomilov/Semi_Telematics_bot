@@ -7,7 +7,7 @@ WHAT WAS WRONG BEFORE.  The family had no code home at all.  Its account
 half was ``capabilities/settings_registry.py`` — the only bare module
 among sixteen capability packages — and its role half had no capability
 presence whatsoever, living entirely as an interface router plus an
-adapter.  The rules were written down (docs/architecture/config.md) and
+adapter.  The rules were written down (capabilities/config/docs/ARCHITECTURE.md) and
 enforced by tests, but a developer asking "where does config live?" got a
 document and a scavenger hunt.
 
@@ -25,7 +25,7 @@ Same shape as ``capabilities/data_lifecycle``, which groups rollups
 while keeping the engines separate — because the halves answer different
 questions on different cadences, exactly as these two do.
 
-SSOT for the rules: docs/architecture/config.md.
+SSOT for the rules: capabilities/config/docs/ARCHITECTURE.md.
 """
 
 from capabilities.config._common import (  # noqa: F401
