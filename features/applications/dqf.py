@@ -82,7 +82,7 @@ def application_folder(first: str, last: str, reference: str) -> str:
     back to a row.  Falls back to the bare reference when the name is
     missing — never produces a folder that is only punctuation.
     """
-    from features.work_orders.storage import sanitize_company_folder
+    from capabilities.object_storage.paths import sanitize_company_folder
 
     who = ", ".join(p for p in ((last or "").strip(), (first or "").strip()) if p)
     label = f"{who} — {reference}" if who else str(reference or "application")
