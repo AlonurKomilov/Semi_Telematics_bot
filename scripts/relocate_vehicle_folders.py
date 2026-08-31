@@ -48,10 +48,11 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from adapters.storage import Database  # noqa: E402
 from adapters.storage.object_storage import (  # noqa: E402
     get_object_storage_for_account,
 )
+from infra.services import get_tenant_db  # noqa: E402
+from infra.startup import initialize as init_services  # noqa: E402
 from capabilities.object_storage.paths import (  # noqa: E402
     resolve_company_folder,
 )
@@ -78,7 +79,7 @@ class Plan:
                 print(f"    {s}")
 
 
-async def build_plan(db: Database, account_id: int) -> Plan:
+async def build_plan(db, account_id: int) -> Plan:
     plan = Plan()
 
     # ── vehicle documents ──────────────────────────────────────────
@@ -107,7 +108,7 @@ async def build_plan(db: Database, account_id: int) -> Plan:
     return plan
 
 
-async def apply_plan(db: Database, account_id: int, plan: Plan) -> None:
+async def apply_plan(db, account_id: int, plan: Plan) -> None:
     store = await get_object_storage_for_account(account_id, db)
     moved = failed = 0
     # One (src, dst) can cover several documents — the whole folder
@@ -140,18 +141,22 @@ async def main() -> None:
                         help="actually move files and rewrite rows")
     args = parser.parse_args()
 
-    db = Database()
-    await db.connect()
-    try:
-        plan = await build_plan(db, args.account)
-        plan.render()
-        mode = ("APPLIED" if args.apply
-                else "DRY-RUN (nothing changed; re-run with --apply)")
-        print(f"\n  {mode}\n")
-        if args.apply:
-            await apply_plan(db, args.account, plan)
-    finally:
-        await db.close()
+    # The same way every per-account script opens the tenant DB: bring
+    # the services up, then ask for THIS account's handle — a raw
+    # Database() would miss the pool, the RLS account pin and the
+    # object-store wiring the move depends on.
+    await init_services()
+    db = await get_tenant_db(args.account)
+    if db is None:
+        raise SystemExit(f"account {args.account}: no tenant DB")
+
+    plan = await build_plan(db, args.account)
+    plan.render()
+    mode = ("APPLIED" if args.apply
+            else "DRY-RUN (nothing changed; re-run with --apply)")
+    print(f"\n  {mode}\n")
+    if args.apply:
+        await apply_plan(db, args.account, plan)
 
 
 if __name__ == "__main__":
