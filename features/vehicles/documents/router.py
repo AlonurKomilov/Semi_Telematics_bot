@@ -28,12 +28,15 @@ import io
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter, Depends, File, Form, HTTPException, Request, UploadFile,
+)
 from fastapi.responses import StreamingResponse
 
 from adapters.storage.vehicle_documents import VEHICLE_DOC_TYPES
 from infra.platform import get_tenant_db as _get_tenant_db
 from features.vehicles.scope import company_allows
+from interfaces.api.rate_limit import limiter
 from interfaces.api.deps import (
     get_platform_db,
     get_tenant_db,
@@ -120,6 +123,69 @@ async def list_account_documents(user: dict = Depends(_view)):
     rows = [r for r in rows
             if company_allows(r.get("company_code") or "", allowed)]
     return {"documents": rows, "doc_types": list(VEHICLE_DOC_TYPES)}
+
+
+@router.post("/documents/extract")
+@limiter.limit("30/hour")
+async def extract_document_fields(
+    request: Request,
+    file: UploadFile = File(...),
+    user: dict = Depends(_manage),
+):
+    """Read a vehicle document (photo/PDF) → the fields the form asks for.
+
+    TRANSIENT by design, the same contract the invoice scanner follows:
+    nothing is stored, no document row is created.  The dialog pre-fills
+    from the reply, the operator reviews it against the paper in their
+    hand, and only Upload writes.  The expiry date is the field the
+    whole warning chain reads, so it must never arrive unseen.
+
+    Gated on ``can_manage_vehicle_docs`` — you may only scan what you
+    could file — and rate-limited because every call is a paid
+    vision-model request.
+
+    Declared ahead of ``/documents/{doc_id}/…`` so the literal path
+    wins the match.
+    """
+    from features.vehicles.documents.extraction import (
+        EXTRACT_MIMES, extract_document,
+    )
+    from infra.file_safety import sniff_mime
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty file.")
+    if len(raw) > _MAX_DOC_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {_MAX_DOC_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    # Magic bytes decide, not the declared Content-Type: a paid model
+    # call earns the same rigor as the public intake.  HEIC is not in
+    # the sniffer's vocabulary, so verify its ISO-BMFF ``ftyp`` box and
+    # keep iPhone photos first-class.
+    declared = (file.content_type or "").lower()
+    mime = sniff_mime(raw)
+    if mime is None and declared in ("image/heic", "image/heif") \
+            and len(raw) > 12 and raw[4:8] == b"ftyp":
+        mime = declared
+    if mime not in EXTRACT_MIMES:
+        raise HTTPException(
+            status_code=415,
+            detail="Please upload a document photo (JPG/PNG/WEBP/HEIC) or PDF.",
+        )
+
+    result = await extract_document(
+        raw, mime,
+        account_id=int(user["account_id"]),
+        user_id=int(user["sub"]) if user.get("sub") else None,
+        role=user.get("role"),
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=502,
+                            detail=result.get("error", "Extraction failed."))
+    return result
 
 
 @router.get("/registry/{vehicle_id}/documents")

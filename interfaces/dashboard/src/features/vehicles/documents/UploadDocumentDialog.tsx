@@ -17,7 +17,7 @@
  * speed, on a flow whose most important field it could not ask for.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader2, Sparkles, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiFetch } from '../../../api/client';
@@ -57,6 +57,8 @@ export default function UploadDocumentDialog({
   const [expires, setExpires] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState<{ notes: string; unit: string } | null>(null);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +67,7 @@ export default function UploadDocumentDialog({
     setDocType('registration');
     setVehicleId(vehicle ? String(vehicle.registry_id) : '');
     setIssued(''); setExpires(''); setFile(null); setError('');
+    setScanning(false); setScanned(null);
   }, [open, vehicle]);
 
   const types = docTypes?.length ? docTypes : TYPE_ORDER;
@@ -73,6 +76,45 @@ export default function UploadDocumentDialog({
       (v) => v.registry_id != null),
     [vehicle, vehicles],
   );
+
+  // Read the dates off the paper instead of retyping them.  Explicit,
+  // never automatic: every call is a paid vision request, and an
+  // operator who already knows the date should not pay for one.  The
+  // reply PRE-FILLS and nothing is stored — the same transient
+  // contract the invoice scanner follows.
+  const scan = async () => {
+    if (!file || scanning) return;
+    setScanning(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiFetch('/vehicles/documents/extract',
+                                 { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err.detail === 'string'
+          ? err.detail : 'Could not read this file.');
+      }
+      const out = await res.json();
+      // Fill only what came back — a blank field the model could not
+      // read must stay blank rather than wiping something typed.
+      if (out.doc_type) setDocType(out.doc_type);
+      if (out.issued_at) setIssued(out.issued_at);
+      if (out.expires_at) setExpires(out.expires_at);
+      setScanned({
+        notes: String(out.notes || ''),
+        unit: String(out.unit_hint || ''),
+      });
+      if (!out.expires_at) {
+        setError('No expiry date found on this file — enter it by hand if the document has one.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read this file.');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,6 +240,33 @@ export default function UploadDocumentDialog({
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
           </div>
+
+          {file && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button" variant="outline" size="sm"
+                onClick={() => void scan()} disabled={scanning}
+              >
+                {scanning ? <Loader2 className="animate-spin" />
+                          : <Sparkles className="text-primary" />}
+                {scanning ? 'Reading…' : 'Read dates from file'}
+              </Button>
+              <span className="text-2xs text-muted-foreground">
+                Fills the fields above — check them before uploading.
+              </span>
+            </div>
+          )}
+
+          {/* What the scan believed it saw.  The unit number is the
+              operator's cross-check that the file matches the truck —
+              a cab card filed against the wrong tractor is worse than
+              no cab card, because it reads as done. */}
+          {scanned && (scanned.unit || scanned.notes) && (
+            <p className="text-2xs text-muted-foreground">
+              {scanned.unit && <>Document names unit <span className="text-foreground">{scanned.unit}</span>. </>}
+              {scanned.notes}
+            </p>
+          )}
 
           {error && <p className="text-xs text-danger">{error}</p>}
 
