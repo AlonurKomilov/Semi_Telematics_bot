@@ -29,15 +29,34 @@ def work_order_folder(
 ) -> str:
     """Compose the structured folder path for one work order.
 
+    Under the TRUCK it was done on::
+
+        ACME TRUCKING INC/vehicles/221/work-orders/WO-00128_2026-04-12_BobsDieselShop
+
+    so one folder holds everything about unit 221 — its papers and its
+    repair history — which is how a fleet actually asks the question
+    ("what has this truck cost me?").  The old shape filed by calendar
+    month across the whole account, which answers "what did we spend in
+    April" and answers it just as well from the cost report, on data
+    the folder tree cannot beat.  The truck token drops out of the
+    folder NAME: it is the parent now, and repeating it read as a
+    typo.
+
+    A work order with NO vehicle — shop supplies, a bulk parts invoice
+    — keeps the dated tree::
+
+        ACME TRUCKING INC/work-orders/2026/04-april/WO-00131_2026-04-12_NAPA
+
+    deliberately not the ``_generic`` pen: that one means "no company
+    could be established", and here the company is known perfectly
+    well.  Only the truck is missing, and inventing one would be worse
+    than filing it by date.
+
     ``company_folder`` is the already-sanitised company name produced
-    by :func:`resolve_company_folder`.  Example output::
-
-        ACME TRUCKING INC/work-orders/2026/04-april/WO-00128_truck221_2026-04-12_BobsDieselShop
-
-    ``service_date`` is the canonical "when did the work happen" — when
-    absent (a draft created from a bot photo before the manager filled
-    in details) we fall back to today so the file lands in the current
-    month bucket instead of an "unsorted" pile.
+    by :func:`resolve_company_folder`.  ``service_date`` is the
+    canonical "when did the work happen" — when absent (a draft created
+    from a bot photo before the manager filled in details) we fall back
+    to today rather than an "unsorted" pile.
     """
     if service_date:
         try:
@@ -50,13 +69,20 @@ def work_order_folder(
     month = _MONTHS[d.month - 1]
     date_str = d.strftime("%Y-%m-%d")
 
-    folder_name = (
-        f"WO-{work_order_id:05d}"
-        f"_truck{_slugify(vehicle_name, 20)}"
-        f"_{date_str}"
-        f"_{_slugify(vendor_name, 30) if vendor_name else 'no-vendor'}"
-    )
-    return f"{company_folder}/work-orders/{year}/{month}/{folder_name}"
+    vendor = _slugify(vendor_name, 30) if vendor_name else "no-vendor"
+    # Guard on the RAW name: slugify() answers "unknown" for an empty
+    # string, which would file a shop-supplies invoice under a truck
+    # called unknown — a folder that looks like a fleet asset and is
+    # not one.
+    unit = _slugify(vehicle_name, 20) if (vehicle_name or "").strip() else ""
+    if unit:
+        # Under the truck; its name is the parent, so it leaves the leaf.
+        return (f"{company_folder}/vehicles/{unit}/work-orders/"
+                f"WO-{work_order_id:05d}_{date_str}_{vendor}")
+    # No truck to file it under — the dated tree, which is what that
+    # tree is now FOR.
+    return (f"{company_folder}/work-orders/{year}/{month}/"
+            f"WO-{work_order_id:05d}_{date_str}_{vendor}")
 
 
 def safe_attachment_name(filename: str, *, fallback: str = "file") -> str:

@@ -19,6 +19,12 @@ def vehicle_docs_bucket(company_folder: str, unit_number: str) -> str:
     """The bucket for one truck's paperwork — registration, title,
     insurance, annual inspections.
 
+    ``…/vehicles/110/documents/`` — a SUBFOLDER of the truck, because
+    the truck's folder now holds more than paperwork: its work orders
+    sit beside them under the same unit.  Documents used to be the
+    truck folder itself, which left no room for anything else and made
+    "everything about unit 110" impossible to express.
+
     Named by UNIT NUMBER, not registry id, deliberately: this tree is
     mirrored into the customer's own Drive, where a compliance officer
     browses it by hand — ``vehicles/6862/`` reads as a truck,
@@ -29,7 +35,8 @@ def vehicle_docs_bucket(company_folder: str, unit_number: str) -> str:
     where the driver flow's ``user-{id}`` answer would cost daily
     readability for rename-safety nobody asked for.
     """
-    return f"{company_folder}/vehicles/{sanitize_company_folder(unit_number)}"
+    return (f"{company_folder}/vehicles/"
+            f"{sanitize_company_folder(unit_number)}/documents")
 
 
 def vehicle_docs_archive_bucket(
@@ -41,5 +48,5 @@ def vehicle_docs_archive_bucket(
     by the retirement.  Restore moves it back."""
     return (
         f"{company_folder}/vehicles/_archive/{archive_date}/"
-        f"{sanitize_company_folder(unit_number)}"
+        f"{sanitize_company_folder(unit_number)}/documents"
     )

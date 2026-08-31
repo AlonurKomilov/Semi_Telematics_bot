@@ -16,14 +16,16 @@ from features.vehicles.documents.paths import (
 
 
 def test_buckets_are_readable_and_traversal_safe():
-    assert vehicle_docs_bucket("PTG INC", "6862") == "PTG INC/vehicles/6862"
+    assert vehicle_docs_bucket("PTG INC", "6862") == (
+        "PTG INC/vehicles/6862/documents")
     assert vehicle_docs_archive_bucket("PTG INC", "6862", "2026-08-28") == (
-        "PTG INC/vehicles/_archive/2026-08-28/6862")
+        "PTG INC/vehicles/_archive/2026-08-28/6862/documents")
     # A unit number is user data on a path.  Neutralised, not rejected:
     # the separators become underscores, so it stays ONE component.
     hostile = vehicle_docs_bucket("X", "../../etc")
     assert "/../" not in hostile and not hostile.startswith("..")
-    assert hostile.count("/") == 2  # X / vehicles / <one component>
+    # X / vehicles / <one component> / documents
+    assert hostile.count("/") == 3
 
 
 @pytest.mark.asyncio
@@ -319,3 +321,55 @@ def test_the_fleet_list_route_is_mounted_before_the_parametric_one():
     assert paths.index("/api/vehicles/documents") < paths.index(
         "/api/vehicles/{vehicle_name}"
     ), "the parametric vehicle route now shadows the documents list"
+
+
+# ── Everything about one truck lives under that truck ──────────────
+
+
+def test_a_trucks_papers_and_repairs_are_siblings():
+    """The layout the owner asked for: one folder answers "what has
+    unit 110 cost me, and is its insurance current?".  Documents used
+    to BE the truck folder, which left no room for anything beside
+    them."""
+    from features.vehicles.documents.paths import vehicle_docs_bucket
+    from features.work_orders.paths import work_order_folder
+
+    docs = vehicle_docs_bucket("PTG INC", "110")
+    wo = work_order_folder(
+        company_folder="PTG INC", work_order_id=128, vehicle_name="110",
+        service_date="2026-04-12", vendor_name="Bobs Diesel",
+    )
+    assert docs == "PTG INC/vehicles/110/documents"
+    assert wo.startswith("PTG INC/vehicles/110/work-orders/")
+    # Same parent — that IS the feature.
+    assert docs.rsplit("/", 1)[0] == wo.rsplit("/", 2)[0]
+
+
+def test_a_work_order_with_no_truck_keeps_the_dated_tree():
+    """Shop supplies have no truck to live under.  The dated tree is
+    what that tree is now for — NOT the _generic pen, which means "no
+    company could be established" and would misfile a known company's
+    invoice as an orphan."""
+    from features.work_orders.paths import work_order_folder
+
+    for empty in ("", "   "):
+        p = work_order_folder(
+            company_folder="PTG INC", work_order_id=131, vehicle_name=empty,
+            service_date="2026-04-12", vendor_name="NAPA",
+        )
+        assert p == "PTG INC/work-orders/2026/04-april/WO-00131_2026-04-12_NAPA"
+        assert "_generic" not in p
+        # slugify() answers "unknown" for an empty string; a truck by
+        # that name must never appear in the tree.
+        assert "/vehicles/" not in p
+
+
+def test_the_truck_token_leaves_the_folder_name():
+    """It is the parent now; repeating it read as a typo."""
+    from features.work_orders.paths import work_order_folder
+
+    p = work_order_folder(
+        company_folder="PTG INC", work_order_id=128, vehicle_name="221",
+        service_date="2026-04-12", vendor_name="Bobs",
+    )
+    assert "_truck221" not in p and p.count("221") == 1

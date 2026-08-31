@@ -25,13 +25,31 @@ data/userdata/                              ← OBJECT_STORE_ROOT
       branding/                             ← logo-{company_id}.ext, banner-{company_id}.ext
       drivers/user-{user_id}/
         _archive/{YYYY-MM-DD}/user-{user_id}/
-      vehicles/{unit_number}/                 ← registration, title, insurance,
-        _archive/{YYYY-MM-DD}/{unit_number}/     annual inspections; sanitized unit
+      vehicles/{unit_number}/
+        documents/                            ← registration, cab card, title,
+                                                 insurance, annual inspection
+        work-orders/WO-{id}_{date}_{vendor}/  ← that truck's repair invoices
+        _archive/{YYYY-MM-DD}/{unit_number}/documents/
+      work-orders/{YYYY}/{MM-month}/          ← ONLY work orders with no vehicle
     _generic/                               ← holding pen: company unresolved (a bug)
     _account/                               ← account-level data (by design)
       knowledge/
       inspection-templates/
 ```
+
+**Everything about one truck lives under that truck.** Its papers and
+its repair invoices are siblings in `vehicles/{unit}/`, because that is
+how a carrier asks the question — "what has unit 110 cost me, and is
+its insurance current?" — and a Drive folder is browsed, not queried.
+Work orders used to file by calendar month across the whole account,
+which answers "what did we spend in April"; the cost report answers
+that better, on data no folder tree can beat.
+
+A work order with **no vehicle** (shop supplies, a bulk parts invoice)
+keeps the dated `work-orders/{year}/{month}/` tree, which is now what
+that tree is FOR. Deliberately not the `_generic` pen: that means "no
+company could be established", and here the company is known — only the
+truck is missing, and inventing one would be worse than filing by date.
 
 **Vehicle folders are named by UNIT NUMBER, not registry id** — this
 tree is browsed by hand in the customer's Drive, and `vehicles/6862/`
