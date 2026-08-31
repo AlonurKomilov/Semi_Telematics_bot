@@ -65,6 +65,19 @@ export interface TaskDetailSheetProps {
    *  keep showing the attachment list it had before the upload. */
   onTaskChanged: (task: MaintenanceTask) => void;
   canCreateTasks: boolean;
+  /** can_maintenance_all.  Every write route on this sheet requires it
+   *  strictly; a _vehicle-scoped viewer gets the same sheet with every
+   *  control disabled and the action row gone — the server would 403
+   *  each of them, and a form that looks editable but cannot save is
+   *  the lie this prop removes.
+   *
+   *  NB the fieldset below is a WRITE boundary.  A control that merely
+   *  switches what a viewer SEES belongs outside it, or branches on
+   *  this flag: disabling a view-switch HIDES data, which is the
+   *  opposite of the job.  The Due-by Date/Miles/Hours tabs were
+   *  exactly that mistake — caught in review, and a viewer now gets
+   *  every populated trigger listed as plain facts instead. */
+  canEdit: boolean;
   customTypeLabelByValue: Record<string, string>;
   tz: string;
 }
@@ -72,7 +85,8 @@ export interface TaskDetailSheetProps {
 export default function TaskDetailSheet({
   task, onClose, onSaved, onError, onTaskChanged,
   onShowServiceHistory, onShowActivityTrail,
-  canCreateTasks, customTypeLabelByValue, tz,
+  canCreateTasks,
+  canEdit, customTypeLabelByValue, tz,
 }: TaskDetailSheetProps) {
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -469,6 +483,11 @@ export default function TaskDetailSheet({
         >
           {task && (
           <SheetBody label="Maintenance task details" className="p-6">
+            {!canEdit && (
+              <p className="mb-3 rounded-md border border-info-bd bg-info-bg px-3 py-2 text-xs text-foreground">
+                Read-only — your role can view maintenance but not change it.
+              </p>
+            )}
             {/* Header: vehicle + task type for disambiguation when
                 multiple tabs/drawers are juggled. History sits as a
                 clear chip rather than a faint inline link. */}
@@ -597,6 +616,17 @@ export default function TaskDetailSheet({
               )}
             </dl>
             <div className="space-y-3">
+                {/* One fieldset, one verdict: `disabled` reaches every
+                    form control inside natively, so a read-only viewer
+                    cannot edit a field the server would refuse to save —
+                    without twenty per-input props.  It wraps ONLY this
+                    editable column: the header's History chip and the
+                    activity-trail link below are READS a viewer keeps,
+                    and the attachment <a> inside survives on its own
+                    (`disabled` reaches form controls, never anchors).
+                    display:contents keeps the wrapper out of layout;
+                    disabling is DOM semantics, not CSS. */}
+                <fieldset disabled={!canEdit} className="contents">
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Status</span>
                 <Select value={eStatus} onValueChange={setEStatus} items={STATUS_ITEMS}>
@@ -648,6 +678,29 @@ export default function TaskDetailSheet({
                 <span className="block text-xs text-muted-foreground mb-1">
                   Due by
                 </span>
+                {!canEdit ? (
+                  /* A VIEW switch caught by a WRITE boundary: disabling
+                     these tabs would leave a viewer stuck on whichever
+                     dimension initialTriggerMode picked, unable to see
+                     the others at all.  So a viewer gets every populated
+                     trigger as plain facts instead — the same data the
+                     tabs would have revealed, minus the switching. */
+                  <div className="text-xs text-foreground space-y-0.5">
+                    {task.due_date && (
+                      <p>Date: {formatDate(task.due_date, { timeZone: tz })}</p>
+                    )}
+                    {task.due_miles != null && (
+                      <p>Miles: {Math.round(task.due_miles).toLocaleString()} mi</p>
+                    )}
+                    {task.due_engine_hours != null && (
+                      <p>Engine hours: {Math.round(task.due_engine_hours).toLocaleString()} h</p>
+                    )}
+                    {!task.due_date && task.due_miles == null
+                      && task.due_engine_hours == null && (
+                      <p className="text-muted-foreground">No due trigger set.</p>
+                    )}
+                  </div>
+                ) : (<>
                 <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md mb-2" role="group" aria-label="Due by">
                   {([
                     { k: 'date',  label: 'Date'  },
@@ -723,6 +776,7 @@ export default function TaskDetailSheet({
                     />
                   </label>
                 )}
+                </>)}
               </div>
               {/* Single recurrence checkbox — only the active
                   trigger's recurrence is touched on save.  Other
@@ -887,6 +941,7 @@ export default function TaskDetailSheet({
                   expands inline with a Danger-Zone confirm step
                   (no extra browser-level confirm dialog — the inline
                   expansion IS the confirmation). */}
+              {canEdit && (
               <div className="flex items-center gap-2 pt-3">
                 <button
                   type="button"
@@ -904,12 +959,13 @@ export default function TaskDetailSheet({
                   {saving ? 'Saving...' : 'Update Task'}
                 </button>
               </div>
+              )}
 
               {/* Mark complete — one-click parity with the bulk-select
                   toolbar's "Mark complete" pill.  Hidden when the
                   task is already completed or cancelled (it would be
                   a no-op) so the action area stays uncluttered. */}
-              {task.status !== 'completed' && task.status !== 'cancelled' && (
+              {canEdit && task.status !== 'completed' && task.status !== 'cancelled' && (
                 <button
                   type="button"
                   onClick={handleMarkComplete}
@@ -925,7 +981,7 @@ export default function TaskDetailSheet({
                   do something (task is overdue or close to threshold).
                   Collapsed: subtle button.  Expanded: inline 48h/7d/30d
                   picker with a close-X. */}
-              {_isOverdueOrApproaching(task) && (
+              {canEdit && _isOverdueOrApproaching(task) && (
                 snoozeOpen ? (
                   <div className="flex items-center gap-1.5 pt-2">
                     <span className="text-2xs text-muted-foreground inline-flex items-center gap-1 mr-1">
@@ -976,8 +1032,16 @@ export default function TaskDetailSheet({
 
               {/* Delete pill — same collapsed/expanded pattern.  The
                   expanded state IS the Danger-Zone confirmation; no
-                  browser-level confirm dialog is fired. */}
-              {deleteOpen ? (
+                  browser-level confirm dialog is fired.
+
+                  Hidden for a read-only viewer rather than left
+                  disabled-but-styled: the fieldset would stop the
+                  click, but this pill carries no `disabled:` styling,
+                  so it would still look and hover like a live
+                  destructive control that silently does nothing —
+                  precisely the lie the rest of this sheet just
+                  removed, on the one action where it matters most. */}
+              {canEdit && (deleteOpen ? (
                 <div className="mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded">
                   <p className="text-2xs uppercase tracking-wide text-destructive mb-1.5">
                     Danger zone — this can&apos;t be undone
@@ -1009,7 +1073,7 @@ export default function TaskDetailSheet({
                   <Trash2 className="size-3" />
                   Delete
                 </button>
-              )}
+              ))}
 
               {/* THIS TASK's activity trail — who changed what, field-level
                   old→new.  It sits down here, away from the header's
@@ -1019,6 +1083,7 @@ export default function TaskDetailSheet({
                   keeps the concepts apart in code for the same reason.
                   A quiet LINK, not a button — everything above it writes,
                   this only looks. */}
+            </fieldset>
               <div className="mt-4 pt-3 border-t border-border">
                 <button
                   type="button"

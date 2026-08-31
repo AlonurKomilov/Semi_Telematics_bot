@@ -102,6 +102,22 @@ export default function Tasks() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Inline task creation is gated by can_service_tasks — the picker's
+  // backend gate.  Offering the "+ Add" option to a role the server
+  // will 403 teaches the permission by failure.
+  const { has: hasPerm } = useViewPermissions();
+  const canCreateTasks = hasPerm('can_service_tasks');
+  // Every maintenance WRITE route requires can_maintenance_all
+  // strictly (create, bulk, update, snooze, delete, templates) — a
+  // can_maintenance_vehicle viewer is read-only by backend design, and
+  // this page finally says so instead of offering buttons that 403.
+  // While permissions load, has() is false and the write chrome stays
+  // hidden: for WRITE affordances, hidden-until-known is the safe
+  // direction (never offer what may be rejected).  Declared ABOVE the
+  // keyboard effect that reads it — the 'n' shortcut needs the same
+  // gate as the button it mirrors.
+  const canWrite = hasPerm('can_maintenance_all');
+
   // Keyboard accessibility: Escape closes the open detail sidebar or
   // history modal (whichever is on top).  Native pattern — sighted
   // users expect this on every modal/drawer.  selectedIds tracked
@@ -126,12 +142,16 @@ export default function Tasks() {
           || (tgt?.isContentEditable ?? false);
         if (isEditing) return;
         if (selected || historyVehicle) return;
+        // Same gate as the button this shortcut mirrors — review
+        // caught the keyboard walking straight past the hidden
+        // chrome into the 403 this sweep exists to remove.
+        if (!canWrite) return;
         setShowAdd(s => !s);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selected, historyVehicle]);
+  }, [selected, historyVehicle, canWrite]);
 
 
   // Copilot page context — tells the assistant what's on screen so
@@ -208,12 +228,6 @@ export default function Tasks() {
   // (which served customs only; standards leaned on a hardcoded map
   // that had drifted).  Archived included: history keeps its label.
   const { byValue: customTypeLabelByValue } = useTaskLabels();
-  // Inline task creation is gated by can_service_tasks — the picker's
-  // backend gate.  Offering the "+ Add" option to a role the server
-  // will 403 teaches the permission by failure.
-  const { has: hasPerm } = useViewPermissions();
-  const canCreateTasks = hasPerm('can_service_tasks');
-
   // Apply a template's defaults into the open add-form fields.  Only
   // touches the fields the template actually sets, so the user can
 
@@ -291,7 +305,10 @@ export default function Tasks() {
     }
   };
 
-  const bulkActions: BulkAction[] = [
+  // Same predicate the server applies — the bulk bar must never offer
+  // an action the routes would reject (the context-menu rule, applied
+  // to the grid's bulk pills).
+  const bulkActions: BulkAction[] = !canWrite ? [] : [
     { label: 'Mark complete', icon: CheckSquare,
       confirm: (n) => `Mark ${n} task${n === 1 ? '' : 's'} complete?\n\n`
         + 'You will be recorded as the attester for each one. '
@@ -408,6 +425,7 @@ export default function Tasks() {
                 grid's own toolbar Export (Current page / All rows,
                 honouring live filters + column layout) covers it and
                 the two side by side read as duplication. */}
+            {canWrite && (<>
             <button
               type="button"
               onClick={() => setTemplatesOpen(true)}
@@ -425,6 +443,7 @@ export default function Tasks() {
               <Plus className="size-3.5" />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
+            </>)}
           </div>
         }
       />
@@ -456,12 +475,12 @@ export default function Tasks() {
           who it is and what it can see. */}
       <TourHost
         feature="maintenance"
-        // canCreate: adding a TASK is gated by the page permission
-        // itself (can_maintenance_*) — anyone standing here can press
-        // "New task".  `canCreateTasks` above is a different right
-        // (defining new service-task TYPES in the picker) and would
-        // wrongly hide the tour from most maintenance users.
-        ctx={{ count: allTasks.length, canCreate: true }}
+        // canCreate: every create route requires can_maintenance_all,
+        // so the tour must not offer a walk that ends in a 403.  (An
+        // earlier comment here claimed the page permission was the
+        // gate — it was wrong: _vehicle-scoped viewers reach this page
+        // read-only.)
+        ctx={{ count: allTasks.length, canCreate: canWrite }}
       />
 
       {showAdd && (
@@ -500,12 +519,12 @@ export default function Tasks() {
           icon={Wrench}
           title="No maintenance tasks yet"
           description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
-          action={(
+          action={canWrite ? (
             <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition min-h-tap">
               <Plus className="size-3.5" />
               New task
             </button>
-          )}
+          ) : undefined}
         />
       ) : viewMode === 'calendar' ? (
         // Calendar view — same dataset, different visualisation.  Click
@@ -549,7 +568,13 @@ export default function Tasks() {
             // it owns the checkbox column and the floating bar rendered
             // from bulkActions.  onBulkSelectionChange mirrors the set
             // out for the AI page-context.
-            bulkSelection
+            // Gated, not just emptied: DataGrid renders the checkbox
+            // column from THIS prop alone, so leaving it on gave a
+            // read-only viewer checkboxes with no action behind them —
+            // a checkbox means "is this item in the set I can act on".
+            // Matches CarrierDirectory (canEdit) and Parking
+            // (canResolve), which already gate the same way.
+            bulkSelection={canWrite}
             bulkActions={bulkActions}
             bulkRowLabel={(r) => `task on ${(r as unknown as MaintenanceTask).vehicle_name}`}
             onBulkSelectionChange={(rows) =>
@@ -583,6 +608,7 @@ export default function Tasks() {
           onShowServiceHistory={() => setHistoryVehicle(selected.vehicle_name)}
           onShowActivityTrail={() => setHistoryOpen(true)}
           canCreateTasks={canCreateTasks}
+          canEdit={canWrite}
           customTypeLabelByValue={customTypeLabelByValue}
           tz={tz}
         />
