@@ -432,7 +432,7 @@ _ASSEMBLY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "headlights":       ("headlight", "headlamp"),
     "exterior_lamps":   ("tail light", "taillight", "marker", "clearance",
                          "turn signal", "lamp", "light bar"),
-    "work_lights":      ("work light", "beacon", "strobe", "tour"),
+    "work_lights":      ("work light", "beacon", "strobe", "spotlight"),
     "lighting_wiring":  ("light wiring", "light harness", "light plug",
                          "7 way", "7-way"),
     "ac_compressor":    ("ac compressor", "a/c compressor",
