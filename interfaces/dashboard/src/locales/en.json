@@ -335,9 +335,9 @@
       "title": "Escalation status",
       "older_than_n_min": "older than {{n}}m",
       "past_due": "past due",
-      "past_due_hint": "unclaimed > {{n}}m — re-pinging",
+      "past_due_hint": "unclaimed critical > {{n}}m — re-pinging",
       "breached": "breached",
-      "breached_hint": "hit max attempts — no longer paging",
+      "breached_hint": "hit max attempts — no longer paging, unclaimed",
       "past_due_by_persona": "Past-due by persona",
       "persona_owner_admin": "Owner / Admin",
       "persona_dispatcher": "Dispatcher",
@@ -1429,6 +1429,22 @@
       "changed": "{{count}} readings since {{since}}",
       "why": "Telemetry is arriving that no registry vehicle claims, so it cannot be picked for a trigger, cannot raise an alert, and appears in no list. Usually the unit number exists twice — once as a manual vehicle and once as the telematics one — and the resolver will not guess between them.",
       "do": "Open the vehicle and set its telematics link, or archive the duplicate."
+    },
+    "vehicle.document_expired": {
+      "title": "Running on lapsed paper",
+      "short": "Document expired",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "This truck is on the road with a document that is no longer valid — an inspection would find it.",
+      "do": "File the renewal in Documents. Archive the old one rather than deleting it: it still proves the truck was legal for the period it covered."
+    },
+    "vehicle.document_expiring": {
+      "title": "A document is about to lapse",
+      "short": "Document expiring",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Renewals take days to arrive, and the truck keeps running in the meantime.",
+      "do": "Order the renewal now and file it in Documents when it lands."
     }
   },
   "tour": {

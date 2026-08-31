@@ -1523,6 +1523,8 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "create_maintenance_task":  ["can_maintenance_all"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
     "create_work_order":        ["can_work_orders_all"],                         # mirrors POST /work-orders — permission SSOT, no role hardcoding
     "acknowledge_alerts":       ["can_alerts_all", "can_alerts_vehicle"],        # owner/admin/fleet/safety/driver(own)
+    "file_vehicle_document":    ["can_manage_vehicle_docs"],                 # you may only file what you could upload
+    "get_vehicle_documents_status": ["can_vehicle_docs"],                    # whoever may read the papers may ask about them
     "import_inventory_items":   ["can_manage_vehicles"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing
 }
 
@@ -1535,6 +1537,9 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_fuel_cost_summary", "get_rolling_stopped",
     "get_drivers_list", "search_vehicles",
     "get_parked_vehicles", "get_undriven_vehicles", "get_driver_hos_status",
+    # Answers across the roster ("which trucks have no insurance"), so a
+    # driver with an own-vehicle grant must not reach it.
+    "get_vehicle_documents_status",
     "get_alert_history", "get_driver_applications",
     # Write action whose args are resource ids (not a vehicle_name): a scoped
     # caller must not clear alerts account-wide.  Also in SCOPE_AWARE_TOOLS
@@ -1568,6 +1573,10 @@ SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
     "get_account_stats",
     "get_efficiency_summary",
     "get_events_summary",
+    # Scoped in the tool itself: rows are narrowed to the caller's
+    # vehicles BEFORE anything is counted, so a summary can never
+    # report trucks they cannot open.
+    "get_vehicle_documents_status",
     # Write action: validates its alert ids against the injected scope at
     # propose time; the executor + storage re-enforce it at approve time.
     "acknowledge_alerts",
@@ -1575,6 +1584,10 @@ SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
 
 # Tools that accept a vehicle_name param and must enforce driver vehicle isolation.
 VEHICLE_SPECIFIC_TOOLS: frozenset[str] = frozenset({
+    # Write action whose vehicle_name arg names the truck the document
+    # lands on — the gate binds it so a scoped caller cannot file
+    # paperwork onto a truck they cannot open.
+    "file_vehicle_document",
     "get_vehicle_faults", "get_vehicle_detail", "get_vehicle_location",
     "get_vehicle_events", "get_vehicle_maintenance", "get_vehicle_fuel_costs",
     "check_vehicle_camera", "get_vehicle_odometer",

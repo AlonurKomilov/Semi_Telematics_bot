@@ -109,6 +109,14 @@ export const CALLOUT_CATALOG: Record<string, CalloutSpec> = {
   'vehicle.archived':         { kind: 'condition', severity: 'info' },
   'vehicle.stopped_reporting': { kind: 'condition', severity: 'warn' },
 
+  // Paper, not telemetry.  EXPIRED is a `condition` — the truck is on
+  // lapsed paper right now, it stays true until a renewal is filed, and
+  // being able to dismiss it is exactly how it would be missed.
+  // EXPIRING is a `caveat`: nothing is wrong yet, the renewal may
+  // already be ordered, and someone who has seen it may put it away.
+  'vehicle.document_expired':  { kind: 'condition', severity: 'danger' },
+  'vehicle.document_expiring': { kind: 'caveat', severity: 'warn' },
+
   // ── Mileage caveats (previously mileageFlags' FLAG_NOTE) ────
   // All six are `warn` because all six render as a warn chip TODAY —
   // the fold is deliberately rendering-identical, so a visual diff

@@ -67,6 +67,28 @@ STOPPED_REPORTING = register_callout(
     kind="condition", severity="warn", owner=_OWNER,
 ).key
 
+# ── The truck's paper is lapsing ─────────────────────────────────
+# The expiry alert reaches Telegram at T-30/14/7/1/0 and then the
+# truck's own page said nothing about it, so anyone who opened 110 for
+# an unrelated reason learned nothing — the one place where somebody is
+# already looking at the thing the alert is about.
+#
+# TWO keys again, because they are two different facts with two
+# different answers.  EXPIRED is a `condition`: the truck is running on
+# lapsed paper right now, that stays true until somebody files a new
+# one, and letting it be dismissed is exactly how it would be missed.
+# EXPIRING is a `caveat`: nothing is wrong yet, the renewal may already
+# be ordered, and a person who has seen it should be able to put it
+# away.
+DOC_EXPIRED = register_callout(
+    "vehicle.document_expired",
+    kind="condition", severity="danger", owner=_OWNER,
+).key
+DOC_EXPIRING = register_callout(
+    "vehicle.document_expiring",
+    kind="caveat", severity="warn", owner=_OWNER,
+).key
+
 # ── The mileage caveats ──────────────────────────────────────────
 # Already stamped on mileage rows as ``flag``; declared here so the
 # keys have one owner.  All are ``caveat``: they qualify a number the

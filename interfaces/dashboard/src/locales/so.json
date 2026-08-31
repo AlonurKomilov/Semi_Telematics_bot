@@ -914,6 +914,22 @@
       "changed": "{{count}} akhris tan iyo {{since}}",
       "why": "Waxaa imanaya xog telemetry ah oo aanay gaari diiwaangashan lahayn: lama dooran karo trigger, digniin ma abuuro, liis kastana kama muuqdo. Badanaa lambarka unug wuxuu jiraa laba jeer — mid gacanta lagu galiyay iyo mid telematics ah — resolver-kuna ma qiyaaso.",
       "do": "Fur gaariga oo dhig xiriirkiisa telematics, ama kaydi nuqulka."
+    },
+    "vehicle.document_expired": {
+      "title": "Wuxuu ku socdaa dukumenti dhacay",
+      "short": "Dukumentigu wuu dhacay",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Gaarigan wuxuu wadada ku jiraa dukumenti aan hadda ansax ahayn — baaritaanku wuu qaban lahaa.",
+      "do": "Ku shub dukumentiga cusub Documents. Kii hore kaydi halkii aad tirtiri lahayd: wuxuu caddaynayaa in gaarigu sharci ahaa xilligaas."
+    },
+    "vehicle.document_expiring": {
+      "title": "Dukumenti dhawaan dhacaya",
+      "short": "Wuu dhacayaa",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Cusboonaysiintu maalmo bay qaadataa, gaarigana wuu shaqaynayaa inta lagu jiro.",
+      "do": "Hadda dalbo cusboonaysiinta oo Documents ku shub markay timaaddo."
     }
   },
   "tour": {

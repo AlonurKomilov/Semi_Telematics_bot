@@ -1142,6 +1142,22 @@
       "changed": "{{count}} relevés depuis {{since}}",
       "why": "De la télémétrie arrive sans qu’aucun véhicule du registre ne la revendique : elle ne peut pas être choisie pour un déclencheur, ne génère aucune alerte et n’apparaît dans aucune liste. En général le numéro d’unité existe deux fois — une fois en véhicule manuel, une fois en télématique — et le résolveur refuse de deviner.",
       "do": "Ouvrez le véhicule et définissez son lien télématique, ou archivez le doublon."
+    },
+    "vehicle.document_expired": {
+      "title": "En circulation avec un document expiré",
+      "short": "Document expiré",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Ce camion roule avec un document qui n'est plus valide — un contrôle le relèverait.",
+      "do": "Déposez le renouvellement dans Documents. Archivez l'ancien plutôt que de le supprimer : il prouve encore que le camion était en règle sur cette période."
+    },
+    "vehicle.document_expiring": {
+      "title": "Un document va expirer",
+      "short": "Document bientôt expiré",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Un renouvellement prend plusieurs jours et le camion continue de rouler entre-temps.",
+      "do": "Demandez le renouvellement maintenant et déposez-le dans Documents à réception."
     }
   },
   "tour": {

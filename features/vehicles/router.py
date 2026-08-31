@@ -1382,6 +1382,7 @@ async def _vehicle_callouts(account_id: int, tenant, vehicle_ids) -> list[dict]:
         for r in rows if r.get("key")
     ]
     out.extend(await _archived_callouts(account_id, tenant, vehicle_ids))
+    out.extend(await _document_callouts(account_id, tenant, vehicle_ids))
     return callout_wire(out)
 
 
@@ -1423,6 +1424,75 @@ async def _archived_callouts(account_id: int, tenant, vehicle_ids) -> list:
             entity=f"vehicle:{v.telematics_ref}",
             since=str(v.updated_at or ""),
             params={"unit": v.unit_number},
+        ))
+    return out
+
+
+async def _document_callouts(account_id: int, tenant, vehicle_ids) -> list:
+    """One statement per truck whose paper has lapsed or is about to.
+
+    The expiry alert reaches Telegram and the truck's own page then said
+    nothing, so whoever opened 110 for an unrelated reason — the person
+    already looking at the thing the alert is about — learned nothing.
+
+    Read off the documents table rather than stored as a condition, for
+    the same reason ``_archived_callouts`` reads the registry: the
+    expiry date IS the fact, and copying it into ``vehicle_conditions``
+    would give one truth two homes that can disagree the moment a
+    renewal is filed.
+
+    Keyed by TELEMATICS REF like its sibling, because that is what the
+    page's callout consumer matches on.
+    """
+    from capabilities.callouts import Callout
+    from features.vehicles.documents.expiration import classify, describe
+
+    wanted = {str(v) for v in vehicle_ids if v}
+    if not wanted:
+        return []
+    try:
+        rows = await tenant.list_account_vehicle_documents(account_id)
+    except Exception:
+        logger.debug("document callouts unavailable acct=%d", account_id,
+                     exc_info=True)
+        return []
+    if not rows:
+        return []
+
+    # The registry rows carry the telematics ref the page matches on;
+    # the document rows carry the registry id.  One lookup bridges them.
+    try:
+        by_id = {v.id: v for v in await tenant.list_vehicles(account_id)}
+    except Exception:
+        return []
+
+    # ``classify`` is the alert's own bucketing, reused so the page and
+    # the message can never disagree about what "expiring" means.
+    worst: dict[str, tuple] = {}
+    for e in classify(rows):
+        veh = by_id.get(e.vehicle_id)
+        ref = str(getattr(veh, "telematics_ref", "") or "")
+        if not veh or ref not in wanted:
+            continue
+        # One statement per truck: three lapsing papers is one thing to
+        # go and fix, and three stacked callouts would bury the page.
+        current = worst.get(ref)
+        if current is None or e.days_left < current[0].days_left:
+            worst[ref] = (e, veh)
+
+    out = []
+    for ref, (e, veh) in worst.items():
+        out.append(Callout(
+            key=("vehicle.document_expired" if e.days_left < 0
+                 else "vehicle.document_expiring"),
+            entity=f"vehicle:{ref}",
+            since=e.expires_at,
+            params={
+                "unit": veh.unit_number,
+                "what": describe(e),
+                "doc_type": e.doc_type,
+                "days": e.days_left,
+            },
         ))
     return out
 

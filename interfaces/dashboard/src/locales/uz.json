@@ -775,6 +775,22 @@
       "changed": "{{since}} dan beri {{count}} ta o‘lchov",
       "why": "Reyestrdagi hech bir transport da’vo qilmaydigan telemetriya kelmoqda: uni trigger uchun tanlab bo‘lmaydi, ogohlantirish bermaydi va hech bir ro‘yxatda ko‘rinmaydi. Odatda birlik raqami ikki marta mavjud bo‘ladi — qo‘lda kiritilgan va telematik transport sifatida — resolver esa ular orasidan taxmin qilmaydi.",
       "do": "Transportni oching va uning telematik bog‘lanishini kiriting yoki nusxani arxivlang."
+    },
+    "vehicle.document_expired": {
+      "title": "Muddati o'tgan hujjat bilan yurmoqda",
+      "short": "Hujjat muddati o'tgan",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Bu yuk mashinasi endi haqiqiy bo'lmagan hujjat bilan yo'lda — tekshiruv buni aniqlaydi.",
+      "do": "Yangi hujjatni «Hujjatlar» bo'limiga yuklang. Eskisini o'chirmang, arxivga joylang: u o'sha davrda hammasi joyida bo'lganini isbotlaydi."
+    },
+    "vehicle.document_expiring": {
+      "title": "Hujjat muddati tugayapti",
+      "short": "Muddati tugayapti",
+      "where": "{{unit}}",
+      "changed": "{{what}}",
+      "why": "Yangilash bir necha kun oladi, mashina esa shu vaqtda ishlashda davom etadi.",
+      "do": "Yangilashni hozir buyurtma qiling va kelganda «Hujjatlar»ga yuklang."
     }
   },
   "tour": {

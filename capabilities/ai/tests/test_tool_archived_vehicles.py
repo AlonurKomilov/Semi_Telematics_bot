@@ -79,6 +79,15 @@ TOOL_STANCE: dict[str, str] = {
     "acknowledge_alerts": "historical",
     "import_inventory_items": "historical",
     # Not about a vehicle at all.
+    # Reports across the roster and never names one truck; archived
+    # vehicles are excluded in the tool itself, since "which trucks
+    # have no insurance" is a question about the fleet you RUN.
+    "get_vehicle_documents_status": "n/a",
+    # Filing NEW paperwork on a truck that left the fleet is not a
+    # thing anyone means to do — you do not renew the registration of a
+    # tractor you sold.  Reading a retired truck's papers stays open;
+    # that is the archive's whole promise.
+    "file_vehicle_document": "live",
     "get_geofences": "n/a",
     "get_drivers_list": "n/a",
     "get_driver_efficiency": "n/a",
