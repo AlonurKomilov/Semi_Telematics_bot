@@ -99,3 +99,43 @@ async def test_an_archived_trucks_paperwork_never_speaks(pg_db):
     assert len(await pg_db.get_expiring_vehicle_documents(acct)) == 1
     await pg_db.deactivate_vehicle(acct, v.id)
     assert await pg_db.get_expiring_vehicle_documents(acct) == []
+
+
+# ── The alert has to reach somebody ─────────────────────────────────
+
+
+def test_documents_is_a_real_alert_type_end_to_end():
+    """The chain that was severed: the source called
+    ``get_typed_alert_subscribers(acct, "documents")``, which builds a
+    column name from the alert type and REFUSES any name outside its
+    allow-list — so an unmapped type resolves to an empty audience and
+    the alert fires into silence, logging nothing.
+
+    Three links, all pinned here because breaking any one restores the
+    silence: the wire key, the permission mapping, and the column the
+    subscriber query is allowed to read.
+    """
+    import inspect
+
+    from adapters.storage.models import ALERT_TYPE_KEYS
+    from adapters.storage.users import UsersMixin
+    from capabilities.alerting.relevance import ALERT_TYPE_REQUIRED_PERM
+
+    assert "vehicle_documents" in ALERT_TYPE_KEYS
+    assert ALERT_TYPE_REQUIRED_PERM["vehicle_documents"] == "can_vehicle_docs", (
+        "whoever may read a truck's insurance certificate is who should "
+        "hear that it lapses")
+    src = inspect.getsource(UsersMixin.get_typed_alert_subscribers)
+    assert '"alert_vehicle_documents"' in src, (
+        "the subscriber query refuses column names outside its "
+        "allow-list, so documents would resolve to nobody")
+
+
+def test_the_toggle_is_offered_to_a_role_that_can_see_documents():
+    """A type absent from the permission map never appears in the bot's
+    /alerts keyboard or the dashboard's My Notifications, so nobody
+    could switch it on even if the column existed."""
+    from capabilities.alerting.relevance import alert_types_for_role
+    from adapters.storage import Role
+
+    assert "vehicle_documents" in alert_types_for_role(Role.OWNER)

@@ -82,7 +82,8 @@ async def check_vehicle_document_expirations(
             if not due:
                 continue
 
-            subs = await tenant.get_typed_alert_subscribers(acct.id, "documents")
+            subs = await tenant.get_typed_alert_subscribers(
+                acct.id, "vehicle_documents")
             if not subs:
                 continue
 
@@ -118,7 +119,7 @@ async def check_vehicle_document_expirations(
                 await send_alert(
                     bot_app,
                     account_id=acct.id,
-                    alert_type="documents",
+                    alert_type="vehicle_documents",
                     severity=_severity(worst.days_left),
                     vehicle={"id": vehicle_id, "name": worst.unit_number},
                     alert_text=text,

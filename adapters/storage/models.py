@@ -326,6 +326,13 @@ ALERT_TYPE_KEYS: tuple[str, ...] = (
     "scorecard",
     "maintenance",
     "documents",
+    # Vehicle papers get their own key rather than riding "documents".
+    # That one is labelled "Driver Documents", its audience is HR and
+    # the owner, and a test pins that dispatch is NOT in it — while a
+    # truck's insurance certificate is exactly what dispatch and fleet
+    # need to hear about.  Same product idea, different AUDIENCE, so a
+    # different category.
+    "vehicle_documents",
     "system",
 )
 

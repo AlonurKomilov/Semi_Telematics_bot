@@ -72,6 +72,12 @@ ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
     "parking":  ["can_parking_all", "can_parking_vehicle"],
     # Maintenance overdue + due-soon alerts.
     "maintenance": ["can_maintenance_all", "can_maintenance_vehicle"],
+    # A truck's papers.  Deliberately NOT the "documents" type: that one
+    # is Driver Documents, whose audience is HR and the owner with
+    # dispatch explicitly excluded — and dispatch is precisely who needs
+    # to know a tractor's insurance lapses on Friday.  Same idea,
+    # different audience, so its own category.
+    "vehicle_documents": "can_vehicle_docs",
 }
 
 

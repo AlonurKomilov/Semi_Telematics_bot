@@ -72,6 +72,8 @@ FORUM_TOPIC_SPEC: tuple[TopicSpec, ...] = (
               "Overdue tasks plus pre-overdue warnings."),
     TopicSpec("documents",   "Driver Documents",  "🪪", ICON_YELLOW, False,
               "CDL, medical, MVR expiration alerts."),
+    TopicSpec("vehicle_documents", "Vehicle Documents", "📄", ICON_YELLOW, False,
+              "Registration, cab card, insurance, annual inspection expiry."),
     TopicSpec("system",      "Sync & System",     "🔄", ICON_GREEN,  False,
               "Samsara identity drift, integration warnings, re-escalation."),
 )

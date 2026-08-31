@@ -56,6 +56,7 @@ async def create_tables(conn) -> None:
             alert_events    INTEGER NOT NULL DEFAULT 1,
             alert_parking   INTEGER NOT NULL DEFAULT 1,
             alert_camera    INTEGER NOT NULL DEFAULT 1,
+            alert_vehicle_documents INTEGER NOT NULL DEFAULT 1,
             ai_fault        INTEGER NOT NULL DEFAULT 0,
             ai_health       INTEGER NOT NULL DEFAULT 0,
             ai_fuel         INTEGER NOT NULL DEFAULT 0,

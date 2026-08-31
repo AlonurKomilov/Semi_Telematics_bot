@@ -729,6 +729,7 @@ class UsersMixin:
         if col not in (
             "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
             "alert_events", "alert_parking", "alert_camera",
+            "alert_vehicle_documents",
         ):
             # ``maintenance`` doesn't have a dedicated personal toggle
             # column yet — it currently broadcasts to every user with

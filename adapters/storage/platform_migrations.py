@@ -219,6 +219,43 @@ async def run_all(conn) -> None:
     # Personal alert triggers — "tell me when DEF drops below 10%".
     await migrate_alert_triggers(conn)
     await migrate_account_test_flag(conn)
+    # Vehicle-document expiry needed a personal toggle like every other
+    # alert type — without the column its subscriber query returned
+    # nobody, so the alert fired into silence.
+    await migrate_alert_vehicle_documents_column(conn)
+
+
+async def migrate_alert_vehicle_documents_column(conn) -> None:
+    """Add ``users.alert_vehicle_documents`` — the per-person toggle
+    for vehicle-document expiry alerts.
+
+    ``get_typed_alert_subscribers`` builds its column name from the
+    alert type and refuses any name not in its allow-list, so a type
+    with no column silently resolves to an empty audience.  Vehicle
+    document expiry shipped into exactly that gap.
+
+    DEFAULT 1, matching every other alert column: a carrier that turns
+    on document tracking wants to hear about it, and a person who does
+    not can switch it off where they switch off the rest.  No index —
+    the query already filters by account_id, and a fresh index in a
+    boot-time migration is how upgrades die.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "alert_vehicle_documents" not in cols:
+            await conn.execute(
+                "ALTER TABLE users ADD COLUMN alert_vehicle_documents "
+                "INTEGER NOT NULL DEFAULT 1"
+            )
+            await conn.commit()
+            logger.info("Migration: added users.alert_vehicle_documents column")
+    except Exception as e:
+        logger.error("alert_vehicle_documents migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_account_test_flag(conn) -> None:

@@ -120,6 +120,9 @@ ALERT_TYPE_FEATURE_FLAGS: Final[dict[str, tuple[str, ...]]] = {
     "scorecard":   ("can_scorecard_all", "can_scorecard_vehicle"),
     "maintenance": ("can_maintenance_all", "can_maintenance_vehicle"),
     "documents":   ("can_manage_driver_docs",),
+    # Vehicle papers — its own row beside the driver one, because the
+    # two answer to different grants and reach different desks.
+    "vehicle_documents": ("can_vehicle_docs",),
     "system":      ("can_manage_integrations", "can_manage_account"),
 }
 
