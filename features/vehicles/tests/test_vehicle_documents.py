@@ -18,8 +18,15 @@ from features.vehicles.documents.paths import (
 def test_buckets_are_readable_and_traversal_safe():
     assert vehicle_docs_bucket("PTG INC", "6862") == (
         "PTG INC/vehicles/6862/documents")
-    assert vehicle_docs_archive_bucket("PTG INC", "6862", "2026-08-28") == (
-        "PTG INC/vehicles/_archive/2026-08-28/6862/documents")
+    # Two different archives, and they must not be confused: a
+    # SUPERSEDED PAPER goes inside the truck it belongs to …
+    assert vehicle_docs_archive_bucket("PTG INC", "6862") == (
+        "PTG INC/vehicles/6862/documents/_archive")
+    # … while a RETIRED TRUCK takes its whole folder — papers and work
+    # orders together — into the dated archive tree.
+    from capabilities.object_storage.paths import vehicle_archive_folder
+    assert vehicle_archive_folder("PTG INC", "6862", "2026-08-28") == (
+        "PTG INC/vehicles/_archive/2026-08-28/6862")
     # A unit number is user data on a path.  Neutralised, not rejected:
     # the separators become underscores, so it stays ONE component.
     hostile = vehicle_docs_bucket("X", "../../etc")
@@ -67,8 +74,8 @@ async def test_archive_moves_the_folder_and_restore_brings_it_home(
 ):
     """The driver-archive recipe, end to end on the local backend:
     physical move + row rewrite, then the exact reverse."""
-    from features.vehicles.documents import (
-        move_documents_on_archive, move_documents_on_restore,
+    from features.vehicles.folder_archive import (
+        archive_vehicle_folder, restore_vehicle_folder,
     )
 
     acct = (await pg_db.create_account("Docs Move Co")).id
@@ -91,14 +98,16 @@ async def test_archive_moves_the_folder_and_restore_brings_it_home(
         object_key="title_x.pdf", file_name="title.pdf", file_size=13,
     )
 
-    archived_bucket = await move_documents_on_archive(pg_db, acct, v.id)
-    assert archived_bucket and "/_archive/" in archived_bucket
+    archived_bucket = await archive_vehicle_folder(pg_db, acct, v.id)
+    assert archived_bucket and "/vehicles/_archive/" in archived_bucket
     (d,) = await pg_db.list_vehicle_documents(acct, v.id)
-    assert d.bucket == archived_bucket, "rows must follow the folder"
-    assert store.get(archived_bucket, "title_x.pdf") == b"%PDF-1.4 test"
+    # The TRUCK folder moved, so the documents bucket is its child.
+    assert d.bucket == f"{archived_bucket}/documents", (
+        "document rows must follow the truck folder")
+    assert store.get(d.bucket, "title_x.pdf") == b"%PDF-1.4 test"
 
-    home = await move_documents_on_restore(pg_db, acct, v.id)
-    assert home == live, "restore must bring the paperwork home"
+    home = await restore_vehicle_folder(pg_db, acct, v.id)
+    assert home and home.endswith("/vehicles/M-1"), "the truck comes home"
     (d,) = await pg_db.list_vehicle_documents(acct, v.id)
     assert d.bucket == live
     assert store.get(live, "title_x.pdf") == b"%PDF-1.4 test"
@@ -106,7 +115,7 @@ async def test_archive_moves_the_folder_and_restore_brings_it_home(
 
 @pytest.mark.asyncio
 async def test_moving_a_truck_with_no_documents_is_a_cheap_noop(pg_db):
-    from features.vehicles.documents import move_documents_on_archive
+    from features.vehicles.folder_archive import archive_vehicle_folder
 
     acct = (await pg_db.create_account("Docs Noop Co")).id
     await pg_db.upsert_from_integration(acct, [
@@ -114,7 +123,7 @@ async def test_moving_a_truck_with_no_documents_is_a_cheap_noop(pg_db):
          "telematics_ref": "ref-n1"},
     ], source="samsara")
     (v,) = await pg_db.list_vehicles(acct)
-    assert await move_documents_on_archive(pg_db, acct, v.id) is None
+    assert await archive_vehicle_folder(pg_db, acct, v.id) is None
 
 
 # ── An archived truck's page answers from the registry, instantly ────
@@ -373,3 +382,44 @@ def test_the_truck_token_leaves_the_folder_name():
         service_date="2026-04-12", vendor_name="Bobs",
     )
     assert "_truck221" not in p and p.count("221") == 1
+
+
+@pytest.mark.asyncio
+async def test_archiving_the_same_truck_twice_in_one_day_still_moves_it(pg_db):
+    """Archive → restore → archive lands on the SAME dated path, and
+    ``shutil.move`` refuses an existing destination (or nests the source
+    inside it).  The move then returned False, the rows kept pointing at
+    a live folder with no truck, and nothing said so.  Merging is the
+    only honest answer: the second archive must not be a silent no-op.
+    """
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.vehicles.documents.paths import vehicle_docs_bucket
+    from features.vehicles.folder_archive import (
+        archive_vehicle_folder, restore_vehicle_folder,
+    )
+
+    acct = (await pg_db.create_account("Twice Co")).id
+    await pg_db.upsert_from_integration(acct, [
+        {"company_code": "PTG", "unit_number": "TW-1",
+         "telematics_ref": "ref-tw1"},
+    ], source="samsara")
+    (v,) = await pg_db.list_vehicles(acct)
+    store = await get_object_storage_for_account(acct, pg_db)
+    cf = await resolve_company_folder(pg_db, acct, "PTG")
+    live = vehicle_docs_bucket(cf, "TW-1")
+    store.put(live, "reg.pdf", b"%PDF one")
+    await pg_db.add_vehicle_document(
+        acct, v.id, doc_type="registration", bucket=live,
+        object_key="reg.pdf", file_name="reg.pdf", file_size=8)
+
+    first = await archive_vehicle_folder(pg_db, acct, v.id)
+    assert first, "first archive must move the truck"
+    assert await restore_vehicle_folder(pg_db, acct, v.id)
+    second = await archive_vehicle_folder(pg_db, acct, v.id)
+    assert second == first, "the same day means the same dated folder"
+
+    (d,) = await pg_db.list_vehicle_documents(acct, v.id)
+    assert d.bucket == f"{second}/documents"
+    assert store.get(d.bucket, "reg.pdf") == b"%PDF one", (
+        "the bytes must survive the round trip, not just the row")

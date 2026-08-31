@@ -127,3 +127,35 @@ async def resolve_company_folder(
         )
     name = (company.display_name if company else "") or company_code
     return sanitize_company_folder(name)
+
+
+def vehicle_folder(company_folder: str, unit_number: str) -> str:
+    """One truck's folder — the parent of everything about it.
+
+    Its documents and its work orders are children here, so a carrier
+    browsing Drive opens ONE folder to answer "what about unit 110?".
+    Lives in the capability rather than in either feature: both build
+    on it, and a shape owned by one of them would make the other import
+    across a feature boundary to place a file.
+    """
+    return f"{company_folder}/vehicles/{sanitize_company_folder(unit_number)}"
+
+
+def vehicle_archive_folder(
+    company_folder: str, unit_number: str, archive_date: str,
+) -> str:
+    """Where a RETIRED TRUCK's whole folder goes — papers, invoices and
+    all, because the thing being archived is the vehicle.
+
+    Not to be confused with archiving a DOCUMENT, which moves one paper
+    into ``…/vehicles/{unit}/documents/_archive/`` and leaves the truck
+    where it is.  Two different acts on two different objects; the first
+    version of this collapsed them by moving only the documents folder
+    into the truck archive, which archived a vehicle by touching its
+    paperwork and left its work orders behind.
+
+    Dated, so a unit number that comes back on a different truck does
+    not collide with the record of the one that left.
+    """
+    return (f"{company_folder}/vehicles/_archive/{archive_date}/"
+            f"{sanitize_company_folder(unit_number)}")

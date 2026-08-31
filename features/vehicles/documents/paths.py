@@ -13,7 +13,7 @@ the LAYOUT.md law.
 
 from __future__ import annotations
 
-from capabilities.object_storage.paths import sanitize_company_folder
+from capabilities.object_storage.paths import vehicle_folder
 
 def vehicle_docs_bucket(company_folder: str, unit_number: str) -> str:
     """The bucket for one truck's paperwork — registration, title,
@@ -35,18 +35,20 @@ def vehicle_docs_bucket(company_folder: str, unit_number: str) -> str:
     where the driver flow's ``user-{id}`` answer would cost daily
     readability for rename-safety nobody asked for.
     """
-    return (f"{company_folder}/vehicles/"
-            f"{sanitize_company_folder(unit_number)}/documents")
+    return f"{vehicle_folder(company_folder, unit_number)}/documents"
 
 
-def vehicle_docs_archive_bucket(
-    company_folder: str, unit_number: str, archive_date: str,
-) -> str:
-    """Where a retired truck's paperwork moves — same pattern as the
-    driver archive: the original location frees up for any future truck
-    that reuses the number, and the carrier keeps an audit trail dated
-    by the retirement.  Restore moves it back."""
-    return (
-        f"{company_folder}/vehicles/_archive/{archive_date}/"
-        f"{sanitize_company_folder(unit_number)}/documents"
-    )
+def vehicle_docs_archive_bucket(company_folder: str, unit_number: str) -> str:
+    """Where a SUPERSEDED document goes — last year's registration once
+    this year's is filed.
+
+    Inside the truck's own documents folder, because the truck has not
+    gone anywhere: only this paper stopped being current.  A retiring
+    TRUCK is the other archive entirely — ``vehicle_archive_folder``
+    moves the whole unit, papers and invoices together.
+
+    Undated: the object key already carries the upload timestamp, so
+    two archived registrations cannot collide, and a date folder would
+    only add a level to click through.
+    """
+    return f"{vehicle_folder(company_folder, unit_number)}/documents/_archive"

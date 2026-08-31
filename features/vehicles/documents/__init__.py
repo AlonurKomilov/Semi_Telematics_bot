@@ -25,9 +25,11 @@ and restoring brings it home — ``service.py``.
 # that resolves depends on import order.  Consumers import the
 # submodule (``from features.vehicles.documents import router``) and
 # take ``.router`` off it, exactly as app.py does for inventory.
-from .service import move_documents_on_archive, move_documents_on_restore
+
+# Archiving a VEHICLE moves the whole truck folder and is the vehicles
+# feature's job (``features/vehicles/folder_archive.py``) — it carries
+# work orders too, and reaching into this package for it was what made
+# a vehicle archive look like a document archive.
 
 __all__ = [
-    "move_documents_on_archive",
-    "move_documents_on_restore",
 ]

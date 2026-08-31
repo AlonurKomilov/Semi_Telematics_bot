@@ -12,7 +12,10 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from capabilities.object_storage.paths import slugify as _slugify
+from capabilities.object_storage.paths import (
+    slugify as _slugify,
+    vehicle_folder,
+)
 
 _MONTHS = ("01-january", "02-february", "03-march", "04-april",
            "05-may", "06-june", "07-july", "08-august",
@@ -77,7 +80,7 @@ def work_order_folder(
     unit = _slugify(vehicle_name, 20) if (vehicle_name or "").strip() else ""
     if unit:
         # Under the truck; its name is the parent, so it leaves the leaf.
-        return (f"{company_folder}/vehicles/{unit}/work-orders/"
+        return (f"{vehicle_folder(company_folder, vehicle_name)}/work-orders/"
                 f"WO-{work_order_id:05d}_{date_str}_{vendor}")
     # No truck to file it under — the dated tree, which is what that
     # tree is now FOR.

@@ -457,6 +457,22 @@ class DiskObjectStorage:
             return False
         try:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if os.path.isdir(dst):
+                # The destination already holds a folder of this name —
+                # archive, restore, archive again on the SAME DAY lands
+                # on the same dated path.  ``shutil.move`` refuses that
+                # (or, worse, nests src INSIDE dst), so merge child by
+                # child and remove the emptied source.  Failing here
+                # would strand a truck's files under a live folder that
+                # no longer has a truck.
+                for child in os.listdir(src):
+                    target = os.path.join(dst, child)
+                    if os.path.exists(target):
+                        shutil.rmtree(target, ignore_errors=True) \
+                            if os.path.isdir(target) else os.remove(target)
+                    shutil.move(os.path.join(src, child), target)
+                shutil.rmtree(src, ignore_errors=True)
+                return True
             shutil.move(src, dst)
             return True
         except Exception as e:

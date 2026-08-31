@@ -978,6 +978,34 @@ class WorkOrdersMixin:
 
     # ── Attachments ──────────────────────────────────────────────────────────
 
+    async def repoint_attachment_paths(
+        self, account_id: int, old_prefix: str, new_prefix: str,
+    ) -> int:
+        """Rewrite every attachment locator starting with ``old_prefix``
+        to start with ``new_prefix``.
+
+        Used when a whole TRUCK folder moves: archiving a vehicle takes
+        its work-order attachments with it, and a locator left pointing
+        at the old tree is a download that 404s forever with nothing in
+        the product to say why.  A PREFIX rewrite, not an exact match,
+        because each attachment sits in its own WO subfolder beneath
+        the truck.
+
+        Scoped through ``work_orders`` so one account cannot rewrite
+        another's rows.  Returns how many locators were repointed.
+        """
+        async with self.transaction():
+            cur = await self._db.execute(
+                "UPDATE work_order_attachments SET file_path = ? || "
+                "SUBSTR(file_path, ?) "
+                "WHERE work_order_id IN ("
+                "    SELECT id FROM work_orders WHERE account_id = ?) "
+                "  AND file_path LIKE ?",
+                (new_prefix, len(old_prefix) + 1, account_id,
+                 f"{old_prefix}%"),
+            )
+        return cur.rowcount or 0
+
     async def add_work_order_attachment(
         self, work_order_id: int,
         *,

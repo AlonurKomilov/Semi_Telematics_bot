@@ -1988,13 +1988,13 @@ async def restore_registry_vehicle(
     )
     if not ok:
         raise HTTPException(404, "no archived vehicle with that id")
-    # The truck's paperwork comes home from the archive tree.  Best-
+    # The truck's whole folder comes home from the archive tree.  Best-
     # effort: the restore already happened, and a folder that failed to
     # move is a misfiling, not a loss — rows still point where the
     # files are, so downloads keep working either way.
     try:
-        from features.vehicles.documents import move_documents_on_restore
-        await move_documents_on_restore(tenant, account_id, vehicle_id)
+        from features.vehicles.folder_archive import restore_vehicle_folder
+        await restore_vehicle_folder(tenant, account_id, vehicle_id)
     except Exception:
         logger.warning("restore: documents not moved v=%d acct=%d",
                        vehicle_id, account_id, exc_info=True)
@@ -2052,13 +2052,14 @@ async def delete_registry_vehicle(
     )
     if not ok:
         raise HTTPException(404, "vehicle not found")
-    # Its paperwork moves to vehicles/_archive/{date}/{unit}/ — the
-    # driver-archive recipe: the live folder frees up for a future
-    # truck reusing the number, the carrier keeps a dated audit trail,
-    # and restore brings it back.  Best-effort, after the archive.
+    # The whole truck folder moves to vehicles/_archive/{date}/{unit}/
+    # — papers AND work orders, because the thing being archived is the
+    # VEHICLE.  The live folder frees up for a future truck reusing the
+    # number, the carrier keeps a dated audit trail, and restore brings
+    # it back.  Best-effort, after the archive itself.
     try:
-        from features.vehicles.documents import move_documents_on_archive
-        await move_documents_on_archive(tenant, account_id, vehicle_id)
+        from features.vehicles.folder_archive import archive_vehicle_folder
+        await archive_vehicle_folder(tenant, account_id, vehicle_id)
     except Exception:
         logger.warning("archive: documents not moved v=%d acct=%d",
                        vehicle_id, account_id, exc_info=True)

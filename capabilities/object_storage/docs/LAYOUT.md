@@ -27,15 +27,30 @@ data/userdata/                              ← OBJECT_STORE_ROOT
         _archive/{YYYY-MM-DD}/user-{user_id}/
       vehicles/{unit_number}/
         documents/                            ← registration, cab card, title,
-                                                 insurance, annual inspection
+          _archive/                              …and the superseded ones
         work-orders/WO-{id}_{date}_{vendor}/  ← that truck's repair invoices
-        _archive/{YYYY-MM-DD}/{unit_number}/documents/
+      vehicles/_archive/{YYYY-MM-DD}/{unit_number}/
+        documents/  work-orders/              ← a RETIRED TRUCK, whole
       work-orders/{YYYY}/{MM-month}/          ← ONLY work orders with no vehicle
     _generic/                               ← holding pen: company unresolved (a bug)
     _account/                               ← account-level data (by design)
       knowledge/
       inspection-templates/
 ```
+
+**Two archives, and they are not the same act.** Archiving a
+*document* moves one superseded paper into
+`vehicles/{unit}/documents/_archive/` — last year's registration once
+this year's is filed — and the truck stays exactly where it is.
+Archiving a *vehicle* moves the whole `vehicles/{unit}/` folder, papers
+and work orders together, into the dated
+`vehicles/_archive/{date}/{unit}/` tree, because the thing that left is
+the truck.
+
+The first version collapsed the two: it moved only the documents
+subfolder into the truck archive, which archived a vehicle by touching
+its paperwork and left its work orders behind under a live truck that
+no longer existed.
 
 **Everything about one truck lives under that truck.** Its papers and
 its repair invoices are siblings in `vehicles/{unit}/`, because that is
