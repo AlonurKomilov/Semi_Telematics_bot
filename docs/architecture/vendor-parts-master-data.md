@@ -127,7 +127,7 @@ When the TMC/ATA licence is purchased, VMRS arrives as DATA, never as
 renames. Nothing in this list touches an existing name, wire key, or
 report:
 
-1. **New module `adapters/storage/vmrs.py`** — honestly named, because
+1. **New module — shipped as `adapters/storage/service_taxonomy.py`** (the plan named it vmrs.py; the VMRS codes live there), because
    it will hold actual VMRS material: the licensed CK31/CK32 mappings
    (`{"brakes": "013", ...}` — one of ours may map to several of
    theirs) and the CK33 component list.
@@ -271,7 +271,7 @@ audit:
   /system/vendor-directory/{id}/geo` (both-or-null validation).  The
   pin preview is a dependency-free OSM embed iframe.
 - **Generic popup contract:** `PoiLayerDef.popup?(feature, def)` in
-  `config/poiLayers.ts`; the engine (`usePoiLayers.renderLayer`)
+  `interfaces/dashboard/src/config/poiLayers.ts`; the engine (`usePoiLayers.renderLayer`)
   dispatches `def.popup ?? defaultOsmPopup`.  DB-backed layers supply
   their own popup — never add layer-specific branches in the engine.
 

@@ -15,6 +15,12 @@ tests/
 **/tests/
 conftest.py
 pytest.ini
+# Package documentation (capabilities/*/docs/, features/*/docs/, ...).
+# Same anchoring trap as tests/: the root `docs/` line above this
+# block's sibling only excludes the ROOT docs tree, so the moment laws
+# and runbooks moved next to the code they document, they would start
+# shipping in the image.
+**/docs/
 backups/
 *.log
 .bot.pid

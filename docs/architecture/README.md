@@ -15,7 +15,7 @@ This folder keeps only what belongs to NO package:
     reviewed per doc, opportunistically, on touch,
   * and THIS INDEX, so browsability survives the scattering.
 
-## The index (update when a law moves or is born)
+## The index (update when a law moves or is born — the guard checks)
 
 | system | the law lives at |
 |---|---|
@@ -25,11 +25,20 @@ This folder keeps only what belongs to NO package:
 | Config family | `docs/architecture/config.md` |
 | Notifications spine | `docs/architecture/notifications.md` |
 | Persona naming | `docs/architecture/PERSONA.md` |
-| Permissions matrix | `docs/architecture/permissions-feature-matrix.md` |
 | Bot topology | `docs/architecture/bot-topology.md` |
 | Vendor/parts master data | `docs/architecture/vendor-parts-master-data.md` |
-| AI copilot / import | `docs/architecture/ai-copilot-*.md`, `ai-import-assistant.md` |
-| Alert-DM migration record | `docs/architecture/alert-dm-migration.md` |
+| AI copilot write-actions | `docs/architecture/ai-copilot-phase4-write-actions.md` |
+| AI import assistant | `docs/architecture/ai-import-assistant.md` |
+| Alert-DM migration (record) | `docs/architecture/alert-dm-migration.md` |
+
+Records of past worlds live under `archive/` folders (tracked, and the
+dead-reference guard exempts them — a completed rollout's references
+died with the migration it performed, and rewriting them would falsify
+the record): `docs/runbooks/archive/` holds the finished platform
+rollouts; `docs/architecture/archive/` holds superseded snapshots
+(the 2026-06 permissions matrix audit).  The permission matrix's
+LIVING truth is `capabilities/permissions/roles.py` plus the typed
+matrix guards.
 
 ## Writing a law that survives a server split
 

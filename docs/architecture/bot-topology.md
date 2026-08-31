@@ -93,7 +93,7 @@ persona regardless (UI reachability ≠ authorization).
 The OPERATIONAL routing surface — group bind/unbind, Sub bot
 attach/detach, per-type switches, kind filtering, custom topics — moved
 OFF Settings → Telegram Bot onto a new **Alerts → Group delivery** tab
-(`/alerts/group-delivery`, `features/alerts/GroupDelivery.tsx` wrapping
+(`/alerts/group-delivery`, `interfaces/dashboard/src/features/alerts/GroupDelivery.tsx` wrapping
 the relocated AlertRoutingSection + ForumRoutingSection). Reason: a role
 manager must configure their OWN role's group in one place without
 asking an owner — "where do OUR alerts go" belongs next to "where do MY
@@ -101,7 +101,7 @@ alerts go" (Notification preferences), both under Alerts.
 
 The delivery MODE selector (Single ↔ Sub bots) is the owner's topology
 decision, so it stays on **Settings → Telegram Bot** with the bot
-credential (`features/alerts/DeliveryModeSelector.tsx`, owner-gated) —
+credential (`interfaces/dashboard/src/features/settings/delivery/DeliveryModeSelector.tsx`, owner-gated) —
 NOT on the operational tab. The Group delivery body reads the mode and
 shows a read-only indicator with a "change in Settings" link for owners.
 
@@ -109,7 +109,7 @@ shows a read-only indicator with a "change in Settings" link for owners.
 lives on Settings, the "GROUP" side on Alerts, each scoped by role.
 - **Settings → Telegram Bot** — account bot CREDENTIAL (connect/token,
   owner) + mode selector (owner) + the **Sub bots roster**
-  (`features/alerts/SubBotRoster.tsx`): attach the per-role SENDER bot.
+  (`interfaces/dashboard/src/features/settings/delivery/SubBotRoster.tsx`): attach the per-role SENDER bot.
   Reachable by owners AND role managers; a manager sees ONLY their own
   role's Sub-bot row (the API `manageable` list enforces it) and the
   page renders JUST the Telegram Bot card for them — `/admin/settings`

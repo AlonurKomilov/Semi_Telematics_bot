@@ -14,9 +14,9 @@ silently swallows files.  Per-account quotas + a circuit breaker keep
 one stuck account from cascading.
 
 This rollout shipped as Phases 1–6 (migrations 070, code under
-`adapters/storage/storage_sync.py`, `adapters/storage/object_store_hybrid.py`,
+`adapters/storage/object_storage_sync.py`, `adapters/storage/object_storage.py`,
 `capabilities/object_storage/sync_worker.py`, route additions in
-`interfaces/api/routes/storage.py`, dashboard panels under
+`capabilities/object_storage/router.py`, dashboard panels under
 `interfaces/dashboard/src/pages/admin/`).
 
 ---
@@ -61,7 +61,7 @@ Reads (`HybridObjectStorage.get`) check disk first, then Drive — the
 caller never sees the tier transition.  Once the sync worker has
 uploaded a file and removed the local copy, the media row's
 `file_path` is the Drive file ID; the PTI read helper
-(`_media_bytes` in `interfaces/api/routes/inspections.py`) prefers
+(`_media_bytes` in `features/inspections/router.py`) prefers
 `store.get_by_id(drive_id)` for those rows so reads survive any
 folder reshuffling the user does in their Drive UI.
 

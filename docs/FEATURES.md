@@ -180,7 +180,7 @@ Its children are the charging *shapes* — subscription (the recurring
 agreement), invoices (the claim), comp windows, enforcement, and future
 payments / payment methods / one-time purchases.  Rooting the family at
 "subscription" was considered and rejected: the first non-subscription money
-object (a one-time purchase) would make `subscription/one_time_purchases.py`
+object (a one-time purchase) would make a dedicated purchases module under `capabilities/platform/billing/`
 a lie, and every frozen wire contract already says billing.
 
 Because code family = wire word, **nothing is misnamed**: `/billing/*` URLs,
@@ -304,7 +304,7 @@ capabilities/                   ← ONLY the four hubs (true capabilities)
 
 Each feature component registers into a hub
 (`features/vehicles/health/alert.py` → Alerts registry) exactly like a
-workflow does (`features/maintenance/alert.py`) — same shape, same folder
+workflow does (`features/cameras/alert.py`) — same shape, same folder
 family, regardless of tier. Frontend `src/features/` ↔ backend `features/`
 become a 1:1 mental model.
 
@@ -314,7 +314,7 @@ The vertical-slice completion: 14 feature-owned routers moved to
 `features/<x>/router.py` (vehicles, drivers, parking, coaching, driver_pay,
 costs, knowledge, maintenance, work_orders, pti, routes, geofencing,
 location/router + location/pois), and `safety.py` split three ways:
-scorecard endpoints stayed as `interfaces/api/routes/scorecards.py` (the
+scorecard endpoints now live at `features/scorecards/router.py` (the
 Scoring hub's surface), events → `features/events/router.py`, cameras →
 `features/cameras/router.py` — all keeping the historical
 `/safety` URL prefix. Verified by **route-table parity: 782 routes,
@@ -369,15 +369,15 @@ three new accessors created: `telemetry.service.get_engine_states`,
 > `@register_alert_source` (`capabilities/alerting/registry.py`; the
 > scheduler loops the registry), scoring signals via `SIGNALS`
 > (`capabilities/scorecards/signals/__init__.py`), AI tools + reports were
-> already registry-driven. NOT yet done: carving the per-source hub modules
-> into feature component folders (`capabilities/alerting/health.py` →
-> `features/vehicles/health/alert.py`) — the hubs still own those files.
+> already registry-driven. The per-source hub carve has since SHIPPED:
+> the health source now lives at `features/vehicles/health/alert.py`
+> (this note once tracked it as open — the doc lagged the code).
 
 ## Known follow-ups
 - ~~Convert the plain shared pages (Drivers, Scorecards)~~ **DONE 2026-06-10**:
   all five Shared pages are persona-composed. Drivers uses per-persona drawer
-  TABS (`src/features/drivers/personaConfig.ts`), Scorecards per-persona page
-  BLOCKS (`src/features/scorecards/personaConfig.ts`) — the tab/block
+  TABS (`interfaces/dashboard/src/features/drivers/personaConfig.ts`), Scorecards per-persona page
+  BLOCKS (`interfaces/dashboard/src/features/scorecards/personaConfig.ts`) — the tab/block
   flavor for list pages, vs the PageLayoutHost section flavor for detail
   pages. Both locked by personaConfig tests. Parking/Costs are Role-tier
   plain pages and stay plain.

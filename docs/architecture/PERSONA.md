@@ -137,7 +137,7 @@ The frontend mirrors the backend:
 - `Reports.tsx` tabs filtered via `TABS_FOR_VIEW`; Safety lands on
   Efficiency, Fleet sees all four, Accounting sees Fuel + Efficiency.
 - Live Map overlays composed per-persona via
-  `features/live-map/layouts.ts`.  Each overlay is a Pattern B
+  `interfaces/dashboard/src/features/live-map/layouts.ts`.  Each overlay is a Pattern B
   section that imperatively mounts a Leaflet layer.  Persona
   ownership:
   - **Owner / Admin**: `company_color_partition` + `utilisation_heatmap`
@@ -146,7 +146,7 @@ The frontend mirrors the backend:
   - **Safety**: `safety_heatmap` (auto-on)
   - **Accounting**: `company_color_partition`
   - **HR / Driver**: base vehicle layer only
-  Strict-binding tests in `live-map/registry.test.ts` lock this in.
+  Strict-binding tests in `interfaces/dashboard/src/features/live-map/registry.test.ts` lock this in.
 
 ## Backend endpoints that respect persona (today)
 

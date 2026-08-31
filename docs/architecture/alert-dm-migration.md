@@ -83,7 +83,7 @@ spine instead of its own loop).
   re-render their action row). Group-post reminder edits unchanged.
 - **Pref writes dual-store**: the matrix is the delivery SSOT; the
   dashboard PUT `/user/me/alerts` and the bot's per-type/master toggles
-  mirror through `alerting/prefs_mirror.py`. Legacy `users.alert_*`
+  mirror through `capabilities/alerting/prefs_mirror.py`. Legacy `users.alert_*`
   columns remain a write-mirrored cache (bot keyboard checkmarks,
   reports) — never consulted for DM delivery.
 - **Cosmetics restored**: `video_url` through content/payload
@@ -160,7 +160,7 @@ Additive; nothing defers until spine alert DMs ship (the fanout flip).
 The legacy DND path (`dnd.py` + `dnd_alert_queue`) keeps serving the
 live pipeline until the legacy cleanup retires it.
 
-- `notifications/quiet_hours.py` (new) — the policy module: one global
+- `capabilities/notifications/quiet_hours.py` (new) — the policy module: one global
   registered async rule `(account_id, user_id) → is-quiet-now`
   (FAIL-OPEN on none/error — a scheduling bug degrades to a too-eager
   send, never a swallowed one); `severity_bypasses_quiet` (critical cuts
@@ -203,7 +203,7 @@ DMs until the fanout flip, so no user-visible change yet:
 - `channels.py` — `NotificationContent.actions`
   (`[{"id","label"}]`): semantic buttons; channels that can't render
   interaction ignore them.
-- `notifications/actions.py` (new) — the action registry + routing:
+- `capabilities/notifications/actions.py` (new) — the action registry + routing:
   callback data `notif_act:{correlation_key}:{action_id}` (built only
   under Telegram's 64-byte cap, parsed with rpartition so keys may
   contain colons); handler key = `{source}.{action_id}` where source =
