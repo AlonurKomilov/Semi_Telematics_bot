@@ -334,6 +334,44 @@ the browser dropped every one. `animate-in`, `fade-in-0`, `zoom-in-95`
 and `slide-in-from-*` existed only as keyframes with no classes to fire
 them, and 43 usages animated nothing.
 
+**A colour we did not author is DERIVED and CLAMPED, never accepted.** ⭐
+
+Two surfaces already take a colour from outside — the public apply form
+takes a carrier's brand and surface hex, and an account theme will take
+more. For those, the rule is not "validate it and show an error if it
+fails". It is: take the seed, derive every dependent token, and pull
+each one to a contrast floor against the ground it is actually read on.
+A validator leaves someone to handle "no". A clamp has no failure
+branch, needs no error copy, and cannot be overruled by a customer who
+prefers their brand green to being read.
+
+The arithmetic lives in `src/lib/contrast.ts` and it SHIPS — the same
+module the build-time colour guards import, so a value proved legible by
+`colour.test.ts` is computed the same way in the browser. Do not write a
+second copy; there have been three.
+
+Three things it settles, all measured:
+
+- **At AA a clamp cannot fail.** Chroma falls to zero at both ends of
+  lightness, so the endpoints are pure black and white for every hue,
+  and the worst possible ground (relative luminance 0.17913) still
+  yields 4.5826:1. Legibility is always reachable. Above 4.58 — AAA —
+  it is not.
+- **Choose direction by measuring, never by lightness.** OKLab lightness
+  and WCAG luminance disagree on saturated hues: `#0048f8` has an OKLab
+  L of 0.505, so a proxy calls it light and darkens the text — 3.28:1,
+  where lightening gives 6.40. A brand blue is not an edge case.
+- **Clamp against the ground that ships, at 8 bits.** Secondary text
+  clamped against an unrounded float, then emitted as hex, came out
+  just under AA on a fifth of surfaces. The guarantee has to be about
+  the value the screen paints.
+
+Floors are OUR values, not the standard's maximum. `--border` and
+`--input` clamp to **1.26:1** because that is what our own light theme
+ships; holding a public page to WCAG 1.4.11's 3:1 while the dashboard
+sits at 1.26 makes them look like two products. Both move together when
+the boundary redesign happens.
+
 **Vendor surfaces need explicit colour.** Sonner defaults to a light
 toast and Leaflet hardcodes `background: white` on popups and tooltips,
 so on the dark themes both were white cards in a near-black page. Both

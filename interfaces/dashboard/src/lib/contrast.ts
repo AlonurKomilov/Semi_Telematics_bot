@@ -217,6 +217,19 @@ export const toHex = (rgb: RGB): string =>
 
 // ── the clamps ──────────────────────────────────────────────────────
 
+/**
+ * Round to the 8-bit triple sRGB actually ships.
+ *
+ * Load-bearing, not tidiness. The clamps below bisect in continuous
+ * lightness and can land exactly ON the floor — and then `toHex` rounds
+ * the answer to a channel step and it lands just under. Measured on the
+ * public form's `--muted-foreground`, 57% of surfaces came out at
+ * 4.48–4.4999:1 against a clamp that had honestly returned 4.50. A
+ * guarantee about a float nobody paints is not a guarantee.
+ */
+const q8 = (c: RGB): RGB =>
+  c.map((x) => Math.round(Math.min(1, Math.max(0, x)) * 255) / 255) as RGB;
+
 const WHITE: RGB = [1, 1, 1];
 const NEAR_BLACK: RGB = [10 / 255, 10 / 255, 10 / 255];
 
@@ -270,12 +283,22 @@ export function readableOn(bg: RGB): RGB {
  * Above it (AAA's 7:1) the branch is live and real.
  */
 export function clampLightness(fg: RGB, bg: RGB, floor: number): { rgb: RGB; met: boolean } {
-  if (contrastRatio(fg, bg) >= floor) return { rgb: fg, met: true };
+  if (contrastRatio(q8(fg), bg) >= floor) return { rgb: fg, met: true };
   const { C, H } = srgbToOklch(fg);
-  const { L: bgL } = srgbToOklch(bg);
-  const paint = (L: number) => srgbInGamut(L, C, H);
-  // More room below the ground than above it? Then darken.
-  const end = bgL > 0.5 ? 0 : 1;
+  const paint = (L: number) => q8(srgbInGamut(L, C, H));
+  // Direction by MEASUREMENT, not by a lightness proxy.
+  //
+  // This used to read `srgbToOklch(bg).L > 0.5 ? 0 : 1` — darken on a
+  // light ground, lighten on a dark one — which is wrong for exactly the
+  // colours a customer picks. OKLab lightness and WCAG luminance
+  // disagree on saturated hues, worst of all on blue, whose luminance
+  // weight is 0.0722. #0048f8 has an OKLab L of 0.505, so the proxy
+  // called it light and darkened; that reaches 3.28:1 where lightening
+  // reaches 6.40. A brand blue is not an edge case.
+  //
+  // Two evaluations settle it exactly, and they also restore the
+  // guarantee below: the better endpoint is now always the one tried.
+  const end = contrastRatio(paint(0), bg) >= contrastRatio(paint(1), bg) ? 0 : 1;
   if (contrastRatio(paint(end), bg) < floor) return { rgb: paint(end), met: false };
   let lo = end, hi = srgbToOklch(fg).L;
   // `lo` always meets the floor, `hi` may not; converge on the value
@@ -302,7 +325,7 @@ export function clampSurface(bg: RGB, floor: number = AA_TEXT): { rgb: RGB; move
   const best = (c: RGB) => Math.max(contrastRatio(NEAR_BLACK, c), contrastRatio(WHITE, c));
   if (best(bg) >= floor) return { rgb: bg, moved: false };
   const { L, C, H } = srgbToOklch(bg);
-  const paint = (x: number) => srgbInGamut(x, C, H);
+  const paint = (x: number) => q8(srgbInGamut(x, C, H));
   // Whichever end is nearer — a surface just under the bar should not
   // jump across the middle to fix a small shortfall.
   const dirs = L > 0.5 ? [1, 0] : [0, 1];

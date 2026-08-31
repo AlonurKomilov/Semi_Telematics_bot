@@ -10,7 +10,7 @@ import { Monitor, Smartphone, ImagePlus, Sparkles, Loader2 } from 'lucide-react'
 import { apiJSON, apiFetch } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import PublicApply, { type Brand } from './public/PublicApply';
-import { applyPublicFormTheme, surfaceContrastWeak } from './public/theme';
+import { applyPublicFormTheme, surfaceContrastWeak, heroContrastWeak } from './public/theme';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -102,8 +102,17 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
         }`}>
         <Sparkles className="size-3" /> AI theme
       </button>
+      {/* Both say WHICH swatch to move and which way. "Mid-tone" is the
+          fix stated as a cause: go lighter or go darker. */}
       {surfaceContrastWeak(brand.surface_color) && (
-        <Badge tone="warn">Surface is mid-tone — text may be low-contrast</Badge>
+        <Badge tone="warn">Surface is mid-tone — text can't reach full contrast</Badge>
+      )}
+      {/* The one a recruiter is far more likely to hit. At the current
+          scrim only 60% of header colours let text stay readable over an
+          arbitrary photo, and nothing used to say so — the form simply
+          shipped with a hero nobody could read. */}
+      {heroContrastWeak(brand.header_color, bannerPresent) && (
+        <Badge tone="warn">Header is mid-tone — text over the photo can't stay readable</Badge>
       )}
       <Button size="sm" onClick={onSave} disabled={saving}>{saving ? '…' : 'Save'}</Button>
     </div>

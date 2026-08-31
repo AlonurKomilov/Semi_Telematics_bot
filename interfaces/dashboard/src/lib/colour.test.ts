@@ -237,7 +237,6 @@ const PAIRS: Pair[] = [
  * thing that would make this guard worthless, so an entry needs a reason
  * a reviewer can argue with. "known" is not a reason.
  */
-  'probably right, and that is a design decision, not a nudge.';
 const BOUNDARY_REDESIGN =
   'deferred 6.2 — `--input` is a hairline, and the whole surface ladder ' +
   '(canvas 0.10 -> chrome 0.215 -> card 0.275 -> popover 0.32) is built on ' +
@@ -246,11 +245,6 @@ const BOUNDARY_REDESIGN =
   'has yet classified which of them are decorative dividers (WCAG 1.4.11 ' +
   'exempts those) versus real control boundaries. `--input` is the subset ' +
   'that is genuinely in scope — a form field edge — and it is 6 uses.';
-
-  'is a new token, not a nudge.';
-  'every accent cell and both primitives.';
-
-  '`text-foreground`.';
 
 const KNOWN: Record<string, string> = Object.fromEntries([
   // Hairlines. A visible redesign, not a nudge — see 6.2.
