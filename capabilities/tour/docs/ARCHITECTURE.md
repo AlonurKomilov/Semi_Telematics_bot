@@ -90,14 +90,14 @@ real controls — declared, grep-able, never CSS selectors.
 
 | guard | enforces |
 |---|---|
-| `components/tour/tour.test.ts` | anchors exist in source (incl. countFrom), 9-locale field + value parity, plural families, keys namespaced, ≤6 steps, final step declares commit |
+| `interfaces/dashboard/src/components/tour/tour.test.ts` | anchors exist in source (incl. countFrom), 9-locale field + value parity, plural families, keys namespaced, ≤6 steps, final step declares commit |
 | `components/tour/*.test.tsx` | engine behaviour: double-dispatch, anchor unmount recovery, click-gone honesty, beacon occlusion, manual override |
 | `capabilities/tour/tests/test_signals.py` | self-scope isolation, allowlist 400s, cross-stack scan of the frontend tour data |
 | `routeRegistry.test.ts` | the library page stays reachable from the command palette |
 
 ## Extending
 
-Recipe and non-style rules: `components/tour/CLAUDE.md`.  New signal
+Recipe and non-style rules: `interfaces/dashboard/src/components/tour/CLAUDE.md`.  New signal
 pair: backend `ALLOWED_SIGNALS` first, then the tour data.  New
 surface (bot, miniapp): the verdicts and signals contracts above are
 the parts to honour; the engine is dashboard-only by design.

@@ -935,7 +935,7 @@ async def upload_file(
     store = await get_object_storage_for_account(user["account_id"], tenant_db)
     # Account-level, not company-level: an article serves the whole
     # account.  It still must not sit at the account root — see
-    # capabilities/object_storage/LAYOUT.md.
+    # capabilities/object_storage/docs/LAYOUT.md.
     from capabilities.object_storage.paths import ACCOUNT_LEVEL_FOLDER
     file_path = store.put(f"{ACCOUNT_LEVEL_FOLDER}/knowledge", safe_name, raw)
     if not file_path:

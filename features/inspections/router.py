@@ -1068,7 +1068,7 @@ async def upload_reference_image(
     # It still must not sit at the ACCOUNT ROOT — a bare
     # ``template_refs/`` beside the customer's business names reads as
     # another business when they browse their Drive.  See
-    # capabilities/object_storage/LAYOUT.md.
+    # capabilities/object_storage/docs/LAYOUT.md.
     from capabilities.object_storage.paths import ACCOUNT_LEVEL_FOLDER
     folder = f"{ACCOUNT_LEVEL_FOLDER}/inspection-templates"
 
@@ -1122,7 +1122,7 @@ async def stream_reference_image(
     # It still must not sit at the ACCOUNT ROOT — a bare
     # ``template_refs/`` beside the customer's business names reads as
     # another business when they browse their Drive.  See
-    # capabilities/object_storage/LAYOUT.md.
+    # capabilities/object_storage/docs/LAYOUT.md.
     from capabilities.object_storage.paths import ACCOUNT_LEVEL_FOLDER
     folder = f"{ACCOUNT_LEVEL_FOLDER}/inspection-templates"
     data = store.get(folder, safe_name)

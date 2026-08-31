@@ -6,7 +6,7 @@ it by hand and read each top-level folder as one of their businesses —
 so a stray folder there is not a cosmetic problem, it is a fake company
 in their filing cabinet.
 
-The rules and the reasoning: capabilities/object_storage/LAYOUT.md.
+The rules and the reasoning: capabilities/object_storage/docs/LAYOUT.md.
 
 These tests exist because the rules were broken by code that looked
 reasonable in isolation:
@@ -199,7 +199,7 @@ class TestNothingWritesToTheAccountRoot:
             "a bucket path starts at the ACCOUNT ROOT — it must start "
             "with the company folder, or GENERIC_COMPANY_FOLDER when no "
             "company can be established.  See "
-            "capabilities/object_storage/LAYOUT.md:\n  "
+            "capabilities/object_storage/docs/LAYOUT.md:\n  "
             + "\n  ".join(offenders))
 
 
@@ -328,7 +328,7 @@ class TestTestsDoNotWriteIntoTheLiveTree:
 
 def test_the_layout_document_exists():
     """The guard cites it in every failure message."""
-    doc = ROOT / "capabilities" / "object_storage" / "LAYOUT.md"
+    doc = ROOT / "capabilities" / "object_storage" / "docs" / "LAYOUT.md"
     assert doc.is_file(), "the layout SSOT is missing"
     text = doc.read_text(encoding="utf-8")
     for must in ("_generic", "OBJECT_STORE_ROOT", "sanitize_company_folder"):

@@ -7,7 +7,7 @@ real write the user chose to make. This folder is the ENGINE; it knows
 no feature. Everything a feature contributes is data.
 
 The UNIVERSAL map — cross-layer contracts and the decision log any
-layer must honour — is [capabilities/tour/ARCHITECTURE.md](../../../../../capabilities/tour/ARCHITECTURE.md);
+layer must honour — is [capabilities/tour/docs/ARCHITECTURE.md](../../../../../capabilities/tour/docs/ARCHITECTURE.md);
 this file is the working rules for authoring here.
 
 ## Where things live (one concept, four homes)

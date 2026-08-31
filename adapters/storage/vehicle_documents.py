@@ -4,7 +4,7 @@ The registration, title, insurance and annual-inspection paperwork a
 carrier keeps per unit.  Mirrors the driver-documents mixin because it
 IS the same product idea for a different entity: rows point at objects
 in the company's folder tree (``{COMPANY}/vehicles/{unit}/`` — see
-capabilities/object_storage/LAYOUT.md), the archive flow moves the
+capabilities/object_storage/docs/LAYOUT.md), the archive flow moves the
 folder and rewrites ``bucket`` here, and quota accounting bumps the
 same per-account counter.
 

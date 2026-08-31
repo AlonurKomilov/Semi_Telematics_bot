@@ -2,7 +2,7 @@
 
 Registration, title, insurance, annual-inspection certificates: files
 that belong to a REGISTRY row and live in the company's own folder tree
-(``{COMPANY}/vehicles/{unit}/`` — capabilities/object_storage/LAYOUT.md
+(``{COMPANY}/vehicles/{unit}/`` — capabilities/object_storage/docs/LAYOUT.md
 is the law).  Mirrors the driver-documents flow deliberately, cap for
 cap and rail for rail, because it is the same product idea for a
 different entity.

@@ -5,7 +5,7 @@ devs work, not here.**  A doc at root rots because nobody editing the
 feature remembers it exists — the same reason tests moved next to the
 code they guard (206 of 277 files were silently skipping when they
 lived far away).  In-package law is the house pattern:
-`capabilities/object_storage/LAYOUT.md` did it first.
+`capabilities/object_storage/docs/LAYOUT.md` did it first.
 
 This folder keeps only what belongs to NO package:
 
@@ -19,8 +19,8 @@ This folder keeps only what belongs to NO package:
 
 | system | the law lives at |
 |---|---|
-| Tenant file layout | `capabilities/object_storage/LAYOUT.md` |
-| Tours (walkthroughs) | `capabilities/tour/ARCHITECTURE.md` |
+| Tenant file layout | `capabilities/object_storage/docs/LAYOUT.md` |
+| Tours (walkthroughs) | `capabilities/tour/docs/ARCHITECTURE.md` |
 | Warehouse | `docs/architecture/warehouse.md` |
 | Config family | `docs/architecture/config.md` |
 | Notifications spine | `docs/architecture/notifications.md` |

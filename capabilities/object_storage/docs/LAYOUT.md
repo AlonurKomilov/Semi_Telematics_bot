@@ -61,7 +61,7 @@ only if that truck was never archived — archiving moves the folder to
 `vehicles/_archive/{date}/{unit}/` (the driver-archive recipe: physical
 move + `move_vehicle_documents_bucket` row rewrite), and restore moves
 it back.  Helpers: `vehicle_docs_bucket` / `vehicle_docs_archive_bucket`
-in `features/work_orders/storage.py`.
+in `capabilities/object_storage/paths.py`.
 
 `OBJECT_STORE_ROOT` (`infra/config.py`) is read **once at import**.
 Changing it needs a process restart, and tests must set it by plain
@@ -110,7 +110,7 @@ before it was removed.
 code, not its id.**
 
 Use `sanitize_company_folder(display_name)` from
-`features/work_orders/storage.py`, or `resolve_company_folder(db,
+`capabilities/object_storage/paths.py`, or `resolve_company_folder(db,
 account_id, company_code)` when you hold a code. A user browsing Drive
 should see `PREMIER TRUCKING GROUP INC`, never `PTG` or `company-1`.
 
@@ -124,7 +124,7 @@ moves what disagrees, so run it after a rename.
 ## `_generic` — the holding pen
 
 `GENERIC_COMPANY_FOLDER = "_generic"` in
-`features/work_orders/storage.py`. It is where a write goes when no
+`capabilities/object_storage/paths.py`. It is where a write goes when no
 company can be established for it.
 
 It is a **bug report, not a second home**. Every write that lands there

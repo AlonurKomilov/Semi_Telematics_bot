@@ -126,7 +126,7 @@ repo, passing vacuously the whole time.
 
 - **Tenant file layout** (anything that calls `ObjectStorage.put`, any
   path under `data/userdata/`, the `_generic` holding pen, company
-  folders): [capabilities/object_storage/LAYOUT.md](capabilities/object_storage/LAYOUT.md)
+  folders): [capabilities/object_storage/docs/LAYOUT.md](capabilities/object_storage/docs/LAYOUT.md)
   is the law. Every tenant file lives under
   `account-{id}/{COMPANY DISPLAY NAME}/…` — **nothing but a company
   folder or `_generic` may sit at the account root**, because that tree
