@@ -33,6 +33,8 @@
  * not "tidy" one without checking the surface that consumes it.
  */
 
+import { THEME_PACKS } from '../lib/themePacks';
+
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
  *    settings, preview/debug affordances).  Phase 2 will not sync these.
@@ -133,7 +135,14 @@ const oneOf = <T extends string>(allowed: readonly T[]) =>
  * never accent-less, either: its `--primary` is chromatic blue.
  */
 export type ThemeMode = 'dark' | 'light';
-export type ThemeAccent = 'blue' | 'purple' | 'green';
+
+/**
+ * Derived from the pack catalogue rather than restated. This union and
+ * `THEME_ACCENTS` below were two of the six places the accent's allowed
+ * set was pinned; they now read from the one list in
+ * `lib/themePacks.ts`, so a new pack cannot be half-added.
+ */
+export type ThemeAccent = (typeof THEME_PACKS)[number]['id'];
 
 /**
  * @deprecated The pre-split spelling. Still written, and still read on
@@ -211,7 +220,7 @@ export type TableDensity = 'compact' | 'default' | 'roomy';
 // import them), and the test asserts the two copies still agree.  Nothing
 // else should read them — call sites get the guard via ``sanitize``.
 export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
-export const THEME_ACCENTS: ThemeAccent[] = ['blue', 'purple', 'green'];
+export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const THEME_DEFAULT: ThemeSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', color: 'dark-blue',
 };

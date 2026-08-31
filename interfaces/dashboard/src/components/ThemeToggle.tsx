@@ -8,6 +8,7 @@ import { Tip } from './tooltip';
 import { useTheme, applySize, type Mode, type Accent, type RadiusVariant } from '../context/ThemeContext';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
+import { THEME_PACKS } from '../lib/themePacks';
 
 // ── Option rows ──────────────────────────────────────────────
 //
@@ -33,11 +34,24 @@ const MODE_OPTIONS: { value: Mode; key: string; label: string; dot: string }[] =
   { value: 'light', key: 'theme.light', label: 'Light', dot: 'var(--swatch-mode-light)' },
 ];
 
-const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }[] = [
-  { value: 'blue',   key: 'theme.accent_blue',   label: 'Blue',   dot: 'var(--swatch-accent-blue)' },
-  { value: 'purple', key: 'theme.accent_purple', label: 'Purple', dot: 'var(--swatch-accent-purple)' },
-  { value: 'green',  key: 'theme.accent_green',  label: 'Green',  dot: 'var(--swatch-accent-green)' },
-];
+/**
+ * Generated from the pack catalogue, not restated. This list was the
+ * seventh place a new accent had to be added by hand, and the one whose
+ * omission is invisible — everything else keeps working and the pack
+ * simply never appears in the picker.
+ *
+ * A pack needs no translation to be added. `t(key, label)` takes the
+ * label as its fallback, so a pack with no `theme.accent_<id>` key shows
+ * its English name in every locale — which is the rule for feature and
+ * theme names here anyway.
+ */
+const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }[] =
+  THEME_PACKS.map((p) => ({
+    value: p.id as Accent,
+    key: `theme.accent_${p.id}`,
+    label: p.label,
+    dot: `var(--swatch-accent-${p.id})`,
+  }));
 
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
   { value: 'sharp',   key: 'theme.corners_sharp',   label: 'Sharp' },

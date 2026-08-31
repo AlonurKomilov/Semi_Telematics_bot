@@ -721,6 +721,8 @@ const COLOUR_LITERAL_ALLOWED: { file: string; why: string }[] = [
     why: 'the black lerp target for a THREE material — design.md §8' },
   { file: 'features/applications/public/theme.ts',
     why: 'computes a readable label for a colour the CUSTOMER chose at runtime' },
+  { file: 'lib/themePacks.ts',
+    why: 'the pack catalogue: these hexes ARE the seeds, and themePacks.test.ts proves the shipped CSS is what they derive' },
 ];
 
 /** Colour literals in CODE — comments stripped, data shapes excluded. */
@@ -1680,16 +1682,23 @@ describe('UI chrome', () => {
   it('every accent the picker offers has a rule in both modes', () => {
     const css = readFileSync(join(SRC, 'index.css'), 'utf8');
     const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
+    const packs = readFileSync(join(SRC, 'lib/themePacks.ts'), 'utf8');
 
     const list = (name: string) =>
       (new RegExp(`${name}[^=]*=\\s*\\[([^\\]]*)\\]`).exec(registry)?.[1] ?? '')
         .split(',').map((x) => x.trim().replace(/['"`]/g, '')).filter(Boolean);
 
-    const accents = list('THEME_ACCENTS');
+    // The accent set used to be pinned HERE as a literal triple, which
+    // made this guard one of the six places a fourth accent had to be
+    // added by hand. It now comes from the pack catalogue — so the
+    // assertion is that the pin is GONE and stays gone, and the ids are
+    // read from the one list that owns them.
+    expect(registry, 'THEME_ACCENTS was re-pinned to a literal — read the catalogue instead')
+      .toMatch(/THEME_ACCENTS[^=]*=\s*THEME_PACKS\.map/);
+    const accents = [...packs.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+    expect(accents.length, 'no packs found in lib/themePacks.ts').toBeGreaterThan(0);
+
     const modes = list('THEME_MODES');
-    expect(accents, 'THEME_ACCENTS should list what the picker offers').toEqual(
-      ['blue', 'purple', 'green'],
-    );
     expect(modes).toEqual(['dark', 'light']);
 
     // `blue` is the base --primary in both modes, so it has no override —

@@ -108,22 +108,30 @@ const INK_TARGET: Record<ThemeMode, { muted: number; recessed: number }> = {
 };
 
 /**
- * `--primary-text` is the accent moved AWAY from the canvas — darker on
- * a light page, lighter on a dark one — not the accent clamped to a
- * floor. Measured: ΔL -0.040 light (5.76:1 → 6.88), +0.082 dark (5.40 →
- * 7.59). The dark cell also loses chroma, 0.206 → 0.153, and that falls
- * out for free: sRGB cannot hold that much blue at lightness 0.700, so
- * the gamut step does it.
+ * `--primary-text` is a CONTRAST TARGET, not a lightness step — and the
+ * difference only showed up once all six shipped cells were checked
+ * instead of the two base ones.
  *
+ * A lightness step measured off blue (ΔL 0.040 / 0.082) reproduces blue
+ * and then misses: dark purple by ΔE 7.0, dark green by 5.0. The
+ * shipped contrasts, though, barely move across the whole set — 6.88 /
+ * 7.25 / 7.32 in light, 7.59 / 7.81 / 7.95 in dark. Expressed that way
+ * the same rule reproduces all six at a mean ΔE of 1.08, worst 2.0.
+ *
+ * Which is the more honest reading anyway: `--primary-text` is TEXT, and
+ * text is specified by how well it can be read, not by how far it moved.
+ * The dark cell's chroma drop (0.206 → 0.153) still falls out for free —
+ * sRGB cannot hold that much blue at the lightness the target demands.
+ */
+const PRIMARY_TEXT: Record<ThemeMode, number> = { light: 7.15, dark: 7.78 };
+
+/**
  * `--primary-hover` moves away from the LABEL, and our own themes are
  * the proof the rule is right rather than convenient — light has a white
  * label and hovers darker (-0.050), dark has a near-black one and hovers
  * lighter (+0.062).
  */
-const PRIMARY_SHIFT: Record<ThemeMode, { text: number; hover: number }> = {
-  light: { text: 0.040, hover: 0.050 },
-  dark:  { text: 0.082, hover: 0.062 },
-};
+const PRIMARY_HOVER: Record<ThemeMode, number> = { light: 0.050, dark: 0.062 };
 /** `--border` and `--input` against the canvas, and the sidebar's own. */
 const BOUNDARY: Record<ThemeMode, { border: number; input: number; sidebar: number }> = {
   light: { border: 1.26, input: 1.26, sidebar: 1.18 },
@@ -230,7 +238,7 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   if (!canvas || !brand) return null;
 
   const L = LADDER[seed.mode], B = BOUNDARY[seed.mode];
-  const T = INK_TARGET[seed.mode], S = PRIMARY_SHIFT[seed.mode];
+  const T = INK_TARGET[seed.mode];
   // The ink is picked by measurement rather than from `mode`, so a light
   // theme handed a dark canvas still gets readable text instead of a
   // theoretically-correct unreadable one.
@@ -266,10 +274,11 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   const shift = (dL: number) =>
     srgbInGamut(Math.min(1, Math.max(0, brandL.L + dL)), brandL.C, brandL.H);
 
-  // The accent AS TEXT: moved away from the canvas, then held to AA as a
-  // floor. The shift is what our design does; the clamp is what stops a
-  // seed whose accent is too close to its canvas from relying on it.
-  const primaryText = clampLightness(shift(away * S.text), canvas, AA_TEXT).rgb;
+  // The accent AS TEXT: moved away from the canvas until it reads at the
+  // target. `clampLightness` already picks the direction by measurement
+  // and stops at the closest value that holds, which is exactly this —
+  // and it leaves an accent that already reads well enough alone.
+  const primaryText = clampLightness(brand, canvas, PRIMARY_TEXT[seed.mode]).rgb;
 
   // The label, and a hover that moves AWAY from it so the label can only
   // improve when the pointer lands.
@@ -286,7 +295,7 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   // target would be reading the symptom and re-deriving three colours
   // where the design has one.
   const softInk = dimTo(ink, secondary, T.recessed);
-  const hover = shift((labelIsDark ? 1 : -1) * S.hover);
+  const hover = shift((labelIsDark ? 1 : -1) * PRIMARY_HOVER[seed.mode]);
 
   return {
     '--background': hex(canvas),
