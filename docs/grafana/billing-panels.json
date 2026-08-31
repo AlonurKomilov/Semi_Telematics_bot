@@ -111,7 +111,7 @@
       "for": "5m",
       "severity": "page",
       "summary": "Stripe webhook handler crashed on a real event",
-      "runbook": "docs/runbooks/billing-rollout.md#monitoring"
+      "runbook": "docs/runbooks/archive/billing-rollout.md#monitoring"
     },
     {
       "name": "billing-invalid-signature-burst",
@@ -119,7 +119,7 @@
       "for": "5m",
       "severity": "warn",
       "summary": "Multiple webhook signature failures — secret drift or probing",
-      "runbook": "docs/runbooks/billing-rollout.md#monitoring"
+      "runbook": "docs/runbooks/archive/billing-rollout.md#monitoring"
     },
     {
       "name": "billing-sync-stripe-error-sustained",
@@ -127,7 +127,7 @@
       "for": "30m",
       "severity": "page",
       "summary": "Active-vehicle qty no longer syncing to Stripe — next invoice will be wrong",
-      "runbook": "docs/runbooks/billing-rollout.md#monitoring"
+      "runbook": "docs/runbooks/archive/billing-rollout.md#monitoring"
     }
   ]
 }

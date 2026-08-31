@@ -8212,7 +8212,7 @@ async def migrate_warehouse_schema(conn) -> None:
             "Migration 183: physically moved %d warehouse objects at "
             "boot — if this is production, the maintenance window was "
             "bypassed; run the verify + backup steps in "
-            "docs/runbooks/warehouse-schema-move.md", moved,
+            "capabilities/data_lifecycle/docs/runbooks/warehouse-schema-move.md", moved,
         )
     else:
         logger.info("Migration 183: warehouse schema already converged")
@@ -8684,7 +8684,7 @@ async def migrate_grain_physical_tables(conn) -> None:
                 logger.warning(
                     "Migration 188: split tier rows into grain tables at "
                     "boot — if this is production, use the operator "
-                    "window (docs/runbooks/warehouse-grain-split.md)")
+                    "window (capabilities/data_lifecycle/docs/runbooks/warehouse-grain-split.md)")
         finally:
             await raw.execute("SELECT pg_advisory_unlock(478188)")
 

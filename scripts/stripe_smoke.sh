@@ -133,7 +133,7 @@ Usage: $0 <tunnel|trigger|check|all> [ACCOUNT_ID]
   check   ACCOUNT    Print the DB rows the triggers should have produced
   all     ACCOUNT    tunnel → trigger → check in sequence (single terminal)
 
-See docs/runbooks/stripe-webhook-testing.md for full prerequisites.
+See capabilities/platform/billing/docs/runbooks/stripe-webhook-testing.md for full prerequisites.
 EOF
         exit 1
         ;;

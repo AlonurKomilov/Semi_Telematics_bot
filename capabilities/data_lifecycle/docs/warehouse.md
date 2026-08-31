@@ -153,7 +153,7 @@ column, five branches).
 **The `warehouse` schema (decided 2026-08-03, pre-customer window):**
 the whole family — 13 tables + the view — lives in a dedicated
 Postgres schema, moved by the operator window script
-(docs/runbooks/warehouse-schema-move.md) and mirrored by idempotent
+(capabilities/data_lifecycle/docs/runbooks/warehouse-schema-move.md) and mirrored by idempotent
 migration 183 for fresh installs.  Table names were then normalized
 in stages (183 → 190; the History section has the chain) to today's
 grain vocabulary; `warehouse_ingest_orphans → ingest_orphans` set the
