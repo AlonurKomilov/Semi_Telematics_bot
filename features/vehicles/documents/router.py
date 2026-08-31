@@ -92,6 +92,33 @@ async def _vehicle_or_404(tenant, account_id: int, vehicle_id: int, user):
     return v
 
 
+async def _trail(
+    tenant, account_id: int, user: dict, vehicle_id: int,
+    action: str, note: str, **context,
+) -> None:
+    """Record one document act on the TRUCK's activity trail.
+
+    Not a trail of its own: the operator asking "what happened to unit
+    110?" wants its papers, its VIN changes and its archive in one
+    list, and a second trail would answer half the question in a place
+    they have to know to look.
+
+    Best-effort — a lost audit line must never fail an upload the
+    operator watched succeed — but logged loudly, because a delete
+    nobody recorded is the case this exists for.
+    """
+    try:
+        from capabilities.activity_trail.recorder import record_simple
+
+        await record_simple(
+            tenant, account_id, await resolve_user_id(user),
+            action, "vehicle", vehicle_id, note=note, context=context,
+        )
+    except Exception:
+        logger.warning("document trail not recorded: %s v=%d acct=%d",
+                       action, vehicle_id, account_id, exc_info=True)
+
+
 async def _bucket_for(tenant, account_id: int, v) -> str:
     from capabilities.object_storage.paths import resolve_company_folder
     from features.vehicles.documents.paths import vehicle_docs_bucket
@@ -286,6 +313,12 @@ async def upload_vehicle_document(
         uploaded_by=await resolve_user_id(user),
         notes=notes or None,
     )
+    await _trail(
+        tenant, account_id, user, vehicle_id, "document.upload",
+        f"Uploaded {doc.doc_type.replace('_', ' ')}: {doc.file_name}",
+        doc_id=doc.id, doc_type=doc.doc_type, file_name=doc.file_name,
+        expires_at=doc.expires_at or "",
+    )
     return {"id": doc.id, "doc_type": doc.doc_type,
             "file_name": doc.file_name, "uploaded_at": doc.uploaded_at}
 
@@ -333,6 +366,62 @@ async def download_vehicle_document(
     )
 
 
+@router.post("/documents/{doc_id}/archive")
+async def archive_vehicle_document(
+    doc_id: int,
+    user: dict = Depends(_manage),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Step a superseded paper aside instead of deleting it.
+
+    This year's registration is filed; last year's still proves the
+    truck was legal last year, which is what an audit asks.  It moves
+    to ``…/vehicles/{unit}/documents/_archive/`` — inside the truck,
+    because the TRUCK has not gone anywhere; only this paper stopped
+    being current.
+    """
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.vehicles.documents.paths import vehicle_docs_archive_bucket
+
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    peek = await tenant.get_vehicle_document(account_id, doc_id)
+    if peek is None or peek.status != "active":
+        raise HTTPException(status_code=404, detail="Document not found")
+    v = await _vehicle_or_404(tenant, account_id, peek.vehicle_id, user)
+
+    company_folder = await resolve_company_folder(
+        tenant, account_id, v.company_code)
+    dst = vehicle_docs_archive_bucket(company_folder, v.unit_number)
+
+    # FILE first, ROW second — a row pointing at a file that has not
+    # moved yet recovers on the next line; a row left behind after the
+    # file moved is a download that 404s with nothing to explain it.
+    store = await get_object_storage_for_account(account_id, tenant_db)
+    try:
+        data = store.get(peek.bucket, peek.object_key)
+        if data:
+            store.put(dst, peek.object_key, data)
+            store.delete(peek.bucket, peek.object_key)
+    except Exception:
+        logger.warning("archive: document file not moved doc=%d", doc_id,
+                       exc_info=True)
+
+    doc = await tenant.archive_vehicle_document(
+        account_id, doc_id, bucket=dst)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await _trail(
+        tenant, account_id, user, peek.vehicle_id, "document.archive",
+        f"Archived {doc.doc_type.replace('_', ' ')}: {doc.file_name}",
+        doc_id=doc_id, doc_type=doc.doc_type, file_name=doc.file_name,
+    )
+    return {"archived": True, "id": doc_id}
+
+
 @router.delete("/documents/{doc_id}")
 async def delete_vehicle_document(
     doc_id: int,
@@ -362,4 +451,9 @@ async def delete_vehicle_document(
     except Exception:
         logger.warning("vehicle doc object not removed doc=%d", doc_id,
                        exc_info=True)
+    await _trail(
+        tenant, account_id, user, peek.vehicle_id, "document.delete",
+        f"Deleted {doc.doc_type.replace('_', ' ')}: {doc.file_name}",
+        doc_id=doc_id, doc_type=doc.doc_type, file_name=doc.file_name,
+    )
     return {"deleted": True, "id": doc_id}

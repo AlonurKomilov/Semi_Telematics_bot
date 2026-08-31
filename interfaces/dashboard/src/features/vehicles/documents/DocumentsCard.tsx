@@ -20,7 +20,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Trash2, Upload } from 'lucide-react';
+import { Archive, FileText, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiFetch, apiJSON } from '../../../api/client';
@@ -87,8 +87,26 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
 
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  // Stepping a superseded paper aside — last year's registration once
+  // this year's is filed.  Offered BEFORE delete because it is almost
+  // always the right act: the old document still proves the truck was
+  // legal for the period it covered, which is what an audit asks.
+  const archive = async (d: Doc) => {
+    try {
+      await apiJSON(`/vehicles/documents/${d.id}/archive`, { method: 'POST' });
+      await qc.invalidateQueries({ queryKey: ['vehicle-documents', registryId] });
+      await qc.invalidateQueries({ queryKey: ['fleet-documents'] });
+      toast.success(`${d.file_name} archived`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Archive failed');
+    }
+  };
+
   const remove = async (d: Doc) => {
-    if (!confirm(`Delete ${d.file_name}? The file is removed from storage.`)) return;
+    if (!confirm(
+      `Delete ${d.file_name}? The file is removed from storage.\n\n` +
+      'To keep it as a record of a period that has passed, use Archive ' +
+      'instead.')) return;
     try {
       await apiJSON(`/vehicles/documents/${d.id}`, { method: 'DELETE' });
       await qc.invalidateQueries({ queryKey: ['vehicle-documents', registryId] });
@@ -160,6 +178,15 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
                   {d.file_size ? ` · ${fmtSize(d.file_size)}` : ''}
                 </span>
               </button>
+              {canManage && (
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  aria-label={`Archive ${d.file_name}`}
+                  onClick={() => void archive(d)}
+                >
+                  <Archive className="text-muted-foreground" />
+                </Button>
+              )}
               {canManage && (
                 <Button
                   type="button" variant="ghost" size="sm"

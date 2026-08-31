@@ -270,6 +270,31 @@ class VehicleDocumentsMixin(_MixinBase):
             )
         return (cur.rowcount or 0) > 0
 
+    async def archive_vehicle_document(
+        self, account_id: int, doc_id: int, *, bucket: str,
+    ) -> VehicleDocument | None:
+        """Step a superseded paper aside: status ``archived``, and the
+        row now points at the archive bucket the caller moved it to.
+
+        Not a delete — the document is still the truth about a period
+        that has passed (last year's registration proves the truck was
+        legal last year, which is exactly what an audit asks).  It
+        leaves the card because the card answers "what is current", and
+        stays reachable because the folder does.
+
+        Quota is deliberately NOT refunded: the bytes are still stored.
+        """
+        doc = await self.get_vehicle_document(account_id, doc_id)
+        if doc is None or doc.status != "active":
+            return None
+        async with self.transaction():
+            await self._db.execute(
+                "UPDATE vehicle_documents SET status = 'archived', "
+                "bucket = ? WHERE id = ? AND account_id = ?",
+                (bucket, doc_id, account_id),
+            )
+        return doc
+
     async def move_vehicle_documents_bucket(
         self, account_id: int, vehicle_id: int,
         old_bucket: str, new_bucket: str,
