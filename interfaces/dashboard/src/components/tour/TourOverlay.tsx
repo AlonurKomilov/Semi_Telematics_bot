@@ -242,9 +242,14 @@ export default function TourOverlay({
   // guess; the re-render after `cardRef` mounts corrects it.
   // The blast radius, read live — never cached, never guessed.  An
   // absent element or attribute drops the number, not the honesty.
-  const liveCount = step.countFrom
-    ? find(step.countFrom)?.getAttribute('data-tour-count') ?? null
-    : null;
+  // NUMERIC, because the consequence line is a CLDR plural family
+  // (commit_one/_other, plus _few/_many where a language declines):
+  // the first live run created for ONE vehicle and the flat string
+  // printed "1 real tasks".
+  const rawCount = step.countFrom
+    ? find(step.countFrom)?.getAttribute('data-tour-count') : null;
+  const liveCount = rawCount != null && Number.isFinite(Number(rawCount))
+    ? Number(rawCount) : null;
   const cardH = cardRef.current?.offsetHeight ?? 120;
   const cardW = cardRef.current?.offsetWidth ?? 320;
   const below = rect.top + rect.height + cardH + 20 < window.innerHeight;
@@ -297,9 +302,11 @@ export default function TourOverlay({
         </p>
         {step.commit && (
           <>
-            <p className="mt-2 text-xs text-warn">
-              {t(`tour.${tour.key}.commit`, { count: liveCount ?? '' })}
-            </p>
+            {liveCount != null && (
+              <p className="mt-2 text-xs text-warn">
+                {t(`tour.${tour.key}.commit`, { count: liveCount })}
+              </p>
+            )}
             {/* The hand-over.  Reaching the line IS completing the
                 tour; the write beyond it is the user's own act, so
                 this button ends the tour without a word about tasks

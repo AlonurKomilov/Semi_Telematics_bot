@@ -1163,8 +1163,9 @@
       "step3": "Choisissez les véhicules — essayez avec un ou deux d’abord ; le même geste vaut pour cent.",
       "step4": "Choisissez le type de service puis « Create ». La tâche est créée sur chaque véhicule sélectionné.",
       "done": "La tâche a été créée pour chaque véhicule sélectionné.",
-      "commit": "Ceci créera {{count}} tâches réelles — une par véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient.",
-      "intro_observed_other": "J'ai remarqué que vous avez ajouté {{count}} tâches une par une récemment. Une tâche peut aller à plusieurs véhicules à la fois — voulez-vous que je vous montre, sur votre prochaine tâche ?"
+      "intro_observed_other": "J'ai remarqué que vous avez ajouté {{count}} tâches une par une récemment. Une tâche peut aller à plusieurs véhicules à la fois — voulez-vous que je vous montre, sur votre prochaine tâche ?",
+      "commit_one": "Ceci créera {{count}} tâche réelle pour le véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient.",
+      "commit_other": "Ceci créera {{count}} tâches réelles — une par véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient."
     },
     "page": {
       "description": "Tous les guides, consultables et rejouables — un guide vous accompagne dans votre propre travail sur la vraie page.",

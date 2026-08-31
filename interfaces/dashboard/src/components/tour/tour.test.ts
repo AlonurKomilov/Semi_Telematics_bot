@@ -132,7 +132,7 @@ describe('tour locales', () => {
           (load('en.json').tour as Record<string, Record<string, string>>)
             ?.[tour.key]?.intro_observed_other);
         const want = ['title', 'body', 'done',
-          ...(last.commit ? ['commit'] : []),
+          ...(last.commit ? ['commit_other'] : []),
           // The personalized line is a CLDR plural FAMILY: _other is
           // the one form every language has, so it is the required
           // representative; _one/_few/_many are language-specific and
@@ -146,7 +146,9 @@ describe('tour locales', () => {
         // (Plural variants of intro_observed are read by i18next's
         // resolver, so the whole family is exempt.)
         const extra = Object.keys(entry).filter(
-          (k) => !want.includes(k) && !k.startsWith('intro_observed_'));
+          (k) => !want.includes(k)
+            && !k.startsWith('intro_observed_')
+            && !k.startsWith('commit_'));
         for (const k of extra) problems.push(`${f}: ${tour.key}.${k} (nothing reads it)`);
       }
     }

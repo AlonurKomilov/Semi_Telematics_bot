@@ -1450,9 +1450,10 @@
       "step3": "Pick the vehicles — try one or two first; the same step works for a hundred.",
       "step4": "Choose the service task and press “Create”. The task lands on every selected vehicle.",
       "done": "The task was created for every vehicle you selected.",
-      "commit": "This will create {{count}} real tasks — one per selected vehicle. The tour stops here; pressing “Create” is your call.",
       "intro_observed_one": "I noticed you've added {{count}} task one at a time recently. One task can go to many vehicles at once — want me to show you, on your own next task?",
-      "intro_observed_other": "I noticed you've added {{count}} tasks one at a time recently. One task can go to many vehicles at once — want me to show you, on your own next task?"
+      "intro_observed_other": "I noticed you've added {{count}} tasks one at a time recently. One task can go to many vehicles at once — want me to show you, on your own next task?",
+      "commit_one": "This will create {{count}} real task for the selected vehicle. The tour stops here; pressing “Create” is your call.",
+      "commit_other": "This will create {{count}} real tasks — one per selected vehicle. The tour stops here; pressing “Create” is your call."
     },
     "page": {
       "description": "Every walkthrough, browsable and re-runnable — a tour walks you through your own work on the live page.",
