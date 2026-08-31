@@ -11,15 +11,19 @@
  * truck's own card, which already owns those actions and their
  * confirmations — same split as Inventory's page-and-card.
  */
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { FileText } from 'lucide-react';
+import { FileText, Upload } from 'lucide-react';
 
 import { apiFetch, apiJSON } from '../../../api/client';
 import DataGrid, { type DataGridSegment } from '../../../components/datagrid';
 import { PageHeader, CardSkeleton, ErrorState } from '../../../components/shell';
 import { toneText } from '../../../lib/status';
+import { Button } from '../../../components/ui/button';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
+import { typeLabel } from './docTypes';
+import UploadDocumentDialog, { type UploadTargetVehicle } from './UploadDocumentDialog';
 import type { AnyColumn } from '../../../types';
 
 interface FleetDoc {
@@ -34,16 +38,6 @@ interface FleetDoc {
   unit_number: string;
   company_code: string;
 }
-
-const TYPE_LABEL: Record<string, string> = {
-  registration: 'Registration',
-  title: 'Title',
-  insurance: 'Insurance',
-  annual_inspection: 'Annual inspection',
-  lease: 'Lease',
-  purchase: 'Purchase',
-  other: 'Other',
-};
 
 /** Whole days from today to a YYYY-MM-DD, or null when unreadable. */
 function daysUntil(iso: string | null): number | null {
@@ -88,9 +82,9 @@ const COLUMNS: AnyColumn[] = [
     filterValue: (row) => String((row as unknown as FleetDoc).doc_type ?? ''),
     filterLabel: (row) => {
       const t = String((row as unknown as FleetDoc).doc_type ?? '');
-      return TYPE_LABEL[t] ?? t;
+      return typeLabel(t);
     },
-    render: (v) => TYPE_LABEL[String(v ?? '')] ?? String(v ?? ''),
+    render: (v) => typeLabel(String(v ?? '')),
   },
   {
     key: 'file_name', label: 'File', sortable: true,
@@ -160,12 +154,32 @@ const SEGMENTS: DataGridSegment[] = [
 ];
 
 export default function DocumentsPage() {
-  const { data, isLoading, error } = useQuery<{ documents: FleetDoc[] }>({
+  const qc = useQueryClient();
+  const { data, isLoading, error, refetch } = useQuery<{ documents: FleetDoc[] }>({
     queryKey: ['fleet-documents'],
     queryFn: () => apiJSON('/vehicles/documents'),
   });
 
   const rows = useMemo(() => data?.documents ?? [], [data]);
+  const { has } = useViewPermissions();
+  const canManage = has('can_manage_vehicle_docs');
+  const [uploadOpen, setUploadOpen] = useState(false);
+
+  // The trucks a document can be filed against.  Fetched only when the
+  // dialog can actually open — a read-only visitor never pays for it.
+  const { data: fleet } = useQuery<{ vehicles: UploadTargetVehicle[] }>({
+    queryKey: ['vehicles-for-documents'],
+    queryFn: () => apiJSON('/vehicles/'),
+    enabled: canManage,
+    staleTime: 5 * 60 * 1000,
+  });
+  const targets = useMemo(
+    () => (fleet?.vehicles ?? [])
+      .filter((v) => v.registry_id != null)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined,
+                                                   { numeric: true })),
+    [fleet],
+  );
 
   if (isLoading) {
     return (
@@ -189,7 +203,13 @@ export default function DocumentsPage() {
       <PageHeader
         icon={FileText}
         title="Documents"
-        description="Registration, title, insurance and annual inspections across every truck. Upload and delete live on each vehicle's own page."
+        description="Registration, cab card, insurance and annual inspections across every truck. Deleting stays on each vehicle's own page."
+        actions={canManage ? (
+          <Button type="button" size="sm" onClick={() => setUploadOpen(true)}>
+            <Upload />
+            Upload
+          </Button>
+        ) : undefined}
       />
       <DataGrid
         tableId="fleet-documents"
@@ -199,6 +219,18 @@ export default function DocumentsPage() {
         searchKey={['file_name', 'unit_number', 'company_code']}
         emptyMessage="No documents uploaded yet."
       />
+      {canManage && (
+        <UploadDocumentDialog
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() => {
+            void refetch();
+            // The truck's own card holds the same document.
+            void qc.invalidateQueries({ queryKey: ['vehicle-documents'] });
+          }}
+          vehicles={targets}
+        />
+      )}
     </div>
   );
 }

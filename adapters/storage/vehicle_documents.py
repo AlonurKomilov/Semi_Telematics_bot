@@ -35,8 +35,14 @@ logger = logging.getLogger(__name__)
 #: What a vehicle document can be.  ``other`` is the honest catch-all —
 #: a closed list with no escape teaches people to mislabel.
 VEHICLE_DOC_TYPES = (
-    "registration", "title", "insurance", "annual_inspection",
-    "lease", "purchase", "other",
+    # The papers a US carrier is actually asked for at a scale house or
+    # in an audit.  `cab_card` (IRP), `ifta`, `permit` and `emissions`
+    # were missing while `lease` and `purchase` — the two nobody is
+    # ever asked to produce roadside — were present, so the list read
+    # as an office filing cabinet rather than what rides in the truck.
+    "registration", "cab_card", "title", "insurance",
+    "annual_inspection", "ifta", "permit", "emissions",
+    "lease", "purchase", "warranty", "other",
 )
 
 

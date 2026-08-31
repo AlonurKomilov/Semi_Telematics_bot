@@ -8,19 +8,26 @@
  * home when it is restored — so this card works unchanged on an
  * archived truck, which is the point of keeping the record.
  *
- * Upload/delete need can_manage_vehicles; everyone who can see the
- * page can read and download.  The affordances hide rather than 403:
- * a button leading to a refusal is worse than no button.
+ * Upload/delete need can_manage_vehicle_docs — its own grant, so
+ * filing an insurance certificate no longer requires the power to
+ * archive a tractor; everyone who can see the page reads and
+ * downloads.  The affordances hide rather than 403: a button leading
+ * to a refusal is worse than no button.
+ *
+ * Uploading opens the shared dialog rather than a bare file picker,
+ * because the expiry date has to be asked for — without it the whole
+ * expiry-warning chain reads a field nothing ever sets.
  */
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, FileText, Loader2, Trash2, Upload } from 'lucide-react';
+import { FileText, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiFetch, apiJSON } from '../../../api/client';
 import { toneText } from '../../../lib/status';
+import { typeLabel } from './docTypes';
+import UploadDocumentDialog from './UploadDocumentDialog';
 import { Button } from '../../../components/ui/button';
-import { ActionMenu } from '../../../components/ui/context-menu';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
@@ -35,16 +42,6 @@ interface Doc {
   uploaded_at: string;
   expires_at: string | null;
 }
-
-const TYPE_LABEL: Record<string, string> = {
-  registration: 'Registration',
-  title: 'Title',
-  insurance: 'Insurance',
-  annual_inspection: 'Annual inspection',
-  lease: 'Lease',
-  purchase: 'Purchase',
-  other: 'Other',
-};
 
 /** How an expiry date should READ, not just what it says.
  *
@@ -88,35 +85,7 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
     enabled: registryId != null,
   });
 
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [docType, setDocType] = useState('registration');
-  const [busy, setBusy] = useState(false);
-
-  const upload = async (file: File) => {
-    if (registryId == null) return;
-    setBusy(true);
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('doc_type', docType);
-      const res = await apiFetch(
-        `/vehicles/registry/${registryId}/documents`,
-        { method: 'POST', body: form },
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          typeof err.detail === 'string' ? err.detail : 'Upload failed');
-      }
-      await qc.invalidateQueries({ queryKey: ['vehicle-documents', registryId] });
-      toast.success(`${file.name} uploaded`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Upload failed');
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const remove = async (d: Doc) => {
     if (!confirm(`Delete ${d.file_name}? The file is removed from storage.`)) return;
@@ -150,39 +119,13 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
       <div className="flex items-center justify-between mb-3">
         <SectionHeader>Documents</SectionHeader>
         {canManage && (
-          <>
-            <input
-              ref={fileRef} type="file" className="hidden"
-              accept="application/pdf,image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void upload(f);
-              }}
-            />
-            {/* The type is part of DECIDING to upload, not a setting
-                parked beside the button.  It used to be a Select in the
-                header — the shape this app uses for FILTERING
-                everywhere else — so it read as "show me registrations"
-                while it actually meant "file the next one as a
-                registration".  One control now: pick the kind, the
-                picker opens. */}
-            <ActionMenu
-              items={(data?.doc_types ?? Object.keys(TYPE_LABEL)).map((t) => ({
-                key: t,
-                label: TYPE_LABEL[t] ?? t,
-                onSelect: () => {
-                  setDocType(t);
-                  fileRef.current?.click();
-                },
-              }))}
-            >
-              <Button type="button" variant="outline" size="sm" disabled={busy}>
-                {busy ? <Loader2 className="animate-spin" /> : <Upload />}
-                Upload
-                <ChevronDown />
-              </Button>
-            </ActionMenu>
-          </>
+          <Button
+            type="button" variant="outline" size="sm"
+            onClick={() => setUploadOpen(true)}
+          >
+            <Upload />
+            Upload
+          </Button>
         )}
       </div>
 
@@ -207,7 +150,7 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
               >
                 <span className="block truncate text-foreground">{d.file_name}</span>
                 <span className="block text-xs text-muted-foreground">
-                  {TYPE_LABEL[d.doc_type] ?? d.doc_type}
+                  {typeLabel(d.doc_type)}
                   {(() => {
                     const e = expiryTone(d.expires_at);
                     return e ? (
@@ -229,6 +172,20 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
             </li>
           ))}
         </ul>
+      )}
+      {canManage && (
+        <UploadDocumentDialog
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() => {
+            void qc.invalidateQueries({
+              queryKey: ['vehicle-documents', registryId] });
+            void qc.invalidateQueries({ queryKey: ['fleet-documents'] });
+          }}
+          vehicle={{ registry_id: registryId, name: vehicleName,
+                     company: company ?? undefined }}
+          docTypes={data?.doc_types}
+        />
       )}
     </Card>
   );
