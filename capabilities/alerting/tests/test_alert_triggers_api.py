@@ -176,3 +176,71 @@ class TestWalls:
         cur = await db._db.execute(
             "SELECT COUNT(*) FROM alert_history WHERE account_id = ?", (acct.id,))
         assert (await cur.fetchone())[0] == 0
+
+
+class TestTheCompanyWallOnTriggers:
+    """The two ROUTER halves of the company wall.
+
+    A security review found this feature reaching past Team Management
+    three ways; the sweep's half got tests (test_trigger_company_wall.py)
+    and these two did not — the same shape as the original defect, which
+    shipped because a docstring argued the omission was deliberate.
+
+    They exist because ``get_user_vehicle_scope`` returns None for every
+    role except an assigned driver: on its own it is no wall at all for
+    the dispatchers, managers and accountants Team Management restricts.
+    """
+
+    async def _two_companies(self, db):
+        acct = await db.create_account("Wall API Co")
+        cft = await db.add_company(acct.id, "CFT", "k_cft", "Cargo Freight")
+        await db.add_company(acct.id, "OSY", "k_osy", "Other Systems")
+        me = await _user(db, acct.id, f"w.{acct.id}@x.com")
+        await db.set_user_companies(me.id, acct.id, [cft.id])
+        mine = await db.add_vehicle(
+            acct.id, unit_number="201", company_code="CFT",
+            telematics_ref="ext-201")
+        theirs = await db.add_vehicle(
+            acct.id, unit_number="202", company_code="OSY",
+            telematics_ref="ext-202")
+        return acct, me, mine, theirs
+
+    async def test_the_picker_does_not_enumerate_another_company(self, api):
+        """The enumeration IS the disclosure: one authenticated GET used
+        to return every active vehicle in the account — unit number, type
+        and company_code — strictly wider than GET /vehicles/."""
+        app, db = api
+        acct, me, _mine, _theirs = await self._two_companies(db)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as c:
+            r = await c.get(f"{API}/vehicles", headers=_headers(me, acct))
+        assert r.status_code == 200, r.text
+        names = {v["name"] for v in r.json()["vehicles"]}
+        companies = {v["company"] for v in r.json()["vehicles"]}
+        assert "201" in names            # their own company
+        assert "202" not in names        # the one they cannot open
+        assert companies <= {"CFT"}
+
+    async def test_storing_a_target_outside_the_company_is_refused(self, api):
+        """Without this a restricted dispatcher could store a target for
+        a truck they cannot see anywhere in the product — and then be
+        DM'd its fuel/DEF/battery readings every sweep."""
+        app, db = api
+        acct, me, mine, theirs = await self._two_companies(db)
+        h = _headers(me, acct)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as c:
+            bad = await c.post(API, headers=h, json={
+                "metric": "def_pct", "threshold": 10,
+                "vehicles": [theirs]})
+            assert bad.status_code == 403, bad.text
+            # It must not name what it refused — "vehicle 41 is not
+            # yours" confirms that vehicle 41 exists.
+            assert str(theirs) not in bad.text
+
+            # Their own company still passes, or the wall would be a wall
+            # against the feature rather than against the disclosure.
+            ok = await c.post(API, headers=h, json={
+                "metric": "def_pct", "threshold": 10,
+                "vehicles": [mine]})
+            assert ok.status_code == 200, ok.text

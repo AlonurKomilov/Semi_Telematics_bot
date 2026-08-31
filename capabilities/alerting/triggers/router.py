@@ -233,11 +233,22 @@ async def list_targetable_vehicles(
 ):
     """What the caller may put in a trigger's vehicle list.
 
-    Scoped by the caller's OWN vehicle scope, not by company codes: the
-    general ``GET /vehicles/`` gates on company access alone, so reusing
-    it here would hand a restricted driver their companies' whole roster.
-    The enumeration is itself the disclosure — it happens whether or not
-    the evaluation-time wall ever fires.
+    BOTH walls, because they restrict different people.  The company wall
+    (Team Management) narrows dispatchers, managers and accountants; the
+    caller's own vehicle scope narrows an assigned driver, which the
+    general ``GET /vehicles/`` does not do — reusing that endpoint here
+    would hand a restricted driver their companies' whole roster.
+
+    This docstring once argued for applying only the second, and the
+    endpoint shipped that way.  ``get_user_vehicle_scope`` returns None
+    for every role except an assigned driver, so "scope only" meant NO
+    wall for everyone else: one authenticated GET returned every active
+    vehicle in the account — unit number, type and company_code —
+    strictly wider than ``GET /vehicles/``, which walls the same rows.
+    The enumeration IS the disclosure; it happens whether or not the
+    evaluation-time wall ever fires.  Pinned by
+    tests/test_trigger_company_wall.py so the argument cannot be made
+    again without a red test.
 
     ``watchable`` is the honest half.  Every metric in the catalog is
     engine or tank telemetry, and the registry deliberately also holds
