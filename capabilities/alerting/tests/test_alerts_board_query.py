@@ -222,6 +222,41 @@ class TestSegmentCounts:
         assert counts["new"] == 4
         assert counts["all"] == 5
 
+    async def test_the_badge_and_its_list_agree_on_every_tab(self, seeded, pg_db):
+        """The mismatch that shipped: the tab badge said 4,699 while the
+        list under it held 12,759 rows.  The list path passes its legacy
+        ack_state default ("active") alongside ``view``, and the days
+        window keyed on ack_state — so the counts endpoint (which passes
+        ack_state="all") windowed while the list did not.  A badge and
+        the list it labels must be the same query; this walks all three
+        tabs, with a window, and an old resolved row seeded to expose
+        any windowing split."""
+        from datetime import datetime, timedelta, timezone
+        app, token, acct = seeded["app"], seeded["token"], seeded["acct"]
+        rows = await pg_db.get_active_alert_history_for_account(acct.id)
+        old_one = next(r for r in rows if r["vehicle_id"] == "V5")
+        await pg_db.acknowledge_alert_history(
+            old_one["id"], 9101, account_id=acct.id)
+        stale = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+        await pg_db._db.execute(
+            "UPDATE alert_history SET first_seen = ? WHERE id = ?",
+            (stale, old_one["id"]))
+        me = await pg_db.get_user_by_telegram_id(9101)
+        # Claim a row that is NOT the one staled out of the window above —
+        # a claim on a windowed-out row is correctly invisible on a
+        # windowed tab, which is a different fact than the one pinned here.
+        fresh = next(r for r in rows if r["vehicle_id"] != "V5")
+        await pg_db.claim_alert(acct.id, me.id, int(fresh["id"]))
+
+        counts = (await _get(
+            app, token, "/api/alerts/pending/segment-counts?days=30"))["counts"]
+        for view in ("new", "all", "mine_working"):
+            listed = await _pending(app, token, f"view={view}&days=30")
+            assert listed["count"] == counts[view], (
+                f"view={view}: badge {counts[view]} != list {listed['count']}")
+        # And "mine" genuinely means mine: exactly the one claim.
+        assert counts["mine_working"] == 1
+
     async def test_requires_auth(self, seeded):
         async with AsyncClient(
             transport=ASGITransport(app=seeded["app"]), base_url="http://t"

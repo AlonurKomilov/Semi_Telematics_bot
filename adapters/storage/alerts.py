@@ -1200,8 +1200,14 @@ class AlertsMixin(_MixinBase):
                 f"   AND wk.alert_history_id = {outer}.id "
                 f"   AND wk.user_id = ?)")
             params.append(int(viewer_user_id))
-        elif view in ("all", "new", "mine_working"):
-            pass                        # "all", or mine_working w/o a viewer
+        elif view == "mine_working":
+            # No resolvable viewer → NO tasks.  The old fallback was
+            # "no predicate", which put the whole account queue under a
+            # tab named "My" — the wrong direction to fail for a
+            # personal view.
+            clauses.append("1 = 0")
+        elif view in ("all", "new"):
+            pass                        # "all"; "new" handled above
         elif ack_state == "active":
             clauses.append(f"{p}status = 'active'")
         elif ack_state == "acknowledged":
@@ -1228,7 +1234,18 @@ class AlertsMixin(_MixinBase):
             cutoff = (
                 datetime.now(timezone.utc) - timedelta(days=int(days))
             ).isoformat()
-            if ack_state == "acknowledged":
+            if view in ("new", "all", "mine_working"):
+                # ``view`` overrides ack_state for the WINDOW exactly as
+                # it does for the status predicate above — the list path
+                # still passes its legacy default ack_state="active", and
+                # keying the window on that skipped it entirely: the New
+                # tab's badge said 4,699 (counts pass ack_state="all")
+                # while the list under it held 12,759 unwindowed rows.
+                # Same per-row rule as 'all': open rows are never hidden
+                # by age, resolved rows honour the window.
+                clauses.append(f"({p}status = 'active' OR {p}first_seen >= ?)")
+                params.append(cutoff)
+            elif ack_state == "acknowledged":
                 clauses.append(f"{p}first_seen >= ?")
                 params.append(cutoff)
             elif ack_state != "active":
