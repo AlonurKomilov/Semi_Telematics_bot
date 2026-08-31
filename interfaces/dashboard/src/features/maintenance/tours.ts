@@ -38,6 +38,12 @@ export const MAINTENANCE_TOURS: readonly TourSpec[] = [
       const sig = ctx.signals?.['maintenance_task:create'];
       return sig ? sig.solo >= 5 : ctx.count >= 5;
     },
+    // The number the intro may honestly speak: solo creates, only
+    // when they clear the same bar relevant() uses — never a guess.
+    observedCount: (ctx) => {
+      const s = ctx.signals?.['maintenance_task:create'];
+      return s && s.solo >= 5 ? s.solo : null;
+    },
     // Already bulk-adds — trail events riding a group id ARE the bulk
     // path.  Retire the tour unseen; teaching this person costs their
     // attention and pays nothing.

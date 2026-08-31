@@ -18,16 +18,35 @@ import type { TourSpec } from './types';
 
 export default function TourIntro({
   tour,
+  observed,
   onShowMe,
   onSkip,
   onSnooze,
 }: {
   tour: TourSpec;
+  /** The genuinely-observed count behind the personalized line, or
+   *  null — see TourSpec.observedCount.  Only reaches a user who
+   *  PRESSED the beacon: the same sentence uninvited is surveillance,
+   *  invited it is an answer. */
+  observed: number | null;
   onShowMe: () => void;
   onSkip: () => void;
   onSnooze: () => void;
 }) {
   const { t } = useTranslation();
+  // The observed variant only renders when the number is real AND the
+  // locale actually carries the string (i18next echoes the key back
+  // when missing — the callouts lane's convention for "not declared").
+  const observedKey = `tour.${tour.key}.intro_observed`;
+  // Numeric on purpose: i18next's plural resolver picks the CLDR
+  // suffix (_one/_few/_many/_other) from a NUMBER — Russian and
+  // Ukrainian decline the noun by count, and a stringified count
+  // would pin every user to one hardcoded form.
+  const observedLine = observed != null
+    ? t(observedKey, { count: observed }) : observedKey;
+  const body = observedLine !== observedKey
+    ? observedLine
+    : t(`tour.${tour.key}.body`);
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onSnooze(); }}>
       <DialogContent size="lg" showCloseButton={false}>
@@ -39,7 +58,7 @@ export default function TourIntro({
             <DialogTitle>{t(`tour.${tour.key}.title`)}</DialogTitle>
           </div>
           <DialogDescription className="pt-1">
-            {t(`tour.${tour.key}.body`)}
+            {body}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

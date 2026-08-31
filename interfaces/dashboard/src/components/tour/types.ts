@@ -107,6 +107,15 @@ export interface TourSpec {
    */
   signals?: readonly string[];
   /**
+   * The observed number behind the personalized intro line — "I
+   * noticed you've added {{count}} tasks one at a time".  Returns
+   * null when the signals don't genuinely show it, and the intro
+   * falls back to the neutral body: the magic is claiming ONLY what
+   * was actually seen, with the real number.  A faked observation is
+   * the surveillance-flavoured version of the same sentence.
+   */
+  observedCount?: (ctx: TourCtx) => number | null;
+  /**
    * The user already DOES what this tour teaches — retire it unseen.
    * A tour about bulk-add shown to someone who bulk-adds weekly is
    * how people learn to close tours without reading them.

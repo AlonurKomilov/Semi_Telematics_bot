@@ -797,7 +797,7 @@
       "step4": "Servis turini tanlab, “Create” tugmasini bosing. Vazifa tanlangan har bir mashinada paydo bo'ladi.",
       "done": "Vazifa siz tanlagan barcha mashinalar uchun yaratildi.",
       "commit": "Bu {{count}} ta haqiqiy vazifa yaratadi — har bir tanlangan mashinaga bittadan. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz.",
-      "intro_observed": "Yaqinda {{count}} ta vazifani bittalab qo'shganingizni ko'rdim. Bitta vazifani bir nechta mashinaga birdan berish mumkin — keyingi vazifangizda ko'rsatib beraymi?"
+      "intro_observed_other": "Yaqinda {{count}} ta vazifani bittalab qo'shganingizni ko'rdim. Bitta vazifani bir nechta mashinaga birdan berish mumkin — keyingi vazifangizda ko'rsatib beraymi?"
     },
     "page": {
       "description": "Barcha turlar bir joyda, qayta o'tish mumkin — tur sizni haqiqiy sahifada o'z ishingiz bo'ylab olib boradi.",

@@ -139,6 +139,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // the people who RUN the settlement, not the people it pays.
   { id: 'kpi_my_payouts', labelKey: 'nav.my_payouts',     path: '/kpi/my-payouts', icon: BadgeDollarSign, modules: ['dispatch'], tier: 'shared', permission: null, navGroup: 'reports' },
   { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
+  // The tour library — every walkthrough, re-runnable.  Page itself is
+  // permissionless like Knowledge Base; each CARD gates on its own
+  // feature's permission + module (features/tours/reachable.ts).
+  { id: 'tours', labelKey: 'nav.tours', path: '/tours', icon: GraduationCap,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
   // Universal operational views — every working persona needs to find a
   // truck, so these live in core (always available) rather than a module.
   { id: 'live_map', labelKey: 'nav.live_map', path: '/live-map', icon: MapIcon, modules: ['core'], tier: 'shared', permission: P_LOCATION, navGroup: 'operations' },

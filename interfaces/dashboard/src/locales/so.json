@@ -936,7 +936,7 @@
       "step4": "Dooro nooca adeegga oo riix “Create”. Hawshu waxay ku abuurmaysaa gaari kasta oo la doortay.",
       "done": "Hawsha waxaa loo abuuray dhammaan gawaarida aad dooratay.",
       "commit": "Tani waxay abuuri doontaa {{count}} hawlood oo dhab ah — mid gaari kasta oo la doortay. Socdaalku halkan buu ku eg yahay; “Create” riixiddu waa go'aankaaga.",
-      "intro_observed": "Waxaan arkay inaad dhawaan {{count}} hawlood mid mid u dartay. Hal hawl waxay hal mar u geli kartaa gawaari badan — ma rabtaa inaan kugu tuso hawshaada xigta?"
+      "intro_observed_other": "Waxaan arkay inaad dhawaan {{count}} hawlood mid mid u dartay. Hal hawl waxay hal mar u geli kartaa gawaari badan — ma rabtaa inaan kugu tuso hawshaada xigta?"
     },
     "page": {
       "description": "Dhammaan socdaallada hal meel, dib loo socon karo — socdaalku wuxuu kugu dhex wadaa shaqadaada bogga dhabta ah.",

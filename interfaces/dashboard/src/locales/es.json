@@ -1164,7 +1164,7 @@
       "step4": "Elija el tipo de servicio y pulse “Create”. La tarea se crea en cada vehículo seleccionado.",
       "done": "La tarea se creó para todos los vehículos seleccionados.",
       "commit": "Esto creará {{count}} tareas reales — una por vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión.",
-      "intro_observed": "He notado que ha agregado {{count}} tareas una por una últimamente. Una tarea puede ir a varios vehículos a la vez — ¿quiere que se lo muestre con su próxima tarea?"
+      "intro_observed_other": "He notado que ha agregado {{count}} tareas una por una últimamente. Una tarea puede ir a varios vehículos a la vez — ¿quiere que se lo muestre con su próxima tarea?"
     },
     "page": {
       "description": "Todos los recorridos, listos para repetir — un tour le guía por su propio trabajo en la página real.",

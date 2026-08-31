@@ -107,7 +107,7 @@ describe('tour catalog', () => {
 });
 
 describe('tour locales', () => {
-  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of', 'finish'];
+  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of', 'finish', 'beacon'];
 
   it('every locale answers every tour completely', () => {
     // title + body + one line per step + done — same questions in all
@@ -123,14 +123,30 @@ describe('tour locales', () => {
         const entry = spot[tour.key];
         if (!entry) { problems.push(`${f}: ${tour.key}`); continue; }
         const last = tour.steps[tour.steps.length - 1];
+        // intro_observed is per-tour OPTIONAL — but English declaring
+        // it makes it required everywhere: a personalized line that
+        // silently falls back to neutral in eight locales is the
+        // "field parity is not translation parity" bug wearing a new
+        // field name.
+        const enHasObserved = Boolean(
+          (load('en.json').tour as Record<string, Record<string, string>>)
+            ?.[tour.key]?.intro_observed_other);
         const want = ['title', 'body', 'done',
           ...(last.commit ? ['commit'] : []),
+          // The personalized line is a CLDR plural FAMILY: _other is
+          // the one form every language has, so it is the required
+          // representative; _one/_few/_many are language-specific and
+          // allowed on top (ru/uk decline the noun by count).
+          ...(enHasObserved ? ['intro_observed_other'] : []),
           ...tour.steps.map((_, i) => `step${i + 1}`)];
         for (const field of want) {
           if (!entry[field]) problems.push(`${f}: ${tour.key}.${field}`);
         }
         // A field no step reads is a promise the engine won't keep.
-        const extra = Object.keys(entry).filter((k) => !want.includes(k));
+        // (Plural variants of intro_observed are read by i18next's
+        // resolver, so the whole family is exempt.)
+        const extra = Object.keys(entry).filter(
+          (k) => !want.includes(k) && !k.startsWith('intro_observed_'));
         for (const k of extra) problems.push(`${f}: ${tour.key}.${k} (nothing reads it)`);
       }
     }

@@ -118,6 +118,7 @@ const CostReports      = lazyWithReload(() => import('./features/reports/CostRep
 const Inspections      = lazyWithReload(() => import('./features/inspections/Inspections'));
 const TruckAnatomy     = lazyWithReload(() => import('./features/truck-anatomy/TruckAnatomy'));
 const KnowledgeBase    = lazyWithReload(() => import('./features/knowledge/KnowledgeBase'));
+const ToursPage        = lazyWithReload(() => import('./features/tours/ToursPage'));
 const TeamManagement   = lazyWithReload(() => import('./features/settings/TeamManagement'));
 const Companies        = lazyWithReload(() => import('./features/settings/Companies'));
 const Integrations     = lazyWithReload(() => import('./features/integrations/Integrations'));
@@ -296,6 +297,8 @@ export default function AppRouter() {
 
         {/* Knowledge Base */}
         <Route path="knowledge" element={L(<KnowledgeBase />)} />
+        {/* The tour library — browse + re-run every walkthrough. */}
+        <Route path="tours" element={L(<ToursPage />)} />
         {/* Truck Anatomy — the taxonomy as a 3D learning model.  Gated
             by can_truck_anatomy: a DARK feature — seeded to nobody,
             the owner included — until granted per-account in the

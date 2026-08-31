@@ -2,22 +2,39 @@
  * The one line a page adds to get tours.
  *
  *     <TourHost feature="maintenance"
- *                    ctx={{ count: allTasks.length, canCreate }} />
+ *               ctx={{ count: allTasks.length, canCreate }} />
  *
- * Picks at most ONE eligible tour for this page (never a queue — a
- * second idea on the same visit is noise), offers the intro, and runs
- * the engine on Show me.  Permission gating happens twice without this
- * component knowing: the page itself is behind the feature's
- * permission, and the tour's `relevant()` sees the ctx.
+ * Two ways in, three phases.  The AUTOMATIC path is an invitation:
+ * eligibility picks at most ONE tour and shows the beacon — a small
+ * spark beside the control the tour teaches — and only a press opens
+ * the intro (beacon → intro → touring).  The MANUAL path is a command:
+ * the Tours page navigates here with ?tour=<key>, and an explicit
+ * "Start tour" overrides every verdict — done, skipped, adopted,
+ * not-relevant — because a person asking to re-learn outranks every
+ * heuristic about whether they need to.  Repetition is how tours
+ * teach; the override is what makes the Tours page a real library
+ * rather than a list of things you may no longer open.
  */
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
 import { useSyncLoaded } from '../../preferences';
 import { TOUR_CATALOG, eligibleTour } from './tourCatalog';
+import TourBeacon from './TourBeacon';
 import TourIntro from './TourIntro';
 import TourOverlay from './TourOverlay';
 import { useTourState } from './useTourState';
 import type { TourCtx, TourSpec } from './types';
+
+/** The manual-launch lookup, pure for testing: the ?tour= key must
+ *  name a catalog tour belonging to THIS page's feature. */
+export function resolveManualTour(
+  feature: string, key: string | null,
+): TourSpec | null {
+  if (!key) return null;
+  return TOUR_CATALOG.find(
+    (t) => t.key === key && t.feature === feature) ?? null;
+}
 
 export default function TourHost({
   feature,
@@ -28,17 +45,32 @@ export default function TourHost({
 }) {
   const { state, record } = useTourState();
   const syncLoaded = useSyncLoaded();
-  // Decide ONCE, and only after the synced verdicts have arrived.
-  // Before hydration the local state can be empty, and deciding on it
-  // re-offers a tour the user skipped on another device — the exact
-  // promise `tour.state`'s synced scope makes.  After deciding,
-  // never revisit: eligibility flipping mid-visit (a task created, the
-  // count crossing the line) must not pop a dialog over someone's
-  // half-filled form.  Next visit is soon enough.
+  const [searchParams, setSearchParams] = useSearchParams();
   const decided = useRef(false);
   const [offered, setOffered] = useState<TourSpec | null>(null);
+  const [observed, setObserved] = useState<number | null>(null);
+  const [phase, setPhase] = useState<'beacon' | 'intro' | 'touring' | 'off'>('beacon');
+
   useEffect(() => {
-    if (!syncLoaded || decided.current) return;
+    // Manual launch is checked BEFORE the decide-once guard, not
+    // behind it: the override must hold by construction, not by the
+    // accident that navigating here happens to remount this host.  A
+    // ?tour= appearing on an already-decided instance (a same-page
+    // relaunch, a future overlay-style Tours panel) still launches.
+    const manual = resolveManualTour(feature, searchParams.get('tour'));
+    if (manual) {
+      decided.current = true;
+      const next = new URLSearchParams(searchParams);
+      next.delete('tour');
+      setSearchParams(next, { replace: true });
+      setOffered(manual);
+      setObserved(null);
+      setPhase('touring');
+      return;
+    }
+    if (decided.current) return;
+
+    if (!syncLoaded) return;
     decided.current = true;
     let cancelled = false;
     (async () => {
@@ -59,12 +91,15 @@ export default function TourHost({
           signals = res.signals;
         } catch { /* degrade, don't silence */ }
       }
-      if (!cancelled) setOffered(eligibleTour(feature, { ...ctx, signals }, state));
+      if (cancelled) return;
+      const full = { ...ctx, signals };
+      const spec = eligibleTour(feature, full, state);
+      setOffered(spec);
+      setObserved(spec?.observedCount?.(full) ?? null);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- decide-once: later ctx/state changes are deliberately ignored
-  }, [syncLoaded]);
-  const [phase, setPhase] = useState<'intro' | 'touring' | 'off'>('intro');
+  }, [syncLoaded, searchParams]);
 
   if (!offered || phase === 'off') return null;
   if (phase === 'touring') {
@@ -76,12 +111,16 @@ export default function TourHost({
       />
     );
   }
-  return (
-    <TourIntro
-      tour={offered}
-      onShowMe={() => setPhase('touring')}
-      onSkip={() => { record(offered.key, 'skipped'); setPhase('off'); }}
-      onSnooze={() => { record(offered.key, 'snoozed'); setPhase('off'); }}
-    />
-  );
+  if (phase === 'intro') {
+    return (
+      <TourIntro
+        tour={offered}
+        observed={observed}
+        onShowMe={() => setPhase('touring')}
+        onSkip={() => { record(offered.key, 'skipped'); setPhase('off'); }}
+        onSnooze={() => { record(offered.key, 'snoozed'); setPhase('off'); }}
+      />
+    );
+  }
+  return <TourBeacon tour={offered} onOpen={() => setPhase('intro')} />;
 }

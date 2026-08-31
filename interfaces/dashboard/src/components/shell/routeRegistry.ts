@@ -100,6 +100,8 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Knowledge
   { label: 'Knowledge Base', path: '/knowledge', icon: BookOpen, group: 'Help', permission: null,
     description: 'Internal docs, SOPs, and guides', keywords: ['docs','help','wiki'] },
+  { label: 'Tours', path: '/tours', icon: GraduationCap, group: 'Help', permission: null,
+    description: 'Interactive walkthroughs — browse and re-run any tour', keywords: ['tour','guide','learn','walkthrough','onboarding'] },
   // ── Added after a responsive audit found the palette could not reach
   //    13 live routes.  This list is a hand-kept SIBLING of
   //    config/featureCatalog.ts — it exists because search needs three
