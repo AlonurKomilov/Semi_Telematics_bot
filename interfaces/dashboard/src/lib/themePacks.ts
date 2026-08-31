@@ -12,7 +12,15 @@
  * hover, the accent as text — is derived by `derivePalette`, and the
  * guard in themePacks.test.ts asserts the CSS we ship equals what the
  * derivation produces. So a pack cannot drift from its seed, and adding
- * one is: append here, paste the generated block into index.css.
+ * one is: append here, paste the generated block into index.css, and
+ * add the id to the boot script's own array in index.html.
+ *
+ * That last one cannot be generated away — the pre-paint script runs
+ * before any module loads and so cannot import this file (design.md §2
+ * rule 4). It is the one copy that stays, and `themeBoot.test.ts`
+ * exists to compare the two: it runs the shipped script against
+ * `applyTheme` over every valid theme and fails on disagreement. It
+ * caught azure's omission on the first run.
  *
  * These are OURS. Nothing in the product edits them — not an account,
  * not an account owner. A user picks from what we prepared, the same way
@@ -38,6 +46,7 @@ export const THEME_PACKS: readonly ThemePack[] = [
   { id: 'blue',   label: 'Blue',   seed: { light: '#2a5cda', dark: '#427bff' } },
   { id: 'purple', label: 'Purple', seed: { light: '#7d40c8', dark: '#9b61ea' } },
   { id: 'green',  label: 'Green',  seed: { light: '#197112', dark: '#38aa2f' } },
+  { id: 'azure',  label: 'Azure',  seed: { light: '#027689', dark: '#0796ae' } },
 ] as const;
 
 /** The three tokens an accent block re-points, and therefore the three a

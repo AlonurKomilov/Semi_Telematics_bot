@@ -862,15 +862,23 @@ the ramp as a categorical BADGE palette, two of them putting the
 colliding slots side by side (`settings/WorkHours`' owner and admin rows,
 `scorecards/DriverInsights`' compliance and efficiency).
 
-The rule, and it is one line: **slot 1 takes the accent, and whichever
-base hue that duplicates is replaced by the hue slot 1 displaced.** Blue
-is the base slot-1 hue, so:
+The rule: **slot 1 takes the accent; whichever slot that collides with
+moves to a hue clear of every remaining slot.**
 
-| accent | slot 2 | why |
-|---|---|---|
-| blue | green (142) | slot 1 was already blue — nothing moved |
-| purple | green (142) | purple displaced blue, and nothing else is near purple |
-| green | **blue (264)** | green would have repeated slot 2, so blue comes back |
+It used to read "…is replaced by the hue slot 1 displaced", and that was
+green's answer mistaken for the rule. Blue happens to sit far from
+everything green leaves behind, so putting it back worked — and it does
+not generalise. Azure collides with slot 5 rather than slot 2, and the
+displaced blue is only 50 degrees away from it: dE2000 **18.8**, still
+under the floor. The displaced hue is the first candidate to try, never
+the answer.
+
+| accent | slot that moves | to | why |
+|---|---|---|---|
+| blue | — | — | slot 1 was already blue, nothing moved |
+| purple | — | — | purple displaced blue, and nothing else is near purple |
+| green | slot 2 | **blue (264)** | green repeated slot 2's 142; blue comes back and clears |
+| azure | slot 5 | **magenta (316)** | azure's 214 is 13° off slot 5's 201; blue reaches only 18.8, 316 reaches 32.8 light / 36.9 dark |
 
 Chroma is the SLOT's, clipped to what sRGB holds at the slot's lightness
 for the new hue — never the accent's. Light keeps 0.15 outright (the

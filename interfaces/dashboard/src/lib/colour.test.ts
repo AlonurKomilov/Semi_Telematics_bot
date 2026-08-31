@@ -64,6 +64,7 @@ const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
 import {
   oklchToSrgb, relLum, contrastRatio as ratio, over, maxChroma, type RGB,
 } from './contrast';
+import { THEME_PACKS } from './themePacks';
 
 // ── token resolution ────────────────────────────────────────────────
 type Val =
@@ -116,7 +117,11 @@ const accentBlock = (mode: 'light' | 'dark', accent: string) =>
     `^ {2}${mode === 'light' ? ':root:not\\(\\.dark\\)' : '\\.dark'}` +
     `\\[data-accent="${accent}"\\] \\{$([\\s\\S]*?)^ {2}\\}$`, 'gm')));
 
-const ACCENTS = ['blue', 'purple', 'green'] as const;
+// From the catalogue, not restated. This was the EIGHTH place the accent
+// set was pinned, and the most expensive to miss: a pack absent from
+// here is a pack whose contrast and chart separation nothing measures,
+// while the suite reports green.
+const ACCENTS = THEME_PACKS.map((p) => p.id);
 const CELLS = (['light', 'dark'] as const).flatMap((mode) =>
   ACCENTS.map((accent) => ({
     name: `${mode} ${accent}`,
@@ -261,6 +266,10 @@ const KNOWN: Record<string, string> = Object.fromEntries([
     'light green | --input on --card',
     'light purple | --input on --background',
     'light purple | --input on --card',
+    'light azure | --input on --background',
+    'light azure | --input on --card',
+    'dark azure | --input on --background',
+    'dark azure | --input on --card',
   ] as const).map((k) => [k, BOUNDARY_REDESIGN] as const),
 ]);
 
@@ -272,6 +281,19 @@ const KNOWN: Record<string, string> = Object.fromEntries([
  * browser is already painting that value.
  */
 const KNOWN_GAMUT: Record<string, number> = {
+  // A new pack ADDS entries here without adding a defect, and that is
+  // the per-cell keying working as designed rather than rot. `--warn`,
+  // `--destructive` and `--chart-3` are declared once on `:root` and
+  // inherited by every light cell; a pack does not touch them, but it
+  // does create a cell in which they are now measured. Keying per cell
+  // is deliberate — taking the max across cells once let a regression in
+  // one hide behind a worse value in another. The values below are
+  // therefore identical to the same tokens' entries in the other cells.
+  'light azure | --destructive': 0.0096,
+  'light azure | --warn': 0.0017,
+  'light azure | --chart-3': 0.0065,
+  'dark azure | --swatch-accent-blue': 0.0057,
+  'dark azure | --chart-3': 0.0055,
   // dark blue
   'dark blue | --chart-1': 0.0057,
   'dark blue | --chart-3': 0.0055,
