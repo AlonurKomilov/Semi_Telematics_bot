@@ -1,8 +1,9 @@
 # AI Import Assistant — spreadsheet → Inventory through the copilot
 
 *Design doc (pre-implementation). Drafted 2026-07-16. Companion to
-[ai-copilot-plan.md](ai-copilot-plan.md) and
-[ai-copilot-phase4-write-actions.md](ai-copilot-phase4-write-actions.md).*
+[ai-copilot-phase4-write-actions.md](ai-copilot-phase4-write-actions.md);
+its other companion, the July copilot plan, was deleted 2026-08-31 as
+shipped-and-superseded (owner call — git history keeps it).*
 
 ## 1. What this is
 
