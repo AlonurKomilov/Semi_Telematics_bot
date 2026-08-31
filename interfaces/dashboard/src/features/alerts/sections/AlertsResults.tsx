@@ -57,10 +57,10 @@ import { useAlertsQuery, buildAlertsFilterParams } from '../_shared/useAlertsQue
 import { apiFetch, apiJSON } from '../../../api/client';
 import { toast } from 'sonner';
 import { useAckAlerts } from '../useRecentAlerts';
-import { addStagedAcks, removeStagedAcks, useStagedAckIds } from '../stagedAcks';
-import { stagedAction } from '../../../components/banners/stagedAction';
+import { useStagedAckIds } from '../stagedAcks';
 import { useAlertSegmentCounts } from '../_shared/useAlertSegmentCounts';
 import { toGridFilters, fromGridFilters } from '../_shared/gridFilterAdapters';
+import { isBoardTrulyEmpty } from '../_shared/emptyState';
 import { familyText,
   STORED_ALERT_TYPES,
   typeText,
@@ -132,7 +132,7 @@ export default function AlertsResults() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const {
-    ackState, setAckState, narrowed, resetToDefaults, days, setDays,
+    ackState, setAckState, narrowed, days, setDays,
     typeFilter, setTypeFilter, severityFilter, setSeverityFilter, setGridFilters,
     vehicleSearch, setVehicleSearch,
     page, setPage, pageSize, setPageSize, sort, dir, setSort,
@@ -517,12 +517,10 @@ export default function AlertsResults() {
   // nothing anywhere, nothing narrowing, no saved tab.  Every other
   // empty result keeps the grid — tabs, counts, chips, search and the
   // Clear-all it already owns — and says its piece inside the table.
-  const otherTabsHaveRows = Object.entries(segmentCounts ?? {})
-    .some(([key, n]) => key !== ackState && (n ?? 0) > 0);
-  const nothingAnywhere = alerts.length === 0
-    && !narrowed && !tab && !otherTabsHaveRows;
-
-  if (nothingAnywhere) {
+  if (isBoardTrulyEmpty({
+    rowCount: alerts.length, narrowed, savedTab: tab,
+    segment: ackState, segmentCounts,
+  })) {
     // "All caught up" is a claim about the FLEET, so it may only be made
     // when nothing is narrowing the view.  With a type / severity /
     // vehicle filter active the honest statement is "nothing matches
