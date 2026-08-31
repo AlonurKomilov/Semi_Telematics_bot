@@ -433,3 +433,66 @@ describe('useAlertsFilters — narrowed (gates the "all caught up" claim)', () =
     expect(result.current.narrowed).toBe(false);
   });
 });
+
+describe('setGridFilters — two filters, ONE navigation', () => {
+  /**
+   * The bug this pins, reported from the live board: clicking a bar in
+   * "Alert volume" filtered the grid to that type, and removing the
+   * resulting chip did nothing — the board stayed stuck on that type.
+   *
+   * ``setSearchParams`` is not React state.  Its updater receives the
+   * params of the render it was called from, so setTypeFilter(...) then
+   * setSeverityFilter(...) in one tick both start from the SAME url and
+   * the second navigation wins, silently reverting the first.
+   */
+  it('clearing the type filter actually clears it', async () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?typeFilter=fault&severityFilter=all&days=7'),
+    });
+    expect(result.current.typeFilter).toBe('fault');
+
+    // Exactly what the grid reports when the Type chip's X is pressed:
+    // type cleared, severity unchanged.
+    act(() => result.current.setGridFilters('all', 'all'));
+
+    await waitFor(() => expect(result.current.typeFilter).toBe('all'));
+    expect(lastSearch).toContain('typeFilter=all');
+  });
+
+  it('writes both dimensions together, neither reverting the other', async () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?typeFilter=all&severityFilter=all&days=7'),
+    });
+    act(() => result.current.setGridFilters('fuel', 'critical'));
+    await waitFor(() => expect(result.current.typeFilter).toBe('fuel'));
+    expect(result.current.severityFilter).toBe('critical');
+  });
+
+  it('two separate setters in one tick still lose one — why the pair exists', async () => {
+    /** Documents the hazard rather than the fix: if this ever starts
+     *  passing, react-router changed and the atomic setter could be
+     *  simplified.  Until then, any NEW pair of filter setters called
+     *  together needs the same treatment. */
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?typeFilter=fault&severityFilter=all&days=7'),
+    });
+    act(() => {
+      result.current.setTypeFilter('all');
+      result.current.setSeverityFilter('all');
+    });
+    await waitFor(() => expect(lastSearch).toContain('severityFilter=all'));
+    expect(result.current.typeFilter).toBe('fault');   // the lost write
+  });
+
+  it('leaves a saved tab, like every other hand-edited filter', async () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t1&typeFilter=fault&severityFilter=all&days=7'),
+    });
+    act(() => result.current.setGridFilters('all', 'all'));
+    await waitFor(() => expect(result.current.tab).toBe(''));
+  });
+});

@@ -133,7 +133,7 @@ export default function AlertsResults() {
   const tz = useTimezone();
   const {
     ackState, setAckState, narrowed, resetToDefaults, days, setDays,
-    typeFilter, setTypeFilter, severityFilter, setSeverityFilter,
+    typeFilter, setTypeFilter, severityFilter, setSeverityFilter, setGridFilters,
     vehicleSearch, setVehicleSearch,
     page, setPage, pageSize, setPageSize, sort, dir, setSort,
     tab, applyTab, clearTab,
@@ -204,9 +204,11 @@ export default function AlertsResults() {
 
   const onGridFiltersChange = useCallback((next: ColumnFiltersState) => {
     const { typeFilter: type, severityFilter: sev } = fromGridFilters(next);
-    setTypeFilter(type);
-    setSeverityFilter(sev);
-  }, [setTypeFilter, setSeverityFilter]);
+    // ONE navigation for both — two setters in one tick and the second
+    // silently reverts the first, which is what made a filter chip
+    // unremovable.  See setGridFilters in useAlertsFilters.
+    setGridFilters(type, sev);
+  }, [setGridFilters]);
   // DataGrid owns the checkbox column + the bulk-action bar now, but
   // the SELECTION still lives in the shared context (LiveAckPanel's
   // sound cue, AlertsBulkError, and the filter-chip clear all read it),

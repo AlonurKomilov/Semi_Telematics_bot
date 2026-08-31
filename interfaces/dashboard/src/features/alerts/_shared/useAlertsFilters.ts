@@ -75,6 +75,9 @@ export interface AlertsFiltersAPI {
   tab: string;
   setTypeFilter: (v: string) => void;
   setSeverityFilter: (v: string) => void;
+  /** Both grid-backed filters in ONE navigation — see the implementation
+   *  note. Writing them as two calls loses the first. */
+  setGridFilters: (typeFilter: string, severityFilter: string) => void;
   setAckState: (v: AlertAckState) => void;
   setVehicleSearch: (v: string) => void;
   setDays: (v: number) => void;
@@ -264,6 +267,31 @@ export function useAlertsFilters(): AlertsFiltersAPI {
       || state.vehicleSearch.trim() !== defaults.vehicleSearch.trim(),
     setTypeFilter: (v) => setParam('typeFilter', v),
     setSeverityFilter: (v) => setParam('severityFilter', v),
+    // The grid reports BOTH dimensions on every change, so they must be
+    // written in ONE navigation.  ``setSearchParams`` is not React state:
+    // its updater receives the params of the render it was called from,
+    // not the result of a call made a line earlier, so two setters in one
+    // tick both start from the same URL and the SECOND one's navigation
+    // wins — silently reverting the first.
+    //
+    // That is what made a filter unremovable.  Clearing the Type chip
+    // called setTypeFilter('all') then setSeverityFilter(unchanged); the
+    // second wrote a URL still carrying typeFilter=fault, so the chip
+    // vanished and the board stayed filtered.  Same for every Alert
+    // volume bar, and for the Type column's own menu.
+    //
+    // ``setSort`` already writes sort+dir atomically for this exact
+    // reason; this pair was the one that got missed.
+    setGridFilters: (type, sev) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('typeFilter', type);
+        next.set('severityFilter', sev);
+        next.set('page', '1');
+        next.delete('tab');      // hand-editing a filter leaves a saved tab
+        return next;
+      });
+    },
     // NOTE: changing ack-state changes which rows are "ackable", so
     // the caller should ALSO clear the selection set via
     // useAlertsSelection().clearSelection().  Kept as the caller's
