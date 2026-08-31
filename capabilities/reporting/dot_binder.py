@@ -71,6 +71,22 @@ class BinderTask:
 
 
 @dataclass
+class BinderDocument:
+    """One paper the truck carries, as a regulator would read it.
+
+    ``expired`` is computed at assembly rather than left to the
+    renderer: whether a certificate was valid is the whole question
+    being asked, and a binder that prints a date without answering it
+    makes the reader do the arithmetic an inspector is paid to do.
+    """
+    doc_type: str
+    file_name: str
+    issued_at: str
+    expires_at: str
+    expired: bool
+
+
+@dataclass
 class BinderVehicle:
     vehicle_name: str
     vehicle_id: str
@@ -86,6 +102,9 @@ class BinderVehicle:
     # 'dot_inspection' — we materialise it once during assembly to
     # avoid filtering in the renderer.
     dot_inspections: list[BinderTask] = field(default_factory=list)
+    # Registration, cab card, insurance, annual inspection — the papers
+    # an inspector asks for first and the binder could not show at all.
+    documents: list[BinderDocument] = field(default_factory=list)
 
 
 @dataclass
@@ -98,6 +117,8 @@ class BinderSummary:
     total_spend: float
     unique_vendors: int
     dot_inspections_completed: int
+    documents_on_file: int
+    documents_expired: int
 
 
 @dataclass
@@ -224,6 +245,31 @@ async def build_dot_binder(
     vendor_set: set[str] = set()
     total_dot = 0
 
+    # The truck's papers — one query for the account, grouped by the
+    # registry id the state rows already carry.  Failing soft: a binder
+    # missing its document pages is worse than one that never builds,
+    # so an unavailable table costs a section rather than the report.
+    docs_by_vehicle: dict[int, list[BinderDocument]] = {}
+    docs_total = docs_expired = 0
+    try:
+        _today = datetime.now(timezone.utc).date().isoformat()
+        for row in await tenant_db.list_account_vehicle_documents(account_id):
+            expires = str(row.get("expires_at") or "")
+            expired = bool(expires) and expires[:10] < _today
+            docs_by_vehicle.setdefault(int(row["vehicle_id"]), []).append(
+                BinderDocument(
+                    doc_type=str(row.get("doc_type") or ""),
+                    file_name=str(row.get("file_name") or ""),
+                    issued_at=str(row.get("issued_at") or ""),
+                    expires_at=expires,
+                    expired=expired,
+                ))
+            docs_total += 1
+            docs_expired += 1 if expired else 0
+    except Exception:
+        logger.warning("DOT binder: documents unavailable for account %s",
+                       account_id, exc_info=True)
+
     for v in state_rows:
         keys = _keys(v)
         if not keys:
@@ -316,6 +362,12 @@ async def build_dot_binder(
             completed_tasks=completed_tasks,
             work_orders=binder_wos,
             dot_inspections=dot_tasks,
+            documents=sorted(
+                docs_by_vehicle.get(v.get("registry_id") or -1, []),
+                # Expired first: the binder should lead with what an
+                # inspector would flag, not bury it alphabetically.
+                key=lambda d: (not d.expired, d.doc_type),
+            ),
         ))
 
     # Sort vehicles by name for deterministic page ordering — the
@@ -337,6 +389,8 @@ async def build_dot_binder(
             work_order_count=total_wo,
             total_spend=round(total_spend, 2),
             unique_vendors=len(vendor_set),
+            documents_on_file=docs_total,
+            documents_expired=docs_expired,
             dot_inspections_completed=total_dot,
         ),
         vehicles=vehicles,

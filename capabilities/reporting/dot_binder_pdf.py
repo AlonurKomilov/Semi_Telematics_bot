@@ -203,6 +203,18 @@ def _render_vehicle(story, styles, vehicle: BinderVehicle) -> None:
     story.append(header_table)
     story.append(Spacer(1, 10))
 
+    # The truck's papers — before everything else, because this is the
+    # first thing asked for at the roadside and in an audit, and the
+    # binder could not show them at all until now.
+    if vehicle.documents:
+        expired = sum(1 for d in vehicle.documents if d.expired)
+        flag = (f"  &nbsp;<font color='{C_RED.hexval()}'>"
+                f"({expired} EXPIRED)</font>" if expired else "")
+        story.append(Paragraph(
+            f"DOCUMENTS ON FILE{flag}", styles["SectionSubtitle"]))
+        _render_document_table(story, styles, vehicle.documents)
+        story.append(Spacer(1, 10))
+
     # DOT inspections — surface first because regulators always look
     # for these.  When the truck has none, we skip the section entirely
     # rather than rendering an empty placeholder.
@@ -256,6 +268,59 @@ def _render_vehicle(story, styles, vehicle: BinderVehicle) -> None:
             styles["NormalBody"],
         ))
         story.append(Spacer(1, 10))
+
+
+def _render_document_table(story, styles, docs) -> None:
+    """The papers this truck carries, as a regulator reads them.
+
+    An EXPIRED row says so in words and in red, rather than printing a
+    date and leaving the reader to do the arithmetic — the whole
+    question being asked is whether the certificate was valid, and a
+    binder that makes an inspector work it out has answered nothing.
+    """
+    rows = [[
+        Paragraph("<b>Document</b>", styles["NormalSmall"]),
+        Paragraph("<b>File</b>", styles["NormalSmall"]),
+        Paragraph("<b>Issued</b>", styles["NormalSmall"]),
+        Paragraph("<b>Expires</b>", styles["NormalSmall"]),
+    ]]
+    for d in docs:
+        label = (d.doc_type or "").replace("_", " ").title()
+        if d.expired:
+            expires = (f"<font color='{C_RED.hexval()}'><b>EXPIRED "
+                       f"{d.expires_at}</b></font>")
+        elif d.expires_at:
+            expires = d.expires_at
+        else:
+            # No date is not a failing: a title never expires.  Say so
+            # rather than leaving a blank cell to read as an omission.
+            expires = f"<font color='{C_GRAY.hexval()}'>no expiry</font>"
+        rows.append([
+            Paragraph(label or "—", styles["NormalSmall"]),
+            Paragraph(_clamp(d.file_name or "—", 60), styles["NormalSmall"]),
+            Paragraph(d.issued_at or "—", styles["NormalSmall"]),
+            Paragraph(expires, styles["NormalSmall"]),
+        ])
+
+    tbl = Table(rows, colWidths=[
+        1.60 * inch,   # document
+        2.90 * inch,   # file
+        1.20 * inch,   # issued
+        1.40 * inch,   # expires
+    ])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",   (0, 0), (-1, 0), C_DARK),
+        ("TEXTCOLOR",    (0, 0), (-1, 0), C_WHITE),
+        ("BOX",          (0, 0), (-1, -1), 0.5, C_GRAY),
+        ("INNERGRID",    (0, 0), (-1, -1), 0.25, C_GRAY),
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING",   (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_WHITE, C_LIGHT_BG]),
+    ]))
+    story.append(tbl)
 
 
 def _render_task_table(
@@ -484,6 +549,8 @@ def _render_signature_page(story, styles, binder: DOTBinder) -> None:
         ["Total spend",                 _money(s.total_spend)],
         ["Unique vendors",              str(s.unique_vendors)],
         ["DOT annual inspections",      str(s.dot_inspections_completed)],
+        ["Documents on file",            str(s.documents_on_file)],
+        ["  of which expired",           str(s.documents_expired)],
     ]
     tbl = Table(sum_rows, colWidths=[3.0 * inch, 3.0 * inch])
     tbl.setStyle(TableStyle([
