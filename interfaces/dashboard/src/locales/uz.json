@@ -171,7 +171,8 @@
     "settings_group": "Sozlamalar",
     "truck_anatomy": "Truck Anatomy",
     "object_storage": "Object Storage",
-    "vehicle_documents": "Hujjatlar"
+    "vehicle_documents": "Hujjatlar",
+    "tours": "Turlar"
   },
   "scorecards": {
     "page_title": "Transport reytinglari",
@@ -245,7 +246,9 @@
     "live_ack": {
       "last_ack": "Oxirgi hal qilingan",
       "hotkey_action": "Work on these"
-    }
+    },
+    "workOn": "Ishga olish",
+    "markSeen": "Ko‘rilgan deb belgilash"
   },
   "vehicles": {
     "page_title": "Transport",
@@ -782,7 +785,8 @@
       "done_title": "Ajoyib ish!",
       "close": "Yopish",
       "step_of": "{{total}} qadamdan {{n}}-qadam",
-      "finish": "Turni yakunlash"
+      "finish": "Turni yakunlash",
+      "beacon": "Bu yerda o'rganadigan narsa bor — turni ochish"
     },
     "maintenance.bulk_add": {
       "title": "Bitta vazifa — bir nechta mashinaga",
@@ -792,7 +796,17 @@
       "step3": "Mashinalarni tanlang — avval bitta-ikkitasida sinab ko'ring; xuddi shu qadam yuztasiga ham ishlaydi.",
       "step4": "Servis turini tanlab, “Create” tugmasini bosing. Vazifa tanlangan har bir mashinada paydo bo'ladi.",
       "done": "Vazifa siz tanlagan barcha mashinalar uchun yaratildi.",
-      "commit": "Bu {{count}} ta haqiqiy vazifa yaratadi — har bir tanlangan mashinaga bittadan. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz."
+      "commit": "Bu {{count}} ta haqiqiy vazifa yaratadi — har bir tanlangan mashinaga bittadan. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz.",
+      "intro_observed": "Yaqinda {{count}} ta vazifani bittalab qo'shganingizni ko'rdim. Bitta vazifani bir nechta mashinaga birdan berish mumkin — keyingi vazifangizda ko'rsatib beraymi?"
+    },
+    "page": {
+      "description": "Barcha turlar bir joyda, qayta o'tish mumkin — tur sizni haqiqiy sahifada o'z ishingiz bo'ylab olib boradi.",
+      "start": "Turni boshlash",
+      "run_again": "Qayta o'tish",
+      "status_new": "Yangi",
+      "status_done": "Bajarildi",
+      "status_skipped": "O'tkazib yuborilgan",
+      "empty": "Rolingiz ochadigan sahifalar uchun hozircha turlar yo'q."
     }
   }
 }

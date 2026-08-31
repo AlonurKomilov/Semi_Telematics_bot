@@ -170,7 +170,8 @@
     "settings_group": "Paramètres",
     "truck_anatomy": "Truck Anatomy",
     "object_storage": "Object Storage",
-    "vehicle_documents": "Documents"
+    "vehicle_documents": "Documents",
+    "tours": "Guides"
   },
   "scorecards": {
     "page_title": "Scorecards Véhicules",
@@ -252,7 +253,9 @@
     "live_ack": {
       "last_ack": "Dernière résolue",
       "hotkey_action": "Work on these"
-    }
+    },
+    "workOn": "S’en occuper",
+    "markSeen": "Marquer comme vu"
   },
   "vehicles": {
     "page_title": "Véhicules",
@@ -1149,7 +1152,8 @@
       "done_title": "Bien joué !",
       "close": "Fermer",
       "step_of": "Étape {{n}} sur {{total}}",
-      "finish": "Terminer le guide"
+      "finish": "Terminer le guide",
+      "beacon": "Quelque chose à apprendre ici — ouvrir le guide"
     },
     "maintenance.bulk_add": {
       "title": "Une tâche pour plusieurs véhicules",
@@ -1159,7 +1163,17 @@
       "step3": "Choisissez les véhicules — essayez avec un ou deux d’abord ; le même geste vaut pour cent.",
       "step4": "Choisissez le type de service puis « Create ». La tâche est créée sur chaque véhicule sélectionné.",
       "done": "La tâche a été créée pour chaque véhicule sélectionné.",
-      "commit": "Ceci créera {{count}} tâches réelles — une par véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient."
+      "commit": "Ceci créera {{count}} tâches réelles — une par véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient.",
+      "intro_observed": "J'ai remarqué que vous avez ajouté {{count}} tâches une par une récemment. Une tâche peut aller à plusieurs véhicules à la fois — voulez-vous que je vous montre, sur votre prochaine tâche ?"
+    },
+    "page": {
+      "description": "Tous les guides, consultables et rejouables — un guide vous accompagne dans votre propre travail sur la vraie page.",
+      "start": "Démarrer",
+      "run_again": "Rejouer",
+      "status_new": "Nouveau",
+      "status_done": "Terminé",
+      "status_skipped": "Ignoré",
+      "empty": "Aucun guide pour les pages que votre rôle peut ouvrir pour l'instant."
     }
   }
 }

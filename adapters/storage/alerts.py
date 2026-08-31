@@ -681,6 +681,48 @@ class AlertsMixin(_MixinBase):
         await self._db.commit()
         return cur.rowcount or 0
 
+    async def mark_filtered_alerts_seen(
+        self, account_id: int, user_id: int, *,
+        alert_type: str | None = None,
+        severity: str | None = None,
+        text_search: str | None = None,
+        view: str | None = None,
+        days: int | None = None,
+    ) -> int:
+        """Mark everything matching a set of FILTERS seen — the backlog's
+        exit door.
+
+        The passive ledger handles the ordinary case: rows drain as they
+        cross a screen.  It has no answer for a person inheriting 4,583
+        unread alerts, which is 183 pages of scrolling to reach a clean
+        tab — a queue nobody can finish stops being a queue, the same
+        finding that killed Acknowledge.
+
+        No id list, deliberately: the caller sends the FILTERS its tab is
+        showing and the server resolves the set, exactly as the grouped
+        claim does.  That keeps the tenancy wall inside the statement
+        (the SELECT never leaves this account), avoids shipping thousands
+        of ids over the wire, and makes it impossible for "mark what I am
+        looking at" to become "mark these ids I guessed".
+
+        Reuses ``_alert_filter_clause``, so what this marks is exactly
+        what the tab counted — including ``view='new'``, whose NOT EXISTS
+        narrows the write to rows this person has not already seen.
+        """
+        frag, fargs = self._alert_filter_clause(
+            alert_type=alert_type, severity=severity, text_search=text_search,
+            view=view, viewer_user_id=user_id, days=days,
+        )
+        cur = await self._db.execute(
+            "INSERT INTO alert_seen (account_id, alert_history_id, user_id, seen_at) "
+            "SELECT account_id, id, ?, ? FROM alert_history "
+            " WHERE account_id = ?" + frag +
+            " ON CONFLICT (account_id, alert_history_id, user_id) DO NOTHING",
+            (int(user_id), self._now(), account_id, *fargs),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0
+
     async def get_seen_for_alerts(
         self, account_id: int, alert_ids: list[int],
     ) -> dict[int, list[dict]]:

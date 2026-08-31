@@ -264,3 +264,87 @@ class TestLeavingAClaim:
         rows = await pg_db.get_active_unacked_history_for_reescalation(
             acct, "9999-01-01T00:00:00", max_attempts=4)
         assert cid in {int(r["id"]) for r in rows}          # left → paging again
+
+
+class TestMarkAllSeen:
+    """The backlog's exit door.
+
+    The passive ledger drains a row when it crosses a screen, which is
+    right for the ordinary case and no answer at all to an inherited
+    4,583 — 183 pages of scrolling to reach a clean tab.  The bulk write
+    takes FILTERS rather than ids, so the danger it must not have is
+    reaching past the tab that asked: these pin the blast radius.
+    """
+
+    async def _extra(self, pg_db, acct, n, severity="warning", atype="fault"):
+        out = []
+        for i in range(n):
+            r = await pg_db.upsert_alert_history(
+                acct, atype, f"veh-b{severity}{i}", f"{700 + i}",
+                alert_subkey=f"b:{severity}:{i}", severity=severity)
+            out.append(int(r["id"]))
+        return out
+
+    async def test_it_marks_the_whole_tab_and_the_tab_empties(self, pg_db):
+        acct, uid, aid = await _seed(pg_db, tg=9990)
+        await self._extra(pg_db, acct, 4)
+        marked = await pg_db.mark_filtered_alerts_seen(acct, uid, view="new")
+        assert marked == 5                      # the seed row + the four
+        # And New is now empty for this person — the point of the button.
+        rows = await pg_db.get_active_alert_history_for_account_paged(
+            acct, view="new", viewer_user_id=uid)
+        assert rows == []
+        assert aid in (await pg_db.get_seen_for_alerts(acct, [aid]))
+
+    async def test_it_marks_only_what_the_filters_show(self, pg_db):
+        """The tab sends the query it is showing, so a severity-filtered
+        board must not clear the rows it is hiding."""
+        acct, uid, _ = await _seed(pg_db, tg=9991)
+        crits = await self._extra(pg_db, acct, 3, severity="critical")
+        warns = await self._extra(pg_db, acct, 2, severity="warning")
+        marked = await pg_db.mark_filtered_alerts_seen(
+            acct, uid, view="new", severity="critical")
+        assert marked == 3
+        seen = await pg_db.get_seen_for_alerts(acct, crits + warns)
+        assert all(c in seen for c in crits)
+        assert not any(w in seen for w in warns)
+
+    async def test_it_is_idempotent_and_personal(self, pg_db):
+        """Running it twice marks nothing new (first-seen wins), and it
+        writes for the CALLER only — a colleague's New is untouched,
+        the same split the tab itself makes."""
+        acct, uid, _ = await _seed(pg_db, tg=9992)
+        await self._extra(pg_db, acct, 2)
+        assert await pg_db.mark_filtered_alerts_seen(acct, uid, view="new") == 3
+        assert await pg_db.mark_filtered_alerts_seen(acct, uid, view="new") == 0
+        colleague = await pg_db.create_user(telegram_id=9993, account_id=acct)
+        theirs = await pg_db.get_active_alert_history_for_account_paged(
+            acct, view="new", viewer_user_id=colleague.id)
+        assert len(theirs) == 3          # nothing of theirs was cleared
+
+    async def test_it_cannot_reach_another_account(self, pg_db):
+        acct, uid, _ = await _seed(pg_db, tg=9994)
+        other = await pg_db.create_account("Bulk Wall Co")
+        theirs = await pg_db.upsert_alert_history(
+            other.id, "fault", "veh-z", "999", alert_subkey="b:wall")
+        await pg_db.mark_filtered_alerts_seen(acct, uid, view="new")
+        assert await pg_db.get_seen_for_alerts(
+            other.id, [int(theirs["id"])]) == {}
+
+    async def test_it_touches_neither_resolution_nor_claims(self, pg_db):
+        """Seen is eyes.  Marking a backlog seen must not resolve
+        anything, must not claim anything, and must not quiet the pager —
+        the invariant every write in this ledger keeps."""
+        acct, uid, aid = await _seed(pg_db, tg=9995)
+        crit = await pg_db.upsert_alert_history(
+            acct, "fault", "veh-p", "801", alert_subkey="b:pager",
+            severity="critical")
+        await pg_db.mark_filtered_alerts_seen(acct, uid, view="new")
+        cur = await pg_db._db.execute(
+            "SELECT status, acknowledged_at FROM alert_history WHERE id = ?", (aid,))
+        row = dict(await cur.fetchone())
+        assert row["status"] == "active" and not row["acknowledged_at"]
+        assert await pg_db.get_workers_for_alerts(acct, [aid]) == {}
+        pager = await pg_db.get_active_unacked_history_for_reescalation(
+            acct, "9999-01-01T00:00:00", max_attempts=4)
+        assert int(crit["id"]) in {int(r["id"]) for r in pager}

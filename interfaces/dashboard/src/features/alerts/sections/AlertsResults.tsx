@@ -33,7 +33,7 @@
  */
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Wrench } from 'lucide-react';
+import { Bell, Wrench, Eye } from 'lucide-react';
 import {
   EmptyState,
   ErrorState,
@@ -284,6 +284,32 @@ export default function AlertsResults() {
           await refetch();
         } catch (e) {
           setBulkError(e instanceof Error ? e.message : 'Could not claim these');
+        }
+      },
+    },
+    {
+      // Seen for a chosen handful — the scoped half of the backlog exit
+      // (the control bar carries the whole-tab one).  No confirm here:
+      // the person picked these rows individually, which is itself the
+      // deliberate act a confirm would be asking for.
+      label: t('alerts.markSeen', { defaultValue: 'Mark seen' }),
+      icon: Eye,
+      onRun: async (rows) => {
+        const ids = rows.map((r) => Number((r as unknown as Alert).id))
+          .filter(Number.isFinite);
+        if (!ids.length) return;
+        try {
+          // Chunked: the id-taking write is capped at 200, and a
+          // select-all across a large page can exceed it.
+          for (let i = 0; i < ids.length; i += 200) {
+            await apiJSON('/alerts/seen', {
+              method: 'POST', body: { ids: ids.slice(i, i + 200) },
+            });
+          }
+          setSelected(new Set());
+          await refetch();
+        } catch (e) {
+          setBulkError(e instanceof Error ? e.message : 'Could not mark these seen');
         }
       },
     },

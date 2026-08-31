@@ -170,7 +170,8 @@
     "settings_group": "Dejimaha",
     "truck_anatomy": "Truck Anatomy",
     "object_storage": "Object Storage",
-    "vehicle_documents": "Dukumentiyada"
+    "vehicle_documents": "Dukumentiyada",
+    "tours": "Socdaallo"
   },
   "scorecards": {
     "page_title": "Scorecards Gawaarida",
@@ -252,7 +253,9 @@
     "live_ack": {
       "last_ack": "Kii u dambeeyay ee la xalliyay",
       "hotkey_action": "Work on these"
-    }
+    },
+    "workOn": "Qaado shaqadan",
+    "markSeen": "Calaamadee la arkay"
   },
   "vehicles": {
     "page_title": "Gawaarida",
@@ -921,7 +924,8 @@
       "done_title": "Shaqo wanaagsan!",
       "close": "Xir",
       "step_of": "Tallaabo {{n}} ee {{total}}",
-      "finish": "Dhammee socdaalka"
+      "finish": "Dhammee socdaalka",
+      "beacon": "Halkan wax la barto ayaa jira — fur socdaalka"
     },
     "maintenance.bulk_add": {
       "title": "Hal hawl — gawaari badan",
@@ -931,7 +935,17 @@
       "step3": "Dooro gawaarida — marka hore hal ama laba ku tijaabi; isla tallaabadaasi boqol bay u shaqaysaa.",
       "step4": "Dooro nooca adeegga oo riix “Create”. Hawshu waxay ku abuurmaysaa gaari kasta oo la doortay.",
       "done": "Hawsha waxaa loo abuuray dhammaan gawaarida aad dooratay.",
-      "commit": "Tani waxay abuuri doontaa {{count}} hawlood oo dhab ah — mid gaari kasta oo la doortay. Socdaalku halkan buu ku eg yahay; “Create” riixiddu waa go'aankaaga."
+      "commit": "Tani waxay abuuri doontaa {{count}} hawlood oo dhab ah — mid gaari kasta oo la doortay. Socdaalku halkan buu ku eg yahay; “Create” riixiddu waa go'aankaaga.",
+      "intro_observed": "Waxaan arkay inaad dhawaan {{count}} hawlood mid mid u dartay. Hal hawl waxay hal mar u geli kartaa gawaari badan — ma rabtaa inaan kugu tuso hawshaada xigta?"
+    },
+    "page": {
+      "description": "Dhammaan socdaallada hal meel, dib loo socon karo — socdaalku wuxuu kugu dhex wadaa shaqadaada bogga dhabta ah.",
+      "start": "Bilow socdaalka",
+      "run_again": "Dib u soco",
+      "status_new": "Cusub",
+      "status_done": "Dhammaystiran",
+      "status_skipped": "La booday",
+      "empty": "Weli socdaallo uma jiraan boggaga doorkaagu furi karo."
     }
   }
 }

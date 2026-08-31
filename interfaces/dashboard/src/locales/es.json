@@ -170,7 +170,8 @@
     "settings_group": "Configuración",
     "truck_anatomy": "Truck Anatomy",
     "object_storage": "Object Storage",
-    "vehicle_documents": "Documentos"
+    "vehicle_documents": "Documentos",
+    "tours": "Tours"
   },
   "scorecards": {
     "page_title": "Tarjetas de Vehículos",
@@ -252,7 +253,9 @@
     "live_ack": {
       "last_ack": "Última resuelta",
       "hotkey_action": "Work on these"
-    }
+    },
+    "workOn": "Trabajar en esto",
+    "markSeen": "Marcar como visto"
   },
   "vehicles": {
     "page_title": "Vehículos",
@@ -1149,7 +1152,8 @@
       "done_title": "¡Buen trabajo!",
       "close": "Cerrar",
       "step_of": "Paso {{n}} de {{total}}",
-      "finish": "Terminar el tour"
+      "finish": "Terminar el tour",
+      "beacon": "Hay algo que aprender aquí — abrir el tour"
     },
     "maintenance.bulk_add": {
       "title": "Una tarea para varios vehículos",
@@ -1159,7 +1163,17 @@
       "step3": "Elija los vehículos — pruebe con uno o dos primero; el mismo paso sirve para cien.",
       "step4": "Elija el tipo de servicio y pulse “Create”. La tarea se crea en cada vehículo seleccionado.",
       "done": "La tarea se creó para todos los vehículos seleccionados.",
-      "commit": "Esto creará {{count}} tareas reales — una por vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión."
+      "commit": "Esto creará {{count}} tareas reales — una por vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión.",
+      "intro_observed": "He notado que ha agregado {{count}} tareas una por una últimamente. Una tarea puede ir a varios vehículos a la vez — ¿quiere que se lo muestre con su próxima tarea?"
+    },
+    "page": {
+      "description": "Todos los recorridos, listos para repetir — un tour le guía por su propio trabajo en la página real.",
+      "start": "Iniciar tour",
+      "run_again": "Repetir",
+      "status_new": "Nuevo",
+      "status_done": "Hecho",
+      "status_skipped": "Omitido",
+      "empty": "Aún no hay tours para las páginas que su rol puede abrir."
     }
   }
 }

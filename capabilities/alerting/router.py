@@ -305,6 +305,70 @@ async def mark_alerts_seen(
     return {"marked": marked}
 
 
+@router.post("/seen/all")
+async def mark_all_alerts_seen(
+    alert_type: str | None = Query(None),
+    severity: str | None = Query(None),
+    q: str | None = Query(None, description="Search vehicle name or location"),
+    view: str | None = Query(None, description="new | all | mine_working"),
+    days: int | None = Query(None, ge=1, le=90),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Mark everything the current tab is showing as seen — the backlog's
+    exit door.
+
+    The passive ledger handles the ordinary case: rows drain as they
+    cross a screen.  It has no answer for a person inheriting 4,583
+    unread alerts, which is 183 pages of scrolling to reach a clean tab
+    — and a queue nobody can finish stops being a queue, the finding
+    that killed Acknowledge in the first place.
+
+    FILTERS, never ids: the caller sends the query its tab is showing and
+    the server resolves the set (the same contract /grouped/work uses),
+    so the tenancy wall lives inside the statement and "mark what I am
+    looking at" cannot become "mark these ids I guessed".
+
+    Scoped callers take the Python path for the same reason /pending
+    does — a driver's own-truck filter and a company restriction cannot
+    be expressed in SQL, and the SQL path would put their name on rows
+    they are not allowed to open.
+    """
+    me_id = await _me_user_id(user)
+    if me_id is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    account_id = user["account_id"]
+
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    allowed = await get_user_company_codes(user)
+    if is_driver_scope or allowed:
+        rows = await tenant_db.get_active_alert_history_for_account_paged(
+            account_id, alert_type=alert_type, severity=severity,
+            text_search=q, days=days, view=view, viewer_user_id=me_id,
+        )
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        if is_driver_scope:
+            alerts = _filter_types_by_permission(user, alerts)
+            alerts = await _filter_own(user, alerts)
+        if allowed:
+            veh_map = await _vehicle_company_map(account_id, tenant_db)
+            alerts = filter_by_company_map(
+                alerts, allowed, veh_map, key="vehicle_id")
+        ids = [int(a["id"]) for a in alerts if a.get("id")]
+        marked = 0
+        # Chunked because the id-taking write is capped at 200 — that cap
+        # guards the scroll reporter's payload and stays where it is.
+        for i in range(0, len(ids), 200):
+            marked += await tenant_db.mark_alerts_seen(
+                account_id, me_id, ids[i:i + 200])
+        return {"marked": marked}
+
+    marked = await tenant_db.mark_filtered_alerts_seen(
+        account_id, me_id, alert_type=alert_type, severity=severity,
+        text_search=q, view=view, days=days)
+    return {"marked": marked}
+
+
 class WorkBatchRequest(BaseModel):
     ids: list[int]
 

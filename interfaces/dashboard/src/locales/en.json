@@ -216,7 +216,8 @@
     "vehicle_inventory": "Inventory",
     "object_storage": "Object Storage",
     "my_payouts": "My payouts",
-    "vehicle_documents": "Documents"
+    "vehicle_documents": "Documents",
+    "tours": "Tours"
   },
   "scorecards": {
     "page_title": "Scorecards",
@@ -374,7 +375,9 @@
       "video_unavailable": "Video not available for this event.",
       "video_request_failed": "Video request failed"
     },
-    "notification_prefs": "Notification preferences"
+    "notification_prefs": "Notification preferences",
+    "workOn": "Work on these",
+    "markSeen": "Mark seen"
   },
   "vehicles": {
     "page_title": "Vehicles",
@@ -1436,7 +1439,8 @@
       "done_title": "Nice work!",
       "close": "Close",
       "step_of": "Step {{n}} of {{total}}",
-      "finish": "Finish tour"
+      "finish": "Finish tour",
+      "beacon": "Something to learn here — open the tour"
     },
     "maintenance.bulk_add": {
       "title": "Add one task to many vehicles",
@@ -1446,7 +1450,17 @@
       "step3": "Pick the vehicles — try one or two first; the same step works for a hundred.",
       "step4": "Choose the service task and press “Create”. The task lands on every selected vehicle.",
       "done": "The task was created for every vehicle you selected.",
-      "commit": "This will create {{count}} real tasks — one per selected vehicle. The tour stops here; pressing “Create” is your call."
+      "commit": "This will create {{count}} real tasks — one per selected vehicle. The tour stops here; pressing “Create” is your call.",
+      "intro_observed": "I noticed you've added {{count}} tasks one at a time recently. One task can go to many vehicles at once — want me to show you, on your own next task?"
+    },
+    "page": {
+      "description": "Every walkthrough, browsable and re-runnable — a tour walks you through your own work on the live page.",
+      "start": "Start tour",
+      "run_again": "Run again",
+      "status_new": "New",
+      "status_done": "Done",
+      "status_skipped": "Skipped",
+      "empty": "No tours available for the pages your role can open yet."
     }
   }
 }
