@@ -200,6 +200,44 @@ express light + purple/green; those collapse to `light`, keeping the mode
 and losing the accent, which is the right half to lose. Delete it, and
 the migration branch, one release after the split ships.
 
+### A mod is a look; the axes are still the state ⭐
+
+A **pack** is a colour: an id, a label and a seed per mode, in
+[`src/lib/themePacks.ts`](src/lib/themePacks.ts). A **mod** is a named
+combination of axes we already have — a pack plus corners plus scale —
+and it costs nothing to add: no seed, no CSS block, no swatch, no ramp
+rotation.
+
+That split is not tidiness. The first draft put `radius` and `size` onto
+the pack, which meant every look needed a hue of its own, and the
+palette has none left to give: every remaining hue either collides with
+`--danger` under simulated colour blindness (352-2, at dE2000 1.6-3.0),
+collides with `--warn` (66-68, at 1.4-2.7), or duplicates a pack we ship
+(274-296, at 1.5-7.5). One look, and we would have been out.
+
+**Applying a mod writes the axes and then forgets.** Nothing records
+"you are on Cab". `activeModId()` recomputes it from the axes each
+render, so tweaking a corner un-highlights the chip on its own — there
+is no modified state to store, invalidate or get wrong.
+
+**A mod never carries `mode`.** Dark or light is about the room a person
+is sitting in — a bright yard office at noon, a cab at 2am — and a look
+that seizes it makes the screen unreadable for exactly the reason they
+chose the other one. `themePacks.test.ts` asserts the field's absence
+structurally, so it cannot be added back by someone reading the field
+list without the reason beside it.
+
+**Size floors at 1, not at `SIZE_MIN`.** The panel's slider starts at
+100% because everything below waits on the 24px hit-target floor (§5.1),
+and a mod that set 0.9 would put the app somewhere its own control
+cannot bring it back from.
+
+This is the axis Opera GX cannot distribute: a GX mod carries colours,
+sounds and wallpapers, while corner radius and density stay user
+settings, unreachable from a mod. Ours are already values on `<html>` —
+`data-radius` and the `--size-*` multipliers — so a mod just carries
+them.
+
 ### Rules this layer enforces
 
 **Never write `text-white` on a tone fill.** Use `text-ok-foreground`,

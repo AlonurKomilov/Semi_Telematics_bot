@@ -30,6 +30,9 @@
  * at runtime.
  */
 import type { ThemeMode } from './palette';
+// Type-only, so no runtime cycle: registry.ts imports THEME_PACKS as a
+// value, and this import is erased.
+import type { ThemeRadius } from '../preferences/registry';
 
 export interface ThemePack {
   /** The stored value, and the `data-accent` attribute. */
@@ -57,3 +60,75 @@ export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as
 
 export const packById = (id: string): ThemePack | undefined =>
   THEME_PACKS.find((p) => p.id === id);
+
+/**
+ * A MOD is a named combination of axes we already have — not a new
+ * colour.
+ *
+ * The first draft put `radius` and `size` onto ThemePack, and that was
+ * wrong twice over. It conflated "a hue with its derived tokens" with "a
+ * look", and it meant every look needed a hue of its own — which the
+ * palette cannot supply. Measured while choosing azure: every remaining
+ * hue either collides with `--danger` under simulated colour blindness,
+ * collides with `--warn`, or duplicates a pack we ship. A model that
+ * demands a new hue per look runs out after one.
+ *
+ * Referencing a pack instead costs nothing: no seed, no CSS block, no
+ * swatch, no ramp rotation. A mod is a row in this list and nothing else.
+ *
+ * And this is the axis Opera GX cannot distribute. A GX mod carries
+ * colours, sounds and wallpapers; corner radius and UI density are
+ * user settings there, unreachable from a mod. Ours are already values
+ * on `<html>` — `data-radius` and the `--size-*` multipliers — so a mod
+ * can simply carry them.
+ */
+export interface ThemeMod {
+  readonly id: string;
+  readonly label: string;
+  /** The colour pack this look wears. Must be a `THEME_PACKS` id. */
+  readonly accent: string;
+  readonly radius?: ThemeRadius;
+  /** The global size multiplier. At or above 1 only — the panel's own
+   *  slider starts at 100% because everything below it waits on the
+   *  24px hit-target floor (design.md §5.1), and a mod must not reach
+   *  somewhere the control cannot follow it back from. */
+  readonly size?: number;
+  /** One line, shown under the label. Says who the look is FOR. */
+  readonly why: string;
+}
+
+/**
+ * Deliberately NOT carrying `mode`. Dark or light is the one axis that
+ * is about the room a person is sitting in — a bright yard office at
+ * noon, a cab at 2am — and a look that seizes it makes the screen
+ * unreadable for exactly the reason they chose the other one. A mod
+ * dresses the app; it does not decide where you are.
+ */
+export const THEME_MODS: readonly ThemeMod[] = [
+  { id: 'cab',  label: 'Cab',  accent: 'azure', radius: 'pill',    size: 1.25,
+    why: 'Tablet in a moving truck — bigger targets, gloved hands' },
+  { id: 'wall', label: 'Wall', accent: 'blue',  radius: 'rounded', size: 1.45,
+    why: 'A display read from across the room' },
+] as const;
+
+export const modById = (id: string): ThemeMod | undefined =>
+  THEME_MODS.find((m) => m.id === id);
+
+/**
+ * Which mod, if any, the current axes ADD UP TO — `''` for none.
+ *
+ * Here rather than in the panel because it is the only interesting logic
+ * a mod has, and inside a component it could only be tested by rendering
+ * one. It is also the answer to "what happens when someone tweaks a
+ * corner after applying a look": nothing is stored, nothing is
+ * invalidated, the sum simply stops matching and the chip goes quiet.
+ */
+export const activeModId = (
+  accent: string, radius: string, size: number,
+): string =>
+  THEME_MODS.find((m) =>
+    m.accent === accent
+    && (m.radius === undefined || m.radius === radius)
+    // Float compare: the size arrives from a slider and a stored JSON
+    // round-trip, so `===` against 1.25 is a coin toss.
+    && (m.size === undefined || Math.abs(m.size - size) < 1e-6))?.id ?? '';

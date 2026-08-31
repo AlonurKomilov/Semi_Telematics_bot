@@ -8,7 +8,9 @@ import { Tip } from './tooltip';
 import { useTheme, applySize, type Mode, type Accent, type RadiusVariant } from '../context/ThemeContext';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
-import { THEME_PACKS } from '../lib/themePacks';
+import {
+  THEME_PACKS, THEME_MODS, activeModId, modById, type ThemeMod,
+} from '../lib/themePacks';
 
 // ── Option rows ──────────────────────────────────────────────
 //
@@ -52,6 +54,20 @@ const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }
     label: p.label,
     dot: `var(--swatch-accent-${p.id})`,
   }));
+
+/**
+ * A mod is a whole look, so it sits ABOVE the three axes it sets: pick a
+ * look, then tweak. Touch any of those axes afterwards and the mod chip
+ * un-highlights on its own — no "modified" state to keep, because the
+ * axes ARE the state and a mod is only ever a way of writing them.
+ */
+const MOD_OPTIONS = THEME_MODS.map((m) => ({
+  value: m.id,
+  label: m.label,
+  why: m.why,
+  dot: `var(--swatch-accent-${m.accent})`,
+  mod: m,
+}));
 
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
   { value: 'sharp',   key: 'theme.corners_sharp',   label: 'Sharp' },
@@ -103,6 +119,20 @@ function Chip<T extends string>({
 export function ThemeToggle() {
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useTheme();
+
+  // A mod is "on" only while every axis it declares still matches. Tweak
+  // the corners and it goes off — what is applied is the axes, and the
+  // mod was only the thing that wrote them.
+  const activeMod = activeModId(theme.accent, theme.radius, size.global);
+  const activeWhy = modById(activeMod)?.why ?? '';
+
+  const applyMod = (m: ThemeMod) => {
+    setTheme({
+      accent: m.accent as Accent,
+      ...(m.radius === undefined ? {} : { radius: m.radius }),
+    });
+    if (m.size !== undefined) setSize({ global: m.size });
+  };
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -165,6 +195,31 @@ export function ThemeToggle() {
         >
 
           {/* Color theme */}
+          {MOD_OPTIONS.length > 0 && (
+            <>
+              <div>
+                <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                  {t('theme.group_look', 'Look')}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {MOD_OPTIONS.map((o) => (
+                    <Chip key={o.value} value={o.value} current={activeMod} label={o.label} dot={o.dot}
+                      onClick={() => applyMod(o.mod)} />
+                  ))}
+                </div>
+                {/* Only for the mod actually applied. A line under every
+                    chip would crowd a panel that already carries three
+                    controls; a line under the one in force says what you
+                    just chose, which is when it is worth reading. */}
+                {activeWhy && (
+                  <p className="text-2xs text-muted-foreground mt-1.5">{activeWhy}</p>
+                )}
+              </div>
+
+              <div className="border-t border-border" />
+            </>
+          )}
+
           <div>
             <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
               {t('theme.group_color', 'Color')}

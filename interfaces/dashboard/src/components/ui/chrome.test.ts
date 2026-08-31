@@ -1695,8 +1695,21 @@ describe('UI chrome', () => {
     // read from the one list that owns them.
     expect(registry, 'THEME_ACCENTS was re-pinned to a literal — read the catalogue instead')
       .toMatch(/THEME_ACCENTS[^=]*=\s*THEME_PACKS\.map/);
-    const accents = [...packs.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+    // From the THEME_PACKS array ONLY. themePacks.ts also declares
+    // THEME_MODS, whose entries have ids too — and a mod is a
+    // combination of axes, not an accent: it wears a pack's colour and
+    // has no CSS block of its own. Scanning the whole file for `id:`
+    // demanded a block for every mod and failed the moment the first two
+    // were added.
+    const packArray = /THEME_PACKS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
+    expect(packArray, 'could not find the THEME_PACKS array').not.toBe('');
+    const accents = [...packArray.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
     expect(accents.length, 'no packs found in lib/themePacks.ts').toBeGreaterThan(0);
+    // And the mods must NOT be in it — if this ever collects one, the
+    // scan above has widened again.
+    const modArray = /THEME_MODS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
+    for (const m of [...modArray.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((x) => x[1]))
+      expect(accents, `mod "${m}" was collected as an accent`).not.toContain(m);
 
     const modes = list('THEME_MODES');
     expect(modes).toEqual(['dark', 'light']);
