@@ -23,6 +23,10 @@ The contract for reading them:
 one group_id (see new_group_id in the activity_trail capability), so
 grouped counts ARE the "already uses the bulk path" signal and solo
 counts the "does it one at a time" signal.
+
+The MAP of the whole system — four homes, cross-layer contracts, the
+decision log — is docs/architecture/tours.md; frontend authoring rules
+are interfaces/dashboard/src/components/tour/CLAUDE.md.
 """
 
 # Every signal a tour may ask about.  Adding a pair is a deliberate,

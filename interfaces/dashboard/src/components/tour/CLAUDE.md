@@ -6,6 +6,10 @@ performs the real action. No slides, no demo mode — the ending is a
 real write the user chose to make. This folder is the ENGINE; it knows
 no feature. Everything a feature contributes is data.
 
+The UNIVERSAL map — cross-layer contracts and the decision log any
+layer must honour — is [docs/architecture/tours.md](../../../../../docs/architecture/tours.md);
+this file is the working rules for authoring here.
+
 ## Where things live (one concept, four homes)
 
 | | |
