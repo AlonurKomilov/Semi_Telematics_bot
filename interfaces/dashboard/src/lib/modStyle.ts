@@ -38,6 +38,38 @@
 const STYLE_ID = 'mod-tokens';
 
 /**
+ * The attribute that tells the app something changed.
+ *
+ * Three MutationObservers watch the theme and read token values into
+ * JavaScript — the WebGL scene in truck-anatomy, the DataGrid's canvas
+ * paths, and the radius reader. Every one of them observes ATTRIBUTES on
+ * `<html>`:
+ *
+ *   truck-anatomy/colors.ts  ['class','data-theme','data-accent']
+ *   DataGrid.tsx             [… ,'data-radius','style']
+ *   lib/radius.ts            [… ,'data-radius','style']
+ *
+ * Adding a `<style>` element to `<head>` fires NONE of them, not even
+ * the two that already list `style` — that filter is about the style
+ * ATTRIBUTE on the observed element, not about stylesheets. So an
+ * injected palette would repaint the CSS and leave every JS-side reader
+ * holding the previous theme's colours: a 3D truck in last week's blue.
+ *
+ * Stamping a hash of the sheet is the cheap fix. It rides machinery that
+ * already exists in all three places rather than inventing a
+ * subscription, and hashing rather than counting means re-applying an
+ * identical palette is a no-op instead of a spurious repaint.
+ */
+const MOD_ATTR = 'data-mod';
+
+/** djb2, enough to notice a changed declaration. Not a checksum. */
+const digest = (s: string): string => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+};
+
+/**
  * What a mod may install.
  *
  * The same blast radius `palette.ts` already enforces, for the same
@@ -140,6 +172,7 @@ export function applyModTokens(
 
   if (!tokens || Object.keys(tokens).length === 0) {
     existing?.remove();
+    delete doc.documentElement.dataset.mod;
     return result;
   }
 
@@ -151,7 +184,11 @@ export function applyModTokens(
   }
   result.applied = decls.length;
 
-  if (decls.length === 0) { existing?.remove(); return result; }
+  if (decls.length === 0) {
+    existing?.remove();
+    delete doc.documentElement.dataset.mod;
+    return result;
+  }
 
   // `@media screen` is the whole print story — see the header.
   const css = `@media screen {\n  :root {\n    ${decls.join('\n    ')}\n  }\n}`;
@@ -165,6 +202,9 @@ export function applyModTokens(
     doc.head.appendChild(el);
   }
   el.textContent = css;
+  // Last, so an observer that reads tokens back sees the new sheet
+  // already in the document.
+  doc.documentElement.setAttribute(MOD_ATTR, digest(css));
   return result;
 }
 
@@ -172,4 +212,29 @@ export function applyModTokens(
  *  in the app should be reading its own stylesheet back. */
 export function modStyleText(doc: Document = document): string | null {
   return doc.getElementById(STYLE_ID)?.textContent ?? null;
+}
+
+/**
+ * A seed, turned into exactly the tokens a mod may install.
+ *
+ * The bridge between the two halves that already existed and had no
+ * caller: `derivePalette` knows how to turn a canvas and an accent into
+ * 24 legible tokens, and `applyModTokens` knows how to install a value
+ * safely. This is the two-line join, and it is here rather than in a
+ * component so the whole path can be tested without rendering one.
+ *
+ * The filter is not defensive padding. `derivePalette` is OUR code and
+ * its output is trustworthy, but the list it may write to is the
+ * contract — and a token added to the palette without being added here
+ * should fail loudly at the boundary rather than half-install.
+ */
+export function seedTokens(
+  seed: { mode: 'dark' | 'light'; canvas: string; brand: string },
+  derive: (s: typeof seed) => Record<string, string> | null,
+): Record<string, string> | null {
+  const palette = derive(seed);
+  if (!palette) return null;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(palette)) if (isModToken(k)) out[k] = v;
+  return Object.keys(out).length ? out : null;
 }

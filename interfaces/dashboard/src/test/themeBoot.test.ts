@@ -66,6 +66,8 @@ interface Stamp {
   theme?: string;
   accent?: string;
   radius?: string;
+  material?: string;
+  motion?: string;
   vars: Record<string, string>;
 }
 
@@ -86,6 +88,13 @@ function stamp(): Stamp {
     theme: root.dataset.theme,
     accent: root.dataset.accent,
     radius: root.dataset.radius,
+    // Every axis the two implementations stamp has to be COMPARED, not
+    // merely enumerated. `material` and `motion` were added to the sweep
+    // above as inputs while this object still listed four fields, so the
+    // two could have disagreed on either and the suite stayed green —
+    // exactly the silent drift this file exists to prevent.
+    material: root.dataset.material,
+    motion: root.dataset.motion,
     vars,
   };
 }
@@ -119,6 +128,8 @@ function resetRoot() {
   delete root.dataset.theme;
   delete root.dataset.accent;
   delete root.dataset.radius;
+  delete root.dataset.material;
+  delete root.dataset.motion;
   root.removeAttribute('style');
 }
 

@@ -588,7 +588,7 @@ function SegmentTab({
     };
     read();
     const mo = new MutationObserver(read);
-    mo.observe(root, { attributes: true, attributeFilter: ['class', 'data-theme', 'data-accent', 'data-radius', 'style'] });
+    mo.observe(root, { attributes: true, attributeFilter: ['class', 'data-theme', 'data-accent', 'data-radius', 'style', 'data-mod'] });
     return () => mo.disconnect();
   }, []);
 

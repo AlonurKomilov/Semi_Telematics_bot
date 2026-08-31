@@ -62,7 +62,12 @@ export function useSceneTokens(): SceneTokens {
       // WHITELIST, so an attribute it does not name produces no callback
       // at all — nothing throws and nothing logs, the colours simply
       // stop following the picker.
-      attributes: true, attributeFilter: ['class', 'data-theme', 'data-accent'],
+      attributes: true,
+      // `data-mod` because an injected palette arrives as a <style>
+      // element, which fires no attribute mutation of its own — see
+      // lib/modStyle.ts. Without it this scene keeps the boot theme's
+      // six colours for the life of the page.
+      attributeFilter: ['class', 'data-theme', 'data-accent', 'data-mod'],
     });
     return () => observer.disconnect();
   }, []);

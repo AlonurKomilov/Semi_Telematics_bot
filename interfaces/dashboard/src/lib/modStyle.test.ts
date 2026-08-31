@@ -10,14 +10,19 @@
  * nervous about.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
-  applyModTokens, modStyleText, isSafeValue, isModToken, MOD_TOKENS,
+  applyModTokens, modStyleText, isSafeValue, isModToken, MOD_TOKENS, seedTokens,
 } from './modStyle';
-import { DERIVED_TOKENS } from './palette';
+import { DERIVED_TOKENS, derivePalette } from './palette';
 
 const sheet = () => document.getElementById('mod-tokens');
 
-beforeEach(() => { document.getElementById('mod-tokens')?.remove(); });
+beforeEach(() => {
+  document.getElementById('mod-tokens')?.remove();
+  delete document.documentElement.dataset.mod;
+});
 
 describe('installing tokens', () => {
   it('writes a rule and puts it last in head', () => {
@@ -195,5 +200,92 @@ describe('one bad value does not blank a theme', () => {
     expect(css).not.toContain('display');
     // And the sheet is still one well-formed rule, not a torn one.
     expect((css.match(/\{/g) || []).length).toBe((css.match(/\}/g) || []).length);
+  });
+});
+
+describe('telling the app that something changed', () => {
+  it('stamps data-mod, because a <style> element fires no observer', () => {
+    // Three MutationObservers read token values into JavaScript and all
+    // three watch ATTRIBUTES on <html>. Adding a stylesheet to <head>
+    // fires none of them — not even the two whose filter lists `style`,
+    // which is about the style ATTRIBUTE. Without this stamp an injected
+    // palette repaints the CSS and leaves the 3D scene, the grid's
+    // canvas and the radius reader on the previous theme.
+    applyModTokens({ '--card': '#101418' });
+    expect(document.documentElement.dataset.mod).toBeTruthy();
+  });
+
+  it('changes the stamp when the tokens change, and not otherwise', () => {
+    applyModTokens({ '--card': '#101418' });
+    const first = document.documentElement.dataset.mod;
+    applyModTokens({ '--card': '#101418' });
+    expect(document.documentElement.dataset.mod, 're-applying an identical palette should be a no-op')
+      .toBe(first);
+    applyModTokens({ '--card': '#202428' });
+    expect(document.documentElement.dataset.mod).not.toBe(first);
+  });
+
+  it('removes the stamp with the sheet', () => {
+    applyModTokens({ '--card': '#101418' });
+    applyModTokens(null);
+    expect(document.documentElement.dataset.mod).toBeUndefined();
+    applyModTokens({ '--card': '#101418' });
+    applyModTokens({ '--nope': 'x' });   // nothing valid survives
+    expect(document.documentElement.dataset.mod).toBeUndefined();
+  });
+
+  it('is watched by every observer that reads a token', () => {
+    // A new observer that reads tokens and forgets this attribute is a
+    // surface that silently keeps the old theme, so the list is checked
+    // rather than trusted.
+    const SRC = join(__dirname, '..');
+    for (const f of [
+      'features/truck-anatomy/colors.ts',
+      'components/datagrid/DataGrid.tsx',
+      'lib/radius.ts',
+    ]) {
+      const src = readFileSync(join(SRC, f), 'utf8');
+      const filter = /attributeFilter:\s*\[([^\]]*)\]/.exec(src)?.[1] ?? '';
+      expect(filter, `${f} has no attributeFilter`).not.toBe('');
+      expect(filter, `${f} will not see an injected palette`).toContain('data-mod');
+    }
+  });
+});
+
+describe('a seed all the way to the sheet', () => {
+  it('derives, filters and installs in one path', () => {
+    const tokens = seedTokens(
+      { mode: 'dark', canvas: '#0b0d10', brand: '#0796ae' }, derivePalette)!;
+    expect(tokens).not.toBeNull();
+    // Everything the palette derives is installable, and nothing else
+    // got through.
+    for (const t of DERIVED_TOKENS) expect(tokens[t], `${t} missing`).toBeTruthy();
+    for (const k of Object.keys(tokens)) expect(isModToken(k)).toBe(true);
+
+    const r = applyModTokens(tokens);
+    expect(r.rejectedNames).toEqual([]);
+    expect(r.rejectedValues, 'derivePalette produced a value the injector refuses')
+      .toEqual([]);
+    expect(r.applied).toBe(Object.keys(tokens).length);
+    expect(modStyleText()).toContain('--background');
+  });
+
+  it('drops a token the palette invented but no mod may install', () => {
+    // The filter is a no-op today — derivePalette emits exactly the 24
+    // names MOD_TOKENS allows — so it has to be tested against a
+    // derivation that does not, or nothing proves it is there. Its whole
+    // purpose is the day the palette grows a token and this list has not:
+    // the boundary should drop it, not half-install a palette.
+    const rogue = seedTokens(
+      { mode: 'dark', canvas: '#0b0d10', brand: '#0796ae' },
+      (seed) => ({ ...derivePalette(seed)!, '--danger': '#00ff00', '--chart-1': '#fff' }),
+    )!;
+    expect(rogue['--danger']).toBeUndefined();
+    expect(rogue['--chart-1']).toBeUndefined();
+    expect(rogue['--background'], 'the legal tokens should still be there').toBeTruthy();
+  });
+
+  it('returns null rather than half a palette', () => {
+    expect(seedTokens({ mode: 'dark', canvas: 'nope', brand: '#fff' }, derivePalette)).toBeNull();
   });
 });

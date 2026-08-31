@@ -349,6 +349,41 @@ describe('resetAll sweeps family keys', () => {
       }
     });
 
+    it('carries a person\'s own tokens, and only the legal ones', () => {
+      // The field exists because the sanitiser DROPS what it does not
+      // name — that discipline is the migration funnel for all four read
+      // paths, so a mod's values needed a named home rather than an
+      // exception. Storage is untrusted: a value can arrive from another
+      // tab, the sync channel, or someone editing localStorage by hand.
+      const out = sanitize({
+        mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
+        motion: 'default', color: 'dark-blue',
+        tokens: {
+          '--card': '#101418',                  // legal
+          '--danger': '#00ff00',                // not a token a mod may set
+          '--popover': 'red } body { color:red', // not a value at all
+          '--muted': 'oklch(0.2 0 0)',          // legal
+        },
+      }) as { tokens?: Record<string, string> };
+      expect(out.tokens).toEqual({ '--card': '#101418', '--muted': 'oklch(0.2 0 0)' });
+    });
+
+    it('stores no tokens key at all when none survive', () => {
+      // "No custom tokens" and "an empty set of them" should not be two
+      // states — the injector reads the absence as "remove the sheet".
+      const out = sanitize({
+        mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
+        motion: 'default', color: 'dark-blue', tokens: { '--danger': '#fff' },
+      }) as Record<string, unknown>;
+      expect('tokens' in out).toBe(false);
+      for (const junk of [null, 'x', 42, ['--card']]) {
+        const r = sanitize({ mode: 'dark', accent: 'blue', radius: 'rounded',
+          material: 'solid', motion: 'default', color: 'dark-blue', tokens: junk,
+        }) as Record<string, unknown>;
+        expect('tokens' in r, `tokens: ${JSON.stringify(junk)}`).toBe(false);
+      }
+    });
+
     it('keeps a post-split value untouched', () => {
       expect(sanitize({ mode: 'light', accent: 'green', radius: 'sharp', material: 'solid', motion: 'default', color: 'light' }))
         .toEqual({ mode: 'light', accent: 'green', radius: 'sharp', material: 'solid', motion: 'default', color: 'light' });

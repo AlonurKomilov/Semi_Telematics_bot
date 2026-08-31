@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { usePreference } from '../preferences';
 import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
+import { applyModTokens } from '../lib/modStyle';
 import type {
   ThemeColor,
   ThemeMode,
@@ -109,6 +110,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // the DOM and exposes the partial-update ergonomics consumers expect.
   const { value: theme, setValue: setThemeValue } = usePreference('theme');
   const { value: size, setValue: setSizeValue } = usePreference('size');
+
+  // Deliberately NOT inside `applyTheme`. That function is the mapping
+  // the pre-paint script re-implements, and `themeBoot.test.ts` compares
+  // the two — a stylesheet the boot script cannot write would show up as
+  // permanent drift. Custom tokens therefore arrive one frame after
+  // hydration, which is the honest cost of the boot script not being
+  // able to import a validator.
+  useEffect(() => {
+    applyModTokens(theme.tokens ?? null);
+  }, [theme.tokens]);
 
   useEffect(() => {
     applyTheme(theme);

@@ -34,6 +34,7 @@
  */
 
 import { THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS } from '../lib/themePacks';
+import { isModToken, isSafeValue, MOD_TOKENS } from '../lib/modStyle';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -168,6 +169,16 @@ export interface ThemeSetting {
   material: ThemeMaterial;
   /** How fast the app moves. */
   motion: ThemeMotion;
+  /**
+   * Token values this person authored, installed over the preset.
+   *
+   * A NAMED field, validated, rather than "keep whatever the stored
+   * object had". The sanitiser rebuilds field by field on purpose — it
+   * is the migration funnel for all four read paths — and preserving
+   * unnamed keys to make room for a mod would turn that discipline into
+   * a hole exactly where untrusted data arrives.
+   */
+  tokens?: Record<string, string>;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -344,6 +355,23 @@ export const DEFS = {
       const motion = THEME_MOTION_LIST.includes(o.motion as ThemeMotion)
         ? o.motion as ThemeMotion : THEME_DEFAULT.motion;
 
+      // Sanitised through the injector's OWN validators, so the rules
+      // are stated once. Storage is untrusted input like any other — a
+      // value can arrive from another tab, the sync channel, or a person
+      // editing localStorage by hand.
+      let tokens: Record<string, string> | undefined;
+      if (o.tokens && typeof o.tokens === 'object' && !Array.isArray(o.tokens)) {
+        const kept: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o.tokens as Record<string, unknown>)) {
+          if (!isModToken(k) || !isSafeValue(v)) continue;
+          // Capped at the number of tokens that exist, so a corrupted
+          // store cannot grow the object without bound.
+          if (Object.keys(kept).length >= MOD_TOKENS.length) break;
+          kept[k] = String(v).trim();
+        }
+        if (Object.keys(kept).length) tokens = kept;
+      }
+
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
       // name, so a split that forgot this branch would hand every
@@ -358,7 +386,13 @@ export const DEFS = {
         : LEGACY_COLOR[o.color as ThemeColor]
           ?? { mode: THEME_DEFAULT.mode, accent: THEME_DEFAULT.accent };
 
-      return { mode, accent, radius, material, motion, color: themeColorAlias(mode, accent) };
+      return {
+        mode, accent, radius, material, motion,
+        // Omitted when empty rather than stored as `{}`: "no custom
+        // tokens" and "an empty set of them" should not be two states.
+        ...(tokens ? { tokens } : {}),
+        color: themeColorAlias(mode, accent),
+      };
     },
     note: 'Colour scheme and corner radius.',
   }),
