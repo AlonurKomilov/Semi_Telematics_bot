@@ -221,6 +221,11 @@ export default {
       // would need restating; that distinction is the whole difference.)
       textColor: {
         primary: { DEFAULT: tokenColor('--primary-text') },
+        // Same split, same reason: the primitives ship
+        // `bg-destructive/10 text-destructive`, so the token is read ON
+        // a wash of itself. `foreground` reaches through the deep merge
+        // — do not restate it.
+        destructive: { DEFAULT: tokenColor('--destructive-text') },
       },
       fontFamily: { heading: ['var(--font-heading)', ...defaultTheme.fontFamily.sans] },
       colors: {

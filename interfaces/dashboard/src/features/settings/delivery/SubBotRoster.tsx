@@ -152,7 +152,7 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
                     {t('alert_routing.main_sends')}
                   </Badge>
                   <button type="button" onClick={() => setOpenInput(`token-${persona}`)}
-                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap">
+                    className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition min-h-tap">
                     {t('alert_routing.subbot_attach')}
                   </button>
                 </>
@@ -168,7 +168,7 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
                   />
                   <button type="button" onClick={() => { void attach(persona); }}
                     disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
-                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50 min-h-tap">
+                    className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition disabled:opacity-50 min-h-tap">
                     {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
                   </button>
                   <button type="button" onClick={() => setOpenInput('')}

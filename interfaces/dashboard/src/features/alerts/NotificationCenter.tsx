@@ -144,7 +144,7 @@ export default function NotificationCenter() {
               disabled={loading}
               className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-60 ${
                 filter === f.key
-                  ? 'bg-primary/15 text-primary'
+                  ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               } min-h-tap`}
             >

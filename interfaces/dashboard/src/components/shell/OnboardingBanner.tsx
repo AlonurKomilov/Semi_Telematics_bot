@@ -99,7 +99,7 @@ export default function OnboardingBanner({
     <div className={cn(cardVariants({ padding: 'default' }), 'bg-gradient-to-br from-primary/10 via-card to-card border-primary/30 mb-6')}>
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-primary">
+          <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-foreground ring-1 ring-primary">
             <Sparkles className="size-4.5" />
           </span>
           <div>

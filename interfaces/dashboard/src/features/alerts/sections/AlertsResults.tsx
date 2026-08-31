@@ -500,38 +500,40 @@ export default function AlertsResults() {
     return <TableSkeleton rows={6} cols={5} />;
   }
 
-  if (alerts.length === 0) {
+  // An empty PAGE is not an empty ACCOUNT.  These segments are
+  // CONTROLLED — the server slices them — so the rows in hand are one
+  // tab under one set of filters, and the counts for the other tabs say
+  // plainly whether anything else exists.
+  //
+  // The tab strip lives INSIDE the grid, so returning a page-level empty
+  // state here deletes the control that would carry you to the tab that
+  // DOES have rows.  Clicking "Mechanical health 2" in Alert volume did
+  // exactly that: New held 0 (both already seen), the grid unmounted,
+  // and All 2 became unreachable without a reload — the dead end
+  // components/datagrid/CLAUDE.md warns about, reported from the live
+  // board.
+  //
+  // So the full-page state is reserved for the one case it is true of:
+  // nothing anywhere, nothing narrowing, no saved tab.  Every other
+  // empty result keeps the grid — tabs, counts, chips, search and the
+  // Clear-all it already owns — and says its piece inside the table.
+  const otherTabsHaveRows = Object.entries(segmentCounts ?? {})
+    .some(([key, n]) => key !== ackState && (n ?? 0) > 0);
+  const nothingAnywhere = alerts.length === 0
+    && !narrowed && !tab && !otherTabsHaveRows;
+
+  if (nothingAnywhere) {
     // "All caught up" is a claim about the FLEET, so it may only be made
     // when nothing is narrowing the view.  With a type / severity /
     // vehicle filter active the honest statement is "nothing matches
     // these filters" — saying every alert is acknowledged while thousands
     // are pending is a false all-clear, which in a safety product is the
     // one lie we can't ship.
-    const clearFilters = (
-      <button
-        onClick={resetToDefaults}
-        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary-hover transition-colors"
-      >
-        Clear all filters
-      </button>
-    );
-    if (narrowed) {
-      return (
-        <EmptyState
-          icon={Bell}
-          title="No alerts match these filters"
-          description={
-            // "this window" would be a lie on the open queue, which is
-            // unwindowed — only the acknowledged / all views are bounded
-            // by the date range.
-            ackState === 'new'
-              ? 'Other alerts may exist that you have already seen — clear the filters, or check All.'
-              : 'Other alerts may still exist — clear the filters to see everything.'
-          }
-          action={clearFilters}
-        />
-      );
-    }
+    // No "nothing matches these filters" branch here any more: a
+    // narrowed view can no longer reach this point, because a filter
+    // that empties one tab must leave the tabs and chips standing.
+    // That message moved INTO the grid, as emptyMessage.
+    //
     // The open queue is UNWINDOWED (see _alert_filter_clause), so an empty
     // active view genuinely means nothing is open — the all-clear can be
     // stated without a date caveat again.  The acknowledged / all views ARE
@@ -576,6 +578,22 @@ export default function AlertsResults() {
           // removing the rows or the controls.
           error={fetchError || undefined}
           onRetry={() => { void refetch(); }}
+        // What an empty SLICE says, said inside the table so the tabs,
+        // their counts and the filter chips stay on screen — they are
+        // the way out of an empty tab, and the reason this is not a
+        // page-level empty state.  Each line names the next move rather
+        // than describing the void.
+        emptyMessage={
+          narrowed
+            ? (ackState === 'new'
+              ? 'Nothing unseen matches these filters. Check All, or clear a filter chip above.'
+              : 'No alerts match these filters. Clear a filter chip above to widen.')
+            : (ackState === 'new'
+              ? 'Nothing unseen here — check All to see what has already been seen.'
+              : ackState === 'mine_working'
+                ? 'You aren’t working on anything here. Claim a task with “Work on it”.'
+                : 'No alerts in this window. Try widening the date range.')
+        }
         // One table, one set of per-user prefs.  Grouping is the
         // operator's choice via any column's ⋮ "Group rows by this" (it
         // shows as a removable "Grouped by …" chip), which replaced the

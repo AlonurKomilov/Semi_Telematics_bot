@@ -521,7 +521,7 @@ export default function ForumRoutingSection() {
                                       onClick={() => { void toggleSubtype(r, s); }}
                                       className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
                                         active
-                                          ? 'border-primary/40 bg-primary/10 text-primary'
+                                          ? 'border-primary bg-primary/10 text-foreground'
                                           : 'border-border text-muted-foreground hover:border-ring'
                                       } min-h-tap`}
                                     >
@@ -596,7 +596,7 @@ export default function ForumRoutingSection() {
                   {!showAddTopic ? (
                     <button type="button"
                       onClick={() => { setShowAddTopic(true); setCtName(''); setCtType(''); setCtSubs([]); }}
-                      className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap">
+                      className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition min-h-tap">
                       {t('forum_routing.add_topic_btn')}
                     </button>
                   ) : (
@@ -629,7 +629,7 @@ export default function ForumRoutingSection() {
                                 <button key={s} type="button"
                                   onClick={() => setCtSubs(on ? ctSubs.filter((x) => x !== s) : [...ctSubs, s])}
                                   className={`px-2 py-0.5 rounded-md border text-2xs transition ${
-                                    on ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-ring'
+                                    on ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-ring'
                                   } min-h-tap`}>
                                   {SUBTYPE_LABELS[s] || s}
                                 </button>
@@ -641,7 +641,7 @@ export default function ForumRoutingSection() {
                       })()}
                       <button type="button" onClick={() => { void createTopic(); }}
                         disabled={busyKey === '__ctopic__' || !ctName.trim() || !ctType}
-                        className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50 min-h-tap">
+                        className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition disabled:opacity-50 min-h-tap">
                         {busyKey === '__ctopic__' ? '…' : t('forum_routing.topic_create')}
                       </button>
                       <button type="button" onClick={() => setShowAddTopic(false)}

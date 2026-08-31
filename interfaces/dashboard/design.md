@@ -261,6 +261,34 @@ It lands close to `--primary-hover`, and they are still two tokens on
 purpose: fold them and a hover retune silently moves every piece of body
 text.
 
+**`--destructive` splits the same way.** Both primitives ship
+`bg-destructive/10 text-destructive`, so the token is read ON a wash of
+itself and measured 3.31–3.98 in light, 3.13–3.98 in dark.
+`--destructive-text` exists for the same reason `--primary-text` does;
+the solid destructive button keeps the saturated `--destructive`.
+
+**Where both roles want the same direction, retune instead of splitting.**
+That is the test for which fix a token needs, and four tones passed it:
+`--ok` and `--info` in light went darker, `--danger` and `--info` in dark
+went lighter, and in every case the move that fixed the soft pill also
+strengthened the solid fill's label. A split would have been four more
+tokens for nothing. `--primary` and `--destructive` failed that test —
+brightening the fill to fix the text pales the brand — which is why only
+those two are split.
+
+**The tone wash is 12%, not 15%.** The soft pill is the tone as text on a
+wash of itself, so the wash is half of that pair. On `--popover` — the
+lightest surface either theme has — dark danger sat at 3.58, and clearing
+it inside `--danger` would have taken its chroma from 0.19 to 0.125. A
+danger colour's job is to be noticed, so the wash gave way instead. All
+four move together; the 30% `-bd` border keeps the pill's shape at the
+lower fill.
+
+**`--muted-foreground` is 0.545, and the blast radius is the argument for
+it.** At 0.556 it read 4.35 on the app's own `--muted` surface and 4.74
+on white. Darkening lifts both, across roughly 2187 call sites — the rare
+retune where touching everything is the point.
+
 **Hover is a token, not `bg-primary/90`.** An alpha fade blends toward
 whatever is *behind* the button, so the same class darkens it on a dark
 canvas and lightens it on a light one. On dark that dragged the label

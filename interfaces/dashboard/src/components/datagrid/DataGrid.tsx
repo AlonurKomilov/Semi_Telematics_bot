@@ -684,7 +684,7 @@ function SegmentTab({
               // follows the active/inactive default.
               countTone
                 ? toneClasses(countTone)
-                : active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                : active ? 'bg-primary/10 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground',
             )}
           >
             {count.toLocaleString()}

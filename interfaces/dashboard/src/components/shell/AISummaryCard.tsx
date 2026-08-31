@@ -77,7 +77,7 @@ export default function AISummaryCard({ stats }: AISummaryCardProps) {
   return (
     <div className={cn(cardVariants({ padding: 'default' }), 'bg-gradient-to-br from-primary/5 via-card to-card border-primary/20 mb-6')}>
       <div className="flex items-start gap-3">
-        <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-primary shrink-0">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/15 text-foreground shrink-0 ring-1 ring-primary">
           <Sparkles className="size-4.5" />
         </span>
         <div className="flex-1 min-w-0">

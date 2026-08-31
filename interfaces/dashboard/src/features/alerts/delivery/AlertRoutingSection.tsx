@@ -407,7 +407,7 @@ export default function AlertRoutingSection({
           <button
             type="button"
             onClick={() => setOpenInput(`group-${persona}`)}
-            className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap"
+            className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition min-h-tap"
           >
             {t('alert_routing.bind_group_btn')}
           </button>
@@ -435,7 +435,7 @@ export default function AlertRoutingSection({
           type="button"
           onClick={() => { void bind(persona).then(() => setOpenInput('')); }}
           disabled={busy === persona || !(chatInputs[persona] || '').trim()}
-          className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50 min-h-tap"
+          className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition disabled:opacity-50 min-h-tap"
         >
           {busy === persona ? '…' : t('alert_routing.bind')}
         </button>
@@ -553,7 +553,7 @@ export default function AlertRoutingSection({
                                   onClick={() => { void toggleSubtype(persona, r, s); }}
                                   className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
                                     active
-                                      ? 'border-primary/40 bg-primary/10 text-primary'
+                                      ? 'border-primary bg-primary/10 text-foreground'
                                       : 'border-border text-muted-foreground hover:border-ring'
                                   } min-h-tap`}
                                 >
@@ -625,7 +625,7 @@ export default function AlertRoutingSection({
                   <button
                     type="button"
                     onClick={() => { setOpenInput(`ctopic-${persona}`); setCtName(''); setCtType(''); setCtSubs([]); }}
-                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition min-h-tap"
+                    className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition min-h-tap"
                   >
                     {t('alert_routing.add_topic_btn')}
                   </button>
@@ -671,7 +671,7 @@ export default function AlertRoutingSection({
                             onClick={() => setCtSubs(on ? ctSubs.filter((x) => x !== s) : [...ctSubs, s])}
                             className={`px-2 py-0.5 rounded-md border text-2xs transition ${
                               on
-                                ? 'border-primary/40 bg-primary/10 text-primary'
+                                ? 'border-primary bg-primary/10 text-foreground'
                                 : 'border-border text-muted-foreground hover:border-ring'
                             } min-h-tap`}
                           >
@@ -692,7 +692,7 @@ export default function AlertRoutingSection({
                       type="button"
                       onClick={() => { void createCustomTopic(persona); }}
                       disabled={busy === `ctopic-${persona}` || !ctName.trim() || !ctType}
-                      className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50 min-h-tap"
+                      className="px-2.5 py-1 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition disabled:opacity-50 min-h-tap"
                     >
                       {busy === `ctopic-${persona}` ? '…' : t('alert_routing.topic_create')}
                     </button>

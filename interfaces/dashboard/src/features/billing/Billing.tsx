@@ -129,7 +129,7 @@ function tierColor(tier: string): string {
 function tierBadge(tier: string): string {
   if (tier === 'pro') return 'bg-chart-1/15 text-chart-1 border-chart-1/40';
   if (tier === 'enterprise') return 'bg-chart-4/15 text-chart-4 border-chart-4/40';
-  if (tier === 'starter') return 'bg-primary/15 text-primary border-primary/30';
+  if (tier === 'starter') return 'bg-primary/15 text-foreground border-primary';
   return 'bg-muted text-muted-foreground border-border';
 }
 
@@ -397,7 +397,7 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
   return (
     <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', current && 'border-primary ring-1 ring-primary/30')}>
       {current && (
-        <span className="text-xs bg-primary/15 text-primary border border-primary/30 rounded-md px-2 py-0.5 self-start mb-2">
+        <span className="text-xs bg-primary/15 text-foreground border border-primary rounded-md px-2 py-0.5 self-start mb-2">
           Current Plan
         </span>
       )}

@@ -79,7 +79,7 @@ export default function GroupDelivery() {
           action={canManageAccount ? (
             <Link
               to="/settings"
-              className="px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+              className="px-3 py-1.5 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition"
             >
               Go to Settings → Telegram Bot
             </Link>

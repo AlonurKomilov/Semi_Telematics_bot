@@ -223,7 +223,7 @@ export default function Sidebar({ forceExpanded = false }: {
                     className={({ isActive }) =>
                       `flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
                         isActive
-                          ? 'bg-primary/15 text-primary'
+                          ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                       }`
                     }
@@ -252,7 +252,7 @@ export default function Sidebar({ forceExpanded = false }: {
                       className={({ isActive }) =>
                         `flex items-center gap-3 pl-9 pr-3 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
                           isActive
-                            ? 'bg-primary/15 text-primary'
+                            ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                         }`
                       }
@@ -300,7 +300,7 @@ export default function Sidebar({ forceExpanded = false }: {
                         to={item.path}
                         className={`flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
                           parentActive
-                            ? 'bg-primary/15 text-primary'
+                            ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                         }`}
                       >
@@ -326,7 +326,7 @@ export default function Sidebar({ forceExpanded = false }: {
                             className={({ isActive }) =>
                               `flex items-center gap-3 pl-9 pr-3 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
                                 isActive
-                                  ? 'bg-primary/15 text-primary'
+                                  ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                               }`
                             }
@@ -357,7 +357,7 @@ export default function Sidebar({ forceExpanded = false }: {
                     className={({ isActive }) =>
                       `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 mx-2 my-0.5 rounded-md py-2 text-sm transition-colors ${
                         isActive
-                          ? 'bg-primary/15 text-primary'
+                          ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                       }`
                     }

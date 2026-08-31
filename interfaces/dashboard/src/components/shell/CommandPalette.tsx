@@ -173,7 +173,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
                 >
                   <span
                     className={`inline-flex items-center justify-center w-7 h-7 rounded-md shrink-0 ${
-                      active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                      active ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'
                     }`}
                   >
                     <Icon className="size-3.5" />

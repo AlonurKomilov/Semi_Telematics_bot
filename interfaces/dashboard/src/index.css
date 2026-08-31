@@ -137,13 +137,26 @@
 
     --muted: oklch(0.97 0 0);
 
-    --muted-foreground: oklch(0.556 0 0);
+    /* 0.545, not 0.556.  Every pair this token sits in gets better —
+       it was 4.35 on --muted, below AA on the app's own muted surface,
+       and 4.74 on white.  Darkening it lifts both (4.54 / 4.95) across
+       roughly 2187 call sites, which is the rare retune where the wide
+       blast radius is the argument FOR it rather than against. */
+    --muted-foreground: oklch(0.545 0 0);
 
     --accent: oklch(0.97 0 0);
 
     --accent-foreground: oklch(0.205 0 0);
 
     --destructive: oklch(0.577 0.245 27.325);
+    /* The destructive accent AS TEXT, for the same reason --primary has
+       one: the primitives ship `bg-destructive/10 text-destructive`, so
+       the token is being read ON a wash of itself, and a value tuned to
+       sit BEHIND a label is not tuned for that.  It measured 3.31-3.98
+       on its own washes in light and 3.13-5.98 in dark.  The solid
+       button keeps the saturated --destructive; only the soft variant's
+       label moves. */
+    --destructive-text: oklch(0.497 0.2 27.325);
 
     /* Label colour ON a solid destructive fill.  This token was USED
        (`text-destructive-foreground`, five delete/disconnect buttons)
@@ -223,7 +236,13 @@
        legibility on the deep-black canvas.  Use them via the
        `toneClasses()` helper (soft pill: bg /15, solid text,
        border /30) — see lib/status.ts and design.md. */
-    --ok:     oklch(0.52 0.15 150);
+    /* 0.49 / 0.132, moved for the SOFT pill rather than the solid fill.
+       `toneClasses()` renders the tone as text on a 15% wash of itself,
+       and at 0.52/0.15 that measured 4.17 — the pill this design system
+       tells everyone to use.  Darkening lifts it to 4.79 AND strengthens
+       the solid fill's white label (5.65).  Both roles wanted the same
+       direction, which is why this is a retune and not another split. */
+    --ok:     oklch(0.49 0.132 150);
 
     /* 0.11, not 0.13 — at the OLD L .55 sRGB caps chroma near 0.12 at
        this hue, so the old value CLIPPED, and clipping desaturates:
@@ -243,7 +262,7 @@
 
     --danger: oklch(0.52 0.20 25);
 
-    --info:   oklch(0.52 0.17 255);
+    --info:   oklch(0.49 0.158 255);
     /* What to write ON a solid tone fill.  Measured, not chosen: in the
        dark themes the tones are light (warn is oklch(0.82 …)), so the
        `text-white` these call sites used scored 1.77:1 on warn and never
@@ -270,16 +289,24 @@
        soft-pill to one short class set; `bg-ok/15` also works now (the
        `/<alpha>` modifier is enabled on every token by tokenColor() in
        tailwind.config.js). */
-    --ok-bg:     color-mix(in oklab, var(--ok) 15%, transparent);
+    /* 12%, not 15%.  The soft pill is the tone AS TEXT on a wash of
+       itself, so the wash is half of that pair — and on --popover, the
+       lightest surface either theme has, dark danger sat at 3.58.
+       Thinning the wash was the cheaper handle than paling the tone:
+       clearing it in --danger would have taken its chroma from 0.19 to
+       0.125, and a danger colour's job is to be noticed.  All four move
+       together because one pill recipe should not have four densities;
+       the 30% `-bd` border keeps the shape legible at the lower fill. */
+    --ok-bg:     color-mix(in oklab, var(--ok) 12%, transparent);
     --ok-bd:     color-mix(in oklab, var(--ok) 30%, transparent);
 
-    --warn-bg:   color-mix(in oklab, var(--warn) 15%, transparent);
+    --warn-bg:   color-mix(in oklab, var(--warn) 12%, transparent);
     --warn-bd:   color-mix(in oklab, var(--warn) 30%, transparent);
 
-    --danger-bg: color-mix(in oklab, var(--danger) 15%, transparent);
+    --danger-bg: color-mix(in oklab, var(--danger) 12%, transparent);
     --danger-bd: color-mix(in oklab, var(--danger) 30%, transparent);
 
-    --info-bg:   color-mix(in oklab, var(--info) 15%, transparent);
+    --info-bg:   color-mix(in oklab, var(--info) 12%, transparent);
     --info-bd:   color-mix(in oklab, var(--info) 30%, transparent);
 
     /* Categorical series — five DISTINCT hues, not five greys.
@@ -362,13 +389,16 @@
 
     --muted: oklch(0.24 0 0);
 
-    --muted-foreground: oklch(0.68 0 0);
+    /* 0.70: --popover is the lightest dark surface, and at 0.68 this
+       read 4.38 on it — the secondary text inside every dialog. */
+    --muted-foreground: oklch(0.70 0 0);
 
     --accent: oklch(0.34 0.015 240);
 
     --accent-foreground: oklch(0.985 0 0);
 
     --destructive: oklch(0.68 0.20 22);
+    --destructive-text: oklch(0.78 0.125 22);
 
     /* Near-BLACK here, unlike light's near-white — see the light block's
        note.  The dark fill is lifted to L 0.68 so it reads on the deep
@@ -397,9 +427,13 @@
 
     --warn:   oklch(0.82 0.14 80);
 
-    --danger: oklch(0.70 0.19 22);
+    /* 0.76 / 0.14 — the dark soft pill was 3.58 on its own wash and
+       could not be fixed by thinning the wash: even at 8% it stopped at
+       3.93.  Lightening the tone fixes the pill and the solid fill's
+       near-black label together (8.68). */
+    --danger: oklch(0.76 0.14 22);
 
-    --info:   oklch(0.72 0.15 250);
+    --info:   oklch(0.78 0.113 250);
     --ok-foreground:     oklch(0.145 0 0);
     --warn-foreground:   oklch(0.145 0 0);
     --danger-foreground: oklch(0.145 0 0);
@@ -624,19 +658,20 @@
     --secondary:                  oklch(0.97 0 0);
     --secondary-foreground:       oklch(0.205 0 0);
     --muted:                      oklch(0.97 0 0);
-    --muted-foreground:           oklch(0.556 0 0);
+    --muted-foreground:           oklch(0.545 0 0);
     --accent:                     oklch(0.97 0 0);
     --accent-foreground:          oklch(0.205 0 0);
     --destructive:                oklch(0.577 0.245 27.325);
+    --destructive-text:           oklch(0.497 0.2 27.325);
     --destructive-foreground:     oklch(0.985 0 0);
     --border:                     oklch(0.922 0 0);
     --input:                      oklch(0.922 0 0);
     --pin-shadow-right:           4px 0 6px 0 rgb(0 0 0 / 0.20);
     --pin-shadow-left:            -4px 0 6px 0 rgb(0 0 0 / 0.20);
-    --ok:                         oklch(0.52 0.15 150);
+    --ok:                         oklch(0.49 0.132 150);
     --warn:                       oklch(0.50 0.11 70);
     --danger:                     oklch(0.52 0.20 25);
-    --info:                       oklch(0.52 0.17 255);
+    --info:                       oklch(0.49 0.158 255);
     --ok-foreground:              oklch(1 0 0);
     --warn-foreground:            oklch(1 0 0);
     --danger-foreground:          oklch(1 0 0);

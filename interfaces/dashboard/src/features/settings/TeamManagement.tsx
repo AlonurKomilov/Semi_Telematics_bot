@@ -138,7 +138,7 @@ function UserAvatar({ userId, name, size = 48, active = true }: { userId: number
   }
   return (
     <div className={`rounded-full flex items-center justify-center font-bold ${
-      active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+      active ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'
     }`} style={{ width: px, height: px, fontSize: `${size * 0.375}px` }}>
       {ini}
     </div>
@@ -165,7 +165,7 @@ function IdentityBadges({ u }: { u: AdminUser }) {
         aria-label={hasEmail ? 'Has email' : 'No email'}
         className={`inline-flex items-center justify-center w-4 h-4 rounded ${
           hasEmail
-            ? 'bg-primary/15 text-primary'
+            ? 'bg-primary/15 text-foreground ring-1 ring-primary'
             : 'bg-muted text-muted-foreground/50 opacity-60'
         }`}
       >
@@ -180,7 +180,7 @@ function IdentityBadges({ u }: { u: AdminUser }) {
         aria-label={hasTelegram ? 'Telegram linked' : 'Telegram not linked'}
         className={`inline-flex items-center justify-center w-4 h-4 rounded ${
           hasTelegram
-            ? 'bg-primary/15 text-primary'
+            ? 'bg-primary/15 text-foreground ring-1 ring-primary'
             : 'bg-muted text-muted-foreground/50 opacity-60'
         }`}
       >
@@ -887,7 +887,7 @@ export default function TeamManagement() {
                 onClick={() => setShowDrivers((v) => !v)}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs font-medium border transition ${
                   showDrivers
-                    ? 'bg-primary/10 border-primary/30 text-primary'
+                    ? 'bg-primary/10 border-primary text-foreground'
                     : 'bg-muted border-border text-muted-foreground hover:border-primary/30'
                 } min-h-tap`}
                 title="Drivers are managed in the Drivers feature; shown here for role changes (promote to staff)."

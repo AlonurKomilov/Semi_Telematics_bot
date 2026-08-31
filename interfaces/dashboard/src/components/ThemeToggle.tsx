@@ -70,7 +70,7 @@ function Chip<T extends string>({
       className={cn(
         'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
         active
-          ? 'bg-primary/15 text-primary ring-1 ring-primary/40'
+          ? 'bg-primary/15 text-foreground ring-1 ring-primary/40'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
       )}
     >

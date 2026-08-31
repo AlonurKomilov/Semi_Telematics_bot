@@ -236,7 +236,7 @@ function ArticleMedia({ article: a, MediaIcon, mediaLinkLabel }: ArticleMediaPro
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/30 rounded-lg text-sm text-primary hover:bg-primary/25 transition-colors"
+      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary rounded-lg text-sm text-foreground hover:bg-primary/25 transition-colors"
     >
       <MediaIcon type={a.media_type} size={14} />
       {mediaLinkLabel(a.media_type)}
@@ -1263,7 +1263,7 @@ function ArticleCard({
           }
           className={`shrink-0 inline-flex size-7 items-center justify-center rounded-md transition-colors ${
             bookmarked
-              ? 'text-primary hover:bg-primary/10'
+              ? 'text-foreground hover:bg-primary/10 ring-1 ring-primary'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           } min-h-tap min-w-tap`}
         >

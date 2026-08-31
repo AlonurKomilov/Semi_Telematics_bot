@@ -307,17 +307,17 @@ export default function WorkOrders() {
         <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
           <span className="text-muted-foreground">{t('work_orders_page.filtered_to')}</span>
           {vehicleFilter && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/30 rounded text-primary">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary rounded text-foreground">
               {t('work_orders_page.filter_vehicle')}: <span>{vehicleFilter}</span>
             </span>
           )}
           {vendorFilter && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/30 rounded text-primary">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary rounded text-foreground">
               {t('work_orders_page.filter_vendor')}: {vendorFilter}
             </span>
           )}
           {taskTypeFilter && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/30 rounded text-primary">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary rounded text-foreground">
               {t('work_orders_page.filter_task_type')}: {taskTypeFilter}
             </span>
           )}

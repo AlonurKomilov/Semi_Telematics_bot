@@ -218,7 +218,7 @@ export default function EventVideoModal({
 
         {/* Footer strip — event type pill + meta chips + Download */}
         <div className="px-4 py-3 bg-card/80 border-t border-border flex flex-wrap items-center gap-3">
-          <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary/15 text-primary">
+          <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary/15 text-foreground ring-1 ring-primary">
             {eventTitle}
           </span>
           {event.severity && (
@@ -259,7 +259,7 @@ export default function EventVideoModal({
             onClick={(e) => { if (!videoUrl) e.preventDefault(); }}
             className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               videoUrl
-                ? 'bg-primary/15 hover:bg-primary/25 text-primary'
+                ? 'bg-primary/15 hover:bg-primary/25 text-foreground ring-1 ring-primary'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             } min-h-tap`}
           >

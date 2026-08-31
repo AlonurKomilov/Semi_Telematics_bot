@@ -55,7 +55,7 @@ function AlertsBell(
         aria-label={label}
         className={`relative inline-flex size-8 items-center justify-center rounded-md transition-colors ${
           open
-            ? 'bg-primary/15 text-primary'
+            ? 'bg-primary/15 text-foreground ring-1 ring-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground'
         }`}
       >

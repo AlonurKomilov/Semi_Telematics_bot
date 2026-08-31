@@ -284,7 +284,7 @@ export default function Reports() {
           {tab === 'faults' && (
             <button
               onClick={() => navigate('/ai/chat', { state: { initialMessage: 'Analyze the active vehicle fault codes and tell me which trucks need attention' } })}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary/15 hover:bg-primary/25 text-primary font-medium transition shrink-0 ml-3 min-h-tap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary/15 hover:bg-primary/25 text-foreground font-medium transition shrink-0 ml-3 min-h-tap ring-1 ring-primary"
             >
               <Sparkles className="size-3" />
               Ask AI about faults

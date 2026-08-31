@@ -95,7 +95,7 @@ function ExpirationChip({ iso }: { iso: string | null }) {
 function StorageBadge({ driveId }: { driveId: string | null }) {
   if (driveId) {
     return (
-      <span className="px-1.5 py-0.5 rounded text-2xs bg-primary/10 text-primary border border-primary/30">
+      <span className="px-1.5 py-0.5 rounded text-2xs bg-primary/10 text-foreground border border-primary">
         Drive
       </span>
     );
@@ -122,7 +122,7 @@ const driverColumns: AnyColumn[] = [
       return (
         <div className="flex items-center gap-2">
           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold ${
-            terminated ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-primary'
+            terminated ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-foreground ring-1 ring-primary'
           }`}>{ini}</div>
           <span>{p.display_name}</span>
         </div>
@@ -441,7 +441,7 @@ function DriverDrawer({
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-base ${
-              p.termination_date ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-primary'
+              p.termination_date ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-foreground ring-1 ring-primary'
             }`}>{initials}</div>
             <div>
               <h2 className="text-lg font-semibold">{p.display_name}</h2>
@@ -486,7 +486,7 @@ function DriverDrawer({
             >
               {tt.icon}{tt.label}
               {tt.soon && (
-                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-primary/15 text-primary text-2xs font-semibold uppercase tracking-wider">
+                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-primary/15 text-foreground text-2xs font-semibold uppercase tracking-wider ring-1 ring-primary">
                   soon
                 </span>
               )}
@@ -820,7 +820,7 @@ function VehiclesTab({
                   <Truck className="text-muted-foreground size-3.5" />
                   <span className="font-medium">{a.vehicle_name}</span>
                   {a.is_primary && (
-                    <span className="px-1.5 py-0.5 text-2xs rounded bg-primary/15 text-primary">Primary</span>
+                    <span className="px-1.5 py-0.5 text-2xs rounded bg-primary/15 text-foreground ring-1 ring-primary">Primary</span>
                   )}
                   <span className="text-xs text-muted-foreground tabular-nums">since {formatDay(a.assigned_at, { timeZone: tz })}</span>
                 </span>
@@ -1253,7 +1253,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   return (
     <span
       title={`Linked to Samsara driver ${match.name} (${match.username || match.samsara_driver_id})`}
-      className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30"
+      className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-foreground border border-primary"
     >
       <Link2 className="size-3" />
       {match.name}
@@ -1276,7 +1276,7 @@ function ComingSoonTab({
       <p className="text-xs text-muted-foreground max-w-80 leading-relaxed">
         {description}
       </p>
-      <span className="mt-2 px-2 py-0.5 rounded-full text-2xs uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
+      <span className="mt-2 px-2 py-0.5 rounded-full text-2xs uppercase tracking-wider bg-primary/15 text-foreground border border-primary">
         Coming soon
       </span>
     </div>

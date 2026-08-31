@@ -135,7 +135,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
             onClick={() => setOpen(o => !o)}
             className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
               isPreviewing
-                ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
+                ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
                 : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
             } min-h-tap min-w-tap`}
             aria-haspopup="listbox"
@@ -152,7 +152,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           onClick={() => setOpen(o => !o)}
           className={`inline-flex h-7 items-center gap-1 px-2 text-2xs rounded-md border transition ${
             isPreviewing
-              ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
+              ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
               : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
           } min-h-tap`}
           aria-haspopup="listbox"
@@ -187,7 +187,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                     aria-haspopup="menu"
                     onClick={() => handlePick(v.key)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
-                      isActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'
+                      isActive ? 'bg-primary/10 text-foreground ring-1 ring-primary' : 'hover:bg-muted text-foreground'
                     }`}
                   >
                     <span className="flex-1">{v.label}</span>
@@ -204,7 +204,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                             type="button" role="menuitemradio" aria-checked={tierActive}
                             onClick={() => pickTier(v.key, wantManager)}
                             className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                              tierActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'
+                              tierActive ? 'bg-primary/10 text-foreground ring-1 ring-primary' : 'hover:bg-muted text-foreground'
                             }`}
                           >
                             <span className="flex-1">{label}</span>
@@ -226,7 +226,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                   onClick={() => handlePick(v.key)}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
                     isActive
-                      ? 'bg-primary/10 text-primary'
+                      ? 'bg-primary/10 text-foreground ring-1 ring-primary'
                       : 'hover:bg-muted text-foreground'
                   }`}
                 >

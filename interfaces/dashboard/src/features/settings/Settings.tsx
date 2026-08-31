@@ -531,7 +531,7 @@ export default function Settings() {
                   a real action, not a footnote (UX audit A2/P2). */}
               <Link
                 to="/alerts/group-delivery"
-                className="inline-flex items-center gap-1 mb-2 px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+                className="inline-flex items-center gap-1 mb-2 px-3 py-1.5 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition"
               >
                 {t('bot_card.configure_routing')}
                 <ArrowRight className="size-3.5" />
@@ -598,7 +598,7 @@ export default function Settings() {
 
               <div className="flex items-center gap-3 flex-wrap">
                 <a href={`https://t.me/${botConfig.bot_username}`} target="_blank" rel="noopener noreferrer"
-                  className="px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
+                  className="px-3 py-1.5 border border-primary bg-primary/15 hover:bg-primary/25 text-foreground rounded text-xs font-medium transition">
                   {t('bot_card.open_telegram')}
                 </a>
                 {/* Disconnect is an account-credential action — owner only. */}

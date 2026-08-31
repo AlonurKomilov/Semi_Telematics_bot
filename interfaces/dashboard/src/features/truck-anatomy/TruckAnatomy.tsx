@@ -134,7 +134,7 @@ export default function TruckAnatomy() {
                         : { systemKey: g.systemKey, assemblyKey: null });
                     }}
                     className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium uppercase tracking-wide transition-colors ${
-                      active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                      active ? 'bg-primary/10 text-foreground ring-1 ring-primary' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                     } min-h-tap`}
                   >
                     {g.systemLabel}
@@ -149,7 +149,7 @@ export default function TruckAnatomy() {
                       onClick={() => pick(a.key)}
                       className={`w-full flex items-center gap-1.5 pl-5 pr-2 py-1 rounded text-sm text-left transition-colors ${
                         selection.assemblyKey === a.key
-                          ? 'bg-primary/10 text-primary font-medium'
+                          ? 'bg-primary/10 text-foreground font-medium ring-1 ring-primary'
                           : 'text-foreground hover:bg-muted/60'
                       } min-h-tap`}
                     >

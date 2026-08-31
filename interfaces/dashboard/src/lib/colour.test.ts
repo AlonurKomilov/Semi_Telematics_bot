@@ -65,6 +65,7 @@ const oklabToLinear = (L: number, a: number, b: number): RGB => {
     -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
   ];
 };
+
 const linearToOklab = ([r, g, b]: RGB): RGB => {
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
@@ -75,6 +76,7 @@ const linearToOklab = ([r, g, b]: RGB): RGB => {
     0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
   ];
 };
+
 const encode = (c: number) =>
   c <= 0.0031308 ? 12.92 * c : 1.055 * Math.max(c, 0) ** (1 / 2.4) - 0.055;
 const inGamut = ([r, g, b]: RGB, eps = 1e-6) =>
@@ -249,18 +251,30 @@ const PAIRS: Pair[] = [
   // text-destructive`, and /20 in dark. This is what button.tsx and
   // badge.tsx actually render; the solid pair above has 7 call sites.
   ...(['--background', '--card', '--popover'] as const).flatMap((g) => [
-    { fg: '--destructive', bg: '--destructive', ground: g, bgAlpha: 0.1, role: 'text' as Role },
-    { fg: '--destructive', bg: '--destructive', ground: g, bgAlpha: 0.2, role: 'text' as Role },
+    { fg: '--destructive-text', bg: '--destructive', ground: g, bgAlpha: 0.1, role: 'text' as Role },
+    { fg: '--destructive-text', bg: '--destructive', ground: g, bgAlpha: 0.2, role: 'text' as Role },
   ]),
-  // A tinted "ghost" fill with the accent as its label — the sidebar's
-  // active nav item, the theme picker's own selected chip, a DataGrid
-  // column pill. 92 lines pair `bg-primary/N` with `text-primary`, and
-  // the ground matters: the same chip is a different colour inside a
-  // popover than on the canvas.
+  // …and bare, which is what `text-destructive` alone renders.
+  ...(['--background', '--card', '--popover'] as const).map((g) => ({
+    fg: '--destructive-text', bg: g, role: 'text' as Role,
+  })),
+  // The selected chip — sidebar nav, the theme picker's own chip, a
+  // DataGrid column pill. It used to put the accent in the LABEL on a
+  // wash of itself, which measured 3.96 at worst and, more quietly, left
+  // "selected" resting on a fill 1.13:1 from its ground — a cue almost
+  // nobody could see. The label is plain now and the accent moved to a
+  // ring, so both halves are measured: the text on the wash…
   ...(['--background', '--card', '--popover', '--sidebar'] as const).flatMap((g) =>
     [0.1, 0.15, 0.2].map((a) => ({
-      fg: '--primary-text', bg: '--primary', ground: g, bgAlpha: a, role: 'text' as Role,
+      fg: '--foreground', bg: '--primary', ground: g, bgAlpha: a, role: 'text' as Role,
     }))),
+  // …and the ring that says WHICH one is selected. Non-text, so 3.0 —
+  // and only the FULL-strength accent reaches it: /20, /30, /40 and even
+  // /60 sit between 1.21 and 2.61, which is why every existing chip
+  // border was raised rather than kept.
+  ...(['--background', '--card', '--popover', '--sidebar'] as const).map((g) => ({
+    fg: '--primary', bg: g, role: 'ui' as Role,
+  })),
   ...[1, 2, 3, 4, 5].flatMap((n) => (['--background', '--card'] as const).map((g) => ({
     fg: `--chart-${n}`, bg: g, role: 'ui' as Role,
   }))),
@@ -275,11 +289,6 @@ const PAIRS: Pair[] = [
  * thing that would make this guard worthless, so an entry needs a reason
  * a reviewer can argue with. "known" is not a reason.
  */
-const RETUNE_MARGINAL =
-  'retune 4.6 — AA-marginal, and the fix moves a token with thousands of ' +
-  'call sites, so it is its own change: `text-muted-foreground` alone has ' +
-  '2187 sites and 0.24 of headroom on white, which means darkening it to ' +
-  'fix `bg-muted` drags the whole app darker. Fixing `--muted` instead is ' +
   'probably right, and that is a design decision, not a nudge.';
 const BOUNDARY_REDESIGN =
   'deferred 6.2 — `--input` is a hairline, and the whole surface ladder ' +
@@ -290,19 +299,9 @@ const BOUNDARY_REDESIGN =
   'exempts those) versus real control boundaries. `--input` is the subset ' +
   'that is genuinely in scope — a form field edge — and it is 6 uses.';
 
-const DESTRUCTIVE_SOFT =
-  'retune — the soft destructive variant the primitives ship. `--destructive` ' +
-  'is tuned to sit BEHIND a label, and is being read AS text on a 10-20% ' +
-  'wash of itself. Needs a `--destructive-bg` twin of the tone washes, which ' +
   'is a new token, not a nudge.';
   'every accent cell and both primitives.';
 
-const GHOST_CHIP =
-  'call sites — a `bg-primary/N text-primary` chip puts the accent on a ' +
-  'wash of itself, which is low-contrast by construction. ~92 lines do it. ' +
-  'Fixing it in the TOKEN needs --primary-text at L .78, which drops blue ' +
-  'chroma 0.153 -> 0.108 and pales every link in the app to rescue a chip; ' +
-  'the fill is what is wrong, so those sites want a denser fill or ' +
   '`text-foreground`.';
 
 const KNOWN: Record<string, string> = Object.fromEntries([
@@ -321,99 +320,6 @@ const KNOWN: Record<string, string> = Object.fromEntries([
     'light purple | --input on --background',
     'light purple | --input on --card',
   ] as const).map((k) => [k, BOUNDARY_REDESIGN] as const),
-  // The soft destructive variant the primitives ship.
-  ...([
-    'dark blue | --destructive on --destructive/10 over --card',
-    'dark blue | --destructive on --destructive/10 over --popover',
-    'dark blue | --destructive on --destructive/20 over --card',
-    'dark blue | --destructive on --destructive/20 over --popover',
-    'dark green | --destructive on --destructive/10 over --card',
-    'dark green | --destructive on --destructive/10 over --popover',
-    'dark green | --destructive on --destructive/20 over --card',
-    'dark green | --destructive on --destructive/20 over --popover',
-    'dark purple | --destructive on --destructive/10 over --card',
-    'dark purple | --destructive on --destructive/10 over --popover',
-    'dark purple | --destructive on --destructive/20 over --card',
-    'dark purple | --destructive on --destructive/20 over --popover',
-    'light blue | --destructive on --destructive/10 over --background',
-    'light blue | --destructive on --destructive/10 over --card',
-    'light blue | --destructive on --destructive/10 over --popover',
-    'light blue | --destructive on --destructive/20 over --background',
-    'light blue | --destructive on --destructive/20 over --card',
-    'light blue | --destructive on --destructive/20 over --popover',
-    'light green | --destructive on --destructive/10 over --background',
-    'light green | --destructive on --destructive/10 over --card',
-    'light green | --destructive on --destructive/10 over --popover',
-    'light green | --destructive on --destructive/20 over --background',
-    'light green | --destructive on --destructive/20 over --card',
-    'light green | --destructive on --destructive/20 over --popover',
-    'light purple | --destructive on --destructive/10 over --background',
-    'light purple | --destructive on --destructive/10 over --card',
-    'light purple | --destructive on --destructive/10 over --popover',
-    'light purple | --destructive on --destructive/20 over --background',
-    'light purple | --destructive on --destructive/20 over --card',
-    'light purple | --destructive on --destructive/20 over --popover',
-  ] as const).map((k) => [k, DESTRUCTIVE_SOFT] as const),
-  // AA-marginal, and each fix moves a token with thousands of call sites.
-  ...([
-    'dark blue | --danger on --danger-bg over --card',
-    'dark blue | --danger on --danger-bg over --popover',
-    'dark blue | --danger on --popover',
-    'dark blue | --info on --info-bg over --popover',
-    'dark blue | --muted-foreground on --popover',
-    'dark green | --danger on --danger-bg over --card',
-    'dark green | --danger on --danger-bg over --popover',
-    'dark green | --danger on --popover',
-    'dark green | --info on --info-bg over --popover',
-    'dark green | --muted-foreground on --popover',
-    'dark purple | --danger on --danger-bg over --card',
-    'dark purple | --danger on --danger-bg over --popover',
-    'dark purple | --danger on --popover',
-    'dark purple | --info on --info-bg over --popover',
-    'dark purple | --muted-foreground on --popover',
-    'light blue | --info on --info-bg over --background',
-    'light blue | --info on --info-bg over --card',
-    'light blue | --info on --info-bg over --popover',
-    'light blue | --muted-foreground on --muted',
-    'light blue | --ok on --ok-bg over --background',
-    'light blue | --ok on --ok-bg over --card',
-    'light blue | --ok on --ok-bg over --popover',
-    'light green | --info on --info-bg over --background',
-    'light green | --info on --info-bg over --card',
-    'light green | --info on --info-bg over --popover',
-    'light green | --muted-foreground on --muted',
-    'light green | --ok on --ok-bg over --background',
-    'light green | --ok on --ok-bg over --card',
-    'light green | --ok on --ok-bg over --popover',
-    'light purple | --info on --info-bg over --background',
-    'light purple | --info on --info-bg over --card',
-    'light purple | --info on --info-bg over --popover',
-    'light purple | --muted-foreground on --muted',
-    'light purple | --ok on --ok-bg over --background',
-    'light purple | --ok on --ok-bg over --card',
-    'light purple | --ok on --ok-bg over --popover',
-  ] as const).map((k) => [k, RETUNE_MARGINAL] as const),
-  // A tinted fill with the accent as its own label, on the two lightest
-  // surfaces. Raising --primary-text until these clear needs L .78,
-  // which takes blue's chroma from 0.153 to 0.108 — every link in the
-  // app goes pale to fix a chip. The fill is the thing at fault: a
-  // `bg-primary/N text-primary` chip is low-contrast by construction,
-  // and the fix is a denser fill or `text-foreground` on those ~92
-  // sites, not a weaker link colour everywhere.
-  ...([
-    'dark blue | --primary-text on --primary/10 over --popover',
-    'dark blue | --primary-text on --primary/15 over --popover',
-    'dark blue | --primary-text on --primary/20 over --card',
-    'dark blue | --primary-text on --primary/20 over --popover',
-    'dark green | --primary-text on --primary/10 over --popover',
-    'dark green | --primary-text on --primary/15 over --popover',
-    'dark green | --primary-text on --primary/20 over --card',
-    'dark green | --primary-text on --primary/20 over --popover',
-    'dark purple | --primary-text on --primary/10 over --popover',
-    'dark purple | --primary-text on --primary/15 over --popover',
-    'dark purple | --primary-text on --primary/20 over --card',
-    'dark purple | --primary-text on --primary/20 over --popover',
-  ] as const).map((k) => [k, GHOST_CHIP] as const),
 ]);
 
 /**
@@ -442,19 +348,16 @@ const KNOWN_GAMUT: Record<string, number> = {
   'light blue | --chart-3': 0.0065,
   'light blue | --chart-5': 0.0265,
   'light blue | --destructive': 0.0096,
-  'light blue | --ok': 0.0068,
   'light blue | --warn': 0.0017,
   // light green
   'light green | --chart-3': 0.0065,
   'light green | --chart-5': 0.0265,
   'light green | --destructive': 0.0096,
-  'light green | --ok': 0.0068,
   'light green | --warn': 0.0017,
   // light purple
   'light purple | --chart-3': 0.0065,
   'light purple | --chart-5': 0.0265,
   'light purple | --destructive': 0.0096,
-  'light purple | --ok': 0.0068,
   'light purple | --warn': 0.0017,
 };
 

@@ -479,7 +479,7 @@ function MenuItem({
         <span className="text-2xs text-muted-foreground">{hint}</span>
       )}
       {badge && (
-        <span className="text-2xs bg-primary/15 text-primary px-1 rounded">
+        <span className="text-2xs bg-primary/15 text-foreground px-1 rounded ring-1 ring-primary">
           {badge}
         </span>
       )}

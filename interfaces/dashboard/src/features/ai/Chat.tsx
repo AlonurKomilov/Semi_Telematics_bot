@@ -1428,7 +1428,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <Tip label={`Generate your ${briefingLabel.toLowerCase()} — or type /briefing`}>
                 <button
                   onClick={runBriefing}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors min-h-tap"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-foreground border border-primary hover:bg-primary/15 transition-colors min-h-tap"
                 >
                   <Sparkles className="size-4" aria-hidden />
                   {briefingLabel}
@@ -2234,7 +2234,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               aria-selected={isActive}
                               className={`w-full text-left px-3 py-2 text-sm transition-colors ${
                                 isActive
-                                  ? 'bg-primary/15 text-primary'
+                                  ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                                   : 'text-foreground/80 hover:bg-muted'
                               } disabled:cursor-default`}
                             >

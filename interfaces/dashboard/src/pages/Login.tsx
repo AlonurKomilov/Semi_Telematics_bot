@@ -390,7 +390,7 @@ export default function Login() {
                   onClick={() => { setRegisterKind('invite'); setError(''); }}
                   className={`flex-1 px-3 py-2 transition ${
                     registerKind === 'invite'
-                      ? 'bg-primary/10 text-primary font-medium'
+                      ? 'bg-primary/10 text-foreground font-medium ring-1 ring-primary'
                       : 'text-muted-foreground hover:bg-muted'
                   }`}
                 >
@@ -401,7 +401,7 @@ export default function Login() {
                   onClick={() => { setRegisterKind('new-company'); setError(''); }}
                   className={`flex-1 px-3 py-2 transition border-l border-border ${
                     registerKind === 'new-company'
-                      ? 'bg-primary/10 text-primary font-medium'
+                      ? 'bg-primary/10 text-foreground font-medium ring-1 ring-primary'
                       : 'text-muted-foreground hover:bg-muted'
                   }`}
                 >

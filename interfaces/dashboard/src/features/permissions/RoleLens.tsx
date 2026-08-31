@@ -107,7 +107,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 // Derived tick: a primary-coloured check on a light primary
                 // wash reads on BOTH themes (primary-foreground would go
                 // invisible against a 20% wash on the light theme).
-                ? 'bg-primary/20 border-primary/40 text-primary'
+                ? 'bg-primary/20 border-primary text-foreground'
                 : 'bg-primary border-primary text-primary-foreground'
               : `bg-transparent text-transparent hover:border-muted-foreground ${soft ? 'border-border/60' : 'border-border'}`
           }`}

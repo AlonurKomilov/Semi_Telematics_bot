@@ -1274,7 +1274,7 @@ function RiskSummaryLink({ card }: { card: CompositeScorecard }) {
       <a
         href={`/reports/risk-summary?${params.toString()}`}
         className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded
-                   border border-primary/40 text-primary hover:bg-primary/10 transition"
+                   border border-primary text-foreground hover:bg-primary/10 transition"
         title="Generate Stakeholder Risk Summary report"
       >
         📄 Generate Risk Summary

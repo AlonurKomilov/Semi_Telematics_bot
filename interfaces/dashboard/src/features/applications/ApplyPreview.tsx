@@ -98,7 +98,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
       <Swatch label="Heading" value={brand.heading_color} onChange={(c) => onColor('heading_color', c)} />
       <button type="button" onClick={onAiTheme} aria-label="Generate palettes from the logo"
         className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 min-h-tap text-xs transition-colors ${
-          aiOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-foreground hover:bg-muted/70'
+          aiOpen ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-muted text-foreground hover:bg-muted/70'
         }`}>
         <Sparkles className="size-3" /> AI theme
       </button>

@@ -57,7 +57,7 @@ export function AvatarMenu() {
         className="rounded-full hover:ring-2 hover:ring-border transition"
       >
         <Avatar className="h-8 w-8 shrink-0">
-          <AvatarFallback className="text-xs bg-primary/20 text-primary">{initials}</AvatarFallback>
+          <AvatarFallback className="text-xs bg-primary/20 text-foreground ring-1 ring-primary">{initials}</AvatarFallback>
         </Avatar>
       </button>
 

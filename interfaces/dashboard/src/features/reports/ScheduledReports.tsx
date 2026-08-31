@@ -175,7 +175,7 @@ function ScheduleEditor({
               disabled={initial.reportTypeLocked}
               className={`px-3 py-2 rounded-lg text-sm text-left transition-colors border ${
                 reportType === r.key
-                  ? 'bg-primary/15 border-primary text-primary'
+                  ? 'bg-primary/15 border-primary text-foreground'
                   : 'bg-muted border-border text-muted-foreground hover:text-foreground'
               } ${initial.reportTypeLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
@@ -195,7 +195,7 @@ function ScheduleEditor({
               onClick={() => setFrequency(f)}
               className={`px-4 py-2 rounded-lg text-sm capitalize transition-colors border ${
                 frequency === f
-                  ? 'bg-primary/15 border-primary text-primary'
+                  ? 'bg-primary/15 border-primary text-foreground'
                   : 'bg-muted border-border text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -235,7 +235,7 @@ function ScheduleEditor({
             disabled={!telegramEligible}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
               channels.includes('telegram')
-                ? 'bg-primary/15 border-primary text-primary'
+                ? 'bg-primary/15 border-primary text-foreground'
                 : 'bg-muted border-border text-muted-foreground hover:text-foreground'
             } ${!telegramEligible ? 'opacity-40 cursor-not-allowed' : ''}`}
           >
@@ -248,7 +248,7 @@ function ScheduleEditor({
             disabled={!emailEligible}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
               channels.includes('email')
-                ? 'bg-primary/15 border-primary text-primary'
+                ? 'bg-primary/15 border-primary text-foreground'
                 : 'bg-muted border-border text-muted-foreground hover:text-foreground'
             } ${!emailEligible ? 'opacity-40 cursor-not-allowed' : ''}`}
           >
@@ -434,7 +434,7 @@ export default function ScheduledReports() {
       {!editor && canAddMore && (
         <button
           onClick={openAdd}
-          className="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-medium text-sm transition-colors border border-primary/30 flex items-center justify-center gap-2 min-h-tap"
+          className="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-foreground font-medium text-sm transition-colors border border-primary flex items-center justify-center gap-2 min-h-tap"
         >
           <Plus className="size-4" />
           Add schedule

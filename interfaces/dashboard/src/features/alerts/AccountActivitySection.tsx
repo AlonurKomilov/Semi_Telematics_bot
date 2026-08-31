@@ -217,7 +217,7 @@ function Cell({ checked, disabled, hint, onChange }: {
       onClick={() => void onChange(!checked)}
       className={`inline-flex h-7 min-w-14 items-center justify-center rounded-md px-2 text-2xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
         checked
-          ? 'bg-primary/15 text-primary hover:bg-primary/25'
+          ? 'bg-primary/15 text-foreground hover:bg-primary/25 ring-1 ring-primary'
           : 'bg-muted text-muted-foreground hover:bg-muted/80'
       } min-h-tap`}
     >

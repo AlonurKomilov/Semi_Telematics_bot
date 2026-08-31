@@ -536,7 +536,7 @@ function SignInMethods() {
       <ul className="divide-y divide-border">
         {/* Email */}
         <li className="flex items-start gap-3 py-3">
-          <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.email ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+          <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.email ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'}`}>
             <Mail className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -564,7 +564,7 @@ function SignInMethods() {
             <button
               type="button"
               onClick={resendVerification}
-              className="shrink-0 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded min-h-tap"
+              className="shrink-0 text-xs text-foreground hover:bg-primary/10 px-2 py-1 rounded min-h-tap ring-1 ring-primary"
             >
               {t('profile.signin_resend_verification', 'Resend link')}
             </button>
@@ -579,7 +579,7 @@ function SignInMethods() {
             <button
               type="button"
               onClick={() => setShowEmailForm((v) => !v)}
-              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded min-h-tap"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-foreground hover:bg-primary/10 px-2 py-1 rounded min-h-tap ring-1 ring-primary"
             >
               {showEmailForm
                 ? t('profile.signin_email_cancel', 'Cancel')
@@ -675,7 +675,7 @@ function SignInMethods() {
 
         {/* Telegram */}
         <li className="flex items-start gap-3 py-3">
-          <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.telegram_id ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+          <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.telegram_id ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'}`}>
             <Send className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -710,7 +710,7 @@ function SignInMethods() {
             <button
               onClick={startLink}
               disabled={linking || linkStatus === 'pending'}
-              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-foreground hover:bg-primary/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap ring-1 ring-primary"
             >
               <LinkIcon className="size-3" />
               {linking
@@ -1035,14 +1035,14 @@ function ActiveSessions() {
           const isBusy = busyId === s.id;
           return (
             <li key={s.id} className="flex items-start gap-3 py-3">
-              <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${isCurrent ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+              <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${isCurrent ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'}`}>
                 <Icon className="size-4.5" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{s.device_label || 'Unknown device'}</span>
                   {isCurrent && (
-                    <span className="text-2xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-primary font-semibold">
+                    <span className="text-2xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-foreground font-semibold ring-1 ring-primary">
                       This device
                     </span>
                   )}

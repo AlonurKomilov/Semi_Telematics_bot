@@ -577,7 +577,7 @@ export default function DateRangePresets({
                     onClick={() => applyPreset(opt.days)}
                     className={`w-full text-left px-3 py-1.5 text-sm transition ${
                       active
-                        ? 'bg-primary/10 text-primary font-medium'
+                        ? 'bg-primary/10 text-foreground font-medium ring-1 ring-primary'
                         : 'text-foreground/80 hover:bg-muted'
                     }`}
                   >

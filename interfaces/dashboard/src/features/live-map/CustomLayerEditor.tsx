@@ -435,7 +435,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                   type="button"
                   onClick={runPinPreview}
                   disabled={pinPreviewing || !pinLat || !pinLng}
-                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5 min-h-tap"
+                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-foreground hover:bg-primary/20 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5 min-h-tap ring-1 ring-primary"
                 >
                   {pinPreviewing ? 'Detecting…' : <><Search className="size-3.5" /> Detect brand</>}
                 </button>
@@ -666,7 +666,7 @@ function BrandPreviewCard({
             </p>
           )}
         </div>
-        <span className="shrink-0 text-xs font-bold px-2 py-1 rounded bg-primary/15 text-primary">
+        <span className="shrink-0 text-xs font-bold px-2 py-1 rounded bg-primary/15 text-foreground ring-1 ring-primary">
           {preview.count.toLocaleString()} in USA
         </span>
       </div>

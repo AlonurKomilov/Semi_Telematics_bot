@@ -461,7 +461,7 @@ export default function PivotView({
     // A cue AT REST — every non-empty figure drills down, and both
     // empty and filled cells read as plain text until hovered.
     'underline decoration-dotted decoration-border underline-offset-4',
-    'hover:bg-primary/10 hover:text-primary hover:decoration-primary',
+    'hover:bg-primary/10 hover:text-foreground hover:decoration-primary ring-1 ring-primary',
   );
 
   // The row-label column stays put during horizontal scroll — otherwise a

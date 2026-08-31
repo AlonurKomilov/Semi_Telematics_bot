@@ -41,7 +41,7 @@ export default function PageHeader({
         <div className="min-w-64 grow">
           <div className="flex items-center gap-2.5">
             {Icon && (
-              <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-foreground shrink-0 ring-1 ring-primary">
                 <Icon className="size-4.5" />
               </span>
             )}

@@ -659,7 +659,7 @@ export default function Geofences() {
                       onClick={() => { setSelected(f); setPanelMode('detail'); }}
                       className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded text-sm transition flex items-center gap-2 ${
                         selected === f && panelMode === 'detail'
-                          ? 'bg-primary/15 text-primary'
+                          ? 'bg-primary/15 text-foreground ring-1 ring-primary'
                           : 'text-foreground/80 hover:bg-muted'
                       }`}
                     >
