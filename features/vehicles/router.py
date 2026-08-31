@@ -1216,6 +1216,21 @@ async def resolve_device_event(
         if event.get("kind") != "vin_change":
             raise HTTPException(
                 400, "only a vin_change can be resolved as a different truck")
+        # The new unit is a REGISTRY CREATE wearing a resolution's
+        # clothes, so it takes create_vehicle's check on the company it
+        # lands in.  Walling the event's OLD vehicle above is not
+        # enough: a caller legitimately answering their own event could
+        # still place the new row in a company they cannot open
+        # anywhere else in the product — routing around the identical
+        # validate_company_access on POST /vehicles.  Multi-company
+        # accounts here are frequently separate legal entities sharing
+        # one login.
+        #
+        # Before the claim, deliberately: an authorization answer is
+        # knowable up front, and refusing after the status flip would
+        # close someone's open question to tell them "no".
+        validate_company_access(
+            await get_user_company_codes(user), body.company_code)
         resolution = (
             f"different_truck:new_unit={body.company_code}/"
             f"{body.unit_number}"

@@ -159,6 +159,56 @@ class TestTheSharedVerdict:
         assert "company_allows" in inspect.getsource(doc._vehicle_or_404)
 
 
+class TestResolvingAnEventCannotPlaceATruckAnywhere:
+    """The identity-resolution route is TWO authorization questions, and
+    for a while only one was asked.
+
+    Walling the event's own vehicle stops a restricted caller resolving
+    a foreign company's question.  It says nothing about WHERE the new
+    unit lands: ``different_truck`` performs a registry CREATE with a
+    caller-supplied ``company_code``, and that create must take the same
+    check POST /vehicles takes, or answering your OWN event becomes a
+    way to mint a row in a company you cannot open anywhere else.
+
+    Found by a security review of the hardening commit that added the
+    other half — the wall arrived on restore/update/delete and on the
+    events LIST, and this create-shaped branch was left behind.
+    """
+
+    def test_the_create_branch_validates_the_company_it_lands_in(self):
+        """Pinned by source, like the resolver test above: the check has
+        to sit in the different_truck branch, and BEFORE the claim — a
+        403 after the status flip would close the question to refuse
+        it."""
+        import inspect
+        from features.vehicles import router as reg
+        src = inspect.getsource(reg.resolve_device_event)
+        # The trailing "(" is load-bearing: the CALL, not the word.
+        # Without it this guard matched the explanatory comment beside
+        # the call — deleting the code left the prose, and the test
+        # went green over the very hole it exists to pin.  A
+        # source-inspecting guard reads comments too.
+        assert "validate_company_access(" in src, (
+            "the different_truck branch performs a registry create with "
+            "body.company_code — it must take create_vehicle's check")
+        # ``tenant.resolve_device_event(`` — the storage claim.  An
+        # earlier draft searched for "resolve_device_event(\n" and
+        # matched the handler's OWN def line, so the ordering assert
+        # was measuring nothing.
+        claim = src.index("tenant.resolve_device_event(")
+        assert src.index("validate_company_access(") < claim, (
+            "the company check must run BEFORE the status claim, or a "
+            "refusal leaves the event closed")
+
+    def test_the_events_own_vehicle_is_walled_too(self):
+        """The half that shipped first — kept here so the two questions
+        stay visibly paired."""
+        import inspect
+        from features.vehicles import router as reg
+        src = inspect.getsource(reg.resolve_device_event)
+        assert "_wall_registry_vehicle" in src
+
+
 class TestDocumentsAndLinksAreWalled:
     """The paperwork routes and the provider-link route take the same
     wall as every other id-referencing vehicle route — and 404, because
