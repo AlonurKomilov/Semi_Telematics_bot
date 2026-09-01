@@ -29,37 +29,9 @@ import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
 import { usePreference } from '../../../preferences';
 import { Tip } from '../../../components/tooltip';
 import { cn } from '@/lib/utils';
+import { useCue } from '../../../lib/useCue';
 
 const LAST_ACK_KEY = '4truck_dispatch_last_ack_iso';
-
-// Short, soft, non-alarming.  Browser-bundled Web Audio so we don't
-// ship an MP3 — keeps the bundle lean and side-steps Telegram-style
-// cache-poisoning issues with hosted audio.
-function playChime() {
-  try {
-    const Ctx =
-      (window as unknown as { AudioContext?: typeof AudioContext })
-        .AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
-    gain.gain.setValueAtTime(0.18, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.35);
-    // Tear down so we don't leak AudioContexts across polls.
-    osc.onended = () => { try { void ctx.close(); } catch { /* swallow */ } };
-  } catch {
-    /* audio is best-effort; never let it break the page */
-  }
-}
 
 function totalPending(
   data: AlertsResponse | VehiclesAlertsResponse | undefined,
@@ -95,6 +67,10 @@ function relativeTime(iso: string | null, t: TFn): string {
 }
 
 export default function LiveAckPanel() {
+  // The cue this panel plays, at this screen's volume, from this
+  // person's pack — read live, so moving the slider takes effect
+  // without a reload.
+  const cue = useCue();
   const { t } = useTranslation();
   const { data, isLoading } = useAlertsQuery();
   const { selected, acking, ackCompletedAt } = useAlertsSelection();
@@ -128,10 +104,10 @@ export default function LiveAckPanel() {
     // new, so the count only starts tracking once a response lands.
     if (isLoading) return;
     if (prevPendingRef.current !== null && pending > prevPendingRef.current && soundOn) {
-      playChime();
+      cue('alert');
     }
     prevPendingRef.current = pending;
-  }, [pending, soundOn, isLoading]);
+  }, [pending, soundOn, isLoading, cue]);
 
   // Stamp last-ack each time the selection clears AFTER an ack-in-flight
   // (the bulk-ack flow in AlertsHeader sets acking=true → false + clears
@@ -163,7 +139,7 @@ export default function LiveAckPanel() {
     setSoundOn(next);
     // Tiny chime on enable to confirm audio works under the current
     // browser gesture-grant rules.
-    if (next) playChime();
+    if (next) cue('alert');
   };
 
   const lastAckLabel = relativeTime(lastAck, t);

@@ -20,6 +20,13 @@ import * as store from './store';
  */
 const FROZEN_KEYS: readonly string[] = [
   'prefs.syncEnabled',
+  // Sound. Two keys and not one on purpose: the PACK is a property of
+  // the person and syncs, the VOLUME is a property of the screen and
+  // does not — a wall display in a yard office and a laptop with
+  // headphones want different numbers, and one synced value would be
+  // wrong on whichever you touched second.
+  'sound.pack',
+  'sound.volume',
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
   'tour.state',

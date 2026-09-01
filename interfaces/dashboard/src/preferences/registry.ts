@@ -37,6 +37,7 @@ import {
   THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS, THEME_MODS,
 } from '../lib/themePacks';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../lib/modStyle';
+import { SOUND_PACKS } from '../lib/sound';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -378,6 +379,48 @@ export const DEFS = {
       return out;
     },
     note: 'Which integration cards are expanded on this device.',
+  }),
+
+  /**
+   * Which cue set plays. A property of the PERSON — someone who prefers
+   * the blip wants it on every machine — so it syncs.
+   */
+  'sound.pack': def<string>({
+    default: 'chime',
+    scope: 'synced',
+    sanitize: (v) => (typeof v === 'string' && SOUND_PACKS.some((p) => p.id === v)
+      ? v : undefined),
+    note: 'Which set of cues the app plays.',
+  }),
+
+  /**
+   * How loud, 0 to 1, where 0 is silence.
+   *
+   * DEVICE scope, and not for the usual reason: this is the difference
+   * between a wall display in a yard office and a laptop with
+   * headphones on, which is a property of the screen rather than of the
+   * person. A single synced number would follow someone from one to the
+   * other and be wrong in one of them.
+   *
+   * Default 1, NOT 0, and that distinction was a bug before it was a
+   * comment. Sound is already opt-in: `dispatch.soundOn` is a
+   * device-scoped boolean defaulting to false with its own toggle in
+   * the live panel. Making volume default to zero as well would have
+   * double-gated it — somebody turns the toggle on, hears nothing, and
+   * concludes the feature is broken.
+   *
+   * So this is a LEVEL, not a switch. The gates are the per-feature
+   * toggles; zero here is how a person silences a screen without
+   * turning each of them off.
+   */
+  'sound.volume': def<number>({
+    default: 1,
+    scope: 'device',
+    sanitize: (v) => {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : undefined;
+    },
+    note: 'How loud the cues are on this screen. Zero is silent.',
   }),
 
   // ── Appearance ────────────────────────────────────────────────────
