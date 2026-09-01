@@ -126,6 +126,17 @@ next time the user changes the preference it PUTs under the canonical key
 by itself, and a boot that silently rewrites server rows is a surprise
 nobody asked for.
 
+**Renaming an already-renamed key: the array's ORDER is the tie-break.**
+Two prefixed entries mean two server rows resolve to one canonical key,
+and a bulk read carries no order guarantee and no timestamp — so before
+this rule, whichever came later in the response silently won. `readPref`
+already walks `legacyKeys` in order, so index 0 is the most recent former
+spelling; server rows now answer to that same precedence. Put the newer
+spelling FIRST. `serverLegacy.test.ts` pins the rule on synthetic chains
+and carries a tripwire that fails the day a real key gains a second
+former spelling, because that is when the end-to-end path stops being
+behaviour-neutral and starts needing its own test.
+
 ## The one sanctioned reader outside this service
 
 `index.html`'s inline `theme-boot` script reads `4truck.pref.mods.theme`

@@ -39,7 +39,7 @@ const AXES = ['--size-text', '--size-control', '--size-layout', '--size-panel'];
 describe('the Size panel pins its own scale', () => {
   it('escapes its region and holds every axis, with no drag in progress', () => {
     const { container } = render(<SizeCard />);
-    const panel = container.querySelector('#appearance') as HTMLElement;
+    const panel = container.querySelector('#interface-size') as HTMLElement;
     expect(panel).not.toBeNull();
     expect(panel.style.getPropertyValue('--size-region')).toBe('1');
     for (const axis of AXES) {

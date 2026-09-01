@@ -370,8 +370,7 @@
     "group_color": "Color",
     "accent_blue": "Azul",
     "accent_purple": "Morado",
-    "accent_green": "Verde",
-    "size_by_region": "Tamaño por zona…"
+    "accent_green": "Verde"
   },
   "mods": {
     "group_corners": "Esquinas",
@@ -381,7 +380,8 @@
     "picker": "Mods",
     "group_size": "Tamaño",
     "size_label": "Tamaño de la interfaz",
-    "size_reset": "Restablecer"
+    "size_reset": "Restablecer",
+    "size_by_region": "Tamaño por zona…"
   },
   "forms": {
     "create": "Crear",

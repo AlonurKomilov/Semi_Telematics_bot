@@ -493,8 +493,7 @@
     "group_color": "Color",
     "accent_blue": "Blue",
     "accent_purple": "Purple",
-    "accent_green": "Green",
-    "size_by_region": "Size by region…"
+    "accent_green": "Green"
   },
   "mods": {
     "picker": "Mods",
@@ -504,7 +503,8 @@
     "corners_pill": "Pill",
     "group_size": "Size",
     "size_label": "Interface size",
-    "size_reset": "Reset"
+    "size_reset": "Reset",
+    "size_by_region": "Size by region…"
   },
   "forms": {
     "create": "Create",

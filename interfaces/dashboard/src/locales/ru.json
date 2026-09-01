@@ -370,8 +370,7 @@
     "group_color": "Цвет",
     "accent_blue": "Синий",
     "accent_purple": "Фиолетовый",
-    "accent_green": "Зелёный",
-    "size_by_region": "Размер по областям…"
+    "accent_green": "Зелёный"
   },
   "mods": {
     "picker": "Mods",
@@ -381,7 +380,8 @@
     "corners_pill": "Капсула",
     "group_size": "Размер",
     "size_label": "Размер интерфейса",
-    "size_reset": "Сбросить"
+    "size_reset": "Сбросить",
+    "size_by_region": "Размер по областям…"
   },
   "forms": {
     "create": "Создать",

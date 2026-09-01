@@ -17,7 +17,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DEFS } from './registry';
 import { LS_PREFIX } from './local';
-import { attachBackend, detachBackend, canonicalKeyForRow, get } from './store';
+import {
+  attachBackend, detachBackend, canonicalKeyForRow, pickLegacyRows, get,
+  type LegacyRow,
+} from './store';
 
 /** Every def that claims a former REGISTRY key (prefix-form legacy). */
 const RENAMED = Object.entries(DEFS).flatMap(([canonical, def]) =>
@@ -92,5 +95,64 @@ describe('a renamed key still finds its server row', () => {
     detachBackend();
     await attachBackend(backendOf({ [PAIR.canonical]: 'chime', [PAIR.row]: 'blip' }));
     expect(get(PAIR.canonical)).toBe('chime');
+  });
+});
+
+describe('a key renamed twice has a defined winner', () => {
+  /**
+   * `a` -> `b` -> `c` leaves TWO prefixed entries in `legacyKeys`, so two
+   * different server rows resolve to one canonical key. A bulk read gives
+   * no order guarantee and carries no timestamp, so before this the row
+   * that happened to come later in the array silently won — the same
+   * shape as the orphan bug this whole mechanism exists to fix, one
+   * rename further along.
+   *
+   * Synthetic, on purpose: the registry has no double-rename today, and
+   * inventing one just to test it would put a fake entry in front of
+   * every other guard that walks DEFS.
+   */
+  const CHAIN = new Map<string, LegacyRow>([
+    ['b', { canonical: 'c', rank: 0 }],   // the most recent former spelling
+    ['a', { canonical: 'c', rank: 1 }],   // older still
+  ]);
+
+  it('prefers the most recent former spelling, whatever order they arrive in', () => {
+    expect(pickLegacyRows(['a', 'b'], CHAIN)).toEqual(new Map([['c', 'b']]));
+    expect(pickLegacyRows(['b', 'a'], CHAIN)).toEqual(new Map([['c', 'b']]));
+  });
+
+  it('takes the older row when it is the only one the account has', () => {
+    expect(pickLegacyRows(['a'], CHAIN)).toEqual(new Map([['c', 'a']]));
+  });
+
+  it('ignores rows that answer to nothing', () => {
+    expect(pickLegacyRows(['zzz'], CHAIN)).toEqual(new Map());
+  });
+
+  it('trips the moment a real key is renamed twice', () => {
+    /*
+     * Today every canonical key has at most ONE prefixed legacy row, so
+     * `attachBackend`'s use of the precedence rule is behaviour-neutral:
+     * adopting "the winner" and adopting "every legacy row" produce the
+     * same result, and no test can tell them apart. That is a property
+     * of the registry, not a hole in the guard — the rule itself is
+     * pinned by the synthetic cases above.
+     *
+     * It stops being neutral the first time somebody renames an
+     * already-renamed key. This fails on that day, so the end-to-end
+     * path gets a real test while the person who created the case is
+     * still holding it, instead of the divergence shipping unnoticed.
+     */
+    const byCanonical = new Map<string, string[]>();
+    for (const { canonical, row } of RENAMED) {
+      byCanonical.set(canonical, [...(byCanonical.get(canonical) ?? []), row]);
+    }
+    const doubled = [...byCanonical].filter(([, rows]) => rows.length > 1);
+    expect(
+      doubled.map(([c, rows]) => `${c} <- ${rows.join(', ')}`),
+      'a key now has two former registry spellings, so which server row wins is '
+      + 'live behaviour for the first time. Add an end-to-end attachBackend test '
+      + 'for it, then update this one.',
+    ).toEqual([]);
   });
 });

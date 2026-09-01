@@ -336,8 +336,7 @@
     "group_color": "Колір",
     "accent_blue": "Синій",
     "accent_purple": "Фіолетовий",
-    "accent_green": "Зелений",
-    "size_by_region": "Розмір за областями…"
+    "accent_green": "Зелений"
   },
   "mods": {
     "group_corners": "Кути",
@@ -347,7 +346,8 @@
     "picker": "Mods",
     "group_size": "Розмір",
     "size_label": "Розмір інтерфейсу",
-    "size_reset": "Скинути"
+    "size_reset": "Скинути",
+    "size_by_region": "Розмір за областями…"
   },
   "tier": {
     "platinum": "Платина",

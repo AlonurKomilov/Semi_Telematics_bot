@@ -370,8 +370,7 @@
     "group_color": "Couleur",
     "accent_blue": "Bleu",
     "accent_purple": "Violet",
-    "accent_green": "Vert",
-    "size_by_region": "Taille par zone…"
+    "accent_green": "Vert"
   },
   "mods": {
     "group_corners": "Coins",
@@ -381,7 +380,8 @@
     "picker": "Mods",
     "group_size": "Taille",
     "size_label": "Taille de l'interface",
-    "size_reset": "Réinitialiser"
+    "size_reset": "Réinitialiser",
+    "size_by_region": "Taille par zone…"
   },
   "forms": {
     "create": "Créer",

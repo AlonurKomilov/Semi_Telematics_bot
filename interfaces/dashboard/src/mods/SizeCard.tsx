@@ -205,7 +205,7 @@ export default function SizeCard() {
   } as CSSProperties;
 
   return (
-    <Card className="scroll-mt-20" render={<section />} id="appearance" style={pinned}>
+    <Card className="scroll-mt-20" render={<section />} id="interface-size" style={pinned}>
       {/* Title, muted line and reset come from the ONE primitive rather
           than a hand-rolled flex row plus a loose <p>. The Appearance
           card beside this one wears exactly the same chrome, which is

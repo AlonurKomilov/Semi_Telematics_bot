@@ -337,8 +337,7 @@
     "group_color": "Rang",
     "accent_blue": "Koʻk",
     "accent_purple": "Binafsha",
-    "accent_green": "Yashil",
-    "size_by_region": "Hudud boʻyicha oʻlcham…"
+    "accent_green": "Yashil"
   },
   "mods": {
     "picker": "Mods",
@@ -348,7 +347,8 @@
     "corners_pill": "Tabletka",
     "group_size": "Oʻlcham",
     "size_label": "Interfeys oʻlchami",
-    "size_reset": "Tiklash"
+    "size_reset": "Tiklash",
+    "size_by_region": "Hudud boʻyicha oʻlcham…"
   },
   "tier": {
     "platinum": "Platina",

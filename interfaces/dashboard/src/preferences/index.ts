@@ -33,6 +33,7 @@ export {
   SIZE_MAX,
   SIZE_REGIONS,
   SIZE_DEFAULT,
+  MOD_DEFAULT,
   clampSize,
   type NotifPosition,
   type BannerLevel,

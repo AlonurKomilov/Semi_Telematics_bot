@@ -179,24 +179,70 @@ export function adoptRaw(key: string, rawJson: string | null): void {
  * predates the preference service, so no server row ever existed for it
  * and it is correctly absent from this map.
  */
-function serverLegacyMap(): Map<string, string> {
-  const out = new Map<string, string>();
+export interface LegacyRow {
+  canonical: string;
+  /** Index in `legacyKeys` — 0 is the most recent former spelling. */
+  rank: number;
+}
+
+function buildServerLegacyMap(): Map<string, LegacyRow> {
+  const out = new Map<string, LegacyRow>();
   for (const [canonical, def] of Object.entries(DEFS)) {
-    for (const legacy of (def as { legacyKeys?: string[] }).legacyKeys ?? []) {
-      if (!legacy.startsWith(LS_PREFIX)) continue;
+    const chain = (def as { legacyKeys?: string[] }).legacyKeys ?? [];
+    chain.forEach((legacy, rank) => {
+      if (!legacy.startsWith(LS_PREFIX)) return;
       const rowKey = legacy.slice(LS_PREFIX.length);
-      if (rowKey === canonical) continue;
-      out.set(rowKey, canonical);
-    }
+      if (rowKey === canonical) return;
+      out.set(rowKey, { canonical, rank });
+    });
   }
   return out;
 }
+
+/** Built once. `DEFS` is a module constant, so there is nothing to invalidate. */
+let serverLegacy: Map<string, LegacyRow> | null = null;
+const serverLegacyMap = (): Map<string, LegacyRow> =>
+  (serverLegacy ??= buildServerLegacyMap());
 
 /** The canonical key a server row belongs to, or null if it belongs to
  *  nothing this registry knows. Exported for the guard. */
 export function canonicalKeyForRow(rowKey: string): string | null {
   if (defFor(rowKey)) return rowKey;
-  return serverLegacyMap().get(rowKey) ?? null;
+  return serverLegacyMap().get(rowKey)?.canonical ?? null;
+}
+
+/**
+ * Which legacy row wins, when an account carries more than one.
+ *
+ * A key renamed TWICE (`a` -> `b` -> `c`) leaves two prefixed entries in
+ * `legacyKeys`, so two different server rows resolve to one canonical key
+ * — and a bulk read gives no order guarantee and no timestamp, so
+ * whichever happened to come later in the array would silently win. That
+ * is the same shape as the bug this whole mechanism exists to fix, one
+ * rename further along.
+ *
+ * The tie-break is the one the chain already uses: `readPref` walks
+ * `legacyKeys` in order, so index 0 is the most recent former spelling
+ * and wins. Server rows now answer to the same precedence localStorage
+ * does, rather than to array order from the network.
+ *
+ * Pure and exported so the double-rename case can be tested without
+ * inventing a registry entry for it.
+ */
+export function pickLegacyRows(
+  rowKeys: readonly string[],
+  map: Map<string, LegacyRow> = serverLegacyMap(),
+): Map<string, string> {
+  const best = new Map<string, { rowKey: string; rank: number }>();
+  for (const rowKey of rowKeys) {
+    const hit = map.get(rowKey);
+    if (!hit) continue;
+    const held = best.get(hit.canonical);
+    if (held === undefined || hit.rank < held.rank) {
+      best.set(hit.canonical, { rowKey, rank: hit.rank });
+    }
+  }
+  return new Map([...best].map(([canonical, v]) => [canonical, v.rowKey]));
 }
 
 /** Phase 2 entry point: register the remote backend and merge what the
@@ -218,11 +264,17 @@ export async function attachBackend(next: SyncBackend): Promise<void> {
     for (const item of items) {
       (defFor(item.key) ? canonical : legacy).push(item);
     }
-    for (const { key, value } of legacy) {
-      const target = canonicalKeyForRow(key);
-      if (target) adoptRaw(target, value);
+    // Exactly ONE legacy row per canonical key is adopted, chosen by the
+    // chain's own precedence rather than by however the bulk read
+    // happened to order them. Driven FROM the winners map rather than
+    // filtering the rows against it: a filter is a line that does
+    // nothing until the day a key is renamed twice, so deleting it would
+    // pass every test — this shape has no such line to delete.
+    const value = new Map(legacy.map((i) => [i.key, i.value]));
+    for (const [target, rowKey] of pickLegacyRows([...value.keys()])) {
+      adoptRaw(target, value.get(rowKey) ?? null);
     }
-    for (const { key, value } of canonical) adoptRaw(key, value);
+    for (const item of canonical) adoptRaw(item.key, item.value);
   } finally {
     // Even a FAILED bulk read resolves the gate: consumers would
     // otherwise wait forever on an offline device.  The local value is
