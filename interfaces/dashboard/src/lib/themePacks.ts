@@ -72,8 +72,25 @@ export const THEME_MATERIALS = ['solid', 'glass'] as const;
 /** How fast the app moves. A multiplier on every transition — see the
  *  motion tokens in index.css for why the infinite loops are excluded. */
 export const THEME_MOTIONS = ['calm', 'default', 'snappy'] as const;
+/**
+ * Icon stroke weight, and the FIRST property a mod carries that the
+ * panel does not expose.
+ *
+ * That asymmetry is deliberate and worth stating: up to now a mod was a
+ * bundle of controls a person could reach anyway, which makes it a
+ * shortcut rather than a look. Not every property has to be a chip.
+ * This one rides `<LucideProvider>`, which the installed lucide already
+ * ships and nothing here used — one mount point, zero call sites among
+ * the 1,663 icon usages.
+ */
+export const THEME_ICONS = ['hairline', 'regular', 'bold'] as const;
+/** The stroke widths those names mean. `regular` is lucide's own 2. */
+export const ICON_STROKE: Record<string, number> = {
+  hairline: 1.25, regular: 2, bold: 2.5,
+};
 export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
 export type ThemeMotion = (typeof THEME_MOTIONS)[number];
+export type ThemeIcons = (typeof THEME_ICONS)[number];
 
 export const packById = (id: string): ThemePack | undefined =>
   THEME_PACKS.find((p) => p.id === id);
@@ -114,6 +131,12 @@ export interface ThemeMod {
   readonly material?: ThemeMaterial;
   /** How fast it moves. Omit and the person's own choice stands. */
   readonly motion?: ThemeMotion;
+  /** Icon stroke weight. Mod-only — the panel offers no control for it. */
+  readonly icons?: ThemeIcons;
+  /** Animate the routed page in. Off unless a mod asks: an operations
+   *  dashboard is navigated dozens of times an hour, and a slide-in on
+   *  every one of them is a tax rather than a delight. */
+  readonly entrance?: boolean;
   /** One line, shown under the label. Says who the look is FOR. */
   readonly why: string;
 }
@@ -127,13 +150,30 @@ export interface ThemeMod {
  */
 export const THEME_MODS: readonly ThemeMod[] = [
   { id: 'cab',  label: 'Cab',  accent: 'azure', radius: 'pill',    size: 1.25,
+    icons: 'bold',
     why: 'Tablet in a moving truck — bigger targets, gloved hands' },
   { id: 'wall', label: 'Wall', accent: 'blue',  radius: 'rounded', size: 1.45,
+    icons: 'bold', entrance: true,
     why: 'A display read from across the room' },
 ] as const;
 
 export const modById = (id: string): ThemeMod | undefined =>
   THEME_MODS.find((m) => m.id === id);
+
+/**
+ * Everything a mod can set. One object rather than a parameter list:
+ * `activeModId` had reached five positional arguments and every new axis
+ * was changing its signature and every call site with it.
+ */
+export interface ThemeAxes {
+  accent: string;
+  radius: string;
+  size: number;
+  material: string;
+  motion: string;
+  /** Icon stroke weight. NOT a panel control — see ThemeMod.icons. */
+  icons: string;
+}
 
 /**
  * Which mod, if any, the current axes ADD UP TO — `''` for none.
@@ -144,14 +184,13 @@ export const modById = (id: string): ThemeMod | undefined =>
  * corner after applying a look": nothing is stored, nothing is
  * invalidated, the sum simply stops matching and the chip goes quiet.
  */
-export const activeModId = (
-  accent: string, radius: string, size: number, material: string, motion: string,
-): string =>
+export const activeModId = (a: ThemeAxes): string =>
   THEME_MODS.find((m) =>
-    m.accent === accent
-    && (m.radius === undefined || m.radius === radius)
-    && (m.material === undefined || m.material === material)
-    && (m.motion === undefined || m.motion === motion)
+    m.accent === a.accent
+    && (m.radius === undefined || m.radius === a.radius)
+    && (m.material === undefined || m.material === a.material)
+    && (m.motion === undefined || m.motion === a.motion)
+    && (m.icons === undefined || m.icons === a.icons)
     // Float compare: the size arrives from a slider and a stored JSON
     // round-trip, so `===` against 1.25 is a coin toss.
-    && (m.size === undefined || Math.abs(m.size - size) < 1e-6))?.id ?? '';
+    && (m.size === undefined || Math.abs(m.size - a.size) < 1e-6))?.id ?? '';

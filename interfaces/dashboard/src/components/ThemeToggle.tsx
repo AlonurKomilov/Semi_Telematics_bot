@@ -143,7 +143,10 @@ export function ThemeToggle() {
   // A mod is "on" only while every axis it declares still matches. Tweak
   // the corners and it goes off — what is applied is the axes, and the
   // mod was only the thing that wrote them.
-  const activeMod = activeModId(theme.accent, theme.radius, size.global, theme.material, theme.motion);
+  const activeMod = activeModId({
+    accent: theme.accent, radius: theme.radius, size: size.global,
+    material: theme.material, motion: theme.motion, icons: theme.icons,
+  });
   const activeWhy = modById(activeMod)?.why ?? '';
 
   const applyMod = (m: ThemeMod) => {
@@ -152,6 +155,11 @@ export function ThemeToggle() {
       ...(m.radius === undefined ? {} : { radius: m.radius }),
       ...(m.material === undefined ? {} : { material: m.material }),
       ...(m.motion === undefined ? {} : { motion: m.motion }),
+      // Mod-only axes. The panel has no chip for either, so a mod is the
+      // only way to reach them — and the only way back is another mod or
+      // a reset, which is why neither may be irreversible or unreadable.
+      ...(m.icons === undefined ? {} : { icons: m.icons }),
+      ...(m.entrance === undefined ? {} : { entrance: m.entrance }),
     });
     if (m.size !== undefined) setSize({ global: m.size });
   };

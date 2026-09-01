@@ -15,6 +15,7 @@ import { applyPublicFormTheme } from './features/applications/public/theme';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
 import './i18n';  // initialise i18next before any component renders
 import './index.css';
+import { IconWeight } from './components/IconWeight';
 
 /** The MAIN app's toast/banner lane — position follows the user's
  * notification-position preference (the public-apply mount keeps a fixed
@@ -111,6 +112,9 @@ if (_isApply) {
   _root.render(
     <React.StrictMode>
       <ThemeProvider>
+        {/* Inside ThemeProvider because it reads the theme; outside
+            everything else because every icon in the app is below it. */}
+        <IconWeight>
         <QueryClientProvider client={queryClient}>
           {/* Tooltips open after a short hover intent (no bubble spam while
               the mouse is just passing).  timeout={0} disables the
@@ -136,6 +140,7 @@ if (_isApply) {
           <AppToaster />
           {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
         </QueryClientProvider>
+        </IconWeight>
       </ThemeProvider>
     </React.StrictMode>,
   );

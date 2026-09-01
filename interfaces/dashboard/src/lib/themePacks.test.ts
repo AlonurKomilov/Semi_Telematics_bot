@@ -22,7 +22,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  THEME_PACKS, THEME_MODS, PACK_TOKENS, packById, modById, activeModId,
+  THEME_PACKS, THEME_MODS, THEME_ICONS, ICON_STROKE,
+  PACK_TOKENS, packById, modById, activeModId,
 } from './themePacks';
 import { SIZE_MAX, THEME_RADII } from '../preferences/registry';
 import { derivePalette } from './palette';
@@ -201,25 +202,60 @@ describe('a look is on only while it adds up', () => {
   const cab = modById('cab')!;
 
   it('recognises its own axes', () => {
-    expect(activeModId(cab.accent, cab.radius!, cab.size!, 'solid', 'default')).toBe('cab');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('cab');
   });
 
   it('goes quiet the moment any axis is tweaked', () => {
     // The behaviour that means there is no "modified" state to store:
     // change a corner and the chip un-highlights by itself.
-    expect(activeModId(cab.accent, 'sharp', cab.size!, 'solid', 'default')).toBe('');
-    expect(activeModId(cab.accent, cab.radius!, 1, 'solid', 'default')).toBe('');
-    expect(activeModId('blue', cab.radius!, cab.size!, 'solid', 'default')).not.toBe('cab');
+    expect(activeModId({ accent: cab.accent, radius: 'sharp', size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: 1, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
+    expect(activeModId({ accent: 'blue', radius: cab.radius!, size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons! })).not.toBe('cab');
   });
 
   it('survives a float round-trip', () => {
     // The size comes back from a slider and from stored JSON; `=== 1.25`
     // is a coin toss on a value that has been through both.
-    expect(activeModId(cab.accent, cab.radius!, cab.size! + 1e-9, 'solid', 'default')).toBe('cab');
-    expect(activeModId(cab.accent, cab.radius!, cab.size! + 0.01, 'solid', 'default')).toBe('');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size! + 1e-9, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('cab');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size! + 0.01, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
   });
 
   it('answers empty when the axes match nothing', () => {
-    expect(activeModId('blue', 'rounded', 1, 'solid', 'default')).toBe('');
+    expect(activeModId({ accent: 'blue', radius: 'rounded', size: 1, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
+  });
+});
+
+describe('the properties a mod carries and the panel does not', () => {
+  it('names a stroke width for every icon setting', () => {
+    // A missing entry falls back to `regular`, silently — the mod would
+    // apply and the icons would not change, which reads as the feature
+    // not working rather than as a typo.
+    for (const w of THEME_ICONS) {
+      expect(ICON_STROKE[w], `no stroke width for "${w}"`).toBeGreaterThan(0);
+      expect(ICON_STROKE[w]).toBeLessThan(4);
+    }
+    expect(ICON_STROKE.regular, "regular must be lucide's own default").toBe(2);
+  });
+
+  it('keeps the mod-only axes out of the panel', () => {
+    // The asymmetry is the point: a mod whose every setting is also a
+    // chip is a shortcut, not a look. If someone adds a chip for these,
+    // this test should be deleted deliberately rather than pass by
+    // accident.
+    const panel = readFileSync(join(__dirname, '..', 'components/ThemeToggle.tsx'), 'utf8');
+    for (const axis of ['icons', 'entrance'])
+      expect(panel, `the panel gained a control for "${axis}"`)
+        .not.toMatch(new RegExp(`setTheme\\(\\{\\s*${axis}:`));
+  });
+
+  it('counts them when deciding whether a mod is on', () => {
+    const cab = modById('cab')!;
+    const base = {
+      accent: cab.accent, radius: cab.radius!, size: cab.size!,
+      material: 'solid', motion: 'default', icons: cab.icons!,
+    };
+    expect(activeModId(base)).toBe('cab');
+    // Change the one axis the panel cannot reach, and the mod is off.
+    expect(activeModId({ ...base, icons: 'hairline' })).toBe('');
   });
 });

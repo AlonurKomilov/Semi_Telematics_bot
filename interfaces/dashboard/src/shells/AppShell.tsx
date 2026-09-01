@@ -23,7 +23,7 @@
  * change goes without touching the other five.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Search, Menu, X } from 'lucide-react';
 
 import Sidebar from '../components/Sidebar';
@@ -31,6 +31,7 @@ import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { useTheme } from '../context/ThemeContext';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -41,6 +42,8 @@ import { sizeRegion } from '@/lib/sizeRegion';
 import ShellHero from './heroes/ShellHero';
 
 export default function AppShell({ hero }: { hero?: ReactNode }) {
+  const { theme } = useTheme();
+  const { pathname } = useLocation();
   const dockedContentClass = useDockedContentClass();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -156,7 +159,24 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           className={`flex-1 bg-background border border-border rounded-xl overflow-hidden ${dockedContentClass}`}
         >
           <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
-            <Outlet />
+            {/* An entrance for the routed page, when a mod asks for one.
+                Off by default and on purpose: this app is navigated
+                dozens of times an hour, and a slide-in on every one of
+                them is a tax rather than a delight.
+
+                One wrapper reaches every route because there is exactly
+                one <Outlet/> and all six shells go through it. Keyed on
+                the pathname so React remounts it and the animation
+                actually replays; the duration rides --motion-scale like
+                everything else, and the reduced-motion floor turns it
+                off entirely. */}
+            {theme.entrance ? (
+              <div key={pathname} className="animate-in fade-in-0 slide-in-from-bottom-2">
+                <Outlet />
+              </div>
+            ) : (
+              <Outlet />
+            )}
           </div>
         </main>
       </div>

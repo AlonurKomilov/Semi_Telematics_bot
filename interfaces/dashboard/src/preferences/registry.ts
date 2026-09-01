@@ -33,7 +33,9 @@
  * not "tidy" one without checking the surface that consumes it.
  */
 
-import { THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS } from '../lib/themePacks';
+import {
+  THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS,
+} from '../lib/themePacks';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../lib/modStyle';
 
 /** Where a preference is allowed to live.
@@ -161,6 +163,7 @@ export type ThemeRadius = 'sharp' | 'rounded' | 'pill';
 /** Derived from the catalogue, like ThemeAccent — see lib/themePacks.ts. */
 export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
 export type ThemeMotion = (typeof THEME_MOTIONS)[number];
+export type ThemeIcons = (typeof THEME_ICONS)[number];
 export interface ThemeSetting {
   mode: ThemeMode;
   accent: ThemeAccent;
@@ -169,6 +172,12 @@ export interface ThemeSetting {
   material: ThemeMaterial;
   /** How fast the app moves. */
   motion: ThemeMotion;
+  /** Icon stroke weight. Persisted like any axis, but MOD-ONLY: the
+   *  panel offers no control, so it only ever changes by taking a mod.
+   *  A mod that is only a bundle of chips is a shortcut, not a look. */
+  icons: ThemeIcons;
+  /** Whether the routed page animates in. Mod-only, and off by default. */
+  entrance: boolean;
   /**
    * Token values this person authored, installed over the preset.
    *
@@ -241,7 +250,7 @@ export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
 export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const THEME_DEFAULT: ThemeSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
-  motion: 'default', color: 'dark-blue',
+  motion: 'default', icons: 'regular', entrance: false, color: 'dark-blue',
 };
 
 /** @deprecated Only the migration and the alias use this. */
@@ -266,6 +275,29 @@ const LEGACY_COLOR: Record<ThemeColor, { mode: ThemeMode; accent: ThemeAccent }>
 export const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
 export const THEME_MATERIAL_LIST: ThemeMaterial[] = [...THEME_MATERIALS];
 export const THEME_MOTION_LIST: ThemeMotion[] = [...THEME_MOTIONS];
+export const THEME_ICONS_LIST: ThemeIcons[] = [...THEME_ICONS];
+
+/**
+ * Which theme axes the PRE-PAINT script can act on.
+ *
+ * The boot script exists to stop a flash: it stamps what CSS reads
+ * before the first frame. An axis belongs here when a wrong value for
+ * one frame would be VISIBLE — mode, accent, radius, material and
+ * motion are all CSS.
+ *
+ * `icons` and `entrance` are not, and that is why they are absent rather
+ * than forgotten. Both are React-level — an icon's stroke comes from a
+ * context provider, an entrance from a component that does not exist
+ * until React mounts — so there is no frame in which they could be
+ * wrong. Stamping them pre-paint would be ceremony.
+ *
+ * `themeBoot.test.ts` reads this list, and also asserts that every key
+ * of THEME_DEFAULT appears either here or in its own exclusion list — so
+ * a new axis forces the decision instead of quietly skipping the guard.
+ */
+export const PREPAINT_AXES = [
+  'mode', 'accent', 'radius', 'material', 'motion', 'color',
+] as const;
 
 export const SIZE_REGIONS: SizeRegion[] = [
   'text', 'tables', 'controls', 'overlays', 'navigation', 'assistant',
@@ -354,6 +386,9 @@ export const DEFS = {
         ? o.material as ThemeMaterial : THEME_DEFAULT.material;
       const motion = THEME_MOTION_LIST.includes(o.motion as ThemeMotion)
         ? o.motion as ThemeMotion : THEME_DEFAULT.motion;
+      const icons = THEME_ICONS_LIST.includes(o.icons as ThemeIcons)
+        ? o.icons as ThemeIcons : THEME_DEFAULT.icons;
+      const entrance = typeof o.entrance === 'boolean' ? o.entrance : THEME_DEFAULT.entrance;
 
       // Sanitised through the injector's OWN validators, so the rules
       // are stated once. Storage is untrusted input like any other — a
@@ -387,7 +422,7 @@ export const DEFS = {
           ?? { mode: THEME_DEFAULT.mode, accent: THEME_DEFAULT.accent };
 
       return {
-        mode, accent, radius, material, motion,
+        mode, accent, radius, material, motion, icons, entrance,
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.
         ...(tokens ? { tokens } : {}),

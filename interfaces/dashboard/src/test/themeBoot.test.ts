@@ -26,6 +26,7 @@ import {
   THEME_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, THEME_RADII,
   THEME_MATERIAL_LIST,
   THEME_MOTION_LIST,
+  PREPAINT_AXES,
   themeColorAlias,
   SIZE_DEFAULT, SIZE_REGIONS, SIZE_MIN, SIZE_MAX, clampSize,
 } from '../preferences/registry';
@@ -163,7 +164,11 @@ describe('theme-boot ↔ applyTheme', () => {
       // the app snaps to another after hydration.
       for (const material of THEME_MATERIAL_LIST) {
       for (const motion of THEME_MOTION_LIST) {
+        // Spread the default so a NEW axis does not have to be added
+        // here by hand — the third time that happened is what prompted
+        // it. The sweep still varies every axis it is testing.
         const theme: ThemeSetting = {
+          ...THEME_DEFAULT,
           mode, accent, radius, material, motion, color: themeColorAlias(mode, accent),
         };
 
@@ -208,6 +213,7 @@ describe('theme-boot ↔ applyTheme', () => {
 
         resetRoot();
         const applied = runApply({
+          ...THEME_DEFAULT,
           mode: mode as ThemeSetting['mode'],
           accent: accent as ThemeSetting['accent'],
           radius,
@@ -266,16 +272,14 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
-      mode: 'light', accent: 'blue', radius: 'sharp', material: 'solid',
-      motion: 'default', color: 'light',
+      ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
     }));
   });
 
   it('prefers the canonical key over the legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
     const canonical: ThemeSetting = {
-      mode: 'dark', accent: 'green', radius: 'pill', material: 'solid',
-      motion: 'default', color: 'dark-green',
+      ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green',
     };
     storeTheme(canonical);
     const booted = runBoot();
@@ -399,9 +403,27 @@ describe('theme-boot source', () => {
     }
   });
 
-  it('states the registry defaults', () => {
-    for (const v of Object.values(THEME_DEFAULT)) {
-      expect(source, `boot script is missing the default '${v}'`).toContain(`'${v}'`);
+  it('states the defaults for every axis it can act on', () => {
+    for (const k of PREPAINT_AXES) {
+      const v = THEME_DEFAULT[k];
+      expect(source, `boot script is missing the default '${v}' for ${k}`).toContain(`'${v}'`);
+    }
+  });
+
+  it('accounts for every axis, one way or the other', () => {
+    // The guard on the guard. `icons` and `entrance` are React-level —
+    // an icon's stroke comes from a context provider, an entrance from a
+    // component that does not exist until React mounts — so there is no
+    // frame in which either could be wrong and nothing for the boot
+    // script to do. Listing them here rather than letting the loop above
+    // simply not reach them is what makes the NEXT axis a decision: add
+    // it to PREPAINT_AXES, or add it here and say why.
+    const NOT_PREPAINT = ['icons', 'entrance'];
+    for (const k of Object.keys(THEME_DEFAULT)) {
+      expect(
+        (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),
+        `'${k}' is neither a pre-paint axis nor declared as not being one`,
+      ).toBe(true);
     }
   });
 
