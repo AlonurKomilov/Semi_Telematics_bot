@@ -22,12 +22,32 @@ const RECENT_LIMIT = 12;
  * a Set of id-strings; on any error the caller keeps its banners (safe).
  */
 export async function activeAmong(ids: (string | number)[]): Promise<Set<string>> {
+  return (await activeAndClaimed(ids)).active;
+}
+
+/**
+ * The same call, both facts.
+ *
+ * A sticky banner has two questions, not one: "is this still active?"
+ * AND "does anybody have it?".  A claim deliberately does not change
+ * status, so the active check alone left the pager's own face demanding
+ * an owner that had already been found — while the board showed chips
+ * and the Telegram copy named the person.  One round trip, both answers.
+ */
+export async function activeAndClaimed(ids: (string | number)[]): Promise<{
+  active: Set<string>;
+  claimedBy: Map<string, string>;
+}> {
   const list = ids.map(String).filter(Boolean);
-  if (!list.length) return new Set();
-  const r = await apiJSON<{ active_ids: string[] }>(
-    `/alerts/active-among?ids=${encodeURIComponent(list.join(','))}`,
-  );
-  return new Set((r.active_ids ?? []).map(String));
+  if (!list.length) return { active: new Set(), claimedBy: new Map() };
+  const r = await apiJSON<{
+    active_ids: string[];
+    claimed_by?: Record<string, string>;
+  }>(`/alerts/active-among?ids=${encodeURIComponent(list.join(','))}`);
+  return {
+    active: new Set((r.active_ids ?? []).map(String)),
+    claimedBy: new Map(Object.entries(r.claimed_by ?? {})),
+  };
 }
 
 export function useRecentAlerts(enabled: boolean, refetchInterval?: number) {

@@ -727,7 +727,18 @@ async def alerts_active_among(
     trucks, a company-restricted user only their companies — so this can't
     become an oracle for alerts the caller can't otherwise see.  Returns a
     subset of the input ids (as strings); unknown/foreign/resolved ids are
-    simply absent."""
+    simply absent.
+
+    ``claimed_by`` answers the SECOND question a sticky banner has to ask.
+    "Still active?" alone left the pager's own face demanding an owner
+    that had already been found: a claim deliberately does not change
+    status, so a colleague pressing "Work on it" was invisible here while
+    the board showed chips and the Telegram copy said who had it.  One
+    round trip carries both facts.
+
+    Names are derived ONLY from the already-scope-filtered set above, so
+    a claimant's name can never travel attached to an alert the caller
+    was not allowed to see in the first place."""
     # Positive digit strings only, bounded length — so a crafted token
     # ("--5", a 500-digit number) can't crash int()/the asyncpg bind.
     id_list: list[int] = []
@@ -749,7 +760,24 @@ async def alerts_active_among(
     if allowed:
         veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
         alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
-    return {"active_ids": [str(a["id"]) for a in alerts]}
+    visible_ids = [int(a["id"]) for a in alerts if a.get("id")]
+    claimed_by: dict[str, str] = {}
+    try:
+        workers = await tenant_db.get_workers_for_alerts(
+            user["account_id"], visible_ids)
+        for aid, hands in workers.items():
+            named = [w["name"] for w in hands if w.get("name")]
+            if named:
+                claimed_by[str(aid)] = (
+                    named[0] if len(named) == 1
+                    else f"{named[0]} +{len(named) - 1}")
+    except Exception:
+        # Fail-soft: the banner's PRIMARY job is the active/resolved
+        # signal.  A claims lookup that fails must leave the banner
+        # exactly as it is, never retire it and never blank it.
+        logger.debug("active-among: claims lookup failed", exc_info=True)
+    return {"active_ids": [str(a["id"]) for a in alerts],
+            "claimed_by": claimed_by}
 
 
 @router.get("/pending/by-vehicle")

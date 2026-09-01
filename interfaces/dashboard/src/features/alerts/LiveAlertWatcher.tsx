@@ -12,7 +12,7 @@
  * warning/info auto-dismiss on a countdown.  Per poll it shows at most a
  * few, then one "+N more" summary — never a wall of pop-ups.
  */
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
 import { toast } from 'sonner';
@@ -21,9 +21,9 @@ import type { Tone } from '../../lib/status';
 import { showBanner } from '../../components/banners';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { formatAlertDetailInline } from '../../utils/alertDescription';
-import { useRecentAlerts, useAckAlerts, activeAmong } from './useRecentAlerts';
+import { useRecentAlerts, useAckAlerts, activeAndClaimed } from './useRecentAlerts';
 import { useBannerLevel } from './bannerLevel';
-import { diffNewAlerts, resolvedBanners } from './liveAlerts';
+import { claimedBanners, diffNewAlerts, resolvedBanners } from './liveAlerts';
 
 const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 // 60s ambient cadence — "a new alert within a minute" for an OPEN tab;
@@ -83,6 +83,15 @@ export default function LiveAlertWatcher() {
   // authoritatively via /alerts/active-among, never inferred from the
   // capped feed).
   const shownRef = useRef<Map<string, string | number>>(new Map());
+  // The ALERT behind each on-screen banner, so one can be re-rendered
+  // later with something it did not know when first shown (a colleague
+  // claiming it).  Kept here rather than looked up in `data`: a sticky
+  // critical outlives the capped recent feed, which is the same reason
+  // the resolved-check asks /alerts/active-among instead of the feed.
+  const shownAlertRef = useRef<Map<string, Alert>>(new Map());
+  // Ids already re-rendered with their claimant, so a claim that stands
+  // for days does not rebuild its banner on every poll.
+  const annotatedRef = useRef<Set<string>>(new Set());
   // Latest values read inside the data effect without making it re-run on
   // their change (only a genuine new fetch should diff).
   const levelRef = useRef(level);
@@ -100,6 +109,82 @@ export default function LiveAlertWatcher() {
       seenRef.current = new Set();
     }
   }, [level]);
+
+  const bannerFor = useCallback(function bannerFor(a: Alert, claimant?: string, existingId?: string | number) {
+    const tone = SEVERITY_TONE[a.severity ?? 'info'] ?? 'info';
+    const critical = a.severity === 'critical';
+    const bannerId = showBanner({
+      tone,
+      title: `${label(a.alert_type)} — ${a.vehicle_name || 'Vehicle'}`,
+      // Company code chip — which company this unit belongs to (server
+      // tags it on multi-company accounts only), same as the bell rows.
+      tag: a.company,
+      onClose: () => {
+        shownRef.current.delete(String(a.id));
+        shownAlertRef.current.delete(String(a.id));
+        annotatedRef.current.delete(String(a.id));
+      },
+      // `last_detail` is a dedup key ("parking:unknown:8h") — humanize it
+      // through the shared formatter, same as the board and the bell.
+      // Once somebody has it, the banner says WHO instead of only what.
+      // That sentence is the stand-down signal: without it a second
+      // dispatcher reads a filled "Work on it" and does the work twice.
+      detail: claimant
+        ? `🔧 ${claimant} is working on this`
+        : formatAlertDetailInline(a),
+      // Live age + occurrence so the banner is honest about WHEN: a
+      // fresh fire reads "2m ago", a recurring one "×5 · 2m ago", and a
+      // sticky critical that lingers keeps ticking ("3d ago") instead of
+      // masquerading as current.
+      ageSince: a.last_seen || a.created_at,
+      occurrence: a.occurrence_count,
+      // Critical stays until dismissed/acked; others auto-close.
+      seconds: critical ? undefined : AUTO_DISMISS_SECONDS,
+      countdown: 'dismiss',
+      actions: [
+        { label: 'View', onClick: () => navRef.current('/alerts') },
+        {
+          // The claim, not a resolution — a banner is the pager's face,
+          // and the pager's job is finding an owner.  Resolving from a
+          // popup without doing the work was exactly the old lie;
+          // claiming says the honest thing ("I have it"), retires the
+          // banner, and silences the re-page.
+          //
+          // Once an owner EXISTS the button stops being the primary
+          // ask: the alert is owned, not over, so the banner stays
+          // (it is still unresolved) but it no longer demands.  Join
+          // remains, because a big task takes several hands — the same
+          // grammar the board's Working-on cell uses.
+          primary: !claimant,
+          label: claimant ? 'Join' : 'Work on it',
+          onClick: async () => {
+            try {
+              await apiJSON(`/alerts/${a.id}/work`, { method: 'POST' });
+              shownRef.current.delete(String(a.id));   // owned by me
+              toast.success('You’re on it — it’s in My working on');
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : 'Couldn’t claim it');
+            }
+          },
+        },
+      ],
+    }, existingId);
+    // Track ONLY sticky (critical) banners — they're the ones that never
+    // auto-close and so need retiring when their alert resolves.  Non-
+    // critical banners self-dismiss on their countdown, and tracking them
+    // would let leaked entries (View/auto-close don't fire onClose) pile
+    // up and push a fresh critical past the server's id cap.  Bound it
+    // defensively too, well under that cap (drop-oldest).
+    if (critical) {
+      shownRef.current.set(String(a.id), bannerId);
+      shownAlertRef.current.set(String(a.id), a);
+      while (shownRef.current.size > 48) {
+        const oldest = shownRef.current.keys().next().value;
+        if (oldest === undefined) break;
+        shownRef.current.delete(oldest);
+      }
+    }
+  }, []);
 
   // One diff per successful fetch (dataUpdatedAt changes only on a real
   // network result, not a cache read).
@@ -129,67 +214,7 @@ export default function LiveAlertWatcher() {
         actions: [{ label: 'Open Alerts', primary: true, onClick: () => navRef.current('/alerts') }],
       });
     }
-
-    function bannerFor(a: Alert) {
-      const tone = SEVERITY_TONE[a.severity ?? 'info'] ?? 'info';
-      const critical = a.severity === 'critical';
-      const bannerId = showBanner({
-        tone,
-        title: `${label(a.alert_type)} — ${a.vehicle_name || 'Vehicle'}`,
-        // Company code chip — which company this unit belongs to (server
-        // tags it on multi-company accounts only), same as the bell rows.
-        tag: a.company,
-        onClose: () => shownRef.current.delete(String(a.id)),
-        // `last_detail` is a dedup key ("parking:unknown:8h") — humanize it
-        // through the shared formatter, same as the board and the bell.
-        detail: formatAlertDetailInline(a),
-        // Live age + occurrence so the banner is honest about WHEN: a
-        // fresh fire reads "2m ago", a recurring one "×5 · 2m ago", and a
-        // sticky critical that lingers keeps ticking ("3d ago") instead of
-        // masquerading as current.
-        ageSince: a.last_seen || a.created_at,
-        occurrence: a.occurrence_count,
-        // Critical stays until dismissed/acked; others auto-close.
-        seconds: critical ? undefined : AUTO_DISMISS_SECONDS,
-        countdown: 'dismiss',
-        actions: [
-          { label: 'View', onClick: () => navRef.current('/alerts') },
-          {
-            // The claim, not a resolution — a banner is the pager's face,
-            // and the pager's job is finding an owner.  Resolving from a
-            // popup without doing the work was exactly the old lie;
-            // claiming says the honest thing ("I have it"), retires the
-            // banner, and silences the re-page.
-            primary: true,
-            label: 'Work on it',
-            onClick: async () => {
-              try {
-                await apiJSON(`/alerts/${a.id}/work`, { method: 'POST' });
-                shownRef.current.delete(String(a.id));   // owned by me
-                toast.success('You’re on it — it’s in My working on');
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Couldn’t claim it');
-              }
-            },
-          },
-        ],
-      });
-      // Track ONLY sticky (critical) banners — they're the ones that never
-      // auto-close and so need retiring when their alert resolves.  Non-
-      // critical banners self-dismiss on their countdown, and tracking them
-      // would let leaked entries (View/auto-close don't fire onClose) pile
-      // up and push a fresh critical past the server's id cap.  Bound it
-      // defensively too, well under that cap (drop-oldest).
-      if (critical) {
-        shownRef.current.set(String(a.id), bannerId);
-        while (shownRef.current.size > 48) {
-          const oldest = shownRef.current.keys().next().value;
-          if (oldest === undefined) break;
-          shownRef.current.delete(oldest);
-        }
-      }
-    }
-  }, [data, dataUpdatedAt]);
+  }, [data, dataUpdatedAt, bannerFor]);
 
   // Retire on-screen banners whose alert has resolved.  Runs each poll:
   // asks the AUTHORITATIVE /alerts/active-among for exactly the shown ids
@@ -201,17 +226,31 @@ export default function LiveAlertWatcher() {
     const ids = [...shownRef.current.keys()];
     if (!ids.length) return;
     let cancelled = false;
-    activeAmong(ids)
-      .then((activeIds) => {
+    activeAndClaimed(ids)
+      .then(({ active, claimedBy }) => {
         if (cancelled) return;
-        for (const [alertId, bannerId] of resolvedBanners(shownRef.current, activeIds)) {
+        for (const [alertId, bannerId] of resolvedBanners(shownRef.current, active)) {
           toast.dismiss(bannerId);
           shownRef.current.delete(alertId);
+          shownAlertRef.current.delete(alertId);
+          annotatedRef.current.delete(alertId);
+        }
+        // Someone took it while this banner was on screen.  The alert is
+        // OWNED, not over — so the banner stays (it is still unresolved)
+        // and re-renders in its own slot naming the owner, instead of
+        // going on demanding an owner that has been found.  Once per
+        // claim, not once per poll.
+        for (const [alertId, who, bannerId] of claimedBanners(
+          shownRef.current, claimedBy, annotatedRef.current)) {
+          const alert = shownAlertRef.current.get(alertId);
+          if (!alert) continue;
+          annotatedRef.current.add(alertId);
+          bannerFor(alert, who, bannerId);
         }
       })
       .catch(() => { /* keep banners on failure */ });
     return () => { cancelled = true; };
-  }, [dataUpdatedAt, active]);
+  }, [dataUpdatedAt, active, bannerFor]);
 
   return null;
 }

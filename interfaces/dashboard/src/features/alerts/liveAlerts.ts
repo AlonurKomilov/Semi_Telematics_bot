@@ -54,6 +54,35 @@ export function diffNewAlerts<T extends AlertLike>(
  * feed here would false-dismiss a still-open critical that simply fell off
  * the page — the exact bug this signal exists to avoid.
  */
+/**
+ * Which on-screen banners have just gained an owner and should say so.
+ *
+ * The companion to ``resolvedBanners``: that one asks "has this ended?",
+ * this one asks "does somebody have it?".  A claim deliberately does not
+ * change an alert's status, so without this a second dispatcher's sticky
+ * banner keeps its filled "Work on it" while the board already shows
+ * chips and the Telegram copy names the owner.
+ *
+ * ``annotated`` is what keeps a claim that stands for days from
+ * rebuilding its banner on every poll — a banner that re-renders under
+ * the reader is its own defect.
+ */
+export function claimedBanners(
+  shown: ReadonlyMap<string, string | number>,
+  claimedBy: ReadonlyMap<string, string>,
+  annotated: ReadonlySet<string>,
+): Array<[string, string, string | number]> {
+  const out: Array<[string, string, string | number]> = [];
+  for (const [alertId, who] of claimedBy) {
+    if (!who || annotated.has(alertId)) continue;
+    const bannerId = shown.get(alertId);
+    if (bannerId === undefined) continue;
+    out.push([alertId, who, bannerId]);
+  }
+  return out;
+}
+
+
 export function resolvedBanners(
   shown: ReadonlyMap<string, string | number>,
   activeIds: ReadonlySet<string>,

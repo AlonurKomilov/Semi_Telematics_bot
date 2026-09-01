@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffNewAlerts, resolvedBanners, type AlertLike } from './liveAlerts';
+import { claimedBanners, diffNewAlerts, resolvedBanners, type AlertLike } from './liveAlerts';
 
 const a = (id: string, severity: AlertLike['severity'] = 'warning'): AlertLike =>
   ({ id, severity });
@@ -64,5 +64,44 @@ describe('resolvedBanners', () => {
 
   it('is empty when nothing is shown', () => {
     expect(resolvedBanners(new Map(), new Set(['a1']))).toEqual([]);
+  });
+});
+
+describe('claimedBanners — the stand-down signal', () => {
+  const shown = new Map<string, string | number>([['1', 'b1'], ['2', 'b2']]);
+
+  it('names the owner of a banner still on screen', () => {
+    const out = claimedBanners(
+      shown, new Map([['1', 'Allen Klein']]), new Set());
+    expect(out).toEqual([['1', 'Allen Klein', 'b1']]);
+  });
+
+  it('does not rebuild a banner it has already annotated', () => {
+    // A claim that stands for days must not re-render its banner on
+    // every poll — a banner that rebuilds under the reader is its own
+    // defect.
+    const out = claimedBanners(
+      shown, new Map([['1', 'Allen Klein']]), new Set(['1']));
+    expect(out).toEqual([]);
+  });
+
+  it('ignores a claim on an alert with no banner up', () => {
+    const out = claimedBanners(
+      shown, new Map([['99', 'Someone']]), new Set());
+    expect(out).toEqual([]);
+  });
+
+  it('ignores a nameless claim rather than printing an empty owner', () => {
+    // The server omits a claimant with no display name; "🔧  is working
+    // on this" would be worse than the un-annotated banner.
+    const out = claimedBanners(shown, new Map([['1', '']]), new Set());
+    expect(out).toEqual([]);
+  });
+
+  it('leaves the resolved check alone — the two answer different questions', () => {
+    // A claimed alert is still ACTIVE, so resolvedBanners must not
+    // retire it: owned is not over.
+    const gone = resolvedBanners(shown, new Set(['1', '2']));
+    expect(gone).toEqual([]);
   });
 });

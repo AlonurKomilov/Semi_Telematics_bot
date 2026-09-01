@@ -192,3 +192,70 @@ class TestAlertByIdRoute:
             r = await c.get("/api/alerts/by-id/99999999",
                             headers={**_hh(api["owner"]), "X-View-As": "fleet"})
         assert r.status_code == 404
+
+
+class TestTheBannerLearnsWhoHasIt:
+    """``claimed_by`` — the stand-down signal the sticky banner lacked.
+
+    A claim deliberately does not change status, so "still active?" alone
+    left the pager's own face demanding an owner that had already been
+    found: the board showed chips and the Telegram copy named the person,
+    while the banner kept its filled "Work on it" button.
+    """
+
+    async def _ask(self, api, token, ids):
+        async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                               base_url="http://t") as c:
+            r = await c.get(
+                "/api/alerts/active-among?ids=" + ",".join(str(i) for i in ids),
+                headers=_hh(token))
+            assert r.status_code == 200, r.text
+            return r.json()
+
+    async def test_a_claim_is_reported_without_resolving_anything(self, api, pg_db):
+        aid = int(api["a1"])
+        before = await self._ask(api, api["owner"], [aid])
+        assert str(aid) in before["active_ids"]
+        assert before["claimed_by"] == {}                # nobody yet
+
+        claimer = await pg_db.create_user(7410, api["acct"],
+                                          display_name="Allen Klein")
+        await pg_db.claim_alert(api["acct"], claimer.id, aid)
+
+        after = await self._ask(api, api["owner"], [aid])
+        # STILL ACTIVE — a claim is an owner, not a resolution.  The
+        # banner must not vanish; it must stop demanding.
+        assert str(aid) in after["active_ids"]
+        assert after["claimed_by"][str(aid)] == "Allen Klein"
+
+    async def test_several_hands_read_as_a_name_plus_a_count(self, api, pg_db):
+        aid = int(api["a2"])
+        a = await pg_db.create_user(7411, api["acct"], display_name="Allen Klein")
+        b = await pg_db.create_user(7412, api["acct"], display_name="Sean Alex")
+        await pg_db.claim_alert(api["acct"], a.id, aid)
+        await pg_db.claim_alert(api["acct"], b.id, aid)
+
+        out = await self._ask(api, api["owner"], [aid])
+        assert out["claimed_by"][str(aid)] == "Allen Klein +1"
+
+    async def test_a_name_never_travels_with_an_invisible_alert(self, api, pg_db):
+        """The disclosure guard: names are derived only from the already
+        scope-filtered set, so an alert the caller cannot see contributes
+        neither an id nor a claimant.  The driver here is scoped to truck
+        T1, so a2 (truck T2) is invisible to them — even though it IS
+        claimed and IS active."""
+        a2 = int(api["a2"])
+        someone = await pg_db.create_user(7413, api["acct"],
+                                          display_name="Not Visible")
+        await pg_db.claim_alert(api["acct"], someone.id, a2)
+
+        out = await self._ask(api, api["driver"], [a2])
+        assert out["active_ids"] == []
+        assert out["claimed_by"] == {}
+
+    async def test_a_resolved_alert_still_retires_the_banner(self, api, pg_db):
+        """The original behaviour must survive: claims are additive information,
+        not a replacement for the active/resolved signal."""
+        a3 = int(api["a3"])
+        out = await self._ask(api, api["owner"], [a3])
+        assert out["active_ids"] == []

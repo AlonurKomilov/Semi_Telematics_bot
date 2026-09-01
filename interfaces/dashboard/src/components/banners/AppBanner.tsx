@@ -239,9 +239,19 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
   );
 }
 
-/** Show a banner in the app's notification lane. Returns the toast id. */
-export function showBanner(opts: BannerOptions): string | number {
+/** Show a banner in the app's notification lane. Returns the toast id.
+ *
+ *  Pass ``existingId`` to REPLACE a banner already on screen instead of
+ *  stacking a second one — sonner keys on the id, so the same lane slot
+ *  re-renders in place and the reader's eye does not have to re-find it.
+ *  That is what lets a live banner learn something after it was shown
+ *  (a colleague claiming the alert it is asking about) without either
+ *  vanishing or duplicating. */
+export function showBanner(
+  opts: BannerOptions, existingId?: string | number,
+): string | number {
   return toast.custom((id) => <AppBanner id={id} opts={opts} />, {
     duration: Infinity,          // AppBanner owns its own countdown
+    ...(existingId !== undefined ? { id: existingId } : {}),
   });
 }
