@@ -176,21 +176,39 @@ export interface ThemeAxes {
 }
 
 /**
- * Which mod, if any, the current axes ADD UP TO — `''` for none.
+ * Does the current state still equal this mod, axis for axis?
  *
- * Here rather than in the panel because it is the only interesting logic
- * a mod has, and inside a component it could only be tested by rendering
- * one. It is also the answer to "what happens when someone tweaks a
- * corner after applying a look": nothing is stored, nothing is
- * invalidated, the sum simply stops matching and the chip goes quiet.
+ * NOT the same question as "which mod is on" — that is `theme.mod`, and
+ * the split is the point of this change.
+ *
+ * The old model recomputed identity from the axes: a mod was "on" while
+ * the sum matched, and tweaking a corner made it quietly not-on. That is
+ * elegant while everything a mod carries is a value on `<html>`, and it
+ * hits a wall the moment one is not. A sound pack cannot be recomputed
+ * from the DOM. Neither can a wallpaper. If identity is a sum of axes,
+ * then installing a mod and nudging the corners would stop its sounds —
+ * which is not what "installed" means anywhere.
+ *
+ * So identity is STORED and this function answers the smaller question
+ * it used to answer by accident: whether what you see is still exactly
+ * what the mod asked for, or whether you have since changed something.
+ */
+export const modMatchesAxes = (m: ThemeMod, a: ThemeAxes): boolean =>
+  m.accent === a.accent
+  && (m.radius === undefined || m.radius === a.radius)
+  && (m.material === undefined || m.material === a.material)
+  && (m.motion === undefined || m.motion === a.motion)
+  && (m.icons === undefined || m.icons === a.icons)
+  // Float compare: the size arrives from a slider and a stored JSON
+  // round-trip, so `===` against 1.25 is a coin toss.
+  && (m.size === undefined || Math.abs(m.size - a.size) < 1e-6);
+
+/**
+ * @deprecated Identity now lives in `theme.mod`. Kept for one release so
+ *   a caller that still asks "which mod do these axes add up to" gets a
+ *   sensible answer instead of a type error — but it cannot see a mod
+ *   whose assets are installed and whose axes have been edited, which is
+ *   the whole reason identity moved.
  */
 export const activeModId = (a: ThemeAxes): string =>
-  THEME_MODS.find((m) =>
-    m.accent === a.accent
-    && (m.radius === undefined || m.radius === a.radius)
-    && (m.material === undefined || m.material === a.material)
-    && (m.motion === undefined || m.motion === a.motion)
-    && (m.icons === undefined || m.icons === a.icons)
-    // Float compare: the size arrives from a slider and a stored JSON
-    // round-trip, so `===` against 1.25 is a coin toss.
-    && (m.size === undefined || Math.abs(m.size - a.size) < 1e-6))?.id ?? '';
+  THEME_MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';

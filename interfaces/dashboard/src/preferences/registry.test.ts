@@ -384,6 +384,30 @@ describe('resetAll sweeps family keys', () => {
       }
     });
 
+    it('remembers which mod is installed, through an edit', () => {
+      // The behaviour the whole change exists for. Identity used to be
+      // recomputed from the axes, so editing one silently uninstalled
+      // the mod. A sound pack cannot be recomputed from the DOM, so
+      // "installed" has to survive being edited.
+      const edited = sanitize({
+        ...THEME_DEFAULT, mod: 'cab',
+        accent: 'azure', radius: 'sharp', material: 'solid',
+      }) as { mod?: string; radius?: string };
+      expect(edited.mod, 'the mod was uninstalled by an edit').toBe('cab');
+      expect(edited.radius, 'the edit itself was lost').toBe('sharp');
+    });
+
+    it('drops an id no mod answers to', () => {
+      // The catalogue is ours and can shrink between releases. A stale
+      // id would paint an empty chip today and, once mods carry assets,
+      // ask for files that are not there.
+      for (const bad of ['nope', '', null, 42, {}, 'CAB']) {
+        const out = sanitize({ ...THEME_DEFAULT, mod: bad }) as unknown as Record<string, unknown>;
+        expect('mod' in out, `mod: ${JSON.stringify(bad)} survived`).toBe(false);
+      }
+      expect((sanitize({ ...THEME_DEFAULT, mod: 'wall' }) as { mod?: string }).mod).toBe('wall');
+    });
+
     it('keeps a post-split value untouched', () => {
       expect(sanitize({ ...THEME_DEFAULT, mode: 'light', accent: 'green', radius: 'sharp', color: 'light' }))
         .toEqual({ ...THEME_DEFAULT, mode: 'light', accent: 'green', radius: 'sharp', color: 'light' });

@@ -34,7 +34,7 @@
  */
 
 import {
-  THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS,
+  THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS, THEME_MODS,
 } from '../lib/themePacks';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../lib/modStyle';
 
@@ -178,6 +178,20 @@ export interface ThemeSetting {
   icons: ThemeIcons;
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
+  /**
+   * The mod that is INSTALLED, if any.
+   *
+   * Identity, not a match. It used to be recomputed from the axes —
+   * elegant, and correct right up until a mod carries something that is
+   * not an axis. A sound pack cannot be read back off `<html>`, so a
+   * model where identity is the sum of the axes would stop a mod's
+   * sounds the moment somebody nudged the corners. "Installed" has to
+   * survive being edited.
+   *
+   * Absent means no mod, which is not the same as "the axes happen to
+   * match none" — a person can build Cab by hand without installing it.
+   */
+  mod?: string;
   /**
    * Token values this person authored, installed over the preset.
    *
@@ -389,6 +403,11 @@ export const DEFS = {
       const icons = THEME_ICONS_LIST.includes(o.icons as ThemeIcons)
         ? o.icons as ThemeIcons : THEME_DEFAULT.icons;
       const entrance = typeof o.entrance === 'boolean' ? o.entrance : THEME_DEFAULT.entrance;
+      // A stored id for a mod that no longer exists is dropped rather
+      // than kept: the catalogue is ours and can shrink between
+      // releases, and an id nothing resolves would show an empty chip
+      // and, later, ask for assets that are not there.
+      const mod = THEME_MODS.some((m) => m.id === o.mod) ? o.mod as string : undefined;
 
       // Sanitised through the injector's OWN validators, so the rules
       // are stated once. Storage is untrusted input like any other — a
@@ -423,6 +442,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, entrance,
+        ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.
         ...(tokens ? { tokens } : {}),

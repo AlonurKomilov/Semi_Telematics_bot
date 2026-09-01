@@ -13,7 +13,7 @@ import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
   THEME_PACKS, THEME_MODS, THEME_MATERIALS, THEME_MOTIONS,
-  activeModId, modById, type ThemeMod,
+  modMatchesAxes, modById, type ThemeMod,
 } from '../lib/themePacks';
 
 // ── Option rows ──────────────────────────────────────────────
@@ -140,17 +140,26 @@ export function ThemeToggle() {
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useTheme();
 
-  // A mod is "on" only while every axis it declares still matches. Tweak
-  // the corners and it goes off — what is applied is the axes, and the
-  // mod was only the thing that wrote them.
-  const activeMod = activeModId({
+  // The mod that is INSTALLED — read, not recomputed. A mod stays on
+  // after you tweak an axis, because that is what installed means and
+  // because the next thing a mod carries will be a sound pack, which
+  // cannot be read back off the DOM to re-derive identity from.
+  const activeMod = theme.mod ?? '';
+  const installed = modById(activeMod);
+  const activeWhy = installed?.why ?? '';
+  // Whether what you see is still exactly what it asked for. A separate
+  // question from identity, and the reason the two were split.
+  const modified = installed !== undefined && !modMatchesAxes(installed, {
     accent: theme.accent, radius: theme.radius, size: size.global,
     material: theme.material, motion: theme.motion, icons: theme.icons,
   });
-  const activeWhy = modById(activeMod)?.why ?? '';
 
   const applyMod = (m: ThemeMod) => {
     setTheme({
+      // Stored, so it survives an axis being edited afterwards. Clicking
+      // an already-installed mod therefore RESTORES it — the useful
+      // second meaning of the same gesture.
+      mod: m.id,
       accent: m.accent as Accent,
       ...(m.radius === undefined ? {} : { radius: m.radius }),
       ...(m.material === undefined ? {} : { material: m.material }),
@@ -242,7 +251,17 @@ export function ThemeToggle() {
                     controls; a line under the one in force says what you
                     just chose, which is when it is worth reading. */}
                 {activeWhy && (
-                  <p className="text-2xs text-muted-foreground mt-1.5">{activeWhy}</p>
+                  <p className="text-2xs text-muted-foreground mt-1.5">
+                    {activeWhy}
+                    {/* Says what happened rather than scolding: the mod
+                        is still installed, some of it has been changed,
+                        and the way back is the chip you already see. */}
+                    {modified && (
+                      <span className="text-muted-foreground/70">
+                        {' · '}{t('theme.mod_edited', 'edited — tap again to restore')}
+                      </span>
+                    )}
+                  </p>
                 )}
               </div>
 

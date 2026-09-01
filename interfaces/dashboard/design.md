@@ -215,10 +215,31 @@ palette has none left to give: every remaining hue either collides with
 collides with `--warn` (66-68, at 1.4-2.7), or duplicates a pack we ship
 (274-296, at 1.5-7.5). One look, and we would have been out.
 
-**Applying a mod writes the axes and then forgets.** Nothing records
-"you are on Cab". `activeModId()` recomputes it from the axes each
-render, so tweaking a corner un-highlights the chip on its own — there
-is no modified state to store, invalidate or get wrong.
+**A mod is INSTALLED, and its identity is stored.** ⭐
+
+This replaced an earlier rule that read well and had a wall in it:
+"applying a mod writes the axes and then forgets", with `activeModId()`
+recomputing identity each render. That is elegant while everything a mod
+carries is a value on `<html>` — and it fails the moment one is not. A
+sound pack cannot be read back off the DOM. Neither can a wallpaper. So
+identity-as-a-sum would have stopped a mod's sounds the instant somebody
+nudged the corners, which is not what installed means anywhere.
+
+Identity is therefore `theme.mod`, stored, and it survives an edit.
+`modMatchesAxes()` answers the smaller question it used to answer by
+accident: whether what you see is still exactly what the mod asked for.
+The panel shows that as "edited — tap again to restore", and tapping the
+installed chip re-applies its axes.
+
+Two consequences worth stating:
+
+- **Building a look by hand is not installing it.** Someone can set
+  every axis Cab sets without ever tapping Cab. Matching says yes;
+  installed says no; and once mods carry assets only the second may
+  start anything.
+- **Only what a mod DECLARES can be departed from.** Wall says nothing
+  about material, so choosing glass has not edited Wall — it answered a
+  question Wall left open.
 
 **A mod never carries `mode`.** Dark or light is about the room a person
 is sitting in — a bright yard office at noon, a cab at 2am — and a look

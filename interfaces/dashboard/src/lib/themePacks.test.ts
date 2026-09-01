@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   THEME_PACKS, THEME_MODS, THEME_ICONS, ICON_STROKE,
-  PACK_TOKENS, packById, modById, activeModId,
+  PACK_TOKENS, packById, modById, activeModId, modMatchesAxes,
 } from './themePacks';
 import { SIZE_MAX, THEME_RADII } from '../preferences/registry';
 import { derivePalette } from './palette';
@@ -237,6 +237,15 @@ describe('the properties a mod carries and the panel does not', () => {
     expect(ICON_STROKE.regular, "regular must be lucide's own default").toBe(2);
   });
 
+  it('reads the installed mod rather than recomputing it', () => {
+    // The regression this whole change exists to prevent: going back to
+    // deriving identity from the axes would work perfectly until a mod
+    // carried a sound pack, and then editing a corner would silence it.
+    const panel = readFileSync(join(__dirname, '..', 'components/ThemeToggle.tsx'), 'utf8');
+    expect(panel, 'the panel is deriving mod identity again').not.toContain('activeModId(');
+    expect(panel, 'the panel does not read the stored mod').toContain('theme.mod');
+  });
+
   it('keeps the mod-only axes out of the panel', () => {
     // The asymmetry is the point: a mod whose every setting is also a
     // chip is a shortcut, not a look. If someone adds a chip for these,
@@ -257,5 +266,61 @@ describe('the properties a mod carries and the panel does not', () => {
     expect(activeModId(base)).toBe('cab');
     // Change the one axis the panel cannot reach, and the mod is off.
     expect(activeModId({ ...base, icons: 'hairline' })).toBe('');
+  });
+});
+
+describe('installed is not the same question as matching', () => {
+  const cab = modById('cab')!;
+  const axesOf = (m: typeof cab) => ({
+    accent: m.accent, radius: m.radius!, size: m.size!,
+    material: 'solid', motion: 'default', icons: m.icons!,
+  });
+
+  it('matches when every axis it declares still agrees', () => {
+    expect(modMatchesAxes(cab, axesOf(cab))).toBe(true);
+  });
+
+  it('stops matching the moment a DECLARED axis is edited', () => {
+    // Derived from the mod rather than listed, because listing them got
+    // it wrong on the first run: Cab says nothing about material, so
+    // editing material is not editing Cab — it is answering a question
+    // Cab left open. Only what a mod declares can be departed from.
+    const OTHER: Record<string, unknown> = {
+      accent: 'blue', radius: 'sharp', size: 1,
+      material: 'glass', motion: 'snappy', icons: 'hairline',
+    };
+    for (const m of THEME_MODS) {
+      const base = {
+        accent: m.accent, radius: m.radius ?? 'rounded', size: m.size ?? 1,
+        material: m.material ?? 'solid', motion: m.motion ?? 'default',
+        icons: m.icons ?? 'regular',
+      };
+      expect(modMatchesAxes(m, base), `${m.id} does not match its own axes`).toBe(true);
+      for (const k of ['accent', 'radius', 'size', 'material', 'motion', 'icons'] as const) {
+        if (m[k as keyof typeof m] === undefined) continue;
+        const other = k === 'accent' && m.accent === 'blue' ? 'green' : OTHER[k];
+        expect(modMatchesAxes(m, { ...base, [k]: other }),
+          `${m.id}: editing ${k} should stop the match`).toBe(false);
+      }
+    }
+  });
+
+  it('ignores an axis the mod does not declare', () => {
+    // Wall says nothing about material, so a person choosing glass has
+    // not edited Wall — they have made a choice Wall left to them.
+    const wall = modById('wall')!;
+    expect(wall.material).toBeUndefined();
+    expect(modMatchesAxes(wall, { ...axesOf(wall), material: 'glass' })).toBe(true);
+  });
+
+  it('does not confuse building a look by hand with installing it', () => {
+    // The distinction the split exists for. Someone can set every axis
+    // Cab sets without ever tapping Cab — matching says yes, and that
+    // must not mean Cab is installed, because a mod that carries sounds
+    // would then be playing them uninvited.
+    expect(modMatchesAxes(cab, axesOf(cab))).toBe(true);
+    // Identity lives in the stored value, which this function cannot see
+    // and deliberately does not take.
+    expect(modMatchesAxes.length, 'modMatchesAxes must not be given the stored id').toBe(2);
   });
 });
