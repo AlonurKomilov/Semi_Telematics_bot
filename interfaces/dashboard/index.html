@@ -37,9 +37,20 @@
           } catch (e) { return null; }
         };
 
-        // Canonical key first, then the pre-service one. Never written
-        // back — local.ts owns the copy-forward.
-        var t = read('4truck.pref.theme') || read('dashboard-theme') || {};
+        // Canonical key first, then each older spelling in turn. Never
+        // written back — local.ts owns the copy-forward, and this script
+        // is asserted read-only by themeBoot.test.ts.
+        //
+        // Three names, because the key has been renamed twice: it is
+        // `mods.theme` now that the service holds sound and motion as
+        // well as colour, was `theme`, and before the preferences
+        // service existed was `dashboard-theme`. A browser holding any
+        // of them keeps its appearance through the first paint — which
+        // is the whole reason this chain exists rather than a single
+        // read.
+        var t = read('4truck.pref.mods.theme')
+             || read('4truck.pref.theme')
+             || read('dashboard-theme') || {};
         var s = read('4truck.pref.size') || {};
 
         var pick = function (v, allowed, fallback) {

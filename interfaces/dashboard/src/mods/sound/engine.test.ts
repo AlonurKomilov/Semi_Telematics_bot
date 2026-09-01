@@ -174,7 +174,7 @@ describe('the level is not a second gate', () => {
     // live panel. A volume of 0 by default would double-gate it: turn
     // the toggle on, hear nothing, conclude the feature is broken.
     const { DEFS } = await import('../../preferences/registry');
-    expect(DEFS['sound.volume'].default, 'volume defaults to silence again')
+    expect(DEFS['mods.sound.volume'].default, 'volume defaults to silence again')
       .toBeGreaterThan(0);
     expect(DEFS['dispatch.soundOn'].default, 'the real opt-in stopped being opt-in')
       .toBe(false);

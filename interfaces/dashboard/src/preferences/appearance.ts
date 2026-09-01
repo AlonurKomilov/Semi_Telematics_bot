@@ -43,7 +43,7 @@ export interface AppearanceDefault {
 export function publishAppearanceDefault(): void {
   if (!get('appearance.followMe')) return;
   set('appearance.default', {
-    theme: get('theme'),
+    theme: get('mods.theme'),
     size: get('size'),
   } as AppearanceDefault);
 }
@@ -74,9 +74,9 @@ export function adoptAppearanceDefault(): AppearanceDefault | null {
   //
   // Each half is independent: a browser may have a theme of its own but
   // no size yet, and should then take only the size.
-  const cleanTheme = DEFS.theme.sanitize?.(stored.theme) as ThemeSetting | undefined;
-  if (cleanTheme && !hasStored('theme')) {
-    set('theme', cleanTheme);
+  const cleanTheme = DEFS['mods.theme'].sanitize?.(stored.theme) as ThemeSetting | undefined;
+  if (cleanTheme && !hasStored('mods.theme')) {
+    set('mods.theme', cleanTheme);
     adopted.theme = cleanTheme;
   }
   const cleanSize = DEFS.size.sanitize?.(stored.size) as SizeSetting | undefined;

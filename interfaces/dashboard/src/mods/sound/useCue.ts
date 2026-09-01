@@ -15,8 +15,8 @@ import { armAudio, playCue, soundPackById, type CueName } from './engine';
  * first gesture it returns immediately.
  */
 export function useCue(): (name: CueName) => void {
-  const { value: packId } = usePreference('sound.pack');
-  const { value: volume } = usePreference('sound.volume');
+  const { value: packId } = usePreference('mods.sound.pack');
+  const { value: volume } = usePreference('mods.sound.volume');
 
   useEffect(() => { armAudio(); }, []);
 

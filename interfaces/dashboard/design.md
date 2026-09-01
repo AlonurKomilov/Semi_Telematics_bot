@@ -240,6 +240,14 @@ store, so a barrel import would close a cycle), and
 `test/themeBoot.test.ts`, which compares the pre-paint script against
 `applyTheme` itself rather than whatever the barrel re-exports.
 
+The stored keys carry the same namespace: `mods.theme`,
+`mods.sound.pack`, `mods.sound.volume`. Each lists its previous spelling
+in `legacyKeys`, which `readPref` reads verbatim, sanitises, and copies
+forward — so an existing browser keeps its appearance and lands on the
+canonical key at the next read. The pre-paint script chains all three
+names for the same reason. The preferences SERVICE was not touched: it
+holds 45 keys across many features and is not a mods thing.
+
 `dispatch.soundOn` is deliberately NOT part of this service. It is the
 live alerts feature's own gate and belongs to the feature that uses it —
 the sound service sets the level and the pack, never whether a

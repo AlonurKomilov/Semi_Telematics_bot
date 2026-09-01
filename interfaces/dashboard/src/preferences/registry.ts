@@ -385,9 +385,10 @@ export const DEFS = {
    * Which cue set plays. A property of the PERSON — someone who prefers
    * the blip wants it on every machine — so it syncs.
    */
-  'sound.pack': def<string>({
+  'mods.sound.pack': def<string>({
     default: 'chime',
     scope: 'synced',
+    legacyKeys: ['4truck.pref.sound.pack'],
     sanitize: (v) => (typeof v === 'string' && SOUND_PACKS.some((p) => p.id === v)
       ? v : undefined),
     note: 'Which set of cues the app plays.',
@@ -413,9 +414,10 @@ export const DEFS = {
    * toggles; zero here is how a person silences a screen without
    * turning each of them off.
    */
-  'sound.volume': def<number>({
+  'mods.sound.volume': def<number>({
     default: 1,
     scope: 'device',
+    legacyKeys: ['4truck.pref.sound.volume'],
     sanitize: (v) => {
       const n = typeof v === 'number' ? v : Number(v);
       return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : undefined;
@@ -425,10 +427,15 @@ export const DEFS = {
 
   // ── Appearance ────────────────────────────────────────────────────
   // device: tied to THIS screen's size and lighting, not to the person.
-  'theme': def<ThemeSetting>({
+  'mods.theme': def<ThemeSetting>({
     default: THEME_DEFAULT,
     scope: 'device',
-    legacyKeys: ['dashboard-theme'],
+    // `4truck.pref.theme` is this key's own previous name, and
+    // `dashboard-theme` the one before that. `readPref` reads legacy
+    // keys verbatim, sanitises the result and copies it forward, so a
+    // browser that has either one keeps its appearance and lands on the
+    // canonical key at the next read. Nobody is reset.
+    legacyKeys: ['4truck.pref.theme', 'dashboard-theme'],
     // Merge over the default so a stored object written before a new
     // field existed still yields a complete theme (the old call site did
     // ``{ ...DEFAULT, ...JSON.parse(saved) }`` — same behaviour).

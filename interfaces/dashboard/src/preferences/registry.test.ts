@@ -25,12 +25,12 @@ const FROZEN_KEYS: readonly string[] = [
   // does not — a wall display in a yard office and a laptop with
   // headphones want different numbers, and one synced value would be
   // wrong on whichever you touched second.
-  'sound.pack',
-  'sound.volume',
+  'mods.sound.pack',
+  'mods.sound.volume',
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
   'tour.state',
-  'theme',
+  'mods.theme',
   // Size replaced the theme's `density` FIELD. `theme` itself is
   // untouched — removing a field is safe where removing a key is not.
   'size',
@@ -73,7 +73,11 @@ const FROZEN_KEYS: readonly string[] = [
 /** Legacy keys we promised to keep reading.  Dropping one abandons the
  *  data of anyone who hasn't opened the app since the migration. */
 const FROZEN_LEGACY: Readonly<Record<string, readonly string[]>> = {
-  'theme': ['dashboard-theme'],
+  // Two older spellings: the key was `theme` before the service
+  // grew past colour, and `dashboard-theme` before the service existed.
+  'mods.theme': ['4truck.pref.theme', 'dashboard-theme'],
+  'mods.sound.pack': ['4truck.pref.sound.pack'],
+  'mods.sound.volume': ['4truck.pref.sound.volume'],
   'sidebar.collapsed': ['sidebar.collapsed'],
   'notif.bannerLevel': ['notif.bannerLevel'],
   'notif.position': ['notif.position'],
@@ -136,13 +140,40 @@ describe('legacy migration', () => {
     // A stored `density` is a retired field: the sanitizer rebuilds the
     // object field by field, so it is dropped rather than carried forward.
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    expect(readPref('theme')).toEqual(
+    expect(readPref('mods.theme')).toEqual(
       { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
     // Copied forward under the canonical key, so the next read is direct.
-    expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}theme`)!)).toEqual(
+    expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}mods.theme`)!)).toEqual(
       { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
     // Legacy entry deliberately left in place (roll-back safety).
     expect(localStorage.getItem('dashboard-theme')).not.toBeNull();
+  });
+
+  it('carries a browser forward from the PREVIOUS canonical key', () => {
+    // The risk this rename introduces, and the only one: every existing
+    // browser holds `4truck.pref.theme`, and if that is not read the
+    // whole population silently resets to the default theme on the next
+    // load. `dashboard-theme` covers the era before the preferences
+    // service; this covers the era before the service outgrew the word
+    // "theme".
+    localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({
+      ...THEME_DEFAULT, mode: 'light', accent: 'green', radius: 'pill',
+      material: 'glass', color: 'light',
+    }));
+    expect(readPref('mods.theme')).toMatchObject(
+      { mode: 'light', accent: 'green', radius: 'pill', material: 'glass' });
+    // And it lands on the new key, so the next read is a direct hit.
+    expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}mods.theme`)!))
+      .toMatchObject({ accent: 'green', material: 'glass' });
+    // The old entry stays, so this release can be rolled back.
+    expect(localStorage.getItem(`${LS_PREFIX}theme`)).not.toBeNull();
+  });
+
+  it('carries the sound keys forward too', () => {
+    localStorage.setItem(`${LS_PREFIX}sound.pack`, JSON.stringify('blip'));
+    localStorage.setItem(`${LS_PREFIX}sound.volume`, JSON.stringify(0.4));
+    expect(readPref('mods.sound.pack')).toBe('blip');
+    expect(readPref('mods.sound.volume')).toBe(0.4);
   });
 
   it("adopts legacy '1'/'0' booleans that were never JSON", () => {
@@ -162,8 +193,8 @@ describe('legacy migration', () => {
 
   it('prefers the canonical value over a stale legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    writePref('theme', { ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
-    expect(readPref('theme')).toEqual(
+    writePref('mods.theme', { ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
+    expect(readPref('mods.theme')).toEqual(
       { ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
   });
 });
@@ -178,10 +209,10 @@ describe('store semantics', () => {
   it('notifies subscribers of the key that changed only', () => {
     let themeHits = 0;
     let sidebarHits = 0;
-    const offA = store.subscribe('theme', () => { themeHits += 1; });
+    const offA = store.subscribe('mods.theme', () => { themeHits += 1; });
     const offB = store.subscribe('sidebar.collapsed', () => { sidebarHits += 1; });
 
-    store.set('theme', { color: 'light', radius: 'rounded' });
+    store.set('mods.theme', { color: 'light', radius: 'rounded' });
     expect(themeHits).toBe(1);
     expect(sidebarHits).toBe(0);
 
@@ -231,7 +262,7 @@ describe('store semantics', () => {
   it('completes a partial stored theme from the default', () => {
     // Written before a field existed / hand-edited.
     localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color: 'light' }));
-    expect(readPref('theme')).toEqual(
+    expect(readPref('mods.theme')).toEqual(
       { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
   });
 
@@ -243,8 +274,8 @@ describe('store semantics', () => {
 
   it('adoptRaw() updates a known key without echoing to storage', () => {
     localStorage.clear();
-    store.adoptRaw('theme', JSON.stringify({ color: 'light', radius: 'rounded' }));
-    expect(store.get('theme')).toEqual(
+    store.adoptRaw('mods.theme', JSON.stringify({ color: 'light', radius: 'rounded' }));
+    expect(store.get('mods.theme')).toEqual(
       { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
     // Came from another tab / the server — must not be written back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
@@ -290,7 +321,7 @@ describe('preferences registry — key families', () => {
     expect(defFor('table.loads.views')).toBe(TABLE_PARTS.views);
     expect(defFor('table.vehicle-inventory-fleet.order')).toBe(TABLE_PARTS.order);
     // A fixed key still wins.
-    expect(defFor('theme')).toBe(DEFS.theme);
+    expect(defFor('mods.theme')).toBe(DEFS['mods.theme']);
     // Not ours → ignored (this is what keeps unrelated storage noise safe).
     expect(defFor('table.loads.somethingElse')).toBeNull();
     expect(defFor('poi_v2_repair_1_2')).toBeNull();
@@ -337,7 +368,7 @@ describe('resetAll sweeps family keys', () => {
   // ThemeSetting — it never touches the sanitiser. Deleting the migration
   // from here left that file entirely green, which is why this exists.
   describe('the theme mode/accent migration', () => {
-    const sanitize = DEFS.theme.sanitize!;
+    const sanitize = DEFS['mods.theme'].sanitize!;
 
     it('turns every pre-split value into the right mode and accent', () => {
       const EXPECTED: Record<string, { mode: string; accent: string }> = {

@@ -108,7 +108,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // partial-object completion this used to do inline) lives in the
   // preferences registry now.  This provider only applies the theme to
   // the DOM and exposes the partial-update ergonomics consumers expect.
-  const { value: theme, setValue: setThemeValue } = usePreference('theme');
+  const { value: theme, setValue: setThemeValue } = usePreference('mods.theme');
   const { value: size, setValue: setSizeValue } = usePreference('size');
 
   // Deliberately NOT inside `applyTheme`. That function is the mapping

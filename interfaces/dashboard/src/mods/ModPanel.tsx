@@ -141,8 +141,8 @@ function Chip<T extends string>({
 export function ThemeToggle() {
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useTheme();
-  const { value: soundPack, setValue: setSoundPack } = usePreference('sound.pack');
-  const { value: volume, setValue: setVolume } = usePreference('sound.volume');
+  const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
+  const { value: volume, setValue: setVolume } = usePreference('mods.sound.volume');
   // Read only, and only to REPORT it — the switch itself stays where it
   // is used. Two controls for one boolean is the object-map problem
   // this line exists to solve, not to repeat.
