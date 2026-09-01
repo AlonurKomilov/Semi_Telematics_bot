@@ -269,6 +269,25 @@ material, motion, icon weight, size and sound, and "let me just see
 what Wall looks like" is the most likely reason anyone clicks. It goes
 through `undoableAction`, the same helper that guards SizeCard's reset.
 
+**Each card resets what it owns, and nothing else.** "Reset appearance"
+sits on the Appearance card, "Reset sizes" on SizeCard; neither reaches
+into the other. Two axes are deliberately outside both: `mode`, because
+dark/light is about the room the person is sitting in rather than the
+look — it is the one axis a mod may never carry, and a reset that threw
+a light-mode user into dark would be that mistake arriving from the
+other direction; and the derived `color` alias, which has no independent
+value. `mods/resetAppearance.test.tsx` asserts every field of
+`THEME_DEFAULT` is either reset or named in the exclusion list, so
+adding an axis forces the decision — the same shape `PREPAINT_AXES`
+uses, and for the same reason.
+
+**Both cards on `/mods` wear one chrome.** Title, muted line and reset
+come from `SectionHeader`'s own `description` and `action` props, never
+a hand-rolled flex row. Their BODIES may differ — six parallel chip
+groups is not one slider plus a disclosure — and forcing one body
+grammar onto both would be cargo-culting; the header is where the page
+says the two cards are siblings.
+
 Two files may reach past the barrel, and `mods/index.test.ts` fails if a
 third appears without a stated reason: `preferences/registry.ts`, which
 sits UNDERNEATH the service (`mods/context` imports the preferences

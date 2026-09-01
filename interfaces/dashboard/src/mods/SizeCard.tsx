@@ -206,23 +206,30 @@ export default function SizeCard() {
 
   return (
     <Card className="scroll-mt-20" render={<section />} id="appearance" style={pinned}>
-      <div className="flex items-start justify-between gap-4 mb-1">
-        <SectionHeader>Interface size</SectionHeader>
-        <button
-          type="button"
-          onClick={resetAll}
-          disabled={atDefault}
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground shrink-0 py-1 -my-1 min-h-tap"
-        >
-          <RotateCcw className="size-3.5" />
-          Reset sizes
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground mb-4">
-        Resize the interface. This browser only, unless you turn on the switch below.
-      </p>
+      {/* Title, muted line and reset come from the ONE primitive rather
+          than a hand-rolled flex row plus a loose <p>. The Appearance
+          card beside this one wears exactly the same chrome, which is
+          where the page says the two are siblings — their bodies differ
+          because their content does, not because they were built at
+          different times. */}
+      <SectionHeader
+        description="Resize the interface. This browser only, unless you turn on the switch below."
+        action={(
+          <button
+            type="button"
+            onClick={resetAll}
+            disabled={atDefault}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground shrink-0 py-1 -my-1 min-h-tap"
+          >
+            <RotateCcw className="size-3.5" />
+            Reset sizes
+          </button>
+        )}
+      >
+        Interface size
+      </SectionHeader>
 
-      <div className="space-y-3">
+      <div className="space-y-3 mt-4">
         <SizeRow
           label="Everything"
           ariaLabel="Interface size"
