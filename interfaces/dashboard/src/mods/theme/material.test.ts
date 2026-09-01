@@ -69,14 +69,13 @@ describe('what the solid path costs', () => {
     // It belongs to the glass rule, which is where it is measured from.
     // Matched by extracting that rule rather than by a distance window —
     // a window silently stops matching when someone adds a comment.
-    const glassSurface = /:root\[data-material="glass"\]\s+\.surface\s*\{([\s\S]*?)\n  \}/.exec(CODE)?.[1];
+    const glassSurface = /:root\[data-material="glass"\]\s+\.surface\s*\{([\s\S]*?)\n {2}\}/.exec(CODE)?.[1];
     expect(glassSurface, 'the glass .surface rule is gone').toBeTruthy();
     expect(glassSurface!).toMatch(/box-shadow:\s*var\(--surface-shadow\)/);
     expect(glassSurface!).toMatch(/backdrop-filter/);
   });
 
   it('ships solid defaults that reproduce today exactly', () => {
-    const root = /:root \{([\s\S]*?)\n  \}/.exec(CODE.slice(CODE.indexOf('--background')))?.[0] ?? CODE;
     for (const [name, want] of [
       ['--surface-alpha', '1'], ['--surface-blur', '0px'],
       ['--surface-saturate', '1'], ['--surface-shadow', 'none'],

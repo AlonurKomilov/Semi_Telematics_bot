@@ -18,17 +18,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 
-vi.mock('./usePreference', () => ({
+vi.mock('../preferences/usePreference', () => ({
   usePreference: () => ({ value: false, setValue: () => {} }),
 }));
-vi.mock('../mods/context', () => ({
+vi.mock('./context', () => ({
   useTheme: () => ({
     size: { global: 1.2, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
     setSize: () => {},
   }),
   applySize: () => {},
 }));
-vi.mock('./appearance', () => ({
+vi.mock('../preferences/appearance', () => ({
   publishAppearanceDefault: () => {}, resetAppearanceDefault: () => {},
 }));
 

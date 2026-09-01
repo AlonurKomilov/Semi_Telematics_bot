@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserCog, LogOut } from 'lucide-react';
+import { UserCog, LogOut, Palette } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
 
@@ -82,6 +82,15 @@ export function AvatarMenu() {
               icon={<UserCog className="size-3.5" />}
               label="My Profile"
               onClick={() => go('/profile')}
+            />
+            {/* The second door to /mods. The topbar palette button is the
+                first and the one people will use; this one exists because
+                a page reachable only from inside a popover is a page most
+                users never learn is a page. */}
+            <MenuButton
+              icon={<Palette className="size-3.5" />}
+              label="Mods"
+              onClick={() => go('/mods')}
             />
           </div>
 

@@ -227,11 +227,47 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
     mods/index.ts      the one import surface
     mods/catalogue.ts  packs, mods, the axes
     mods/context.tsx   useTheme, applyTheme
-    mods/ModPanel.tsx  the panel
+    mods/ModPanel.tsx  ModControls + the top-bar popover
+    mods/ModsPage.tsx  the /mods page
+    mods/SizeCard.tsx  size, whole
     mods/inject.ts     installing token values
     mods/theme/        palette · contrast
     mods/sound/        engine · useCue
     mods/icons/        IconWeight
+
+### A popover and its page are one component, not two ⭐
+
+Customization has two surfaces — the top-bar popover and `/mods` — and
+they render the SAME `ModControls`, switched by a `compact` flag. Never
+two copies of one chip row: duplicated JSX drifts, the two surfaces
+answer the same question differently within a release, and nothing
+fails. What differs between them is which branch renders and one type
+step (the popover's caps label runs `text-2xs font-semibold` because
+seven of them stack inside `w-56`; the page uses §4's canonical
+`text-xs font-medium`).
+
+**The split, and the one axis deliberately on both sides.** The popover
+holds what changes often — which mod is installed, the colour it wears,
+the global size — plus a door to the rest. Corners, material, motion,
+sound and sizing BY REGION are settings rather than toggles, and §7
+forbids inventing an in-between popover width, so they are page-only.
+Size is the exception that proves it: the popover keeps the global
+slider because "a bit bigger" is the case almost everyone wants, and
+the page does NOT repeat it — there `SizeCard` owns size whole (global,
+per region, cross-device). One object, one face per surface;
+`mods/modControls.test.tsx` renders both branches and fails if the page
+grows a second global slider or the popover loses its door.
+
+**`/mods` is not in `routeRegistry`/`featureCatalog`.** Those drive the
+operational sidebar; a customization page listed beside Vehicles and
+Loads reads as work. It sits on the same footing as `/profile` —
+personal, every authenticated user, no permission — and is reached from
+the top-bar palette button and from the avatar menu.
+
+**Installing a mod is undoable.** One click overwrites accent, corners,
+material, motion, icon weight, size and sound, and "let me just see
+what Wall looks like" is the most likely reason anyone clicks. It goes
+through `undoableAction`, the same helper that guards SizeCard's reset.
 
 Two files may reach past the barrel, and `mods/index.test.ts` fails if a
 third appears without a stated reason: `preferences/registry.ts`, which

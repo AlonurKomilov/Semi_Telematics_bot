@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
+import { ChevronRight, Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
 import { Tip } from '../components/tooltip';
@@ -17,6 +17,7 @@ import {
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { usePreference } from '../preferences';
+import { undoableAction } from '../components/banners/stagedAction';
 
 // ── Option rows ──────────────────────────────────────────────
 //
@@ -138,7 +139,22 @@ function Chip<T extends string>({
   );
 }
 
-export function ThemeToggle() {
+/**
+ * Every mod control there is, in one place, rendered in two contexts.
+ *
+ * `compact` is the top-bar popover: the two axes a person changes often
+ * — which mod is installed, and the colour it wears — plus a door to the
+ * rest. Everything else is the /mods page, which has the width for it.
+ *
+ * One component rather than two, because a duplicated chip row is a
+ * chip row that drifts: the panel and the page would answer the same
+ * question differently within a release, and nothing would fail.
+ */
+export function ModControls({ compact = false, onNavigate }: {
+  compact?: boolean;
+  /** Compact only: let the popover close itself when the link is taken. */
+  onNavigate?: () => void;
+}) {
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useTheme();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
@@ -183,6 +199,19 @@ export function ThemeToggle() {
   });
 
   const applyMod = (m: ThemeMod) => {
+    // Snapshot BEFORE the write. Installing a mod overwrites accent,
+    // corners, material, motion, icon weight, size and sound in one
+    // click — up to seven values somebody may have spent real time on,
+    // and "let me just see what Wall looks like" is the most likely
+    // reason anyone clicks here. The same helper guards SizeCard's
+    // reset, for the same reason.
+    const previous = {
+      mod: theme.mod, accent: theme.accent, radius: theme.radius,
+      material: theme.material, motion: theme.motion,
+      icons: theme.icons, entrance: theme.entrance,
+    };
+    const previousSize = size.global;
+    const previousSound = soundPack;
     setTheme({
       // Stored, so it survives an axis being edited afterwards. Clicking
       // an already-installed mod therefore RESTORES it — the useful
@@ -202,9 +231,17 @@ export function ThemeToggle() {
     // sets the pack without touching the volume.
     if (m.sound !== undefined) setSoundPack(m.sound);
     if (m.size !== undefined) setSize({ global: m.size });
+
+    undoableAction({
+      label: `${m.label} installed`,
+      undo: async () => {
+        setTheme(previous);
+        setSize({ global: previousSize });
+        setSoundPack(previousSound);
+      },
+    });
   };
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+
 
   // What the slider shows while a drag is in flight.  The stored value is
   // only written on release — see the note in ui/slider.tsx — so during a
@@ -212,6 +249,307 @@ export function ThemeToggle() {
   // the screen's value.  `null` means "not dragging, read the preference".
   const [dragging, setDragging] = useState<number | null>(null);
   const shown = dragging ?? size.global;
+
+  // design.md §4's caps label is `text-xs font-medium`. The popover runs
+  // one step tighter because seven of these stack inside w-56; the page
+  // has the room, so there it is the canonical combo — the same words,
+  // read at the size every other section label in the app is read at.
+  const groupLabel = compact
+    ? 'text-2xs font-semibold uppercase tracking-wide text-muted-foreground'
+    : 'text-xs font-medium uppercase tracking-wide text-muted-foreground';
+
+  return (
+    <>
+
+      {/* Color theme */}
+      {MOD_OPTIONS.length > 0 && (
+        <>
+          <div>
+            <p className={`${groupLabel} mb-1.5`}>
+              {t('theme.group_mods', 'Mods')}
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {MOD_OPTIONS.map((o) => (
+                <Chip key={o.value} value={o.value} current={activeMod} label={o.label} dot={o.dot}
+                  onClick={() => applyMod(o.mod)} />
+              ))}
+            </div>
+            {/* Only for the mod actually applied. A line under every
+                chip would crowd a panel that already carries three
+                controls; a line under the one in force says what you
+                just chose, which is when it is worth reading. */}
+            {activeWhy && (
+              <p className="text-2xs text-muted-foreground mt-1.5">
+                {activeWhy}
+                {/* Says what happened rather than scolding: the mod
+                    is still installed, some of it has been changed,
+                    and the way back is the chip you already see. */}
+                {modified && (
+                  <span className="text-muted-foreground/70">
+                    {' · '}{t('theme.mod_edited', 'edited — tap again to restore')}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-border" />
+        </>
+      )}
+
+      <div>
+        <p className={`${groupLabel} mb-1.5`}>
+          {t('theme.group_color', 'Color')}
+        </p>
+        {/* Mode first, then accent. The rows are separate elements
+            rather than one wrapped list so the two questions cannot
+            re-flow into each other at any Size setting. */}
+        <div className="flex flex-wrap gap-1">
+          {MODE_OPTIONS.map((o) => (
+            <Chip key={o.value} value={o.value} current={theme.mode} label={t(o.key, o.label)} dot={o.dot}
+              onClick={(v) => setTheme({ mode: v })} />
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {ACCENT_OPTIONS.map((o) => (
+            <Chip key={o.value} value={o.value} current={theme.accent} label={t(o.key, o.label)} dot={o.dot}
+              onClick={(v) => setTheme({ accent: v })} />
+          ))}
+        </div>
+      </div>
+
+      {compact ? (
+        <>
+          <div className="border-t border-border" />
+
+          {/* Size — replaces the Density chips, which changed nothing.
+              The scale runs 100% → 150%, not around a midpoint: the lower
+              half stays unavailable until the 24px hit-target floor is
+              repaired (design.md §5.1). So the handle rests at its own
+              minimum by default, and the live percentage beside the label
+              is what tells the user the control is working — it is the
+              only readout, which is why it sits in the label row rather
+              than under the track. */}
+          <div>
+            {/* Label, current value and reset share one row. The range ends
+                were spelled out under the track at first, which put a
+                second "100%" directly below the current value whenever the
+                slider sat at its minimum — which is the default, so most
+                users would have met the confusing state first. */}
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className={groupLabel}>
+                {t('theme.group_size', 'Interface size')}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-2xs tabular-nums text-muted-foreground">
+                  {Math.round(shown * 100)}%
+                </span>
+                <Tip label={t('theme.size_reset', 'Reset')}>
+                  <button
+                    type="button"
+                    onClick={() => { setDragging(null); setSize({ global: 1 }); }}
+                    disabled={size.global === 1 && dragging === null}
+                    aria-label={t('theme.size_reset', 'Reset')}
+                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  >
+                    <RotateCcw className="size-3" />
+                  </button>
+                </Tip>
+              </div>
+            </div>
+            <Slider
+              value={shown}
+              min={SIZE_MIN}
+              max={SIZE_MAX}
+              step={0.05}
+              aria-label={t('theme.size_label', 'Interface size')}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              // Live: paint straight to the DOM so the drag is smooth and
+              // React is not re-rendered 60 times for one gesture.
+              onValueChange={(v) => { setDragging(v); applySize({ ...size, global: v }); }}
+              // Committed: now it becomes the stored preference.
+              onValueCommitted={(v) => { setDragging(null); setSize({ global: v }); }}
+            />
+          </div>
+
+          {/* Corners, material, motion, sound and sizing BY REGION do
+              not fit a w-56 popover, and they are settings rather than a
+              quick toggle — design.md §7 forbids inventing an in-between
+              width, so they live on the Mods page instead.
+
+              The global size slider stays here and is the one control
+              deliberately in both places: "a bit bigger" is the case
+              almost everyone wants, and making them open a page for it
+              would be the wrong trade. The page does not repeat it —
+              there, SizeCard owns size whole (global, per region, and
+              the cross-device switch). */}
+          <div className="border-t border-border" />
+          {/* `min-h-tap` and the padding that earns it: this is the
+              panel's only door to four of the seven axes, and as a bare
+              `text-2xs` row its hit box was the line box — under the 24px
+              WCAG 2.5.8 floor. `-my-1` gives the target back its height
+              without spending any of the popover's vertical budget.
+              The trailing chevron is what makes it read as a ROUTE
+              rather than a caption under the controls. */}
+          <Link
+            to="/mods"
+            onClick={onNavigate}
+            className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground min-h-tap py-1 -my-1"
+          >
+            <SlidersHorizontal className="size-3 shrink-0" />
+            {t('theme.all_customization', 'All customization…')}
+            <ChevronRight className="size-3 shrink-0 ml-auto" />
+          </Link>
+        </>
+      ) : (
+        <>
+          <div className="border-t border-border" />
+
+      {/* Radius */}
+      <div>
+        <p className={`${groupLabel} mb-1.5`}>
+          {t('theme.group_corners', 'Corners')}
+        </p>
+        <div className="flex gap-1">
+          {RADIUS_OPTIONS.map((o) => (
+            <Chip key={o.value} value={o.value} current={theme.radius} label={t(o.key, o.label)}
+              onClick={(v) => setTheme({ radius: v })} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className={`${groupLabel} mb-1.5`}>
+          {t('theme.group_material', 'Material')}
+        </p>
+        {/* Beside Corners, not inside Look: it is a property of the
+            whole app, and a person may want glass without taking a
+            mod's size and colour with it. */}
+        <div className="flex flex-wrap gap-1">
+          {MATERIAL_OPTIONS.map((o) => (
+            <Chip key={o.value} value={o.value} current={theme.material} label={t(o.key, o.label)}
+              onClick={(v) => setTheme({ material: v })} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className={`${groupLabel} mb-1.5`}>
+          {t('theme.group_motion', 'Motion')}
+        </p>
+        {/* A multiplier on every transition. Spinners and pulses are
+            deliberately not on it — see index.css. */}
+        <div className="flex flex-wrap gap-1">
+          {MOTION_OPTIONS.map((o) => (
+            <Chip key={o.value} value={o.value} current={theme.motion} label={t(o.key, o.label)}
+              onClick={(v) => setTheme({ motion: v })} />
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-border" />
+
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <p className={groupLabel}>
+            {t('theme.group_sound', 'Sound')}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <span className="text-2xs tabular-nums text-muted-foreground">
+              {Math.round(volume * 100)}%
+            </span>
+            {/* Silence and restore, in one control. Zero is a real
+                setting here rather than a disabled state — it is how
+                a person quiets one screen without turning off each
+                feature's own toggle. */}
+            {/* Mute first, reset LAST — because the trailing control
+                of a slider section's header means "return this
+                section to its default" in every section, and SIZE
+                already established that. A person who learns one
+                header should not have to relearn the next. */}
+            <Tip label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (volume > 0) { beforeMute.current = volume; setVolume(0); }
+                  else setVolume(beforeMute.current || 1);
+                }}
+                aria-label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}
+                className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              >
+                {volume > 0 ? <VolumeX className="size-3" /> : <Volume2 className="size-3" />}
+              </button>
+            </Tip>
+            <Tip label={t('theme.sound_reset', 'Reset')}>
+              <button
+                type="button"
+                onClick={() => setVolume(1)}
+                disabled={volume === 1}
+                aria-label={t('theme.sound_reset', 'Reset')}
+                className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+              >
+                <RotateCcw className="size-3" />
+              </button>
+            </Tip>
+          </div>
+        </div>
+        <Slider
+          value={volume}
+          min={0}
+          max={1}
+          step={0.05}
+          aria-label={t('theme.sound_label', 'Sound volume')}
+          formatValue={(v) => `${Math.round(v * 100)}%`}
+          onValueCommitted={(v) => {
+            setVolume(v);
+            const pack = SOUND_PACKS.find((p) => p.id === soundPack);
+            if (pack && v > 0) preview(pack, v);
+          }}
+        />
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {SOUND_PACKS.map((p) => (
+            <Chip key={p.id} value={p.id} current={soundPack} label={p.label}
+              onClick={(v) => {
+                setSoundPack(v);
+                if (volume > 0) preview(p, volume);
+              }} />
+          ))}
+        </div>
+        {/* The gate's STATE, not merely its existence.
+            The audit's sharpest finding: this section can read 100%
+            while the product is silent, because `dispatch.soundOn`
+            defaults to false and lives in the alerts panel. Naming
+            that a switch exists somewhere does not help — a person
+            who reads it still has to go hunting. So it says which
+            switch, what state it is in, and where. */}
+        <p className="text-2xs text-muted-foreground mt-1.5">
+          {t('theme.sound_gate_label', 'Live alerts')}
+          {' · '}
+          <span className={alertSoundOn ? 'text-foreground' : undefined}>
+            {alertSoundOn ? t('theme.sound_gate_on', 'on') : t('theme.sound_gate_off', 'off')}
+          </span>
+          {!alertSoundOn && (
+            <> {t('theme.sound_gate_where', '— turn on in the alerts panel')}</>
+          )}
+        </p>
+      </div>
+        </>
+      )}
+
+    </>
+  );
+}
+
+/**
+ * The top-bar entry point: a button, a popover, and the compact controls.
+ * It owns only the open/closed question — every control inside it belongs
+ * to `ModControls`, which the /mods page renders in full.
+ */
+export function ThemeToggle() {
+  const { t } = useTranslation();
+  const { size } = useTheme();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   // Close on click outside
   useEffect(() => {
@@ -263,265 +601,9 @@ export function ThemeToggle() {
           } as CSSProperties}
           className="absolute right-0 top-10 z-50 w-56 bg-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
         >
-
-          {/* Color theme */}
-          {MOD_OPTIONS.length > 0 && (
-            <>
-              <div>
-                <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                  {t('theme.group_look', 'Look')}
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {MOD_OPTIONS.map((o) => (
-                    <Chip key={o.value} value={o.value} current={activeMod} label={o.label} dot={o.dot}
-                      onClick={() => applyMod(o.mod)} />
-                  ))}
-                </div>
-                {/* Only for the mod actually applied. A line under every
-                    chip would crowd a panel that already carries three
-                    controls; a line under the one in force says what you
-                    just chose, which is when it is worth reading. */}
-                {activeWhy && (
-                  <p className="text-2xs text-muted-foreground mt-1.5">
-                    {activeWhy}
-                    {/* Says what happened rather than scolding: the mod
-                        is still installed, some of it has been changed,
-                        and the way back is the chip you already see. */}
-                    {modified && (
-                      <span className="text-muted-foreground/70">
-                        {' · '}{t('theme.mod_edited', 'edited — tap again to restore')}
-                      </span>
-                    )}
-                  </p>
-                )}
-              </div>
-
-              <div className="border-t border-border" />
-            </>
-          )}
-
-          <div>
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              {t('theme.group_color', 'Color')}
-            </p>
-            {/* Mode first, then accent. The rows are separate elements
-                rather than one wrapped list so the two questions cannot
-                re-flow into each other at any Size setting. */}
-            <div className="flex flex-wrap gap-1">
-              {MODE_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.mode} label={t(o.key, o.label)} dot={o.dot}
-                  onClick={(v) => setTheme({ mode: v })} />
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {ACCENT_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.accent} label={t(o.key, o.label)} dot={o.dot}
-                  onClick={(v) => setTheme({ accent: v })} />
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-border" />
-
-          {/* Size — replaces the Density chips, which changed nothing.
-              The scale runs 100% → 150%, not around a midpoint: the lower
-              half stays unavailable until the 24px hit-target floor is
-              repaired (design.md §5.1). So the handle rests at its own
-              minimum by default, and the live percentage beside the label
-              is what tells the user the control is working — it is the
-              only readout, which is why it sits in the label row rather
-              than under the track. */}
-          <div>
-            {/* Label, current value and reset share one row. The range ends
-                were spelled out under the track at first, which put a
-                second "100%" directly below the current value whenever the
-                slider sat at its minimum — which is the default, so most
-                users would have met the confusing state first. */}
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('theme.group_size', 'Interface size')}
-              </p>
-              <div className="flex items-center gap-1.5">
-                <span className="text-2xs tabular-nums text-muted-foreground">
-                  {Math.round(shown * 100)}%
-                </span>
-                <Tip label={t('theme.size_reset', 'Reset')}>
-                  <button
-                    type="button"
-                    onClick={() => { setDragging(null); setSize({ global: 1 }); }}
-                    disabled={size.global === 1 && dragging === null}
-                    aria-label={t('theme.size_reset', 'Reset')}
-                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  >
-                    <RotateCcw className="size-3" />
-                  </button>
-                </Tip>
-              </div>
-            </div>
-            <Slider
-              value={shown}
-              min={SIZE_MIN}
-              max={SIZE_MAX}
-              step={0.05}
-              aria-label={t('theme.size_label', 'Interface size')}
-              formatValue={(v) => `${Math.round(v * 100)}%`}
-              // Live: paint straight to the DOM so the drag is smooth and
-              // React is not re-rendered 60 times for one gesture.
-              onValueChange={(v) => { setDragging(v); applySize({ ...size, global: v }); }}
-              // Committed: now it becomes the stored preference.
-              onValueCommitted={(v) => { setDragging(null); setSize({ global: v }); }}
-            />
-          </div>
-
-          <div className="border-t border-border" />
-
-          {/* Radius */}
-          <div>
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              {t('theme.group_corners', 'Corners')}
-            </p>
-            <div className="flex gap-1">
-              {RADIUS_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.radius} label={t(o.key, o.label)}
-                  onClick={(v) => setTheme({ radius: v })} />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              {t('theme.group_material', 'Material')}
-            </p>
-            {/* Beside Corners, not inside Look: it is a property of the
-                whole app, and a person may want glass without taking a
-                mod's size and colour with it. */}
-            <div className="flex flex-wrap gap-1">
-              {MATERIAL_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.material} label={t(o.key, o.label)}
-                  onClick={(v) => setTheme({ material: v })} />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              {t('theme.group_motion', 'Motion')}
-            </p>
-            {/* A multiplier on every transition. Spinners and pulses are
-                deliberately not on it — see index.css. */}
-            <div className="flex flex-wrap gap-1">
-              {MOTION_OPTIONS.map((o) => (
-                <Chip key={o.value} value={o.value} current={theme.motion} label={t(o.key, o.label)}
-                  onClick={(v) => setTheme({ motion: v })} />
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-border" />
-
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('theme.group_sound', 'Sound')}
-              </p>
-              <div className="flex items-center gap-1.5">
-                <span className="text-2xs tabular-nums text-muted-foreground">
-                  {Math.round(volume * 100)}%
-                </span>
-                {/* Silence and restore, in one control. Zero is a real
-                    setting here rather than a disabled state — it is how
-                    a person quiets one screen without turning off each
-                    feature's own toggle. */}
-                {/* Mute first, reset LAST — because the trailing control
-                    of a slider section's header means "return this
-                    section to its default" in every section, and SIZE
-                    already established that. A person who learns one
-                    header should not have to relearn the next. */}
-                <Tip label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (volume > 0) { beforeMute.current = volume; setVolume(0); }
-                      else setVolume(beforeMute.current || 1);
-                    }}
-                    aria-label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}
-                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                  >
-                    {volume > 0 ? <VolumeX className="size-3" /> : <Volume2 className="size-3" />}
-                  </button>
-                </Tip>
-                <Tip label={t('theme.sound_reset', 'Reset')}>
-                  <button
-                    type="button"
-                    onClick={() => setVolume(1)}
-                    disabled={volume === 1}
-                    aria-label={t('theme.sound_reset', 'Reset')}
-                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  >
-                    <RotateCcw className="size-3" />
-                  </button>
-                </Tip>
-              </div>
-            </div>
-            <Slider
-              value={volume}
-              min={0}
-              max={1}
-              step={0.05}
-              aria-label={t('theme.sound_label', 'Sound volume')}
-              formatValue={(v) => `${Math.round(v * 100)}%`}
-              onValueCommitted={(v) => {
-                setVolume(v);
-                const pack = SOUND_PACKS.find((p) => p.id === soundPack);
-                if (pack && v > 0) preview(pack, v);
-              }}
-            />
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {SOUND_PACKS.map((p) => (
-                <Chip key={p.id} value={p.id} current={soundPack} label={p.label}
-                  onClick={(v) => {
-                    setSoundPack(v);
-                    if (volume > 0) preview(p, volume);
-                  }} />
-              ))}
-            </div>
-            {/* The gate's STATE, not merely its existence.
-                The audit's sharpest finding: this section can read 100%
-                while the product is silent, because `dispatch.soundOn`
-                defaults to false and lives in the alerts panel. Naming
-                that a switch exists somewhere does not help — a person
-                who reads it still has to go hunting. So it says which
-                switch, what state it is in, and where. */}
-            <p className="text-2xs text-muted-foreground mt-1.5">
-              {t('theme.sound_gate_label', 'Live alerts')}
-              {' · '}
-              <span className={alertSoundOn ? 'text-foreground' : undefined}>
-                {alertSoundOn ? t('theme.sound_gate_on', 'on') : t('theme.sound_gate_off', 'off')}
-              </span>
-              {!alertSoundOn && (
-                <> {t('theme.sound_gate_where', '— turn on in the alerts panel')}</>
-              )}
-            </p>
-          </div>
-
-          {/* Per-region sizing and the cross-device switch do not fit a
-              w-56 popover, and they are settings rather than a quick
-              toggle — design.md §7 forbids inventing an in-between
-              width, so they live on the profile page instead. */}
-          <div className="border-t border-border" />
-          <Link
-            to="/profile#appearance"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground"
-          >
-            <SlidersHorizontal className="size-3" />
-            {t('theme.size_by_region', 'Size by region…')}
-          </Link>
-
+          <ModControls compact onNavigate={() => setOpen(false)} />
         </div>
       )}
     </div>
   );
 }
-
-

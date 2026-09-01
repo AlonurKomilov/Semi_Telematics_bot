@@ -19,12 +19,12 @@ import { RotateCcw, ChevronRight } from 'lucide-react';
 import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { InfoTip, Tip } from '../components/tooltip';
-import { useTheme, applySize } from '../mods';
-import { usePreference } from './usePreference';
-import { publishAppearanceDefault, resetAppearanceDefault } from './appearance';
+import { useTheme, applySize } from './context';
+import { usePreference } from '../preferences/usePreference';
+import { publishAppearanceDefault, resetAppearanceDefault } from '../preferences/appearance';
 import { undoableAction } from '../components/banners/stagedAction';
-import { SIZE_MIN, SIZE_MAX, SIZE_DEFAULT } from './registry';
-import type { SizeRegion as SizeRegionKey } from './registry';
+import { SIZE_MIN, SIZE_MAX, SIZE_DEFAULT } from '../preferences/registry';
+import type { SizeRegion as SizeRegionKey } from '../preferences/registry';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 

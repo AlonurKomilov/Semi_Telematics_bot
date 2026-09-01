@@ -34,7 +34,9 @@ export {
   type Material, type Motion, type Size, type ColorTheme,
 } from './context';
 
-export { ThemeToggle } from './ModPanel';
+export { ThemeToggle, ModControls } from './ModPanel';
+export { default as ModsPage } from './ModsPage';
+export { default as SizeCard } from './SizeCard';
 export { IconWeight } from './icons/IconWeight';
 
 // ── the catalogue ───────────────────────────────────────────────────
