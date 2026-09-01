@@ -11,7 +11,7 @@ Named for the CONCEPT, not the trigger.  Only integration write paths
 invoke ``merge_fields`` today — a local edit writes directly and pins
 its provenance — but the thing being arbitrated is sources, of which
 integrations are one kind.  This package lived under
-``capabilities/integrations/reconciliation/`` until 2026-08-28; it
+``capabilities/integrations/reconciliation/`` until 2026-08-28; that
 moved WHOLE, and must never be split: ``merge_fields`` does fill,
 precedence and manual-pin in one loop, and tearing one function across
 two homes is this repo's documented incident pattern.  "Reconcile"
