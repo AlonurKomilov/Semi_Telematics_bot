@@ -148,8 +148,25 @@ afterEach(() => {
   window.history.replaceState({}, '', originalHref);
 });
 
+/**
+ * The CANONICAL key. This used to write `${LS_PREFIX}theme`, which is
+ * the first LEGACY spelling — so every drift test in this file was
+ * exercising the fallback branch and the canonical branch had no
+ * coverage at all. Proof it was blind: deleting
+ * `read('4truck.pref.mods.theme')` from index.html left all 47 tests
+ * green, while every user's first painted frame silently reverted to
+ * their pre-rename theme. The two legacy links get their own tests
+ * below, so the whole chain is covered link by link instead of one link
+ * three times.
+ */
 const storeTheme = (t: Partial<ThemeSetting>) =>
+  localStorage.setItem(`${LS_PREFIX}mods.theme`, JSON.stringify(t));
+/** The spelling used between the preference service and the mods rename. */
+const storeLegacyTheme = (t: Partial<ThemeSetting>) =>
   localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(t));
+/** The spelling that predates the preference service entirely. */
+const storeOldestTheme = (t: Partial<ThemeSetting>) =>
+  localStorage.setItem('dashboard-theme', JSON.stringify(t));
 const storeSize = (s: Partial<SizeSetting>) =>
   localStorage.setItem(`${LS_PREFIX}size`, JSON.stringify(s));
 
@@ -268,7 +285,7 @@ describe('theme-boot ↔ applyTheme', () => {
     // Deliberately the OLD shape — this key predates the split by more
     // than it predates the preference service, so anything still in it
     // is guaranteed to need migrating.
-    localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
+    storeOldestTheme({ color: 'light', radius: 'sharp' });
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
@@ -276,8 +293,27 @@ describe('theme-boot ↔ applyTheme', () => {
     }));
   });
 
-  it('prefers the canonical key over the legacy one', () => {
-    localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', radius: 'sharp' }));
+  it('reads the pre-rename key when the canonical one is absent', () => {
+    // The middle link. It used to be covered only by accident, because
+    // `storeTheme` wrote it; now that storeTheme is canonical, this is
+    // the only thing standing between a browser that stored a theme
+    // before the mods rename and a first frame in somebody else's colours.
+    storeLegacyTheme({ color: 'light', radius: 'sharp' });
+    const booted = runBoot();
+    resetRoot();
+    expect(booted).toEqual(runApply({
+      ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
+    }));
+  });
+
+  it('reads the chain in order when all three keys are present', () => {
+    // The old version of this test stored the two LEGACY spellings and
+    // asserted the newer of them won — legacy versus older-legacy, with
+    // the canonical key absent from a test named for it. All three are
+    // written here, each with a different radius, so the assertion can
+    // only pass on the right one.
+    storeOldestTheme({ color: 'light', radius: 'sharp' });
+    storeLegacyTheme({ color: 'light', radius: 'rounded' });
     const canonical: ThemeSetting = {
       ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green',
     };
@@ -285,6 +321,16 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply(canonical));
+  });
+
+  it('falls to the middle link, not the oldest, when canonical is absent', () => {
+    storeOldestTheme({ color: 'light', radius: 'sharp' });
+    storeLegacyTheme({ color: 'light', radius: 'rounded' });
+    const booted = runBoot();
+    resetRoot();
+    expect(booted).toEqual(runApply({
+      ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light',
+    }));
   });
 });
 
@@ -438,9 +484,21 @@ describe('theme-boot source', () => {
     }
   });
 
-  it('reads both canonical storage keys the adapter writes', () => {
-    expect(source).toContain(`'${LS_PREFIX}theme'`);
+  it('reads the canonical storage keys the adapter writes', () => {
+    // This assertion was named 'canonical' while pinning
+    // `4truck.pref.theme`, which the mods rename demoted to the first
+    // fallback — so it passed on the wrong line of the chain and the
+    // canonical string appeared exactly once in the repo, untested.
+    expect(source).toContain(`'${LS_PREFIX}mods.theme'`);
     expect(source).toContain(`'${LS_PREFIX}size'`);
+  });
+
+  it('keeps both legacy spellings in the fallback chain', () => {
+    // Deleting either one strands every browser that last stored a theme
+    // under it. They are load-bearing until the migration window closes,
+    // and nothing else in the repo pins them.
+    expect(source).toContain(`'${LS_PREFIX}theme'`);
+    expect(source).toContain("'dashboard-theme'");
   });
 
   it('never calls a storage writer', () => {

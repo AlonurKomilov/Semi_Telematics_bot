@@ -159,6 +159,46 @@ export function adoptRaw(key: string, rawJson: string | null): void {
   notify(key);
 }
 
+/**
+ * Server rows keyed by a name this registry no longer uses.
+ *
+ * `legacyKeys` was a localStorage-ONLY mechanism: `readPref` falls back
+ * through it in `local.ts`, but `remote.ts` PUTs the registry key
+ * VERBATIM as the row key and adoption looked rows up by that same
+ * string with no alias table. So renaming a ``synced`` key orphaned its
+ * server row, and the localStorage fallback rescued only the one browser
+ * that still happened to hold the old entry — sign in anywhere else and
+ * the value was silently gone. That is exactly what `sound.pack` ->
+ * `mods.sound.pack` did.
+ *
+ * A legacy entry that starts with `LS_PREFIX` IS a former registry key,
+ * because `lsKey(k) = LS_PREFIX + k` is the only place a canonical
+ * storage string is built. Stripping the prefix therefore recovers the
+ * row key the server would have written under that name. An entry
+ * WITHOUT the prefix (`dashboard-theme`, `4truck.table.density`)
+ * predates the preference service, so no server row ever existed for it
+ * and it is correctly absent from this map.
+ */
+function serverLegacyMap(): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [canonical, def] of Object.entries(DEFS)) {
+    for (const legacy of (def as { legacyKeys?: string[] }).legacyKeys ?? []) {
+      if (!legacy.startsWith(LS_PREFIX)) continue;
+      const rowKey = legacy.slice(LS_PREFIX.length);
+      if (rowKey === canonical) continue;
+      out.set(rowKey, canonical);
+    }
+  }
+  return out;
+}
+
+/** The canonical key a server row belongs to, or null if it belongs to
+ *  nothing this registry knows. Exported for the guard. */
+export function canonicalKeyForRow(rowKey: string): string | null {
+  if (defFor(rowKey)) return rowKey;
+  return serverLegacyMap().get(rowKey) ?? null;
+}
+
 /** Phase 2 entry point: register the remote backend and merge what the
  *  server has.  Local values win only for ``device`` keys — a ``synced``
  *  key is owned by the account, so the server copy is adopted. */
@@ -168,7 +208,21 @@ export async function attachBackend(next: SyncBackend): Promise<void> {
   notify(SYNC_LOADED);
   try {
     const items = await next.loadAll();
-    for (const { key, value } of items) adoptRaw(key, value);
+    // Legacy rows FIRST, so that an account carrying both spellings ends
+    // up on the canonical one whatever order the bulk read returns them
+    // in. Adoption stays read-only: the next time the user changes the
+    // preference it PUTs under the canonical key by itself, and a boot
+    // that silently rewrites server rows is a surprise nobody asked for.
+    const legacy: { key: string; value: string | null }[] = [];
+    const canonical: { key: string; value: string | null }[] = [];
+    for (const item of items) {
+      (defFor(item.key) ? canonical : legacy).push(item);
+    }
+    for (const { key, value } of legacy) {
+      const target = canonicalKeyForRow(key);
+      if (target) adoptRaw(target, value);
+    }
+    for (const { key, value } of canonical) adoptRaw(key, value);
   } finally {
     // Even a FAILED bulk read resolves the gate: consumers would
     // otherwise wait forever on an offline device.  The local value is

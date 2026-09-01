@@ -93,11 +93,48 @@ Legacy values are migrated **lazily** on first read and copied forward;
 the old entry is deliberately **left in place** so a release rollback
 loses nothing.
 
+### `legacyKeys` covers TWO stores, and it only used to cover one
+
+`legacyKeys` began as a **localStorage-only** mechanism: `readPref` falls
+back through the chain in `local.ts`, but `remote.ts` PUTs the registry
+key **verbatim** as the server row key (`/user/preferences/ui/{key}`) and
+adoption looked rows up by that same string with no alias table. So
+renaming a `synced` key orphaned its server row, and the browser fallback
+rescued only the one machine that still held the old entry — sign in
+anywhere else and the value was silently the default. `sound.pack` →
+`mods.sound.pack` did exactly that, and nothing failed.
+
+`store.ts` now resolves server rows through the same chain: a legacy
+entry that starts with `LS_PREFIX` **is** a former registry key (because
+`lsKey(k) = LS_PREFIX + k` is the only place a canonical storage string
+is built), so stripping the prefix recovers the row key. Legacy rows are
+adopted BEFORE canonical ones, so an account carrying both spellings
+lands on the canonical value whatever order the bulk read returns.
+
+Two consequences when you add a `legacyKeys` entry:
+
+- **With the `LS_PREFIX`** (`4truck.pref.sound.pack`) you are declaring a
+  former REGISTRY key. Both stores migrate. `serverLegacy.test.ts`
+  asserts every one of these resolves.
+- **Without it** (`dashboard-theme`, `4truck.table.density`) you are
+  declaring a pre-service raw localStorage key. No server row ever
+  existed under it, and inventing a mapping would be wrong — the guard
+  asserts these stay unmapped.
+
+Adoption is **read-only**: it never writes the canonical row back. The
+next time the user changes the preference it PUTs under the canonical key
+by itself, and a boot that silently rewrites server rows is a surprise
+nobody asked for.
+
 ## The one sanctioned reader outside this service
 
-`index.html`'s inline `theme-boot` script reads `4truck.pref.theme`,
-`4truck.pref.size` (and the legacy `dashboard-theme`) straight from
-`localStorage`. That is not a
+`index.html`'s inline `theme-boot` script reads `4truck.pref.mods.theme`
+— falling back to `4truck.pref.theme`, then the pre-service
+`dashboard-theme` — plus `4truck.pref.size`, straight from
+`localStorage`. Every link of that chain has its own test in
+`themeBoot.test.ts`; they did not, and deleting the canonical read left
+all 47 tests green while every user's first painted frame reverted to
+their pre-rename theme. That is not a
 violation of the rule above — it is the one place the rule *cannot* apply:
 it runs before any module exists, to stamp the theme onto `<html>` before
 the first paint. It is **read-only**, so `local.ts` remains the single
