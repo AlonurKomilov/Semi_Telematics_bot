@@ -143,6 +143,10 @@ export function ThemeToggle() {
   const { theme, setTheme, size, setSize } = useTheme();
   const { value: soundPack, setValue: setSoundPack } = usePreference('sound.pack');
   const { value: volume, setValue: setVolume } = usePreference('sound.volume');
+  // Read only, and only to REPORT it — the switch itself stays where it
+  // is used. Two controls for one boolean is the object-map problem
+  // this line exists to solve, not to repeat.
+  const { value: alertSoundOn } = usePreference('dispatch.soundOn');
 
   /**
    * Hearing it is the only way to choose it, so every gesture in the
@@ -175,6 +179,7 @@ export function ThemeToggle() {
   const modified = installed !== undefined && !modMatchesAxes(installed, {
     accent: theme.accent, radius: theme.radius, size: size.global,
     material: theme.material, motion: theme.motion, icons: theme.icons,
+    sound: soundPack,
   });
 
   const applyMod = (m: ThemeMod) => {
@@ -193,6 +198,9 @@ export function ThemeToggle() {
       ...(m.icons === undefined ? {} : { icons: m.icons }),
       ...(m.entrance === undefined ? {} : { entrance: m.entrance }),
     });
+    // Not part of the theme preference — sound is its own key, and a mod
+    // sets the pack without touching the volume.
+    if (m.sound !== undefined) setSoundPack(m.sound);
     if (m.size !== undefined) setSize({ global: m.size });
   };
   const [open, setOpen] = useState(false);
@@ -424,6 +432,11 @@ export function ThemeToggle() {
                     setting here rather than a disabled state — it is how
                     a person quiets one screen without turning off each
                     feature's own toggle. */}
+                {/* Mute first, reset LAST — because the trailing control
+                    of a slider section's header means "return this
+                    section to its default" in every section, and SIZE
+                    already established that. A person who learns one
+                    header should not have to relearn the next. */}
                 <Tip label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}>
                   <button
                     type="button"
@@ -435,6 +448,17 @@ export function ThemeToggle() {
                     className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60"
                   >
                     {volume > 0 ? <VolumeX className="size-3" /> : <Volume2 className="size-3" />}
+                  </button>
+                </Tip>
+                <Tip label={t('theme.sound_reset', 'Reset')}>
+                  <button
+                    type="button"
+                    onClick={() => setVolume(1)}
+                    disabled={volume === 1}
+                    aria-label={t('theme.sound_reset', 'Reset')}
+                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  >
+                    <RotateCcw className="size-3" />
                   </button>
                 </Tip>
               </div>
@@ -461,11 +485,22 @@ export function ThemeToggle() {
                   }} />
               ))}
             </div>
-            {/* Says where the sound actually comes from. Without it a
-                silent app at 100% reads as broken, when the truth is
-                that each feature still owns its own switch. */}
+            {/* The gate's STATE, not merely its existence.
+                The audit's sharpest finding: this section can read 100%
+                while the product is silent, because `dispatch.soundOn`
+                defaults to false and lives in the alerts panel. Naming
+                that a switch exists somewhere does not help — a person
+                who reads it still has to go hunting. So it says which
+                switch, what state it is in, and where. */}
             <p className="text-2xs text-muted-foreground mt-1.5">
-              {t('theme.sound_note', 'Each feature keeps its own switch — this sets the level.')}
+              {t('theme.sound_gate_label', 'Live alerts')}
+              {' · '}
+              <span className={alertSoundOn ? 'text-foreground' : undefined}>
+                {alertSoundOn ? t('theme.sound_gate_on', 'on') : t('theme.sound_gate_off', 'off')}
+              </span>
+              {!alertSoundOn && (
+                <> {t('theme.sound_gate_where', '— turn on in the alerts panel')}</>
+              )}
             </p>
           </div>
 

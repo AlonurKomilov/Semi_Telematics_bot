@@ -207,9 +207,23 @@ describe('the panel section', () => {
     expect(panel).toMatch(/beforeMute\.current = volume/);
   });
 
-  it('says that each feature keeps its own switch', () => {
-    // Without it a silent app at 100% reads as broken, when the truth is
-    // that `dispatch.soundOn` and its siblings are still the gates.
-    expect(panel).toContain('theme.sound_note');
+  it('reports the gate\'s STATE and where it lives, not just that one exists', () => {
+    // The audit's sharpest finding. A section reading 100% while the
+    // product is silent is a section that reads as broken — and naming
+    // that "a switch exists somewhere" leaves the person hunting.
+    expect(panel, 'the gate is no longer reported').toContain('theme.sound_gate_label');
+    expect(panel, 'the gate reports existence, not state').toContain('alertSoundOn');
+    expect(panel, 'the gate does not say where it lives').toContain('theme.sound_gate_where');
+  });
+
+  it('puts reset last in the header, as the size section does', () => {
+    // One rule for both slider sections: the trailing control returns
+    // the section to its default. A person who learns one header should
+    // not have to relearn the next.
+    const muteAt = panel.indexOf('theme.sound_mute');
+    const resetAt = panel.indexOf('theme.sound_reset');
+    expect(muteAt, 'the mute control is gone').toBeGreaterThan(0);
+    expect(resetAt, 'the sound section has no reset').toBeGreaterThan(0);
+    expect(resetAt, 'reset is not the trailing control').toBeGreaterThan(muteAt);
   });
 });

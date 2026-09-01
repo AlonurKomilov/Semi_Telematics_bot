@@ -202,26 +202,26 @@ describe('a look is on only while it adds up', () => {
   const cab = modById('cab')!;
 
   it('recognises its own axes', () => {
-    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('cab');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).toBe('cab');
   });
 
   it('goes quiet the moment any axis is tweaked', () => {
     // The behaviour that means there is no "modified" state to store:
     // change a corner and the chip un-highlights by itself.
-    expect(activeModId({ accent: cab.accent, radius: 'sharp', size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
-    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: 1, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
-    expect(activeModId({ accent: 'blue', radius: cab.radius!, size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons! })).not.toBe('cab');
+    expect(activeModId({ accent: cab.accent, radius: 'sharp', size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).toBe('');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: 1, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).toBe('');
+    expect(activeModId({ accent: 'blue', radius: cab.radius!, size: cab.size!, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).not.toBe('cab');
   });
 
   it('survives a float round-trip', () => {
     // The size comes back from a slider and from stored JSON; `=== 1.25`
     // is a coin toss on a value that has been through both.
-    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size! + 1e-9, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('cab');
-    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size! + 0.01, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size! + 1e-9, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).toBe('cab');
+    expect(activeModId({ accent: cab.accent, radius: cab.radius!, size: cab.size! + 0.01, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).toBe('');
   });
 
   it('answers empty when the axes match nothing', () => {
-    expect(activeModId({ accent: 'blue', radius: 'rounded', size: 1, material: 'solid', motion: 'default', icons: cab.icons! })).toBe('');
+    expect(activeModId({ accent: 'blue', radius: 'rounded', size: 1, material: 'solid', motion: 'default', icons: cab.icons!, sound: cab.sound! })).toBe('');
   });
 });
 
@@ -262,10 +262,11 @@ describe('the properties a mod carries and the panel does not', () => {
     const base = {
       accent: cab.accent, radius: cab.radius!, size: cab.size!,
       material: 'solid', motion: 'default', icons: cab.icons!,
+      sound: cab.sound!,
     };
     expect(activeModId(base)).toBe('cab');
     // Change the one axis the panel cannot reach, and the mod is off.
-    expect(activeModId({ ...base, icons: 'hairline' })).toBe('');
+    expect(activeModId({ ...base, icons: 'hairline', sound: cab.sound! })).toBe('');
   });
 });
 
@@ -274,6 +275,7 @@ describe('installed is not the same question as matching', () => {
   const axesOf = (m: typeof cab) => ({
     accent: m.accent, radius: m.radius!, size: m.size!,
     material: 'solid', motion: 'default', icons: m.icons!,
+    sound: m.sound ?? 'chime',
   });
 
   it('matches when every axis it declares still agrees', () => {
@@ -287,16 +289,16 @@ describe('installed is not the same question as matching', () => {
     // Cab left open. Only what a mod declares can be departed from.
     const OTHER: Record<string, unknown> = {
       accent: 'blue', radius: 'sharp', size: 1,
-      material: 'glass', motion: 'snappy', icons: 'hairline',
+      material: 'glass', motion: 'snappy', icons: 'hairline', sound: 'chime',
     };
     for (const m of THEME_MODS) {
       const base = {
         accent: m.accent, radius: m.radius ?? 'rounded', size: m.size ?? 1,
         material: m.material ?? 'solid', motion: m.motion ?? 'default',
-        icons: m.icons ?? 'regular',
+        icons: m.icons ?? 'regular', sound: m.sound ?? 'chime',
       };
       expect(modMatchesAxes(m, base), `${m.id} does not match its own axes`).toBe(true);
-      for (const k of ['accent', 'radius', 'size', 'material', 'motion', 'icons'] as const) {
+      for (const k of ['accent', 'radius', 'size', 'material', 'motion', 'icons', 'sound'] as const) {
         if (m[k as keyof typeof m] === undefined) continue;
         const other = k === 'accent' && m.accent === 'blue' ? 'green' : OTHER[k];
         expect(modMatchesAxes(m, { ...base, [k]: other }),

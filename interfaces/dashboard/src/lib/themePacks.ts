@@ -137,6 +137,16 @@ export interface ThemeMod {
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
   readonly entrance?: boolean;
+  /**
+   * Which cue set the look comes with — a `SOUND_PACKS` id.
+   *
+   * The first thing a mod carries that is not a value on `<html>`, and
+   * the reason identity had to stop being a sum of the axes. It sets
+   * the pack, never the volume: how loud is the room's business, and a
+   * look that reaches for it would be a look that shouts in a quiet
+   * office.
+   */
+  readonly sound?: string;
   /** One line, shown under the label. Says who the look is FOR. */
   readonly why: string;
 }
@@ -150,7 +160,7 @@ export interface ThemeMod {
  */
 export const THEME_MODS: readonly ThemeMod[] = [
   { id: 'cab',  label: 'Cab',  accent: 'azure', radius: 'pill',    size: 1.25,
-    icons: 'bold',
+    icons: 'bold', sound: 'blip',
     why: 'Tablet in a moving truck — bigger targets, gloved hands' },
   { id: 'wall', label: 'Wall', accent: 'blue',  radius: 'rounded', size: 1.45,
     icons: 'bold', entrance: true,
@@ -173,6 +183,9 @@ export interface ThemeAxes {
   motion: string;
   /** Icon stroke weight. NOT a panel control — see ThemeMod.icons. */
   icons: string;
+  /** The installed cue set. Not on `<html>`, but readable, so a mod
+   *  that carries one can still be reported as edited. */
+  sound: string;
 }
 
 /**
@@ -199,6 +212,7 @@ export const modMatchesAxes = (m: ThemeMod, a: ThemeAxes): boolean =>
   && (m.material === undefined || m.material === a.material)
   && (m.motion === undefined || m.motion === a.motion)
   && (m.icons === undefined || m.icons === a.icons)
+  && (m.sound === undefined || m.sound === a.sound)
   // Float compare: the size arrives from a slider and a stored JSON
   // round-trip, so `===` against 1.25 is a coin toss.
   && (m.size === undefined || Math.abs(m.size - a.size) < 1e-6);
