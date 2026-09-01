@@ -11,7 +11,7 @@ Owner contract (2026-07-24, see memory project-ai-invoice-to-wo):
   * AI drafts only — the created WO is ALWAYS status='open'; the human
     finishes it in the form.  The tool description tells the agent to
     ASK for a missing unit instead of guessing.
-  * Access = can_work_orders_all (TOOL_PERMISSIONS), scope =
+  * Access = can_manage_work_orders (TOOL_PERMISSIONS), scope =
     vehicle_param (fail-closed gate; VEHICLE_SPECIFIC_TOOLS).
   * The chat files stay transient server-side: ``source_files`` are
     NAMES the client uses post-approve to upload its device-held files

@@ -1696,7 +1696,7 @@ async def vehicle_reading_as_of(
     vehicle_name: str,
     date: str = Query(..., description="Service date (YYYY-MM-DD)"),
     user: dict = Depends(require_permission_any(
-        "can_work_orders_all", "can_faults", "can_vehicle_vehicle",
+        "can_manage_work_orders", "can_faults", "can_vehicle_vehicle",
     )),
 ):
     """Odometer + engine-hours for a vehicle AS OF a date — backs the

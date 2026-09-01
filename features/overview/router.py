@@ -134,7 +134,9 @@ async def overview_stats(
         or can(role, "can_alerts_vehicle")
     )
     fetch_parking = can(role, "can_alerts_all") or can(role, "can_alerts_vehicle")
-    fetch_maintenance = can(role, "can_maintenance_all")
+    # Wide-only fetch, exactly today's deny-set (the legacy _all
+    # gate) — a width-aware assigned count is an E-stage question.
+    fetch_maintenance = can(role, "can_manage_maintenance")
 
     # Fetch ALL open tasks (pending / overdue / in_progress) when
     # the role can see maintenance — the count below filters them by

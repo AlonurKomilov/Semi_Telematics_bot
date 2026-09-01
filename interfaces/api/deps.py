@@ -347,6 +347,33 @@ async def get_member_vehicle_scope(user: dict) -> str:
     return db_user.resolved_vehicle_scope
 
 
+async def member_unit_scope(user: dict, feature: str) -> str:
+    """'all' or 'assigned' — the unit-width answer for one paired
+    feature during the verb/scope bridge.
+
+    Two narrows, EITHER of which narrows (both are live claims):
+
+      * the effective GRANT is vehicle-only — the legacy pair the
+        matrix still edits, honored per-account via can_for_account,
+        so an account that narrowed a role keeps its narrowing;
+      * the member's Team Management scope says 'assigned' — the new
+        home for width.  Additive today: no overrides are stored yet,
+        so at deploy this changes nothing.
+
+    When the pairs die in the cleanup stage the first claim goes with
+    them and this helper collapses into get_member_vehicle_scope.
+    """
+    from capabilities.permissions.roles import (
+        PAIRED_UNIT_FEATURES, Role, can_for_account,
+    )
+    wide_flag, _narrow_flag = PAIRED_UNIT_FEATURES[feature]
+    wide = await can_for_account(
+        int(user["account_id"]), Role(user["role"]), wide_flag)
+    if not wide:
+        return "assigned"
+    return await get_member_vehicle_scope(user)
+
+
 def validate_company_access(allowed_codes: list[str], requested_code: str | None) -> None:
     """Raise 403 if the user requests a company they don't have access to.
 

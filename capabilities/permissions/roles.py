@@ -321,6 +321,17 @@ def _install_canonical_grammar() -> None:
 _install_canonical_grammar()
 
 
+# noun → (wide legacy flag, narrow legacy flag) for every paired unit
+# feature, from the contract.  The enforcement bridge's width helper
+# (interfaces/api/deps.member_unit_scope) rides this; it dies with the
+# pairs in the cleanup stage.
+PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
+    target.removeprefix("can_view_"): (sources[0], sources[1])
+    for target, sources in _SPLIT_SOURCES.items()
+    if len(sources) == 2
+}
+
+
 def normalize_stored_perm_keys(perm_dict: dict) -> dict:
     """Map canonical keys in a stored/inbound grant dict onto their
     legacy fields.  Legacy keys WIN on collision — the matrix edits

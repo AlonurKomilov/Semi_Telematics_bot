@@ -48,7 +48,7 @@ export default function VendorProfile() {
   const qc = useQueryClient();
   const tz = useTimezone();
   const { has } = useViewPermissions();
-  const canWrite = has('can_work_orders_all');
+  const canWrite = has('can_manage_work_orders');
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeTarget, setMergeTarget] = useState('');
   const [merging, setMerging] = useState(false);

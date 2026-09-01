@@ -24,6 +24,13 @@ export interface Permissions {
   can_cost_per_mile: boolean;
   can_maintenance_all: boolean;
   can_maintenance_vehicle: boolean;
+  /** The canonical verb grammar (the verb/scope bridge) — the wire
+   *  carries BOTH grammars, equal by construction; pages migrate to
+   *  these one family at a time. */
+  can_view_maintenance: boolean;
+  can_manage_maintenance: boolean;
+  can_view_work_orders: boolean;
+  can_manage_work_orders: boolean;
   can_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;

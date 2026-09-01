@@ -5,7 +5,7 @@ feature declares the entity types it writes (label, the permission
 that gates viewing their history, any sensitive fields) in its own
 one-file ``activity.py``; this module only stores and serves the
 declarations.  The capability never hardcodes feature facts like
-"vendor → can_work_orders_all" — that knowledge lives with the
+"vendor → can_manage_work_orders" — that knowledge lives with the
 feature, exactly like keep-windows live in ``features/x/retention.py``.
 
 The generic per-record endpoint (``GET /activity/{type}/{id}``) is

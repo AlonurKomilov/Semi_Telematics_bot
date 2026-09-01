@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOUR_CATALOG } from './tourCatalog';
-import { FEATURE_CATALOG } from '../../config/featureCatalog';
+import { CANONICAL_WIRE_FLAGS, FEATURE_CATALOG } from '../../config/featureCatalog';
 
 const SRC = join(__dirname, '..', '..');
 const LOCALE_DIR = join(SRC, 'locales');
@@ -103,9 +103,11 @@ describe('tour catalog', () => {
   it('every declared permission is a real flag some feature uses', () => {
     // A typo'd flag fails OPEN in hasAny — the tour would simply never
     // be offered to anyone, and nothing would say why.
-    const known = new Set(
-      FEATURE_CATALOG.flatMap((f) => f.permission == null ? []
-        : Array.isArray(f.permission) ? f.permission : [f.permission]));
+    const known = new Set([
+      ...FEATURE_CATALOG.flatMap((f) => f.permission == null ? []
+        : Array.isArray(f.permission) ? f.permission : [f.permission]),
+      ...CANONICAL_WIRE_FLAGS,
+    ]);
     const strangers: string[] = [];
     for (const tour of TOUR_CATALOG) {
       for (const flag of tour.requires ?? []) {

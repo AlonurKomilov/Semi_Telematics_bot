@@ -130,7 +130,7 @@ export default function Vendors() {
   const qc = useQueryClient();
   const tz = useTimezone();
   const { has } = useViewPermissions();
-  const canWrite = has('can_work_orders_all');
+  const canWrite = has('can_manage_work_orders');
   const [tab, setTab] = useState<'mine' | 'directory'>('mine');
 
   // Manual create — vendors also appear automatically from work-order

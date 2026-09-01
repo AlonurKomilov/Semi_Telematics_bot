@@ -12,8 +12,8 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "work_order", "Work order", "work_orders",
-    view_permissions=('can_work_orders_all',),
-    restore_permissions=('can_work_orders_all',),
+    view_permissions=('can_manage_work_orders',),
+    restore_permissions=('can_manage_work_orders',),
     restore_table="work_orders",
     company_scoped=True,
 ))

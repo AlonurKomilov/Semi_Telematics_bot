@@ -35,7 +35,7 @@ def has_maintenance_access(role: str) -> bool:
         r = Role(role) if not isinstance(role, Role) else role
     except ValueError:
         return False
-    return can(r, "can_maintenance_all") or can(r, "can_maintenance_vehicle")
+    return can(r, "can_view_maintenance")
 
 
 def has_work_orders_access(role: str) -> bool:
@@ -49,7 +49,7 @@ def has_work_orders_access(role: str) -> bool:
         r = Role(role) if not isinstance(role, Role) else role
     except ValueError:
         return False
-    return can(r, "can_work_orders_all") or can(r, "can_work_orders_vehicle")
+    return can(r, "can_view_work_orders")
 
 
 # ── Due-soon classifier (shared between API stats + scheduler) ─────

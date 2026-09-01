@@ -85,7 +85,7 @@ const asArray = (p: string | string[] | null): string[] =>
 // Own-scope ("baseline crumb") flags — the assigned-vehicle / self-service
 // variants every low-scope role carries.  These deliberately do NOT pull a
 // cross-department feature into the sidebar (a recruiter's
-// can_maintenance_vehicle shouldn't surface Maintenance on the recruiting
+// assigned-width maintenance access shouldn't surface Maintenance on the recruiting
 // dashboard); only an ACCOUNT-WIDE grant does.
 const OWN_SCOPE_FLAG = /(_vehicle|_own)$/;
 

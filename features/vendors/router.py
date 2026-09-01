@@ -1,6 +1,6 @@
 """Vendors API — per-account repair-vendor registry (Phase A).
 
-Access model: ``can_work_orders_all`` for EVERYTHING, reads included.
+Access model: ``can_manage_work_orders`` for EVERYTHING, reads included.
 Vendors is manager-side master data — a vendor profile aggregates the
 whole account's work orders and spend for that shop, so vehicle-scoped
 users (drivers see only their own truck's WOs on the WO endpoints)
@@ -35,11 +35,11 @@ router = APIRouter(prefix="/vendors", tags=["vendors"])
 
 
 async def _vendor_access(user: dict) -> bool:
-    """Account-aware manager gate — ``can_work_orders_all`` only.
+    """Account-aware manager gate — ``can_manage_work_orders`` only.
     Vehicle-scope work-order access does NOT grant vendor reads (a
     profile aggregates ALL trucks' records for the shop)."""
     role, acct = Role(user["role"]), user["account_id"]
-    return await can_for_account(acct, role, "can_work_orders_all")
+    return await can_for_account(acct, role, "can_manage_work_orders")
 
 
 class VendorCreate(BaseModel):

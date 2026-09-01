@@ -601,10 +601,10 @@ export default function WorkOrderForm() {
   // "removing" one untags them into the trailing General section.
   const { has } = useViewPermissions();
   // Creating a NEW custom task type goes through the maintenance
-  // endpoint gated by can_maintenance_all — hide the inline creator
+  // endpoint gated by can_manage_maintenance — hide the inline creator
   // from anyone who'd 403 on it.
   // Matches the backend gate on POST /service-tasks — it was
-  // can_maintenance_all before, which both offered the option to roles
+  // can_manage_maintenance before, which both offered the option to roles
   // the server refuses AND hid it from roles the server allows.
   const canManageTaskTypes = has('can_service_tasks');
 

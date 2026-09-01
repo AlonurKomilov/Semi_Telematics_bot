@@ -8,7 +8,7 @@ matcher) with no owner.
 
 Access model: ``can_service_tasks`` owns every WRITE (create / edit /
 archive / delete).  The LIST read is deliberately wider —
-``can_maintenance_all`` / ``can_work_orders_all`` also pass — because
+``can_manage_maintenance`` / ``can_manage_work_orders`` also pass — because
 it feeds the task pickers on both forms; gating the read strictly
 would break task entry for a dispatcher who can schedule maintenance
 but doesn't administer the task list.
@@ -64,7 +64,7 @@ async def list_service_tasks(
     include_archived: bool = False,
     vehicle_type: str = "",
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -216,7 +216,7 @@ async def update_service_task(
 @router.get("/systems")
 async def list_systems(
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
 ):
     """The system vocabulary — the reporting axis above a task.
@@ -280,7 +280,7 @@ async def merge_service_tasks(
 async def service_task_defaults(
     task: str,
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -307,7 +307,7 @@ class TaskPartLink(BaseModel):
 async def list_task_parts(
     task_id: int,
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
     tenant_db=Depends(get_tenant_db),
 ):

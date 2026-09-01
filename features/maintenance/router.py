@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
-from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies
+from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope
 from capabilities.activity_trail import new_group_id
 from capabilities.permissions.roles import can
 from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
@@ -183,7 +183,7 @@ class TaskUpdate(BaseModel):
 async def _maintenance_vehicle_scope(user: dict, tenant_db):
     """The vehicle wall for a ``_own`` maintenance user, or None.
 
-    ``None`` means unrestricted — the caller holds ``can_maintenance_all``.
+    ``None`` means unrestricted — the caller's unit width is 'all'.
     Anything else is authoritative, INCLUDING an empty scope, which denies
     every row.  That safe-deny is deliberate and is the opposite of
     ``deps.py``'s "no assignments = unrestricted": maintenance has always
@@ -204,7 +204,11 @@ async def _maintenance_vehicle_scope(user: dict, tenant_db):
     files.  ``interfaces/api/deps.py`` was corrected for exactly this;
     these copies were left behind.
     """
-    if can(user["role"], "can_maintenance_all"):
+    # Width comes from the bridge helper: the legacy pair narrows
+    # (an account that granted this role vehicle-only keeps its
+    # narrowing) OR the member's Team Management scope narrows.
+    # Verbs stay permissions; WIDTH is Team Management's question.
+    if await member_unit_scope(user, "maintenance") == "all":
         return None
     trucks = await get_user_vehicle_nums(user)
     if not trucks:
@@ -491,7 +495,7 @@ async def get_task(
 @router.post("/tasks")
 async def create_task(
     body: TaskCreate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Create a new maintenance task."""
@@ -577,7 +581,7 @@ class BulkPreflight(BaseModel):
 @router.post("/tasks/bulk/preflight")
 async def bulk_create_preflight(
     body: BulkPreflight,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Which of these vehicles ALREADY have an open task of this type?
@@ -597,7 +601,7 @@ async def bulk_create_preflight(
 @router.post("/tasks/bulk/create")
 async def bulk_create_tasks(
     body: BulkTaskCreate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Create the same task template across N vehicles in one request.
@@ -662,7 +666,7 @@ async def bulk_create_tasks(
 async def update_task(
     task_id: int,
     body: TaskUpdate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Update a maintenance task."""
@@ -749,7 +753,7 @@ class SnoozePayload(BaseModel):
 async def snooze_task(
     task_id: int,
     body: SnoozePayload,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Snooze an overdue/pending task until ``body.until`` (or clear).
@@ -846,7 +850,7 @@ async def upload_task_attachment(
     This route is for the quick "snap a photo of the roadside DEF
     receipt" workflow.
 
-    Permission: ``can_maintenance_all`` OR ``can_maintenance_vehicle`` on
+    Permission: ``can_view_maintenance`` on
     a task whose vehicle the driver is assigned to.  Drivers must NOT
     be able to attach evidence to other trucks' tasks.
     """
@@ -963,7 +967,7 @@ async def download_task_attachment(
 @router.delete("/tasks/{task_id}/attachment")
 async def delete_task_attachment(
     task_id: int,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Remove the task's attached file (managers only).
@@ -1006,7 +1010,7 @@ async def delete_task_attachment(
 @router.delete("/tasks/{task_id}")
 async def delete_task(
     task_id: int,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Delete a maintenance task."""
@@ -1044,7 +1048,7 @@ class BulkDelete(BaseModel):
 @router.post("/tasks/bulk/status")
 async def bulk_update_status(
     body: BulkStatusUpdate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Bulk-update status on N maintenance tasks.
@@ -1104,7 +1108,7 @@ async def bulk_update_status(
 @router.post("/tasks/bulk/delete")
 async def bulk_delete(
     body: BulkDelete,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Bulk-delete N maintenance tasks (account-scoped, idempotent).
@@ -1155,10 +1159,10 @@ async def get_vehicle_odometer(
     }
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    # DRIVER (can_maintenance_vehicle, no can_maintenance_all): enforce truck ownership
+    # Assigned-width callers (drivers today): enforce truck ownership
     # so a driver cannot enumerate readings for the entire fleet by
     # guessing truck names.
-    if not can(user["role"], "can_maintenance_all"):
+    if await member_unit_scope(user, "maintenance") == "assigned":
         allowed_trucks = await get_user_vehicle_nums(user)
         if allowed_trucks is not None:
             name_lower = vehicle_name.strip().lower()
@@ -1257,7 +1261,7 @@ async def get_service_history(
     # Manager-gated like the Work Orders pages themselves — drivers
     # keep the tasks-only view (WO rows carry invoice money).
     work_orders: list[dict] = []
-    if can(user["role"], "can_work_orders_all"):
+    if can(user["role"], "can_manage_work_orders"):
         wos = await tenant_db.list_work_orders(
             user["account_id"], vehicle_name=vehicle_name,
         )
@@ -1323,8 +1327,8 @@ async def list_templates(
     """List all templates for the operator's account.
 
     Read permission matches the rest of the maintenance module —
-    anyone with ``can_maintenance_vehicle`` can SEE the templates; only
-    ``can_maintenance_all`` can mutate them (write routes below).
+    anyone with ``can_view_maintenance`` can SEE the templates; only
+    ``can_manage_maintenance`` can mutate them (write routes below).
     """
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -1335,7 +1339,7 @@ async def list_templates(
 @router.post("/templates")
 async def create_template(
     body: TemplateBody,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     try:
@@ -1370,7 +1374,7 @@ async def create_template(
 async def update_template(
     template_id: int,
     body: TemplateBody,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     existing = await tenant_db.get_maintenance_template(template_id, user["account_id"])
@@ -1387,7 +1391,7 @@ async def update_template(
 @router.delete("/templates/{template_id}")
 async def delete_template(
     template_id: int,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
 ):
     ok = await tenant_db.delete_maintenance_template(
@@ -1508,7 +1512,7 @@ async def export_tasks_csv(
 async def export_dot_binder(
     days: int = Query(365, ge=1, le=3650),
     vehicle: Optional[str] = Query(None, description="Single-vehicle binder when set"),
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_manage_maintenance")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -1516,7 +1520,7 @@ async def export_dot_binder(
 
     Bundles every vehicle's open + completed maintenance, work orders,
     attestation trail, and DOT inspection records into one printable
-    document.  Permission scoped to ``can_maintenance_all`` only — the
+    document.  Permission scoped to ``can_manage_maintenance`` only — the
     binder is sensitive aggregate data that managers, not drivers, are
     authorized to disclose.
 
@@ -1594,7 +1598,7 @@ async def maintenance_due_locations(
     that need shop time, so the overlay doesn't need lat/lon plumbed
     server-side.
 
-    ``can_maintenance_vehicle`` callers (drivers / per-truck scoping) see
+    Assigned-width callers (drivers / per-truck scoping) see
     only their assigned vehicles' tasks.
     """
     if not has_maintenance_access(user["role"]):

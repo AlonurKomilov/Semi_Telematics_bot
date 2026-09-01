@@ -93,7 +93,7 @@ export default function OverviewKpiGrid({
       icon: ClipboardList,
       hint: 'Tasks ready to schedule',
       href: '/maintenance',
-      permission: (h) => h('can_maintenance_all'),
+      permission: (h) => h('can_manage_maintenance'),
       showWhen: () => (stats.maintenance_due ?? 0) > 0,
     },
     {

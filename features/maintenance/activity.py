@@ -12,20 +12,20 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "maintenance_task", "Maintenance task", "maintenance",
-    view_permissions=('can_maintenance_all',),
-    restore_permissions=('can_maintenance_all',),
+    view_permissions=('can_manage_maintenance',),
+    restore_permissions=('can_manage_maintenance',),
     restore_table="maintenance_tasks",
     company_scoped=True,
 ))
 register_entity(EntityDescriptor(
     "maintenance_template", "Maintenance template", "maintenance",
-    view_permissions=('can_maintenance_all',),
-    restore_permissions=('can_maintenance_all',),
+    view_permissions=('can_manage_maintenance',),
+    restore_permissions=('can_manage_maintenance',),
     restore_table="maintenance_templates",
 ))
 register_entity(EntityDescriptor(
     "maintenance", "Maintenance task", "maintenance",
-    view_permissions=('can_maintenance_all',),
+    view_permissions=('can_manage_maintenance',),
     # The frozen audit_log's imported rows (migration 178) — their
     # entity_id is a real maintenance_tasks id, so naming the owning
     # table lets the company wall resolve for them too.  Restore stays

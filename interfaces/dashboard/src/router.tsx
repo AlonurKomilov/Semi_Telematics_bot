@@ -233,14 +233,14 @@ export default function AppRouter() {
           element={L(
             <P perm={[
               'can_faults', 'can_risk_report_all', 'can_risk_report_own',
-              'can_cost_reports', 'can_digest', 'can_maintenance_all',
+              'can_cost_reports', 'can_digest', 'can_manage_maintenance',
             ]}><ReportsLayout /></P>
           )}
         >
           <Route index             element={L(<P perm="can_faults"><Reports /></P>)} />
           <Route path="risk-summary"     element={L(<P perm={['can_risk_report_all', 'can_risk_report_own']}><RiskSummary /></P>)} />
           <Route path="cost-reports"     element={L(<P perm="can_cost_reports"><CostReports /></P>)} />
-          <Route path="dot-binder"        element={L(<P perm="can_maintenance_all"><DotBinder /></P>)} />
+          <Route path="dot-binder"        element={L(<P perm="can_manage_maintenance"><DotBinder /></P>)} />
           <Route path="scheduled-reports" element={L(<P perm="can_digest"><ScheduledReports /></P>)} />
         </Route>
         {/* Legacy paths — bookmarks/links from before the
@@ -253,7 +253,7 @@ export default function AppRouter() {
         <Route path="costs/cpm" element={L(<P perm="can_cost_per_mile"><CostPerMile /></P>)} />
 
         {/* Maintenance */}
-        <Route path="maintenance" element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><Maintenance /></P>)} />
+        <Route path="maintenance" element={L(<P perm="can_view_maintenance"><Maintenance /></P>)} />
 
         {/* PTI (Pre-Trip Inspections) — fleet review surface.
             Drivers complete inspections via the Mini App; this page
@@ -279,18 +279,18 @@ export default function AppRouter() {
         <Route path="kpi/incentives"      element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
         {/* Self-scoped (own rows only) — authenticated, no can_* flag. */}
         <Route path="kpi/my-payouts"      element={L(<MyPayouts />)} />
-        <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrders /></P>)} />
+        <Route path="work-orders"         element={L(<P perm="can_view_maintenance"><WorkOrders /></P>)} />
         {/* Manager-only: a vendor profile aggregates ALL trucks' work
             orders + account-wide spend — vehicle-scope users must not
             read it (their WO visibility is per-truck). */}
-        <Route path="vendors"             element={L(<P perm="can_work_orders_all"><Vendors /></P>)} />
-        <Route path="vendors/:id"         element={L(<P perm="can_work_orders_all"><VendorProfile /></P>)} />
+        <Route path="vendors"             element={L(<P perm="can_manage_work_orders"><Vendors /></P>)} />
+        <Route path="vendors/:id"         element={L(<P perm="can_manage_work_orders"><VendorProfile /></P>)} />
         <Route path="parts"               element={L(<P perm="can_parts"><Parts /></P>)} />
         <Route path="service-tasks"       element={L(<P perm="can_service_tasks"><ServiceTasks /></P>)} />
         <Route path="service-tasks/:id"   element={L(<P perm="can_service_tasks"><ServiceTaskDetail /></P>)} />
         <Route path="parts/:id"           element={L(<P perm="can_parts"><PartDetail /></P>)} />
-        <Route path="work-orders/new"     element={L(<P perm="can_maintenance_all"><WorkOrderForm /></P>)} />
-        <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrderForm /></P>)} />
+        <Route path="work-orders/new"     element={L(<P perm="can_manage_maintenance"><WorkOrderForm /></P>)} />
+        <Route path="work-orders/:id"     element={L(<P perm="can_view_maintenance"><WorkOrderForm /></P>)} />
         {/* Cost Reports route lives under /reports/* (see above) since
             it's a sub-page of the Reports module; this position kept
             empty intentionally — the legacy /cost-reports redirect

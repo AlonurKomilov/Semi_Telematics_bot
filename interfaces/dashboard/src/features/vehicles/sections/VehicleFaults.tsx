@@ -38,7 +38,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
   // The bridge button only shows to users who can actually create a
   // work order (that route is gated ``can_maintenance_all``) — else it
   // would just lead to a 403.
-  const canCreateWorkOrder = has('can_maintenance_all');
+  const canCreateWorkOrder = has('can_manage_maintenance');
   // createFrom checks for an already-open WO on this vehicle for the
   // same fault before navigating; bridgeDialog renders the "already
   // open — create anyway?" confirm when it finds one.

@@ -50,7 +50,7 @@ describe('the library never offers what the viewer cannot do', () => {
     // tour.test.ts makes a write tour declare it.
     const viewer = access(['can_maintenance_vehicle']);
     expect(reachableFeature('maintenance', viewer)?.path).toBe('/maintenance');
-    expect(bulkAdd.requires).toContain('can_maintenance_all');
+    expect(bulkAdd.requires).toContain('can_manage_maintenance');
     expect(viewer.hasAny(...(bulkAdd.requires ?? []))).toBe(false);
   });
 });

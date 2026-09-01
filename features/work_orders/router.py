@@ -4,9 +4,9 @@ Permissions are work-order-specific (defaults mirror Maintenance, but an
 account can grant/revoke them separately) so a fleet manager sees the
 full picture and a driver sees only their own truck's records:
 
-* ``can_work_orders_all`` — create / edit / delete any work order;
+* ``can_manage_work_orders`` — create / edit / delete any work order;
   upload + delete attachments.
-* ``can_work_orders_vehicle`` — read work orders for the driver's assigned
+* ``can_view_work_orders`` at assigned width — read work orders for the assigned
   truck; upload attachments to drafts for that truck (driver-from-the-
   shop workflow).
 
@@ -180,9 +180,12 @@ async def _wo_access(user: dict) -> tuple[bool, bool]:
     the Role Permissions matrix take effect — not just the role defaults.
     """
     role, acct = Role(user["role"]), user["account_id"]
-    can_all = await can_for_account(acct, role, "can_work_orders_all")
-    can_own = await can_for_account(acct, role, "can_work_orders_vehicle")
-    return can_all, (can_all or can_own)
+    # The verb grammar: manage = write rights (and, during the
+    # bridge, wide width — the member-scope weave for WO comes with
+    # this feature's own width pass); view = may open at all.
+    can_all = await can_for_account(acct, role, "can_manage_work_orders")
+    can_view = await can_for_account(acct, role, "can_view_work_orders")
+    return can_all, can_view
 
 
 def _driver_owns_vehicle(
@@ -280,7 +283,7 @@ async def list_work_orders(
 @router.post("")
 async def create_work_order(
     body: WorkOrderCreate,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Create a new work order.  Manager-only — drivers use the bot
@@ -332,7 +335,7 @@ async def create_work_order(
 async def extract_invoice_fields(
     request: Request,
     file: UploadFile = File(...),
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
 ):
     """Read a shop invoice (photo/PDF) → WO-shaped fields for the form.
 
@@ -340,7 +343,7 @@ async def extract_invoice_fields(
     WO.  The form pre-fills from the response, the human reviews, and
     only Save writes (in create mode the form then uploads the same
     file as the ``invoice`` attachment once the WO id exists).  Gated
-    on ``can_work_orders_all`` — the permission matrix, not a role, is
+    on ``can_manage_work_orders`` — the permission matrix, not a role, is
     the access SSOT.  Rate-limited because every call is a paid
     vision-model request (the ocr-cdl precedent).
     """
@@ -423,7 +426,7 @@ async def get_work_order(
 async def update_work_order(
     work_order_id: int,
     body: WorkOrderUpdate,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Update mutable fields on a work order."""
@@ -462,7 +465,7 @@ async def update_work_order(
 @router.delete("/{work_order_id}")
 async def delete_work_order(
     work_order_id: int,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Delete a work order, its parts, its attachments (DB rows only —
@@ -512,7 +515,7 @@ async def delete_work_order(
 async def add_part(
     work_order_id: int,
     body: PartCreate,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     await _require_visible_work_order(work_order_id, user, tenant_db)
@@ -535,7 +538,7 @@ async def add_part(
 @router.delete("/{work_order_id}/parts/{part_id}")
 async def delete_part(
     work_order_id: int, part_id: int,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     await _require_visible_work_order(work_order_id, user, tenant_db)
@@ -558,7 +561,7 @@ class LaborCreate(BaseModel):
 async def add_labor(
     work_order_id: int,
     body: LaborCreate,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Add an itemized labor charge.  The parent's labor_cost (and
@@ -574,7 +577,7 @@ async def add_labor(
 @router.delete("/{work_order_id}/labor/{line_id}")
 async def delete_labor(
     work_order_id: int, line_id: int,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     await _require_visible_work_order(work_order_id, user, tenant_db)
@@ -597,7 +600,7 @@ async def upload_attachment(
 ):
     """Upload an attachment to a work order.
 
-    Drivers (``can_work_orders_vehicle``) can upload to drafts for their
+    Assigned-width viewers (drivers) can upload to drafts for their
     own truck only — supports the bot/photo workflow where the driver
     photographs the invoice in the field and a manager fills in the
     cost details later.  Managers can upload to any work order.
@@ -610,7 +613,7 @@ async def upload_attachment(
     # in_progress) for their truck — that's the photo-first window (at
     # the shop, invoice in hand).  Once it's closed the manager owns
     # the record.
-    if not await can_for_account(user["account_id"], Role(user["role"]), "can_work_orders_all"):
+    if not await can_for_account(user["account_id"], Role(user["role"]), "can_manage_work_orders"):
         if wo.get("status") not in ("open", "in_progress"):
             raise HTTPException(
                 status_code=403,
@@ -724,7 +727,7 @@ async def download_attachment(
 @router.delete("/{work_order_id}/attachments/{attachment_id}")
 async def delete_attachment(
     work_order_id: int, attachment_id: int,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     from adapters.storage.object_storage import get_object_storage_for_account
@@ -762,7 +765,7 @@ async def delete_attachment(
 async def link_tasks(
     work_order_id: int,
     body: LinkTasks,
-    user: dict = Depends(require_permission("can_work_orders_all")),
+    user: dict = Depends(require_permission("can_manage_work_orders")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach N maintenance tasks to this work order so cost

@@ -60,7 +60,7 @@ const DEFECT_STATUSES = new Set(['minor', 'major', 'oos']);
 export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }: Props) {
   const { t } = useTranslation();
   const { has } = useViewPermissions();
-  const canCreateWorkOrder = has('can_maintenance_all');
+  const canCreateWorkOrder = has('can_manage_maintenance');
   const { createFrom, bridgeDialog } = useWorkOrderBridge();
   const qc = useQueryClient();
   const tz = useTimezone();

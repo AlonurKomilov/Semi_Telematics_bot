@@ -95,7 +95,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cost_items.append("💰 Fuel cost tracker")
     if perms.can_cost_per_mile:
         cost_items.append("📊 Cost per mile")
-    if perms.can_maintenance_all or perms.can_maintenance_vehicle:
+    if perms.can_view_maintenance:
         cost_items.append("🔧 Maintenance scheduler")
     if cost_items:
         lines.append(f"\n  {t('help.costs_label')}")

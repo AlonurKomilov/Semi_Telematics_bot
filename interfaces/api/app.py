@@ -125,7 +125,7 @@ _UPLOAD_PATH_SUFFIXES = (
     "/documents",     # driver license/medical/insurance uploads (20 MB cap in-route)
     "/apply",         # PUBLIC driver-application intake (multipart; per-file 8 MB cap + magic-byte check in-route)
     "/ocr-cdl",       # PUBLIC CDL fast-fill photo (link-token gated; 8 MB cap + magic-byte check in-route)
-    "/extract-invoice",  # WO invoice scan (can_work_orders_all; 10 MB cap + magic-byte check in-route)
+    "/extract-invoice",  # WO invoice scan (can_manage_work_orders; 10 MB cap + magic-byte check in-route)
 )
 
 

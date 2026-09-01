@@ -65,7 +65,7 @@ export interface TaskDetailSheetProps {
    *  keep showing the attachment list it had before the upload. */
   onTaskChanged: (task: MaintenanceTask) => void;
   canCreateTasks: boolean;
-  /** can_maintenance_all.  Every write route on this sheet requires it
+  /** can_manage_maintenance.  Every write route on this sheet requires it
    *  strictly; a _vehicle-scoped viewer gets the same sheet with every
    *  control disabled and the action row gone — the server would 403
    *  each of them, and a form that looks editable but cannot save is

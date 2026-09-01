@@ -75,7 +75,7 @@ export default function OverviewAlertStrip({ stats, has, kpiPriority }: Overview
   if (
     (stats.maintenance_due ?? 0) > 0 &&
     relevant.has('maintenance') &&
-    has('can_maintenance_all')
+    has('can_manage_maintenance')
   ) {
     alertItems.push({
       label: 'maintenance due',

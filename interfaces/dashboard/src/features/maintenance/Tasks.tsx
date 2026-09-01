@@ -116,7 +116,7 @@ export default function Tasks() {
   // direction (never offer what may be rejected).  Declared ABOVE the
   // keyboard effect that reads it — the 'n' shortcut needs the same
   // gate as the button it mirrors.
-  const canWrite = hasPerm('can_maintenance_all');
+  const canWrite = hasPerm('can_manage_maintenance');
 
   // Keyboard accessibility: Escape closes the open detail sidebar or
   // history modal (whichever is on top).  Native pattern — sighted

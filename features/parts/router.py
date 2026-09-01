@@ -9,7 +9,7 @@ never owns them.
 Access model: ``can_parts`` — the feature-owned gate (seeded for
 owner/admin/fleet + the accounting senior tier).  The one shared read
 is the catalog LIST, which also feeds the work-order editor's parts
-autocomplete: it accepts ``can_work_orders_all`` too, so an account
+autocomplete: it accepts ``can_manage_work_orders`` too, so an account
 that narrows ``can_parts`` doesn't silently break invoice entry.
 Everything else — analytics, edit, merge — is strictly ``can_parts``
 (a part profile aggregates the whole account's spend, so vehicle-scoped
@@ -43,7 +43,7 @@ router = APIRouter(prefix="/parts", tags=["parts"])
 @router.get("")
 async def list_parts(
     user: dict = Depends(
-        require_permission_any("can_parts", "can_work_orders_all")
+        require_permission_any("can_parts", "can_manage_work_orders")
     ),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -104,7 +104,7 @@ class PriceContextQuery(BaseModel):
 async def price_context(
     body: PriceContextQuery,
     user: dict = Depends(
-        require_permission_any("can_parts", "can_work_orders_all")
+        require_permission_any("can_parts", "can_manage_work_orders")
     ),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -135,7 +135,7 @@ async def price_context(
 @router.get("/assemblies")
 async def list_assemblies(
     user: dict = Depends(
-        require_permission_any("can_parts", "can_work_orders_all")
+        require_permission_any("can_parts", "can_manage_work_orders")
     ),
     tenant_db=Depends(get_tenant_db),
 ):

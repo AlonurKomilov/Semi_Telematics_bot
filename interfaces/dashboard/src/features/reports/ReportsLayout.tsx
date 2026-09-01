@@ -53,7 +53,7 @@ const SUB_NAV: SubNavEntry[] = [
   // conceptually a stakeholder-facing audit PDF like Risk Summary,
   // not an operational task editor; see
   // docs/architecture/reports-hierarchy-audit.md.
-  { to: 'dot-binder',       label: 'DOT Binder',        icon: Shield,      perms: ['can_maintenance_all'] },
+  { to: 'dot-binder',       label: 'DOT Binder',        icon: Shield,      perms: ['can_manage_maintenance'] },
   { to: 'scheduled-reports', label: 'Scheduled Reports', icon: Mail,       perms: ['can_digest'] },
 ];
 
