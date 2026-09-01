@@ -184,6 +184,10 @@ async def create_tables(conn) -> None:
             -- (see capabilities/permissions/roles.MANAGER_GRANTS).  0 =
             -- employee, 1 = manager of their role.
             is_manager  INTEGER NOT NULL DEFAULT 0,
+            -- Team Management vehicle scope: NULL = role default
+            -- (driver → assigned, others → all); 'all'/'assigned' =
+            -- explicit member override.  SCOPE, not a permission.
+            vehicle_scope TEXT,
             -- Primary (main) owner of the account — the one un-demotable
             -- owner who alone can create/remove co-owners and do destructive
             -- account actions.  Set for the account creator; co-owners have

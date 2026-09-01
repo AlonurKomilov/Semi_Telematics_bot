@@ -1104,6 +1104,12 @@ export interface AdminUser {
   /** Per-user manager tier on the base role (recruiter → recruiting team
    *  lead).  Set/cleared via PUT /admin/users/:id/manager. */
   is_manager: boolean;
+  /** Team Management vehicle scope — stored override (null = role
+   *  default) and the resolved answer.  Read-only until the
+   *  enforcement stage lands; no editable control exists yet,
+   *  deliberately (a control that changes nothing would be a lie). */
+  vehicle_scope?: 'all' | 'assigned' | null;
+  vehicle_scope_resolved?: 'all' | 'assigned';
   /** True when the role HAS a manager tier at all — drives whether the
    *  Team Management seniority toggle is shown for this row. */
   manager_capable: boolean;

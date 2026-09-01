@@ -98,6 +98,14 @@ async def list_users(
                 # Manager toggle at all (only roles with a MANAGER_GRANTS
                 # entry have a tier).
                 "is_manager": u.is_manager,
+                # Team Management vehicle scope (the verb/scope
+                # migration): stored override (null = role default) +
+                # the resolved answer every enforcement site will use.
+                # READ-ONLY until the enforcement stage lands — no PUT
+                # exists yet, deliberately: an editable control that
+                # changes nothing would be a lie in the UI.
+                "vehicle_scope": u.vehicle_scope,
+                "vehicle_scope_resolved": u.resolved_vehicle_scope,
                 "manager_capable": role_supports_manager(u.role),
                 # Senior-tier label for this role (drives the toggle copy):
                 # "Manager" for recruiter, "Full admin" for admin, else null.

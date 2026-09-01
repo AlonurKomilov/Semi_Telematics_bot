@@ -9382,3 +9382,22 @@ async def migrate_vehicle_document_notifications(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 203: vehicle document notification ledger ready")
+
+
+@_register("205_member_vehicle_scope")
+async def migrate_member_vehicle_scope(conn) -> None:
+    """Team Management gains per-member vehicle scope.
+
+    The verb/scope migration (capabilities/permissions/taxonomy.py)
+    moves "which units does this member see" OUT of permission flags
+    and into Team Management.  NULL means role default — driver →
+    assigned trucks, everyone else → all units — which is exactly the
+    behaviour the ``*_vehicle`` flags encode today, so this column
+    changes nothing until the enforcement stage starts reading it.
+    'all' / 'assigned' are explicit per-member overrides.
+    """
+    await conn.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS vehicle_scope TEXT"
+    )
+    await conn.commit()
+    logger.info("Migration 205: users.vehicle_scope — scope leaves the flags")

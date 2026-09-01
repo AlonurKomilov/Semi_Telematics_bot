@@ -328,6 +328,25 @@ async def get_user_company_codes(user: dict) -> list[str]:
     return await platform_db.get_user_company_codes(db_user.id)
 
 
+async def get_member_vehicle_scope(user: dict) -> str:
+    """'all' or 'assigned' — Team Management's second scope question,
+    living beside its first (``get_user_company_codes``).
+
+    Permissions answer "may this role do this VERB on this FEATURE";
+    this answers "which UNITS".  The semantics live on the User model
+    (``resolved_vehicle_scope`` — override wins, else role default),
+    so the bot and any feature router resolve identically; this is the
+    API-shaped adapter over that one predicate.  A member row that
+    cannot be loaded fails CLOSED to 'assigned' — less data, never
+    more.
+    """
+    platform_db = _get_router().platform
+    db_user = await get_current_db_user(user, platform_db)
+    if db_user is None:
+        return "assigned"
+    return db_user.resolved_vehicle_scope
+
+
 def validate_company_access(allowed_codes: list[str], requested_code: str | None) -> None:
     """Raise 403 if the user requests a company they don't have access to.
 

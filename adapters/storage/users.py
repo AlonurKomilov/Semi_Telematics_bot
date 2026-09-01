@@ -235,6 +235,22 @@ class UsersMixin:
         row = await cur.fetchone()
         return self._row_to_user(row) if row else None
 
+    async def set_user_vehicle_scope(
+        self, account_id: int, user_id: int, scope: Optional[str],
+    ) -> bool:
+        """Explicit Team Management scope override — or None for role
+        default.  Values are validated HERE so a bad write can never
+        reach the column; readers still fail closed regardless."""
+        if scope not in (None, "all", "assigned"):
+            raise ValueError(f"invalid vehicle scope: {scope!r}")
+        cur = await self._db.execute(
+            "UPDATE users SET vehicle_scope = ? "
+            "WHERE id = ? AND account_id = ?",
+            (scope, user_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
     async def list_account_users(self, account_id: int) -> list[User]:
         cur = await self._db.execute(
             "SELECT * FROM users WHERE account_id = ? AND is_active = 1 ORDER BY role, created_at",

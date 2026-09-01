@@ -221,6 +221,30 @@ class User:
     # by the CDL→email matcher, the one-time import, or a manual link in
     # Team Management.  NULL ⇒ not linked to a Datatruck driver.
     datatruck_driver_id: Optional[str] = None
+    # ── Team Management: which UNITS does this member see ─────────
+    # None = role default (driver → assigned, everyone else → all);
+    # 'all' / 'assigned' = an explicit per-member override set in Team
+    # Management.  This is SCOPE, deliberately not a permission flag:
+    # permissions answer "may this role do this VERB on this FEATURE",
+    # Team Management answers "which units" — the verb/scope migration
+    # contract (capabilities/permissions/taxonomy.py).
+    vehicle_scope: Optional[str] = None
+
+    @property
+    def resolved_vehicle_scope(self) -> str:
+        """'all' or 'assigned' — THE single scope predicate.
+
+        Every consumer (API deps, bot handlers, feature routers as the
+        enforcement stage reaches them) resolves through this property,
+        never by reading the raw column or re-deriving from the role —
+        the company wall's ``company_allows`` rule, applied here.
+        An unrecognised stored value fails CLOSED to 'assigned': less
+        data, never more.
+        """
+        if self.vehicle_scope in ("all", "assigned"):
+            return self.vehicle_scope
+        return "assigned" if self.role == Role.DRIVER else "all"
+
 
     @property
     def is_owner(self) -> bool:
