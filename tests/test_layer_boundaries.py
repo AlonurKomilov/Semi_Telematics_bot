@@ -70,13 +70,13 @@ def _imports_of(path: Path) -> list[str]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except SyntaxError:  # a broken file is some other test's problem
         return []
-    mods: list[str] = []
+    modules: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            mods.extend(a.name for a in node.names)
+            modules.extend(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            mods.append(node.module)
-    return mods
+            modules.append(node.module)
+    return modules
 
 
 def _violations(root: str, banned: tuple[str, ...]) -> list[str]:

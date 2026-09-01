@@ -2,7 +2,7 @@
  * The preferences store — a plain observable OUTSIDE React.
  *
  * Why not a Context provider: theme and language must resolve before
- * login and outside React entirely (``ThemeProvider`` sits above
+ * login and outside React entirely (``ModProvider`` sits above
  * ``AuthProvider``; module-level code reads storage at import time).  An
  * external store has no provider-placement problem and can be read from
  * a plain function.  Why not TanStack Query: preferences are write-heavy

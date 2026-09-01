@@ -34,8 +34,9 @@
  */
 
 import {
-  THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS, THEME_MODS,
+  THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
 } from '../mods/catalogue';
+import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
 import { SOUND_PACKS } from '../mods/sound/engine';
 
@@ -160,23 +161,32 @@ export type ThemeAccent = (typeof THEME_PACKS)[number]['id'];
  * lose information here.
  */
 export type ThemeColor = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
-export type ThemeRadius = 'sharp' | 'rounded' | 'pill';
-/** Derived from the catalogue, like ThemeAccent — see mods/catalogue.ts. */
-export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
-export type ThemeMotion = (typeof THEME_MOTIONS)[number];
-export type ThemeIcons = (typeof THEME_ICONS)[number];
-export interface ThemeSetting {
+export type ModRadius = 'sharp' | 'rounded' | 'pill';
+/**
+ * Declared ONCE, in the catalogue that owns the arrays they come from.
+ *
+ * These used to be re-derived here off the same consts, so the same type
+ * NAME had two declarations and resolved through whichever barrel you
+ * imported from. Structurally identical today and therefore invisible —
+ * right up until one array changes and the two stop agreeing.
+ *
+ * The direction is registry -> catalogue, not the reverse: the catalogue
+ * sits underneath this file, and a runtime import the other way would
+ * close the cycle `mods/index.test.ts` documents.
+ */
+export type { ModMaterial, ModMotion, ModIcons };
+export interface ModSetting {
   mode: ThemeMode;
   accent: ThemeAccent;
-  radius: ThemeRadius;
+  radius: ModRadius;
   /** What surfaces are made of — solid, or translucent and blurred. */
-  material: ThemeMaterial;
+  material: ModMaterial;
   /** How fast the app moves. */
-  motion: ThemeMotion;
+  motion: ModMotion;
   /** Icon stroke weight. Persisted like any axis, but MOD-ONLY: the
    *  panel offers no control, so it only ever changes by taking a mod.
    *  A mod that is only a bundle of chips is a shortcut, not a look. */
-  icons: ThemeIcons;
+  icons: ModIcons;
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
   /**
@@ -263,7 +273,7 @@ export type TableDensity = 'compact' | 'default' | 'roomy';
 // else should read them — call sites get the guard via ``sanitize``.
 export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
 export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
-export const THEME_DEFAULT: ThemeSetting = {
+export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', entrance: false, color: 'dark-blue',
 };
@@ -287,10 +297,10 @@ const LEGACY_COLOR: Record<ThemeColor, { mode: ThemeMode; accent: ThemeAccent }>
   'dark-green':  { mode: 'dark',  accent: 'green' },
   'light':       { mode: 'light', accent: 'blue' },
 };
-export const THEME_RADII: ThemeRadius[] = ['sharp', 'rounded', 'pill'];
-export const THEME_MATERIAL_LIST: ThemeMaterial[] = [...THEME_MATERIALS];
-export const THEME_MOTION_LIST: ThemeMotion[] = [...THEME_MOTIONS];
-export const THEME_ICONS_LIST: ThemeIcons[] = [...THEME_ICONS];
+export const MOD_RADII: ModRadius[] = ['sharp', 'rounded', 'pill'];
+export const MOD_MATERIAL_LIST: ModMaterial[] = [...MOD_MATERIALS];
+export const MOD_MOTION_LIST: ModMotion[] = [...MOD_MOTIONS];
+export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
 
 /**
  * Which theme axes the PRE-PAINT script can act on.
@@ -307,7 +317,7 @@ export const THEME_ICONS_LIST: ThemeIcons[] = [...THEME_ICONS];
  * wrong. Stamping them pre-paint would be ceremony.
  *
  * `themeBoot.test.ts` reads this list, and also asserts that every key
- * of THEME_DEFAULT appears either here or in its own exclusion list — so
+ * of MOD_DEFAULT appears either here or in its own exclusion list — so
  * a new axis forces the decision instead of quietly skipping the guard.
  */
 export const PREPAINT_AXES = [
@@ -427,8 +437,8 @@ export const DEFS = {
 
   // ── Appearance ────────────────────────────────────────────────────
   // device: tied to THIS screen's size and lighting, not to the person.
-  'mods.theme': def<ThemeSetting>({
-    default: THEME_DEFAULT,
+  'mods.theme': def<ModSetting>({
+    default: MOD_DEFAULT,
     scope: 'device',
     // `4truck.pref.theme` is this key's own previous name, and
     // `dashboard-theme` the one before that. `readPref` reads legacy
@@ -441,23 +451,23 @@ export const DEFS = {
     // ``{ ...DEFAULT, ...JSON.parse(saved) }`` — same behaviour).
     sanitize: (v) => {
       if (typeof v !== 'object' || v === null) return undefined;
-      const o = v as Partial<ThemeSetting>;
-      const radius = THEME_RADII.includes(o.radius as ThemeRadius)
-        ? o.radius as ThemeRadius : THEME_DEFAULT.radius;
+      const o = v as Partial<ModSetting>;
+      const radius = MOD_RADII.includes(o.radius as ModRadius)
+        ? o.radius as ModRadius : MOD_DEFAULT.radius;
       // A theme stored before the material axis existed has no field, and
       // falls to `solid` — which is what it was rendering anyway.
-      const material = THEME_MATERIAL_LIST.includes(o.material as ThemeMaterial)
-        ? o.material as ThemeMaterial : THEME_DEFAULT.material;
-      const motion = THEME_MOTION_LIST.includes(o.motion as ThemeMotion)
-        ? o.motion as ThemeMotion : THEME_DEFAULT.motion;
-      const icons = THEME_ICONS_LIST.includes(o.icons as ThemeIcons)
-        ? o.icons as ThemeIcons : THEME_DEFAULT.icons;
-      const entrance = typeof o.entrance === 'boolean' ? o.entrance : THEME_DEFAULT.entrance;
+      const material = MOD_MATERIAL_LIST.includes(o.material as ModMaterial)
+        ? o.material as ModMaterial : MOD_DEFAULT.material;
+      const motion = MOD_MOTION_LIST.includes(o.motion as ModMotion)
+        ? o.motion as ModMotion : MOD_DEFAULT.motion;
+      const icons = MOD_ICONS_LIST.includes(o.icons as ModIcons)
+        ? o.icons as ModIcons : MOD_DEFAULT.icons;
+      const entrance = typeof o.entrance === 'boolean' ? o.entrance : MOD_DEFAULT.entrance;
       // A stored id for a mod that no longer exists is dropped rather
       // than kept: the catalogue is ours and can shrink between
       // releases, and an id nothing resolves would show an empty chip
       // and, later, ask for assets that are not there.
-      const mod = THEME_MODS.some((m) => m.id === o.mod) ? o.mod as string : undefined;
+      const mod = MODS.some((m) => m.id === o.mod) ? o.mod as string : undefined;
 
       // Sanitised through the injector's OWN validators, so the rules
       // are stated once. Storage is untrusted input like any other — a
@@ -488,7 +498,7 @@ export const DEFS = {
       const { mode, accent } = split
         ? { mode: o.mode as ThemeMode, accent: o.accent as ThemeAccent }
         : LEGACY_COLOR[o.color as ThemeColor]
-          ?? { mode: THEME_DEFAULT.mode, accent: THEME_DEFAULT.accent };
+          ?? { mode: MOD_DEFAULT.mode, accent: MOD_DEFAULT.accent };
 
       return {
         mode, accent, radius, material, motion, icons, entrance,
@@ -546,11 +556,11 @@ export const DEFS = {
   // locally, so an established screen never jumps mid-session. Reset
   // clears this too, otherwise the next new browser would resurrect a
   // setting the user just discarded.
-  'appearance.default': def<{ theme?: ThemeSetting; size?: SizeSetting } | null>({
+  'appearance.default': def<{ theme?: ModSetting; size?: SizeSetting } | null>({
     default: null,
     scope: 'synced',
     sanitize: (v) => (v === null || (typeof v === 'object' && !Array.isArray(v))
-      ? v as { theme?: ThemeSetting; size?: SizeSetting } | null
+      ? v as { theme?: ModSetting; size?: SizeSetting } | null
       : undefined),
     note: 'Your appearance settings, remembered for browsers you have not used yet.',
   }),

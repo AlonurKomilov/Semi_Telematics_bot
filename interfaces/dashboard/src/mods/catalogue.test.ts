@@ -22,10 +22,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  THEME_PACKS, THEME_MODS, THEME_ICONS, ICON_STROKE,
+  THEME_PACKS, MODS, MOD_ICONS, ICON_STROKE,
   PACK_TOKENS, packById, modById, activeModId, modMatchesAxes,
 } from './catalogue';
-import { SIZE_MAX, THEME_RADII } from '../preferences/registry';
+import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, toHex, type RGB } from './theme/contrast';
 
@@ -148,7 +148,7 @@ describe('mods are combinations, not new colours', () => {
     // attribute is stamped, no rule matches, and the app silently paints
     // the base blue. That is the whole failure: it looks like the mod
     // simply has no colour of its own.
-    for (const m of THEME_MODS)
+    for (const m of MODS)
       expect(packById(m.accent), `mod "${m.id}" wears "${m.accent}", which is not a pack`)
         .toBeDefined();
   });
@@ -156,15 +156,15 @@ describe('mods are combinations, not new colours', () => {
   it('declares at least one axis a colour chip does not', () => {
     // Otherwise it is a second way to press the same button, in a section
     // that promises something more.
-    for (const m of THEME_MODS)
+    for (const m of MODS)
       expect(m.radius !== undefined || m.size !== undefined,
         `mod "${m.id}" sets only an accent — that is a colour, not a look`).toBe(true);
   });
 
   it('stays inside what the panel controls can express', () => {
-    for (const m of THEME_MODS) {
+    for (const m of MODS) {
       if (m.radius !== undefined)
-        expect(THEME_RADII, `mod "${m.id}" radius`).toContain(m.radius);
+        expect(MOD_RADII, `mod "${m.id}" radius`).toContain(m.radius);
       if (m.size === undefined) continue;
       // Floor is 1, not SIZE_MIN. The slider deliberately starts at 100%
       // — everything below waits on the 24px hit-target floor — so a mod
@@ -179,14 +179,14 @@ describe('mods are combinations, not new colours', () => {
     // Dark or light is about the room, not the look. Asserted structurally
     // so it cannot be added back by someone who reads the field list and
     // not the reason beside it.
-    for (const m of THEME_MODS)
+    for (const m of MODS)
       expect(Object.keys(m), `mod "${m.id}" carries a mode`).not.toContain('mode');
   });
 
   it('has ids that are unique and do not shadow a pack', () => {
-    const ids = THEME_MODS.map((m) => m.id);
+    const ids = MODS.map((m) => m.id);
     expect(new Set(ids).size, 'duplicate mod id').toBe(ids.length);
-    for (const m of THEME_MODS) {
+    for (const m of MODS) {
       expect(packById(m.id), `"${m.id}" is both a mod and a pack`).toBeUndefined();
       expect(m.id).toMatch(/^[a-z][a-z0-9-]*$/);
       expect(m.label.trim(), `mod "${m.id}" has no label`).not.toBe('');
@@ -230,7 +230,7 @@ describe('the properties a mod carries and the panel does not', () => {
     // A missing entry falls back to `regular`, silently — the mod would
     // apply and the icons would not change, which reads as the feature
     // not working rather than as a typo.
-    for (const w of THEME_ICONS) {
+    for (const w of MOD_ICONS) {
       expect(ICON_STROKE[w], `no stroke width for "${w}"`).toBeGreaterThan(0);
       expect(ICON_STROKE[w]).toBeLessThan(4);
     }
@@ -291,7 +291,7 @@ describe('installed is not the same question as matching', () => {
       accent: 'blue', radius: 'sharp', size: 1,
       material: 'glass', motion: 'snappy', icons: 'hairline', sound: 'chime',
     };
-    for (const m of THEME_MODS) {
+    for (const m of MODS) {
       const base = {
         accent: m.accent, radius: m.radius ?? 'rounded', size: m.size ?? 1,
         material: m.material ?? 'solid', motion: m.motion ?? 'default',

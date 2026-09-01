@@ -487,22 +487,24 @@
   },
   "theme": {
     "toggle": "Toggle theme",
-    "picker": "Theme",
     "light": "Light",
     "dark": "Dark",
     "system": "System",
     "group_color": "Color",
-    "group_corners": "Corners",
     "accent_blue": "Blue",
     "accent_purple": "Purple",
     "accent_green": "Green",
+    "size_by_region": "Size by region…"
+  },
+  "mods": {
+    "picker": "Mods",
+    "group_corners": "Corners",
     "corners_sharp": "Sharp",
     "corners_rounded": "Rounded",
     "corners_pill": "Pill",
     "group_size": "Size",
     "size_label": "Interface size",
-    "size_reset": "Reset",
-    "size_by_region": "Size by region…"
+    "size_reset": "Reset"
   },
   "forms": {
     "create": "Create",

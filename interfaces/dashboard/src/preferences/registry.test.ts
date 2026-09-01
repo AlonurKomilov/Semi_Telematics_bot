@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { THEME_DEFAULT,
+import { MOD_DEFAULT,
   DEFS, TABLE_PARTS, tableKey, defFor, type PrefKey, type TablePart,
 } from './registry';
 import { LS_PREFIX, readPref, writePref } from './local';
@@ -141,10 +141,10 @@ describe('legacy migration', () => {
     // object field by field, so it is dropped rather than carried forward.
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
     expect(readPref('mods.theme')).toEqual(
-      { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
+      { ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
     // Copied forward under the canonical key, so the next read is direct.
     expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}mods.theme`)!)).toEqual(
-      { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
+      { ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light' });
     // Legacy entry deliberately left in place (roll-back safety).
     expect(localStorage.getItem('dashboard-theme')).not.toBeNull();
   });
@@ -157,7 +157,7 @@ describe('legacy migration', () => {
     // service; this covers the era before the service outgrew the word
     // "theme".
     localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({
-      ...THEME_DEFAULT, mode: 'light', accent: 'green', radius: 'pill',
+      ...MOD_DEFAULT, mode: 'light', accent: 'green', radius: 'pill',
       material: 'glass', color: 'light',
     }));
     expect(readPref('mods.theme')).toMatchObject(
@@ -193,9 +193,9 @@ describe('legacy migration', () => {
 
   it('prefers the canonical value over a stale legacy one', () => {
     localStorage.setItem('dashboard-theme', JSON.stringify({ color: 'light', density: 'compact', radius: 'sharp' }));
-    writePref('mods.theme', { ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
+    writePref('mods.theme', { ...MOD_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
     expect(readPref('mods.theme')).toEqual(
-      { ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
+      { ...MOD_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green' });
   });
 });
 
@@ -263,7 +263,7 @@ describe('store semantics', () => {
     // Written before a field existed / hand-edited.
     localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify({ color: 'light' }));
     expect(readPref('mods.theme')).toEqual(
-      { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
+      { ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
   });
 
   it('adoptRaw() rejects an invalid cross-tab value', () => {
@@ -276,7 +276,7 @@ describe('store semantics', () => {
     localStorage.clear();
     store.adoptRaw('mods.theme', JSON.stringify({ color: 'light', radius: 'rounded' }));
     expect(store.get('mods.theme')).toEqual(
-      { ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
+      { ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light' });
     // Came from another tab / the server — must not be written back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
   });
@@ -365,7 +365,7 @@ describe('resetAll sweeps family keys', () => {
   //
   // themeBoot.test.ts cannot catch this. It compares the pre-paint script
   // against `applyTheme`, and `applyTheme` takes an already-built
-  // ThemeSetting — it never touches the sanitiser. Deleting the migration
+  // ModSetting — it never touches the sanitiser. Deleting the migration
   // from here left that file entirely green, which is why this exists.
   describe('the theme mode/accent migration', () => {
     const sanitize = DEFS['mods.theme'].sanitize!;
@@ -383,7 +383,7 @@ describe('resetAll sweeps family keys', () => {
         // No material in the stored value either — a pre-split browser
         // predates the axis entirely, and must come back complete.
         expect(sanitize({ color, radius: 'pill' }), `stored ${color}`)
-          .toEqual({ ...THEME_DEFAULT, ...want, radius: 'pill', color });
+          .toEqual({ ...MOD_DEFAULT, ...want, radius: 'pill', color });
       }
     });
 
@@ -428,7 +428,7 @@ describe('resetAll sweeps family keys', () => {
       // the mod. A sound pack cannot be recomputed from the DOM, so
       // "installed" has to survive being edited.
       const edited = sanitize({
-        ...THEME_DEFAULT, mod: 'cab',
+        ...MOD_DEFAULT, mod: 'cab',
         accent: 'azure', radius: 'sharp', material: 'solid',
       }) as { mod?: string; radius?: string };
       expect(edited.mod, 'the mod was uninstalled by an edit').toBe('cab');
@@ -440,28 +440,28 @@ describe('resetAll sweeps family keys', () => {
       // id would paint an empty chip today and, once mods carry assets,
       // ask for files that are not there.
       for (const bad of ['nope', '', null, 42, {}, 'CAB']) {
-        const out = sanitize({ ...THEME_DEFAULT, mod: bad }) as unknown as Record<string, unknown>;
+        const out = sanitize({ ...MOD_DEFAULT, mod: bad }) as unknown as Record<string, unknown>;
         expect('mod' in out, `mod: ${JSON.stringify(bad)} survived`).toBe(false);
       }
-      expect((sanitize({ ...THEME_DEFAULT, mod: 'wall' }) as { mod?: string }).mod).toBe('wall');
+      expect((sanitize({ ...MOD_DEFAULT, mod: 'wall' }) as { mod?: string }).mod).toBe('wall');
     });
 
     it('keeps a post-split value untouched', () => {
-      expect(sanitize({ ...THEME_DEFAULT, mode: 'light', accent: 'green', radius: 'sharp', color: 'light' }))
-        .toEqual({ ...THEME_DEFAULT, mode: 'light', accent: 'green', radius: 'sharp', color: 'light' });
+      expect(sanitize({ ...MOD_DEFAULT, mode: 'light', accent: 'green', radius: 'sharp', color: 'light' }))
+        .toEqual({ ...MOD_DEFAULT, mode: 'light', accent: 'green', radius: 'sharp', color: 'light' });
     });
 
     it('re-derives the deprecated alias rather than trusting it', () => {
       // A stored object whose alias disagrees with its own mode/accent —
       // what a rolled-back build followed by a roll-forward can leave.
       // The alias is output, never input.
-      expect(sanitize({ ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'rounded', color: 'light' }))
-        .toEqual({ ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'rounded', color: 'dark-green' });
+      expect(sanitize({ ...MOD_DEFAULT, mode: 'dark', accent: 'green', radius: 'rounded', color: 'light' }))
+        .toEqual({ ...MOD_DEFAULT, mode: 'dark', accent: 'green', radius: 'rounded', color: 'dark-green' });
     });
 
     it('falls back to the default for a value that is neither shape', () => {
       expect(sanitize({ color: 'chartreuse', radius: 'pill' }))
-        .toEqual({ ...THEME_DEFAULT, mode: 'dark', accent: 'blue', radius: 'pill', color: 'dark-blue' });
+        .toEqual({ ...MOD_DEFAULT, mode: 'dark', accent: 'blue', radius: 'pill', color: 'dark-blue' });
     });
 
     it('cannot express light + a non-blue accent in the alias, and says so', () => {

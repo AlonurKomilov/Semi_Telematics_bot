@@ -19,7 +19,7 @@ import type { SizeRegion } from '../preferences/registry';
  * DOM at all.
  *
  * The value is a `var()` reference rather than a number so the cascade
- * keeps doing the work: ThemeContext publishes `--size-region-<name>` on
+ * keeps doing the work: ModContext publishes `--size-region-<name>` on
  * <html> when the user moves that slider, and nothing re-renders.
  * Unset, `var(…, 1)` is the identity — a region with no preference costs
  * exactly nothing.

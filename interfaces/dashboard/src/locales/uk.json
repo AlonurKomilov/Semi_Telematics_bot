@@ -334,18 +334,20 @@
     "dark": "Темна",
     "system": "Системна",
     "group_color": "Колір",
-    "group_corners": "Кути",
     "accent_blue": "Синій",
     "accent_purple": "Фіолетовий",
     "accent_green": "Зелений",
+    "size_by_region": "Розмір за областями…"
+  },
+  "mods": {
+    "group_corners": "Кути",
     "corners_sharp": "Гострі",
     "corners_rounded": "Заокруглені",
     "corners_pill": "Капсула",
-    "picker": "Тема",
+    "picker": "Mods",
     "group_size": "Розмір",
     "size_label": "Розмір інтерфейсу",
-    "size_reset": "Скинути",
-    "size_by_region": "Розмір за областями…"
+    "size_reset": "Скинути"
   },
   "tier": {
     "platinum": "Платина",

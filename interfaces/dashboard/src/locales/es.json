@@ -368,18 +368,20 @@
     "dark": "Oscuro",
     "system": "Sistema",
     "group_color": "Color",
-    "group_corners": "Esquinas",
     "accent_blue": "Azul",
     "accent_purple": "Morado",
     "accent_green": "Verde",
+    "size_by_region": "Tamaño por zona…"
+  },
+  "mods": {
+    "group_corners": "Esquinas",
     "corners_sharp": "Rectas",
     "corners_rounded": "Redondeadas",
     "corners_pill": "Píldora",
-    "picker": "Tema",
+    "picker": "Mods",
     "group_size": "Tamaño",
     "size_label": "Tamaño de la interfaz",
-    "size_reset": "Restablecer",
-    "size_by_region": "Tamaño por zona…"
+    "size_reset": "Restablecer"
   },
   "forms": {
     "create": "Crear",

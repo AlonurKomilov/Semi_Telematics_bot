@@ -24,10 +24,10 @@
 import { get, set, reset } from './store';
 import { hasStored } from './local';
 import { DEFS } from './registry';
-import type { ThemeSetting, SizeSetting } from './registry';
+import type { ModSetting, SizeSetting } from './registry';
 
 export interface AppearanceDefault {
-  theme?: ThemeSetting;
+  theme?: ModSetting;
   size?: SizeSetting;
 }
 
@@ -74,7 +74,7 @@ export function adoptAppearanceDefault(): AppearanceDefault | null {
   //
   // Each half is independent: a browser may have a theme of its own but
   // no size yet, and should then take only the size.
-  const cleanTheme = DEFS['mods.theme'].sanitize?.(stored.theme) as ThemeSetting | undefined;
+  const cleanTheme = DEFS['mods.theme'].sanitize?.(stored.theme) as ModSetting | undefined;
   if (cleanTheme && !hasStored('mods.theme')) {
     set('mods.theme', cleanTheme);
     adopted.theme = cleanTheme;

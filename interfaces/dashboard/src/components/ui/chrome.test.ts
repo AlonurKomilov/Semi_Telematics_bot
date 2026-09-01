@@ -887,9 +887,9 @@ describe('UI chrome', () => {
     const css = readFileSync(join(SRC, 'index.css'), 'utf8');
     const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
 
-    const declared = (/THEME_RADII[^=]*=\s*\[([^\]]*)\]/.exec(registry)?.[1] ?? '')
+    const declared = (/MOD_RADII[^=]*=\s*\[([^\]]*)\]/.exec(registry)?.[1] ?? '')
       .split(',').map((x) => x.trim().replace(/['"`]/g, '')).filter(Boolean);
-    expect(declared, 'THEME_RADII should list the presets the picker offers')
+    expect(declared, 'MOD_RADII should list the presets the picker offers')
       .toEqual(['sharp', 'rounded', 'pill']);
 
     // ':root' carries the middle preset — "rounded" IS the absence of an
@@ -1696,7 +1696,7 @@ describe('UI chrome', () => {
     expect(registry, 'THEME_ACCENTS was re-pinned to a literal — read the catalogue instead')
       .toMatch(/THEME_ACCENTS[^=]*=\s*THEME_PACKS\.map/);
     // From the THEME_PACKS array ONLY. themePacks.ts also declares
-    // THEME_MODS, whose entries have ids too — and a mod is a
+    // MODS, whose entries have ids too — and a mod is a
     // combination of axes, not an accent: it wears a pack's colour and
     // has no CSS block of its own. Scanning the whole file for `id:`
     // demanded a block for every mod and failed the moment the first two
@@ -1707,7 +1707,7 @@ describe('UI chrome', () => {
     expect(accents.length, 'no packs found in mods/catalogue.ts').toBeGreaterThan(0);
     // And the mods must NOT be in it — if this ever collects one, the
     // scan above has widened again.
-    const modArray = /THEME_MODS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
+    const modArray = /MODS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
     for (const m of [...modArray.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((x) => x[1]))
       expect(accents, `mod "${m}" was collected as an accent`).not.toContain(m);
 

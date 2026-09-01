@@ -8,10 +8,10 @@ import type {
   ThemeColor,
   ThemeMode,
   ThemeAccent,
-  ThemeRadius,
-  ThemeMaterial,
-  ThemeMotion,
-  ThemeSetting,
+  ModRadius,
+  ModMaterial,
+  ModMotion,
+  ModSetting,
   SizeSetting,
 } from '../preferences';
 
@@ -22,20 +22,20 @@ import type {
 export type ColorTheme = ThemeColor;
 export type Mode = ThemeMode;
 export type Accent = ThemeAccent;
-export type RadiusVariant = ThemeRadius;
-export type Material = ThemeMaterial;
-export type Motion = ThemeMotion;
-export type Theme = ThemeSetting;
+export type RadiusVariant = ModRadius;
+export type Material = ModMaterial;
+export type Motion = ModMotion;
+export type Theme = ModSetting;
 export type Size = SizeSetting;
 
-interface ThemeContextValue {
+interface ModContextValue {
   theme: Theme;
   setTheme: (partial: Partial<Theme>) => void;
   size: Size;
   setSize: (partial: Partial<Size>) => void;
 }
 
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+const ModContext = createContext<ModContextValue | null>(null);
 
 /**
  * Turn a stored theme into DOM state.  THE definition of that mapping.
@@ -103,7 +103,7 @@ export function applySize(size: Size) {
   }
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
+export function ModProvider({ children }: { children: ReactNode }) {
   // Persistence (default, legacy 'dashboard-theme' migration, and the
   // partial-object completion this used to do inline) lives in the
   // preferences registry now.  This provider only applies the theme to
@@ -152,15 +152,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, size, setSize }}>
+    <ModContext.Provider value={{ theme, setTheme, size, setSize }}>
       {children}
-    </ThemeContext.Provider>
+    </ModContext.Provider>
   );
 }
 
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
+export function useMods() {
+  const ctx = useContext(ModContext);
+  if (!ctx) throw new Error('useMods must be used within ModProvider');
   return ctx;
 }
 

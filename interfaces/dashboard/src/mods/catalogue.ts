@@ -32,7 +32,7 @@
 import type { ThemeMode } from './theme/palette';
 // Type-only, so no runtime cycle: registry.ts imports THEME_PACKS as a
 // value, and this import is erased.
-import type { ThemeRadius } from '../preferences/registry';
+import type { ModRadius } from '../preferences/registry';
 
 export interface ThemePack {
   /** The stored value, and the `data-accent` attribute. */
@@ -68,10 +68,10 @@ export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as
  * Kept here rather than in the preferences registry for the same reason
  * the accent set is: one list, and the registry derives from it.
  */
-export const THEME_MATERIALS = ['solid', 'glass'] as const;
+export const MOD_MATERIALS = ['solid', 'glass'] as const;
 /** How fast the app moves. A multiplier on every transition — see the
  *  motion tokens in index.css for why the infinite loops are excluded. */
-export const THEME_MOTIONS = ['calm', 'default', 'snappy'] as const;
+export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
 /**
  * Icon stroke weight, and the FIRST property a mod carries that the
  * panel does not expose.
@@ -83,14 +83,14 @@ export const THEME_MOTIONS = ['calm', 'default', 'snappy'] as const;
  * ships and nothing here used — one mount point, zero call sites among
  * the 1,663 icon usages.
  */
-export const THEME_ICONS = ['hairline', 'regular', 'bold'] as const;
+export const MOD_ICONS = ['hairline', 'regular', 'bold'] as const;
 /** The stroke widths those names mean. `regular` is lucide's own 2. */
 export const ICON_STROKE: Record<string, number> = {
   hairline: 1.25, regular: 2, bold: 2.5,
 };
-export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
-export type ThemeMotion = (typeof THEME_MOTIONS)[number];
-export type ThemeIcons = (typeof THEME_ICONS)[number];
+export type ModMaterial = (typeof MOD_MATERIALS)[number];
+export type ModMotion = (typeof MOD_MOTIONS)[number];
+export type ModIcons = (typeof MOD_ICONS)[number];
 
 export const packById = (id: string): ThemePack | undefined =>
   THEME_PACKS.find((p) => p.id === id);
@@ -116,23 +116,23 @@ export const packById = (id: string): ThemePack | undefined =>
  * on `<html>` — `data-radius` and the `--size-*` multipliers — so a mod
  * can simply carry them.
  */
-export interface ThemeMod {
+export interface Mod {
   readonly id: string;
   readonly label: string;
   /** The colour pack this look wears. Must be a `THEME_PACKS` id. */
   readonly accent: string;
-  readonly radius?: ThemeRadius;
+  readonly radius?: ModRadius;
   /** The global size multiplier. At or above 1 only — the panel's own
    *  slider starts at 100% because everything below it waits on the
    *  24px hit-target floor (design.md §5.1), and a mod must not reach
    *  somewhere the control cannot follow it back from. */
   readonly size?: number;
   /** What surfaces are made of. Omit and the person's own choice stands. */
-  readonly material?: ThemeMaterial;
+  readonly material?: ModMaterial;
   /** How fast it moves. Omit and the person's own choice stands. */
-  readonly motion?: ThemeMotion;
+  readonly motion?: ModMotion;
   /** Icon stroke weight. Mod-only — the panel offers no control for it. */
-  readonly icons?: ThemeIcons;
+  readonly icons?: ModIcons;
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
@@ -158,7 +158,7 @@ export interface ThemeMod {
  * unreadable for exactly the reason they chose the other one. A mod
  * dresses the app; it does not decide where you are.
  */
-export const THEME_MODS: readonly ThemeMod[] = [
+export const MODS: readonly Mod[] = [
   { id: 'cab',  label: 'Cab',  accent: 'azure', radius: 'pill',    size: 1.25,
     icons: 'bold', sound: 'blip',
     why: 'Tablet in a moving truck — bigger targets, gloved hands' },
@@ -167,21 +167,21 @@ export const THEME_MODS: readonly ThemeMod[] = [
     why: 'A display read from across the room' },
 ] as const;
 
-export const modById = (id: string): ThemeMod | undefined =>
-  THEME_MODS.find((m) => m.id === id);
+export const modById = (id: string): Mod | undefined =>
+  MODS.find((m) => m.id === id);
 
 /**
  * Everything a mod can set. One object rather than a parameter list:
  * `activeModId` had reached five positional arguments and every new axis
  * was changing its signature and every call site with it.
  */
-export interface ThemeAxes {
+export interface ModAxes {
   accent: string;
   radius: string;
   size: number;
   material: string;
   motion: string;
-  /** Icon stroke weight. NOT a panel control — see ThemeMod.icons. */
+  /** Icon stroke weight. NOT a panel control — see Mod.icons. */
   icons: string;
   /** The installed cue set. Not on `<html>`, but readable, so a mod
    *  that carries one can still be reported as edited. */
@@ -206,7 +206,7 @@ export interface ThemeAxes {
  * it used to answer by accident: whether what you see is still exactly
  * what the mod asked for, or whether you have since changed something.
  */
-export const modMatchesAxes = (m: ThemeMod, a: ThemeAxes): boolean =>
+export const modMatchesAxes = (m: Mod, a: ModAxes): boolean =>
   m.accent === a.accent
   && (m.radius === undefined || m.radius === a.radius)
   && (m.material === undefined || m.material === a.material)
@@ -224,5 +224,5 @@ export const modMatchesAxes = (m: ThemeMod, a: ThemeAxes): boolean =>
  *   whose assets are installed and whose axes have been edited, which is
  *   the whole reason identity moved.
  */
-export const activeModId = (a: ThemeAxes): string =>
-  THEME_MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';
+export const activeModId = (a: ModAxes): string =>
+  MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';

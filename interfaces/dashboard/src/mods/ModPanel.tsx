@@ -6,14 +6,14 @@ import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
 import { Tip } from '../components/tooltip';
 import {
-  useTheme, applySize, type Mode, type Accent, type RadiusVariant, type Material,
+  useMods, applySize, type Mode, type Accent, type RadiusVariant, type Material,
   type Motion,
 } from './context';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
-  THEME_PACKS, THEME_MODS, THEME_MATERIALS, THEME_MOTIONS,
-  modMatchesAxes, modById, type ThemeMod,
+  THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS,
+  modMatchesAxes, modById, type Mod,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { usePreference } from '../preferences';
@@ -68,7 +68,7 @@ const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }
  * un-highlights on its own — no "modified" state to keep, because the
  * axes ARE the state and a mod is only ever a way of writing them.
  */
-const MOD_OPTIONS = THEME_MODS.map((m) => ({
+const MOD_OPTIONS = MODS.map((m) => ({
   value: m.id,
   label: m.label,
   why: m.why,
@@ -79,23 +79,23 @@ const MOD_OPTIONS = THEME_MODS.map((m) => ({
 /** What surfaces are made of. An axis, so it sits beside Corners rather
  *  than inside a look — a mod may set it, and so may the person. */
 const MATERIAL_OPTIONS: { value: Material; key: string; label: string }[] =
-  THEME_MATERIALS.map((m) => ({
+  MOD_MATERIALS.map((m) => ({
     value: m,
-    key: `theme.material_${m}`,
+    key: `mods.material_${m}`,
     label: m === 'solid' ? 'Solid' : 'Glass',
   }));
 
 const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
-  THEME_MOTIONS.map((m) => ({
+  MOD_MOTIONS.map((m) => ({
     value: m,
-    key: `theme.motion_${m}`,
+    key: `mods.motion_${m}`,
     label: m === 'default' ? 'Normal' : m === 'calm' ? 'Calm' : 'Snappy',
   }));
 
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
-  { value: 'sharp',   key: 'theme.corners_sharp',   label: 'Sharp' },
-  { value: 'rounded', key: 'theme.corners_rounded', label: 'Rounded' },
-  { value: 'pill',    key: 'theme.corners_pill',    label: 'Pill' },
+  { value: 'sharp',   key: 'mods.corners_sharp',   label: 'Sharp' },
+  { value: 'rounded', key: 'mods.corners_rounded', label: 'Rounded' },
+  { value: 'pill',    key: 'mods.corners_pill',    label: 'Pill' },
 ];
 
 function Chip<T extends string>({
@@ -156,7 +156,7 @@ export function ModControls({ compact = false, onNavigate }: {
   onNavigate?: () => void;
 }) {
   const { t } = useTranslation();
-  const { theme, setTheme, size, setSize } = useTheme();
+  const { theme, setTheme, size, setSize } = useMods();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
   const { value: volume, setValue: setVolume } = usePreference('mods.sound.volume');
   // Read only, and only to REPORT it — the switch itself stays where it
@@ -198,7 +198,7 @@ export function ModControls({ compact = false, onNavigate }: {
     sound: soundPack,
   });
 
-  const applyMod = (m: ThemeMod) => {
+  const applyMod = (m: Mod) => {
     // Snapshot BEFORE the write. Installing a mod overwrites accent,
     // corners, material, motion, icon weight, size and sound in one
     // click — up to seven values somebody may have spent real time on,
@@ -266,7 +266,7 @@ export function ModControls({ compact = false, onNavigate }: {
         <>
           <div>
             <p className={`${groupLabel} mb-1.5`}>
-              {t('theme.group_mods', 'Mods')}
+              {t('mods.group_mods', 'Mods')}
             </p>
             <div className="flex flex-wrap gap-1">
               {MOD_OPTIONS.map((o) => (
@@ -286,7 +286,7 @@ export function ModControls({ compact = false, onNavigate }: {
                     and the way back is the chip you already see. */}
                 {modified && (
                   <span className="text-muted-foreground/70">
-                    {' · '}{t('theme.mod_edited', 'edited — tap again to restore')}
+                    {' · '}{t('mods.mod_edited', 'edited — tap again to restore')}
                   </span>
                 )}
               </p>
@@ -338,18 +338,18 @@ export function ModControls({ compact = false, onNavigate }: {
                 users would have met the confusing state first. */}
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <p className={groupLabel}>
-                {t('theme.group_size', 'Interface size')}
+                {t('mods.group_size', 'Interface size')}
               </p>
               <div className="flex items-center gap-1.5">
                 <span className="text-2xs tabular-nums text-muted-foreground">
                   {Math.round(shown * 100)}%
                 </span>
-                <Tip label={t('theme.size_reset', 'Reset')}>
+                <Tip label={t('mods.size_reset', 'Reset')}>
                   <button
                     type="button"
                     onClick={() => { setDragging(null); setSize({ global: 1 }); }}
                     disabled={size.global === 1 && dragging === null}
-                    aria-label={t('theme.size_reset', 'Reset')}
+                    aria-label={t('mods.size_reset', 'Reset')}
                     className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   >
                     <RotateCcw className="size-3" />
@@ -362,7 +362,7 @@ export function ModControls({ compact = false, onNavigate }: {
               min={SIZE_MIN}
               max={SIZE_MAX}
               step={0.05}
-              aria-label={t('theme.size_label', 'Interface size')}
+              aria-label={t('mods.size_label', 'Interface size')}
               formatValue={(v) => `${Math.round(v * 100)}%`}
               // Live: paint straight to the DOM so the drag is smooth and
               // React is not re-rendered 60 times for one gesture.
@@ -397,7 +397,7 @@ export function ModControls({ compact = false, onNavigate }: {
             className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground min-h-tap py-1 -my-1"
           >
             <SlidersHorizontal className="size-3 shrink-0" />
-            {t('theme.all_customization', 'All customization…')}
+            {t('mods.all_customization', 'All customization…')}
             <ChevronRight className="size-3 shrink-0 ml-auto" />
           </Link>
         </>
@@ -408,7 +408,7 @@ export function ModControls({ compact = false, onNavigate }: {
       {/* Radius */}
       <div>
         <p className={`${groupLabel} mb-1.5`}>
-          {t('theme.group_corners', 'Corners')}
+          {t('mods.group_corners', 'Corners')}
         </p>
         <div className="flex gap-1">
           {RADIUS_OPTIONS.map((o) => (
@@ -420,7 +420,7 @@ export function ModControls({ compact = false, onNavigate }: {
 
       <div>
         <p className={`${groupLabel} mb-1.5`}>
-          {t('theme.group_material', 'Material')}
+          {t('mods.group_material', 'Material')}
         </p>
         {/* Beside Corners, not inside Look: it is a property of the
             whole app, and a person may want glass without taking a
@@ -435,7 +435,7 @@ export function ModControls({ compact = false, onNavigate }: {
 
       <div>
         <p className={`${groupLabel} mb-1.5`}>
-          {t('theme.group_motion', 'Motion')}
+          {t('mods.group_motion', 'Motion')}
         </p>
         {/* A multiplier on every transition. Spinners and pulses are
             deliberately not on it — see index.css. */}
@@ -452,7 +452,7 @@ export function ModControls({ compact = false, onNavigate }: {
       <div>
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <p className={groupLabel}>
-            {t('theme.group_sound', 'Sound')}
+            {t('mods.group_sound', 'Sound')}
           </p>
           <div className="flex items-center gap-1.5">
             <span className="text-2xs tabular-nums text-muted-foreground">
@@ -467,25 +467,25 @@ export function ModControls({ compact = false, onNavigate }: {
                 section to its default" in every section, and SIZE
                 already established that. A person who learns one
                 header should not have to relearn the next. */}
-            <Tip label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}>
+            <Tip label={volume > 0 ? t('mods.sound_mute', 'Silence') : t('mods.sound_unmute', 'Unmute')}>
               <button
                 type="button"
                 onClick={() => {
                   if (volume > 0) { beforeMute.current = volume; setVolume(0); }
                   else setVolume(beforeMute.current || 1);
                 }}
-                aria-label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}
+                aria-label={volume > 0 ? t('mods.sound_mute', 'Silence') : t('mods.sound_unmute', 'Unmute')}
                 className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60"
               >
                 {volume > 0 ? <VolumeX className="size-3" /> : <Volume2 className="size-3" />}
               </button>
             </Tip>
-            <Tip label={t('theme.sound_reset', 'Reset')}>
+            <Tip label={t('mods.sound_reset', 'Reset')}>
               <button
                 type="button"
                 onClick={() => setVolume(1)}
                 disabled={volume === 1}
-                aria-label={t('theme.sound_reset', 'Reset')}
+                aria-label={t('mods.sound_reset', 'Reset')}
                 className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
               >
                 <RotateCcw className="size-3" />
@@ -498,7 +498,7 @@ export function ModControls({ compact = false, onNavigate }: {
           min={0}
           max={1}
           step={0.05}
-          aria-label={t('theme.sound_label', 'Sound volume')}
+          aria-label={t('mods.sound_label', 'Sound volume')}
           formatValue={(v) => `${Math.round(v * 100)}%`}
           onValueCommitted={(v) => {
             setVolume(v);
@@ -523,13 +523,13 @@ export function ModControls({ compact = false, onNavigate }: {
             who reads it still has to go hunting. So it says which
             switch, what state it is in, and where. */}
         <p className="text-2xs text-muted-foreground mt-1.5">
-          {t('theme.sound_gate_label', 'Live alerts')}
+          {t('mods.sound_gate_label', 'Live alerts')}
           {' · '}
           <span className={alertSoundOn ? 'text-foreground' : undefined}>
-            {alertSoundOn ? t('theme.sound_gate_on', 'on') : t('theme.sound_gate_off', 'off')}
+            {alertSoundOn ? t('mods.sound_gate_on', 'on') : t('mods.sound_gate_off', 'off')}
           </span>
           {!alertSoundOn && (
-            <> {t('theme.sound_gate_where', '— turn on in the alerts panel')}</>
+            <> {t('mods.sound_gate_where', '— turn on in the alerts panel')}</>
           )}
         </p>
       </div>
@@ -545,9 +545,9 @@ export function ModControls({ compact = false, onNavigate }: {
  * It owns only the open/closed question — every control inside it belongs
  * to `ModControls`, which the /mods page renders in full.
  */
-export function ThemeToggle() {
+export function ModPanel() {
   const { t } = useTranslation();
-  const { size } = useTheme();
+  const { size } = useMods();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -571,14 +571,14 @@ export function ThemeToggle() {
 
   return (
     <div className="relative" ref={ref}>
-      {/* `theme.picker`, not the pre-existing `theme.toggle` ("Toggle
+      {/* `mods.picker`, not the pre-existing `theme.toggle` ("Toggle
           theme") — this opens a menu of three settings, it does not
           flip one. */}
       <Button
         variant="ghost"
         size="icon"
         className="shrink-0"
-        aria-label={t('theme.picker', 'Theme')}
+        aria-label={t('mods.picker', 'Mods')}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >

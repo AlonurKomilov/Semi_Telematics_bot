@@ -29,23 +29,23 @@
 
 // ── the service ─────────────────────────────────────────────────────
 export {
-  ThemeProvider, useTheme, applyTheme, applySize,
+  ModProvider, useMods, applyTheme, applySize,
   type Theme, type Mode, type Accent, type RadiusVariant,
   type Material, type Motion, type Size, type ColorTheme,
 } from './context';
 
-export { ThemeToggle, ModControls } from './ModPanel';
-export { default as ModsPage } from './ModsPage';
+export { ModPanel, ModControls } from './ModPanel';
+export { default as ModPage } from './ModPage';
 export { default as SizeCard } from './SizeCard';
 export { IconWeight } from './icons/IconWeight';
 
 // ── the catalogue ───────────────────────────────────────────────────
 export {
-  THEME_PACKS, THEME_MODS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS,
+  THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS,
   ICON_STROKE, PACK_TOKENS,
   packById, modById, modMatchesAxes, activeModId,
-  type ThemePack, type ThemeMod, type ThemeAxes,
-  type ThemeMaterial, type ThemeMotion, type ThemeIcons,
+  type ThemePack, type Mod, type ModAxes,
+  type ModMaterial, type ModMotion, type ModIcons,
 } from './catalogue';
 
 // ── installing values ───────────────────────────────────────────────

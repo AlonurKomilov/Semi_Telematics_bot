@@ -9,7 +9,7 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
 import PreferencesSync from './preferences/PreferencesSync';
-import { ThemeProvider, useTheme } from './mods';
+import { ModProvider, useMods } from './mods';
 import { TooltipProvider } from './components/ui/tooltip';
 import { applyPublicFormTheme } from './features/applications/public/theme';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
@@ -26,7 +26,7 @@ function AppToaster() {
   // dark themes that put a white toast over a near-black page — the
   // one element on screen that ignored the theme entirely. `light`
   // covers every non-dark colour, which today is just `light`.
-  const { theme } = useTheme();
+  const { theme } = useMods();
   const mode = theme.mode;
   // Sonner starts a top-positioned toast 32px down the viewport, which
   // lands it squarely on the 48px topbar — the banner covered the
@@ -74,7 +74,7 @@ const queryClient = new QueryClient({
 });
 
 // apply.<apex> serves this same dist but is a PUBLIC, auth-free driver
-// application — mount it standalone with no ThemeProvider (so the page
+// application — mount it standalone with no ModProvider (so the page
 // stays on the light `:root` tokens), no auth, no router, no shell.
 // ``?apply`` is honoured too so the form can be previewed in local dev.
 const _host = window.location.hostname.toLowerCase();
@@ -103,7 +103,7 @@ if (_isApply) {
       <React.Suspense fallback={null}>
         {_isCarrierIntake ? <PublicCarrierIntake /> : _isStatus ? <ApplyStatus /> : <PublicApply />}
       </React.Suspense>
-      {/* Outside ThemeProvider by design (see above), and the public
+      {/* Outside ModProvider by design (see above), and the public
           apply pages are always light — so this one is pinned, not read. */}
       <Toaster richColors theme="light" position="top-right" closeButton />
     </React.StrictMode>,
@@ -111,8 +111,8 @@ if (_isApply) {
 } else {
   _root.render(
     <React.StrictMode>
-      <ThemeProvider>
-        {/* Inside ThemeProvider because it reads the theme; outside
+      <ModProvider>
+        {/* Inside ModProvider because it reads the theme; outside
             everything else because every icon in the app is below it. */}
         <IconWeight>
         <QueryClientProvider client={queryClient}>
@@ -141,7 +141,7 @@ if (_isApply) {
           {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
         </QueryClientProvider>
         </IconWeight>
-      </ThemeProvider>
+      </ModProvider>
     </React.StrictMode>,
   );
 }

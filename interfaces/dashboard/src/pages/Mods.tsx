@@ -4,4 +4,4 @@
  * comes through the barrel like every other consumer (mods/index.test.ts
  * fails the build on a deep import from outside `mods/`).
  */
-export { ModsPage as default } from '../mods';
+export { ModPage as default } from '../mods';

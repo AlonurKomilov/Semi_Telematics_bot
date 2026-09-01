@@ -30,7 +30,7 @@ import Sidebar from '../components/Sidebar';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { ThemeToggle, useTheme } from '../mods';
+import { ModPanel, useMods } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -41,7 +41,7 @@ import { sizeRegion } from '@/lib/sizeRegion';
 import ShellHero from './heroes/ShellHero';
 
 export default function AppShell({ hero }: { hero?: ReactNode }) {
-  const { theme } = useTheme();
+  const { theme } = useMods();
   const { pathname } = useLocation();
   const dockedContentClass = useDockedContentClass();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -128,7 +128,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             <LanguageSelector />
             <AlertsLauncher />
             <AssistantLauncher />
-            <ThemeToggle />
+            <ModPanel />
             <AvatarMenu />
           </div>
         </header>

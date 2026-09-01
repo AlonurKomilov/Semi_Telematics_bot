@@ -115,7 +115,7 @@ def masked_off_flags(disabled_csv: str | None) -> set[str]:
     disabled = parse_disabled(disabled_csv)
     if not disabled:
         return set()
-    return {flag for flag, mods in FLAG_MODULES.items() if mods <= disabled}
+    return {flag for flag, modules in FLAG_MODULES.items() if modules <= disabled}
 
 
 def mask_disabled_modules(fs, disabled_csv: str | None):

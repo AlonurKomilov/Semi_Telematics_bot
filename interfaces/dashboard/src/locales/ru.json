@@ -364,22 +364,24 @@
   },
   "theme": {
     "toggle": "Переключить тему",
-    "picker": "Тема",
     "light": "Светлая",
     "dark": "Тёмная",
     "system": "Системная",
     "group_color": "Цвет",
-    "group_corners": "Углы",
     "accent_blue": "Синий",
     "accent_purple": "Фиолетовый",
     "accent_green": "Зелёный",
+    "size_by_region": "Размер по областям…"
+  },
+  "mods": {
+    "picker": "Mods",
+    "group_corners": "Углы",
     "corners_sharp": "Острые",
     "corners_rounded": "Скруглённые",
     "corners_pill": "Капсула",
     "group_size": "Размер",
     "size_label": "Размер интерфейса",
-    "size_reset": "Сбросить",
-    "size_by_region": "Размер по областям…"
+    "size_reset": "Сбросить"
   },
   "forms": {
     "create": "Создать",

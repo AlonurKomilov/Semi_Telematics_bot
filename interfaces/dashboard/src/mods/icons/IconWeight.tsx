@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
-import { useTheme } from '../context';
+import { useMods } from '../context';
 import { ICON_STROKE } from '../catalogue';
 
 /**
@@ -20,7 +20,7 @@ import { ICON_STROKE } from '../catalogue';
  * Icons here are meant to grow with everything else.
  */
 export function IconWeight({ children }: { children: ReactNode }) {
-  const { theme } = useTheme();
+  const { theme } = useMods();
   return (
     <LucideProvider strokeWidth={ICON_STROKE[theme.icons] ?? ICON_STROKE.regular}>
       {children}

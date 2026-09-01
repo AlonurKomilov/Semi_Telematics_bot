@@ -19,7 +19,7 @@ import { RotateCcw, ChevronRight } from 'lucide-react';
 import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { InfoTip, Tip } from '../components/tooltip';
-import { useTheme, applySize } from './context';
+import { useMods, applySize } from './context';
 import { usePreference } from '../preferences/usePreference';
 import { publishAppearanceDefault, resetAppearanceDefault } from '../preferences/appearance';
 import { undoableAction } from '../components/banners/stagedAction';
@@ -154,7 +154,7 @@ const REGION_ROWS: { key: SizeRegionKey; label: string }[] = [
 ];
 
 export default function SizeCard() {
-  const { size, setSize } = useTheme();
+  const { size, setSize } = useMods();
   const [open, setOpen] = useState(false);
   const { value: followMe, setValue: setFollowMe } = usePreference('appearance.followMe');
   const { value: syncEnabled } = usePreference('prefs.syncEnabled');

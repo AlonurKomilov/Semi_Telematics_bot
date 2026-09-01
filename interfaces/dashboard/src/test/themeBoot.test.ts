@@ -1,6 +1,6 @@
 /**
  * The pre-paint script in index.html has ONE job: put <html> into exactly
- * the state ThemeProvider would put it in, but before the first paint.
+ * the state ModProvider would put it in, but before the first paint.
  * It cannot import anything — it runs before any module — so it re-states
  * the registry's enums, defaults and clamp as literals.
  *
@@ -23,15 +23,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { applyTheme, applySize } from '../mods/context';
 import {
-  THEME_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, THEME_RADII,
-  THEME_MATERIAL_LIST,
-  THEME_MOTION_LIST,
+  MOD_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, MOD_RADII,
+  MOD_MATERIAL_LIST,
+  MOD_MOTION_LIST,
   PREPAINT_AXES,
   themeColorAlias,
   SIZE_DEFAULT, SIZE_REGIONS, SIZE_MIN, SIZE_MAX, clampSize,
 } from '../preferences/registry';
 import { LS_PREFIX } from '../preferences/local';
-import type { ThemeSetting, SizeSetting } from '../preferences/registry';
+import type { ModSetting, SizeSetting } from '../preferences/registry';
 
 /** Locate index.html without `import.meta.url`: resolving against it here
  *  throws "The URL must be of scheme file" in this runner, so the path is
@@ -116,8 +116,8 @@ function runBootOnHost(hostname: string, search = ''): Stamp {
   return stamp();
 }
 
-/** What ThemeProvider produces for the same input. */
-function runApply(theme: ThemeSetting, size: SizeSetting = SIZE_DEFAULT): Stamp {
+/** What ModProvider produces for the same input. */
+function runApply(theme: ModSetting, size: SizeSetting = SIZE_DEFAULT): Stamp {
   applyTheme(theme);
   applySize(size);
   return stamp();
@@ -159,13 +159,13 @@ afterEach(() => {
  * below, so the whole chain is covered link by link instead of one link
  * three times.
  */
-const storeTheme = (t: Partial<ThemeSetting>) =>
+const storeTheme = (t: Partial<ModSetting>) =>
   localStorage.setItem(`${LS_PREFIX}mods.theme`, JSON.stringify(t));
 /** The spelling used between the preference service and the mods rename. */
-const storeLegacyTheme = (t: Partial<ThemeSetting>) =>
+const storeLegacyTheme = (t: Partial<ModSetting>) =>
   localStorage.setItem(`${LS_PREFIX}theme`, JSON.stringify(t));
 /** The spelling that predates the preference service entirely. */
-const storeOldestTheme = (t: Partial<ThemeSetting>) =>
+const storeOldestTheme = (t: Partial<ModSetting>) =>
   localStorage.setItem('dashboard-theme', JSON.stringify(t));
 const storeSize = (s: Partial<SizeSetting>) =>
   localStorage.setItem(`${LS_PREFIX}size`, JSON.stringify(s));
@@ -174,18 +174,18 @@ describe('theme-boot ↔ applyTheme', () => {
   it('agrees on every valid stored theme', () => {
     for (const mode of THEME_MODES) {
       for (const accent of THEME_ACCENTS) {
-      for (const radius of THEME_RADII) {
+      for (const radius of MOD_RADII) {
       // The material axis joins the sweep. Every axis the boot script
       // stamps has to be enumerated here, or the two implementations can
       // disagree on it and the first painted frame is one theme while
       // the app snaps to another after hydration.
-      for (const material of THEME_MATERIAL_LIST) {
-      for (const motion of THEME_MOTION_LIST) {
+      for (const material of MOD_MATERIAL_LIST) {
+      for (const motion of MOD_MOTION_LIST) {
         // Spread the default so a NEW axis does not have to be added
         // here by hand — the third time that happened is what prompted
         // it. The sweep still varies every axis it is testing.
-        const theme: ThemeSetting = {
-          ...THEME_DEFAULT,
+        const theme: ModSetting = {
+          ...MOD_DEFAULT,
           mode, accent, radius, material, motion, color: themeColorAlias(mode, accent),
         };
 
@@ -220,7 +220,7 @@ describe('theme-boot ↔ applyTheme', () => {
       'light':       { mode: 'light', accent: 'blue' },
     };
     for (const color of THEME_COLORS) {
-      for (const radius of THEME_RADII) {
+      for (const radius of MOD_RADII) {
         const { mode, accent } = LEGACY[color];
 
         resetRoot();
@@ -230,15 +230,15 @@ describe('theme-boot ↔ applyTheme', () => {
 
         resetRoot();
         const applied = runApply({
-          ...THEME_DEFAULT,
-          mode: mode as ThemeSetting['mode'],
-          accent: accent as ThemeSetting['accent'],
+          ...MOD_DEFAULT,
+          mode: mode as ModSetting['mode'],
+          accent: accent as ModSetting['accent'],
           radius,
           // A pre-split value has no material either; both sides must
           // land on the same default.
           material: 'solid',
           motion: 'default',
-          color: themeColorAlias(mode as ThemeSetting['mode'], accent as ThemeSetting['accent']),
+          color: themeColorAlias(mode as ModSetting['mode'], accent as ModSetting['accent']),
         });
 
         expect(booted, `boot mis-migrates the stored value ${color}/${radius}`).toEqual(applied);
@@ -251,7 +251,7 @@ describe('theme-boot ↔ applyTheme', () => {
   it('falls back to the registry default when nothing is stored', () => {
     const booted = runBoot();
     resetRoot();
-    expect(booted).toEqual(runApply(THEME_DEFAULT));
+    expect(booted).toEqual(runApply(MOD_DEFAULT));
     // Guards the specific regression: the default is DARK, so a
     // storage-less first visit must not paint light.
     expect(booted.dark).toBe(true);
@@ -268,7 +268,7 @@ describe('theme-boot ↔ applyTheme', () => {
     localStorage.setItem(`${LS_PREFIX}theme`, raw);
     const booted = runBoot();
     resetRoot();
-    expect(booted).toEqual(runApply(THEME_DEFAULT));
+    expect(booted).toEqual(runApply(MOD_DEFAULT));
   });
 
   it('completes a partially stored theme field by field, like the sanitizer', () => {
@@ -277,7 +277,7 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
-      ...THEME_DEFAULT, mode: 'light', accent: 'blue', color: 'light',
+      ...MOD_DEFAULT, mode: 'light', accent: 'blue', color: 'light',
     }));
   });
 
@@ -289,7 +289,7 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
-      ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
+      ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
     }));
   });
 
@@ -302,7 +302,7 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
-      ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
+      ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'sharp', color: 'light',
     }));
   });
 
@@ -314,8 +314,8 @@ describe('theme-boot ↔ applyTheme', () => {
     // only pass on the right one.
     storeOldestTheme({ color: 'light', radius: 'sharp' });
     storeLegacyTheme({ color: 'light', radius: 'rounded' });
-    const canonical: ThemeSetting = {
-      ...THEME_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green',
+    const canonical: ModSetting = {
+      ...MOD_DEFAULT, mode: 'dark', accent: 'green', radius: 'pill', color: 'dark-green',
     };
     storeTheme(canonical);
     const booted = runBoot();
@@ -329,7 +329,7 @@ describe('theme-boot ↔ applyTheme', () => {
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply({
-      ...THEME_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light',
+      ...MOD_DEFAULT, mode: 'light', accent: 'blue', radius: 'rounded', color: 'light',
     }));
   });
 });
@@ -348,7 +348,7 @@ describe('theme-boot ↔ applySize', () => {
     const booted = runBoot();
 
     resetRoot();
-    const applied = runApply(THEME_DEFAULT, size as SizeSetting);
+    const applied = runApply(MOD_DEFAULT, size as SizeSetting);
 
     expect(booted).toEqual(applied);
   });
@@ -356,7 +356,7 @@ describe('theme-boot ↔ applySize', () => {
   it('stamps the registry default when no size is stored', () => {
     const booted = runBoot();
     resetRoot();
-    expect(booted).toEqual(runApply(THEME_DEFAULT, SIZE_DEFAULT));
+    expect(booted).toEqual(runApply(MOD_DEFAULT, SIZE_DEFAULT));
     expect(booted.vars['--size-layout']).toBe('1');
   });
 
@@ -378,7 +378,7 @@ describe('theme-boot ↔ applySize', () => {
     const booted = runBoot();
 
     resetRoot();
-    const applied = runApply(THEME_DEFAULT, { ...SIZE_DEFAULT, global: clampSize(raw) });
+    const applied = runApply(MOD_DEFAULT, { ...SIZE_DEFAULT, global: clampSize(raw) });
 
     expect(booted).toEqual(applied);
   });
@@ -392,7 +392,7 @@ describe('theme-boot ↔ applySize', () => {
     localStorage.setItem(`${LS_PREFIX}size`, raw);
     const booted = runBoot();
     resetRoot();
-    expect(booted).toEqual(runApply(THEME_DEFAULT, SIZE_DEFAULT));
+    expect(booted).toEqual(runApply(MOD_DEFAULT, SIZE_DEFAULT));
   });
 
   it('leaves an unset region unstamped rather than writing 1', () => {
@@ -444,14 +444,14 @@ describe('theme-boot source', () => {
   const source = bootScriptSource();
 
   it('states every enum value the registry accepts', () => {
-    for (const v of [...THEME_COLORS, ...THEME_RADII]) {
+    for (const v of [...THEME_COLORS, ...MOD_RADII]) {
       expect(source, `boot script is missing the '${v}' branch`).toContain(`'${v}'`);
     }
   });
 
   it('states the defaults for every axis it can act on', () => {
     for (const k of PREPAINT_AXES) {
-      const v = THEME_DEFAULT[k];
+      const v = MOD_DEFAULT[k];
       expect(source, `boot script is missing the default '${v}' for ${k}`).toContain(`'${v}'`);
     }
   });
@@ -465,7 +465,7 @@ describe('theme-boot source', () => {
     // simply not reach them is what makes the NEXT axis a decision: add
     // it to PREPAINT_AXES, or add it here and say why.
     const NOT_PREPAINT = ['icons', 'entrance'];
-    for (const k of Object.keys(THEME_DEFAULT)) {
+    for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),
         `'${k}' is neither a pre-paint axis nor declared as not being one`,

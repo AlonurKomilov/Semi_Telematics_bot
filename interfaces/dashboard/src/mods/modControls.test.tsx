@@ -39,7 +39,7 @@ vi.mock('react-router-dom', async (orig) => ({
   ),
 }));
 vi.mock('./context', () => ({
-  useTheme: () => ({
+  useMods: () => ({
     theme: {
       mode: 'dark', accent: 'blue', radius: 'md', material: 'solid',
       motion: 'normal', icons: 'regular', mod: '',

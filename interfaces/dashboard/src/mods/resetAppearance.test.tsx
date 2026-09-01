@@ -12,7 +12,7 @@
  *   `size` — SizeCard owns size whole and has its own reset beside its
  *   own title. Neither card reaches into the other.
  *
- * The coverage assertion is the point: every field of THEME_DEFAULT is
+ * The coverage assertion is the point: every field of MOD_DEFAULT is
  * either reset or named in the exclusion list, so ADDING AN AXIS forces
  * the decision instead of quietly skipping it. That is the same shape
  * `PREPAINT_AXES` uses in the registry, and it exists because the axis
@@ -20,7 +20,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { THEME_DEFAULT, DEFS } from '../preferences/registry';
+import { MOD_DEFAULT, DEFS } from '../preferences/registry';
 
 /** Axes the reset must NOT restore, each with the reason it is exempt. */
 const EXCLUDED = {
@@ -37,14 +37,14 @@ vi.mock('../components/banners/stagedAction', () => ({
 
 const setTheme = vi.fn();
 const setValue = vi.fn();
-let theme: Record<string, unknown> = { ...THEME_DEFAULT };
+let theme: Record<string, unknown> = { ...MOD_DEFAULT };
 let prefs: Record<string, unknown> = {
   'mods.sound.pack': DEFS['mods.sound.pack'].default,
   'mods.sound.volume': DEFS['mods.sound.volume'].default,
 };
 
 vi.mock('./context', () => ({
-  useTheme: () => ({
+  useMods: () => ({
     theme,
     setTheme,
     size: { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
@@ -56,11 +56,11 @@ vi.mock('../preferences/usePreference', () => ({
   usePreference: (k: string) => ({ value: prefs[k], setValue }),
 }));
 
-import { RESET_AXES, ResetAppearance } from './ModsPage';
+import { RESET_AXES, ResetAppearance } from './ModPage';
 
 describe('Reset appearance owns exactly the axes it should', () => {
-  it('covers every axis of THEME_DEFAULT, or names why not', () => {
-    for (const key of Object.keys(THEME_DEFAULT)) {
+  it('covers every axis of MOD_DEFAULT, or names why not', () => {
+    for (const key of Object.keys(MOD_DEFAULT)) {
       const reset = key in RESET_AXES;
       const excluded = key in EXCLUDED;
       expect(
@@ -78,7 +78,7 @@ describe('Reset appearance owns exactly the axes it should', () => {
 
   it('restores identity and custom tokens, not just the chips', () => {
     // An installed mod and an injected token set both survive a reset
-    // that only walks THEME_DEFAULT's keys — neither is one of them.
+    // that only walks MOD_DEFAULT's keys — neither is one of them.
     expect(RESET_AXES).toHaveProperty('mod');
     expect(RESET_AXES).toHaveProperty('tokens');
     expect(RESET_AXES.mod).toBeUndefined();
@@ -88,14 +88,14 @@ describe('Reset appearance owns exactly the axes it should', () => {
 
 describe('the control itself', () => {
   it('is disabled while there is nothing to undo', () => {
-    theme = { ...THEME_DEFAULT };
+    theme = { ...MOD_DEFAULT };
     render(<ResetAppearance />);
     expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('writes the defaults and offers the way back', () => {
     undoSpy.mockClear(); setTheme.mockClear(); setValue.mockClear();
-    theme = { ...THEME_DEFAULT, accent: 'purple', mod: 'wall' };
+    theme = { ...MOD_DEFAULT, accent: 'purple', mod: 'wall' };
     render(<ResetAppearance />);
     const btn = screen.getByRole('button') as HTMLButtonElement;
     expect(btn.disabled).toBe(false);

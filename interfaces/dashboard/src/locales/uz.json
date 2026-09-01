@@ -331,22 +331,24 @@
   },
   "theme": {
     "toggle": "Mavzuni almashtirish",
-    "picker": "Mavzu",
     "light": "Yorugʻ",
     "dark": "Qorongʻi",
     "system": "Tizim",
     "group_color": "Rang",
-    "group_corners": "Burchaklar",
     "accent_blue": "Koʻk",
     "accent_purple": "Binafsha",
     "accent_green": "Yashil",
+    "size_by_region": "Hudud boʻyicha oʻlcham…"
+  },
+  "mods": {
+    "picker": "Mods",
+    "group_corners": "Burchaklar",
     "corners_sharp": "Oʻtkir",
     "corners_rounded": "Yumaloq",
     "corners_pill": "Tabletka",
     "group_size": "Oʻlcham",
     "size_label": "Interfeys oʻlchami",
-    "size_reset": "Tiklash",
-    "size_by_region": "Hudud boʻyicha oʻlcham…"
+    "size_reset": "Tiklash"
   },
   "tier": {
     "platinum": "Platina",

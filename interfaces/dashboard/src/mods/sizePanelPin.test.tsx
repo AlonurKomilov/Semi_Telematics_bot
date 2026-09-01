@@ -22,7 +22,7 @@ vi.mock('../preferences/usePreference', () => ({
   usePreference: () => ({ value: false, setValue: () => {} }),
 }));
 vi.mock('./context', () => ({
-  useTheme: () => ({
+  useMods: () => ({
     size: { global: 1.2, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
     setSize: () => {},
   }),

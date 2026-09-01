@@ -88,7 +88,7 @@ Everything else
 about theming depends on it, so it is worth knowing why it exists and what it
 may not do.
 
-**Why it can't be React's job.** `ThemeProvider` applies the theme from an
+**Why it can't be React's job.** `ModProvider` applies the theme from an
 effect, which runs *after* the first paint, and the module bundle only
 executes once it has been fetched and parsed. Whatever paints before that is
 governed by the document alone. That gap used to be papered over with
@@ -218,6 +218,39 @@ collides with `--warn` (66-68, at 1.4-2.7), or duplicates a pack we ship
 **The service lives in `src/mods/`, and application code imports from
 `src/mods` — never from a file inside it.** ⭐
 
+**Mods is the umbrella; theme is the COLOUR part inside it — and the
+names have to say so.** ⭐ The code said the reverse for a while:
+`THEME_MODS` held the mod list, `ThemeMod` was a whole look, and
+`ThemeMaterial` / `ThemeMotion` / `ThemeIcons` named three axes with
+nothing to do with colour. The proof it confused people was in the tree
+— `AppShell` read `theme.entrance`, a page-animation flag, out of a hook
+called `useTheme`. The vocabulary is now:
+
+| the whole mod | the colour part |
+|---|---|
+| `ModPanel` · `ModPage` · `ModControls` | `THEME_PACKS` · `ThemePack` · `packById` |
+| `useMods` · `ModProvider` · `ModContext` | `ThemeSeed` · `derivePalette` · `mods/theme/` |
+| `MODS` · `Mod` · `ModAxes` · `ModSetting` | `ThemeMode` · `ThemeAccent` · `ThemeColor` |
+| `MOD_MATERIALS` · `MOD_MOTIONS` · `MOD_ICONS` · `MOD_RADII` | `applyTheme` (the axes → `<html>` mapping the boot script mirrors) |
+
+`mods/naming.test.ts` enforces it: the barrel may export a
+theme-flavoured name ONLY for something on the right-hand column, and
+each one is allowlisted **with the reason it really is colour**. A new
+`ThemeSomething` fails until it is renamed or justified — which is the
+point, because the axis set has grown four times and will again. The
+same file asserts `ModMaterial` / `ModMotion` / `ModIcons` are declared
+ONCE: they used to be derived off the same arrays in both
+`mods/catalogue.ts` and `preferences/registry.ts`, so one type name had
+two declarations and resolved differently depending on which barrel you
+imported from — identical then, invisible until an array changed.
+
+**Frozen strings are exempt, and stay exempt.** The stored key is
+`mods.theme`, the wire blob field is `appearance.default.theme`, and the
+DOM alias is `data-theme`. A key is an ADDRESS, not a description;
+renaming one costs the four-place ritual for zero clarity and — for a
+`synced` key — orphans the server row. See
+[preferences/CLAUDE.md](src/preferences/CLAUDE.md).
+
 `theme` stopped being the right word some time ago: it is a colour word,
 and what this service holds is colour, corners, scale, material, motion,
 icon weight, a page entrance and sound. Mods is the noun that covers
@@ -225,10 +258,10 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
 `mods/sound`.
 
     mods/index.ts      the one import surface
-    mods/catalogue.ts  packs, mods, the axes
-    mods/context.tsx   useTheme, applyTheme
-    mods/ModPanel.tsx  ModControls + the top-bar popover
-    mods/ModsPage.tsx  the /mods page
+    mods/catalogue.ts  MODS, the axes, THEME_PACKS
+    mods/context.tsx   useMods, applyTheme
+    mods/ModPanel.tsx  ModPanel (top-bar popover) + ModControls
+    mods/ModPage.tsx   the /mods page
     mods/SizeCard.tsx  size, whole
     mods/inject.ts     installing token values
     mods/theme/        palette · contrast

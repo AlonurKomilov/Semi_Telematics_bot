@@ -23,8 +23,8 @@ import { Card } from '../components/ui/card';
 import { SectionHeader } from '../components/shell';
 import { undoableAction } from '../components/banners/stagedAction';
 import { usePreference } from '../preferences/usePreference';
-import { DEFS, THEME_DEFAULT } from '../preferences/registry';
-import { useTheme } from './context';
+import { DEFS, MOD_DEFAULT } from '../preferences/registry';
+import { useMods } from './context';
 import { ModControls } from './ModPanel';
 import SizeCard from './SizeCard';
 
@@ -45,18 +45,18 @@ const SOUND_VOLUME_DEFAULT = DEFS['mods.sound.volume'].default;
  *   resets what it owns, so neither reaches into the other.
  */
 export const RESET_AXES = {
-  accent: THEME_DEFAULT.accent,
-  radius: THEME_DEFAULT.radius,
-  material: THEME_DEFAULT.material,
-  motion: THEME_DEFAULT.motion,
-  icons: THEME_DEFAULT.icons,
-  entrance: THEME_DEFAULT.entrance,
+  accent: MOD_DEFAULT.accent,
+  radius: MOD_DEFAULT.radius,
+  material: MOD_DEFAULT.material,
+  motion: MOD_DEFAULT.motion,
+  icons: MOD_DEFAULT.icons,
+  entrance: MOD_DEFAULT.entrance,
   mod: undefined,
   tokens: undefined,
 } as const;
 
 export function ResetAppearance() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme } = useMods();
   const { value: pack, setValue: setPack } = usePreference('mods.sound.pack');
   const { value: volume, setValue: setVolume } = usePreference('mods.sound.volume');
 
@@ -111,7 +111,7 @@ export function ResetAppearance() {
   );
 }
 
-export default function ModsPage() {
+export default function ModPage() {
   return (
     <div className="space-y-6">
       <PageHeader

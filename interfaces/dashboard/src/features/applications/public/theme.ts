@@ -1,6 +1,6 @@
 // SINGLE SOURCE OF TRUTH for the public apply form's theme.
 //
-// apply.4truck.us mounts the form with NO ThemeProvider (see main.tsx), so
+// apply.4truck.us mounts the form with NO ModProvider (see main.tsx), so
 // it stays on the light `:root` tokens.  The recruiter preview renders the
 // SAME form inside the (possibly dark) dashboard, so it must reproduce the
 // public form's theme rather than inherit the dashboard's.
