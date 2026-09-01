@@ -125,7 +125,12 @@ TAXONOMY: dict[str, Verdict] = {
         M, "can_manage_work_orders",
         "same shape as maintenance: writes bundled; view seeded alongside"),
     "can_work_orders_vehicle": Verdict(S, "can_view_work_orders"),
-    "can_inspections_all":   Verdict(V, "can_view_inspections"),
+    "can_inspections_all":   Verdict(
+        M, "can_manage_inspections",
+        "same shape as maintenance, found when enforcement reached it: "
+        "the flag bundles the account-wide WRITES — template CRUD, "
+        "review, remind — behind eleven solo gates, not just the wide "
+        "read.  Stage A read the docstring and judged it view-only"),
     "can_inspections_vehicle": Verdict(
         S, "can_view_inspections",
         "submitting an own-truck PTI stays feature-owned: any holder of "

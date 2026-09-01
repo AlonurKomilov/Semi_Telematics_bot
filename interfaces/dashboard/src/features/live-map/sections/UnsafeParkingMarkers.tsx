@@ -9,7 +9,9 @@
  * three states changes the response priority).
  *
  * Permission-gated by ``can_alerts_all`` / ``can_alerts_vehicle`` /
- * ``can_vehicle_all`` — same gate the /parking/active route uses,
+ * ``can_vehicle_all`` — same gate the /parking/active route uses.
+ * Legacy pair flag on purpose: a WIDTH claim, and the vehicles
+ * pair is view/view, so can_view_vehicles cannot say wide-only.
  * so the overlay silently no-ops for personas without access
  * (HR / Accounting / Driver).
  *

@@ -43,7 +43,7 @@ from interfaces.api.deps import (
 
 router = APIRouter(prefix="/vehicles", tags=["vehicle-inventory"])
 
-_VIEW = require_permission_any("can_vehicle_all", "can_vehicle_vehicle")
+_VIEW = require_permission("can_view_vehicles")
 _MANAGE = require_permission("can_manage_vehicles")
 
 

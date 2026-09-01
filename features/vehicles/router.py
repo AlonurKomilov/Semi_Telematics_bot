@@ -535,7 +535,7 @@ async def fleet_weather(
 @router.get("/utilization-summary")
 async def fleet_utilization_summary(
     days: int = Query(30, ge=7, le=365),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
 ):
     """Per-vehicle utilization across the entire visible fleet.
 
@@ -709,8 +709,7 @@ def _merge_unit_rows(rows: list[dict]) -> list[dict]:
 async def account_period_mileage(
     start: str = Query(..., description="YYYY-MM-DD, inclusive"),
     end: str = Query(..., description="YYYY-MM-DD, inclusive"),
-    user: dict = Depends(require_permission_any(
-        "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission("can_view_vehicles")),
 ):
     """Miles driven per vehicle in the range, account-wide.
 
@@ -807,8 +806,7 @@ async def vehicle_period_mileage(
     vehicle_name: str,
     start: str = Query(..., description="YYYY-MM-DD, inclusive"),
     end: str = Query(..., description="YYYY-MM-DD, inclusive"),
-    user: dict = Depends(require_permission_any(
-        "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission("can_view_vehicles")),
 ):
     """One vehicle's period mileage + per-day breakdown (detail page).
 
@@ -942,8 +940,7 @@ async def vehicle_period_trips(
     start: str = Query(..., description="YYYY-MM-DD, inclusive"),
     end: str = Query(..., description="YYYY-MM-DD, inclusive"),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any(
-        "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission("can_view_vehicles")),
 ):
     """Trip segments (start→stop) for one vehicle in the range — the
     drill-in behind a Mileage row.
@@ -1641,7 +1638,7 @@ async def vehicle_health(
 async def vehicle_faults(
     vehicle_name: str,
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
 ):
     """Active fault codes for a specific vehicle."""
     allowed = await get_user_company_codes(user)
@@ -1724,7 +1721,7 @@ async def vehicle_timeline(
     vehicle_name: str,
     days: int = Query(7, ge=1, le=30),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
 ):
     """Hourly telemetry roll-up for a single vehicle (warehouse).
 
@@ -1756,7 +1753,7 @@ async def vehicle_usage(
     vehicle_name: str,
     days: int = Query(30, ge=7, le=365),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
 ):
     """Per-vehicle usage summary + daily series over the window.
 

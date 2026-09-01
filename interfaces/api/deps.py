@@ -340,8 +340,16 @@ async def get_member_vehicle_scope(user: dict) -> str:
     cannot be loaded fails CLOSED to 'assigned' — less data, never
     more.
     """
-    platform_db = _get_router().platform
-    db_user = await get_current_db_user(user, platform_db)
+    try:
+        platform_db = _get_router().platform
+        db_user = await get_current_db_user(user, platform_db)
+    except Exception:
+        # The docstring promised fail-CLOSED for a row that cannot be
+        # loaded; an unreachable platform is that same state, and
+        # raising here made the promise false for every caller outside
+        # a booted API (bot surfaces, scripts).  Found when the bridge
+        # helper's tests exercised both defaults side by side.
+        return "assigned"
     if db_user is None:
         return "assigned"
     return db_user.resolved_vehicle_scope
@@ -371,7 +379,28 @@ async def member_unit_scope(user: dict, feature: str) -> str:
         int(user["account_id"]), Role(user["role"]), wide_flag)
     if not wide:
         return "assigned"
-    return await get_member_vehicle_scope(user)
+    # The member row answers the SECOND claim.  Note the deliberate
+    # difference from get_member_vehicle_scope's fail-closed default:
+    # asked "what is this member's scope", unknown must mean the
+    # cautious answer.  Asked "should this WIDE-granted request be
+    # narrowed", an unloadable row means we cannot know of an
+    # override — and inventing one would narrow a wide-granted caller
+    # to nothing, a functional regression rather than a safety win.
+    # The grant is the authoritative claim during the bridge.
+    try:
+        platform_db = _get_router().platform
+        db_user = await get_current_db_user(user, platform_db)
+    except Exception:
+        # No platform reachable (a bot surface, a script, a test that
+        # never booted infra) — the same epistemic state as an
+        # unloadable row, and can_for_account above degrades to seeded
+        # defaults for exactly this reason.  Narrowing here instead
+        # would make a wide-granted caller's data vanish whenever the
+        # platform hiccups.
+        return "all"
+    if db_user is None:
+        return "all"
+    return db_user.resolved_vehicle_scope
 
 
 def validate_company_access(allowed_codes: list[str], requested_code: str | None) -> None:

@@ -197,13 +197,13 @@ export default function AppRouter() {
             (fleet.4truck.us etc.) and the active shell, never the URL
             path. */}
         <Route path="live-map" element={L(<P perm={['can_location_map', 'can_location_vehicle']}><LiveMap /></P>)} />
-        <Route path="vehicles" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><Vehicles /></P>)} />
-        <Route path="vehicles/inventory" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><VehicleInventory /></P>)} />
+        <Route path="vehicles" element={L(<P perm={['can_view_vehicles']}><Vehicles /></P>)} />
+        <Route path="vehicles/inventory" element={L(<P perm={['can_view_vehicles']}><VehicleInventory /></P>)} />
         {/* Before the parametric vehicle route for the same reason the
             API mounts its list first — otherwise "documents" resolves
             as a truck name. */}
         <Route path="vehicles/documents" element={L(<P perm={['can_vehicle_docs']}><VehicleDocuments /></P>)} />
-        <Route path="vehicles/:name" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><VehicleDetail /></P>)} />
+        <Route path="vehicles/:name" element={L(<P perm={['can_view_vehicles']}><VehicleDetail /></P>)} />
         <Route path="routes" element={L(<P perm={['can_route_all', 'can_route_vehicle']}><RoutesPage /></P>)} />
         <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_vehicle']}><Geofences /></P>)} />
         <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Parking /></P>)} />
@@ -258,7 +258,7 @@ export default function AppRouter() {
         {/* PTI (Pre-Trip Inspections) — fleet review surface.
             Drivers complete inspections via the Mini App; this page
             is the dashboard counterpart for the review queue. */}
-        <Route path="inspections" element={L(<P perm="can_inspections_all"><Inspections /></P>)} />
+        <Route path="inspections" element={L(<P perm="can_manage_inspections"><Inspections /></P>)} />
 
         {/* Work Orders — separate module from Maintenance.  Maintenance
             tracks "what needs doing"; Work Orders is "what was done"

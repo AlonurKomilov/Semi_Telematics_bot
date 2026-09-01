@@ -400,7 +400,7 @@ async def _require_visible_inspection(
     )
     if not ins:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    if not can(user["role"], "can_inspections_all"):
+    if not can(user["role"], "can_manage_inspections"):
         internal_uid = await _resolve_internal_user_id(user, tenant_db)
         if int(ins.get("user_id") or 0) != internal_uid:
             raise HTTPException(status_code=404, detail="Inspection not found")
@@ -428,7 +428,7 @@ async def _resolve_active_template(
 
 @router.get("/me/current")
 async def get_my_current_inspection(
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver's currently-actionable inspection (or null when none)."""
@@ -447,7 +447,7 @@ async def get_my_current_inspection(
 @router.get("/me/history")
 async def list_my_history(
     days: int = Query(90, ge=1, le=365),
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver's past inspections — used by the miniapp's PTI tab."""
@@ -463,14 +463,14 @@ async def update_item(
     inspection_id: int,
     item_key: str,
     body: ItemUpdate,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver updates one checklist item's status / notes."""
     if body.status is not None and body.status not in VALID_ITEM_STATUSES:
         raise HTTPException(status_code=422, detail="invalid status")
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
-    if not can(user["role"], "can_inspections_all"):
+    if not can(user["role"], "can_manage_inspections"):
         internal_uid = await _resolve_internal_user_id(user, tenant_db)
         if int(ins["user_id"]) != internal_uid:
             raise HTTPException(status_code=404, detail="Inspection not found")
@@ -491,7 +491,7 @@ async def upload_media(
     inspection_id: int,
     item_key: Optional[str] = Query(default=None),
     file: UploadFile = File(...),
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach a photo or video to an inspection.
@@ -617,7 +617,7 @@ async def upload_media(
 async def delete_media(
     inspection_id: int,
     media_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Remove a media row + best-effort blob deletion."""
@@ -669,7 +669,7 @@ async def annotate_media(
     inspection_id: int,
     media_id: int,
     body: AnnotateBody,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Overwrite a photo media row with a baked-overlay version.
@@ -761,7 +761,7 @@ async def annotate_media(
 async def ai_check_media(
     inspection_id: int,
     media_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Run a single-photo AI vision review of one media row.
@@ -861,7 +861,7 @@ class SignatureBody(BaseModel):
 async def sign(
     inspection_id: int,
     body: SignatureBody,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach an e-signature to an inspection.
@@ -879,7 +879,7 @@ async def sign(
     """
     if body.role not in ("driver", "reviewer"):
         raise HTTPException(status_code=422, detail="invalid role")
-    if body.role == "reviewer" and not can(user["role"], "can_inspections_all"):
+    if body.role == "reviewer" and not can(user["role"], "can_manage_inspections"):
         raise HTTPException(
             status_code=403,
             detail="only fleet reviewers can co-sign",
@@ -925,7 +925,7 @@ class SubmitBody(BaseModel):
 async def submit(
     inspection_id: int,
     body: Optional[SubmitBody] = None,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver finalizes the inspection.
@@ -964,7 +964,7 @@ async def submit(
 
 @router.get("/template")
 async def get_template(
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Return the active truck + trailer templates for this account.
@@ -983,7 +983,7 @@ async def upsert_template_item(
     vehicle_type: str,
     item_key: str,
     body: TemplateItemBody,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Add or update one item on a template."""
@@ -1011,7 +1011,7 @@ async def upsert_template_item(
 async def delete_template_item(
     vehicle_type: str,
     item_key: str,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     if vehicle_type not in ("truck", "trailer"):
@@ -1030,7 +1030,7 @@ async def upload_reference_image(
     vehicle_type: str,
     item_key: str,
     file: UploadFile = File(...),
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach a reference photo to a template item — the example shot
@@ -1088,7 +1088,7 @@ async def upload_reference_image(
 async def delete_reference_image(
     vehicle_type: str,
     item_key: str,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Clear a template item's reference photo."""
@@ -1104,7 +1104,7 @@ async def delete_reference_image(
 @router.get("/template-ref/{filename}")
 async def stream_reference_image(
     filename: str,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Stream a template reference image.  Account-scoped by the JWT —
@@ -1138,7 +1138,7 @@ async def stream_reference_image(
 @router.post("/template/reorder")
 async def reorder_template(
     body: TemplateReorderBody,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     if body.vehicle_type not in ("truck", "trailer"):
@@ -1153,7 +1153,7 @@ async def reorder_template(
 @router.post("/template/reset")
 async def reset_template(
     body: TemplateResetBody,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Bump the template version + repopulate from Standard DOT."""
@@ -1187,7 +1187,7 @@ class CreateInspectionRequest(BaseModel):
 @router.post("")
 async def create_inspection(
     body: CreateInspectionRequest,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -1223,7 +1223,7 @@ async def create_inspection(
 @router.post("/{inspection_id}/remind")
 async def resend_inspection_reminder(
     inspection_id: int,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Re-ping the driver assigned to an open inspection.
@@ -1277,7 +1277,7 @@ async def list_inspections(
     days:          int           = Query(default=30, ge=1, le=365),
     page:          int           = Query(default=1, ge=1),
     page_size:     int           = Query(default=50, ge=1, le=200),
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Dashboard list — paginated, filterable."""
@@ -1297,7 +1297,7 @@ async def list_inspections(
 @router.get("/{inspection_id}")
 async def get_inspection(
     inspection_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -1323,7 +1323,7 @@ async def get_inspection(
 async def stream_media(
     inspection_id: int,
     media_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Stream a media file back to the client.  Same auth shape as
@@ -1357,7 +1357,7 @@ async def stream_media(
 @router.get("/{inspection_id}/report.pdf")
 async def download_report(
     inspection_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
+    user: dict = Depends(require_permission("can_view_inspections")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -1430,7 +1430,7 @@ async def download_report(
 async def review(
     inspection_id: int,
     body: ReviewBody,
-    user: dict = Depends(require_permission("can_inspections_all")),
+    user: dict = Depends(require_permission("can_manage_inspections")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Fleet records the review outcome."""

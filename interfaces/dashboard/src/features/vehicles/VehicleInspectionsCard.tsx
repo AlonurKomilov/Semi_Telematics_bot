@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
  * Hits ``GET /api/inspections?vehicle_name=X&page_size=5`` — same
  * endpoint as the Inspections list, just scoped to one vehicle.
  * Permission is the caller's responsibility: the parent only mounts
- * this when ``can_inspections_all`` is granted.
+ * this when ``can_manage_inspections`` is granted.
  */
 
 const STATUS_LABEL: Record<PTIInspectionRow['status'], string> = {

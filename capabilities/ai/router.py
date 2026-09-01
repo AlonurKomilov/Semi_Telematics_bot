@@ -257,9 +257,13 @@ async def ai_chat(
 ):
     """Send a message to the AI fleet assistant (agent mode with tools).
 
-    Gated on any of (can_faults, can_vehicle_all, can_vehicle_vehicle) to
-    match the sidebar + React route — without this guard, a 403'd user
-    could still call the endpoint directly and bypass the dashboard.
+    Gated on ``can_ai_chat`` — a SERVICE flag, always on for every
+    role (capabilities/permissions/taxonomy.py): the assistant answers
+    only from data the caller's own feature grants already expose, so
+    its access IS its features' access.  (This docstring described an
+    older gate — can_faults / can_vehicle_* — for long enough that the
+    verb migration's sweep is what noticed; the code has gated on
+    can_ai_chat since the service split.)
     """
     if not ai.is_configured():
         raise HTTPException(status_code=503, detail="AI not configured")
@@ -427,8 +431,8 @@ async def ai_chat_stream(
 ):
     """Send a message to the AI fleet assistant; streams SSE tool events then the reply.
 
-    Gated identically to ``/chat`` (any of can_faults / can_vehicle_all
-    / can_vehicle_vehicle).  The streaming and non-streaming variants must
+    Gated identically to ``/chat`` (``can_ai_chat``).  The streaming
+    and non-streaming variants must
     stay aligned — clients fall back to ``/chat`` when SSE isn't
     available, so a permission mismatch would make the fallback work
     where the primary doesn't (or vice-versa).

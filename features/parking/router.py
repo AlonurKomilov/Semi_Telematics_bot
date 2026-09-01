@@ -257,6 +257,11 @@ from interfaces.api.deps import require_permission  # noqa: F811
 @router.get("/utilisation/heatmap")
 async def fleet_utilisation_heatmap(
     days: int = Query(30, ge=1, le=90),
+    # Legacy pair flag on purpose: this is a WIDTH claim ("fleet-wide
+    # only"), and the vehicles pair is view/view — both halves map to
+    # can_view_vehicles, so the grammar has no wide-only name and
+    # migrating here would ADMIT every assigned-width viewer.  Moves
+    # in the width pass, when a width-aware dependency exists.
     user: dict = Depends(require_permission("can_vehicle_all")),
     tenant_db=Depends(get_tenant_db),
 ):

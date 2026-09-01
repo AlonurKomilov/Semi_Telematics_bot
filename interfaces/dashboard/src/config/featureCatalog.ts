@@ -112,6 +112,8 @@ export type CatalogFeature = CatalogEntry;
 
 // Reusable permission groups (kept in sync with capabilities/iam/permissions.py).
 const P_LOCATION = ['can_location_map', 'can_location_vehicle'];
+// Legacy pair, like maintenance/work_orders above: generateNav
+// derives own-shell vs account-wide placement from the pair.
 const P_VEHICLE = ['can_vehicle_all', 'can_vehicle_vehicle'];
 const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', 'can_cost_reports', 'can_digest'];
@@ -123,6 +125,7 @@ const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', '
 export const CANONICAL_WIRE_FLAGS: readonly string[] = [
   'can_view_maintenance', 'can_manage_maintenance',
   'can_view_work_orders', 'can_manage_work_orders',
+  'can_view_vehicles', 'can_view_inspections', 'can_manage_inspections',
 ];
 
 export const FEATURE_CATALOG: CatalogFeature[] = [

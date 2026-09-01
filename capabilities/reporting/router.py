@@ -158,6 +158,11 @@ async def report_health(
 async def report_efficiency(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
+    # Legacy pair flag on purpose: this is a WIDTH claim ("fleet-wide
+    # only"), and the vehicles pair is view/view — both halves map to
+    # can_view_vehicles, so the grammar has no wide-only name and
+    # migrating here would ADMIT every assigned-width viewer.  Moves
+    # in the width pass, when a width-aware dependency exists.
     user: dict = Depends(require_permission_any("can_efficiency", "can_vehicle_all")),
 ):
     """Fleet efficiency — miles, fuel, idle/drive time per vehicle."""

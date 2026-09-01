@@ -14,7 +14,7 @@ import { SignaturePad } from './SignaturePad';
  *
  * Driver: always read-only; the signature was captured at submit time
  * in the Mini App.  Reviewer: read-only once captured; otherwise a
- * "Co-sign" button is offered when the caller has ``can_inspections_all``
+ * "Co-sign" button is offered when the caller has ``can_manage_inspections``
  * and the inspection is currently in the ``submitted`` state (you can
  * only co-sign something that's been driver-submitted).
  *
@@ -86,7 +86,7 @@ export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
   // else either lacks authority (drivers) or has nothing to co-sign on
   // (an in-progress inspection isn't finalized yet).
   const canCoSign =
-    has('can_inspections_all')
+    has('can_manage_inspections')
     && ins.status === 'submitted'
     && !ins.reviewer_signature;
 

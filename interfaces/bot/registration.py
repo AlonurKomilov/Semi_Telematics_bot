@@ -65,6 +65,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_items.append("🔧 Faults · 🚨 Critical · 🏥 Health · 📊 Efficiency · 🌡 Weather")
     if perms.can_fuel:
         report_items.append("⛽ Fuel & DEF levels")
+    # Width claim, legacy pair on purpose — the vehicles pair is
+    # view/view, so can_view_vehicles cannot say "wide only".
+    # Moves in the width pass.
     if perms.can_vehicle_all:
         report_items.append("🚛 Search any vehicle")
     elif perms.can_vehicle_vehicle:

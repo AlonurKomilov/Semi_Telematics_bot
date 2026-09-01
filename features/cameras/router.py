@@ -58,6 +58,11 @@ async def camera_checks(
     vehicle: str | None = Query(None, description="Filter by vehicle name"),
     latest_only: bool = Query(True, description="Only latest check per vehicle"),
     limit: int = Query(100, ge=1, le=500),
+    # Legacy pair flag on purpose: this is a WIDTH claim ("fleet-wide
+    # only"), and the vehicles pair is view/view — both halves map to
+    # can_view_vehicles, so the grammar has no wide-only name and
+    # migrating here would ADMIT every assigned-width viewer.  Moves
+    # in the width pass, when a width-aware dependency exists.
     user: dict = Depends(require_permission_any("can_cameras", "can_vehicle_all")),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -75,6 +80,11 @@ async def camera_checks(
 @router.get("/cameras/{check_id}/image")
 async def camera_check_image(
     check_id: int,
+    # Legacy pair flag on purpose: this is a WIDTH claim ("fleet-wide
+    # only"), and the vehicles pair is view/view — both halves map to
+    # can_view_vehicles, so the grammar has no wide-only name and
+    # migrating here would ADMIT every assigned-width viewer.  Moves
+    # in the width pass, when a width-aware dependency exists.
     user: dict = Depends(require_permission_any("can_cameras", "can_vehicle_all")),
     tenant_db=Depends(get_tenant_db),
 ):

@@ -31,6 +31,9 @@ export interface Permissions {
   can_manage_maintenance: boolean;
   can_view_work_orders: boolean;
   can_manage_work_orders: boolean;
+  can_view_vehicles: boolean;
+  can_view_inspections: boolean;
+  can_manage_inspections: boolean;
   can_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;

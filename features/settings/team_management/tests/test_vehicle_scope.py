@@ -100,3 +100,43 @@ class TestEveryResolverUsesTheModel:
         # Re-deriving would mention the driver role; the adapter must not.
         assert "DRIVER" not in src and "driver" not in src.replace(
             "get_member_vehicle_scope", "").replace("db_user", "")
+
+
+class TestTheBridgeHelperAsksTwoDifferentQuestions:
+    """``member_unit_scope`` is NOT ``get_member_vehicle_scope`` with a
+    grant check bolted on — the two ask different questions and must
+    default in OPPOSITE directions.  Enforcement found this: wiring
+    the first family narrowed a wide-granted owner to nothing whenever
+    the member row (or the whole platform) could not be read.
+
+      * "what is this member's scope?" — unknown → 'assigned', the
+        cautious answer, because we are describing a person.
+      * "should this WIDE-granted request be narrowed?" — unknown
+        means no override is KNOWN, and inventing one deletes a
+        legitimate caller's data.  The grant is authoritative during
+        the bridge, so unknown → 'all'.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_platform_falls_back_to_the_grant_not_to_assigned(self):
+        from interfaces.api.deps import member_unit_scope
+        # Owner: wide grant from seeds, no infra booted in this test —
+        # the helper must not narrow.
+        got = await member_unit_scope(
+            {"role": "owner", "account_id": 1}, "maintenance")
+        assert got == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_narrow_grant_still_narrows_without_any_lookup(self):
+        from interfaces.api.deps import member_unit_scope
+        # Driver: the seeded grant is vehicle-only, so the answer is
+        # 'assigned' from the grant alone — no member row needed.
+        got = await member_unit_scope(
+            {"role": "driver", "account_id": 1}, "maintenance")
+        assert got == "assigned"
+
+    @pytest.mark.asyncio
+    async def test_the_sibling_question_keeps_its_cautious_default(self):
+        from interfaces.api.deps import get_member_vehicle_scope
+        assert await get_member_vehicle_scope(
+            {"role": "owner", "account_id": 1}) == "assigned"
