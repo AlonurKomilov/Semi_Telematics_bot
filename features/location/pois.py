@@ -256,7 +256,7 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
 async def map_pois(
     poi_type: str = Query(..., alias="type", min_length=1, max_length=50),
     bbox: str = Query(..., description="south,west,north,east"),
-    user: dict = Depends(require_permission_any("can_location_map", "can_location_vehicle")),
+    user: dict = Depends(require_permission("can_view_location")),
 ):
     """POI overlay data for map layers.
 
@@ -529,7 +529,7 @@ class _PinDropRequest(BaseModel):
 
 @router.get("/custom-layers")
 async def list_custom_layers(
-    user: dict = Depends(require_permission_any("can_location_map", "can_location_vehicle")),
+    user: dict = Depends(require_permission("can_view_location")),
 ):
     """List active custom POI layers for the caller's account."""
     tenant = await get_tenant_db(user["account_id"])

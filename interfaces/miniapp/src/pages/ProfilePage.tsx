@@ -94,12 +94,12 @@ function langLabel(code: string | null): string {
 
 function permGroups(perms: Record<string, boolean>): { label: string; on: boolean }[] {
   return [
-    { label: 'See own vehicle on map',     on: !!(perms.can_location_map || perms.can_location_vehicle) },
+    { label: 'See own vehicle on map',     on: !!(perms.can_view_location) },
     { label: 'See alerts for own vehicle', on: !!(perms.can_alerts_all || perms.can_alerts_vehicle) },
     { label: 'See own scorecard',          on: !!(perms.can_scorecard_all || perms.can_scorecard_vehicle) },
-    { label: 'See own routes',             on: !!(perms.can_route_all || perms.can_route_vehicle) },
+    { label: 'See own routes',             on: !!(perms.can_view_routes) },
     { label: 'See own maintenance',        on: !!(perms.can_maintenance_all || perms.can_maintenance_vehicle) },
-    { label: 'See own safety events',      on: !!(perms.can_events_all || perms.can_events_vehicle) },
+    { label: 'See own safety events',      on: !!(perms.can_view_events) },
   ];
 }
 

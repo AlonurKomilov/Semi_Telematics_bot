@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException
 
 from interfaces.api.deps import (
-    require_permission_any, get_tenant_db, get_platform_db,
+    member_unit_scope,
+    require_permission, require_permission_any, get_tenant_db, get_platform_db,
     get_user_vehicle_nums, get_user_company_codes,
     validate_company_access, filter_by_allowed_companies,
 )
@@ -44,7 +45,12 @@ async def _events_vehicle_scope(user: dict, tenant_db):
     "229 Idris Ahmed"); the id rungs now do that on purpose, and survive
     a rename that drops the number entirely.
     """
-    if user.get("_matched_perm") != "can_events_vehicle":
+    # Width, asked of the width layer.  This used to read
+    # ``_matched_perm`` — the flag require_permission_any happened
+    # to match — which encoded "wide grant absent" as a side effect
+    # of dependency ordering.  member_unit_scope asks it directly
+    # and additionally honours a member-level override.
+    if await member_unit_scope(user, "events") != "assigned":
         return None
     trucks = await get_user_vehicle_nums(user)
     if not trucks:
@@ -63,7 +69,7 @@ async def safety_events(
     event_type: str | None = Query(None, description="crash, braking, harshTurn, etc."),
     driver: str | None = Query(None, description="Filter by driver name (substring)"),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    user: dict = Depends(require_permission("can_view_events")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Safety events — harsh braking, crashes, speeding, etc.
@@ -202,7 +208,7 @@ async def safety_events(
 async def safety_events_summary(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    user: dict = Depends(require_permission("can_view_events")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -291,7 +297,7 @@ async def safety_events_summary(
 async def safety_event_video(
     event_id: str,
     angle: str = Query("forward", pattern="^(forward|inward)$"),
-    user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    user: dict = Depends(require_permission("can_view_events")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Return a freshly-signed Samsara video URL as JSON.
@@ -347,7 +353,7 @@ async def safety_event_video(
 @router.get("/events/heatmap")
 async def safety_events_heatmap(
     days: int = Query(30, ge=1, le=90),
-    user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    user: dict = Depends(require_permission("can_view_events")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Lat/lon density of safety events over the trailing window
@@ -370,7 +376,7 @@ async def safety_events_heatmap(
         user["account_id"], days=days, limit=10000,
     )
     # Restrict drivers with _own permission to their own truck(s).
-    if user.get("_matched_perm") == "can_events_vehicle":
+    if await member_unit_scope(user, "events") == "assigned":
         scope = await _events_vehicle_scope(user, tenant_db)
         if scope is not None:
             rows = [r for r in rows if scope.allows_row(r, name_key="vehicle_name")]

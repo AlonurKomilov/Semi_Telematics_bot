@@ -81,11 +81,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tool_items = []
     if perms.can_scorecard_all or perms.can_scorecard_vehicle:
         tool_items.append("🏆 Scorecards")
-    if perms.can_location_map or perms.can_location_vehicle:
+    if perms.can_view_location:
         tool_items.append("🗺 Live fleet map")
-    if perms.can_route_all or perms.can_route_vehicle:
+    if perms.can_view_routes:
         tool_items.append("🛣 Routes")
-    if perms.can_geofence_all or perms.can_geofence_vehicle:
+    if perms.can_view_geofence:
         tool_items.append("📍 Geofences")
     if tool_items:
         lines.append(f"\n  {t('help.tools_label')}")

@@ -242,7 +242,12 @@ async def scope_for(user: dict, deps: Any):
     company_codes = await deps.get_user_company_codes(user)
     truck_names: list[str] | None = None
     scope = None
-    if user.get("_matched_perm") == "can_parking_vehicle":
+    # Width, asked of the width layer.  This used to read
+    # ``_matched_perm`` — the flag require_permission_any happened
+    # to match — which encoded "wide grant absent" as a side effect
+    # of dependency ordering.  member_unit_scope asks it directly
+    # and additionally honours a member-level override.
+    if await deps.member_unit_scope(user, "parking") == "assigned":
         truck_names = await deps.get_user_vehicle_nums(user)
         # Resolve the assignment strings into the identity ladder so the
         # wall matches on registry / provider id before falling back to

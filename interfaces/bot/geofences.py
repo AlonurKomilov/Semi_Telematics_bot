@@ -37,7 +37,7 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         company: str | None = None):
     """List geofences — Samsara zones + platform zones."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_geofence_all") or can(user.role, "can_geofence_vehicle")):
+    if not (can(user.role, "can_view_geofence")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return

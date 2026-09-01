@@ -48,7 +48,7 @@ class GeofenceCreateRequest(BaseModel):
 @router.get("")
 async def list_geofences(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_geofence_all", "can_geofence_vehicle")),
+    user: dict = Depends(require_permission("can_view_geofence")),
 ):
     """Geofence polygons for map overlay."""
     allowed = await get_user_company_codes(user)
@@ -154,7 +154,7 @@ async def list_geofences(
 @router.post("", status_code=201)
 async def create_geofence(
     body: GeofenceCreateRequest,
-    user: dict = Depends(require_permission("can_geofence_all")),
+    user: dict = Depends(require_permission("can_manage_geofence")),
 ):
     """Create a new platform-owned geofence zone."""
     if body.shape_type == "circle":
@@ -203,7 +203,7 @@ async def create_geofence(
 @router.delete("/{zone_id}", status_code=200)
 async def delete_geofence(
     zone_id: int,
-    user: dict = Depends(require_permission("can_geofence_all")),
+    user: dict = Depends(require_permission("can_manage_geofence")),
 ):
     """Soft-delete a platform-owned geofence zone."""
     tenant = await get_tenant_db(user["account_id"])

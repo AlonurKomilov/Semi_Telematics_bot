@@ -27,7 +27,7 @@ export default function SafetyEventOverlay({
   heatOn,
 }: LiveMapSectionProps) {
   const { has } = useViewPermissions();
-  const hasEventsPerm = has('can_events_all') || has('can_events_vehicle');
+  const hasEventsPerm = has('can_view_events');
   const layerRef = useRef<L.Layer | null>(null);
 
   useEffect(() => {

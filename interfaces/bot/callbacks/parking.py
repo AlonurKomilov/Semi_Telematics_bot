@@ -21,6 +21,7 @@ def _own_only(user) -> bool:
     """
     return (
         user.role == Role.DRIVER
+        # Width claim, legacy flag — see the note in bot/events.py.
         and not can(user.role, "can_parking_all")
         and can(user.role, "can_parking_vehicle")
     )
@@ -54,7 +55,7 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
     query = update.callback_query
     await query.answer()
 
-    if not can(user.role, "can_parking_all") and not can(user.role, "can_parking_vehicle"):
+    if not can(user.role, "can_view_parking"):
         await query.answer(t("access.no_parking_access"), show_alert=True)
         return
 
@@ -112,7 +113,7 @@ async def _handle_parking_history(update, context, user, days: int = 7):
     query = update.callback_query
     await query.answer()
 
-    if not can(user.role, "can_parking_all") and not can(user.role, "can_parking_vehicle"):
+    if not can(user.role, "can_view_parking"):
         await query.answer(t("access.no_parking_access"), show_alert=True)
         return
 
@@ -154,7 +155,7 @@ async def _handle_parking_detail(update, context, user, event_id: int):
     query = update.callback_query
     await query.answer()
 
-    if not can(user.role, "can_parking_all") and not can(user.role, "can_parking_vehicle"):
+    if not can(user.role, "can_view_parking"):
         await query.answer(t("access.no_parking_access"), show_alert=True)
         return
 

@@ -27,23 +27,23 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Ask AI about vehicles, faults, trips, and events', keywords: ['chat','assistant','gpt'] },
 
   // Fleet
-  { label: 'Live Map',    path: '/live-map',       icon: Map,           group: 'Fleet',  permission: ['can_location_map', 'can_location_vehicle'],
+  { label: 'Live Map',    path: '/live-map',       icon: Map,           group: 'Fleet',  permission: ['can_view_location'],
     description: 'Real-time map of every vehicle', keywords: ['map','gps','location'] },
   { label: 'Vehicles',    path: '/vehicles',  icon: Truck,         group: 'Fleet',  permission: ['can_view_vehicles'],
     description: 'List of trucks, status, fuel and faults', keywords: ['trucks','assets'] },
-  { label: 'Routes',      path: '/routes',    icon: Route,         group: 'Fleet',  permission: ['can_route_all', 'can_route_vehicle'],
+  { label: 'Routes',      path: '/routes',    icon: Route,         group: 'Fleet',  permission: ['can_view_routes'],
     description: 'Trip history and active routes', keywords: ['trips','dispatch'] },
-  { label: 'Geofences',   path: '/geofences', icon: MapPin,        group: 'Fleet',  permission: ['can_geofence_all', 'can_geofence_vehicle'],
+  { label: 'Geofences',   path: '/geofences', icon: MapPin,        group: 'Fleet',  permission: ['can_view_geofence'],
     description: 'Zones that trigger arrival/exit alerts', keywords: ['zones','boundaries'] },
   { label: 'Maintenance', path: '/maintenance',     icon: Wrench,        group: 'Fleet',  permission: ['can_view_maintenance'],
     description: 'Scheduled service and open tasks', keywords: ['service','repair','tasks'] },
-  { label: 'Parking',     path: '/parking',   icon: ParkingSquare, group: 'Fleet',  permission: ['can_parking_all', 'can_parking_vehicle'],
+  { label: 'Parking',     path: '/parking',   icon: ParkingSquare, group: 'Fleet',  permission: ['can_view_parking'],
     description: 'Where drivers park and safety classification', keywords: ['parking','safe'] },
 
   // Safety
   { label: 'Scorecards', path: '/scorecards', icon: Trophy,        group: 'Safety', permission: ['can_scorecard_all', 'can_scorecard_vehicle'],
     description: 'Driver behaviour scoring and ranking', keywords: ['drivers','score','behavior'] },
-  { label: 'Safety Events',     path: '/safety-events',     icon: AlertTriangle, group: 'Safety', permission: ['can_events_all', 'can_events_vehicle'],
+  { label: 'Safety Events',     path: '/safety-events',     icon: AlertTriangle, group: 'Safety', permission: ['can_view_events'],
     description: 'Harsh braking, speeding, and crash events', keywords: ['harsh','speeding','crash'] },
   { label: 'Cameras',           path: '/cameras',    icon: Camera,        group: 'Safety', permission: ['can_cameras'],
     description: 'Vehicle dashcam footage', keywords: ['video','dashcam'] },

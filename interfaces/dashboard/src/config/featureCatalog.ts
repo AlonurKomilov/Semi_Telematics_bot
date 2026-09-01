@@ -126,6 +126,8 @@ export const CANONICAL_WIRE_FLAGS: readonly string[] = [
   'can_view_maintenance', 'can_manage_maintenance',
   'can_view_work_orders', 'can_manage_work_orders',
   'can_view_vehicles', 'can_view_inspections', 'can_manage_inspections',
+  'can_view_location', 'can_view_routes', 'can_view_parking',
+  'can_view_geofence', 'can_manage_geofence', 'can_view_events',
 ];
 
 export const FEATURE_CATALOG: CatalogFeature[] = [

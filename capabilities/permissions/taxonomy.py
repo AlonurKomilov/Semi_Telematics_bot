@@ -105,7 +105,11 @@ TAXONOMY: dict[str, Verdict] = {
     "can_vehicle_vehicle":   Verdict(S, "can_view_vehicles"),
     "can_parking_all":       Verdict(V, "can_view_parking"),
     "can_parking_vehicle":   Verdict(S, "can_view_parking"),
-    "can_geofence_all":      Verdict(V, "can_view_geofence"),
+    "can_geofence_all":      Verdict(
+        M, "can_manage_geofence",
+        "third of this shape (after maintenance and inspections): the "
+        "zone CRUD — create and delete — rides the wide flag, so it is "
+        "a manage verb, not a wide read"),
     "can_geofence_vehicle":  Verdict(S, "can_view_geofence"),
     "can_location_map":      Verdict(
         V, "can_view_location",

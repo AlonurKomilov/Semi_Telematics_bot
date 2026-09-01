@@ -15,7 +15,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from interfaces.api.deps import (
-    require_permission_any,
+    member_unit_scope,
+    require_permission, require_permission_any,
     get_user_company_codes,
     validate_company_access,
     filter_by_allowed_companies,
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/map", tags=["map"])
 @router.get("/vehicles")
 async def map_vehicles(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_location_map", "can_location_vehicle")),
+    user: dict = Depends(require_permission("can_view_location")),
 ):
     """Current positions for all vehicles — optimized for map rendering.
 
@@ -108,7 +109,7 @@ async def map_vehicles(
 @router.get("/vehicles/live")
 async def map_vehicles_live(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_location_map", "can_location_vehicle")),
+    user: dict = Depends(require_permission("can_view_location")),
 ):
     """Lightweight position-only update for smooth live tracking.
 
@@ -146,8 +147,13 @@ async def map_vehicles_live(
             "updated_at": loc.get("time", ""),
         }
 
-    if user.get("_matched_perm") == "can_location_vehicle":
-        from interfaces.api.deps import get_user_vehicle_nums
+    # Width, asked of the width layer.  This used to read
+    # ``_matched_perm`` — the flag require_permission_any happened
+    # to match — which encoded "wide grant absent" as a side effect
+    # of dependency ordering.  member_unit_scope asks it directly
+    # and additionally honours a member-level override.
+    if await member_unit_scope(user, "location") == "assigned":
+        from interfaces.api.deps import get_user_vehicle_nums, require_permission
         trucks = await get_user_vehicle_nums(user)
         if not trucks:
             return {"positions": {}}

@@ -43,7 +43,7 @@ export default function GeofenceBoundariesLayer({
   isReady,
 }: LiveMapSectionProps) {
   const { has } = useViewPermissions();
-  const hasGeofencePerm = has('can_geofence_all') || has('can_geofence_vehicle');
+  const hasGeofencePerm = has('can_view_geofence');
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {

@@ -34,6 +34,12 @@ export interface Permissions {
   can_view_vehicles: boolean;
   can_view_inspections: boolean;
   can_manage_inspections: boolean;
+  can_view_location: boolean;
+  can_view_routes: boolean;
+  can_view_parking: boolean;
+  can_view_geofence: boolean;
+  can_manage_geofence: boolean;
+  can_view_events: boolean;
   can_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;

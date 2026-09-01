@@ -15,6 +15,7 @@ from adapters.storage.object_storage import get_object_storage_for_account
 
 from interfaces.api import deps as _deps
 from interfaces.api.deps import (
+    require_permission,
     require_permission_any, get_tenant_db, get_user_vehicle_nums,
     get_user_company_codes, filter_by_allowed_companies,
 )
@@ -23,7 +24,7 @@ from features.parking import service as parking_service
 
 router = APIRouter(prefix="/parking", tags=["parking"])
 
-_parking_read = require_permission_any("can_parking_all", "can_parking_vehicle")
+_parking_read = require_permission("can_view_parking")
 
 
 async def _scope(user: dict):
@@ -47,7 +48,7 @@ async def _scope(user: dict):
 async def active_parking(
     attention_only: bool = Query(True, description="Only unsafe/unknown events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
-    user: dict = Depends(require_permission_any("can_parking_all", "can_parking_vehicle")),
+    user: dict = Depends(require_permission("can_view_parking")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get all active (unresolved) parking events.
@@ -112,7 +113,7 @@ async def parking_history(
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     location_class: str | None = Query(None, description="Filter: safe, unsafe, unknown"),
     limit: int = Query(100, ge=1, le=500),
-    user: dict = Depends(require_permission_any("can_parking_all", "can_parking_vehicle")),
+    user: dict = Depends(require_permission("can_view_parking")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get resolved parking event history."""
@@ -134,7 +135,7 @@ async def parking_history(
 @router.get("/{event_id}")
 async def parking_detail(
     event_id: int,
-    user: dict = Depends(require_permission_any("can_parking_all", "can_parking_vehicle")),
+    user: dict = Depends(require_permission("can_view_parking")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get a single parking event by ID."""
@@ -152,7 +153,7 @@ async def parking_detail(
 @router.post("/{event_id}/resolve")
 async def resolve_parking(
     event_id: int,
-    user: dict = Depends(require_permission_any("can_parking_all", "can_parking_vehicle")),
+    user: dict = Depends(require_permission("can_view_parking")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Manually resolve a parking event from the web UI."""
@@ -175,7 +176,7 @@ async def resolve_parking(
 
 @router.get("/stats/summary")
 async def parking_stats(
-    user: dict = Depends(require_permission_any("can_parking_all", "can_parking_vehicle")),
+    user: dict = Depends(require_permission("can_view_parking")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Summary stats for parking events (used by Overview page)."""
@@ -207,7 +208,7 @@ async def parking_stats(
 @router.get("/{event_id}/map-image")
 async def parking_map_image(
     event_id: int,
-    user: dict = Depends(require_permission_any("can_parking_all", "can_parking_vehicle")),
+    user: dict = Depends(require_permission("can_view_parking")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Serve the AI-analyzed satellite/road map image for a parking event."""

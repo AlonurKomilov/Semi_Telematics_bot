@@ -23,7 +23,7 @@ from interfaces.bot.auth import _require_registered
 async def cmd_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show format/period picker for events dashboard."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_events_all") or can(user.role, "can_events_vehicle")):
+    if not (can(user.role, "can_view_events")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -43,7 +43,7 @@ async def cmd_events_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           days: int = 7):
     """Generate events text dashboard."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_events_all") or can(user.role, "can_events_vehicle")):
+    if not (can(user.role, "can_view_events")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -58,6 +58,10 @@ async def cmd_events_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
         events = await _svc_get_events(user.account_id, days=days)
 
         # Driver role: filter to own vehicle events only
+        # Width claim on the legacy flag: these pairs are view/view,
+        # so the view verb cannot say "wide only", and the bot has
+        # no width-aware helper yet (member_unit_scope takes an API
+        # user dict).  Moves in the width pass.
         if user.role == Role.DRIVER and not can(user.role, "can_events_all"):
             vehicle_nums = [user.truck_num] if user.truck_num else []
             events = _filter_events_by_access(events, vehicle_nums)
@@ -79,7 +83,7 @@ async def cmd_events_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
                          days: int = 7):
     """Generate events CSV export."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_events_all") or can(user.role, "can_events_vehicle")):
+    if not (can(user.role, "can_view_events")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -94,6 +98,10 @@ async def cmd_events_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
         events = await _svc_get_events(user.account_id, days=days)
 
         # Driver role: filter to own vehicle events only
+        # Width claim on the legacy flag: these pairs are view/view,
+        # so the view verb cannot say "wide only", and the bot has
+        # no width-aware helper yet (member_unit_scope takes an API
+        # user dict).  Moves in the width pass.
         if user.role == Role.DRIVER and not can(user.role, "can_events_all"):
             vehicle_nums = [user.truck_num] if user.truck_num else []
             events = _filter_events_by_access(events, vehicle_nums)

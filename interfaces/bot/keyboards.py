@@ -40,8 +40,8 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         # wrapper.  The submenu_* builders below still exist as
         # fallbacks for cached buttons.
         has_reports = (perms.can_vehicle_all
-                       or perms.can_events_all or perms.can_events_vehicle)
-        has_parking = perms.can_parking_all or perms.can_parking_vehicle
+                       or perms.can_view_events)
+        has_parking = perms.can_view_parking
         has_fuel_cost = perms.can_fuel_cost
 
         row1 = []
@@ -67,7 +67,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
 
         # Live Map Mini App (visible when WEBAPP_URL is configured)
         from interfaces.bot.config import WEBAPP_URL
-        if WEBAPP_URL and (perms.can_location_map or perms.can_location_vehicle):
+        if WEBAPP_URL and (perms.can_view_location):
             rows.append([InlineKeyboardButton(
                 "🗺 Live Map",
                 web_app=WebAppInfo(url=f"{WEBAPP_URL}#map"),
@@ -123,7 +123,7 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
     perms = get_permissions(role)
     rows = []
 
-    if perms.can_events_all or perms.can_events_vehicle:
+    if perms.can_view_events:
         rows.append([InlineKeyboardButton(t("tools_menu.events"), callback_data="cmd_events")])
 
     if perms.can_vehicle_all:
@@ -145,7 +145,7 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     rows = []
 
     # Parking — driver-scoped event view (Parking's own permission)
-    if perms.can_parking_all or perms.can_parking_vehicle:
+    if perms.can_view_parking:
         rows.append([InlineKeyboardButton("🅿️ Parking", callback_data="cmd_parking_events")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])

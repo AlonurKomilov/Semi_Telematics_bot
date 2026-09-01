@@ -196,7 +196,7 @@ export default function AppRouter() {
             truth); the persona context is carried by the subdomain
             (fleet.4truck.us etc.) and the active shell, never the URL
             path. */}
-        <Route path="live-map" element={L(<P perm={['can_location_map', 'can_location_vehicle']}><LiveMap /></P>)} />
+        <Route path="live-map" element={L(<P perm={['can_view_location']}><LiveMap /></P>)} />
         <Route path="vehicles" element={L(<P perm={['can_view_vehicles']}><Vehicles /></P>)} />
         <Route path="vehicles/inventory" element={L(<P perm={['can_view_vehicles']}><VehicleInventory /></P>)} />
         {/* Before the parametric vehicle route for the same reason the
@@ -204,12 +204,12 @@ export default function AppRouter() {
             as a truck name. */}
         <Route path="vehicles/documents" element={L(<P perm={['can_vehicle_docs']}><VehicleDocuments /></P>)} />
         <Route path="vehicles/:name" element={L(<P perm={['can_view_vehicles']}><VehicleDetail /></P>)} />
-        <Route path="routes" element={L(<P perm={['can_route_all', 'can_route_vehicle']}><RoutesPage /></P>)} />
-        <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_vehicle']}><Geofences /></P>)} />
+        <Route path="routes" element={L(<P perm={['can_view_routes']}><RoutesPage /></P>)} />
+        <Route path="geofences" element={L(<P perm={['can_view_geofence']}><Geofences /></P>)} />
         <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Parking /></P>)} />
         <Route path="alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Alerts /></P>)} />
         <Route path="scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_vehicle']}><Scorecards /></P>)} />
-        <Route path="safety-events" element={L(<P perm={['can_events_all', 'can_events_vehicle']}><Events /></P>)} />
+        <Route path="safety-events" element={L(<P perm={['can_view_events']}><Events /></P>)} />
         <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
 
         {/* AI Assistant — gate on the SAME flag as the sidebar entry

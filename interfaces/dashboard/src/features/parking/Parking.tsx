@@ -52,7 +52,7 @@ export default function Parking() {
   const [confirming, setConfirming] = useState<ParkingEvent | null>(null);
   const [error, setError] = useState('');
 
-  const canResolve = has('can_parking_all') || has('can_parking_vehicle');
+  const canResolve = has('can_view_parking');
 
   const { data, isLoading, isFetching, error: queryError, refetch, dataUpdatedAt } =
     useQuery({
