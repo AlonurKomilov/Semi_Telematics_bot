@@ -1169,7 +1169,8 @@
       "close": "Cerrar",
       "step_of": "Paso {{n}} de {{total}}",
       "finish": "Terminar el tour",
-      "beacon": "Hay algo que aprender aquí — abrir el tour"
+      "beacon": "Hay algo que aprender aquí — abrir el tour",
+      "escape_hint": "Pulse Escape para salir del tour."
     },
     "maintenance.bulk_add": {
       "title": "Una tarea para varios vehículos",
@@ -1179,6 +1180,7 @@
       "step3": "Elija los vehículos — pruebe con uno o dos primero; el mismo paso sirve para cien.",
       "step4": "Elija el tipo de servicio y pulse “Create”. La tarea se crea en cada vehículo seleccionado.",
       "done": "La tarea se creó para todos los vehículos seleccionados.",
+      "intro_observed_one": "He notado que ha agregado {{count}} tarea una por una últimamente. Una tarea puede ir a varios vehículos a la vez — ¿quiere que se lo muestre con su próxima tarea?",
       "intro_observed_other": "He notado que ha agregado {{count}} tareas una por una últimamente. Una tarea puede ir a varios vehículos a la vez — ¿quiere que se lo muestre con su próxima tarea?",
       "commit_one": "Esto creará {{count}} tarea real para el vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión.",
       "commit_other": "Esto creará {{count}} tareas reales — una por vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión."

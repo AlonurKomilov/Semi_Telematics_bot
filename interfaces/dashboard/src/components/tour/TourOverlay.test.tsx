@@ -211,3 +211,93 @@ describe('commit steps — the hands-off ending', () => {
       expect(screen.getByText('tour.labels.done_title')).toBeTruthy());
   });
 });
+
+describe('keyboard reachability — the ring is a sighted-only instruction', () => {
+  it('gives the keyboard the control the step points at', async () => {
+    // WCAG 2.1.1: a mouse user clicks the ringed button; a keyboard
+    // user was told "press New task" and left to Tab hunting for it.
+    const btn = mountAnchor('kb1');
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'kb1', advanceOn: 'click' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(btn));
+  });
+
+  it('focuses a focusable CHILD when the anchor is a container', async () => {
+    // Step 3's anchor is the chip well — a div.  The step means "pick
+    // one", so the keyboard lands on a chip, not on the box.
+    const well = mountAnchor('kb2', 'div');
+    const chip = document.createElement('button');
+    well.appendChild(chip);
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'kb2', advanceOn: 'click' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(chip));
+  });
+
+  it('an anchor with nothing focusable inside changes nothing', async () => {
+    // A purely decorative anchor must not blank the user's focus —
+    // moving it to <body> would be worse than leaving it alone.
+    const para = mountAnchor('kb3', 'p');
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'kb3', advanceOn: 'click' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    await screen.findByText('tour.labels.step_of');
+    expect(para.contains(document.activeElement)).toBe(false);
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('the step sentence is the live region; the chrome is hidden from it', async () => {
+    mountAnchor('kb4');
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'kb4', advanceOn: 'click' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    const card = await screen.findByRole('status');
+    // The announcement carries the step, not the geometry.
+    expect(card.textContent).toContain('tour.labels.step_of');
+    // The five decorative layers (four dim panels + the ring) are
+    // aria-hidden AND live outside the announced region — they
+    // re-render every scroll frame, and inside it they would become a
+    // stream of noise over the one sentence that matters.  (An
+    // aria-hidden icon INSIDE the card is fine and expected: the Exit
+    // button's X.  The claim is about the geometry, so the test says
+    // geometry — an earlier draft counted every aria-hidden node and
+    // failed on that icon, testing something it did not mean.)
+    const decor = Array.from(document.querySelectorAll('[aria-hidden]'))
+      .filter((el) => (el as HTMLElement).style.position === 'fixed'
+        || el.className.toString().includes('fixed'));
+    expect(decor.length).toBe(5);
+    expect(decor.some((el) => card.contains(el))).toBe(false);
+  });
+
+  it('promises Escape to a screen reader, not only to the code', async () => {
+    mountAnchor('kb5');
+    render(
+      <TourOverlay
+        tour={tour([{ anchor: 'kb5', advanceOn: 'click' }])}
+        onDone={() => {}}
+        onExit={() => {}}
+      />,
+    );
+    expect(await screen.findByText('tour.labels.escape_hint')).toBeTruthy();
+  });
+});

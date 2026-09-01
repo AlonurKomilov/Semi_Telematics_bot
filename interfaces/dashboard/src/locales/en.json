@@ -1456,7 +1456,8 @@
       "close": "Close",
       "step_of": "Step {{n}} of {{total}}",
       "finish": "Finish tour",
-      "beacon": "Something to learn here — open the tour"
+      "beacon": "Something to learn here — open the tour",
+      "escape_hint": "Press Escape to leave the tour."
     },
     "maintenance.bulk_add": {
       "title": "Add one task to many vehicles",

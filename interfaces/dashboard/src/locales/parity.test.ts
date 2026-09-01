@@ -94,8 +94,29 @@ const ORPHAN_DEBT: Record<string, string[]> = {
 
 const missingIn = (keys: Record<string, string>) =>
   Object.keys(EN).filter((k) => !(k in keys));
+/**
+ * CLDR plural suffixes English does not have.
+ *
+ * The orphan rule's premise — "the lookup goes through en.json" — holds
+ * for ordinary keys and NOT for plurals: i18next picks the suffix from
+ * the TARGET language's own plural rules, so `ru: …_many` renders for
+ * Russian counts ending 0/5-9 even though English never declares a
+ * `_many`.  Russian and Ukrainian decline a noun by count in four
+ * bands; forcing them to English's two would print "6 задачи".
+ *
+ * Narrow on purpose: the base key must still exist in English as
+ * `_other`, so a typo'd or abandoned key is still an orphan.  Without
+ * that requirement this becomes a hole any stray `_few` slips through.
+ */
+const CLDR_EXTRA = /_(zero|two|few|many)$/;
+
 const orphansIn = (keys: Record<string, string>) =>
-  Object.keys(keys).filter((k) => !(k in EN));
+  Object.keys(keys).filter((k) => {
+    if (k in EN) return false;
+    const m = CLDR_EXTRA.exec(k);
+    if (m && `${k.slice(0, -m[0].length)}_other` in EN) return false;
+    return true;
+  });
 
 describe('locale parity', () => {
   it('finds the locale files at all', () => {

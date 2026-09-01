@@ -106,6 +106,20 @@ export default function TourOverlay({
         elRef.current = el;
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         setRect(measure(el));
+        // Hand the keyboard the control the step is pointing at.  A
+        // mouse user notices nothing; a keyboard user was otherwise
+        // told "press New task" and left to Tab across the page
+        // hunting for it — the ring is a sighted-only instruction
+        // (WCAG 2.1.1).  ONCE per step, never re-asserted: a tour that
+        // keeps yanking focus back is a jailer, and the page must stay
+        // the user's.  preventScroll because scrollIntoView above
+        // already framed it the way the cutout expects.
+        const focusable = el.matches(
+          'button, a[href], input, select, textarea, [tabindex]')
+          ? (el as HTMLElement)
+          : el.querySelector<HTMLElement>(
+              'button, a[href], input, select, textarea, [tabindex]');
+        focusable?.focus?.({ preventScroll: true });
       } else if (Date.now() > deadline) {
         stop();
         onExit();                     // pointing at nothing teaches nothing
@@ -263,22 +277,29 @@ export default function TourOverlay({
   // scrim inverts in dark mode — a bright fog over a dark page.
   const dim = 'fixed bg-background/70 supports-[backdrop-filter]:backdrop-blur-sm pointer-events-none z-[60]';
   return (
-    <div role="status" aria-live="polite">
+    <div>
       {/* Four panels around the cutout — the page stays clickable
           everywhere; only the LIT element matters, and it is the one
           spot the dim never covers. */}
-      <div className={dim} style={{ top: 0, left: 0, right: 0, height: Math.max(0, rect.top) }} />
-      <div className={dim} style={{ top: rect.top + rect.height, left: 0, right: 0, bottom: 0 }} />
-      <div className={dim} style={{ top: rect.top, left: 0, width: Math.max(0, rect.left), height: rect.height }} />
-      <div className={dim} style={{ top: rect.top, left: rect.left + rect.width, right: 0, height: rect.height }} />
+      {/* aria-hidden throughout: the dim and the ring are pure
+          decoration, and they re-render on every scroll frame — inside
+          a live region that becomes a stream of announcements over the
+          one sentence that matters. */}
+      <div aria-hidden className={dim} style={{ top: 0, left: 0, right: 0, height: Math.max(0, rect.top) }} />
+      <div aria-hidden className={dim} style={{ top: rect.top + rect.height, left: 0, right: 0, bottom: 0 }} />
+      <div aria-hidden className={dim} style={{ top: rect.top, left: 0, width: Math.max(0, rect.left), height: rect.height }} />
+      <div aria-hidden className={dim} style={{ top: rect.top, left: rect.left + rect.width, right: 0, height: rect.height }} />
       {/* The ring around the lit control. */}
       <div
+        aria-hidden
         className="fixed z-[60] rounded-lg border-2 border-primary pointer-events-none motion-safe:animate-pulse"
         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
       />
       {/* The step card. */}
       <div
         ref={cardRef}
+        role="status"
+        aria-live="polite"
         className={cn(cardVariants({ padding: 'none' }), 'fixed z-[60] w-80 max-w-[calc(100vw-24px)] p-3 shadow-lg')}
         style={{ top: popTop, bottom: popBottom, left: popLeft }}
       >
@@ -300,6 +321,10 @@ export default function TourOverlay({
         <p className="mt-1 text-sm text-foreground">
           {t(`tour.${tour.key}.step${stepIdx + 1}`)}
         </p>
+        {/* Escape has always worked; only the code knew.  Sighted
+            users have the Exit button above — this is the same promise
+            for everyone else. */}
+        <span className="sr-only">{t('tour.labels.escape_hint')}</span>
         {step.commit && (
           <>
             {liveCount != null && (

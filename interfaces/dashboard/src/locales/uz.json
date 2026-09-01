@@ -802,7 +802,8 @@
       "close": "Yopish",
       "step_of": "{{total}} qadamdan {{n}}-qadam",
       "finish": "Turni yakunlash",
-      "beacon": "Bu yerda o'rganadigan narsa bor — turni ochish"
+      "beacon": "Bu yerda o'rganadigan narsa bor — turni ochish",
+      "escape_hint": "Turdan chiqish uchun Escape tugmasini bosing."
     },
     "maintenance.bulk_add": {
       "title": "Bitta vazifa — bir nechta mashinaga",
@@ -812,6 +813,7 @@
       "step3": "Mashinalarni tanlang — avval bitta-ikkitasida sinab ko'ring; xuddi shu qadam yuztasiga ham ishlaydi.",
       "step4": "Servis turini tanlab, “Create” tugmasini bosing. Vazifa tanlangan har bir mashinada paydo bo'ladi.",
       "done": "Vazifa siz tanlagan barcha mashinalar uchun yaratildi.",
+      "intro_observed_one": "Yaqinda {{count}} ta vazifani bittalab qo'shganingizni ko'rdim. Bitta vazifani bir nechta mashinaga birdan berish mumkin — keyingi vazifangizda ko'rsatib beraymi?",
       "intro_observed_other": "Yaqinda {{count}} ta vazifani bittalab qo'shganingizni ko'rdim. Bitta vazifani bir nechta mashinaga birdan berish mumkin — keyingi vazifangizda ko'rsatib beraymi?",
       "commit_one": "Bu tanlangan mashina uchun {{count}} ta haqiqiy vazifa yaratadi. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz.",
       "commit_other": "Bu {{count}} ta haqiqiy vazifa yaratadi — har bir tanlangan mashinaga bittadan. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz."

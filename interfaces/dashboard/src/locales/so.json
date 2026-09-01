@@ -941,7 +941,8 @@
       "close": "Xir",
       "step_of": "Tallaabo {{n}} ee {{total}}",
       "finish": "Dhammee socdaalka",
-      "beacon": "Halkan wax la barto ayaa jira — fur socdaalka"
+      "beacon": "Halkan wax la barto ayaa jira — fur socdaalka",
+      "escape_hint": "Riix Escape si aad socdaalka uga baxdo."
     },
     "maintenance.bulk_add": {
       "title": "Hal hawl — gawaari badan",
@@ -951,6 +952,7 @@
       "step3": "Dooro gawaarida — marka hore hal ama laba ku tijaabi; isla tallaabadaasi boqol bay u shaqaysaa.",
       "step4": "Dooro nooca adeegga oo riix “Create”. Hawshu waxay ku abuurmaysaa gaari kasta oo la doortay.",
       "done": "Hawsha waxaa loo abuuray dhammaan gawaarida aad dooratay.",
+      "intro_observed_one": "Waxaan arkay inaad dhawaan {{count}} hawl mid mid u dartay. Hal hawl waxay hal mar u geli kartaa gawaari badan — ma rabtaa inaan kugu tuso hawshaada xigta?",
       "intro_observed_other": "Waxaan arkay inaad dhawaan {{count}} hawlood mid mid u dartay. Hal hawl waxay hal mar u geli kartaa gawaari badan — ma rabtaa inaan kugu tuso hawshaada xigta?",
       "commit_one": "Tani waxay gaariga la doortay u abuuri doontaa {{count}} hawl dhab ah. Socdaalku halkan buu ku eg yahay; “Create” riixiddu waa go'aankaaga.",
       "commit_other": "Tani waxay abuuri doontaa {{count}} hawlood oo dhab ah — mid gaari kasta oo la doortay. Socdaalku halkan buu ku eg yahay; “Create” riixiddu waa go'aankaaga."

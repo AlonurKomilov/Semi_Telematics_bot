@@ -107,7 +107,7 @@ describe('tour catalog', () => {
 });
 
 describe('tour locales', () => {
-  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of', 'finish', 'beacon'];
+  const REQUIRED_LABELS = ['show_me', 'skip', 'exit', 'done_title', 'close', 'step_of', 'finish', 'beacon', 'escape_hint'];
 
   it('every locale answers every tour completely', () => {
     // title + body + one line per step + done — same questions in all
