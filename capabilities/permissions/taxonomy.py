@@ -24,9 +24,21 @@ bijection both ways).  Fates:
     link).  The pair's ``*_all`` sibling carries the wide grant and
     maps to its own verb row.
 
+``SERVICE``
+    A cross-cutting service, not a feature: always on for every role,
+    nothing to grant (the matrix UI's "SERVICES" band).  It works over
+    whatever FEATURES the role is allowed — AI answers only from data
+    the role can already see — so a service's access is simply its
+    features' access.  END-OF-MIGRATION NOTE (owner, 2026-09-01):
+    services should eventually leave ``FeatureSet`` entirely, so the
+    matrix and the stored grants never mention them — deferred to the
+    cleanup stage, recorded here so it cannot be forgotten.
+
 ``DERIVED``
-    Computed by ``derive_service_perms`` — never stored, never granted.
-    Untouched; the derivation re-reads the new names when they land.
+    Computed by ``derive_service_perms`` from OTHER grants — never
+    stored, never granted, but not always-on either (the alerts inbox
+    scope follows vehicle visibility).  Untouched; the derivation
+    re-reads the new names when they land.
 
 ``CONFIG``
     The config family (role/account scope pair).  Shipped 2026-07 as a
@@ -51,6 +63,7 @@ class Fate(str, Enum):
     VERB_VIEW = "verb_view"
     VERB_MANAGE = "verb_manage"
     SCOPE_SPLIT = "scope_split"
+    SERVICE = "service"
     DERIVED = "derived"
     CONFIG = "config"
     OWN_LATER = "own_later"
@@ -164,9 +177,11 @@ TAXONOMY: dict[str, Verdict] = {
     "can_onboard_drivers": Verdict(M, "can_onboard_drivers",
                                    "deliberately narrower than both neighbours"),
 
-    # ── computed, never stored ─────────────────────────────────────
-    "can_ai_chat":        Verdict(Fate.DERIVED),
-    "can_digest":         Verdict(Fate.DERIVED),
+    # ── services: always on, nothing to grant ──────────────────────
+    "can_ai_chat":        Verdict(Fate.SERVICE),
+    "can_digest":         Verdict(Fate.SERVICE),
+
+    # ── computed from other grants, never stored ───────────────────
     "can_alerts_all":     Verdict(Fate.DERIVED),
     "can_alerts_vehicle": Verdict(
         Fate.DERIVED,

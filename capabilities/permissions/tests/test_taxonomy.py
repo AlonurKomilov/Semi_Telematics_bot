@@ -85,12 +85,17 @@ def test_no_two_verb_rows_share_a_target():
             seen[v.target] = flag
 
 
-def test_derived_rows_are_exactly_the_derived_flags():
-    """Pinned by name: these four are computed by derive_service_perms
-    and must never be granted or migrated as stored keys."""
+def test_services_and_derived_are_distinct_and_pinned():
+    """The owner's split, pinned by name.  SERVICE = always on for
+    every role, nothing to grant (the matrix UI's SERVICES band) — it
+    rides whatever features the role is allowed.  DERIVED = computed
+    from OTHER grants (the alerts inbox follows vehicle visibility) —
+    also never stored, but not always-on.  Confusing the two buckets
+    would either grant a service or freeze a derivation."""
+    service = {f for f, v in TAXONOMY.items() if v.fate is Fate.SERVICE}
     derived = {f for f, v in TAXONOMY.items() if v.fate is Fate.DERIVED}
-    assert derived == {"can_ai_chat", "can_digest",
-                      "can_alerts_all", "can_alerts_vehicle"}
+    assert service == {"can_ai_chat", "can_digest"}
+    assert derived == {"can_alerts_all", "can_alerts_vehicle"}
 
 
 def test_config_rows_are_exactly_the_config_pair():
