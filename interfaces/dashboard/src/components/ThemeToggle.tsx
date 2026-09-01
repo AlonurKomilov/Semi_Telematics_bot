@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Palette, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Tip } from './tooltip';
@@ -15,6 +15,8 @@ import {
   THEME_PACKS, THEME_MODS, THEME_MATERIALS, THEME_MOTIONS,
   modMatchesAxes, modById, type ThemeMod,
 } from '../lib/themePacks';
+import { SOUND_PACKS, armAudio, playCue, type SoundPack } from '../lib/sound';
+import { usePreference } from '../preferences';
 
 // ── Option rows ──────────────────────────────────────────────
 //
@@ -139,6 +141,27 @@ function Chip<T extends string>({
 export function ThemeToggle() {
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useTheme();
+  const { value: soundPack, setValue: setSoundPack } = usePreference('sound.pack');
+  const { value: volume, setValue: setVolume } = usePreference('sound.volume');
+
+  /**
+   * Hearing it is the only way to choose it, so every gesture in the
+   * sound section plays something: picking a pack plays that pack, and
+   * committing the slider plays at that level.
+   *
+   * The clicked pack's cue is played DIRECTLY rather than through the
+   * stored one — `setValue` is async, so previewing after setting would
+   * play the pack you just left.
+   */
+  const preview = (pack: SoundPack, at: number) => {
+    armAudio();
+    playCue(pack.cues.alert, at);
+  };
+
+  /** The level to come back to. Silencing and restoring must not cost
+   *  somebody the level they set — a mute that resets to 100% is a mute
+   *  people stop using. */
+  const beforeMute = useRef(1);
 
   // The mod that is INSTALLED — read, not recomputed. A mod stays on
   // after you tweak an axis, because that is what installed means and
@@ -384,6 +407,66 @@ export function ThemeToggle() {
                   onClick={(v) => setTheme({ motion: v })} />
               ))}
             </div>
+          </div>
+
+          <div className="border-t border-border" />
+
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('theme.group_sound', 'Sound')}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-2xs tabular-nums text-muted-foreground">
+                  {Math.round(volume * 100)}%
+                </span>
+                {/* Silence and restore, in one control. Zero is a real
+                    setting here rather than a disabled state — it is how
+                    a person quiets one screen without turning off each
+                    feature's own toggle. */}
+                <Tip label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (volume > 0) { beforeMute.current = volume; setVolume(0); }
+                      else setVolume(beforeMute.current || 1);
+                    }}
+                    aria-label={volume > 0 ? t('theme.sound_mute', 'Silence') : t('theme.sound_unmute', 'Unmute')}
+                    className="inline-flex size-5 min-h-tap min-w-tap items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  >
+                    {volume > 0 ? <VolumeX className="size-3" /> : <Volume2 className="size-3" />}
+                  </button>
+                </Tip>
+              </div>
+            </div>
+            <Slider
+              value={volume}
+              min={0}
+              max={1}
+              step={0.05}
+              aria-label={t('theme.sound_label', 'Sound volume')}
+              formatValue={(v) => `${Math.round(v * 100)}%`}
+              onValueCommitted={(v) => {
+                setVolume(v);
+                const pack = SOUND_PACKS.find((p) => p.id === soundPack);
+                if (pack && v > 0) preview(pack, v);
+              }}
+            />
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {SOUND_PACKS.map((p) => (
+                <Chip key={p.id} value={p.id} current={soundPack} label={p.label}
+                  onClick={(v) => {
+                    setSoundPack(v);
+                    if (volume > 0) preview(p, volume);
+                  }} />
+              ))}
+            </div>
+            {/* Says where the sound actually comes from. Without it a
+                silent app at 100% reads as broken, when the truth is
+                that each feature still owns its own switch. */}
+            <p className="text-2xs text-muted-foreground mt-1.5">
+              {t('theme.sound_note', 'Each feature keeps its own switch — this sets the level.')}
+            </p>
           </div>
 
           {/* Per-region sizing and the cross-device switch do not fit a

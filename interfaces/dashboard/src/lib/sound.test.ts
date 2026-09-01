@@ -8,6 +8,8 @@
  * more easily than they can write a malformed colour.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   SOUND_PACKS, CUE_NAMES, CUE_LIMITS, WAVES,
   isSafeCue, playCue, soundPackById, armAudio, resetAudioForTests, type Cue,
@@ -176,5 +178,38 @@ describe('the level is not a second gate', () => {
       .toBeGreaterThan(0);
     expect(DEFS['dispatch.soundOn'].default, 'the real opt-in stopped being opt-in')
       .toBe(false);
+  });
+});
+
+describe('the panel section', () => {
+  const panel = readFileSync(
+    join(__dirname, '..', 'components/ThemeToggle.tsx'), 'utf8');
+
+  it('offers every pack', () => {
+    // Generated from the catalogue, so adding a pack cannot half-land as
+    // a set of cues nobody can select.
+    expect(panel).toContain('SOUND_PACKS.map');
+  });
+
+  it('previews the pack that was clicked, not the one that was stored', () => {
+    // `setValue` is async. Previewing through the stored id plays the
+    // pack you just LEFT, which is the kind of bug that reads as the
+    // preview being broken rather than as one frame of staleness.
+    const onClick = /SOUND_PACKS\.map\([\s\S]{0,600}?preview\((\w+)/.exec(panel);
+    expect(onClick, 'the pack chips no longer preview').not.toBeNull();
+    expect(onClick![1], 'the preview reads a stored id instead of the clicked pack')
+      .toBe('p');
+  });
+
+  it('restores the level it silenced, not a default', () => {
+    // A mute that comes back at 100% is a mute people stop using.
+    expect(panel).toContain('beforeMute');
+    expect(panel).toMatch(/beforeMute\.current = volume/);
+  });
+
+  it('says that each feature keeps its own switch', () => {
+    // Without it a silent app at 100% reads as broken, when the truth is
+    // that `dispatch.soundOn` and its siblings are still the gates.
+    expect(panel).toContain('theme.sound_note');
   });
 });
