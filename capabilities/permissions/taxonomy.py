@@ -185,8 +185,8 @@ TAXONOMY: dict[str, Verdict] = {
     "can_alerts_all":     Verdict(Fate.DERIVED),
     "can_alerts_vehicle": Verdict(
         Fate.DERIVED,
-        "derivation input moves from can_vehicle_all to the TM scope "
-        "when the enforcement stage reaches alerts"),
+        note="derivation input moves from can_vehicle_all to the TM "
+             "scope when the enforcement stage reaches alerts"),
 
     # ── out of this migration, on the record ───────────────────────
     "can_manage_config_role": Verdict(Fate.CONFIG),

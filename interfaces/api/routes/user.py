@@ -47,10 +47,11 @@ async def user_me(
         is_manager=db_user.is_manager,
         is_primary_owner=db_user.is_primary_owner,
     )
-    perm_dict = {
-        field: getattr(perms, field)
-        for field in perms.__dataclass_fields__
-    }
+    # Both grammars on the wire — every legacy field plus every
+    # canonical verb name — so the dashboard can move to the new
+    # grammar page by page, independent of a backend deploy.
+    from capabilities.permissions.roles import wire_perms
+    perm_dict = wire_perms(perms)
 
     # Get multi-truck assignments
     trucks = await platform_db.get_user_vehicle_nums(db_user.id)

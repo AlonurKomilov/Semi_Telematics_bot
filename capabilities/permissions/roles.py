@@ -263,6 +263,91 @@ OWN_VEHICLE_SCOPE_FLAGS: tuple[str, ...] = (
 DARK_FEATURE_FIELDS: frozenset[str] = frozenset({"can_truck_anatomy"})
 
 
+# ─── The canonical verb grammar (the alias bridge) ───────────────
+#
+# The verb/scope contract (taxonomy.py) gives every flag a canonical
+# post-migration name.  During the bridge the STORED fields keep their
+# legacy names — production serves this tree and the matrix, seeds and
+# stored JSON all speak them — and every canonical name is installed
+# as a PROPERTY over the legacy fields, so enforcement sites can move
+# to the new grammar one feature at a time while nothing old breaks.
+# The physical field flip happens in the cleanup stage, when no reader
+# of a legacy name is left.  Recipe: docs/architecture/PERSONA.md
+# §wire-key rename (deprecated same-object alias + alias==primary).
+#
+# A *_vehicle/_all pair's view verb is deliberately an OR: "may open
+# the feature at all".  WIDTH is no longer this layer's business — it
+# comes from Team Management (User.resolved_vehicle_scope).
+
+from capabilities.permissions.taxonomy import TAXONOMY, Fate as _Fate
+
+
+def _canonical_maps() -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
+    """(1:1 canonical→legacy renames, split target→its source flags)."""
+    split_sources: dict[str, list[str]] = {}
+    verb_by_target = {
+        v.target: flag for flag, v in TAXONOMY.items()
+        if v.fate in (_Fate.VERB_VIEW, _Fate.VERB_MANAGE)
+    }
+    for flag, v in TAXONOMY.items():
+        if v.fate is _Fate.SCOPE_SPLIT:
+            noun = v.target.removeprefix("can_view_")
+            wide = (verb_by_target.get(f"can_view_{noun}")
+                    or verb_by_target.get(f"can_manage_{noun}"))
+            split_sources.setdefault(v.target, []).append(flag)
+            if wide and wide not in split_sources[v.target]:
+                split_sources[v.target].insert(0, wide)
+    renames = {
+        v.target: flag for flag, v in TAXONOMY.items()
+        if v.fate in (_Fate.VERB_VIEW, _Fate.VERB_MANAGE)
+        and v.target != flag and v.target not in split_sources
+    }
+    return renames, {t: tuple(fl) for t, fl in split_sources.items()}
+
+
+CANONICAL_TO_LEGACY, _SPLIT_SOURCES = _canonical_maps()
+
+
+def _install_canonical_grammar() -> None:
+    for target, legacy in CANONICAL_TO_LEGACY.items():
+        setattr(FeatureSet, target,
+                property(lambda self, _l=legacy: getattr(self, _l)))
+    for target, sources in _SPLIT_SOURCES.items():
+        setattr(FeatureSet, target,
+                property(lambda self, _src=sources: any(
+                    getattr(self, f) for f in _src)))
+
+
+_install_canonical_grammar()
+
+
+def normalize_stored_perm_keys(perm_dict: dict) -> dict:
+    """Map canonical keys in a stored/inbound grant dict onto their
+    legacy fields.  Legacy keys WIN on collision — the matrix edits
+    legacy today, and a stale canonical duplicate must not shadow it.
+    Pair view targets (an OR of two fields) are ambiguous as writes
+    and are left for the unknown-key filter to drop."""
+    out = {CANONICAL_TO_LEGACY[k]: v for k, v in perm_dict.items()
+           if k in CANONICAL_TO_LEGACY}
+    out.update({k: v for k, v in perm_dict.items()
+                if k not in CANONICAL_TO_LEGACY})
+    return out
+
+
+def wire_perms(fs: FeatureSet) -> dict:
+    """A permission set for the wire: every legacy field PLUS every
+    canonical name (renames and pair view verbs alike), equal by
+    construction — both grammars live until the deprecation window
+    closes, so the dashboard can switch independently of a deploy."""
+    from dataclasses import asdict as _asdict
+    d = _asdict(fs)
+    for target in CANONICAL_TO_LEGACY:
+        d[target] = getattr(fs, target)
+    for target in _SPLIT_SOURCES:
+        d[target] = getattr(fs, target)
+    return d
+
+
 # ─── Role → Permission Map ───────────────────────────────────────
 
 ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
@@ -908,6 +993,11 @@ async def _resolve_perms(
             # their correct default even when the stored row predates the field.
             known_fields = {f.name for f in FeatureSet.__dataclass_fields__.values()}
             seed = _asdict(default_fs)
+            # Canonical keys (the verb grammar) map onto their legacy
+            # fields BEFORE the unknown-key filter — otherwise a grant
+            # stored under a new name would be silently dropped here
+            # and the custom edit would revert to the role default.
+            perm_dict = normalize_stored_perm_keys(perm_dict)
             filtered = {k: v for k, v in perm_dict.items() if k in known_fields}
             merged = {**seed, **filtered}
             fs = _protect_owner(protect_role, FeatureSet(**merged))

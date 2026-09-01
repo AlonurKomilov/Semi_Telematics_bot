@@ -29,6 +29,8 @@ from capabilities.permissions.roles import (
     perm_tier_key,
     senior_default_featureset,
     role_supports_manager,
+    wire_perms,
+    normalize_stored_perm_keys,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,17 +104,17 @@ async def get_all_roles(
     current = {}
     for role in Role:
         perms = await get_account_permissions(role, account_id)
-        current[role.value] = asdict(perms)
+        current[role.value] = wire_perms(perms)
         if role_supports_manager(role):
             senior = await get_user_permissions(role, account_id, is_manager=True)
-            current[perm_tier_key(role, True)] = asdict(senior)
+            current[perm_tier_key(role, True)] = wire_perms(senior)
     # Co-owner tier — the restrictable owner (its own "owner__co" row).
     co_owner = await get_user_permissions(Role.OWNER, account_id, is_primary_owner=False)
-    current["owner__co"] = asdict(co_owner)
+    current["owner__co"] = wire_perms(co_owner)
 
     # Factory defaults
     defaults = {
-        role.value: asdict(fs) for role, fs in ROLE_PERMISSIONS.items()
+        role.value: wire_perms(fs) for role, fs in ROLE_PERMISSIONS.items()
     }
 
     # Manager-tier grants (role → the extra flags a MANAGER of that role gets).
@@ -258,6 +260,12 @@ async def update_role_perms(
         raise HTTPException(400, "Only the owner role has a co-owner tier")
 
     # Validate permission fields
+    # The canonical verb grammar maps onto legacy fields before
+    # validation — a client speaking new names writes the same grant.
+    # Pair VIEW verbs (an OR of two legacy fields) stay invalid as
+    # writes: which field they mean is ambiguous until the storage
+    # flip, and a 400 here is honest.
+    body.permissions = normalize_stored_perm_keys(body.permissions)
     invalid_keys = set(body.permissions.keys()) - VALID_FIELDS
     if invalid_keys:
         raise HTTPException(400, f"Invalid permission flags: {sorted(invalid_keys)}")

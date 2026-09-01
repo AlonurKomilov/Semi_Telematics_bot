@@ -114,6 +114,18 @@ def test_own_family_is_marked_and_nothing_own_is_missed():
         f"OWN_LATER rows not own-named: {sorted(own - named_own)}")
 
 
+def test_non_verb_fates_carry_no_target():
+    """A DERIVED/CONFIG/SERVICE/OWN_LATER row has no canonical rename —
+    a target on one is almost always a positional-argument slip (a
+    note landing in the target slot).  It happened: can_alerts_vehicle
+    shipped with its NOTE as its target, and the bridge stage tried to
+    install a property named by a full English sentence."""
+    for flag, v in TAXONOMY.items():
+        if v.fate in (Fate.DERIVED, Fate.CONFIG, Fate.SERVICE,
+                      Fate.OWN_LATER):
+            assert v.target is None, f"{flag}: {v.target!r}"
+
+
 def test_dark_features_keep_their_darkness_across_the_rename():
     for flag in DARK_FEATURE_FIELDS:
         v = TAXONOMY[flag]
