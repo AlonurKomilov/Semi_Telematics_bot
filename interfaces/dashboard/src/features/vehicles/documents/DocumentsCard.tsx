@@ -20,7 +20,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, FileText, Trash2, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, FileText, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiFetch, apiJSON } from '../../../api/client';
@@ -36,6 +36,7 @@ import type { VehicleSectionProps } from '../sections/_shared/types';
 
 interface Doc {
   id: number;
+  status?: string;
   doc_type: string;
   file_name: string;
   file_size: number | null;
@@ -79,9 +80,16 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
   const { vehicle } = useVehicle(vehicleName, company);
   const registryId = vehicle?.registry_id ?? null;
 
+  // Superseded papers are hidden by default — the card answers "what is
+  // current" — but they must be REACHABLE, or archiving would be a
+  // quieter delete and the reason to prefer it would be a lie.
+  const [showArchived, setShowArchived] = useState(false);
+
   const { data, isLoading } = useQuery<{ documents: Doc[]; doc_types: string[] }>({
-    queryKey: ['vehicle-documents', registryId],
-    queryFn: () => apiJSON(`/vehicles/registry/${registryId}/documents`),
+    queryKey: ['vehicle-documents', registryId, showArchived],
+    queryFn: () => apiJSON(
+      `/vehicles/registry/${registryId}/documents`
+      + (showArchived ? '?include_archived=true' : '')),
     enabled: registryId != null,
   });
 
@@ -99,6 +107,17 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
       toast.success(`${d.file_name} archived`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Archive failed');
+    }
+  };
+
+  const restore = async (d: Doc) => {
+    try {
+      await apiJSON(`/vehicles/documents/${d.id}/restore`, { method: 'POST' });
+      await qc.invalidateQueries({ queryKey: ['vehicle-documents', registryId] });
+      await qc.invalidateQueries({ queryKey: ['fleet-documents'] });
+      toast.success(`${d.file_name} restored`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Restore failed');
     }
   };
 
@@ -156,6 +175,14 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
           {canManage ? ' — registration, title, insurance and annual inspections belong here.' : '.'}
         </p>
       )}
+      <button
+        type="button"
+        className="mt-1 text-2xs text-muted-foreground hover:underline min-h-tap"
+        onClick={() => setShowArchived((v) => !v)}
+      >
+        {showArchived ? 'Hide archived' : 'Show archived'}
+      </button>
+
       {docs.length > 0 && (
         <ul className="divide-y divide-border">
           {docs.map((d) => (
@@ -168,6 +195,9 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
               >
                 <span className="block truncate text-foreground">{d.file_name}</span>
                 <span className="block text-xs text-muted-foreground">
+                  {d.status === 'archived' && (
+                    <span className="text-muted-foreground">Archived · </span>
+                  )}
                   {typeLabel(d.doc_type)}
                   {(() => {
                     const e = expiryTone(d.expires_at);
@@ -178,13 +208,22 @@ export default function DocumentsCard({ vehicleName, company }: VehicleSectionPr
                   {d.file_size ? ` · ${fmtSize(d.file_size)}` : ''}
                 </span>
               </button>
-              {canManage && (
+              {canManage && d.status !== 'archived' && (
                 <Button
                   type="button" variant="ghost" size="sm"
                   aria-label={`Archive ${d.file_name}`}
                   onClick={() => void archive(d)}
                 >
                   <Archive className="text-muted-foreground" />
+                </Button>
+              )}
+              {canManage && d.status === 'archived' && (
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  aria-label={`Restore ${d.file_name}`}
+                  onClick={() => void restore(d)}
+                >
+                  <ArchiveRestore className="text-muted-foreground" />
                 </Button>
               )}
               {canManage && (

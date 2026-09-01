@@ -16,7 +16,7 @@ import { Link } from 'react-router-dom';
 import { Check, X, Loader2, ShieldAlert, Undo2, Paperclip } from 'lucide-react';
 import { aiApproveAction, aiRejectAction, aiUndoAction, aiGetActionStatus } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
-import { uploadSourceFilesToWorkOrder } from '../sourceFileUpload';
+import { uploadSourceFiles } from '../sourceFileUpload';
 import { registerArtifact } from './registry';
 import type { Artifact } from './types';
 import { Badge } from '@/components/ui/badge';
@@ -109,17 +109,30 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       // the server's approve response.
       const r = (res.result || {}) as Record<string, unknown>;
       const names = Array.isArray(r.source_files) ? r.source_files as string[] : [];
-      if (r.target_type === 'work_order' && r.target_id && names.length) {
-        setFileNote('Attaching files…');
-        uploadSourceFilesToWorkOrder(Number(r.target_id), names)
+      // Two kinds of record can own an approved action's files now, so
+      // the destination comes from the RESULT rather than from a
+      // hardcoded branch — a third means one more case in routeFor,
+      // not a second copy of this block.
+      const isDoc = r.target_type === 'vehicle_document';
+      if ((r.target_type === 'work_order' || isDoc) && r.target_id && names.length) {
+        setFileNote(isDoc ? 'Filing document…' : 'Attaching files…');
+        const where = isDoc ? "the truck's Documents card" : 'the work order page';
+        uploadSourceFiles(r, names)
           .then((o) => {
             const bits: string[] = [];
-            if (o.uploaded.length) bits.push(`${o.uploaded.length} file${o.uploaded.length > 1 ? 's' : ''} attached`);
+            if (o.uploaded.length) {
+              bits.push(isDoc
+                ? `${o.uploaded.length} document${o.uploaded.length > 1 ? 's' : ''} filed`
+                : `${o.uploaded.length} file${o.uploaded.length > 1 ? 's' : ''} attached`);
+            }
             const gone = o.missing.length + o.failed.length;
-            if (gone) bits.push(`${gone} couldn’t be attached — add the original from the work order page`);
+            // A PDF's bytes are not held on the device — only its
+            // extracted text — so say where to add the original rather
+            // than implying something went wrong.
+            if (gone) bits.push(`${gone} couldn’t be attached — add the original from ${where}`);
             setFileNote(bits.join(' · '));
           })
-          .catch(() => setFileNote('Files couldn’t be attached — add them from the work order page.'));
+          .catch(() => setFileNote(`Files couldn’t be attached — add them from ${where}.`));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Action failed');

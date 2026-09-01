@@ -28,6 +28,7 @@ import type { AnyColumn } from '../../../types';
 
 interface FleetDoc {
   id: number;
+  status?: string;
   vehicle_id: number;
   doc_type: string;
   file_name: string;
@@ -125,12 +126,19 @@ const COLUMNS: AnyColumn[] = [
 
 // Lifecycle tabs the expiry alert lands on: an alert saying "3 trucks
 // have papers expiring" now has a destination that shows the three.
+const isArchived = (r: unknown) =>
+  (r as FleetDoc).status === 'archived';
+
 const SEGMENTS: DataGridSegment[] = [
-  { key: 'all', label: 'All', match: () => true },
+  // `!isArchived` on every live tab, INCLUDING All — the same rule the
+  // Vehicles grid follows for retired trucks.  Without it every count
+  // grows each time somebody files a renewal.
+  { key: 'all', label: 'All', match: (r) => !isArchived(r) },
   {
     key: 'expiring',
     label: 'Expiring',
     match: (r) => {
+      if (isArchived(r)) return false;
       const d = daysUntil((r as unknown as FleetDoc).expires_at);
       return d !== null && d >= 0 && d <= 30;
     },
@@ -139,6 +147,7 @@ const SEGMENTS: DataGridSegment[] = [
     key: 'expired',
     label: 'Expired',
     match: (r) => {
+      if (isArchived(r)) return false;
       const d = daysUntil((r as unknown as FleetDoc).expires_at);
       return d !== null && d < 0;
     },
@@ -149,7 +158,15 @@ const SEGMENTS: DataGridSegment[] = [
     // Not an error — a title never expires.  But an insurance
     // certificate with no date is a gap the alert can never see, and
     // this is the only place it is visible at all.
-    match: (r) => !(r as unknown as FleetDoc).expires_at,
+    match: (r) => !isArchived(r) && !(r as unknown as FleetDoc).expires_at,
+  },
+  {
+    key: 'archived',
+    label: 'Archived',
+    // Superseded papers, kept because last year's registration still
+    // proves the truck was legal last year — which it can only do if
+    // somebody can find it.
+    match: isArchived,
   },
 ];
 
@@ -157,7 +174,7 @@ export default function DocumentsPage() {
   const qc = useQueryClient();
   const { data, isLoading, error, refetch } = useQuery<{ documents: FleetDoc[] }>({
     queryKey: ['fleet-documents'],
-    queryFn: () => apiJSON('/vehicles/documents'),
+    queryFn: () => apiJSON('/vehicles/documents?include_archived=true'),
   });
 
   const rows = useMemo(() => data?.documents ?? [], [data]);

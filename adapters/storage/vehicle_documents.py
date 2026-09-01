@@ -135,14 +135,49 @@ class VehicleDocumentsMixin(_MixinBase):
 
     async def list_vehicle_documents(
         self, account_id: int, vehicle_id: int,
+        *, include_archived: bool = False,
     ) -> list[VehicleDocument]:
+        """The truck's papers.  Current ones by default, because the
+        card answers "what is current".
+
+        ``include_archived`` brings back the superseded ones too — the
+        whole reason Archive exists instead of Delete is that last
+        year's registration still proves the truck was legal last year,
+        and a document nobody can retrieve proves nothing.  Deleted
+        rows stay out either way: their bytes are gone, so listing them
+        would offer a download that cannot work.
+        """
+        states = ("active", "archived") if include_archived else ("active",)
+        placeholders = ", ".join("?" for _ in states)
         cur = await self._db.execute(
             f"SELECT {_COLS} FROM vehicle_documents "
-            "WHERE account_id = ? AND vehicle_id = ? AND status = 'active' "
+            f"WHERE account_id = ? AND vehicle_id = ? "
+            f"  AND status IN ({placeholders}) "
             "ORDER BY uploaded_at DESC, id DESC",
-            (account_id, vehicle_id),
+            (account_id, vehicle_id, *states),
         )
         return [_row(r) for r in await cur.fetchall()]
+
+    async def restore_vehicle_document(
+        self, account_id: int, doc_id: int, *, bucket: str,
+    ) -> VehicleDocument | None:
+        """Bring a superseded paper back to current.
+
+        The mirror of ``archive_vehicle_document``, and it exists for
+        the same reason vehicle restore does: an archive with no way
+        back is the trap that delete-only was.  One mis-click should
+        not make a current registration invisible.
+        """
+        doc = await self.get_vehicle_document(account_id, doc_id)
+        if doc is None or doc.status != "archived":
+            return None
+        async with self.transaction():
+            await self._db.execute(
+                "UPDATE vehicle_documents SET status = 'active', "
+                "bucket = ? WHERE id = ? AND account_id = ?",
+                (bucket, doc_id, account_id),
+            )
+        return doc
 
     async def get_vehicle_document(
         self, account_id: int, doc_id: int,
@@ -192,6 +227,8 @@ class VehicleDocumentsMixin(_MixinBase):
         unit number and company ride along so the alert can name the
         truck without a second query.
         """
+        # Always ACTIVE: a superseded paper must never raise an alert
+        # about a truck that already has its replacement on file.
         cur = await self._db.execute(
             "SELECT d.id, d.vehicle_id, d.doc_type, d.file_name, "
             "       d.expires_at, v.unit_number, v.company_code "
@@ -215,7 +252,7 @@ class VehicleDocumentsMixin(_MixinBase):
         return out
 
     async def list_account_vehicle_documents(
-        self, account_id: int,
+        self, account_id: int, *, include_archived: bool = False,
     ) -> list[dict]:
         """Every active document across the account's LIVE trucks.
 
@@ -230,23 +267,32 @@ class VehicleDocumentsMixin(_MixinBase):
         counting it here would inflate every compliance figure with
         trucks the carrier no longer runs.
         """
+        # ACTIVE by default, deliberately: the binder, the expiry
+        # callouts and the AI tool all read this, and a superseded
+        # paper must not raise an alert about a truck that already has
+        # its replacement on file.  Only the page that OFFERS an
+        # archived tab asks for them.
+        states = ("active", "archived") if include_archived else ("active",)
+        placeholders = ", ".join("?" for _ in states)
         cur = await self._db.execute(
             "SELECT d.id, d.vehicle_id, d.doc_type, d.file_name, "
             "       d.file_size, d.mime_type, d.issued_at, d.expires_at, "
             "       d.uploaded_at, d.notes, "
-            "       v.unit_number, v.company_code, v.vehicle_type "
+            "       v.unit_number, v.company_code, v.vehicle_type, "
+            "       d.status "
             "  FROM vehicle_documents d "
             "  JOIN vehicles v ON v.id = d.vehicle_id "
-            " WHERE d.account_id = ? AND d.status = 'active' "
+            f" WHERE d.account_id = ? AND d.status IN ({placeholders}) "
             "   AND v.is_active = 1 "
             "   AND COALESCE(v.archived_reason, '') = '' "
             " ORDER BY v.unit_number ASC, d.uploaded_at DESC",
-            (account_id,),
+            (account_id, *states),
         )
         rows = await cur.fetchall()
         keys = ("id", "vehicle_id", "doc_type", "file_name", "file_size",
                 "mime_type", "issued_at", "expires_at", "uploaded_at",
-                "notes", "unit_number", "company_code", "vehicle_type")
+                "notes", "unit_number", "company_code", "vehicle_type",
+                "status")
         return [dict(zip(keys, r)) for r in rows]
 
     async def record_vehicle_doc_notification(

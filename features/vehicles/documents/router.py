@@ -129,7 +129,10 @@ async def _bucket_for(tenant, account_id: int, v) -> str:
 
 
 @router.get("/documents")
-async def list_account_documents(user: dict = Depends(_view)):
+async def list_account_documents(
+    include_archived: bool = False,
+    user: dict = Depends(_view),
+):
     """Every document across the account's live trucks — the fleet-wide
     view behind the Documents page.
 
@@ -142,12 +145,17 @@ async def list_account_documents(user: dict = Depends(_view)):
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    rows = await tenant.list_account_vehicle_documents(account_id)
+    rows = await tenant.list_account_vehicle_documents(
+        account_id, include_archived=include_archived)
     # The company wall applies to a LIST the same way it applies to a
     # row: a restricted operator sees their own companies' paperwork.
     allowed = await get_user_company_codes(user)
     rows = [r for r in rows
             if company_allows(r.get("company_code") or "", allowed)]
+    # Every row says what it IS, so the page can offer an Archived tab
+    # rather than pretending superseded papers never existed.
+    for r in rows:
+        r.setdefault("status", "active")
     return {"documents": rows, "doc_types": list(VEHICLE_DOC_TYPES)}
 
 
@@ -217,6 +225,7 @@ async def extract_document_fields(
 @router.get("/registry/{vehicle_id}/documents")
 async def list_vehicle_documents(
     vehicle_id: int,
+    include_archived: bool = False,
     user: dict = Depends(_view),
 ):
     """The truck's paperwork — including an ARCHIVED truck's.  Keeping
@@ -227,11 +236,12 @@ async def list_vehicle_documents(
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     await _vehicle_or_404(tenant, account_id, vehicle_id, user)
-    docs = await tenant.list_vehicle_documents(account_id, vehicle_id)
+    docs = await tenant.list_vehicle_documents(
+        account_id, vehicle_id, include_archived=include_archived)
     return {
         "documents": [
             {
-                "id": d.id, "doc_type": d.doc_type,
+                "id": d.id, "doc_type": d.doc_type, "status": d.status,
                 "file_name": d.file_name, "file_size": d.file_size,
                 "mime_type": d.mime_type,
                 "issued_at": d.issued_at, "expires_at": d.expires_at,
@@ -420,6 +430,54 @@ async def archive_vehicle_document(
         doc_id=doc_id, doc_type=doc.doc_type, file_name=doc.file_name,
     )
     return {"archived": True, "id": doc_id}
+
+
+@router.post("/documents/{doc_id}/restore")
+async def restore_vehicle_document(
+    doc_id: int,
+    user: dict = Depends(_manage),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bring a superseded paper back to current — the mirror of
+    Archive, because an archive with no way back is the trap that
+    delete-only was."""
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.paths import resolve_company_folder
+    from features.vehicles.documents.paths import vehicle_docs_bucket
+
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    peek = await tenant.get_vehicle_document(account_id, doc_id)
+    if peek is None or peek.status != "archived":
+        raise HTTPException(status_code=404, detail="Document not found")
+    v = await _vehicle_or_404(tenant, account_id, peek.vehicle_id, user)
+
+    company_folder = await resolve_company_folder(
+        tenant, account_id, v.company_code)
+    dst = vehicle_docs_bucket(company_folder, v.unit_number)
+
+    store = await get_object_storage_for_account(account_id, tenant_db)
+    try:
+        data = store.get(peek.bucket, peek.object_key)
+        if data:
+            store.put(dst, peek.object_key, data)
+            store.delete(peek.bucket, peek.object_key)
+    except Exception:
+        logger.warning("restore: document file not moved doc=%d", doc_id,
+                       exc_info=True)
+
+    doc = await tenant.restore_vehicle_document(
+        account_id, doc_id, bucket=dst)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await _trail(
+        tenant, account_id, user, peek.vehicle_id, "document.restore",
+        f"Restored {doc.doc_type.replace('_', ' ')}: {doc.file_name}",
+        doc_id=doc_id, doc_type=doc.doc_type, file_name=doc.file_name,
+    )
+    return {"restored": True, "id": doc_id}
 
 
 @router.delete("/documents/{doc_id}")
