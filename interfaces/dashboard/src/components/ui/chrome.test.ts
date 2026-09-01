@@ -721,7 +721,7 @@ const COLOUR_LITERAL_ALLOWED: { file: string; why: string }[] = [
     why: 'the black lerp target for a THREE material — design.md §8' },
   { file: 'features/applications/public/theme.ts',
     why: 'computes a readable label for a colour the CUSTOMER chose at runtime' },
-  { file: 'lib/themePacks.ts',
+  { file: 'mods/catalogue.ts',
     why: 'the pack catalogue: these hexes ARE the seeds, and themePacks.test.ts proves the shipped CSS is what they derive' },
 ];
 
@@ -1682,7 +1682,7 @@ describe('UI chrome', () => {
   it('every accent the picker offers has a rule in both modes', () => {
     const css = readFileSync(join(SRC, 'index.css'), 'utf8');
     const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
-    const packs = readFileSync(join(SRC, 'lib/themePacks.ts'), 'utf8');
+    const packs = readFileSync(join(SRC, 'mods/catalogue.ts'), 'utf8');
 
     const list = (name: string) =>
       (new RegExp(`${name}[^=]*=\\s*\\[([^\\]]*)\\]`).exec(registry)?.[1] ?? '')
@@ -1704,7 +1704,7 @@ describe('UI chrome', () => {
     const packArray = /THEME_PACKS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
     expect(packArray, 'could not find the THEME_PACKS array').not.toBe('');
     const accents = [...packArray.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
-    expect(accents.length, 'no packs found in lib/themePacks.ts').toBeGreaterThan(0);
+    expect(accents.length, 'no packs found in mods/catalogue.ts').toBeGreaterThan(0);
     // And the mods must NOT be in it — if this ever collects one, the
     // scan above has widened again.
     const modArray = /THEME_MODS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';

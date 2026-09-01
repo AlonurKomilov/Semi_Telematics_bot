@@ -29,7 +29,7 @@
  * the delivery changes, from a committed CSS block to properties applied
  * at runtime.
  */
-import type { ThemeMode } from './palette';
+import type { ThemeMode } from './theme/palette';
 // Type-only, so no runtime cycle: registry.ts imports THEME_PACKS as a
 // value, and this import is erased.
 import type { ThemeRadius } from '../preferences/registry';

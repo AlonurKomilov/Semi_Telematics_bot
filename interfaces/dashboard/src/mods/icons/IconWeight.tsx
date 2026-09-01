@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
-import { ICON_STROKE } from '../lib/themePacks';
+import { useTheme } from '../context';
+import { ICON_STROKE } from '../catalogue';
 
 /**
  * Every icon's stroke weight, from one mount point.

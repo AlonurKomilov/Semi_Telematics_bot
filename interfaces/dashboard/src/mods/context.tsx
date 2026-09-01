@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { usePreference } from '../preferences';
 import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
-import { applyModTokens } from '../lib/modStyle';
+import { applyModTokens } from './inject';
 import type {
   ThemeColor,
   ThemeMode,

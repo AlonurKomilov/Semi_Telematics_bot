@@ -14,8 +14,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   applyModTokens, modStyleText, isSafeValue, isModToken, MOD_TOKENS, seedTokens,
-} from './modStyle';
-import { DERIVED_TOKENS, derivePalette } from './palette';
+} from './inject';
+import { DERIVED_TOKENS, derivePalette } from './theme/palette';
 
 const sheet = () => document.getElementById('mod-tokens');
 

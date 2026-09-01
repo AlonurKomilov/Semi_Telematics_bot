@@ -28,7 +28,7 @@ import {
 } from './theme';
 import {
   parseHex, toHex, contrastRatio, readableOn, over, AA_TEXT, type RGB,
-} from '../../../lib/contrast';
+} from '../../../mods';
 
 const cube = (step: number): RGB[] => {
   const out: RGB[] = [];

@@ -2,20 +2,20 @@ import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
-import { Button } from './ui/button';
-import { Slider } from './ui/slider';
-import { Tip } from './tooltip';
+import { Button } from '../components/ui/button';
+import { Slider } from '../components/ui/slider';
+import { Tip } from '../components/tooltip';
 import {
   useTheme, applySize, type Mode, type Accent, type RadiusVariant, type Material,
   type Motion,
-} from '../context/ThemeContext';
+} from './context';
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
   THEME_PACKS, THEME_MODS, THEME_MATERIALS, THEME_MOTIONS,
   modMatchesAxes, modById, type ThemeMod,
-} from '../lib/themePacks';
-import { SOUND_PACKS, armAudio, playCue, type SoundPack } from '../lib/sound';
+} from './catalogue';
+import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { usePreference } from '../preferences';
 
 // ── Option rows ──────────────────────────────────────────────

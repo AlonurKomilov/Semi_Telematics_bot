@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { applyTheme, applySize } from '../context/ThemeContext';
+import { applyTheme, applySize } from '../mods/context';
 import {
   THEME_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, THEME_RADII,
   THEME_MATERIAL_LIST,

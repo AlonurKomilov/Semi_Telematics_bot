@@ -16,7 +16,7 @@ import {
   oklchToSrgb, over, parseHex, toHex, contrastRatio, type RGB,
 } from './contrast';
 
-const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
+const CSS = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**

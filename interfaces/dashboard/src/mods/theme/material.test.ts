@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SRC = join(__dirname, '..');
+const SRC = join(__dirname, '..', '..');
 const CSS = readFileSync(join(SRC, 'index.css'), 'utf8');
 /** Comments blanked in place, so line numbers survive. */
 const CODE = CSS.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));

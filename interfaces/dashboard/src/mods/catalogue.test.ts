@@ -24,10 +24,10 @@ import { join } from 'node:path';
 import {
   THEME_PACKS, THEME_MODS, THEME_ICONS, ICON_STROKE,
   PACK_TOKENS, packById, modById, activeModId, modMatchesAxes,
-} from './themePacks';
+} from './catalogue';
 import { SIZE_MAX, THEME_RADII } from '../preferences/registry';
-import { derivePalette } from './palette';
-import { oklchToSrgb, parseHex, toHex, type RGB } from './contrast';
+import { derivePalette } from './theme/palette';
+import { oklchToSrgb, parseHex, toHex, type RGB } from './theme/contrast';
 
 const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -241,7 +241,7 @@ describe('the properties a mod carries and the panel does not', () => {
     // The regression this whole change exists to prevent: going back to
     // deriving identity from the axes would work perfectly until a mod
     // carried a sound pack, and then editing a corner would silence it.
-    const panel = readFileSync(join(__dirname, '..', 'components/ThemeToggle.tsx'), 'utf8');
+    const panel = readFileSync(join(__dirname, 'ModPanel.tsx'), 'utf8');
     expect(panel, 'the panel is deriving mod identity again').not.toContain('activeModId(');
     expect(panel, 'the panel does not read the stored mod').toContain('theme.mod');
   });
@@ -251,7 +251,7 @@ describe('the properties a mod carries and the panel does not', () => {
     // chip is a shortcut, not a look. If someone adds a chip for these,
     // this test should be deleted deliberately rather than pass by
     // accident.
-    const panel = readFileSync(join(__dirname, '..', 'components/ThemeToggle.tsx'), 'utf8');
+    const panel = readFileSync(join(__dirname, 'ModPanel.tsx'), 'utf8');
     for (const axis of ['icons', 'entrance'])
       expect(panel, `the panel gained a control for "${axis}"`)
         .not.toMatch(new RegExp(`setTheme\\(\\{\\s*${axis}:`));

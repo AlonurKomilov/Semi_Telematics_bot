@@ -54,7 +54,7 @@ const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
 // Imported, NOT redefined. This suite and the runtime theme engine have
 // to agree bit for bit: a guard that proves a ratio with one
 // implementation while the browser computes it with another is proving
-// something about the guard. `src/lib/contrast.ts` is the single copy,
+// something about the guard. `src/mods/theme/contrast.ts` is the single copy,
 // and it ships — which is the point, because everything measured below
 // is measured at BUILD time, and a theme that arrives at runtime moves
 // these values out from under every assertion in this file.
@@ -63,8 +63,8 @@ const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
 // longer one to read well.
 import {
   oklchToSrgb, relLum, contrastRatio as ratio, over, maxChroma, type RGB,
-} from './contrast';
-import { THEME_PACKS } from './themePacks';
+} from '../mods';
+import { THEME_PACKS } from '../mods';
 
 // ── token resolution ────────────────────────────────────────────────
 type Val =

@@ -21,7 +21,7 @@ import { render } from '@testing-library/react';
 vi.mock('./usePreference', () => ({
   usePreference: () => ({ value: false, setValue: () => {} }),
 }));
-vi.mock('../context/ThemeContext', () => ({
+vi.mock('../mods/context', () => ({
   useTheme: () => ({
     size: { global: 1.2, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
     setSize: () => {},

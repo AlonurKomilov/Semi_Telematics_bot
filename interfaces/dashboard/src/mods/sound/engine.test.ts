@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import {
   SOUND_PACKS, CUE_NAMES, CUE_LIMITS, WAVES,
   isSafeCue, playCue, soundPackById, armAudio, resetAudioForTests, type Cue,
-} from './sound';
+} from './engine';
 
 beforeEach(() => { resetAudioForTests(); });
 
@@ -173,7 +173,7 @@ describe('the level is not a second gate', () => {
     // device boolean defaulting to false, with its own toggle in the
     // live panel. A volume of 0 by default would double-gate it: turn
     // the toggle on, hear nothing, conclude the feature is broken.
-    const { DEFS } = await import('../preferences/registry');
+    const { DEFS } = await import('../../preferences/registry');
     expect(DEFS['sound.volume'].default, 'volume defaults to silence again')
       .toBeGreaterThan(0);
     expect(DEFS['dispatch.soundOn'].default, 'the real opt-in stopped being opt-in')
@@ -183,7 +183,7 @@ describe('the level is not a second gate', () => {
 
 describe('the panel section', () => {
   const panel = readFileSync(
-    join(__dirname, '..', 'components/ThemeToggle.tsx'), 'utf8');
+    join(__dirname, '..', 'ModPanel.tsx'), 'utf8');
 
   it('offers every pack', () => {
     // Generated from the catalogue, so adding a pack cannot half-land as

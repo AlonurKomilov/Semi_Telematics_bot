@@ -9,13 +9,13 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
 import PreferencesSync from './preferences/PreferencesSync';
-import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './mods';
 import { TooltipProvider } from './components/ui/tooltip';
 import { applyPublicFormTheme } from './features/applications/public/theme';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
 import './i18n';  // initialise i18next before any component renders
 import './index.css';
-import { IconWeight } from './components/IconWeight';
+import { IconWeight } from './mods';
 
 /** The MAIN app's toast/banner lane — position follows the user's
  * notification-position preference (the public-apply mount keeps a fixed

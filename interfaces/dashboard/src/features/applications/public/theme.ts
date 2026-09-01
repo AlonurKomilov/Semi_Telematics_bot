@@ -17,7 +17,7 @@
 import {
   parseHex, toHex, readableOn, clampLightness, contrastRatio,
   srgbToOklch, srgbInGamut, over, AA_TEXT, type RGB,
-} from '../../../lib/contrast';
+} from '../../../mods';
 
 /** Every custom property the dashboard's Size engine publishes on <html>.
  *  The applicant's host has none of them. */
@@ -83,7 +83,7 @@ export function applyPublicFormTheme(root: HTMLElement = document.documentElemen
 // at 1.37:1 where black gives 14.44:1, and `brand_color` is whatever the
 // carrier typed into a colour picker.
 //
-// It now uses `lib/contrast`, which is the same code the build-time
+// It now uses `mods/theme/contrast`, which is the same code the build-time
 // colour guards run. One implementation, so a value proved legible by
 // the guard is legible here too.
 

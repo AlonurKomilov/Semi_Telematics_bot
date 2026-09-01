@@ -65,7 +65,7 @@ export function useSceneTokens(): SceneTokens {
       attributes: true,
       // `data-mod` because an injected palette arrives as a <style>
       // element, which fires no attribute mutation of its own — see
-      // lib/modStyle.ts. Without it this scene keeps the boot theme's
+      // mods/inject.ts. Without it this scene keeps the boot theme's
       // six colours for the life of the page.
       attributeFilter: ['class', 'data-theme', 'data-accent', 'data-mod'],
     });

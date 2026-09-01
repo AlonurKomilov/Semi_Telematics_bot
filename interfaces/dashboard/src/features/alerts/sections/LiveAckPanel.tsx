@@ -29,7 +29,7 @@ import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
 import { usePreference } from '../../../preferences';
 import { Tip } from '../../../components/tooltip';
 import { cn } from '@/lib/utils';
-import { useCue } from '../../../lib/useCue';
+import { useCue } from '../../../mods';
 
 const LAST_ACK_KEY = '4truck_dispatch_last_ack_iso';
 

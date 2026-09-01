@@ -35,9 +35,9 @@
 
 import {
   THEME_PACKS, THEME_MATERIALS, THEME_MOTIONS, THEME_ICONS, THEME_MODS,
-} from '../lib/themePacks';
-import { isModToken, isSafeValue, MOD_TOKENS } from '../lib/modStyle';
-import { SOUND_PACKS } from '../lib/sound';
+} from '../mods/catalogue';
+import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
+import { SOUND_PACKS } from '../mods/sound/engine';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -144,7 +144,7 @@ export type ThemeMode = 'dark' | 'light';
  * Derived from the pack catalogue rather than restated. This union and
  * `THEME_ACCENTS` below were two of the six places the accent's allowed
  * set was pinned; they now read from the one list in
- * `lib/themePacks.ts`, so a new pack cannot be half-added.
+ * `mods/catalogue.ts`, so a new pack cannot be half-added.
  */
 export type ThemeAccent = (typeof THEME_PACKS)[number]['id'];
 
@@ -161,7 +161,7 @@ export type ThemeAccent = (typeof THEME_PACKS)[number]['id'];
  */
 export type ThemeColor = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
 export type ThemeRadius = 'sharp' | 'rounded' | 'pill';
-/** Derived from the catalogue, like ThemeAccent — see lib/themePacks.ts. */
+/** Derived from the catalogue, like ThemeAccent — see mods/catalogue.ts. */
 export type ThemeMaterial = (typeof THEME_MATERIALS)[number];
 export type ThemeMotion = (typeof THEME_MOTIONS)[number];
 export type ThemeIcons = (typeof THEME_ICONS)[number];

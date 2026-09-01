@@ -203,7 +203,7 @@ the migration branch, one release after the split ships.
 ### A mod is a look; the axes are still the state ⭐
 
 A **pack** is a colour: an id, a label and a seed per mode, in
-[`src/lib/themePacks.ts`](src/lib/themePacks.ts). A **mod** is a named
+[`src/mods/catalogue.ts`](src/mods/catalogue.ts). A **mod** is a named
 combination of axes we already have — a pack plus corners plus scale —
 and it costs nothing to add: no seed, no CSS block, no swatch, no ramp
 rotation.
@@ -214,6 +214,36 @@ palette has none left to give: every remaining hue either collides with
 `--danger` under simulated colour blindness (352-2, at dE2000 1.6-3.0),
 collides with `--warn` (66-68, at 1.4-2.7), or duplicates a pack we ship
 (274-296, at 1.5-7.5). One look, and we would have been out.
+
+**The service lives in `src/mods/`, and application code imports from
+`src/mods` — never from a file inside it.** ⭐
+
+`theme` stopped being the right word some time ago: it is a colour word,
+and what this service holds is colour, corners, scale, material, motion,
+icon weight, a page entrance and sound. Mods is the noun that covers
+them, and a theme is the colour part inside it — hence `mods/theme` and
+`mods/sound`.
+
+    mods/index.ts      the one import surface
+    mods/catalogue.ts  packs, mods, the axes
+    mods/context.tsx   useTheme, applyTheme
+    mods/ModPanel.tsx  the panel
+    mods/inject.ts     installing token values
+    mods/theme/        palette · contrast
+    mods/sound/        engine · useCue
+    mods/icons/        IconWeight
+
+Two files may reach past the barrel, and `mods/index.test.ts` fails if a
+third appears without a stated reason: `preferences/registry.ts`, which
+sits UNDERNEATH the service (`mods/context` imports the preferences
+store, so a barrel import would close a cycle), and
+`test/themeBoot.test.ts`, which compares the pre-paint script against
+`applyTheme` itself rather than whatever the barrel re-exports.
+
+`dispatch.soundOn` is deliberately NOT part of this service. It is the
+live alerts feature's own gate and belongs to the feature that uses it —
+the sound service sets the level and the pack, never whether a
+particular feature speaks.
 
 **A mod is INSTALLED, and its identity is stored.** ⭐
 
@@ -404,7 +434,7 @@ A validator leaves someone to handle "no". A clamp has no failure
 branch, needs no error copy, and cannot be overruled by a customer who
 prefers their brand green to being read.
 
-The arithmetic lives in `src/lib/contrast.ts` and it SHIPS — the same
+The arithmetic lives in `src/mods/theme/contrast.ts` and it SHIPS — the same
 module the build-time colour guards import, so a value proved legible by
 `colour.test.ts` is computed the same way in the browser. Do not write a
 second copy; there have been three.

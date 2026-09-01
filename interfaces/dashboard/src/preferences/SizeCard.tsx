@@ -19,7 +19,7 @@ import { RotateCcw, ChevronRight } from 'lucide-react';
 import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { InfoTip, Tip } from '../components/tooltip';
-import { useTheme, applySize } from '../context/ThemeContext';
+import { useTheme, applySize } from '../mods';
 import { usePreference } from './usePreference';
 import { publishAppearanceDefault, resetAppearanceDefault } from './appearance';
 import { undoableAction } from '../components/banners/stagedAction';
