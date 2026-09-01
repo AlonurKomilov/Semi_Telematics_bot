@@ -101,6 +101,25 @@ export interface TourSpec {
    */
   relevant: (ctx: TourCtx) => boolean;
   /**
+   * Permission flags the WALK itself needs — ANY-of, like the feature
+   * catalog's own `permission`.
+   *
+   * The feature's catalog permission is not enough: a page often opens
+   * on a wider grant than its controls need.  Maintenance admits both
+   * can_maintenance_all and can_maintenance_vehicle, but every write
+   * control on it is _all-only — so a _vehicle viewer could open the
+   * library, see a card for a tour whose very first step points at a
+   * button they cannot see, and follow it into a fifteen-second wait
+   * and a silent exit.  Not a leak (the control does not exist for
+   * them, and the server refuses the call regardless) — a broken
+   * promise, which is its own kind of harm in a teaching surface.
+   *
+   * The automatic path already gates on this through `relevant`; this
+   * field is how the LIBRARY asks the same question, and the guard
+   * requires it on any tour that ends in a write.
+   */
+  requires?: readonly string[];
+  /**
    * Signal pairs this tour wants (must be in the backend's
    * ALLOWED_SIGNALS — a guard in capabilities/tour/tests parses
    * this file's consumers and refuses strangers).

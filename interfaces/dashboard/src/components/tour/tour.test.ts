@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOUR_CATALOG } from './tourCatalog';
+import { FEATURE_CATALOG } from '../../config/featureCatalog';
 
 const SRC = join(__dirname, '..', '..');
 const LOCALE_DIR = join(SRC, 'locales');
@@ -77,6 +78,41 @@ describe('tour catalog', () => {
     }
     expect(undeclared, 'final step missing commit: true|false').toEqual([]);
     expect(misplaced, 'commit steps must be final').toEqual([]);
+  });
+
+  it('a tour that ends in a WRITE declares the permission it needs', () => {
+    // The library lists a card when the tour's FEATURE is reachable —
+    // and a page routinely opens on a wider grant than its controls
+    // need (maintenance admits _vehicle; every write on it is
+    // _all-only).  So a write tour without `requires` is offered to
+    // people whose very first step points at a button they cannot
+    // see: a fifteen-second wait and a silent exit, from a surface
+    // whose whole job is to teach.
+    //
+    // Not a security rule — the control is absent and the server
+    // refuses regardless — a HONESTY rule, which is why it binds the
+    // committing tours specifically.
+    const undeclared: string[] = [];
+    for (const tour of TOUR_CATALOG) {
+      const last = tour.steps[tour.steps.length - 1];
+      if (last.commit && !tour.requires?.length) undeclared.push(tour.key);
+    }
+    expect(undeclared, 'write tours missing `requires`').toEqual([]);
+  });
+
+  it('every declared permission is a real flag some feature uses', () => {
+    // A typo'd flag fails OPEN in hasAny — the tour would simply never
+    // be offered to anyone, and nothing would say why.
+    const known = new Set(
+      FEATURE_CATALOG.flatMap((f) => f.permission == null ? []
+        : Array.isArray(f.permission) ? f.permission : [f.permission]));
+    const strangers: string[] = [];
+    for (const tour of TOUR_CATALOG) {
+      for (const flag of tour.requires ?? []) {
+        if (!known.has(flag)) strangers.push(`${tour.key}: ${flag}`);
+      }
+    }
+    expect(strangers, 'permission flags no feature declares').toEqual([]);
   });
 
   it('a countFrom step reads a LIVE attribute, not a guess', () => {

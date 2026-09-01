@@ -40,7 +40,13 @@ export default function ToursPage() {
     const access = { hasAny, enabledModules: user?.enabled_modules };
     return TOUR_CATALOG.flatMap((tour) => {
       const feature = reachableFeature(tour.feature, access);
-      return feature ? [{ tour, feature }] : [];
+      if (!feature) return [];
+      // The tour's OWN grant, not just its page's — a page frequently
+      // opens on a wider permission than the controls a tour walks
+      // through.  Without this the library offers a card whose first
+      // step points at a button the viewer cannot see.
+      if (tour.requires?.length && !hasAny(...tour.requires)) return [];
+      return [{ tour, feature }];
     });
   }, [hasAny, user?.enabled_modules]);
 
