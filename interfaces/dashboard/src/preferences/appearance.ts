@@ -44,7 +44,10 @@ export function publishAppearanceDefault(): void {
   if (!get('appearance.followMe')) return;
   set('appearance.default', {
     theme: get('mods.theme'),
-    size: get('size'),
+    // The blob FIELD stays `size`: legacyKeys keys on ROW names, not on
+    // fields inside a synced row, so renaming it here would orphan every
+    // account's published default with no chain to rescue it.
+    size: get('mods.size'),
   } as AppearanceDefault);
 }
 
@@ -79,9 +82,9 @@ export function adoptAppearanceDefault(): AppearanceDefault | null {
     set('mods.theme', cleanTheme);
     adopted.theme = cleanTheme;
   }
-  const cleanSize = DEFS.size.sanitize?.(stored.size) as SizeSetting | undefined;
-  if (cleanSize && !hasStored('size')) {
-    set('size', cleanSize);
+  const cleanSize = DEFS['mods.size'].sanitize?.(stored.size) as SizeSetting | undefined;
+  if (cleanSize && !hasStored('mods.size')) {
+    set('mods.size', cleanSize);
     adopted.size = cleanSize;
   }
   return (adopted.theme || adopted.size) ? adopted : null;

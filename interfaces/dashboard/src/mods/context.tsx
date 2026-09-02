@@ -109,7 +109,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
   // preferences registry now.  This provider only applies the theme to
   // the DOM and exposes the partial-update ergonomics consumers expect.
   const { value: theme, setValue: setThemeValue } = usePreference('mods.theme');
-  const { value: size, setValue: setSizeValue } = usePreference('size');
+  const { value: size, setValue: setSizeValue } = usePreference('mods.size');
 
   // Deliberately NOT inside `applyTheme`. That function is the mapping
   // the pre-paint script re-implements, and `themeBoot.test.ts` compares

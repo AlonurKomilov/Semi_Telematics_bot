@@ -51,7 +51,8 @@
         var t = read('4truck.pref.mods.theme')
              || read('4truck.pref.theme')
              || read('dashboard-theme') || {};
-        var s = read('4truck.pref.size') || {};
+        var s = read('4truck.pref.mods.size')
+             || read('4truck.pref.size') || {};
 
         var pick = function (v, allowed, fallback) {
           return allowed.indexOf(v) === -1 ? fallback : v;

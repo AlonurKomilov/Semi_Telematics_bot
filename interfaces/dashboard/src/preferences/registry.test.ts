@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { MOD_DEFAULT,
+import { MOD_DEFAULT, SIZE_DEFAULT,
   DEFS, TABLE_PARTS, tableKey, defFor, type PrefKey, type TablePart,
 } from './registry';
 import { LS_PREFIX, readPref, writePref } from './local';
@@ -33,7 +33,7 @@ const FROZEN_KEYS: readonly string[] = [
   'mods.theme',
   // Size replaced the theme's `density` FIELD. `theme` itself is
   // untouched — removing a field is safe where removing a key is not.
-  'size',
+  'mods.size',
   'appearance.followMe',
   'appearance.default',
   'loads.rangeDays',
@@ -167,6 +167,24 @@ describe('legacy migration', () => {
       .toMatchObject({ accent: 'green', material: 'glass' });
     // The old entry stays, so this release can be rolled back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).not.toBeNull();
+  });
+
+  it('carries a browser forward from the pre-namespace size key', () => {
+    // The row 100% of existing browsers hold on the day this ships —
+    // everyone has a `4truck.pref.size`, whether or not they ever moved
+    // the slider. The seeded value is non-default in BOTH `global` and
+    // `regions`, so a sanitiser that quietly dropped the region map
+    // would be caught here rather than in a bug report.
+    localStorage.setItem(`${LS_PREFIX}size`, JSON.stringify({
+      ...SIZE_DEFAULT, global: 1.3, regions: { tables: 1.2 },
+    }));
+    expect(readPref('mods.size')).toMatchObject(
+      { global: 1.3, regions: { tables: 1.2 } });
+    // Copied forward, so the next read is a direct canonical hit.
+    expect(JSON.parse(localStorage.getItem(`${LS_PREFIX}mods.size`)!))
+      .toMatchObject({ global: 1.3, regions: { tables: 1.2 } });
+    // Left in place, so this release can be rolled back.
+    expect(localStorage.getItem(`${LS_PREFIX}size`)).not.toBeNull();
   });
 
   it('carries the sound keys forward too', () => {

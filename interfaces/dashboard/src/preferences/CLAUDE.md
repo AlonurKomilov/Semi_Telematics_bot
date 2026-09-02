@@ -160,8 +160,8 @@ behaviour-neutral and starts needing its own test.
 
 `index.html`'s inline `theme-boot` script reads `4truck.pref.mods.theme`
 — falling back to `4truck.pref.theme`, then the pre-service
-`dashboard-theme` — plus `4truck.pref.size`, straight from
-`localStorage`. Every link of that chain has its own test in
+`dashboard-theme` — and `4truck.pref.mods.size`, falling back to
+`4truck.pref.size`, straight from `localStorage`. Every link of that chain has its own test in
 `themeBoot.test.ts`; they did not, and deleting the canonical read left
 all 47 tests green while every user's first painted frame reverted to
 their pre-rename theme. That is not a

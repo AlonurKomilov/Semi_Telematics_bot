@@ -518,9 +518,13 @@ export const DEFS = {
   // a synced size would paint every page at 1 and then visibly jump.
   // `appearance.default` below is the synced half; it holds a DEFAULT for
   // a new browser, never the applied value.
-  'size': def<SizeSetting>({
+  'mods.size': def<SizeSetting>({
     default: SIZE_DEFAULT,
     scope: 'device',
+    // Joined the namespace late — theme and sound moved in d726495d and
+    // this one did not. `device` scope means the chain is a complete
+    // migration: there is no server row to orphan.
+    legacyKeys: ['4truck.pref.size'],
     sanitize: (v) => {
       if (typeof v !== 'object' || v === null) return undefined;
       const o = v as Partial<SizeSetting>;

@@ -167,7 +167,19 @@ const storeLegacyTheme = (t: Partial<ModSetting>) =>
 /** The spelling that predates the preference service entirely. */
 const storeOldestTheme = (t: Partial<ModSetting>) =>
   localStorage.setItem('dashboard-theme', JSON.stringify(t));
+/**
+ * The CANONICAL size key. This used to write `${LS_PREFIX}size`, which
+ * the mods.size rename demoted to the legacy spelling — and every size
+ * test in this file writes through here, so they would all have gone on
+ * passing ON THE FALLBACK BRANCH while the canonical read had no
+ * coverage at all. That is exactly what happened to
+ * `4truck.pref.theme`; the fix is the same one, applied before the
+ * rename rather than after it.
+ */
 const storeSize = (s: Partial<SizeSetting>) =>
+  localStorage.setItem(`${LS_PREFIX}mods.size`, JSON.stringify(s));
+/** The spelling used before size joined the mods namespace. */
+const storeLegacySize = (s: Partial<SizeSetting>) =>
   localStorage.setItem(`${LS_PREFIX}size`, JSON.stringify(s));
 
 describe('theme-boot ↔ applyTheme', () => {
@@ -389,10 +401,29 @@ describe('theme-boot ↔ applySize', () => {
     ['an array', '[1,2]'],
     ['not json', 'nope'],
   ])('falls back to unscaled for %s', (_label, raw) => {
-    localStorage.setItem(`${LS_PREFIX}size`, raw);
+    localStorage.setItem(`${LS_PREFIX}mods.size`, raw);
     const booted = runBoot();
     resetRoot();
     expect(booted).toEqual(runApply(MOD_DEFAULT, SIZE_DEFAULT));
+  });
+
+  it('reads the pre-rename size key when the canonical one is absent', () => {
+    // The link every existing browser is holding on the day this ships.
+    // Without it a person who had ever touched the size slider gets a
+    // 100% first paint and a silent reset.
+    storeLegacySize({ ...SIZE_DEFAULT, global: 1.35 });
+    const booted = runBoot();
+    resetRoot();
+    expect(booted).toEqual(runApply(MOD_DEFAULT, { ...SIZE_DEFAULT, global: 1.35 }));
+  });
+
+  it('prefers the canonical size key over the pre-rename one', () => {
+    // Two different values, so the assertion can only pass on the right one.
+    storeLegacySize({ ...SIZE_DEFAULT, global: 1.1 });
+    storeSize({ ...SIZE_DEFAULT, global: 1.45 });
+    const booted = runBoot();
+    resetRoot();
+    expect(booted).toEqual(runApply(MOD_DEFAULT, { ...SIZE_DEFAULT, global: 1.45 }));
   });
 
   it('leaves an unset region unstamped rather than writing 1', () => {
@@ -490,7 +521,7 @@ describe('theme-boot source', () => {
     // fallback — so it passed on the wrong line of the chain and the
     // canonical string appeared exactly once in the repo, untested.
     expect(source).toContain(`'${LS_PREFIX}mods.theme'`);
-    expect(source).toContain(`'${LS_PREFIX}size'`);
+    expect(source).toContain(`'${LS_PREFIX}mods.size'`);
   });
 
   it('keeps both legacy spellings in the fallback chain', () => {
@@ -499,6 +530,7 @@ describe('theme-boot source', () => {
     // and nothing else in the repo pins them.
     expect(source).toContain(`'${LS_PREFIX}theme'`);
     expect(source).toContain("'dashboard-theme'");
+    expect(source).toContain(`'${LS_PREFIX}size'`);
   });
 
   it('never calls a storage writer', () => {
