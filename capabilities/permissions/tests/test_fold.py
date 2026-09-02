@@ -11,6 +11,7 @@ import os
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
+import pytest
 from dataclasses import replace
 
 from capabilities.permissions.fold import (
@@ -156,3 +157,24 @@ class TestStaleCrumbs:
         assert seed_for_key("nonsense") is None
         assert seed_for_key("fleet") is ROLE_PERMISSIONS[Role.FLEET]
         assert seed_for_key("recruiter__manager") is not None
+
+
+class TestSystemTrailContract:
+    """The trail records PEOPLE: an event with no actor must declare
+    context={'system': '<why>'}.  The first --apply of the crumb sweep
+    wrote eleven grant changes and every trail write raised on exactly
+    this — the sweep landed, the record did not.  Pinned here so both
+    pre-flight scripts' payload shape is proven before it runs again."""
+
+    @pytest.mark.asyncio
+    async def test_system_context_is_accepted_and_its_absence_refused(self, pg_db):
+        from capabilities.permissions.fold import system_trail_context
+        acct = (await pg_db.create_account("Trail Contract Co")).id
+        ok = {"entity_type": "role", "entity_id": "recruiter",
+              "action": "stale_grant_crumbs_swept", "actor_user_id": None,
+              "context": system_trail_context("verb/scope migration hygiene",
+                                              company_id=None)}
+        await pg_db.append_activity_events(acct, [ok])
+        bad = dict(ok, context={"company_id": None})
+        with pytest.raises(ValueError):
+            await pg_db.append_activity_events(acct, [bad])

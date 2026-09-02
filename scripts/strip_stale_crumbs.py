@@ -71,19 +71,55 @@ async def _rows_for(platform_db, account_id: int, role: str):
     return out
 
 
+async def _trail(account_id: int, key: str, company_id, removed: list[str], ctx) -> None:
+    from capabilities.activity_trail.recorder import record_simple
+    tdb = await get_tenant_db(account_id)
+    await record_simple(
+        tdb, account_id, None, "stale_grant_crumbs_swept", "role", key,
+        changes={"removed_keys": removed},
+        context=ctx("verb/scope migration hygiene (scripts/strip_stale_crumbs.py)",
+                    company_id=company_id),
+        note="verb/scope migration hygiene: *_vehicle crumbs the seed no longer grants",
+    )
+    # append_activity_events rides the caller's transaction and never
+    # commits; a script has no request to ride.
+    if hasattr(tdb, "commit"):
+        await tdb.commit()
+
+
 async def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--apply", action="store_true", help="Remove the keys (default: report only).")
     p.add_argument("--account", type=int, default=None, help="Only this account id.")
     p.add_argument("--role", default="recruiter", help="Base role whose rows to sweep (default: recruiter).")
+    p.add_argument("--trail-backfill", metavar="FILE", default=None,
+                   help="Write ONLY the trail events for sweeps already applied, from a JSON "
+                        "list of {account_id, key, company_id, removed_keys}.  Changes no grant.")
     args = p.parse_args(argv)
 
-    from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
+    from capabilities.permissions.fold import (
+        seed_for_key, stale_narrow_crumbs, system_trail_context,
+    )
 
     await init_services()
     from infra.platform import get_platform_db
     pdb = get_platform_db()
+
+    if args.trail_backfill:
+        # The first --apply swept its rows and then raised on every
+        # trail write (no ``system`` context).  The grants are already
+        # clean, so a re-run plans nothing; this records what happened
+        # from the run's own printed plan.
+        with open(args.trail_backfill, encoding="utf-8") as fh:
+            items = json.load(fh)
+        n = 0
+        for it in items:
+            await _trail(int(it["account_id"]), str(it["key"]), it.get("company_id"),
+                         [str(k) for k in it["removed_keys"]], system_trail_context)
+            n += 1
+        print(f"Trail backfill: {n} event(s) written.")
+        return 0
 
     accounts = await pdb.list_accounts(active_only=False)
     if args.account is not None:
@@ -114,14 +150,7 @@ async def main(argv: list[str]) -> int:
                                        company_id=company_id)
         swept += 1
         try:
-            from capabilities.activity_trail.recorder import record_simple
-            tdb = await get_tenant_db(account_id)
-            await record_simple(
-                tdb, account_id, None, "stale_grant_crumbs_swept", "role", key,
-                changes={"removed_keys": crumbs},
-                context={"company_id": company_id},
-                note="verb/scope migration hygiene: *_vehicle crumbs the seed no longer grants",
-            )
+            await _trail(account_id, key, company_id, crumbs, system_trail_context)
         except Exception:
             logger.warning("account %s key %s: swept, trail failed", account_id, key,
                            exc_info=True)

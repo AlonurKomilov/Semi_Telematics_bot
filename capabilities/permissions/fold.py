@@ -158,3 +158,15 @@ def stale_narrow_crumbs(seed_fs, stored: dict) -> list[str]:
         if seed_none and stored.get(narrow) is True and not stored.get(wide):
             out.append(narrow)
     return sorted(out)
+
+
+def system_trail_context(why: str, **extra) -> dict:
+    """Trail context for an event with NO human actor.
+
+    The trail records people: ``append_activity_events`` refuses an
+    actor-less event unless its context declares ``system`` — the
+    first crumb sweep wrote eleven grant changes and every trail write
+    raised on exactly this, so the change landed and the record did
+    not.  Both pre-flight scripts build their context here.
+    """
+    return {"system": why, **extra}

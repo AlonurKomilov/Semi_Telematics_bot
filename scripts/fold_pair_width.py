@@ -150,13 +150,20 @@ async def main(argv: list[str]) -> int:
         written += 1
         try:
             from capabilities.activity_trail.recorder import record_simple
+            from capabilities.permissions.fold import system_trail_context
             tdb = await get_tenant_db(account_id)
             await record_simple(
                 tdb, account_id, None, "role_vehicle_scope_fold", "role", role,
                 changes={"role_vehicle_scope": {"from": None, "to": width}},
-                context={"shape": shape, "lost_width_on": list(lost)},
+                context=system_trail_context(
+                    "verb/scope migration: pair-width fold (scripts/fold_pair_width.py)",
+                    shape=shape, lost_width_on=list(lost)),
                 note="verb/scope migration: width folded out of the permission pairs",
             )
+            # append_activity_events rides the caller's transaction and
+            # never commits; a script has no request to ride.
+            if hasattr(tdb, "commit"):
+                await tdb.commit()
         except Exception:
             logger.warning("account %s role %s: written, trail failed", account_id, role,
                            exc_info=True)
