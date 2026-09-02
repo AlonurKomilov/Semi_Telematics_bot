@@ -527,6 +527,15 @@ def require_permission(feature: str):
         )
         if not getattr(perms, feature, False):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
+        # Parity with require_permission_any: the effective FeatureSet
+        # and the matched flag ride the user dict.  The alerting
+        # router's alert-TYPE filter reads ``_perms`` and fails OPEN
+        # when it is absent — so a pair gate migrated to this factory
+        # would have silently shown every alert type.  Only alerting
+        # reads it today; the parity is here so the next reader is
+        # not a disclosure either.
+        user["_matched_perm"] = feature
+        user["_perms"] = perms
         return user
     return _check
 

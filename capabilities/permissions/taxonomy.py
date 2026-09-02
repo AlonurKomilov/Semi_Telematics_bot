@@ -195,12 +195,11 @@ TAXONOMY: dict[str, Verdict] = {
     "can_alerts_vehicle": Verdict(
         Fate.DERIVED,
         note="derivation input moves from can_vehicle_all to the TM "
-             "scope when the enforcement stage reaches alerts.  The "
-             "alerting router's fifteen _matched_perm reads are "
-             "CORRECT as they stand: this pair is derived, has no "
-             "canonical target, and its gates and reads are "
-             "self-consistent — the width pass moves them, not the "
-             "verb sweep"),
+             "scope when the enforcement stage reaches alerts.  Done in "
+             "stage E: alerts follow VEHICLE visibility, so every gate "
+             "asks can_view_vehicles and every width read asks the width "
+             "core for the vehicles feature; the derived pair now only "
+             "feeds the wire and the bot's menus"),
 
     # ── out of this migration, on the record ───────────────────────
     "can_manage_config_role": Verdict(Fate.CONFIG),

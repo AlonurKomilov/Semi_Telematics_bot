@@ -206,8 +206,8 @@ export default function AppRouter() {
         <Route path="vehicles/:name" element={L(<P perm={['can_view_vehicles']}><VehicleDetail /></P>)} />
         <Route path="routes" element={L(<P perm={['can_view_routes']}><RoutesPage /></P>)} />
         <Route path="geofences" element={L(<P perm={['can_view_geofence']}><Geofences /></P>)} />
-        <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Parking /></P>)} />
-        <Route path="alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Alerts /></P>)} />
+        <Route path="parking" element={L(<P perm="can_view_vehicles"><Parking /></P>)} />
+        <Route path="alerts" element={L(<P perm="can_view_vehicles"><Alerts /></P>)} />
         <Route path="scorecards" element={L(<P perm="can_view_scorecards"><Scorecards /></P>)} />
         <Route path="safety-events" element={L(<P perm={['can_view_events']}><Events /></P>)} />
         <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />

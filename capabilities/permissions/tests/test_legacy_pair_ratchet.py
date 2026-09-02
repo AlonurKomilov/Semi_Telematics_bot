@@ -60,7 +60,7 @@ BASELINE: dict[str, int] = json.loads('''
     "interfaces/dashboard/src/config/poiLayers.ts": 1,
     "interfaces/dashboard/src/features/live-map/sections/CompanyColorPartition.tsx": 2,
     "interfaces/dashboard/src/features/live-map/sections/GeofenceBoundariesLayer.tsx": 2,
-    "interfaces/dashboard/src/features/live-map/sections/UnsafeParkingMarkers.tsx": 2,
+    "interfaces/dashboard/src/features/live-map/sections/UnsafeParkingMarkers.tsx": 1,
     "interfaces/dashboard/src/features/live-map/sections/UtilisationHeatmap.tsx": 2,
     "interfaces/dashboard/src/features/maintenance/ServiceHistoryModal.tsx": 1,
     "interfaces/dashboard/src/features/maintenance/Tasks.tsx": 3,

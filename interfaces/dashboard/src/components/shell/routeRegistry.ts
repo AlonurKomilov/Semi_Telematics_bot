@@ -47,7 +47,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Harsh braking, speeding, and crash events', keywords: ['harsh','speeding','crash'] },
   { label: 'Cameras',           path: '/cameras',    icon: Camera,        group: 'Safety', permission: ['can_cameras'],
     description: 'Vehicle dashcam footage', keywords: ['video','dashcam'] },
-  { label: 'Alerts',            path: '/alerts',     icon: Bell,          group: 'Safety', permission: ['can_alerts_all', 'can_alerts_vehicle'],
+  { label: 'Alerts',            path: '/alerts',     icon: Bell,          group: 'Safety', permission: ['can_view_vehicles'],
     description: 'Pending notifications across all vehicles', keywords: ['notifications','warnings'] },
 
   // Reports

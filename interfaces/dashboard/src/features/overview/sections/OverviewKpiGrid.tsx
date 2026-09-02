@@ -61,7 +61,7 @@ export default function OverviewKpiGrid({
       // saying so they just look like one of them is wrong.
       hint: 'Awaiting acknowledgement, in this view',
       href: '/alerts',
-      permission: (h) => h('can_alerts_all') || h('can_alerts_vehicle'),
+      permission: (h) => h('can_view_vehicles'),
       showWhen: () => stats.pending_alerts !== undefined,
     },
     {
@@ -104,7 +104,7 @@ export default function OverviewKpiGrid({
       icon: ParkingCircle,
       hint: 'Drivers parked outside safe zones',
       href: '/parking',
-      permission: (h) => h('can_alerts_all') || h('can_alerts_vehicle'),
+      permission: (h) => h('can_view_vehicles'),
       showWhen: () => unsafeParking > 0,
     },
     {

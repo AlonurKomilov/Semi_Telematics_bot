@@ -7,6 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from capabilities.permissions.roles import can
+from capabilities.permissions.scope import unit_width
 from capabilities.alerting.service import filter_alerts_by_access
 from interfaces.bot.config import ALERT_INTERVAL
 from interfaces.bot.state import get_user_company_codes, get_platform_db, get_tenant_db
@@ -23,7 +24,7 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     per-type settings keyboard so users can fine-tune categories.
     """
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_vehicle"):
+    if not can(user.role, "can_view_vehicles"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -66,7 +67,7 @@ async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
                            alert_type: str):
     """Toggle a specific alert type on/off and refresh the settings menu."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_vehicle"):
+    if not can(user.role, "can_view_vehicles"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -92,7 +93,7 @@ async def cmd_ai_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE
                               ai_type: str):
     """Toggle proactive AI for a specific alert type and refresh settings."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_vehicle"):
+    if not can(user.role, "can_view_vehicles"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -138,7 +139,7 @@ async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TY
 async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show alert acknowledgment history for the account."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_vehicle"):
+    if not can(user.role, "can_view_vehicles"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -146,7 +147,7 @@ async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tenant = await get_tenant_db(user.account_id)
     history = await tenant.get_alert_history(user.account_id, limit=20)
     # Filter for _own-permission users to their assigned truck only
-    if can(user.role, "can_alerts_vehicle") and not can(user.role, "can_alerts_all"):
+    if await unit_width(user.account_id, user.role, user, "vehicles") == "assigned":
         trucks = [user.truck_num] if user.truck_num else []
         history = filter_alerts_by_access(history, trucks)
     if not history:
@@ -196,7 +197,7 @@ async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show currently active (unacknowledged) alerts for the account."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_vehicle"):
+    if not can(user.role, "can_view_vehicles"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -204,7 +205,7 @@ async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE)
     tenant = await get_tenant_db(user.account_id)
     pending = await tenant.get_pending_alerts(user.account_id)
     # Filter for _own-permission users to their assigned truck only
-    if can(user.role, "can_alerts_vehicle") and not can(user.role, "can_alerts_all"):
+    if await unit_width(user.account_id, user.role, user, "vehicles") == "assigned":
         trucks = [user.truck_num] if user.truck_num else []
         pending = filter_alerts_by_access(pending, trucks)
     if not pending:

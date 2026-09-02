@@ -11,7 +11,7 @@
 import { NavLink } from 'react-router-dom';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 
-const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
+const P_ALERTS = ['can_view_vehicles'];
 
 function Tab({ to, end, children }: {
   to: string; end?: boolean; children: React.ReactNode;

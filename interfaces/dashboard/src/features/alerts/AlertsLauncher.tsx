@@ -21,7 +21,7 @@ import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { NotificationsPanel } from './NotificationsPanel';
 import { useInboxUnread } from './useInbox';
 
-const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
+const P_ALERTS = ['can_view_vehicles'];
 
 export function AlertsLauncher() {
   const { hasAny } = useViewPermissions();

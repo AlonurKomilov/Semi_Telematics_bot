@@ -55,7 +55,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         row2 = []
         if has_fuel_cost:
             row2.append(InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost"))
-        if perms.can_alerts_all or perms.can_alerts_vehicle:
+        if perms.can_view_vehicles:
             row2.append(InlineKeyboardButton(t("menu.alerts"), callback_data="cmd_alerts"))
         if row2:
             rows.append(row2)

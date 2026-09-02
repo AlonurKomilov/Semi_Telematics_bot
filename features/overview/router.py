@@ -130,10 +130,9 @@ async def overview_stats(
     # only to discard the results.
     fetch_alerts = (
         role == Role.DRIVER
-        or can(role, "can_alerts_all")
-        or can(role, "can_alerts_vehicle")
+        or can(role, "can_view_vehicles")
     )
-    fetch_parking = can(role, "can_alerts_all") or can(role, "can_alerts_vehicle")
+    fetch_parking = can(role, "can_view_vehicles")
     # Wide-only fetch, exactly today's deny-set (the legacy _all
     # gate) — a width-aware assigned count is an E-stage question.
     fetch_maintenance = can(role, "can_manage_maintenance")

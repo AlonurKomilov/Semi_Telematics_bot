@@ -25,7 +25,7 @@ import { useRecentAlerts, useAckAlerts, activeAndClaimed } from './useRecentAler
 import { useBannerLevel } from './bannerLevel';
 import { claimedBanners, diffNewAlerts, resolvedBanners } from './liveAlerts';
 
-const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
+const P_ALERTS = ['can_view_vehicles'];
 // 60s ambient cadence — "a new alert within a minute" for an OPEN tab;
 // urgency is web push's + the alerting pipeline's job, not this glance.
 // Steady-state cost is bounded: react-query skips the interval while the

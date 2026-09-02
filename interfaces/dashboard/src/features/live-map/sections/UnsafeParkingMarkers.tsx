@@ -8,7 +8,7 @@
  * triage spatially (a cluster on one street vs. scattered across
  * three states changes the response priority).
  *
- * Permission-gated by ``can_alerts_all`` / ``can_alerts_vehicle`` /
+ * Permission-gated by ``can_view_vehicles`` (alerts follow vehicle visibility) /
  * ``can_vehicle_all`` — same gate the /parking/active route uses.
  * Legacy pair flag on purpose: a WIDTH claim, and the vehicles
  * pair is view/view, so can_view_vehicles cannot say wide-only.
@@ -34,7 +34,7 @@ export default function UnsafeParkingMarkers({
 }: LiveMapSectionProps) {
   const { has } = useViewPermissions();
   const hasAccess =
-    has('can_alerts_all') || has('can_alerts_vehicle') || has('can_vehicle_all');
+    has('can_view_vehicles');
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
