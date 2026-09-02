@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import FileResponse
 
-from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_platform_db, get_user_vehicle_nums, get_user_company_codes, validate_company_access, filter_by_allowed_companies
+from interfaces.api.deps import require_permission, require_permission_any, member_unit_scope, get_tenant_db, get_platform_db, get_user_vehicle_nums, get_user_company_codes, validate_company_access, filter_by_allowed_companies
 from infra.services import get_client
 from features.vehicles.warehouse.service import get_driver_efficiency as _svc_driver_efficiency
 from features.events.severity import classify_event_severity as _classify_severity
@@ -45,13 +45,16 @@ PROBATIONARY_MIN_SNAPSHOTS = 14
 async def scorecards(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
 ):
     """Scorecards — efficiency + safety metrics per driver."""
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
     # Pre-compute truck filter for own-only users so it's applied inside the service
-    own_perm = user.get("_matched_perm") == "can_scorecard_vehicle"
+    # Width from the width layer, not from which flag the gate
+    # happened to match — see the trap guard in
+    # capabilities/permissions/tests/test_matched_perm_trap.py.
+    own_perm = await member_unit_scope(user, "scorecards") == "assigned"
     vehicle_filter: list[str] | None = await get_user_vehicle_nums(user) if own_perm else None
     drivers = await _svc_driver_efficiency(user["account_id"], days=days, company=company, vehicle_nums=vehicle_filter)
     drivers = filter_by_allowed_companies(drivers, allowed)
@@ -122,7 +125,7 @@ async def scorecards_composite(
                     "tenant's ``scorecard_default_subject`` setting "
                     "(default ``driver`` for back-compat).",
     ),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -137,7 +140,10 @@ async def scorecards_composite(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    own_perm = user.get("_matched_perm") == "can_scorecard_vehicle"
+    # Width from the width layer, not from which flag the gate
+    # happened to match — see the trap guard in
+    # capabilities/permissions/tests/test_matched_perm_trap.py.
+    own_perm = await member_unit_scope(user, "scorecards") == "assigned"
     vehicle_filter: list[str] | None = await get_user_vehicle_nums(user) if own_perm else None
 
     # ── Cache strategy: stale-while-revalidate (SWR) ─────────────
@@ -340,7 +346,7 @@ async def scorecards_history(
                     "per-pillar subtotal instead of the composite total. "
                     "Pre-Option-C snapshots without pillar data are skipped.",
     ),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
 ):
     """Score-over-time history for one subject (driver or vehicle)."""
@@ -450,7 +456,7 @@ async def my_scorecard_explanation(
         7, ge=1, le=90,
         description="Compare today's snapshot to the one ~N days ago.",
     ),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
 ):
     """Driver-facing explanation: diff between today's snapshot and one
@@ -543,7 +549,7 @@ async def scorecard_explanation(
         7, ge=1, le=90,
         description="Compare today's snapshot to the one ~N days ago.",
     ),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
 ):
     """Score explanation — diff between today's snapshot and one N days ago.
@@ -638,7 +644,7 @@ def _rank_in(sorted_scores: list[int], my_score: int) -> dict:
 @router.get("/scorecards/me")
 async def my_scorecard(
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
 ):
     """Single-scorecard for the calling user (driver miniapp).
@@ -656,7 +662,10 @@ async def my_scorecard(
     # (rank_in_pillar, rank_total, account_size) so the response cannot
     # be used to enumerate the rest of the fleet.  The caller's own
     # card and week_delta are still returned.
-    own_only = user.get("_matched_perm") == "can_scorecard_vehicle"
+    # Width from the width layer, not from which flag the gate
+    # happened to match — see the trap guard in
+    # capabilities/permissions/tests/test_matched_perm_trap.py.
+    own_only = await member_unit_scope(user, "scorecards") == "assigned"
     my_trucks = await get_user_vehicle_nums(user)
     if not my_trucks:
         raise HTTPException(
@@ -819,7 +828,7 @@ async def scorecards_summary(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
     subject: str | None = Query(None, pattern="^(driver|vehicle)$"),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -852,7 +861,10 @@ async def scorecards_summary(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    own_perm = user.get("_matched_perm") == "can_scorecard_vehicle"
+    # Width from the width layer, not from which flag the gate
+    # happened to match — see the trap guard in
+    # capabilities/permissions/tests/test_matched_perm_trap.py.
+    own_perm = await member_unit_scope(user, "scorecards") == "assigned"
     vehicle_filter: list[str] | None = await get_user_vehicle_nums(user) if own_perm else None
 
     # Resolve subject (mirrors composite logic)
@@ -958,7 +970,7 @@ async def get_subject_scorecard(
     subject_id: str,
     subject_type: str = Query("vehicle", pattern="^(driver|vehicle)$"),
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
 ):
     """Compute and return a scorecard for a single subject (vehicle or driver).
 
@@ -988,7 +1000,7 @@ async def get_subject_score_events(
     subject_id: str,
     subject_type: str = Query("vehicle", pattern="^(driver|vehicle)$"),
     since: str | None = Query(None, description="ISO date YYYY-MM-DD"),
-    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_vehicle")),
+    user: dict = Depends(require_permission("can_view_scorecards")),
     tenant=Depends(get_tenant_db),
 ):
     """Return the score_events evidence trail for one subject.

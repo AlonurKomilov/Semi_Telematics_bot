@@ -29,7 +29,7 @@
  *
  * Permission-gated:
  *   • can_camera ⇒ video preview block shown
- *   • can_scorecard_all / _own ⇒ scorecard link shown
+ *   • can_view_scorecards ⇒ scorecard link shown
  *   • can_coaching_admin ⇒ coaching link shown
  *
  * No new backend dependency.
@@ -259,7 +259,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
   // Quick-link visibility maps to existing dashboard pages.  Permission
   // gates mirror the route guards on each page so operators don't see
   // dead links.
-  const canScorecards = hasAny('can_scorecard_all', 'can_scorecard_vehicle');
+  const canScorecards = hasAny('can_view_scorecards');
   const canCoaching = has('can_coaching_admin');
   const canCamera = has('can_camera');
   const isEventAlert = alert.alert_type === 'events' || alert.alert_type === 'event';

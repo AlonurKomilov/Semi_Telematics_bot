@@ -28,7 +28,7 @@ const ALL_TABS: { id: Page; labelKey: string; icon: React.ReactNode; permKeys?: 
   // PTI tab visible to drivers (own scope) and fleet reviewers (all scope).
   { id: 'pti',       labelKey: 'tabs.pti',       icon: <Icon24CheckCircleOutline />,  permKeys: ['can_inspections_vehicle', 'can_manage_inspections'] },
   { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_alerts_all', 'can_alerts_vehicle'] },
-  { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_scorecard_all', 'can_scorecard_vehicle'] },
+  { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_view_scorecards'] },
   // AI uses the same own-vehicle gate as the dashboard sidebar so drivers
   // (who have can_vehicle_vehicle=True) get access to chat with the assistant.
   { id: 'ai',        labelKey: 'tabs.ai',        icon: <Icon24MessageOutline />,      permKeys: ['can_view_vehicles'] },

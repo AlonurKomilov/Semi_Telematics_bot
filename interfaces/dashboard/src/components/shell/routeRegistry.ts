@@ -41,7 +41,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Where drivers park and safety classification', keywords: ['parking','safe'] },
 
   // Safety
-  { label: 'Scorecards', path: '/scorecards', icon: Trophy,        group: 'Safety', permission: ['can_scorecard_all', 'can_scorecard_vehicle'],
+  { label: 'Scorecards', path: '/scorecards', icon: Trophy,        group: 'Safety', permission: ['can_view_scorecards'],
     description: 'Driver behaviour scoring and ranking', keywords: ['drivers','score','behavior'] },
   { label: 'Safety Events',     path: '/safety-events',     icon: AlertTriangle, group: 'Safety', permission: ['can_view_events'],
     description: 'Harsh braking, speeding, and crash events', keywords: ['harsh','speeding','crash'] },

@@ -40,6 +40,7 @@ export interface Permissions {
   can_view_geofence: boolean;
   can_manage_geofence: boolean;
   can_view_events: boolean;
+  can_view_scorecards: boolean;
   can_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;
