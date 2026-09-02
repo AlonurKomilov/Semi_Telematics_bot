@@ -92,3 +92,5 @@ abc-lab/**/*secret*
 abc-lab/**/node_modules/
 abc-lab/**/objstore/
 abc-lab/**/dist*/
+
+interfaces/browser_extension/dist/

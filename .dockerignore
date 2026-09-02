@@ -56,3 +56,5 @@ docs/
 .claude/
 .vscode/
 .idea/
+interfaces/browser_extension/node_modules/
+interfaces/browser_extension/dist/

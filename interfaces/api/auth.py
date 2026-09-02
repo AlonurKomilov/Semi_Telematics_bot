@@ -143,6 +143,18 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> dict:
     return json.loads(unquote(user_json))
 
 
+# ── Audience-scoped tokens ───────────────────────────────────────────
+# A token for a client that needs a SLICE of the account, not all of
+# it.  The browser extension shows a truck list; if its token is ever
+# lifted off a machine it opens a truck list, not the account.  ``aud``
+# names the client, ``scope`` lists the FeatureSet fields it may
+# exercise — every other permission reads False for that token, however
+# senior the person behind it.  Unknown audiences are rejected at decode.
+EXTENSION_AUDIENCE = "extension"
+KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE})
+EXTENSION_SCOPE: tuple[str, ...] = ("can_location_map", "can_location_vehicle")
+
+
 def create_jwt(
     telegram_id: int,
     account_id: int,
@@ -153,6 +165,8 @@ def create_jwt(
     user_id: int | None = None,
     is_manager: bool = False,
     is_primary_owner: bool = False,
+    aud: str | None = None,
+    scope: "tuple[str, ...] | list[str] | None" = None,
 ) -> str:
     """Create a JWT token for an authenticated user.
 
@@ -206,6 +220,9 @@ def create_jwt(
     # vs a CO-OWNER (restrictable) permission row without a DB read.
     if is_primary_owner:
         payload["is_primary_owner"] = True
+    if aud:
+        payload["aud"] = aud
+        payload["scope"] = list(scope or ())
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -285,6 +302,9 @@ async def mint_session_token(
     remember_me: bool,
     is_manager: bool = False,
     is_primary_owner: bool = False,
+    aud: str | None = None,
+    scope: "tuple[str, ...] | list[str] | None" = None,
+    device_label: str | None = None,
 ) -> str:
     """Mint a JWT *and* record the session row in one shot.
 
@@ -340,13 +360,18 @@ async def mint_session_token(
         user_id=user_id if (user_id and user_id > 0) else None,
         is_manager=is_manager,
         is_primary_owner=is_primary_owner,
+        aud=aud, scope=scope,
     )
     if user_id and user_id > 0:
         try:
             now_dt = datetime.now(timezone.utc)
             exp_ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
             ua = (request.headers.get("user-agent") or "")[:500]
-            device_label = _parse_user_agent(ua)
+            # A client that names itself gets its own label in Active
+            # Sessions — "Browser extension" is a different device from
+            # "Chrome on Windows" even when it is the same laptop, because
+            # it holds a different token.
+            device_label = device_label or _parse_user_agent(ua)
             client_ip = _client_ip(request)
             # New-device sign-in notice (system.security) — checked BEFORE
             # the new session row is inserted so it can't match itself.
@@ -380,7 +405,8 @@ async def mint_session_token(
 
 def decode_jwt(token: str) -> dict:
     """Decode and validate a JWT token. Raises JWTError on failure."""
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM],
+                      options={"verify_aud": False})
 
 
 # ── JTI denylist (revoked sessions) ─────────────────────────────────
@@ -574,6 +600,9 @@ async def refresh_token(request: Request, response: Response, authorization: str
         # propagates to enforcement on the next token refresh.
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
+        # Scope survives refresh: dropping it here would silently widen a
+        # truck-list key into an account key every eight hours.
+        aud=payload.get("aud"), scope=payload.get("scope"),
     )
     try:
         from datetime import datetime, timezone
@@ -666,6 +695,7 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
+    is_extension = body.client == EXTENSION_AUDIENCE
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
@@ -673,8 +703,15 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
+        aud=EXTENSION_AUDIENCE if is_extension else None,
+        scope=EXTENSION_SCOPE if is_extension else None,
+        device_label="Browser extension" if is_extension else None,
     )
-    _set_auth_cookie(response, token, remember_me=body.remember_me)
+    # The extension authenticates with the Bearer header it stores; a
+    # cookie on the API domain would be a second, unscoped credential it
+    # never asked for.
+    if not is_extension:
+        _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -789,6 +826,7 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
+    is_extension = body.client == EXTENSION_AUDIENCE
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
@@ -796,8 +834,15 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
+        aud=EXTENSION_AUDIENCE if is_extension else None,
+        scope=EXTENSION_SCOPE if is_extension else None,
+        device_label="Browser extension" if is_extension else None,
     )
-    _set_auth_cookie(response, token, remember_me=body.remember_me)
+    # The extension authenticates with the Bearer header it stores; a
+    # cookie on the API domain would be a second, unscoped credential it
+    # never asked for.
+    if not is_extension:
+        _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -1230,6 +1275,10 @@ class EmailLoginRequest(BaseModel):
     # "Remember me" decides the JWT lifetime (long = 30 days vs short
     # = 8 hours).  See ``create_jwt`` for the rationale.
     remember_me: bool = False
+    # The browser extension sends "extension" and receives a token scoped
+    # to the live map, labelled as its own device in Active Sessions.  Any
+    # other value is ignored rather than trusted.
+    client: str | None = None
 
 
 class EmailRegisterRequest(BaseModel):
@@ -1401,6 +1450,7 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         ip_address=_ip, user_agent=_ua,
     )
 
+    is_extension = body.client == EXTENSION_AUDIENCE
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
@@ -1408,8 +1458,15 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
+        aud=EXTENSION_AUDIENCE if is_extension else None,
+        scope=EXTENSION_SCOPE if is_extension else None,
+        device_label="Browser extension" if is_extension else None,
     )
-    _set_auth_cookie(response, token, remember_me=body.remember_me)
+    # The extension authenticates with the Bearer header it stores; a
+    # cookie on the API domain would be a second, unscoped credential it
+    # never asked for.
+    if not is_extension:
+        _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={

@@ -9,7 +9,9 @@ from fastapi import Cookie, Depends, HTTPException, Header, Request
 
 from jose import JWTError
 
-from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt, is_jti_revoked
+from interfaces.api.auth import (
+    AUTH_COOKIE_NAME, KNOWN_AUDIENCES as _KNOWN_AUDIENCES, decode_jwt, is_jti_revoked,
+)
 from infra.platform import get_router as _get_router
 from capabilities.permissions.roles import get_user_permissions
 from capabilities.permissions.vehicle_scope import VehicleScope
@@ -191,6 +193,13 @@ async def get_current_user(
         jti = str(payload.get("jti") or "")
         if jti and await _is_revoked_with_cache(jti):
             saw_revoked = True
+            continue
+        # A token that names an audience must name one we issue.  An
+        # unknown ``aud`` is a token we did not mint for any client we
+        # know, so it is refused rather than read as unscoped.
+        aud = payload.get("aud")
+        if aud and aud not in _KNOWN_AUDIENCES:
+            last_error = JWTError(f"unknown audience {aud!r}")
             continue
         _fire_heartbeats(payload)
         # Stamp the account onto the request so outer middleware (the
@@ -517,14 +526,36 @@ async def filter_by_assigned_trucks(
     return [d for d in data if scope.allows_row(d, name_key=name_key)]
 
 
+def _narrow_to_token_scope(perms, user: dict):
+    """A scoped token sees only the permissions it was issued for.
+
+    The person behind the browser extension may be the owner; the TOKEN
+    is a truck-list key.  Every FeatureSet field outside ``scope`` reads
+    False for it — so a stolen extension token cannot archive a truck,
+    read a driver's CDL or change a role, however senior its holder.
+    Tokens without a scope claim (every dashboard, mini-app and bot
+    token) pass through untouched.
+    """
+    scope = user.get("scope")
+    if not isinstance(scope, list):
+        return perms
+    import dataclasses
+    allowed = set(scope)
+    narrowed = {
+        f.name: False for f in dataclasses.fields(perms)
+        if f.name not in allowed and isinstance(getattr(perms, f.name), bool)
+    }
+    return dataclasses.replace(perms, **narrowed)
+
+
 def require_permission(feature: str):
     """Dependency factory: check the user's role has a specific permission."""
     async def _check(user: dict = Depends(get_current_user)):
-        perms = await get_user_permissions(
+        perms = _narrow_to_token_scope(await get_user_permissions(
             Role(user["role"]), user["account_id"],
             is_manager=bool(user.get("is_manager")),
             is_primary_owner=bool(user.get("is_primary_owner")),
-        )
+        ), user)
         if not getattr(perms, feature, False):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         # Parity with require_permission_any: the effective FeatureSet
@@ -575,11 +606,11 @@ def require_permission_any(*features: str):
     which permission was matched (useful for ``_all`` vs ``_own`` logic).
     """
     async def _check(user: dict = Depends(get_current_user)):
-        perms = await get_user_permissions(
+        perms = _narrow_to_token_scope(await get_user_permissions(
             Role(user["role"]), user["account_id"],
             is_manager=bool(user.get("is_manager")),
             is_primary_owner=bool(user.get("is_primary_owner")),
-        )
+        ), user)
         for f in features:
             if getattr(perms, f, False):
                 user["_matched_perm"] = f
