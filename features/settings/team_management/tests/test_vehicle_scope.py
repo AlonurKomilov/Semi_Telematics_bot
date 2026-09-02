@@ -290,3 +290,32 @@ class TestScopeEndpoints:
                     bad, tm.VehicleScopeUpdate(scope="assigned"),
                     user=caller, platform_db=pg_db, tenant_db=None)
             assert e.value.status_code == 400
+
+
+class TestMembersListCarriesWidth:
+    @pytest.mark.asyncio
+    async def test_rows_resolve_through_all_three_layers(self, pg_db, monkeypatch):
+        """The GET the drawer reads: a role-narrowed fleet member shows
+        'assigned' as EFFECTIVE width while their own override is null,
+        and the role map rides alongside so the UI can label
+        "Role default (…)" truthfully."""
+        from features.settings.team_management import router as tm
+        acct = (await pg_db.create_account("Scope List Co")).id
+        owner = await pg_db.create_user(9201, acct, role=Role.OWNER)
+        fleet = await pg_db.create_user(9202, acct, role=Role.FLEET)
+        await pg_db.set_role_vehicle_scope(acct, "fleet", "assigned")
+        caller = {"account_id": acct, "role": "owner",
+                  "sub": str(owner.telegram_id), "uid": owner.id}
+
+        # Called directly, FastAPI's Query(...) defaults arrive as Query
+        # objects, so every query param is passed explicitly.
+        out = await tm.list_users(
+            page=1, page_size=100, role=None, search=None,
+            user=caller, platform_db=pg_db)
+
+        assert out["role_vehicle_scopes"] == {"fleet": "assigned"}
+        row = next(u for u in out["users"] if u["id"] == fleet.id)
+        assert row["vehicle_scope"] is None
+        assert row["vehicle_scope_resolved"] == "assigned"
+        own = next(u for u in out["users"] if u["id"] == owner.id)
+        assert own["vehicle_scope_resolved"] == "all"
