@@ -110,10 +110,16 @@ describe('playing is best-effort and never throws', () => {
    */
   function stubAudio() {
     const started: unknown[] = [];
+    // Recorded so the volume chain can be measured rather than read.
+    const peaks: number[] = [];
+    let gainStages = 0;
     const node = () => ({
       connect: () => {}, disconnect: () => {},
       frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
-      gain: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+      gain: {
+        setValueAtTime: (v: number) => { peaks.push(v); },
+        exponentialRampToValueAtTime: () => {},
+      },
       start: (t: number) => { started.push(t); }, stop: () => {},
       type: 'sine', onended: null,
     });
@@ -121,11 +127,14 @@ describe('playing is best-effort and never throws', () => {
       currentTime = 0;
       destination = {};
       createOscillator() { return node(); }
-      createGain() { return node(); }
+      createGain() { gainStages += 1; return node(); }
       resume() { return Promise.resolve(); }
       close() { return Promise.resolve(); }
     };
-    return started;
+    return Object.assign(started, {
+      peaks,
+      get gainStages() { return gainStages; },
+    });
   }
 
   it('plays a good cue and refuses a malformed one, once unlocked', () => {
@@ -225,5 +234,75 @@ describe('the panel section', () => {
     expect(muteAt, 'the mute control is gone').toBeGreaterThan(0);
     expect(resetAt, 'the sound section has no reset').toBeGreaterThan(0);
     expect(resetAt, 'reset is not the trailing control').toBeGreaterThan(muteAt);
+  });
+});
+
+/**
+ * The Sounds percentage is the volume, and there must be exactly ONE of it.
+ *
+ * GX 2.0 gives each mods category an intensity dial. Ours already has
+ * one for Sounds — `mods.sound.volume` is a 0..1 number and the panel
+ * already renders it as a percentage — so the work is not to build a
+ * dial but to keep it single.
+ *
+ * The failure this exists to prevent: a second "Sounds intensity"
+ * alongside volume. Two numbers multiplying into one gain is how a
+ * person ends up at 40% of 40%, hears almost nothing, and concludes the
+ * feature is broken. The registry already records that failure once, for
+ * the double-gated alert switch.
+ *
+ * Measured, not read: the stub records the peak the engine actually
+ * writes, so a second multiplication anywhere in the chain shows up as a
+ * number rather than as a diff someone has to notice.
+ */
+function stubAudioForVolume() {
+  const peaks: number[] = [];
+  let gainStages = 0;
+  const node = () => ({
+    connect: () => {}, disconnect: () => {},
+    frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+    gain: {
+      setValueAtTime: (v: number) => { peaks.push(v); },
+      exponentialRampToValueAtTime: () => {},
+    },
+    start: () => {}, stop: () => {}, type: 'sine', onended: null,
+  });
+  (window as unknown as { AudioContext: unknown }).AudioContext = class {
+    currentTime = 0;
+    destination = {};
+    createOscillator() { return node(); }
+    createGain() { gainStages += 1; return node(); }
+    resume() { return Promise.resolve(); }
+    close() { return Promise.resolve(); }
+  };
+  return { peaks, get gainStages() { return gainStages; } };
+}
+
+describe('one volume, one gain', () => {
+  const CUE = { wave: 'sine', from: 880, to: 440, dur: 0.35, gain: 0.2 } as const;
+
+  it('scales the cue exactly once by the volume, and only once', () => {
+    // ONE test, three plays, one recorder — because the engine caches a
+    // single AudioContext and never tears it down (browsers cap them at
+    // about six, and the old chime built one per call). A second stub
+    // would be installed and then ignored, and its empty array would
+    // read as "no sound played" rather than "the stub was bypassed".
+    const rec = stubAudioForVolume();
+    armAudio();
+    window.dispatchEvent(new Event('pointerdown'));
+
+    playCue(CUE, 1);
+    playCue(CUE, 0.5);
+    playCue(CUE, 0.25);
+
+    // Linear, checked at three points. A squared chain passes at 1 and
+    // fails everywhere else, which is why one point is not enough.
+    expect(rec.peaks[0]).toBeCloseTo(CUE.gain, 6);
+    expect(rec.peaks[1]).toBeCloseTo(CUE.gain * 0.5, 6);
+    expect(rec.peaks[2]).toBeCloseTo(CUE.gain * 0.25, 6);
+
+    // The structural half: linearity could also survive two stages whose
+    // product happens to be right today. One cue, one gain stage.
+    expect(rec.gainStages).toBe(3);
   });
 });
