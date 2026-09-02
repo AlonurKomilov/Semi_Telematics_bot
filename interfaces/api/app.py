@@ -21,6 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from interfaces.api.routes import health
 from features.overview import router as overview_routes
 from interfaces.api.routes import user as user_routes
+from interfaces.api.routes import extension as extension_routes
 from features.settings import router as settings_routes
 from capabilities.notifications import delivery_admin as delivery_admin_routes
 from capabilities.data_lifecycle.ingest import router as telemetry_routes
@@ -445,6 +446,7 @@ def create_api() -> FastAPI:
         app.include_router(health.router, prefix=prefix)
         app.include_router(auth_router, prefix=prefix)
         app.include_router(user_routes.router, prefix=prefix)
+        app.include_router(extension_routes.router, prefix=prefix)
         # Mounted right after the user router it was split out of, so the
         # /user/preferences/ui/* paths stay byte-identical.
         app.include_router(preferences_routes.router, prefix=prefix)
