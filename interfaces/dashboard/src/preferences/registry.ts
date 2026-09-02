@@ -38,6 +38,7 @@ import {
 } from '../mods/catalogue';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
+import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/sound/engine';
 
 /** Where a preference is allowed to live.
@@ -213,6 +214,23 @@ export interface ModSetting {
    * a hole exactly where untrusted data arrives.
    */
   tokens?: Record<string, string>;
+  /**
+   * A colour this person picked, outside the curated packs.
+   *
+   * The SEED, not the tokens it produces. An accent has to be a
+   * different lightness on white than on near-black — which is why every
+   * pack ships two seeds — so storing the derived values would mean a
+   * custom colour tuned for dark mode and then worn, unchanged and
+   * unreadable, in light. Stored as one hex and re-derived per mode by
+   * `accentTokens`, the same way `color` is re-derived rather than
+   * remembered.
+   *
+   * Mutually exclusive with `accent` in practice, though both are always
+   * present in the object: choosing a pack clears this, and while it is
+   * set the stylesheet's `:not([data-mod-accent])` stands the pack's
+   * block down. Two answers to one question, never both live.
+   */
+  brand?: string;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -486,6 +504,14 @@ export const DEFS = {
         if (Object.keys(kept).length) tokens = kept;
       }
 
+      // Validated with the injector's own hex reader, so "what counts as
+      // a colour" is stated once. Lower-cased on the way in: the same
+      // colour typed two ways is one colour, and a picker that shows
+      // #FF6A00 as unselected next to #ff6a00 is a bug nobody can see.
+      const brand = typeof o.brand === 'string' && parseHex(o.brand)
+        ? o.brand.trim().toLowerCase()
+        : undefined;
+
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
       // name, so a split that forgot this branch would hand every
@@ -506,6 +532,7 @@ export const DEFS = {
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.
         ...(tokens ? { tokens } : {}),
+        ...(brand ? { brand } : {}),
         color: themeColorAlias(mode, accent),
       };
     },

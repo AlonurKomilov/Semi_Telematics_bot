@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ChevronRight, Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
+import { ChevronRight, Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
 import { Tip } from '../components/tooltip';
@@ -13,10 +13,11 @@ import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
   THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS,
-  modMatchesAxes, modById, modFootprint, type Mod,
+  modMatchesAxes, modById, packById, modFootprint, type Mod,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { MODS_HREF } from './href';
+import { accentTokens } from './theme/accent';
 import { usePreference } from '../preferences';
 import { undoableAction } from '../components/banners/stagedAction';
 
@@ -62,6 +63,149 @@ const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }
     label: p.label,
     dot: `var(--swatch-accent-${p.id})`,
   }));
+
+/**
+ * What a tone is called to somebody who is not reading our CSS.
+ *
+ * The token names are `ok` / `warn` / `danger` / `info` because that is
+ * what they do in a stylesheet. "Your colour is too close to --ok" is
+ * not a sentence anybody can act on.
+ */
+const TONE_NAMES: Record<string, string> = {
+  ok: 'the success colour',
+  warn: 'the warning colour',
+  danger: 'the danger colour',
+  info: 'the info colour',
+};
+
+/**
+ * The colour nobody curated.
+ *
+ * The four packs beside it were each tuned by hand; this one is checked
+ * by `accentTokens` at the moment it is picked, and it can come back
+ * refused. That refusal is the feature — a primary button the colour of
+ * `--danger` is a lie about what the button does — so it is SAID, not
+ * swallowed, and the tone it collided with is named in words a person
+ * can act on.
+ *
+ * A nudge is said too. The engine moves a colour's lightness a little to
+ * get it clear of a tone, and a colour that came back slightly different
+ * with no explanation is the kind of thing that reads as a bug.
+ *
+ * A native colour input rather than a hand-built wheel: it is the
+ * platform's own picker, it is keyboard-accessible and localised for
+ * free, and it costs nothing to ship. It sits invisibly ON the chip, so
+ * the chip is the hit target and the input never has to be styled.
+ */
+function BrandChip({ brand, mode, wearing, onPick, onClear }: {
+  brand?: string;
+  mode: Mode;
+  /** The pack seed currently painting, for the mode being worn. The
+   *  picker opens HERE when nothing custom is set: a colour picker that
+   *  opens on grey is a blank decision wearing the shape of a value, and
+   *  the honest starting point is the colour already on the screen. */
+  wearing: string;
+  onPick: (hex: string) => void;
+  onClear: () => void;
+}) {
+  const { t } = useTranslation();
+  const [refused, setRefused] = useState<string | null>(null);
+
+  // What the stored colour actually does in the mode being worn. A hex
+  // can clear the tones on near-black and collide on white, so "is a
+  // custom colour painting right now" is a question about this mode, not
+  // about whether the field is set.
+  const worn = useMemo(
+    () => (brand ? accentTokens(brand, mode) : null),
+    [brand, mode],
+  );
+  const active = !!worn?.tokens;
+
+  const pick = (hex: string) => {
+    const r = accentTokens(hex, mode);
+    if (!r.tokens) {
+      setRefused(r.collidesWith ?? null);
+      return;
+    }
+    setRefused(null);
+    onPick(hex);
+  };
+
+  const note = refused
+    ? t('theme.brand_refused', 'That colour reads as {{tone}}. Pick another.')
+        .replace('{{tone}}', TONE_NAMES[refused] ?? refused)
+    : worn?.movedFrom
+      ? t('theme.brand_moved', 'Lightened away from {{tone}} so the two do not read alike.')
+          .replace('{{tone}}', TONE_NAMES[worn.movedFrom] ?? worn.movedFrom)
+      : brand && !active
+        ? t('theme.brand_unworn', 'This colour cannot be worn in {{mode}} mode — the pack below is painting.')
+            .replace('{{mode}}', mode)
+        : null;
+
+  return (
+    <>
+      <span className="relative inline-flex">
+        <button
+          type="button"
+          aria-pressed={active}
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
+            active
+              ? 'bg-primary/15 text-foreground ring-1 ring-primary/40'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+          )}
+        >
+          <span
+            aria-hidden
+            className="w-2.5 h-2.5 rounded-full shrink-0 border border-border"
+            style={{ background: brand ?? 'var(--muted-foreground)' }}
+          />
+          {t('theme.accent_custom', 'Custom')}
+        </button>
+        {/* Over the whole chip, invisible, so the chip IS the control.
+            `sr-only` would take it out of the pointer's way entirely. */}
+        <input
+          type="color"
+          value={brand ?? wearing}
+          onChange={(e) => pick(e.target.value)}
+          aria-label={t('theme.accent_custom', 'Custom')}
+          className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
+        />
+      </span>
+      {active && (
+        // An ACTION sitting in a row of SELECTIONS, so it does not wear
+        // a selection's box. Same rule the rest of the app follows: one
+        // shape per meaning class, or the eye has to read every element
+        // to find out which are choices and which do something.
+        <button
+          type="button"
+          onClick={() => {
+            setRefused(null);
+            const was = brand;
+            onClear();
+            // The colour is a hex somebody chose by eye. Losing it costs
+            // them the search, not a click — and every other destructive
+            // control on this surface (all five resets, and installing a
+            // mod over hand-set axes) already offers the way back.
+            undoableAction({
+              label: 'Custom colour cleared',
+              undo: async () => { if (was) onPick(was); },
+            });
+          }}
+          className="inline-flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground min-h-tap"
+        >
+          <X className="size-3" aria-hidden />
+          {t('theme.brand_clear', 'Clear')}
+        </button>
+      )}
+      {note && (
+        <p className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5">
+          {note}
+        </p>
+      )}
+    </>
+  );
+}
 
 /**
  * A mod is a whole look, so it sits ABOVE the three axes it sets: pick a
@@ -218,6 +362,14 @@ export function ModControls({ compact = false, onNavigate, section }: {
   // all. Only for the installed one: a footprint under every chip would
   // be four lines of prose in a w-56 popover.
   const activeCarries = installed ? modFootprint(installed) : [];
+  // Whether a picked colour is what is actually painting, in the mode
+  // being worn — not merely whether one is stored. The pack chips read
+  // their highlight off this, because a chip highlighted while its block
+  // stands down is pointing at a colour nobody can see.
+  const brandWorn = useMemo(
+    () => (theme.brand ? accentTokens(theme.brand, theme.mode).tokens !== null : false),
+    [theme.brand, theme.mode],
+  );
   // Whether what you see is still exactly what it asked for. A separate
   // question from identity, and the reason the two were split.
   const modified = installed !== undefined && !modMatchesAxes(installed, {
@@ -351,11 +503,24 @@ export function ModControls({ compact = false, onNavigate, section }: {
               onClick={(v) => setTheme({ mode: v })} />
           ))}
         </div>
+        {/* While a picked colour is what paints, NO pack chip is
+            highlighted — the stylesheet has stood that pack's block
+            down, so showing it selected would be showing a colour that
+            is not on the screen. `theme.accent` is still stored and
+            still what a Clear returns to. */}
         <div className="flex flex-wrap gap-1 mt-1">
           {ACCENT_OPTIONS.map((o) => (
-            <Chip key={o.value} value={o.value} current={theme.accent} label={t(o.key, o.label)} dot={o.dot}
+            <Chip key={o.value} value={o.value} current={brandWorn ? ('' as Accent) : theme.accent}
+              label={t(o.key, o.label)} dot={o.dot}
               onClick={(v) => setTheme({ accent: v })} />
           ))}
+          <BrandChip
+            brand={theme.brand}
+            mode={theme.mode}
+            wearing={(packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode]}
+            onPick={(hex) => setTheme({ brand: hex })}
+            onClear={() => setTheme({ brand: undefined })}
+          />
         </div>
       </div>
       )}

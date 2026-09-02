@@ -4,6 +4,7 @@ import { usePreference } from '../preferences';
 import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
+import { accentTokens } from './theme/accent';
 import type {
   ThemeColor,
   ThemeMode,
@@ -118,8 +119,19 @@ export function ModProvider({ children }: { children: ReactNode }) {
   // hydration, which is the honest cost of the boot script not being
   // able to import a validator.
   useEffect(() => {
-    applyModTokens(theme.tokens ?? null);
-  }, [theme.tokens]);
+    // The picked colour is re-derived here rather than stored derived,
+    // and that is why `mode` is in the dependency list: the same hex has
+    // to become a lighter accent on near-black than on white, or a
+    // custom colour is legible in one mode and invisible in the other.
+    //
+    // It merges OVER a mod's tokens. In practice they never meet —
+    // installing a mod writes an accent, and writing an accent clears
+    // the picked colour — but if they ever did, the colour a person
+    // typed outranks the one a mod brought with it.
+    const picked = theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null;
+    const merged = picked ? { ...(theme.tokens ?? {}), ...picked } : (theme.tokens ?? null);
+    applyModTokens(merged);
+  }, [theme.tokens, theme.brand, theme.mode]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -142,6 +154,14 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // deprecated-alias recipe exists to avoid. One writer, here.
     setThemeValue((prev) => {
       const next = { ...prev, ...partial };
+      // Choosing a pack drops the picked colour. The two are one
+      // question with two answers — the stylesheet says the same thing
+      // with `:not([data-mod-accent])`, and a state where both are set
+      // would leave the chips showing a pack that is not what paints.
+      // Only when the caller did not name `brand` itself: a write that
+      // sets both is setting the colour and saying which chip it sits
+      // nearest, and it means it.
+      if (partial.accent !== undefined && partial.brand === undefined) delete next.brand;
       return { ...next, color: themeColorAlias(next.mode, next.accent) };
     });
     queueMicrotask(publishAppearanceDefault);

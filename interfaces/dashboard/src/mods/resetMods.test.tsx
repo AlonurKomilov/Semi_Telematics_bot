@@ -85,6 +85,18 @@ describe('Reset appearance owns exactly the axes it should', () => {
     expect(RESET_AXES.mod).toBeUndefined();
     expect(RESET_AXES.tokens).toBeUndefined();
   });
+
+  it('clears a picked colour, and clears it at the INTERFACE level', () => {
+    // Three of these would pass with `brand` in the container group, and
+    // the fourth is the point: a custom accent is an interface choice,
+    // so the interface reset has to reach it. Putting it beside `mod`
+    // and `tokens` would leave "Reset interface" showing a colour the
+    // person just reset away from.
+    expect(RESET_AXES).toHaveProperty('brand');
+    expect(RESET_AXES.brand).toBeUndefined();
+    expect(SECTION_AXES.interface).toHaveProperty('brand');
+    expect(CONTAINER_AXES).not.toHaveProperty('brand');
+  });
 });
 
 describe('the control itself', () => {

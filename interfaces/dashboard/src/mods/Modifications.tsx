@@ -56,6 +56,11 @@ const SOUND_VOLUME_DEFAULT = DEFS['mods.sound.volume'].default;
 export const SECTION_AXES = {
   interface: {
     accent: MOD_DEFAULT.accent,
+    // A picked colour is an interface choice, so "Reset interface"
+    // clears it — not only "Reset mods". It has no entry in
+    // `MOD_DEFAULT` because its default is ABSENCE: the packs are the
+    // floor, and nothing custom is what a new account wears.
+    brand: undefined,
     radius: MOD_DEFAULT.radius,
     material: MOD_DEFAULT.material,
     icons: MOD_DEFAULT.icons,
