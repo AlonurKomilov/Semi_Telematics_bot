@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 
 from adapters.storage import Role
 from capabilities.permissions.roles import can
+from capabilities.permissions.scope import unit_width
 from adapters.samsara.client import populate_company_display
 from capabilities.formatting import format_events_dashboard
 from features.events.service import filter_events_by_access as _filter_events_by_access, get_events as _svc_get_events
@@ -57,12 +58,13 @@ async def cmd_events_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         events = await _svc_get_events(user.account_id, days=days)
 
-        # Driver role: filter to own vehicle events only
-        # Width claim on the legacy flag: these pairs are view/view,
-        # so the view verb cannot say "wide only", and the bot has
-        # no width-aware helper yet (member_unit_scope takes an API
-        # user dict).  Moves in the width pass.
-        if user.role == Role.DRIVER and not can(user.role, "can_events_all"):
+        # Assigned-width callers: filter to own vehicle events only.
+        # The shared width core — the same answer the API gives.  This
+        # replaces "role == DRIVER and not wide flag", which honoured
+        # width for drivers ONLY: a narrow-granted non-driver saw the
+        # whole account here.  Narrowing-only change, aligning the bot
+        # with the API's member_unit_scope.
+        if await unit_width(user.account_id, user.role, user, "events") == "assigned":
             vehicle_nums = [user.truck_num] if user.truck_num else []
             events = _filter_events_by_access(events, vehicle_nums)
 
@@ -97,12 +99,13 @@ async def cmd_events_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         events = await _svc_get_events(user.account_id, days=days)
 
-        # Driver role: filter to own vehicle events only
-        # Width claim on the legacy flag: these pairs are view/view,
-        # so the view verb cannot say "wide only", and the bot has
-        # no width-aware helper yet (member_unit_scope takes an API
-        # user dict).  Moves in the width pass.
-        if user.role == Role.DRIVER and not can(user.role, "can_events_all"):
+        # Assigned-width callers: filter to own vehicle events only.
+        # The shared width core — the same answer the API gives.  This
+        # replaces "role == DRIVER and not wide flag", which honoured
+        # width for drivers ONLY: a narrow-granted non-driver saw the
+        # whole account here.  Narrowing-only change, aligning the bot
+        # with the API's member_unit_scope.
+        if await unit_width(user.account_id, user.role, user, "events") == "assigned":
             vehicle_nums = [user.truck_num] if user.truck_num else []
             events = _filter_events_by_access(events, vehicle_nums)
 

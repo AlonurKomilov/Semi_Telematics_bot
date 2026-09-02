@@ -328,24 +328,6 @@ async def get_user_company_codes(user: dict) -> list[str]:
     return await platform_db.get_user_company_codes(db_user.id)
 
 
-async def _role_scope_layer(platform_db, account_id: int, role) -> str | None:
-    """The account's ROLE-level width, or None.
-
-    Its own try/except on purpose: a missing role layer must never
-    change anyone's width.  Before this layer existed every account
-    resolved member-override-then-built-in-default, so falling through
-    to None reproduces exactly that.
-    """
-    try:
-        return await platform_db.get_role_vehicle_scope(
-            int(account_id),
-            role.value if hasattr(role, "value") else str(role),
-        )
-    except Exception:
-        _log.debug("role vehicle scope unavailable", exc_info=True)
-        return None
-
-
 async def get_member_vehicle_scope(user: dict) -> str:
     """'all' or 'assigned' — Team Management's second scope question,
     living beside its first (``get_user_company_codes``).
@@ -370,8 +352,9 @@ async def get_member_vehicle_scope(user: dict) -> str:
         return "assigned"
     if db_user is None:
         return "assigned"
+    from capabilities.permissions.scope import role_scope_layer
     return db_user.scope_with_role_default(
-        await _role_scope_layer(platform_db, user["account_id"], db_user.role))
+        await role_scope_layer(user["account_id"], db_user.role, platform_db))
 
 
 async def member_unit_scope(user: dict, feature: str) -> str:
@@ -390,37 +373,19 @@ async def member_unit_scope(user: dict, feature: str) -> str:
     When the pairs die in the cleanup stage the first claim goes with
     them and this helper collapses into get_member_vehicle_scope.
     """
-    from capabilities.permissions.roles import (
-        PAIRED_UNIT_FEATURES, Role, can_for_account,
-    )
-    wide_flag, _narrow_flag = PAIRED_UNIT_FEATURES[feature]
-    wide = await can_for_account(
-        int(user["account_id"]), Role(user["role"]), wide_flag)
-    if not wide:
-        return "assigned"
-    # The member row answers the SECOND claim.  Note the deliberate
-    # difference from get_member_vehicle_scope's fail-closed default:
-    # asked "what is this member's scope", unknown must mean the
-    # cautious answer.  Asked "should this WIDE-granted request be
-    # narrowed", an unloadable row means we cannot know of an
-    # override — and inventing one would narrow a wide-granted caller
-    # to nothing, a functional regression rather than a safety win.
-    # The grant is the authoritative claim during the bridge.
+    # One implementation for every surface —
+    # capabilities/permissions/scope.py holds the two-claim logic and
+    # its documented fail-open (asked "should this WIDE-granted
+    # request be narrowed", an unloadable member row must not invent
+    # an override).  This adapter only turns the JWT dict into the
+    # member row.
+    from capabilities.permissions.scope import unit_width
     try:
-        platform_db = _get_router().platform
-        db_user = await get_current_db_user(user, platform_db)
+        db_user = await get_current_db_user(user, _get_router().platform)
     except Exception:
-        # No platform reachable (a bot surface, a script, a test that
-        # never booted infra) — the same epistemic state as an
-        # unloadable row, and can_for_account above degrades to seeded
-        # defaults for exactly this reason.  Narrowing here instead
-        # would make a wide-granted caller's data vanish whenever the
-        # platform hiccups.
-        return "all"
-    if db_user is None:
-        return "all"
-    return db_user.scope_with_role_default(
-        await _role_scope_layer(platform_db, user["account_id"], db_user.role))
+        db_user = None
+    return await unit_width(
+        int(user["account_id"]), user["role"], db_user, feature)
 
 
 def validate_company_access(allowed_codes: list[str], requested_code: str | None) -> None:

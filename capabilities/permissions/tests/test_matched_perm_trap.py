@@ -81,7 +81,12 @@ def test_the_width_helper_is_the_migration_target_for_these_reads():
     is absent", which is what member_unit_scope answers — plus the
     member override the flags cannot express."""
     import inspect
+    from capabilities.permissions import scope
     from interfaces.api import deps
-    src = inspect.getsource(deps.member_unit_scope)
-    assert "PAIRED_UNIT_FEATURES[feature]" in src
-    assert "can_for_account(" in src
+    # The two-claim logic lives in ONE place (the shared core), and
+    # the API adapter delegates to it — one implementation per rule,
+    # or the copies drift.
+    core = inspect.getsource(scope.unit_width)
+    assert "PAIRED_UNIT_FEATURES[feature]" in core
+    assert "can_for_account(" in core
+    assert "unit_width(" in inspect.getsource(deps.member_unit_scope)

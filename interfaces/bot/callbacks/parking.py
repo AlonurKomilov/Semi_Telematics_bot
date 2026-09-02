@@ -9,9 +9,10 @@ from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, parking_events_kb, parking_history_kb
 from interfaces.bot.helpers import _show
 from capabilities.localization.i18n import t
+from capabilities.permissions.scope import unit_width
 
 
-def _own_only(user) -> bool:
+async def _own_only(user) -> bool:
     """True when this caller may only see parking events for their own truck.
 
     A driver who lacks ``can_parking_all`` (the account-wide flag) but holds
@@ -19,12 +20,12 @@ def _own_only(user) -> bool:
     callbacks must filter results to the user's assigned truck before they
     are rendered or the bot will leak every vehicle's parking activity.
     """
-    return (
-        user.role == Role.DRIVER
-        # Width claim, legacy flag — see the note in bot/events.py.
-        and not can(user.role, "can_parking_all")
-        and can(user.role, "can_parking_vehicle")
-    )
+    # The shared width core — the same answer the API's parking
+    # service gives.  Replaces "driver and narrow flags", which
+    # honoured width for drivers only (see bot/events.py's note on the
+    # same shape); narrowing-only change.
+    return (await unit_width(
+        user.account_id, user.role, user, "parking")) == "assigned"
 
 
 def _filter_to_own_vehicles(events: list[dict], user) -> list[dict]:
@@ -74,7 +75,7 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
     )
     if not show_all:
         events = [e for e in events if (e.get("alert_level") or "none") != "none"]
-    own_only = _own_only(user)
+    own_only = await _own_only(user)
     if own_only:
         events = _filter_to_own_vehicles(events, user)
 
@@ -119,7 +120,7 @@ async def _handle_parking_history(update, context, user, days: int = 7):
 
     tenant = await get_tenant_db(user.account_id)
     history = await tenant.get_parking_history(user.account_id, days=days)
-    own_only = _own_only(user)
+    own_only = await _own_only(user)
     if own_only:
         history = _filter_to_own_vehicles(history, user)
 
@@ -170,7 +171,7 @@ async def _handle_parking_detail(update, context, user, event_id: int):
     # truck they are assigned to.  Without this gate any driver could
     # enumerate other vehicles' parking history just by guessing event
     # ids in the parking_detail_<id> callback.
-    if _own_only(user):
+    if await _own_only(user):
         truck = (user.truck_num or "").strip().lower()
         ev_truck = (event.get("vehicle_name") or "").lower()
         if not truck or truck not in ev_truck:

@@ -5,6 +5,8 @@ from submodules, plus a route table for simple one-line delegations to
 existing command functions.
 """
 
+from capabilities.permissions.scope import unit_width as _unit_width
+
 import logging
 
 from telegram import Update
@@ -386,7 +388,7 @@ async def _vehicle_prompt(update, context):
     await query.answer()
     user = context.user_data["_db_user"]
     from capabilities.permissions.roles import can
-    if not can(user.role, "can_vehicle_all"):
+    if await _unit_width(user.account_id, user.role, user, "vehicles") != "all":
         await query.answer(t("access.no_access"), show_alert=True)
         return
     companies = context.user_data.get("_companies", [])

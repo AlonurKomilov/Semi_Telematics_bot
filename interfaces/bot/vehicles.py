@@ -1,5 +1,7 @@
 """Fleet truck commands — truck lookup, truck detail, truck report, critical faults."""
 
+from capabilities.permissions.scope import unit_width as _unit_width
+
 import asyncio
 from datetime import datetime as _dt
 from constants import TZ_ET as _TZ_ET
@@ -101,7 +103,7 @@ async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         keyboard=back_kb())
             return
         vehicle_name = user.truck_num
-    elif not can(user.role, "can_vehicle_all"):
+    elif await _unit_width(user.account_id, user.role, user, "vehicles") != "all":
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
