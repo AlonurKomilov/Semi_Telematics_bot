@@ -33,6 +33,24 @@ from capabilities.permissions.roles import (
 
 _log = logging.getLogger(__name__)
 
+#: (account_id, role) → (expires_at, scope-or-None).  Every width check
+#: on every unit-scoped list asks the role layer; without this each ask
+#: was a round trip.  Same TTL as the permissions cache, so the two
+#: layers of one answer go stale together; same multi-worker caveat —
+#: invalidation clears THIS process, siblings ride out the TTL.
+_role_scope_cache: dict[tuple[int, str], tuple[float, Optional[str]]] = {}
+
+
+def invalidate_role_scope_cache(account_id: Optional[int] = None) -> None:
+    """Drop cached role widths — for one account, or all.  Called by
+    the Team Management role-width PUT and the fold script after a
+    write, so the writer's own process answers fresh immediately."""
+    if account_id is None:
+        _role_scope_cache.clear()
+        return
+    for k in [k for k in _role_scope_cache if k[0] == int(account_id)]:
+        _role_scope_cache.pop(k, None)
+
 
 async def role_scope_layer(
     account_id: int, role, platform_db=None,
@@ -42,18 +60,26 @@ async def role_scope_layer(
     Its own try/except on purpose: a missing role layer must never
     change anyone's width — before it existed, every account resolved
     member-override-then-built-in, and None reproduces exactly that.
+    A failed read is NOT cached: the next ask tries again.
     """
+    import time as _time
+    from capabilities.permissions.roles import _PERMS_CACHE_TTL_S
+    role_str = role.value if hasattr(role, "value") else str(role)
+    key = (int(account_id), role_str)
+    now = _time.monotonic()
+    hit = _role_scope_cache.get(key)
+    if hit is not None and hit[0] > now:
+        return hit[1]
     try:
         if platform_db is None:
             from infra.platform import get_platform_db
             platform_db = get_platform_db()
-        return await platform_db.get_role_vehicle_scope(
-            int(account_id),
-            role.value if hasattr(role, "value") else str(role),
-        )
+        value = await platform_db.get_role_vehicle_scope(int(account_id), role_str)
     except Exception:
         _log.debug("role vehicle scope unavailable", exc_info=True)
         return None
+    _role_scope_cache[key] = (now + _PERMS_CACHE_TTL_S, value)
+    return value
 
 
 async def unit_width(

@@ -148,6 +148,8 @@ async def main(argv: list[str]) -> int:
             continue
         await pdb.set_role_vehicle_scope(account_id, role, width, updated_by=0)
         written += 1
+        from capabilities.permissions.scope import invalidate_role_scope_cache
+        invalidate_role_scope_cache(account_id)
         try:
             from capabilities.activity_trail.recorder import record_simple
             from capabilities.permissions.fold import system_trail_context

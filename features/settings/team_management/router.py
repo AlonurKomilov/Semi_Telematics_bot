@@ -397,6 +397,8 @@ async def update_role_vehicle_scope(
         user["account_id"], role, body.scope,
         updated_by=await resolve_user_id(user),
     )
+    from capabilities.permissions.scope import invalidate_role_scope_cache
+    invalidate_role_scope_cache(user["account_id"])
     await _trail_user_event(
         tenant_db, user, 0, "role_vehicle_scope_change",
         changes={"role_vehicle_scope": {"role": role, "from": before, "to": body.scope}},
