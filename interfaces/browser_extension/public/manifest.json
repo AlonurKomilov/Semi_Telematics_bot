@@ -4,7 +4,13 @@
   "description": "Your trucks, live, beside whatever you are working on.",
   "version": "0.1.0",
   "action": {
-    "default_title": "4truck"
+    "default_title": "4truck",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "side_panel": {
     "default_path": "sidepanel.html"
@@ -21,5 +27,11 @@
     "https://api.4truck.us/*",
     "https://www.google.com/maps/*"
   ],
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA11rqKsO6CyQuKFatyfSsaSOstiVoQkQkBQwAs2wDYO9LxAub3dFS2qy6o5zyEtPlEB0pzXaO93aF12uJVD1NGFLE+2O/5iHV+f4ZFmOTThaZYXeqvUuPo+1lUd1zBkdFf/wH9caF9EMDU5YmMR81WVQflaQkfNtdiqBdsPIXUifGZZaFCKA7dMdiU0kFOyecLcoMaqIH7UUndRpOXERawjZUa0bj5wL2WpP7CdPQPPPswz6bohI+pHMhCiiX3j65XdyQIUHKSbo9HJ+ziBXuJdtC6w3NJk9Mccv/7qzaAPHZxNNjSkFov8wck7LJ7UaqB1GVzVTPcenF/lefXt01NQIDAQAB"
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA11rqKsO6CyQuKFatyfSsaSOstiVoQkQkBQwAs2wDYO9LxAub3dFS2qy6o5zyEtPlEB0pzXaO93aF12uJVD1NGFLE+2O/5iHV+f4ZFmOTThaZYXeqvUuPo+1lUd1zBkdFf/wH9caF9EMDU5YmMR81WVQflaQkfNtdiqBdsPIXUifGZZaFCKA7dMdiU0kFOyecLcoMaqIH7UUndRpOXERawjZUa0bj5wL2WpP7CdPQPPPswz6bohI+pHMhCiiX3j65XdyQIUHKSbo9HJ+ziBXuJdtC6w3NJk9Mccv/7qzaAPHZxNNjSkFov8wck7LJ7UaqB1GVzVTPcenF/lefXt01NQIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }
