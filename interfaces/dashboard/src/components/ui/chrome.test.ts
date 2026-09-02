@@ -1484,11 +1484,24 @@ describe('UI chrome', () => {
     // new offender was added, downward means debt was paid and the
     // number below is now a lie. Same discipline as the exemption lists
     // — no baseline may outlive its reason.
-    const BASELINE = { input: 242, textarea: 21, select: 19 };
+    // 242/21/19 until the reader learned to skip comments. Eight of
+    // those were prose — `<input type="color">` in a doc block above the
+    // control it describes, and seven like it. Nothing was fixed to
+    // reach 237/21/16; the ratchet simply stopped counting sentences.
+    const BASELINE = { input: 237, textarea: 21, select: 16 };
 
     const countBare = (tag: string) => {
       let n = 0;
-      for (const { src } of TSX) {
+      for (const { src: raw } of TSX) {
+        // COMMENTS FIRST. The regex below matches `<input` wherever it
+        // appears, and this file's own culture is to explain a control
+        // in prose above it — so nine of the numbers this ratchet was
+        // guarding were sentences, not elements. A baseline that counts
+        // documentation moves when somebody rewords a comment, and holds
+        // still when they add a control and delete a paragraph.
+        const src = raw
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^\s*\/\/.*$/gm, '');
         // Walk to the element's own '>' ignoring any inside {...}, so an
         // arrow function in onChange doesn't truncate the attributes.
         const re = new RegExp(`<${tag}\\b`, 'g');
