@@ -113,12 +113,12 @@ ALERT_TYPE_FEATURE_FLAGS: Final[dict[str, tuple[str, ...]]] = {
     "faults":      ("can_faults",),
     "health":      ("can_health",),
     "fuel":        ("can_fuel",),
-    "events":      ("can_events_all", "can_events_vehicle"),
+    "events":      ("can_view_events",),
     "camera":      ("can_cameras",),
-    "parking":     ("can_parking_all", "can_parking_vehicle"),
-    "geofence":    ("can_geofence_all", "can_geofence_vehicle"),
-    "scorecard":   ("can_scorecard_all", "can_scorecard_vehicle"),
-    "maintenance": ("can_maintenance_all", "can_maintenance_vehicle"),
+    "parking":     ("can_view_parking",),
+    "geofence":    ("can_view_geofence",),
+    "scorecard":   ("can_view_scorecards",),
+    "maintenance": ("can_view_maintenance",),
     "documents":   ("can_manage_driver_docs",),
     # Vehicle papers — its own row beside the driver one, because the
     # two answer to different grants and reach different desks.

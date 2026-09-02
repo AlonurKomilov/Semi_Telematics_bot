@@ -75,7 +75,7 @@ const DEFAULT_FORM: AddZoneForm = {
 export default function Geofences() {
   const { t } = useTranslation();
   const { has, role } = useViewPermissions();
-  const canManage = has('can_geofence_all');
+  const canManage = has('can_manage_geofence');
   const { isOwner } = useShellConfig();
 
   const { mapRef, leafletMap, isReady, invalidateSize } = useLeafletMap();

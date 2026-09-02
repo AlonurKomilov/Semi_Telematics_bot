@@ -98,7 +98,7 @@ function permGroups(perms: Record<string, boolean>): { label: string; on: boolea
     { label: 'See alerts for own vehicle', on: !!(perms.can_alerts_all || perms.can_alerts_vehicle) },
     { label: 'See own scorecard',          on: !!perms.can_view_scorecards },
     { label: 'See own routes',             on: !!(perms.can_view_routes) },
-    { label: 'See own maintenance',        on: !!(perms.can_maintenance_all || perms.can_maintenance_vehicle) },
+    { label: 'See own maintenance',        on: !!perms.can_view_maintenance },
     { label: 'See own safety events',      on: !!(perms.can_view_events) },
   ];
 }

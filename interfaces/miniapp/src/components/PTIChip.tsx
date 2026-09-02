@@ -39,7 +39,7 @@ export function PTIChip({ userPerms, onTap }: Props) {
   const [ins, setIns] = useState<PTIInspection | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const enabled = !!(userPerms.can_inspections_vehicle || userPerms.can_inspections_all);
+  const enabled = !!userPerms.can_view_inspections;
 
   useEffect(() => {
     if (!enabled) {

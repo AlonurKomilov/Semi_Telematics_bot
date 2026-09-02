@@ -61,17 +61,17 @@ ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
     # Fuel level + DEF + fuel efficiency events.
     "fuel":     "can_fuel",
     # Safety / harsh-event alerts (braking, cornering, speeding, etc.).
-    "events":   ["can_events_all", "can_events_vehicle"],
+    "events":   ["can_view_events"],
     # Geofence entry/exit alerts on platform-defined zones.
-    "geofence": ["can_geofence_all", "can_geofence_vehicle"],
+    "geofence": ["can_view_geofence"],
     # Unauthorised-stop + long-idle parking alerts.  Parking is its own
     # feature with its own permissions — detection sitting in the
     # geofencing capability is an implementation detail that must not
     # decide who receives the alerts (rode ``can_geofence_*`` until
     # 2026-07-27).
-    "parking":  ["can_parking_all", "can_parking_vehicle"],
+    "parking":  ["can_view_parking"],
     # Maintenance overdue + due-soon alerts.
-    "maintenance": ["can_maintenance_all", "can_maintenance_vehicle"],
+    "maintenance": ["can_view_maintenance"],
     # A truck's papers.  Deliberately NOT the "documents" type: that one
     # is Driver Documents, whose audience is HR and the owner with
     # dispatch explicitly excluded — and dispatch is precisely who needs
@@ -229,7 +229,7 @@ async def alert_types_for_user(
 # notification matrix only).  Same ANY-OF semantics.
 CATEGORY_EXTRA_PERMS: dict[str, Union[str, list[str]]] = {
     "documents": ["can_manage_driver_docs", "can_driver_docs_own"],
-    "scorecard": ["can_scorecard_all", "can_scorecard_vehicle"],
+    "scorecard": ["can_view_scorecards"],
 }
 
 

@@ -135,7 +135,7 @@ export default function OverviewKpiGrid({
       icon: Route,
       hint: 'Trip history per truck',
       href: '/routes',
-      permission: (h) => h('can_route_all') || h('can_route_vehicle'),
+      permission: (h) => h('can_view_routes'),
     },
   ];
 
