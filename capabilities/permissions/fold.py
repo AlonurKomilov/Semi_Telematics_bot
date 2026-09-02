@@ -116,3 +116,45 @@ def merge_keys(decisions: list[FoldDecision]) -> FoldDecision:
     return FoldDecision(role, implied, write, shape, tuple(lost),
                         tuple(sorted({f for d in live for f in d.wide})),
                         tuple(sorted({f for d in live for f in d.narrow})))
+
+
+def seed_for_key(key: str):
+    """The seed FeatureSet the resolver starts from for one storage
+    key — a base role, a senior tier (``fleet__manager``), or the
+    co-owner row.  None for owners (never scoped) and unknown keys.
+    Shared by both pre-flight scripts so they cannot disagree."""
+    from capabilities.permissions.roles import (
+        ROLE_PERMISSIONS, senior_default_featureset,
+    )
+    if key == "owner__co":
+        return None
+    base, _, tier = key.partition("__")
+    try:
+        role = Role(base)
+    except ValueError:
+        return None
+    if role is Role.OWNER:
+        return None
+    return senior_default_featureset(role) if tier else ROLE_PERMISSIONS.get(role)
+
+
+def stale_narrow_crumbs(seed_fs, stored: dict) -> list[str]:
+    """Narrow-half keys a stored grant row still carries as True for a
+    pair the CURRENT seed grants NEITHER half of — and the row does not
+    grant the wide half either.
+
+    This is the residue shape: a seed once carried ``*_vehicle=True``
+    baseline crumbs, a later cleanup removed them from the seed, and
+    no migration swept the rows materialised from the old seed.  The
+    row then keeps granting what the seed no longer does, invisibly.
+    A wide grant on the same pair is NOT residue (someone opened the
+    feature deliberately) and is left alone.
+    """
+    from capabilities.permissions.roles import normalize_stored_perm_keys
+    stored = normalize_stored_perm_keys(stored)
+    out = []
+    for _feature, (wide, narrow) in PAIRED_UNIT_FEATURES.items():
+        seed_none = not getattr(seed_fs, wide, False) and not getattr(seed_fs, narrow, False)
+        if seed_none and stored.get(narrow) is True and not stored.get(wide):
+            out.append(narrow)
+    return sorted(out)

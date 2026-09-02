@@ -63,23 +63,6 @@ from infra.startup import initialize as init_services  # noqa: E402
 logger = logging.getLogger("permissions.fold_pair_width")
 
 
-def _seed_for(key: str):
-    """The seed FeatureSet the resolver starts from for one storage key."""
-    from capabilities.permissions.roles import (
-        ROLE_PERMISSIONS, Role, senior_default_featureset,
-    )
-    if key == "owner__co":
-        return None                         # owners are never scoped
-    base, _, tier = key.partition("__")
-    try:
-        role = Role(base)
-    except ValueError:
-        return None
-    if role is Role.OWNER:
-        return None
-    return senior_default_featureset(role) if tier else ROLE_PERMISSIONS.get(role)
-
-
 def _effective(seed, stored: dict):
     """seed ⊕ stored, the resolver's own merge (canonical keys mapped
     onto legacy fields BEFORE the unknown-key filter)."""
@@ -111,10 +94,10 @@ async def _rows_for(platform_db, account_id: int) -> list[tuple[str, int | None,
 
 
 async def _decide_account(platform_db, account_id: int):
-    from capabilities.permissions.fold import classify_pairs, fold, merge_keys
+    from capabilities.permissions.fold import classify_pairs, fold, merge_keys, seed_for_key
     per_role: dict[str, list] = {}
     for key, _company_id, stored in await _rows_for(platform_db, account_id):
-        seed = _seed_for(key)
+        seed = seed_for_key(key)
         if seed is None:
             continue
         base = key.split("__", 1)[0]

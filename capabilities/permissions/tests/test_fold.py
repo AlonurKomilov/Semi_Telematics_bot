@@ -105,3 +105,54 @@ class TestMergingStorageKeys:
         a = fold("fleet", classify_pairs(ROLE_PERMISSIONS[Role.FLEET]))
         m = merge_keys([a, a])
         assert m.write is None and m.shape == "default"
+
+
+class TestStaleCrumbs:
+    """The residue shape, on synthetic rows — the recruiter case as
+    found in the owner's dry-run: narrow on every pair the seed opens
+    none of."""
+
+    def _old_recruiter_row(self):
+        return {n: True for _, n in PAIRED_UNIT_FEATURES.values()}
+
+    def test_recruiter_residue_is_all_ten_narrow_keys(self):
+        from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
+        seed = seed_for_key("recruiter")
+        got = stale_narrow_crumbs(seed, self._old_recruiter_row())
+        assert set(got) == {n for _, n in PAIRED_UNIT_FEATURES.values()}
+
+    def test_a_partially_cleaned_row_yields_only_what_is_left(self):
+        from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
+        row = self._old_recruiter_row()
+        for f in ("inspections", "maintenance", "work_orders"):
+            row.pop(PAIRED_UNIT_FEATURES[f][1])
+        got = stale_narrow_crumbs(seed_for_key("recruiter"), row)
+        assert len(got) == 7 and PAIRED_UNIT_FEATURES["maintenance"][1] not in got
+
+    def test_a_deliberate_wide_grant_is_never_residue(self):
+        from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
+        w, n = PAIRED_UNIT_FEATURES["maintenance"]
+        row = {w: True, n: True}
+        assert stale_narrow_crumbs(seed_for_key("recruiter"), row) == []
+
+    def test_a_pair_the_seed_grants_is_never_residue(self):
+        # Fleet's seed opens maintenance; a narrow key there is a real
+        # (if odd) grant, not a crumb.
+        from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
+        w, n = PAIRED_UNIT_FEATURES["maintenance"]
+        assert stale_narrow_crumbs(seed_for_key("fleet"), {n: True}) == []
+
+    def test_canonical_keys_are_recognised_too(self):
+        from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
+        # nothing canonical maps onto a narrow half (pair view verbs are
+        # ambiguous writes and stay unmapped) — so a canonical-only row
+        # is simply not residue
+        assert stale_narrow_crumbs(seed_for_key("recruiter"),
+                                   {"can_view_maintenance": True}) == []
+
+    def test_seed_for_key_shapes(self):
+        from capabilities.permissions.fold import seed_for_key
+        assert seed_for_key("owner") is None and seed_for_key("owner__co") is None
+        assert seed_for_key("nonsense") is None
+        assert seed_for_key("fleet") is ROLE_PERMISSIONS[Role.FLEET]
+        assert seed_for_key("recruiter__manager") is not None
