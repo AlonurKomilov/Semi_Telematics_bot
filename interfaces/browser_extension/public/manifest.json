@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "4truck",
+  "description": "Your trucks, live, beside whatever you are working on.",
+  "version": "0.1.0",
+  "action": { "default_title": "4truck" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": [
+    "https://api.4truck.us/*",
+    "https://www.google.com/maps/*"
+  ]
+}

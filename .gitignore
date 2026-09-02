@@ -94,3 +94,6 @@ abc-lab/**/objstore/
 abc-lab/**/dist*/
 
 interfaces/browser_extension/dist/
+# The extension manifest is source, not a build artefact — an earlier
+# rule ignoring manifest.json (PWA output) must not swallow it.
+!interfaces/browser_extension/public/manifest.json
