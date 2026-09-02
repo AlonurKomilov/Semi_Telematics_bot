@@ -13,7 +13,7 @@ const access = (flags: string[], modules?: string[]) => ({
 describe('reachableFeature', () => {
   it('grants maintenance to a role holding either of its flags', () => {
     expect(reachableFeature('maintenance',
-      access(['can_maintenance_vehicle']))?.path).toBe('/maintenance');
+      access(['can_view_maintenance']))?.path).toBe('/maintenance');
   });
   it('refuses maintenance to a role with neither flag', () => {
     expect(reachableFeature('maintenance', access([]))).toBeNull();
@@ -32,7 +32,7 @@ describe('the library never offers what the viewer cannot do', () => {
   it('a feature the role lacks yields no card at all', () => {
     // The owner's scenario: fleet role, applications denied.  Even
     // once an applications tour exists, reachableFeature refuses it.
-    expect(reachableFeature('applications', access(['can_maintenance_all'])))
+    expect(reachableFeature('applications', access(['can_manage_maintenance'])))
       .toBeNull();
   });
 
@@ -48,7 +48,7 @@ describe('the library never offers what the viewer cannot do', () => {
     // reachableFeature answers only for the page — the library asks
     // the tour's own `requires` on top (ToursPage), and the guard in
     // tour.test.ts makes a write tour declare it.
-    const viewer = access(['can_maintenance_vehicle']);
+    const viewer = access(['can_view_maintenance']);
     expect(reachableFeature('maintenance', viewer)?.path).toBe('/maintenance');
     expect(bulkAdd.requires).toContain('can_manage_maintenance');
     expect(viewer.hasAny(...(bulkAdd.requires ?? []))).toBe(false);

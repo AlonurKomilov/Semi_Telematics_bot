@@ -41,11 +41,11 @@ describe('verb grid completeness', () => {
         'can_manage_account',
         'can_manage_applications',
         'can_manage_storage',
-        'can_scorecard_all',
+        'can_view_scorecards',
         // Vehicle source policy (precedence + auto-pilot).  Moved off
         // can_manage_integrations when its gear moved to the Vehicles
         // page — the tick follows the surface the grant opens.
-        'can_vehicle_all',
+        'can_view_vehicles',
       ]);
   });
 

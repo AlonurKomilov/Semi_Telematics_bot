@@ -53,8 +53,8 @@ const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_r
   // VEHICLES row because that is where its gear lives now; it sat on
   // Integrations while the panel did, and a tick must always point at
   // the surface the grant actually opens.
-  can_vehicle_all: ['can_manage_config_all', 'source precedence + auto-pilot'],
-  can_scorecard_all: ['can_manage_config_all', 'rules + pillar caps'],
+  can_view_vehicles: ['can_manage_config_all', 'source precedence + auto-pilot'],
+  can_view_scorecards: ['can_manage_config_all', 'rules + pillar caps'],
   can_kpi: ['can_manage_config_all', 'grade thresholds'],
   can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
   can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],

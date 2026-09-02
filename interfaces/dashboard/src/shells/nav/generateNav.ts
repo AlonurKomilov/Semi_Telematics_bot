@@ -16,7 +16,7 @@ import {
   FEATURE_CATALOG,
   isPathModuleEnabled,
   type NavGroupKey,
-  type CatalogFeature,
+  type CatalogFeature, UNIT_VIEW_VERBS,
 } from '../../config/featureCatalog';
 
 // The shape the Sidebar renders (moved here from the old defaultNav.ts).
@@ -93,6 +93,12 @@ export function generateNav(
   activeView: string,
   has: (...flags: string[]) => boolean,
   enabledModules: string[] | undefined,
+  /** The member's unit width from ``/me`` (Team Management's answer).
+   *  ``undefined`` = not loaded: treated as wide, because the sidebar
+   *  is discovery, not a boundary — every route and API gates on its
+   *  own.  Narrowing the nav on a missing value would hide granted
+   *  features from a wide member during the first paint. */
+  vehicleScope?: 'all' | 'assigned',
 ): NavGroup[] {
   const visibleModules = new Set(PERSONA_MODULES[activeView] ?? ['core']);
   // Department personas surface CROSS-DEPARTMENT features they hold an
@@ -113,6 +119,15 @@ export function generateNav(
     // account-wide grant (never the own-vehicle/self baseline crumbs,
     // and never for permissionless features).
     if (!crossGrantsSurface) return false;
+    // A unit VIEW verb surfaces cross-department only for a member
+    // whose width is 'all' — Team Management's answer, not a flag; the
+    // pair that used to carry width is gone from the catalog.  The
+    // `_own` self-service crumbs of the person-scope family still
+    // never surface cross-department.
+    const unitViews = flags.filter((k) => UNIT_VIEW_VERBS.includes(k));
+    if (unitViews.length > 0) {
+      return vehicleScope !== 'assigned' && has(...unitViews);
+    }
     const accountWide = flags.filter((k) => !OWN_SCOPE_FLAG.test(k));
     return accountWide.length > 0 && has(...accountWide);
   };

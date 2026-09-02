@@ -143,13 +143,19 @@ class TestStaleCrumbs:
         w, n = PAIRED_UNIT_FEATURES["maintenance"]
         assert stale_narrow_crumbs(seed_for_key("fleet"), {n: True}) == []
 
-    def test_canonical_keys_are_recognised_too(self):
+    def test_canonical_keys_are_normalised_before_classification(self):
         from capabilities.permissions.fold import seed_for_key, stale_narrow_crumbs
-        # nothing canonical maps onto a narrow half (pair view verbs are
-        # ambiguous writes and stay unmapped) — so a canonical-only row
-        # is simply not residue
+        # Since the matrix flip a pair VIEW verb writes the narrow half
+        # (for a manage-pair) — so a canonical view on a pair the seed
+        # grants nothing of is classified exactly like its legacy form.
+        # In practice stored rows never carry canonical keys: the PUT
+        # normalises before storing; this pins that the classifier
+        # would not be fooled if one did.
         assert stale_narrow_crumbs(seed_for_key("recruiter"),
-                                   {"can_view_maintenance": True}) == []
+                                   {"can_view_maintenance": True}) == ["can_maintenance_vehicle"]
+        # a canonical MANAGE grant is a wide grant → never residue
+        assert stale_narrow_crumbs(seed_for_key("recruiter"),
+                                   {"can_manage_maintenance": True}) == []
 
     def test_seed_for_key_shapes(self):
         from capabilities.permissions.fold import seed_for_key

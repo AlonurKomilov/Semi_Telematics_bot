@@ -332,16 +332,48 @@ PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
 }
 
 
+#: pair view verb → (wide field, narrow field, manage verb or None)
+_PAIR_VIEW_WRITES: dict[str, tuple[str, str, str | None]] = {
+    target: (sources[0], sources[1],
+             next((t for t, src in CANONICAL_TO_LEGACY.items()
+                   if src == sources[0] and t.startswith("can_manage_")), None))
+    for target, sources in _SPLIT_SOURCES.items() if len(sources) == 2
+}
+
+
 def normalize_stored_perm_keys(perm_dict: dict) -> dict:
     """Map canonical keys in a stored/inbound grant dict onto their
-    legacy fields.  Legacy keys WIN on collision — the matrix edits
-    legacy today, and a stale canonical duplicate must not shadow it.
-    Pair view targets (an OR of two fields) are ambiguous as writes
-    and are left for the unknown-key filter to drop."""
-    out = {CANONICAL_TO_LEGACY[k]: v for k, v in perm_dict.items()
-           if k in CANONICAL_TO_LEGACY}
+    legacy fields.  Legacy keys WIN on collision — a stale canonical
+    duplicate must not shadow a fresher legacy write.
+
+    Pair VIEW verbs are writable since the matrix flip (stage E):
+    WIDTH left the permission layer for Team Management, so "may open
+    the feature" is all a view tick means, and it lands on BOTH halves
+    of the legacy pair — equal, so the bridge's grant claim never
+    narrows on its own.  For a pair whose wide half is a MANAGE verb
+    (maintenance, work orders, inspections, geofence) the halves keep
+    their meanings: view → the narrow half (opening); manage → the
+    wide half (writing, which implies opening).  Revoking view revokes
+    both; granting manage grants both.
+    """
+    out: dict = {}
+    for k, v in perm_dict.items():
+        if k in _PAIR_VIEW_WRITES:
+            wide, narrow, manage_verb = _PAIR_VIEW_WRITES[k]
+            if manage_verb is None:
+                out[wide] = out[narrow] = v
+            else:
+                out[narrow] = v
+                if not v:
+                    out[wide] = False
+        elif k in CANONICAL_TO_LEGACY:
+            out[CANONICAL_TO_LEGACY[k]] = v
+            if v and k.startswith("can_manage_"):
+                for _t, (w, n, mv) in _PAIR_VIEW_WRITES.items():
+                    if mv == k:
+                        out[n] = True          # manage implies opening
     out.update({k: v for k, v in perm_dict.items()
-                if k not in CANONICAL_TO_LEGACY})
+                if k not in CANONICAL_TO_LEGACY and k not in _PAIR_VIEW_WRITES})
     return out
 
 

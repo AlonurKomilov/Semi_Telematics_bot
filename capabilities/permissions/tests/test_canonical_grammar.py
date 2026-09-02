@@ -127,3 +127,33 @@ def test_the_merge_site_normalizes_before_its_unknown_key_filter():
                 break
     assert "normalize_stored_perm_keys(" in src
     assert src.index("normalize_stored_perm_keys(") < src.index("filtered")
+
+
+class TestPairViewWrites:
+    """Since the matrix flip: a view tick on a unit pair writes BOTH
+    halves; manage-pairs keep halves meaningful."""
+
+    def test_pure_view_pair_writes_both_halves_equal(self):
+        assert normalize_stored_perm_keys({"can_view_events": True}) == {
+            "can_events_all": True, "can_events_vehicle": True}
+        assert normalize_stored_perm_keys({"can_view_events": False}) == {
+            "can_events_all": False, "can_events_vehicle": False}
+
+    def test_manage_pair_view_lands_on_the_narrow_half(self):
+        assert normalize_stored_perm_keys({"can_view_maintenance": True}) == {
+            "can_maintenance_vehicle": True}
+        # revoking view revokes writes too — you cannot write what you
+        # cannot open
+        assert normalize_stored_perm_keys({"can_view_maintenance": False}) == {
+            "can_maintenance_vehicle": False, "can_maintenance_all": False}
+
+    def test_manage_grant_implies_opening(self):
+        assert normalize_stored_perm_keys({"can_manage_maintenance": True}) == {
+            "can_maintenance_all": True, "can_maintenance_vehicle": True}
+        assert normalize_stored_perm_keys({"can_manage_maintenance": False}) == {
+            "can_maintenance_all": False}
+
+    def test_legacy_still_wins_a_collision(self):
+        out = normalize_stored_perm_keys(
+            {"can_view_events": True, "can_events_all": False})
+        assert out["can_events_all"] is False and out["can_events_vehicle"] is True

@@ -138,12 +138,12 @@ export const PERM_GROUPS: PermGroup[] = [
     // Shared — features several departments use.
     title: 'Shared',
     flags: [
-      { allKey: 'can_location_map', vehicleKey: 'can_location_vehicle', kind: 'feature', label: 'Live Map', scoped: true },
+      { key: 'can_view_location', kind: 'feature', label: 'Live Map' },
       // The row is the OBJECT, the column supplies the verb: POI layers
       // are a flag-gated part of Live Map's surface (features/location/
       // pois.py — a file, not a home of its own), manage-only.
       { key: 'can_manage_poi_layers', kind: 'component', label: 'POI Layers', indented: true, description: 'Custom map overlays — the Live Map grant shows them, this one edits them' },
-      { allKey: 'can_vehicle_all',  vehicleKey: 'can_vehicle_vehicle',  kind: 'feature', label: 'Vehicles', scoped: true },
+      { key: 'can_view_vehicles',  kind: 'feature', label: 'Vehicles' },
       { key: 'can_manage_vehicles', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
       // Filing a truck's papers is NOT the grant that renames and
       // archives trucks — a compliance officer needs the first without
@@ -158,7 +158,8 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_fuel',       kind: 'subfeature', label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
       { key: 'can_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
       { key: 'can_vehicle_docs', kind: 'subfeature', label: 'Documents', indented: true, description: "Registration, title, insurance, annual inspections — read + download" },
-      { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', kind: 'feature', label: 'Geofences', scoped: true },
+      { key: 'can_view_geofence', kind: 'feature', label: 'Geofences' },
+      { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
       { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       // COMPENSATION, deliberately its own flag: can_kpi is shared
       // analytics (grades, viewable widely); payout amounts are money.
@@ -172,7 +173,7 @@ export const PERM_GROUPS: PermGroup[] = [
       // NOTE: can_driver_docs_own (a driver viewing their OWN docs) is a
       // driver self-service flag — it lives in the "Driver — self-service"
       // panel, not this staff matrix.  Same for the other view-own flags.
-      { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', kind: 'feature', label: 'Scorecards', scoped: true },
+      { key: 'can_view_scorecards', kind: 'feature', label: 'Scorecards' },
       // Scorecard Rules editing has no row of its own anymore — it folded
       // into "Config — account-wide" (Settings group) with KPI thresholds.
     ],
@@ -180,21 +181,24 @@ export const PERM_GROUPS: PermGroup[] = [
   {
     title: 'Fleet',
     flags: [
-      { allKey: 'can_maintenance_all', vehicleKey: 'can_maintenance_vehicle', kind: 'feature', label: 'Maintenance', scoped: true },
-      { allKey: 'can_work_orders_all', vehicleKey: 'can_work_orders_vehicle', kind: 'feature', label: 'Work Orders', scoped: true },
+      { key: 'can_view_maintenance', kind: 'feature', label: 'Maintenance' },
+      { key: 'can_manage_maintenance', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit, complete & delete tasks and templates — for the trucks this member sees' },
+      { key: 'can_view_work_orders', kind: 'feature', label: 'Work Orders' },
+      { key: 'can_manage_work_orders', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit & delete work orders and their invoices — also opens Vendors' },
       // Vendors rides can_work_orders_all (same audience, one matrix
       // row governs both); Parts is feature-owned — its list still
       // serves the WO editor's autocomplete for can_work_orders_all.
       { key: 'can_parts', kind: 'feature', label: 'Parts', description: 'Parts catalog + per-part analytics (recurrence, price per vendor)' },
       { key: 'can_truck_anatomy', kind: 'feature', label: 'Truck Anatomy', description: '3D learning model of the rig (System → Assembly → Part). Ships dark — no role has it, the owner included, until it\u2019s granted right here.' },
       { key: 'can_service_tasks', kind: 'feature', writeLevel: true, label: 'Service Tasks', description: 'Manage — the shared task list maintenance and work orders both pick from (reads stay open to anyone who can create those records)' },
-      { allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', kind: 'feature', label: 'PTI Inspections', scoped: true },
+      { key: 'can_view_inspections', kind: 'feature', label: 'PTI Inspections' },
+      { key: 'can_manage_inspections', kind: 'action', label: 'Manage', indented: true, description: 'Review submissions and edit the checklist' },
     ],
   },
   {
     title: 'Dispatch',
     flags: [
-      { allKey: 'can_route_all', vehicleKey: 'can_route_vehicle', kind: 'feature', label: 'Routes', scoped: true },
+      { key: 'can_view_routes', kind: 'feature', label: 'Routes' },
       // One scoped row like every other feature (owner decision 2026-07-29;
       // the Risk Summary precedent): one tick grants view all + own
       // (view-own = assigned as DRIVER, the Driver panel's toggle).
@@ -209,9 +213,9 @@ export const PERM_GROUPS: PermGroup[] = [
   {
     title: 'Safety',
     flags: [
-      { allKey: 'can_events_all', vehicleKey: 'can_events_vehicle', kind: 'feature', label: 'Safety Events', scoped: true },
+      { key: 'can_view_events', kind: 'feature', label: 'Safety Events' },
       { key: 'can_cameras', kind: 'feature', label: 'Cameras', description: 'Dashcam footage' },
-      { allKey: 'can_parking_all', vehicleKey: 'can_parking_vehicle', kind: 'feature', label: 'Parking', scoped: true, description: 'Unsafe-parking events' },
+      { key: 'can_view_parking', kind: 'feature', label: 'Parking', description: 'Unsafe-parking events' },
       // The Risk Summary report tab — a stakeholder/personnel risk deliverable.
       // It's a report TYPE (feature), surfaced inside the always-on Reports
       // hub; it lives here because it's safety-owned data.
@@ -316,20 +320,24 @@ export const contextLabel = (f: SimpleFlag | ScopedFlag): string => {
 // here: both are DERIVED from the Vehicle grant in
 // capabilities/permissions/roles.derive_service_perms — give a driver their
 // truck and the alerts inbox + assistant tab come with it.
-export const DRIVER_TRUCK: ScopedFlag[] = [
-  { kind: 'feature', allKey: 'can_location_map',    vehicleKey: 'can_location_vehicle',    label: 'Live Map',            scoped: true, description: 'See their assigned truck on the map' },
-  { kind: 'feature', allKey: 'can_vehicle_all',     vehicleKey: 'can_vehicle_vehicle',     label: 'Vehicle & Assistant', scoped: true, description: 'Their truck’s info + the AI assistant tab (also carries the Alerts inbox)' },
-  { kind: 'feature', allKey: 'can_maintenance_all', vehicleKey: 'can_maintenance_vehicle', label: 'Maintenance',         scoped: true, description: 'Their truck’s maintenance schedule' },
-  { kind: 'feature', allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', label: 'PTI Inspections',     scoped: true, description: 'Do & review pre-trip inspections on their truck' },
-  { kind: 'feature', allKey: 'can_route_all',       vehicleKey: 'can_route_vehicle',       label: 'Routes',              scoped: true, description: 'Their own assigned routes' },
-  { kind: 'feature', allKey: 'can_scorecard_all',   vehicleKey: 'can_scorecard_vehicle',   label: 'Scorecard',           scoped: true, description: 'Their own safety scorecard' },
-  { kind: 'feature', allKey: 'can_events_all',      vehicleKey: 'can_events_vehicle',      label: 'Safety Events',       scoped: true, description: 'Their own safety events' },
+export const DRIVER_TRUCK: (ScopedFlag | SimpleFlag)[] = [
+  { key: 'can_view_location', kind: 'feature',    label: 'Live Map',            description: 'See their assigned truck on the map' },
+  { key: 'can_view_vehicles', kind: 'feature',     label: 'Vehicle & Assistant', description: 'Their truck’s info + the AI assistant tab (also carries the Alerts inbox)' },
+  { key: 'can_view_maintenance', kind: 'feature', label: 'Maintenance',         description: 'Their truck’s maintenance schedule' },
+  { key: 'can_manage_maintenance', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit, complete & delete tasks and templates — for the trucks this member sees' },
+  { key: 'can_view_inspections', kind: 'feature', label: 'PTI Inspections',     description: 'Do & review pre-trip inspections on their truck' },
+  { key: 'can_manage_inspections', kind: 'action', label: 'Manage', indented: true, description: 'Review submissions and edit the checklist' },
+  { key: 'can_view_routes', kind: 'feature',       label: 'Routes',              description: 'Their own assigned routes' },
+  { key: 'can_view_scorecards', kind: 'feature',   label: 'Scorecard',           description: 'Their own safety scorecard' },
+  { key: 'can_view_events', kind: 'feature',      label: 'Safety Events',       description: 'Their own safety events' },
   // Not mini-app pages, but stored driver grants with LIVE driver surfaces
   // (Telegram bot menus, alert relevance, driver API scopes) — they need an
   // edit path here since the staff matrix no longer has a Driver column.
-  { kind: 'feature', allKey: 'can_geofence_all',    vehicleKey: 'can_geofence_vehicle',    label: 'Geofences',           scoped: true, description: 'Bot geofence/parking menus + geofence & parking alerts for their truck' },
-  { kind: 'feature', allKey: 'can_parking_all',     vehicleKey: 'can_parking_vehicle',     label: 'Parking',             scoped: true, description: 'Their truck’s unsafe-parking events' },
-  { kind: 'feature', allKey: 'can_work_orders_all', vehicleKey: 'can_work_orders_vehicle', label: 'Work Orders',         scoped: true, description: 'View their truck’s work orders + upload shop invoices' },
+  { key: 'can_view_geofence', kind: 'feature',    label: 'Geofences',           description: 'Bot geofence/parking menus + geofence & parking alerts for their truck' },
+  { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
+  { key: 'can_view_parking', kind: 'feature',     label: 'Parking',             description: 'Their truck’s unsafe-parking events' },
+  { key: 'can_view_work_orders', kind: 'feature', label: 'Work Orders',         description: 'View their truck’s work orders + upload shop invoices' },
+  { key: 'can_manage_work_orders', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit & delete work orders and their invoices — also opens Vendors' },
 ];
 // The driver's OWN-record flags (view-own).  Kept out of the staff matrix for
 // the same reason — they only ever apply to the driver themself.

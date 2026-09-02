@@ -96,6 +96,8 @@ export interface User {
    *  Core + Account are always on and not listed.  Drives module-aware
    *  sidebar filtering.  Absent → treat as all-on. */
   enabled_modules?: string[];
+  /** Team Management's unit width for THIS member (three layers resolved) — nav reads it. */
+  vehicle_scope?: 'all' | 'assigned';
   truck_num?: string;
   trucks?: string[];
   allowed_companies?: string[];

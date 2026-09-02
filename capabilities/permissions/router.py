@@ -262,9 +262,9 @@ async def update_role_perms(
     # Validate permission fields
     # The canonical verb grammar maps onto legacy fields before
     # validation — a client speaking new names writes the same grant.
-    # Pair VIEW verbs (an OR of two legacy fields) stay invalid as
-    # writes: which field they mean is ambiguous until the storage
-    # flip, and a 400 here is honest.
+    # Since the matrix flip a pair VIEW verb writes both halves equal
+    # (width is Team Management's, not a permission's); see
+    # normalize_stored_perm_keys.
     body.permissions = normalize_stored_perm_keys(body.permissions)
     invalid_keys = set(body.permissions.keys()) - VALID_FIELDS
     if invalid_keys:

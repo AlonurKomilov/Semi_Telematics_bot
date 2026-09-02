@@ -111,11 +111,11 @@ export type CatalogEntry =
 export type CatalogFeature = CatalogEntry;
 
 // Reusable permission groups (kept in sync with capabilities/iam/permissions.py).
-const P_LOCATION = ['can_location_map', 'can_location_vehicle'];
+const P_LOCATION = 'can_view_location';
 // Legacy pair, like maintenance/work_orders above: generateNav
 // derives own-shell vs account-wide placement from the pair.
-const P_VEHICLE = ['can_vehicle_all', 'can_vehicle_vehicle'];
-const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
+const P_VEHICLE = 'can_view_vehicles';
+const P_ALERTS = ['can_view_vehicles'];
 const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', 'can_cost_reports', 'can_digest'];
 
 /** Canonical verb-grammar flags live on the wire (both grammars are
@@ -123,11 +123,18 @@ const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', '
  *  a legacy pair.  Guards that ask "is this a real flag" must accept
  *  these too — grown one family at a time as enforcement migrates. */
 export const CANONICAL_WIRE_FLAGS: readonly string[] = [
-  'can_view_maintenance', 'can_manage_maintenance',
-  'can_view_work_orders', 'can_manage_work_orders',
-  'can_view_vehicles', 'can_view_inspections', 'can_manage_inspections',
-  'can_view_location', 'can_view_routes', 'can_view_parking',
-  'can_view_geofence', 'can_manage_geofence', 'can_view_events',
+  'can_manage_maintenance', 'can_manage_work_orders',
+  'can_manage_inspections', 'can_manage_geofence',
+];
+
+/** The unit-feature VIEW verbs.  A member's WIDTH on these — all units
+ *  or assigned trucks — is Team Management's answer (``/me`` carries
+ *  it as ``vehicle_scope``), never a permission: the nav's
+ *  cross-department rule reads the width from there. */
+export const UNIT_VIEW_VERBS: readonly string[] = [
+  'can_view_vehicles', 'can_view_maintenance', 'can_view_work_orders',
+  'can_view_inspections', 'can_view_location', 'can_view_routes',
+  'can_view_parking', 'can_view_geofence', 'can_view_events',
   'can_view_scorecards',
 ];
 
@@ -166,19 +173,13 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // lives in every truck; search by serial, filter missing/damaged).
   // Sits directly under Vehicles in the sidebar — a destination, unlike
   // the per-truck card (which is a detail-page section).
-  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_all', 'can_vehicle_vehicle'], navGroup: 'operations', parentId: 'vehicles' },
+  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_vehicles', navGroup: 'operations', parentId: 'vehicles' },
   { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────
-  // Verb/scope bridge note: maintenance + work_orders keep their
-  // LEGACY pair here on purpose — generateNav derives own-shell vs
-  // account-wide placement from the pair, and /me does not carry the
-  // member's unit scope yet.  The catalog migrates to can_view_* in
-  // the nav pass, together with that machinery.  Routes and write
-  // gates already speak the canonical grammar (router.tsx).
-  { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: ['can_maintenance_all', 'can_maintenance_vehicle'], navGroup: 'operations' },
-  { id: 'work_orders', labelKey: 'nav.work_orders', path: '/work-orders', icon: Receipt,        modules: ['fleet'], tier: 'role', permission: ['can_work_orders_all', 'can_work_orders_vehicle'], navGroup: 'operations' },
-  { id: 'vendors', labelKey: 'nav.vendors', path: '/vendors', icon: Store,             modules: ['fleet'], tier: 'role', permission: 'can_work_orders_all', navGroup: 'operations' },
+  { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: 'can_view_maintenance', navGroup: 'operations' },
+  { id: 'work_orders', labelKey: 'nav.work_orders', path: '/work-orders', icon: Receipt,        modules: ['fleet'], tier: 'role', permission: 'can_view_work_orders', navGroup: 'operations' },
+  { id: 'vendors', labelKey: 'nav.vendors', path: '/vendors', icon: Store,             modules: ['fleet'], tier: 'role', permission: 'can_manage_work_orders', navGroup: 'operations' },
   // Parts — master data + per-part analytics (recurrence, price per
   // vendor).  Graduated from a Work Orders component; feature-owned gate.
   { id: 'parts', labelKey: 'nav.parts', path: '/parts', icon: Cog,                      modules: ['fleet'], tier: 'role', permission: 'can_parts', navGroup: 'operations' },
@@ -187,13 +188,13 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // seeded to NOBODY, owner included (DARK_FEATURE_FIELDS in roles.py);
   // the nav entry exists only after a grant in the Permissions matrix.
   { id: 'truck-anatomy', labelKey: 'nav.truck_anatomy', path: '/truck-anatomy', icon: Truck, modules: ['fleet'], tier: 'shared', permission: 'can_truck_anatomy', navGroup: 'operations' },
-  { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: ['can_inspections_all', 'can_inspections_vehicle'], navGroup: 'operations' },
+  { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: 'can_view_inspections', navGroup: 'operations' },
   // Geofences: zones serve both fleet (sites/yards) and dispatch
   // (routing boundaries) — surfaced when EITHER department is on.
-  { id: 'geofences', labelKey: 'nav.geofences', path: '/geofences', icon: MapPin, modules: ['fleet', 'dispatch'], tier: 'shared', permission: ['can_geofence_all', 'can_geofence_vehicle'], navGroup: 'operations' },
+  { id: 'geofences', labelKey: 'nav.geofences', path: '/geofences', icon: MapPin, modules: ['fleet', 'dispatch'], tier: 'shared', permission: 'can_view_geofence', navGroup: 'operations' },
 
   // ── DISPATCH (routing) ────────────────────────────────────────────
-  { id: 'routes',  labelKey: 'nav.routes',  path: '/routes',  icon: Route,         modules: ['dispatch'], tier: 'role', permission: ['can_route_all', 'can_route_vehicle'], navGroup: 'operations' },
+  { id: 'routes',  labelKey: 'nav.routes',  path: '/routes',  icon: Route,         modules: ['dispatch'], tier: 'role', permission: 'can_view_routes', navGroup: 'operations' },
   // Loads — the canonical load/shipment list.  Dispatch owns entry; owners,
   // fleet and drivers read it (drivers see their own — scoped server-side),
   // so it's shared-tier like Vehicles.
@@ -201,15 +202,15 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Parking is a single-purpose feature (UNSAFE-parking events only — no
   // zones or general parking management), so it's role-tier like Safety
   // Events; the module list still lets dispatch + fleet surface it.
-  { id: 'parking', labelKey: 'nav.parking', path: '/parking', icon: ParkingSquare, modules: ['dispatch', 'fleet', 'safety'], tier: 'role', permission: ['can_parking_all', 'can_parking_vehicle'], navGroup: 'operations' },
+  { id: 'parking', labelKey: 'nav.parking', path: '/parking', icon: ParkingSquare, modules: ['dispatch', 'fleet', 'safety'], tier: 'role', permission: 'can_view_parking', navGroup: 'operations' },
 
   // ── SAFETY (behaviour + incidents) ────────────────────────────────
-  { id: 'events', labelKey: 'nav.events', path: '/safety-events', icon: AlertTriangle, modules: ['safety', 'hr'], tier: 'role', permission: ['can_events_all', 'can_events_vehicle'], navGroup: 'monitoring' },
+  { id: 'events', labelKey: 'nav.events', path: '/safety-events', icon: AlertTriangle, modules: ['safety', 'hr'], tier: 'role', permission: 'can_view_events', navGroup: 'monitoring' },
   { id: 'cameras',       labelKey: 'nav.cameras',       path: '/cameras',       icon: Camera,        modules: ['safety', 'fleet'], tier: 'role', permission: ['can_cameras'], navGroup: 'monitoring' },
   // Scorecards are a Safety/coaching capability — surfaced only when the
   // Safety or HR department is on.  A Fleet-only or Dispatch-only company
   // won't see them (they can enable Safety to get them).
-  { id: 'scorecards', labelKey: 'nav.scorecards', path: '/scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: ['can_scorecard_all', 'can_scorecard_vehicle'], navGroup: 'monitoring' },
+  { id: 'scorecards', labelKey: 'nav.scorecards', path: '/scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: 'can_view_scorecards', navGroup: 'monitoring' },
 
   // ── HR (people) ───────────────────────────────────────────────────
   { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_coaching_admin'], navGroup: 'people' },

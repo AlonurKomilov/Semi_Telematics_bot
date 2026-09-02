@@ -15,8 +15,8 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
     // Safety's real defaults include account-wide maintenance / work-orders /
     // inspections — those fleet-module features must appear in its sidebar.
     const nav = paths(generateNav('safety', grants(
-      'can_maintenance_all', 'can_work_orders_all', 'can_inspections_all',
-      'can_events_all', 'can_scorecard_all', 'can_location_map', 'can_vehicle_all',
+      'can_view_maintenance', 'can_view_work_orders', 'can_view_inspections',
+      'can_view_events', 'can_view_scorecards', 'can_view_location', 'can_view_vehicles',
     ), undefined));
     expect(nav).toContain('/maintenance');
     expect(nav).toContain('/work-orders');
@@ -26,11 +26,14 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
   it('does NOT surface cross-department features on own-scope baseline crumbs (Recruiter stays clean)', () => {
     // Recruiter's driver-equivalent baseline is all _vehicle-scoped — none of
     // the fleet-module features may leak into the recruiting dashboard.
+    // In the verb grammar the crumbs are plain view verbs; what keeps
+    // them off the recruiting dashboard is the member's WIDTH — Team
+    // Management's 'assigned', passed from /me — not a flag suffix.
     const nav = paths(generateNav('recruiter', grants(
-      'can_maintenance_vehicle', 'can_work_orders_vehicle', 'can_inspections_vehicle',
-      'can_route_vehicle', 'can_events_vehicle', 'can_scorecard_vehicle',
-      'can_location_vehicle', 'can_vehicle_vehicle', 'can_manage_applications',
-    ), undefined));
+      'can_view_maintenance', 'can_view_work_orders', 'can_view_inspections',
+      'can_view_routes', 'can_view_events', 'can_view_scorecards',
+      'can_view_location', 'can_view_vehicles', 'can_manage_applications',
+    ), undefined, 'assigned'));
     expect(nav).not.toContain('/maintenance');
     expect(nav).not.toContain('/work-orders');
     expect(nav).not.toContain('/inspections');
@@ -38,7 +41,7 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
   });
 
   it('own-department features still honour permissions (no grant → no item)', () => {
-    const nav = paths(generateNav('fleet', grants('can_vehicle_all'), undefined));
+    const nav = paths(generateNav('fleet', grants('can_view_vehicles'), undefined));
     expect(nav).not.toContain('/maintenance');   // fleet module, but flag not held
     expect(nav).toContain('/vehicles');
   });
@@ -47,9 +50,9 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
     // Owner holds everything account-wide; the account-persona sidebar must
     // still exclude department-module tools (they persona-switch for ops).
     const nav = paths(generateNav('owner', grants(
-      'can_maintenance_all', 'can_work_orders_all', 'can_route_all',
+      'can_view_maintenance', 'can_view_work_orders', 'can_view_routes',
       'can_manage_users', 'can_manage_account', 'can_manage_permissions',
-      'can_vehicle_all', 'can_location_map',
+      'can_view_vehicles', 'can_view_location',
     ), undefined));
     expect(nav).not.toContain('/maintenance');
     expect(nav).not.toContain('/routes');
@@ -57,7 +60,7 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
   });
 
   it('a disabled account module still hides the feature (module mask wins)', () => {
-    const nav = paths(generateNav('safety', grants('can_maintenance_all', 'can_vehicle_all'),
+    const nav = paths(generateNav('safety', grants('can_view_maintenance', 'can_view_vehicles'),
       ['safety', 'hr']));   // fleet module disabled account-wide
     expect(nav).not.toContain('/maintenance');
   });
@@ -66,7 +69,7 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
 describe('generateNav — item-level children (Settings-style nesting)', () => {
   it('Inventory folds under Vehicles as a child, not a flat sibling', () => {
     const nav = generateNav('fleet', grants(
-      'can_vehicle_all', 'can_location_map', 'can_maintenance_all',
+      'can_view_vehicles', 'can_view_location', 'can_view_maintenance',
     ), undefined);
     const flat = nav.flatMap((g) => g.items);
     const vehicles = flat.find((i) => i.path === '/vehicles');
@@ -82,7 +85,7 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
     // assert the folding rule structurally: every child path present in the
     // catalog appears EITHER nested or flat — never lost.
     const nav = generateNav('owner', grants(
-      'can_vehicle_all', 'can_location_map',
+      'can_view_vehicles', 'can_view_location',
     ), undefined);
     const all = nav.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])]));
     expect(all.map((i) => i.path)).toContain('/vehicles/inventory');
@@ -91,7 +94,7 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
 
 describe('generateNav — role manager reaches Settings (parent-only group)', () => {
   it('a fleet manager with can_manage_role_bot gets the settings group with /settings as parentItem', () => {
-    const nav = generateNav('fleet', grants('can_manage_role_bot', 'can_vehicle_all'), undefined);
+    const nav = generateNav('fleet', grants('can_manage_role_bot', 'can_view_vehicles'), undefined);
     const settingsGroup = nav.find((g) => g.collapsible);
     // The group must exist and carry the parent even with ZERO children —
     // the Sidebar renders parentItem; dropping the group hid Settings
@@ -102,7 +105,7 @@ describe('generateNav — role manager reaches Settings (parent-only group)', ()
   });
 
   it('an employee without the flag gets no settings group at all', () => {
-    const nav = generateNav('fleet', grants('can_vehicle_all'), undefined);
+    const nav = generateNav('fleet', grants('can_view_vehicles'), undefined);
     expect(nav.find((g) => g.collapsible)).toBeUndefined();
   });
 });

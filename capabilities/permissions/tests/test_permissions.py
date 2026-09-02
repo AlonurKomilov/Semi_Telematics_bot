@@ -358,6 +358,26 @@ class TestPermSsotDriftDetection:
         } - base_seeded
 
         flag_names = [f.name for f in FeatureSet.__dataclass_fields__.values()]
+        # Since the matrix flip (stage E of the verb/scope migration) a
+        # field is exposed either under its own name or under a canonical
+        # verb that WRITES to it: a view tick on a unit pair lands on both
+        # halves, a manage tick on the wide half.  Built from the same
+        # maps the PUT normalisation uses, so the guard and the write
+        # path cannot disagree about what a row edits.
+        from capabilities.permissions.roles import (
+            CANONICAL_TO_LEGACY, _PAIR_VIEW_WRITES,
+        )
+        exposed_as: dict[str, set[str]] = {n: {n} for n in flag_names}
+        for canonical, legacy in CANONICAL_TO_LEGACY.items():
+            exposed_as.setdefault(legacy, set()).add(canonical)
+        for view, (wide, narrow, _mv) in _PAIR_VIEW_WRITES.items():
+            exposed_as.setdefault(wide, set()).add(view)
+            exposed_as.setdefault(narrow, set()).add(view)
+
+        def _exposed(n: str) -> bool:
+            return any(f"'{a}'" in groups_src or f'"{a}"' in groups_src
+                       for a in exposed_as.get(n, {n}))
+
         # The derived service surfaces (Alerts inbox, AI assistant) are
         # intentionally NOT matrix rows — they're always-on system services
         # present for every role, shown read-only in the "System Services"
@@ -366,7 +386,7 @@ class TestPermSsotDriftDetection:
             n for n in flag_names
             if n not in DERIVED_SERVICE_FIELDS
             and n not in tier_only
-            and f"'{n}'" not in groups_src and f'"{n}"' not in groups_src
+            and not _exposed(n)
         ]
 
         assert not missing, (
