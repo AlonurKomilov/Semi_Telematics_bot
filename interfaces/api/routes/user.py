@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from interfaces.api.deps import (
     get_current_db_user,
     get_current_user,
+    get_member_vehicle_scope,
     get_platform_db,
     get_tenant_db,
     require_permission,
@@ -147,6 +148,12 @@ async def user_me(
             if db_user.email else True
         ),
         "permissions": perm_dict,
+        # The member's resolved unit width (three layers: own override
+        # ⊃ account role width ⊃ built-in role default).  The nav's
+        # cross-department rule and the width-aware surfaces read this
+        # when the pair-death stage flips them; the TM page shows it
+        # now.  Fail-closed by construction (get_member_vehicle_scope).
+        "vehicle_scope": await get_member_vehicle_scope(user),
         # Driver Pay is an Accounting feature now — "available" == Accounting
         # module on (per-user access is the can_driver_pay_admin permission).
         # Field name kept for frontend compat.

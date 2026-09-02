@@ -16,7 +16,7 @@ import type { AdminUser } from '../types';
 export function useTeamMembersQuery(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => apiJSON<{ users: AdminUser[] }>('/admin/users'),
+    queryFn: () => apiJSON<{ users: AdminUser[]; role_vehicle_scopes?: Record<string, 'all' | 'assigned'> }>('/admin/users'),
     // Callers that only need the count for something the reader may
     // already have dismissed pass `enabled` and cost nothing.
     enabled: opts?.enabled ?? true,

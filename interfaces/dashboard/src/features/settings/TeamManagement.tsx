@@ -436,6 +436,10 @@ export default function TeamManagement() {
   // state.  Shared hook (useTeamMembers) — the topbar TeamHero reads
   // the same cache entry, so its counts always equal this page's.
   const { data: usersData, isLoading: loading, error: usersError } = useTeamMembersQuery();
+  // Team Management's ROLE-level unit widths (middle layer of the
+  // three: member override ⊃ role width ⊃ built-in default) — used to
+  // label what "Role default" currently resolves to.
+  const roleWidths = usersData?.role_vehicle_scopes ?? {};
   // Count badge for the Integration-links surface tab — eager fetch of
   // the same cache entry the panel reads, so the badge is live before
   // the tab is opened and can't disagree with the panel's own header.
@@ -527,6 +531,22 @@ export default function TeamManagement() {
 
   // Set/clear the per-user manager tier (orthogonal to role — the user's
   // role is unchanged; they just gain/lose the team-lead grants).
+  const handleScopeChange = async (userId: number, scope: 'all' | 'assigned' | null) => {
+    try {
+      await apiJSON('/admin/users/' + userId + '/vehicle-scope', { method: 'PUT', body: { scope } });
+      qc.setQueryData<{ users: AdminUser[] } | undefined>(['admin-users'], (d) =>
+        d ? { ...d, users: d.users.map((u) => u.id === userId ? { ...u, vehicle_scope: scope } : u) } : d);
+      if (selected) setSelected({ ...selected, vehicle_scope: scope });
+      setSuccess(scope === null
+        ? 'Unit visibility reset to the role default.'
+        : scope === 'all'
+          ? 'This member now sees all units.'
+          : 'This member now sees their assigned trucks only.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update unit visibility');
+    }
+  };
+
   const handleManagerToggle = async (userId: number, is_manager: boolean) => {
     try {
       await apiJSON('/admin/users/' + userId + '/manager', { method: 'PUT', body: { is_manager } });
@@ -1461,6 +1481,69 @@ export default function TeamManagement() {
                                   }`}
                                 />
                               </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Unit visibility — Team Management's WIDTH, not a
+                          permission: which units this member sees on every
+                          unit-scoped page (maintenance, work orders, events,
+                          parking, routes, scorecards…).  Three layers —
+                          this override ⊃ the account's role width ⊃ the
+                          built-in default — and this control edits only the
+                          FIRST.  Owners are never scoped (server-enforced);
+                          same seniority wall as a role change. */}
+                      {selected.role !== 'owner' && !isSelfEdit && (() => {
+                        const cannotModify = (ROLE_RANK[selected.role] ?? 0) >= myRank;
+                        const roleLabel = ROLE_LABEL[selected.role] ?? selected.role;
+                        const inheritedWidth = roleWidths[selected.role]
+                          ?? (selected.role === 'driver' ? 'assigned' : 'all');
+                        const current = selected.vehicle_scope ?? null;
+                        const OPTIONS: { value: 'all' | 'assigned' | null; label: string; hint: string }[] = [
+                          { value: null,
+                            label: `Role default (${inheritedWidth === 'all' ? 'all units' : 'assigned trucks'})`,
+                            hint: `Follows what every ${roleLabel} sees.` },
+                          { value: 'all', label: 'All units',
+                            hint: 'Sees every unit the company wall allows.' },
+                          { value: 'assigned', label: 'Assigned trucks',
+                            hint: 'Sees only the trucks assigned to them.' },
+                        ];
+                        return (
+                          <div>
+                            <h3 className="text-sm font-semibold text-foreground/80 mb-2">Unit visibility</h3>
+                            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1"
+                                 role="radiogroup" aria-label="Unit visibility">
+                              {OPTIONS.map((o) => (
+                                <button
+                                  key={String(o.value)}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={current === o.value}
+                                  disabled={cannotModify}
+                                  onClick={() => current !== o.value && handleScopeChange(selected.id, o.value)}
+                                  className={`w-full text-left rounded-md px-3 py-2 transition min-h-tap ${
+                                    cannotModify
+                                      ? 'cursor-not-allowed opacity-60'
+                                      : current === o.value
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'hover:bg-muted'
+                                  }`}
+                                >
+                                  {/* Selected state = the file's own radio grammar (the
+                                      Group-mode picker above): filled primary, not a tint —
+                                      one "chosen" shape per surface. */}
+                                  <span className={`block text-sm ${current === o.value ? 'font-medium' : 'text-foreground/90'}`}>
+                                    {o.label}
+                                  </span>
+                                  <span className={`block text-xs mt-0.5 ${current === o.value ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{o.hint}</span>
+                                </button>
+                              ))}
+                              {cannotModify && (
+                                <p className="text-2xs text-muted-foreground/70 px-3 pb-1">
+                                  Your role doesn't outrank {roleLabel}.
+                                </p>
+                              )}
                             </div>
                           </div>
                         );

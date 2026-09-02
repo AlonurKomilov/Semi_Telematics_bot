@@ -206,3 +206,87 @@ class TestRoleScopeStorage:
         await pg_db.set_role_vehicle_scope(a, "fleet", "assigned")
         assert await pg_db.get_role_vehicle_scope(b, "fleet") is None
         assert await pg_db.get_all_role_vehicle_scopes(b) == {}
+
+
+class TestScopeEndpoints:
+    """The two width PUTs — validation walls and the happy path.
+
+    Width rides can_manage_users (the roster verb, Team Management's
+    own), NOT the permissions matrix — the dependency declares it and
+    these tests exercise the walls below it.
+    """
+
+    @pytest.fixture
+    def _quiet_trail(self, monkeypatch):
+        from features.settings.team_management import router as tm
+        async def _noop(*a, **k): return None
+        monkeypatch.setattr(tm, "_trail_user_event", _noop)
+        return tm
+
+    @pytest.mark.asyncio
+    async def test_member_scope_set_and_clear(self, pg_db, _quiet_trail):
+        from fastapi import HTTPException
+        tm = _quiet_trail
+        acct = (await pg_db.create_account("Scope EP Co")).id
+        owner = await pg_db.create_user(9101, acct, role=Role.OWNER)
+        member = await pg_db.create_user(9102, acct, role=Role.FLEET)
+        caller = {"account_id": acct, "role": "owner",
+                  "sub": str(owner.telegram_id), "uid": owner.id}
+
+        await tm.update_user_vehicle_scope(
+            member.id, tm.VehicleScopeUpdate(scope="assigned"),
+            user=caller, platform_db=pg_db, tenant_db=None)
+        assert (await pg_db.get_user_by_id(member.id)).vehicle_scope == "assigned"
+
+        await tm.update_user_vehicle_scope(
+            member.id, tm.VehicleScopeUpdate(scope=None),
+            user=caller, platform_db=pg_db, tenant_db=None)
+        assert (await pg_db.get_user_by_id(member.id)).vehicle_scope is None
+
+    @pytest.mark.asyncio
+    async def test_owners_are_never_scoped(self, pg_db, _quiet_trail):
+        from fastapi import HTTPException
+        tm = _quiet_trail
+        acct = (await pg_db.create_account("Scope EP Own")).id
+        owner = await pg_db.create_user(9103, acct, role=Role.OWNER)
+        caller = {"account_id": acct, "role": "owner",
+                  "sub": str(owner.telegram_id), "uid": owner.id}
+        with pytest.raises(HTTPException) as e:
+            await tm.update_user_vehicle_scope(
+                owner.id, tm.VehicleScopeUpdate(scope="assigned"),
+                user=caller, platform_db=pg_db, tenant_db=None)
+        assert e.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_cross_account_target_is_a_404(self, pg_db, _quiet_trail):
+        from fastapi import HTTPException
+        tm = _quiet_trail
+        a = (await pg_db.create_account("Scope EP A")).id
+        b = (await pg_db.create_account("Scope EP B")).id
+        stranger = await pg_db.create_user(9104, b, role=Role.FLEET)
+        caller = {"account_id": a, "role": "owner", "sub": "1", "uid": 0}
+        with pytest.raises(HTTPException) as e:
+            await tm.update_user_vehicle_scope(
+                stranger.id, tm.VehicleScopeUpdate(scope="assigned"),
+                user=caller, platform_db=pg_db, tenant_db=None)
+        assert e.value.status_code == 404
+        assert (await pg_db.get_user_by_id(stranger.id)).vehicle_scope is None
+
+    @pytest.mark.asyncio
+    async def test_role_width_happy_path_and_invalid_role(self, pg_db, _quiet_trail):
+        from fastapi import HTTPException
+        tm = _quiet_trail
+        acct = (await pg_db.create_account("Scope EP R")).id
+        owner = await pg_db.create_user(9105, acct, role=Role.OWNER)
+        caller = {"account_id": acct, "role": "owner",
+                  "sub": str(owner.telegram_id), "uid": owner.id}
+        await tm.update_role_vehicle_scope(
+            "fleet", tm.VehicleScopeUpdate(scope="assigned"),
+            user=caller, platform_db=pg_db, tenant_db=None)
+        assert await pg_db.get_role_vehicle_scope(acct, "fleet") == "assigned"
+        for bad in ("owner", "nonexistent"):
+            with pytest.raises(HTTPException) as e:
+                await tm.update_role_vehicle_scope(
+                    bad, tm.VehicleScopeUpdate(scope="assigned"),
+                    user=caller, platform_db=pg_db, tenant_db=None)
+            assert e.value.status_code == 400

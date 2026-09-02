@@ -49,6 +49,10 @@ async def list_users(
     thousands of users.
     """
     users = await platform_db.list_account_users(user["account_id"])
+    # The account's ROLE-level widths (Team Management's middle
+    # layer), fetched once so every member row can resolve its
+    # EFFECTIVE width through all three layers.
+    role_widths = await platform_db.get_all_role_vehicle_scopes(user["account_id"])
 
     # In-memory filters before pagination — list size is bounded by tenant
     # roster which sits in the low thousands at worst. If/when this grows
@@ -87,6 +91,7 @@ async def list_users(
         company_map = {}
 
     return {
+        "role_vehicle_scopes": role_widths,
         "users": [
             {
                 "id": u.id,
@@ -105,7 +110,9 @@ async def list_users(
                 # exists yet, deliberately: an editable control that
                 # changes nothing would be a lie in the UI.
                 "vehicle_scope": u.vehicle_scope,
-                "vehicle_scope_resolved": u.resolved_vehicle_scope,
+                "vehicle_scope_resolved": u.scope_with_role_default(
+                    role_widths.get(
+                        u.role.value if hasattr(u.role, "value") else str(u.role))),
                 "manager_capable": role_supports_manager(u.role),
                 # Senior-tier label for this role (drives the toggle copy):
                 # "Manager" for recruiter, "Full admin" for admin, else null.
@@ -274,6 +281,12 @@ async def _trail_user_event(
     }])
 
 
+class VehicleScopeUpdate(BaseModel):
+    """Unit width — 'all', 'assigned', or None for "inherit"
+    (member: inherit the role's width; role: built-in default)."""
+    scope: Optional[str] = None
+
+
 class RoleUpdate(BaseModel):
     role: str = Field(..., pattern=ASSIGNABLE_ROLES_PATTERN)
 
@@ -315,6 +328,81 @@ async def update_user_role(
 
 class ManagerUpdate(BaseModel):
     is_manager: bool
+
+
+@router.put("/users/{user_id}/vehicle-scope")
+async def update_user_vehicle_scope(
+    user_id: int,
+    body: VehicleScopeUpdate,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set or clear a member's unit-width override.
+
+    Width is Team Management's question, so it rides
+    ``can_manage_users`` — the roster verb — not the permissions
+    matrix.  The same seniority wall as a role change: you cannot
+    rescope someone at or above your own rank, and owners are never
+    rescoped (they are unrestricted by design, like the company wall's
+    owner exemption).
+    """
+    if body.scope not in (None, "all", "assigned"):
+        raise HTTPException(status_code=400, detail="scope must be 'all', 'assigned' or null")
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    target_role = target.role.value if hasattr(target.role, "value") else target.role
+    if target_role == "owner":
+        raise HTTPException(status_code=403, detail="Owners are not scoped.")
+    ok, reason = validate_role_change(user["role"], target_role, target_role)
+    if not ok and reason == "cant_modify_higher":
+        raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher role")
+
+    before = target.vehicle_scope
+    changed = await platform_db.set_user_vehicle_scope(
+        user["account_id"], user_id, body.scope)
+    if changed:
+        await _trail_user_event(
+            tenant_db, user, user_id, "vehicle_scope_change",
+            changes={"vehicle_scope": {"from": before, "to": body.scope}},
+        )
+    return {"ok": True, "vehicle_scope": body.scope}
+
+
+@router.put("/roles/{role}/vehicle-scope")
+async def update_role_vehicle_scope(
+    role: str,
+    body: VehicleScopeUpdate,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set or clear the account's width for one ROLE — the middle
+    layer.  Absence restores the built-in default (driver → assigned,
+    everyone else → all); writing 'all' would mean something else, so
+    clearing DELETES the row.
+    """
+    if body.scope not in (None, "all", "assigned"):
+        raise HTTPException(status_code=400, detail="scope must be 'all', 'assigned' or null")
+    valid = {r.value for r in Role}
+    if role not in valid or role == "owner":
+        raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
+    ok, reason = validate_role_change(user["role"], role, role)
+    if not ok and reason == "cant_modify_higher":
+        raise HTTPException(status_code=403, detail="Cannot modify a role at or above your own")
+
+    before = await platform_db.get_role_vehicle_scope(user["account_id"], role)
+    await platform_db.set_role_vehicle_scope(
+        user["account_id"], role, body.scope,
+        updated_by=await resolve_user_id(user),
+    )
+    await _trail_user_event(
+        tenant_db, user, 0, "role_vehicle_scope_change",
+        changes={"role_vehicle_scope": {"role": role, "from": before, "to": body.scope}},
+        context={"role": role},
+    )
+    return {"ok": True, "role": role, "vehicle_scope": body.scope}
 
 
 @router.put("/users/{user_id}/manager")
