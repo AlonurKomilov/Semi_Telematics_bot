@@ -56,7 +56,7 @@ vi.mock('../preferences/usePreference', () => ({
   usePreference: (k: string) => ({ value: prefs[k], setValue }),
 }));
 
-import { RESET_AXES, ResetAppearance } from './ModPage';
+import { RESET_AXES, ResetMods } from './Modifications';
 
 describe('Reset appearance owns exactly the axes it should', () => {
   it('covers every axis of MOD_DEFAULT, or names why not', () => {
@@ -87,19 +87,22 @@ describe('Reset appearance owns exactly the axes it should', () => {
 });
 
 describe('the control itself', () => {
-  it('is disabled while there is nothing to undo', () => {
+  it('is absent while there is nothing to undo', () => {
+    // Not disabled — ABSENT. That is not the hidden-control failure
+    // SizeCard warns about: there a control vanishes because of an
+    // external condition the person cannot see, so they hunt for it.
+    // Here its absence means "nothing to reset", and the reason is on
+    // screen — every chip is visibly on its default.
     theme = { ...MOD_DEFAULT };
-    render(<ResetAppearance />);
-    expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(true);
+    render(<ResetMods />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('writes the defaults and offers the way back', () => {
     undoSpy.mockClear(); setTheme.mockClear(); setValue.mockClear();
     theme = { ...MOD_DEFAULT, accent: 'purple', mod: 'wall' };
-    render(<ResetAppearance />);
-    const btn = screen.getByRole('button') as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
+    render(<ResetMods />);
+    fireEvent.click(screen.getByRole('button'));
     expect(setTheme).toHaveBeenCalledWith(RESET_AXES);
     expect(undoSpy).toHaveBeenCalledTimes(1);
     // The snapshot must be the value BEFORE the write, or "undo" walks

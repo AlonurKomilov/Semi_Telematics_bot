@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserCog, LogOut, Palette } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
+import { MODS_HREF } from '../mods';
 
 export function AvatarMenu() {
   const { user, logout } = useAuth();
@@ -90,7 +91,7 @@ export function AvatarMenu() {
             <MenuButton
               icon={<Palette className="size-3.5" />}
               label="Mods"
-              onClick={() => go('/mods')}
+              onClick={() => go(MODS_HREF)}
             />
           </div>
 

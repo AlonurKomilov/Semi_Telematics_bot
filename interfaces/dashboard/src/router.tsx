@@ -5,6 +5,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 // renders in. Adding or retiring a persona shell never touches this
 // file — the registry is the only place that mapping lives.
 import { pickShell } from './shells';
+import { MODS_HREF } from './mods';
 import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AssistantHost from './features/ai/AssistantHost';
@@ -125,7 +126,6 @@ const Integrations     = lazyWithReload(() => import('./features/integrations/In
 const AuditLog         = lazyWithReload(() => import('./features/settings/AuditLog'));
 const Settings         = lazyWithReload(() => import('./features/settings/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
-const Mods             = lazyWithReload(() => import('./pages/Mods'));
 const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
 const NotificationCenter = lazyWithReload(() => import('./features/alerts/NotificationCenter'));
 const GroupDelivery    = lazyWithReload(() => import('./features/alerts/GroupDelivery'));
@@ -320,12 +320,12 @@ export default function AppRouter() {
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
-        {/* Appearance, on the same footing as /profile: personal, every
-            authenticated user, no permission. It is deliberately NOT in
-            routeRegistry/featureCatalog — those drive the operational
-            sidebar, and a customization page in it would sit beside
-            Vehicles and Loads as though it were work. */}
-        <Route path="mods" element={L(<Mods />)} />
+        {/* Mods is the ENGINE, not a page: the data lives in the user's
+            preferences and the surface lives with it, on /profile. This
+            route stays as a redirect so no link dies, and because /mods
+            comes back as the CATALOGUE once there is content to browse.
+            MODS_HREF is the one constant all three doors share. */}
+        <Route path="mods" element={<Navigate to={MODS_HREF} replace />} />
         {/* Notifications are a cross-source PERSONAL surface on their own
             door (the topbar bell), not an Alerts sub-tab. /notifications =
             the browsable history (Notification center); /preferences = the

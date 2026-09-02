@@ -16,6 +16,7 @@ import {
   modMatchesAxes, modById, type Mod,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
+import { MODS_HREF } from './href';
 import { usePreference } from '../preferences';
 import { undoableAction } from '../components/banners/stagedAction';
 
@@ -150,10 +151,23 @@ function Chip<T extends string>({
  * chip row that drifts: the panel and the page would answer the same
  * question differently within a release, and nothing would fail.
  */
-export function ModControls({ compact = false, onNavigate }: {
+/** One category of the taxonomy. `mods` is the container's own row. */
+export type ModSection = 'mods' | 'interface' | 'effects' | 'sounds';
+
+export function ModControls({ compact = false, onNavigate, section }: {
   compact?: boolean;
   /** Compact only: let the popover close itself when the link is taken. */
   onNavigate?: () => void;
+  /**
+   * Render ONE category instead of all of them.
+   *
+   * Omitted means the whole set, which is what the popover's compact
+   * branch wants and what the guards walk. A named section is the
+   * /profile card asking for one block — and there the Card's own
+   * headings carry the boundary, so the internal rules would be two
+   * objects describing one line (design.md §6).
+   */
+  section?: ModSection;
 }) {
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useMods();
@@ -258,11 +272,17 @@ export function ModControls({ compact = false, onNavigate }: {
     ? 'text-2xs font-semibold uppercase tracking-wide text-muted-foreground'
     : 'text-xs font-medium uppercase tracking-wide text-muted-foreground';
 
+  const has = (s: ModSection) => section === undefined || section === s;
+  const rule = section === undefined
+    ? <div className="border-t border-border" />
+    : null;
+
   return (
     <>
 
-      {/* Color theme */}
-      {MOD_OPTIONS.length > 0 && (
+      {/* The container's own row: installing a mod writes into every
+          category below, which is why it is not one of them. */}
+      {has('mods') && MOD_OPTIONS.length > 0 && (
         <>
           <div>
             <p className={`${groupLabel} mb-1.5`}>
@@ -293,10 +313,11 @@ export function ModControls({ compact = false, onNavigate }: {
             )}
           </div>
 
-          <div className="border-t border-border" />
+          {rule}
         </>
       )}
 
+      {has('interface') && (
       <div>
         <p className={`${groupLabel} mb-1.5`}>
           {t('theme.group_color', 'Color')}
@@ -317,6 +338,7 @@ export function ModControls({ compact = false, onNavigate }: {
           ))}
         </div>
       </div>
+      )}
 
       {compact ? (
         <>
@@ -392,7 +414,7 @@ export function ModControls({ compact = false, onNavigate }: {
               The trailing chevron is what makes it read as a ROUTE
               rather than a caption under the controls. */}
           <Link
-            to="/mods"
+            to={MODS_HREF}
             onClick={onNavigate}
             className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground min-h-tap py-1 -my-1"
           >
@@ -403,9 +425,11 @@ export function ModControls({ compact = false, onNavigate }: {
         </>
       ) : (
         <>
-          <div className="border-t border-border" />
+          {rule}
 
       {/* Radius */}
+      {has('interface') && (
+      <>
       <div>
         <p className={`${groupLabel} mb-1.5`}>
           {t('mods.group_corners', 'Corners')}
@@ -432,7 +456,10 @@ export function ModControls({ compact = false, onNavigate }: {
           ))}
         </div>
       </div>
+      </>
+      )}
 
+      {has('effects') && (
       <div>
         <p className={`${groupLabel} mb-1.5`}>
           {t('mods.group_motion', 'Motion')}
@@ -446,9 +473,11 @@ export function ModControls({ compact = false, onNavigate }: {
           ))}
         </div>
       </div>
+      )}
 
-      <div className="border-t border-border" />
+      {rule}
 
+      {has('sounds') && (
       <div>
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <p className={groupLabel}>
@@ -533,6 +562,7 @@ export function ModControls({ compact = false, onNavigate }: {
           )}
         </p>
       </div>
+      )}
         </>
       )}
 

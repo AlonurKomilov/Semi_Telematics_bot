@@ -79,7 +79,11 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
     for (const s of PAGE_ONLY) {
       expect(screen.queryByText(s), `${s} does not fit a w-56 popover`).toBeNull();
     }
-    const door = document.querySelector('a[href="/mods"]');
+    // The literal, NOT an import of MODS_HREF: a guard that reads its
+    // subject from the source it guards passes on any value that source
+    // happens to hold. Changing the address should be a deliberate act
+    // that turns this red.
+    const door = document.querySelector('a[href="/profile#modifications"]');
     expect(door, 'the popover has no way to reach the rest').not.toBeNull();
   });
 
@@ -94,8 +98,8 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
       'the page renders SizeCard for this — a second global slider is one object with two faces',
     ).toBeNull();
     expect(
-      document.querySelector('a[href="/mods"]'),
-      'the page must not link to itself',
+      document.querySelector('a[href="/profile#modifications"]'),
+      'the full surface must not link to itself',
     ).toBeNull();
   });
 });
@@ -162,3 +166,61 @@ describe('only a mod may reach a mod-only axis', () => {
     expect(wrote, 'installing a mod no longer carries its mod-only axes').toContain('icons');
   });
 });
+
+/**
+ * The section partition.
+ *
+ * `section` slices the same component four ways, and the failure it
+ * invites is a control appearing in two cards at once — or in none,
+ * which is worse, because a section that silently renders nothing looks
+ * like a section with nothing in it.
+ *
+ * Every section is asserted BOTH ways: it shows its own labels, and it
+ * shows none of the others'. Without the negative half a section that
+ * ignored the prop and rendered everything would pass.
+ */
+const SECTIONS = {
+  mods: ['Mods'],
+  interface: ['Color', 'Corners', 'Material'],
+  effects: ['Motion'],
+  sounds: ['Sound'],
+} as const;
+
+describe('each section renders its own controls and only its own', () => {
+  it.each(Object.keys(SECTIONS) as (keyof typeof SECTIONS)[])(
+    '%s',
+    (section) => {
+      const { container } = render(<ModControls section={section} />);
+
+      for (const label of SECTIONS[section]) {
+        expect(screen.getByText(label), `${section} is missing "${label}"`).toBeTruthy();
+      }
+      for (const [other, labels] of Object.entries(SECTIONS)) {
+        if (other === section) continue;
+        for (const label of labels) {
+          expect(
+            screen.queryByText(label),
+            `${section} leaked "${label}", which belongs to ${other}`,
+          ).toBeNull();
+        }
+      }
+
+      // A section that rendered no controls at all would satisfy every
+      // negative assertion above.
+      expect(
+        container.querySelectorAll('button, input').length,
+        `${section} rendered no controls`,
+      ).toBeGreaterThan(0);
+    },
+  );
+
+  it('renders every section when none is named', () => {
+    // The popover and the guards both want the whole set; if the default
+    // ever became "one section" the four tests above would still pass.
+    render(<ModControls />);
+    for (const labels of Object.values(SECTIONS)) {
+      for (const label of labels) expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
+});
+

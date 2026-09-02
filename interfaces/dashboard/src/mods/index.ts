@@ -35,7 +35,8 @@ export {
 } from './context';
 
 export { ModPanel, ModControls } from './ModPanel';
-export { default as ModPage } from './ModPage';
+export { default as Modifications } from './Modifications';
+export { MODS_HREF } from './href';
 export { default as SizeCard } from './SizeCard';
 export { IconWeight } from './icons/IconWeight';
 
