@@ -113,8 +113,27 @@ export function writePref(key: string, value: unknown): void {
   safeSet(lsKey(key), JSON.stringify(value));
 }
 
+/**
+ * Remove a stored value — the reset path, and its only caller.
+ *
+ * The LEGACY spelling goes too. `readPref` falls through to `readLegacy`
+ * whenever the canonical entry is missing, so leaving the old key behind
+ * means the next read copies the value straight back and the reset undid
+ * nothing. The in-memory `values` map hides that: the setting springs
+ * back on the next page load, and the pre-paint script — which reads the
+ * legacy keys directly — repaints it on the FIRST frame.
+ *
+ * That is a different question from the migration's "leave the old entry
+ * for rollback" rule (see the header): a read may leave it, a reset may
+ * not. The user asked for the value to be gone.
+ *
+ * Removed VERBATIM, never through `lsKey()`, because `readLegacy` reads
+ * them raw and the chain deliberately mixes both forms — mods.theme
+ * carries `4truck.pref.theme` AND the pre-prefix `dashboard-theme`.
+ */
 export function removePref(key: string): void {
   safeRemove(lsKey(key));
+  for (const legacy of defFor(key)?.legacyKeys ?? []) safeRemove(legacy);
 }
 
 /** Map a raw ``storage`` event key back to a preference key — used for

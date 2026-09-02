@@ -93,6 +93,25 @@ Legacy values are migrated **lazily** on first read and copied forward;
 the old entry is deliberately **left in place** so a release rollback
 loses nothing.
 
+**A READ may leave the old entry. A RESET may not.** `removePref` — whose
+only caller is `reset()` — sweeps the whole legacy chain as well as the
+canonical key, and does it **verbatim**, never through `lsKey()`, because
+`readLegacy` reads them raw and the chain mixes both forms (`mods.theme`
+carries the prefixed `4truck.pref.theme` AND the pre-prefix
+`dashboard-theme`).
+
+Without that sweep a reset resets nothing: the next `readPref` falls
+through to the legacy entry, copies it forward, and the value is back.
+The in-memory `values` map hides it — `store.get` serves the default it
+was just handed, so the setting only springs back on the next page load,
+and the pre-paint script repaints it on the FIRST frame. That was live
+for **17 keys**, every one of them a "Reset all preferences" that left
+the user's old value in place. Guard: `resetLegacy.test.ts`.
+
+**So a `legacyKeys` entry now costs one more thing to get right.** It is
+an address the reset path must also clear, which is a second reason to
+add one deliberately rather than defensively.
+
 ### `legacyKeys` covers TWO stores, and it only used to cover one
 
 `legacyKeys` began as a **localStorage-only** mechanism: `readPref` falls
