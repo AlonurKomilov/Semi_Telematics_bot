@@ -218,6 +218,7 @@ async def run_all(conn) -> None:
     await migrate_seed_application_notification_channels(conn)
     # Personal alert triggers — "tell me when DEF drops below 10%".
     await migrate_alert_triggers(conn)
+    await migrate_role_vehicle_scope(conn)
     await migrate_account_test_flag(conn)
     # Vehicle-document expiry needed a personal toggle like every other
     # alert type — without the column its subscriber query returned
@@ -4717,3 +4718,40 @@ async def migrate_alert_triggers(conn) -> None:
         except Exception:
             pass
         logger.error("alert_triggers migration failed: %s", e)
+
+
+async def migrate_role_vehicle_scope(conn) -> None:
+    """``role_vehicle_scope`` — the ROLE layer of unit width.
+
+    Idempotent mirror of platform_schema.  No backfill and no seed:
+    an absent row means "the role's built-in default", which is
+    exactly what every account has today.  Rows appear only when an
+    owner narrows a role in Team Management, or when the pair-death
+    sweep records a narrowing that used to live in the permission
+    pair.  The index is created HERE, not in platform_schema — an
+    index there on a column a migration adds crashes boot on upgrade.
+    """
+    try:
+        await conn.execute(
+            """CREATE TABLE IF NOT EXISTS role_vehicle_scope (
+                   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                   account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                   role        TEXT    NOT NULL,
+                   scope       TEXT    NOT NULL,
+                   updated_by  BIGINT  NOT NULL DEFAULT 0,
+                   updated_at  TEXT    NOT NULL DEFAULT '',
+                   UNIQUE(account_id, role)
+               )"""
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_role_vehicle_scope_lookup "
+            "ON role_vehicle_scope(account_id, role)"
+        )
+        await conn.commit()
+        logger.info("Migration: role_vehicle_scope ready")
+    except Exception as e:
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        logger.error("role_vehicle_scope migration failed: %s", e)

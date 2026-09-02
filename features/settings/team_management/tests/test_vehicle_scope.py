@@ -140,3 +140,69 @@ class TestTheBridgeHelperAsksTwoDifferentQuestions:
         from interfaces.api.deps import get_member_vehicle_scope
         assert await get_member_vehicle_scope(
             {"role": "owner", "account_id": 1}) == "assigned"
+
+
+class TestTheRoleLayer:
+    """Width has three layers, and the middle one exists for a reason
+    the pair-death stage would otherwise get wrong.
+
+    Today an account can grant a role the NARROW half of a unit pair
+    only (the driver seed does exactly that across all ten pairs, and
+    the matrix lets an owner do it for any role).  That narrowing lives
+    in the permission pair.  When the pairs die, it has to already live
+    somewhere else — or every such role silently widens to the whole
+    account on the day of the flip.
+    """
+
+    def test_role_layer_narrows_a_role_whose_builtin_is_wide(self):
+        fleet = _member(Role.FLEET)
+        assert fleet.resolved_vehicle_scope == "all"
+        assert fleet.scope_with_role_default("assigned") == "assigned"
+
+    def test_role_layer_widens_a_driver_when_an_owner_says_so(self):
+        assert _member(Role.DRIVER).scope_with_role_default("all") == "all"
+
+    def test_the_member_override_beats_the_role_layer_both_ways(self):
+        # Specificity, not value: the narrower answer does not win —
+        # the more SPECIFIC one does, or an owner could never widen
+        # one person inside a narrowed role.
+        assert _member(Role.FLEET, "all").scope_with_role_default("assigned") == "all"
+        assert _member(Role.FLEET, "assigned").scope_with_role_default("all") == "assigned"
+
+    def test_garbage_in_the_role_layer_is_ignored_not_trusted(self):
+        assert _member(Role.FLEET).scope_with_role_default("everything") == "all"
+        assert _member(Role.DRIVER).scope_with_role_default("everything") == "assigned"
+
+    def test_absent_role_layer_reproduces_todays_answer_exactly(self):
+        """The deploy-safety claim, stated as a test: with no rows in
+        the new table, every role resolves as it did before it existed."""
+        for role in Role:
+            m = _member(role)
+            assert m.scope_with_role_default(None) == m.resolved_vehicle_scope
+
+
+class TestRoleScopeStorage:
+    @pytest.mark.asyncio
+    async def test_set_read_clear_and_validate(self, pg_db):
+        acct = (await pg_db.create_account("Role Scope Co")).id
+        assert await pg_db.get_role_vehicle_scope(acct, "fleet") is None
+
+        await pg_db.set_role_vehicle_scope(acct, "fleet", "assigned")
+        assert await pg_db.get_role_vehicle_scope(acct, "fleet") == "assigned"
+        assert await pg_db.get_all_role_vehicle_scopes(acct) == {"fleet": "assigned"}
+
+        # Clearing restores "built-in default" by ABSENCE, not by
+        # writing 'all' — the two mean different things to the reader.
+        await pg_db.set_role_vehicle_scope(acct, "fleet", None)
+        assert await pg_db.get_role_vehicle_scope(acct, "fleet") is None
+
+        with pytest.raises(ValueError):
+            await pg_db.set_role_vehicle_scope(acct, "fleet", "everything")
+
+    @pytest.mark.asyncio
+    async def test_accounts_do_not_see_each_others_role_scopes(self, pg_db):
+        a = (await pg_db.create_account("RS A")).id
+        b = (await pg_db.create_account("RS B")).id
+        await pg_db.set_role_vehicle_scope(a, "fleet", "assigned")
+        assert await pg_db.get_role_vehicle_scope(b, "fleet") is None
+        assert await pg_db.get_all_role_vehicle_scopes(b) == {}

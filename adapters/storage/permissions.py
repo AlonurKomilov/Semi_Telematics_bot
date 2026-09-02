@@ -43,6 +43,66 @@ class PermissionsMixin:
             row = await cur.fetchone()
             return json.loads(row[0]) if row else None
 
+    async def get_role_vehicle_scope(
+        self, account_id: int, role: str,
+    ) -> Optional[str]:
+        """The account's ROLE-level unit width, or None for "built-in".
+
+        Team Management's layer between the per-member override and the
+        role's built-in default.  Absent means absent — the caller
+        (User.resolved_vehicle_scope) owns the default, so this never
+        guesses one.
+        """
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT scope FROM role_vehicle_scope "
+                "WHERE account_id = ? AND role = ?",
+                (account_id, role),
+            )
+            row = await cur.fetchone()
+        return row[0] if row and row[0] in ("all", "assigned") else None
+
+    async def get_all_role_vehicle_scopes(
+        self, account_id: int,
+    ) -> dict[str, str]:
+        """{role: scope} for every role this account has narrowed."""
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT role, scope FROM role_vehicle_scope "
+                "WHERE account_id = ?",
+                (account_id,),
+            )
+            rows = await cur.fetchall()
+        return {r[0]: r[1] for r in rows if r[1] in ("all", "assigned")}
+
+    async def set_role_vehicle_scope(
+        self, account_id: int, role: str, scope: Optional[str],
+        updated_by: int = 0,
+    ) -> None:
+        """Set or clear the role's width.  None deletes the row, which
+        restores the built-in default — the same "absent means default"
+        rule the read side keeps."""
+        if scope not in (None, "all", "assigned"):
+            raise ValueError(f"invalid vehicle scope: {scope!r}")
+        now = self._now()
+        async with self.transaction():
+            if scope is None:
+                await self._db.execute(
+                    "DELETE FROM role_vehicle_scope "
+                    "WHERE account_id = ? AND role = ?",
+                    (account_id, role),
+                )
+                return
+            await self._db.execute(
+                "INSERT INTO role_vehicle_scope "
+                "(account_id, role, scope, updated_by, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(account_id, role) DO UPDATE SET "
+                "scope = excluded.scope, updated_by = excluded.updated_by, "
+                "updated_at = excluded.updated_at",
+                (account_id, role, scope, updated_by, now),
+            )
+
     async def get_all_role_permissions(self, account_id: int) -> dict[str, dict]:
         """Get all account-wide role permission sets for an account.
 

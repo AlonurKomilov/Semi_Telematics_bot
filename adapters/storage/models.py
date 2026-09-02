@@ -232,17 +232,36 @@ class User:
 
     @property
     def resolved_vehicle_scope(self) -> str:
-        """'all' or 'assigned' — THE single scope predicate.
+        """'all' or 'assigned' — THE single scope predicate, no role
+        layer supplied.  Equivalent to ``scope_with_role_default(None)``
+        and kept because most callers have no account context."""
+        return self.scope_with_role_default(None)
 
-        Every consumer (API deps, bot handlers, feature routers as the
-        enforcement stage reaches them) resolves through this property,
-        never by reading the raw column or re-deriving from the role —
-        the company wall's ``company_allows`` rule, applied here.
-        An unrecognised stored value fails CLOSED to 'assigned': less
-        data, never more.
+    def scope_with_role_default(self, role_scope: str | None) -> str:
+        """'all' or 'assigned', resolved through the three layers.
+
+        Narrowest wins by SPECIFICITY, not by value:
+
+          1. the member's own override (``users.vehicle_scope``) —
+             someone deliberately widened or narrowed this person;
+          2. the account's ROLE-level width
+             (``role_vehicle_scope``) — where a narrowing that used to
+             live in a *_vehicle permission pair goes when the pair
+             dies, so a custom narrow grant does not silently widen;
+          3. the role's built-in default — driver → assigned,
+             everyone else → all.
+
+        Every consumer resolves through here, never by reading the raw
+        column or re-deriving from the role — the company wall's
+        ``company_allows`` rule, applied to the second scope question.
+        An unrecognised stored value at any layer is ignored rather
+        than trusted, and the fall-through never grants more than the
+        role's built-in default.
         """
         if self.vehicle_scope in ("all", "assigned"):
             return self.vehicle_scope
+        if role_scope in ("all", "assigned"):
+            return role_scope
         return "assigned" if self.role == Role.DRIVER else "all"
 
 

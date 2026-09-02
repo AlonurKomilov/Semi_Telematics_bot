@@ -644,6 +644,24 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_kb_approved
             ON knowledge_base(approved);
 
+        -- Team Management's ROLE-level unit width.  Permissions answer
+        -- "may this role do this VERB on this FEATURE"; this answers
+        -- "how wide", one layer above the per-member override on
+        -- users.vehicle_scope.  It exists because the width used to be
+        -- carried by the *_vehicle permission pairs, and an account
+        -- that granted a role the narrow half only would silently
+        -- WIDEN when those pairs die.  Absent row = the role's
+        -- built-in default (driver → assigned, everyone else → all).
+        CREATE TABLE IF NOT EXISTS role_vehicle_scope (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            role        TEXT    NOT NULL,
+            scope       TEXT    NOT NULL,
+            updated_by  BIGINT  NOT NULL DEFAULT 0,
+            updated_at  TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, role)
+        );
+
         CREATE TABLE IF NOT EXISTS role_permissions (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),

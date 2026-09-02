@@ -328,6 +328,24 @@ async def get_user_company_codes(user: dict) -> list[str]:
     return await platform_db.get_user_company_codes(db_user.id)
 
 
+async def _role_scope_layer(platform_db, account_id: int, role) -> str | None:
+    """The account's ROLE-level width, or None.
+
+    Its own try/except on purpose: a missing role layer must never
+    change anyone's width.  Before this layer existed every account
+    resolved member-override-then-built-in-default, so falling through
+    to None reproduces exactly that.
+    """
+    try:
+        return await platform_db.get_role_vehicle_scope(
+            int(account_id),
+            role.value if hasattr(role, "value") else str(role),
+        )
+    except Exception:
+        _log.debug("role vehicle scope unavailable", exc_info=True)
+        return None
+
+
 async def get_member_vehicle_scope(user: dict) -> str:
     """'all' or 'assigned' — Team Management's second scope question,
     living beside its first (``get_user_company_codes``).
@@ -352,7 +370,8 @@ async def get_member_vehicle_scope(user: dict) -> str:
         return "assigned"
     if db_user is None:
         return "assigned"
-    return db_user.resolved_vehicle_scope
+    return db_user.scope_with_role_default(
+        await _role_scope_layer(platform_db, user["account_id"], db_user.role))
 
 
 async def member_unit_scope(user: dict, feature: str) -> str:
@@ -400,7 +419,8 @@ async def member_unit_scope(user: dict, feature: str) -> str:
         return "all"
     if db_user is None:
         return "all"
-    return db_user.resolved_vehicle_scope
+    return db_user.scope_with_role_default(
+        await _role_scope_layer(platform_db, user["account_id"], db_user.role))
 
 
 def validate_company_access(allowed_codes: list[str], requested_code: str | None) -> None:
