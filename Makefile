@@ -473,7 +473,7 @@ clean-frontend:
 clean-all: clean clean-frontend
 
 ## Build all frontend assets (dashboard + miniapp + system console)
-build: dashboard-build miniapp-build system-dashboard-build
+build: dashboard-build miniapp-build system-dashboard-build browser-extension-build
 
 ## Build the dashboard React app (always rebuilds)
 dashboard-build:
@@ -482,6 +482,14 @@ dashboard-build:
 	@echo "   ✅ Dashboard built → interfaces/dashboard/dist/"
 
 ## Build the operator-only system console.  Installs deps on first run.
+browser-extension-build:
+	@echo "   🔨 Building browser extension..."
+	@if [ ! -d interfaces/browser_extension/node_modules ]; then \
+		cd interfaces/browser_extension && npm install --silent; \
+	fi
+	@cd interfaces/browser_extension && npm run build
+	@echo "   ✅ Extension built → interfaces/browser_extension/dist/ (served by /extension/download)"
+
 system-dashboard-build:
 	@echo "   🔨 Building system console..."
 	@if [ ! -d interfaces/system_dashboard/node_modules ]; then \

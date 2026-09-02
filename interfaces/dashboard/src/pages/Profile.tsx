@@ -41,6 +41,7 @@ import {
 import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';
 import StoredPreferencesCard from '../preferences/StoredPreferencesCard';
+import BrowserExtensionCard from '../features/profile/BrowserExtensionCard';
 import { Modifications } from '../mods';
 import { toneClasses } from '../lib/status';
 import type { User } from '../types';
@@ -343,6 +344,7 @@ export default function Profile() {
       <SignInMethods />
       <RecentActivity />
       <ActiveSessions />
+      <BrowserExtensionCard />
       <DataExport />
     </div>
   );

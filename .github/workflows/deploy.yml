@@ -95,6 +95,17 @@ jobs:
       - name: Dashboard — production build
         run: cd interfaces/dashboard && npm run build
 
+      - name: Extension — install deps
+        run: cd interfaces/browser_extension && (npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts)
+      - name: Extension — type check
+        run: cd interfaces/browser_extension && npx tsc --noEmit
+      - name: Extension — lint
+        run: cd interfaces/browser_extension && npm run lint
+      - name: Extension — tests
+        run: cd interfaces/browser_extension && npm test
+      - name: Extension — build (served by /extension/download)
+        run: cd interfaces/browser_extension && npm run build
+
       # No ``-x``.  It stopped at the FIRST failure, so a single
       # collection error hid every failure behind it — eighteen of them,
       # for about three weeks.  Fail on all of them at once instead.
