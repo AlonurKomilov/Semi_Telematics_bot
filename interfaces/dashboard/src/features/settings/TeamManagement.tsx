@@ -547,6 +547,27 @@ export default function TeamManagement() {
     }
   };
 
+  const handleRoleWidthChange = async (role: string, scope: 'all' | 'assigned' | null) => {
+    try {
+      await apiJSON('/admin/roles/' + role + '/vehicle-scope', { method: 'PUT', body: { scope } });
+      qc.setQueryData<{ users: AdminUser[]; role_vehicle_scopes?: Record<string, 'all' | 'assigned'> } | undefined>(
+        ['admin-users'], (d) => {
+          if (!d) return d;
+          const next = { ...(d.role_vehicle_scopes ?? {}) };
+          if (scope === null) delete next[role]; else next[role] = scope;
+          return { ...d, role_vehicle_scopes: next };
+        });
+      const label = ROLE_LABEL[role] ?? role;
+      setSuccess(scope === null
+        ? `${label} unit visibility reset to the built-in default.`
+        : scope === 'all'
+          ? `Every ${label} now sees all units (unless a member is set individually).`
+          : `Every ${label} now sees assigned trucks only (unless a member is set individually).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update role unit visibility');
+    }
+  };
+
   const handleManagerToggle = async (userId: number, is_manager: boolean) => {
     try {
       await apiJSON('/admin/users/' + userId + '/manager', { method: 'PUT', body: { is_manager } });
@@ -881,6 +902,66 @@ export default function TeamManagement() {
         <div className="mb-3"><ErrorState message={error} /></div>
       )}
       {success && <p className="text-ok text-sm mb-3">{success}</p>}
+
+      {/* Unit visibility by ROLE — the middle of the three width layers
+          (member override ⊃ this ⊃ built-in default).  Team Management's
+          question, so it lives on the roster page, not in the Permissions
+          matrix; account-level, so above the grid rather than inside one
+          member's drawer.  Collapsed by default: the grid is the page's
+          workspace and this is set rarely.  Rank-walled like a role
+          change; owners are not a row (never scoped). */}
+      <details className="mb-4 rounded-lg border border-border bg-muted/30 group">
+        <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center justify-between gap-3 min-h-tap">
+          <span className="text-sm font-semibold text-foreground/80">Unit visibility by role</span>
+          <span className="text-xs text-muted-foreground group-open:hidden">
+            Which units each role sees — set once, override per member in their drawer
+          </span>
+        </summary>
+        <div className="px-3 pb-3 space-y-1">
+          {ROLES.map((role) => {
+            const label = ROLE_LABEL[role] ?? role;
+            const stored = roleWidths[role] ?? null;
+            const builtin: 'all' | 'assigned' = role === 'driver' ? 'assigned' : 'all';
+            const cannotModify = (ROLE_RANK[role] ?? 0) >= myRank;
+            const OPTS: { value: 'all' | 'assigned' | null; label: string }[] = [
+              { value: null, label: `Default (${builtin === 'all' ? 'all units' : 'assigned trucks'})` },
+              { value: 'all', label: 'All units' },
+              { value: 'assigned', label: 'Assigned trucks' },
+            ];
+            return (
+              <div key={role} className="flex items-center justify-between gap-3 py-1">
+                <div className="min-w-0 flex items-center gap-2">
+                  <RoleBadge role={role} label={label} />
+                  {cannotModify && (
+                    <span className="text-2xs text-muted-foreground/70">not your rank</span>
+                  )}
+                </div>
+                <div role="radiogroup" aria-label={`${label} unit visibility`} className="flex gap-1 shrink-0">
+                  {OPTS.map((o) => (
+                    <button
+                      key={String(o.value)}
+                      type="button"
+                      role="radio"
+                      aria-checked={stored === o.value}
+                      disabled={cannotModify}
+                      onClick={() => stored !== o.value && handleRoleWidthChange(role, o.value)}
+                      className={`px-2 py-1 rounded-md text-xs font-medium transition min-h-tap ${
+                        cannotModify
+                          ? 'cursor-not-allowed opacity-60'
+                          : stored === o.value
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
       {/* The role chip row + passive "Pending sign-in" pill that
           lived here are gone: lifecycle = the grid's Active / Pending
@@ -1503,7 +1584,7 @@ export default function TeamManagement() {
                         const OPTIONS: { value: 'all' | 'assigned' | null; label: string; hint: string }[] = [
                           { value: null,
                             label: `Role default (${inheritedWidth === 'all' ? 'all units' : 'assigned trucks'})`,
-                            hint: `Follows what every ${roleLabel} sees.` },
+                            hint: `Follows what every ${roleLabel} sees — change that under "Unit visibility by role", above the members grid.` },
                           { value: 'all', label: 'All units',
                             hint: 'Sees every unit the company wall allows.' },
                           { value: 'assigned', label: 'Assigned trucks',
