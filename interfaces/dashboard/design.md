@@ -228,7 +228,7 @@ called `useTheme`. The vocabulary is now:
 
 | the whole mod | the colour part |
 |---|---|
-| `ModPanel` · `ModPage` · `ModControls` | `THEME_PACKS` · `ThemePack` · `packById` |
+| `ModPanel` · `Modifications` · `ModControls` | `THEME_PACKS` · `ThemePack` · `packById` |
 | `useMods` · `ModProvider` · `ModContext` | `ThemeSeed` · `derivePalette` · `mods/theme/` |
 | `MODS` · `Mod` · `ModAxes` · `ModSetting` | `ThemeMode` · `ThemeAccent` · `ThemeColor` |
 | `MOD_MATERIALS` · `MOD_MOTIONS` · `MOD_ICONS` · `MOD_RADII` | `applyTheme` (the axes → `<html>` mapping the boot script mirrors) |
@@ -261,17 +261,27 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
     mods/catalogue.ts  MODS, the axes, THEME_PACKS
     mods/context.tsx   useMods, applyTheme
     mods/ModPanel.tsx  ModPanel (top-bar popover) + ModControls
-    mods/ModPage.tsx   the /mods page
+    mods/Modifications.tsx  the /profile card (was ModPage.tsx)
+    mods/href.ts       MODS_HREF, the one address
     mods/SizeCard.tsx  size, whole
     mods/inject.ts     installing token values
     mods/theme/        palette · contrast
     mods/sound/        engine · useCue
     mods/icons/        IconWeight
 
-### A popover and its page are one component, not two ⭐
+### A popover and a profile card are one component, not two ⭐
 
-Customization has two surfaces — the top-bar popover and `/mods` — and
-they render the SAME `ModControls`, switched by a `compact` flag. Never
+**There is no `/mods` page.** `/mods` is a redirect —
+`router.tsx` sends it to `MODS_HREF`, which is
+`/profile#modifications` — and `ModPage.tsx` / `pages/Mods.tsx` were
+deleted. Mods is the ENGINE; its settings live where the rest of a
+person's settings live. The route stays so no old link dies, and it
+comes back as the CATALOGUE when there is content to browse; two sound
+packs and four accents are not a catalogue.
+
+Customization has two surfaces — the top-bar popover and the
+`Modifications` card on `/profile` — and they render the SAME
+`ModControls`, switched by a `compact` flag. Never
 two copies of one chip row: duplicated JSX drifts, the two surfaces
 answer the same question differently within a release, and nothing
 fails. What differs between them is which branch renders and one type
@@ -291,11 +301,12 @@ per region, cross-device). One object, one face per surface;
 `mods/modControls.test.tsx` renders both branches and fails if the page
 grows a second global slider or the popover loses its door.
 
-**`/mods` is not in `routeRegistry`/`featureCatalog`.** Those drive the
-operational sidebar; a customization page listed beside Vehicles and
-Loads reads as work. It sits on the same footing as `/profile` —
-personal, every authenticated user, no permission — and is reached from
-the top-bar palette button and from the avatar menu.
+**Mods is not in `routeRegistry`/`featureCatalog`.** Those drive the
+operational sidebar; a customization surface listed beside Vehicles and
+Loads reads as work. It rides `/profile` — personal, every
+authenticated user, no permission — and is reached from the top-bar
+palette button and from the avatar menu, both of which point at the one
+`MODS_HREF` constant.
 
 **Installing a mod is undoable.** One click overwrites accent, corners,
 material, motion, icon weight, size and sound, and "let me just see
@@ -314,12 +325,12 @@ value. `mods/resetAppearance.test.tsx` asserts every field of
 adding an axis forces the decision — the same shape `PREPAINT_AXES`
 uses, and for the same reason.
 
-**Both cards on `/mods` wear one chrome.** Title, muted line and reset
-come from `SectionHeader`'s own `description` and `action` props, never
-a hand-rolled flex row. Their BODIES may differ — six parallel chip
-groups is not one slider plus a disclosure — and forcing one body
-grammar onto both would be cargo-culting; the header is where the page
-says the two cards are siblings.
+**Both cards under `Modifications` wear one chrome.** Title, muted line
+and reset come from `SectionHeader`'s own `description` and `action`
+props, never a hand-rolled flex row. Their BODIES may differ — six
+parallel chip groups is not one slider plus a disclosure — and forcing
+one body grammar onto both would be cargo-culting; the header is where
+the card says the two are siblings.
 
 Two files may reach past the barrel, and `mods/index.test.ts` fails if a
 third appears without a stated reason: `preferences/registry.ts`, which

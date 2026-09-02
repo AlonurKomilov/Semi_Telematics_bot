@@ -172,7 +172,12 @@ function BrandChip({ brand, mode, wearing, onPick, onClear }: {
           className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
         />
       </span>
-      {active && (
+      {/* Offered whenever a colour is STORED, not only while it paints.
+          Gating this on `active` stranded the exact person who most
+          needs it: 80 hexes clear the tones on near-black and collide on
+          white, so a colour picked in dark mode and then carried into
+          light shows the advisory below with no way to act on it. */}
+      {brand && (
         // An ACTION sitting in a row of SELECTIONS, so it does not wear
         // a selection's box. Same rule the rest of the app follows: one
         // shape per meaning class, or the eye has to read every element

@@ -131,11 +131,18 @@ describe('what the chips show while a custom colour paints', () => {
       })
       .find((hex) => accentTokens(hex, 'dark').tokens !== null
         && accentTokens(hex, 'light').tokens === null);
-    if (!stuck) return; // nothing in the tone table has this shape today
+    // Asserted, never skipped. `if (!stuck) return` was here, and a test
+    // that returns early when it cannot find its own fixture is a test
+    // that goes green the day the fixture stops existing.
+    expect(stuck, 'no tone colour is dark-wearable and light-refused — fixture gone').toBeDefined();
     mount({ mode: 'light', brand: stuck, accent: 'blue' });
     expect(chip('Custom').getAttribute('aria-pressed')).toBe('false');
     expect(chip('Blue').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText(/cannot be worn in light mode/i)).toBeTruthy();
+    // …and the way out is offered. Gating Clear on "is it painting"
+    // stranded this person: advisory, no action.
+    expect(screen.queryByRole('button', { name: /^clear$/i }),
+      'the advisory says the colour cannot be worn and offers no way to drop it').not.toBeNull();
   });
 
   it('says when the engine had to move the colour', () => {
