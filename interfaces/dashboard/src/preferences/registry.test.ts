@@ -472,3 +472,25 @@ describe('resetAll sweeps family keys', () => {
     });
   });
 });
+
+describe('the axis set itself', () => {
+  it('pins every key, because deleting one is as much a decision as adding one', () => {
+    /*
+     * TWO forcing partitions walk `Object.keys(MOD_DEFAULT)`:
+     * mods/resetAppearance.test.tsx (reset or excluded, with a reason)
+     * and test/themeBoot.test.ts (pre-paint or declared not to be).
+     * Both force a decision when an axis is ADDED — that is what they
+     * were built for, and it works.
+     *
+     * NEITHER can see one DELETED. A key that is gone is simply not
+     * walked, so both loops shrink and stay green, and an axis can leave
+     * the product without anyone deciding that it should. This is the
+     * other half, and it belongs here because this file owns the shape.
+     *
+     * Changing this list is the decision. Make it on purpose.
+     */
+    expect(Object.keys(MOD_DEFAULT).sort()).toEqual([
+      'accent', 'color', 'entrance', 'icons', 'material', 'mode', 'motion', 'radius',
+    ]);
+  });
+});

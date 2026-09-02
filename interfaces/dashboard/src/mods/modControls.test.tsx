@@ -22,7 +22,11 @@
  * reaches the DOM.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+// `vi.mock` is hoisted above the file, so the spy has to be hoisted too
+// or the factory closes over a variable that does not exist yet.
+const { setTheme } = vi.hoisted(() => ({ setTheme: vi.fn() }));
 
 // Spread the real modules: the preferences barrel pulls in AuthContext,
 // which pulls in src/i18n.ts, which needs `initReactI18next` to exist.
@@ -44,7 +48,7 @@ vi.mock('./context', () => ({
       mode: 'dark', accent: 'blue', radius: 'md', material: 'solid',
       motion: 'normal', icons: 'regular', mod: '',
     },
-    setTheme: () => {},
+    setTheme,
     size: { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
     setSize: () => {},
   }),
@@ -59,6 +63,7 @@ vi.mock('../preferences', async (orig) => ({
 }));
 
 import { ModControls } from './ModPanel';
+import { MODS } from './catalogue';
 
 /** Sections every surface carries — the two questions asked most often. */
 const SHARED = ['Mods', 'Color'];
@@ -92,5 +97,68 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
       document.querySelector('a[href="/mods"]'),
       'the page must not link to itself',
     ).toBeNull();
+  });
+});
+
+/**
+ * The mod-only axes, and why a SOURCE grep could never guard them.
+ *
+ * `icons` and `entrance` are the two things a mod may carry that the
+ * panel offers no control for — the asymmetry is the point, because a
+ * mod whose every setting is also a chip is a shortcut, not a look.
+ *
+ * The guard that used to assert this read ModPanel.tsx and matched
+ * /setTheme\(\{\s*icons:/ — which requires the axis to be the FIRST key
+ * after the brace. The real write site is
+ * `setTheme({ mod: m.id, accent: …, …icons })`, so the axis is never
+ * first and THE REGEX COULD NEVER MATCH ANYTHING. It passed on an
+ * impossibility for its whole life.
+ *
+ * Broadening the regex does not fix it: `applyMod` writes both axes
+ * legitimately — that IS a mod being installed — so a looser pattern
+ * goes red on correct code. The distinction is not lexical, it is
+ * behavioural: a MOD CHIP may write them, no other control may. So the
+ * guard clicks the panel instead of reading it.
+ */
+const MOD_ONLY = ['icons', 'entrance'];
+
+describe('only a mod may reach a mod-only axis', () => {
+  it('no other control writes one', () => {
+    setTheme.mockClear();
+    render(<ModControls />);
+
+    const modLabels = new Set(MODS.map((m) => m.label));
+    const others = screen
+      .getAllByRole('button')
+      .filter((b) => !modLabels.has((b.textContent ?? '').trim()));
+
+    // Without this the test passes on a panel that rendered nothing —
+    // a mistyped prop, an early return, a section that never mounts.
+    expect(
+      others.length,
+      'clicked no controls, so the assertion below proves nothing',
+    ).toBeGreaterThan(8);
+
+    for (const b of others) fireEvent.click(b);
+
+    for (const [patch] of setTheme.mock.calls) {
+      for (const axis of MOD_ONLY) {
+        expect(
+          Object.keys(patch ?? {}),
+          `a control that is not a mod chip wrote "${axis}"`,
+        ).not.toContain(axis);
+      }
+    }
+  });
+
+  it('and a mod chip still may — the asymmetry is the point', () => {
+    setTheme.mockClear();
+    render(<ModControls />);
+    const cab = screen.getByRole('button', { name: MODS[0].label });
+    fireEvent.click(cab);
+    // Cab declares icons; if applyMod ever stopped carrying the mod-only
+    // axes the test above would still pass, and this is what notices.
+    const wrote = setTheme.mock.calls.flatMap(([p]) => Object.keys(p ?? {}));
+    expect(wrote, 'installing a mod no longer carries its mod-only axes').toContain('icons');
   });
 });

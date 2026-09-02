@@ -242,20 +242,22 @@ describe('the properties a mod carries and the panel does not', () => {
     // deriving identity from the axes would work perfectly until a mod
     // carried a sound pack, and then editing a corner would silence it.
     const panel = readFileSync(join(__dirname, 'ModPanel.tsx'), 'utf8');
+    // `.not.toContain` succeeds on an empty string, so a file that moved
+    // or emptied would satisfy the negative assertion below while proving
+    // nothing. Read something before asserting the absence of something.
+    expect(panel.length, 'read an empty ModPanel.tsx').toBeGreaterThan(1000);
     expect(panel, 'the panel is deriving mod identity again').not.toContain('activeModId(');
     expect(panel, 'the panel does not read the stored mod').toContain('theme.mod');
   });
 
-  it('keeps the mod-only axes out of the panel', () => {
-    // The asymmetry is the point: a mod whose every setting is also a
-    // chip is a shortcut, not a look. If someone adds a chip for these,
-    // this test should be deleted deliberately rather than pass by
-    // accident.
-    const panel = readFileSync(join(__dirname, 'ModPanel.tsx'), 'utf8');
-    for (const axis of ['icons', 'entrance'])
-      expect(panel, `the panel gained a control for "${axis}"`)
-        .not.toMatch(new RegExp(`setTheme\\(\\{\\s*${axis}:`));
-  });
+  // "keeps the mod-only axes out of the panel" LIVED HERE and was deleted
+  // deliberately, which is what its own comment asked for. Its regex
+  // required the axis to be the first key after the brace; the real write
+  // site is `setTheme({ mod: m.id, accent: …, …icons })`, so it could
+  // never match anything and passed on an impossibility for its whole
+  // life. Broadening it does not work either — applyMod writes both axes
+  // legitimately. The rule is behavioural, so the guard is now behavioural:
+  // mods/modControls.test.tsx, "only a mod may reach a mod-only axis".
 
   it('counts them when deciding whether a mod is on', () => {
     const cab = modById('cab')!;
