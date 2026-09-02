@@ -112,10 +112,15 @@ const blocks = (re: RegExp) =>
 
 const ROOT = declsOf(blocks(/^ {2}:root \{$([\s\S]*?)^ {2}\}$/gm));
 const DARK = declsOf(blocks(/^ {2}\.dark \{$([\s\S]*?)^ {2}\}$/gm));
+/** The `:not([data-mod-accent])` is the stand-down guard that lets an
+ *  authored colour replace a preset — see `mods/accentCascade.test.ts`.
+ *  Spelled out rather than absorbed into a wildcard: if it is ever
+ *  dropped from a block, this reader should stop finding that block and
+ *  say so, not quietly measure a preset nobody can override. */
 const accentBlock = (mode: 'light' | 'dark', accent: string) =>
   declsOf(blocks(new RegExp(
     `^ {2}${mode === 'light' ? ':root:not\\(\\.dark\\)' : '\\.dark'}` +
-    `\\[data-accent="${accent}"\\] \\{$([\\s\\S]*?)^ {2}\\}$`, 'gm')));
+    `\\[data-accent="${accent}"\\]:not\\(\\[data-mod-accent\\]\\) \\{$([\\s\\S]*?)^ {2}\\}$`, 'gm')));
 
 // From the catalogue, not restated. This was the EIGHTH place the accent
 // set was pinned, and the most expensive to miss: a pack absent from

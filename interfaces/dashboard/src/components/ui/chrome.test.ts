@@ -1736,7 +1736,7 @@ describe('UI chrome', () => {
     // buttons around it turn green, which reads as a bug rather than a
     // theme.
     const lagging = [...css.matchAll(
-      /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="([a-z]+)"\]\s*\{([^}]*)\}/g,
+      /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="([a-z]+)"\](?::not\(\[data-mod-accent\]\))?\s*\{([^}]*)\}/g,
     )]
       .filter((m) => m[2].includes('--primary:'))
       .flatMap((m) => ['--chart-1', '--primary-hover', '--primary-text']
@@ -1902,7 +1902,7 @@ describe('UI chrome', () => {
     // What an accent block re-points…
     const fromAccents = new Set<string>();
     for (const m of css.matchAll(
-      /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="[a-z]+"\]\s*\{([^}]*)\}/g,
+      /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="[a-z]+"\](?::not\(\[data-mod-accent\]\))?\s*\{([^}]*)\}/g,
     )) {
       for (const d of m[1].matchAll(/(--[a-z0-9-]+):/g)) fromAccents.add(d[1]);
     }

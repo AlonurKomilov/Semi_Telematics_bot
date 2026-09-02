@@ -62,13 +62,24 @@ const dE = (a: RGB, b: RGB) => {
   return Math.hypot(L1 - L2, a1 - a2, b1 - b2);
 };
 
-/** Where a pack's tokens live. The FIRST pack is the base — its values
- *  are in `:root` / `.dark` themselves, with no attribute block, because
- *  it is what an unstamped document paints. */
+/**
+ * Where a pack's tokens live. The FIRST pack is the base — its values
+ * are in `:root` / `.dark` themselves, with no attribute block, because
+ * it is what an unstamped document paints.
+ *
+ * The stand-down guard is part of the ADDRESS, not noise tolerated by a
+ * looser match. A pack block written without it cannot be overridden by
+ * an authored colour — the custom accent would install and lose, which
+ * is the exact defect `accentCascade.test.ts` exists for — and the way
+ * that fails here is the block simply not being found.
+ */
+const STAND_DOWN = ':not([data-mod-accent])';
 const cellFor = (packIndex: number, id: string, mode: 'light' | 'dark') =>
   packIndex === 0
     ? (mode === 'light' ? ':root' : '.dark')
-    : (mode === 'light' ? `:root:not(.dark)[data-accent="${id}"]` : `.dark[data-accent="${id}"]`);
+    : (mode === 'light'
+        ? `:root:not(.dark)[data-accent="${id}"]${STAND_DOWN}`
+        : `.dark[data-accent="${id}"]${STAND_DOWN}`);
 
 const CANVAS = {
   light: token(body(':root'), '--background')!,

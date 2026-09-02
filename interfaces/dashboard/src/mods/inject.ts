@@ -22,9 +22,21 @@
  * thing there.
  *
  * **Appended last, at `:root`.** `:root` and `.dark` are both (0,1,0), so
- * source order decides and a sheet appended to `<head>` wins. It
- * deliberately does NOT outrank the accent blocks at (0,3,0) — a mod that
- * wants the accent changes the accent, through the pack it names.
+ * source order decides and a sheet appended to `<head>` wins.
+ *
+ * That is enough for every token except the accent, and the accent is
+ * the one a person actually asks for by name. `--primary` is also
+ * declared in the `[data-accent]` blocks, which outrank `:root` — so an
+ * injected accent lost, and lost SILENTLY under purple, green and azure
+ * while appearing to work under blue, the one accent with no block.
+ *
+ * The fix is not more weight here. The two halves of that axis are not
+ * even the same weight as each other (light (0,3,0), dark (0,2,0)), so
+ * there is no single rank the injector could take that sits above both
+ * and still below nothing else. Instead the preset stands DOWN: writing
+ * `--primary` stamps `data-mod-accent`, and every accent block carries
+ * `:not([data-mod-accent])`. A preset and an authored colour are two
+ * answers to one question; ranking them was the wrong model.
  *
  * **Validated, because a mod is DATA.** Today the packs are ours. The
  * entire point of the arc is that they will not always be: the owner's
@@ -61,6 +73,27 @@ const STYLE_ID = 'mod-tokens';
  * identical palette is a no-op instead of a spurious repaint.
  */
 const MOD_ATTR = 'data-mod';
+
+/**
+ * The attribute that stands the accent preset down. See the header, and
+ * the `:not([data-mod-accent])` on every accent block in `index.css` —
+ * this name is half of a contract whose other half is a stylesheet.
+ *
+ * Presence-only. There is nothing to say beyond "somebody else owns the
+ * accent now", and a value would invite a second selector keyed on it.
+ *
+ * Stamped for `--primary` alone, not for the pack's other two tokens.
+ * The block is all-or-nothing — standing it down for a mod that supplied
+ * only `--primary-hover` would drop `--primary` back to base blue, which
+ * is a colour nobody chose. The cost is that hover and text alone still
+ * lose under a preset; `derivePalette` emits all three together, so the
+ * only way to reach that corner is to hand-author a set that says half a
+ * sentence. `accentCascade.test.ts` pins the corner so it stays known.
+ */
+const ACCENT_ATTR = 'data-mod-accent';
+
+/** The token whose presence means the mod owns the accent. */
+const ACCENT_TOKEN = '--primary';
 
 /** djb2, enough to notice a changed declaration. Not a checksum. */
 const digest = (s: string): string => {
@@ -173,13 +206,19 @@ export function applyModTokens(
   if (!tokens || Object.keys(tokens).length === 0) {
     existing?.remove();
     delete doc.documentElement.dataset.mod;
+    doc.documentElement.removeAttribute(ACCENT_ATTR);
     return result;
   }
 
   const decls: string[] = [];
+  let ownsAccent = false;
   for (const [name, value] of Object.entries(tokens)) {
     if (!isModToken(name)) { result.rejectedNames.push(String(name)); continue; }
     if (!isSafeValue(value)) { result.rejectedValues.push(name); continue; }
+    // After both gates, never before: a rejected `--primary` has not been
+    // installed, and standing the preset down for it would leave the app
+    // with no accent at all.
+    if (name === ACCENT_TOKEN) ownsAccent = true;
     decls.push(`${name}: ${value.trim()};`);
   }
   result.applied = decls.length;
@@ -187,6 +226,7 @@ export function applyModTokens(
   if (decls.length === 0) {
     existing?.remove();
     delete doc.documentElement.dataset.mod;
+    doc.documentElement.removeAttribute(ACCENT_ATTR);
     return result;
   }
 
@@ -202,6 +242,11 @@ export function applyModTokens(
     doc.head.appendChild(el);
   }
   el.textContent = css;
+  // Before the digest: the digest is what wakes the three observers that
+  // read tokens back into JavaScript, so the accent must already be
+  // resolved by the time they look.
+  if (ownsAccent) doc.documentElement.setAttribute(ACCENT_ATTR, '');
+  else doc.documentElement.removeAttribute(ACCENT_ATTR);
   // Last, so an observer that reads tokens back sees the new sheet
   // already in the document.
   doc.documentElement.setAttribute(MOD_ATTR, digest(css));

@@ -564,14 +564,35 @@
      button read as a success state. Dropping the lightness separates
      them the same way the dark themes already do (0.65 vs 0.76), and
      lands at 6.59 — better than the blue-vs-info pair (6.29) that has
-     shipped all along. */
-  :root:not(.dark)[data-accent="purple"] {
+     shipped all along.
+
+     `:not([data-mod-accent])` is how a custom colour gets to exist.
+     The injected sheet writes at `:root` — (0,1,0) — which is enough to
+     beat `--background` on `.dark` by source order and not nearly enough
+     to beat `--primary` here. So a seeded palette used to install its
+     canvas and lose its accent, and only under a non-blue preset: blue
+     has no block, so the one accent that appeared to work was the one
+     that never entered the fight. Raising the injector instead would
+     have meant a specificity war these two halves cannot both win — the
+     light blocks are (0,3,0) and the dark ones (0,2,0), so any single
+     weight the injector picked would land on the wrong side of one of
+     them.
+
+     Standing the block DOWN is the honest shape: a preset and an
+     authored colour are two answers to one question, not two rules to
+     rank. The attribute is stamped only when the installed tokens
+     actually carry `--primary` — a mod that tints surfaces alone keeps
+     the accent it was chosen with. `--chart-1` goes back to the base
+     ramp when the block stands down, which is deliberate: slot 1 is a
+     property of series SEPARATION, and a colour nobody checked against
+     the other four slots does not get to join the ramp. */
+  :root:not(.dark)[data-accent="purple"]:not([data-mod-accent]) {
     --primary: oklch(0.52 0.20 300);
     --primary-hover: oklch(0.47 0.20 300);
     --primary-text: oklch(0.48 0.20 300);
     --chart-1: oklch(0.52 0.20 300);
   }
-  :root:not(.dark)[data-accent="green"] {
+  :root:not(.dark)[data-accent="green"]:not([data-mod-accent]) {
     --primary: oklch(0.48 0.15 142);
     --primary-hover: oklch(0.43 0.14 142);
     --primary-text: oklch(0.44 0.145 142);
@@ -610,20 +631,20 @@
      blindness, and 66-68 at 1.4-2.7 from --warn. The palette is full;
      this is the least crowded corner left, and it beats two of the three
      packs we already ship on separation from the tones. */
-  :root:not(.dark)[data-accent="azure"] {
+  :root:not(.dark)[data-accent="azure"]:not([data-mod-accent]) {
     --primary: oklch(0.52 0.091 214);
     --primary-hover: oklch(0.469 0.082 214);
     --primary-text: oklch(0.450 0.079 214);
     --chart-1: oklch(0.52 0.091 214);
     --chart-5: oklch(0.559 0.095 316);
   }
-  .dark[data-accent="purple"] {
+  .dark[data-accent="purple"]:not([data-mod-accent]) {
     --primary: oklch(0.62 0.2 300);
     --primary-hover: oklch(0.68 0.195 300);
     --primary-text: oklch(0.72 0.169 300);
     --chart-1: oklch(0.62 0.2 300);
   }
-  .dark[data-accent="green"] {
+  .dark[data-accent="green"]:not([data-mod-accent]) {
     --primary: oklch(0.65 0.19 142);
     --primary-hover: oklch(0.71 0.19 142);
     --primary-text: oklch(0.69 0.19 142);
@@ -631,7 +652,7 @@
     /* See the light block above for why only green swaps slot 2. */
     --chart-2: oklch(0.72 0.142 264);
   }
-  .dark[data-accent="azure"] {
+  .dark[data-accent="azure"]:not([data-mod-accent]) {
     --primary: oklch(0.62 0.108 214);
     --primary-hover: oklch(0.681 0.108 215);
     --primary-text: oklch(0.693 0.108 214);
