@@ -48,7 +48,7 @@ class TestTheRule:
         fs = _narrow_all(ROLE_PERMISSIONS[Role.FLEET])
         d = fold("fleet", classify_pairs(fs))
         assert d == FoldDecision("fleet", "assigned", "assigned", "consistent",
-                                 (), ())
+                                 (), (), tuple(sorted(PAIRED_UNIT_FEATURES)))
 
     def test_mixed_folds_narrow_and_names_what_is_lost(self):
         fs = ROLE_PERMISSIONS[Role.FLEET]           # wide everywhere
@@ -56,6 +56,7 @@ class TestTheRule:
         fs = replace(fs, **{w: False, n: True})     # narrow on events only
         d = fold("fleet", classify_pairs(fs))
         assert d.write == "assigned" and d.shape == "mixed"
+        assert d.narrow == ("events",)          # the evidence column
         assert "events" not in d.lost
         assert set(d.lost) == {f for f in PAIRED_UNIT_FEATURES if f != "events"}
 

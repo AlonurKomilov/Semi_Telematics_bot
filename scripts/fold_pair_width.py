@@ -141,14 +141,15 @@ async def main(argv: list[str]) -> int:
         accounts = [a for a in accounts if int(a.id) == args.account]
 
     to_write: list[tuple[int, str, str, str, tuple]] = []
-    print(f"{'account':>9}  {'role':<11} {'shape':<11} {'write':<9} lost width on")
+    print(f"{'account':>9}  {'role':<11} {'shape':<11} {'write':<9} {'narrow on':<34} lost width on")
     for acct in accounts:
         decisions = await _decide_account(pdb, int(acct.id))
         for role, d in sorted(decisions.items()):
             if d.write is None and d.shape in ("default", "no-access"):
                 continue
             lost = ", ".join(d.lost) if d.lost else "—"
-            print(f"{acct.id:>9}  {role:<11} {d.shape:<11} {d.write or '(no row)':<9} {lost}")
+            narrow = ", ".join(d.narrow) if d.narrow else "—"
+            print(f"{acct.id:>9}  {role:<11} {d.shape:<11} {d.write or '(no row)':<9} {narrow:<34} {lost}")
             if d.write is not None:
                 to_write.append((int(acct.id), role, d.write, d.shape, d.lost))
 

@@ -66,6 +66,9 @@ class FoldDecision:
     #: every WIDE feature this key holds — merge_keys needs it to name
     #: what a disagreeing sibling key would lose
     wide: tuple[str, ...] = field(default_factory=tuple)
+    #: every NARROW feature — the EVIDENCE column: a "consistent"
+    #: verdict with no narrow list would hide which pair produced it
+    narrow: tuple[str, ...] = field(default_factory=tuple)
 
 
 def fold(role: str, classes: dict[str, str]) -> FoldDecision:
@@ -84,8 +87,9 @@ def fold(role: str, classes: dict[str, str]) -> FoldDecision:
         # (a driver) on some features, and those still fold away.
         return FoldDecision(role, implied, None,
                             shape if shape == "mixed" else "default",
-                            lost, tuple(wide))
-    return FoldDecision(role, implied, implied, shape, lost, tuple(wide))
+                            lost, tuple(wide), tuple(narrow))
+    return FoldDecision(role, implied, implied, shape, lost, tuple(wide),
+                        tuple(narrow))
 
 
 def merge_keys(decisions: list[FoldDecision]) -> FoldDecision:
@@ -110,4 +114,5 @@ def merge_keys(decisions: list[FoldDecision]) -> FoldDecision:
         "default" if implied == builtin_width(role) else "consistent")
     write = None if implied == builtin_width(role) else implied
     return FoldDecision(role, implied, write, shape, tuple(lost),
-                        tuple(sorted({f for d in live for f in d.wide})))
+                        tuple(sorted({f for d in live for f in d.wide})),
+                        tuple(sorted({f for d in live for f in d.narrow})))
