@@ -61,6 +61,7 @@ export {
   contrastRatio, readableOn, clampLightness, clampSurface,
   parseHex, toHex, oklchToSrgb, srgbToOklch, srgbInGamut, maxChroma,
   relLum, over, AA_TEXT, AA_LARGE, AAA_TEXT, type RGB,
+  srgbToLab, deltaE2000, distance,
 } from './theme/contrast';
 
 // ── sound ───────────────────────────────────────────────────────────

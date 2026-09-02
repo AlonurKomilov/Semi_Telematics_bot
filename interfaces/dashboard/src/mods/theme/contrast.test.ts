@@ -17,7 +17,8 @@ import { describe, it, expect } from 'vitest';
 import {
   oklchToSrgb, srgbToOklch, relLum, contrastRatio, over,
   parseHex, toHex, readableOn, clampLightness, clampSurface,
-  AA_TEXT, AA_LARGE, AAA_TEXT, srgbInGamut, type RGB,
+  AA_TEXT, AA_LARGE, AAA_TEXT, srgbInGamut, srgbToLab, deltaE2000, distance,
+  type RGB,
 } from './contrast';
 
 const cube = (step: number): RGB[] => {
@@ -332,5 +333,72 @@ describe('clampSurface', () => {
       const d = Math.min(Math.abs(out.H - src.H), 360 - Math.abs(out.H - src.H));
       expect(d, `${hex(c)} → ${hex(rgb)}`).toBeLessThan(6);
     }
+  });
+});
+
+/**
+ * CIEDE2000, against the data the standard is checked with.
+ *
+ * Sharma, Wu & Dalal published 34 pairs chosen to exercise every branch
+ * of the formula — the hue-wraparound cases, the RT rotation term near
+ * hue 275, the near-neutral chroma cases where the G factor bites. That
+ * is why they are here rather than a handful of our own colours: our
+ * colours cannot reach those branches, so a copy of this function with a
+ * broken wraparound would agree with us on everything we ship and be
+ * wrong about the first accent a customer picks.
+ *
+ * These are REFERENCE values, not values read off this implementation.
+ */
+describe('deltaE2000 matches the published test data', () => {
+  const CASES: Array<[[number, number, number], [number, number, number], number]> = [
+    // Hue wraparound, blue end — the pairs the 1976 formula gets worst.
+    [[50, 2.6772, -79.7751], [50, 0, -82.7485], 2.0425],
+    [[50, 3.1571, -77.2803], [50, 0, -82.7485], 2.8615],
+    [[50, 2.8361, -74.02], [50, 0, -82.7485], 3.4412],
+    [[50, -1.3802, -84.2814], [50, 0, -82.7485], 1.0000],
+    [[50, -1.1848, -84.8006], [50, 0, -82.7485], 1.0000],
+    [[50, -0.9009, -85.5211], [50, 0, -82.7485], 1.0000],
+    // Near-neutral, where the G factor rescales a*.
+    [[50, 0, 0], [50, -1, 2], 2.3669],
+    [[50, -1, 2], [50, 0, 0], 2.3669],
+    [[50, 2.49, -0.001], [50, -2.49, 0.0009], 7.1792],
+    // Deliberately just-noticeable: every one of these is exactly 1.
+    [[50, 2.5, 0], [50, 3.1736, 0.5854], 1.0000],
+    [[50, 2.5, 0], [50, 3.2972, 0], 1.0000],
+    [[50, 2.5, 0], [50, 1.8634, 0.5757], 1.0000],
+    [[50, 2.5, 0], [50, 3.2592, 0.335], 1.0000],
+    // Large differences, where SL/SC/SH carry the answer.
+    [[50, 2.5, 0], [73, 25, -18], 27.1492],
+    [[50, 2.5, 0], [61, -5, 29], 22.8977],
+    [[50, 2.5, 0], [56, -27, -3], 31.9030],
+    // Real measured pairs from the paper's tail.
+    [[60.2574, -34.0099, 36.2677], [60.4626, -34.1751, 39.4387], 1.2644],
+    [[63.0109, -31.0961, -5.8663], [62.8187, -29.7946, -4.0864], 1.2630],
+    [[22.7233, 20.0904, -46.694], [23.0331, 14.973, -42.5619], 2.0373],
+    [[90.9257, -0.5406, -0.9208], [88.6381, -0.8985, -0.7239], 1.5381],
+    [[2.0776, 0.0795, -1.135], [0.9033, -0.0636, -0.5514], 0.9082],
+  ];
+
+  it.each(CASES)('%j vs %j is %f', (a, b, expected) => {
+    expect(deltaE2000(a, b)).toBeCloseTo(expected, 3);
+  });
+
+  it('is symmetric and zero on itself, everywhere in the cube', () => {
+    for (let i = 0; i < 400; i++) {
+      const rnd = (): RGB => [
+        ((i * 37) % 256) / 255, ((i * 91) % 256) / 255, ((i * 143) % 256) / 255,
+      ];
+      const a = rnd();
+      const b: RGB = [a[2], a[0], a[1]];
+      expect(distance(a, a)).toBeCloseTo(0, 9);
+      expect(distance(a, b)).toBeCloseTo(distance(b, a), 9);
+    }
+  });
+
+  it('srgbToLab puts the two ends of the cube where CIELAB says', () => {
+    const [wL, wa, wb] = srgbToLab([1, 1, 1]);
+    expect(wL).toBeCloseTo(100, 2);
+    expect(Math.hypot(wa, wb)).toBeLessThan(0.02);
+    expect(srgbToLab([0, 0, 0])[0]).toBeCloseTo(0, 6);
   });
 });
