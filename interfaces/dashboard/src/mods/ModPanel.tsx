@@ -151,8 +151,17 @@ function Chip<T extends string>({
  * chip row that drifts: the panel and the page would answer the same
  * question differently within a release, and nothing would fail.
  */
-/** One category of the taxonomy. `mods` is the container's own row. */
-export type ModSection = 'mods' | 'interface' | 'effects' | 'sounds';
+/**
+ * The categories, at runtime as well as in the type, so a guard can walk
+ * them. A union alone is erased, and "adding a section forces a
+ * decision" cannot be enforced against something that does not exist
+ * when the test runs.
+ *
+ * `mods` is the container's own row, not a category — it is here because
+ * `section="mods"` is how the card asks for that row.
+ */
+export const MOD_SECTIONS = ['mods', 'interface', 'effects', 'sounds'] as const;
+export type ModSection = (typeof MOD_SECTIONS)[number];
 
 export function ModControls({ compact = false, onNavigate, section }: {
   compact?: boolean;

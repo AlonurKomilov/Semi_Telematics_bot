@@ -56,7 +56,8 @@ vi.mock('../preferences/usePreference', () => ({
   usePreference: (k: string) => ({ value: prefs[k], setValue }),
 }));
 
-import { RESET_AXES, ResetMods } from './Modifications';
+import { RESET_AXES, SECTION_AXES, CONTAINER_AXES, ResetMods } from './Modifications';
+import { MOD_SECTIONS } from './ModPanel';
 
 describe('Reset appearance owns exactly the axes it should', () => {
   it('covers every axis of MOD_DEFAULT, or names why not', () => {
@@ -115,3 +116,74 @@ describe('the control itself', () => {
     );
   });
 });
+
+/**
+ * How the reset scopes divide, and what the division must never do.
+ *
+ * NOT asserted here, deliberately: that every RESET_AXES key belongs to
+ * some group. `RESET_AXES` is BUILT by spreading the groups, so that is
+ * true by construction and a test for it would pass whatever anyone
+ * wrote. A guard whose subject cannot vary is decoration.
+ *
+ * What CAN go wrong is asserted below.
+ */
+const SECTION_KEYS = Object.fromEntries(
+  Object.entries(SECTION_AXES).map(([k, v]) => [k, Object.keys(v)]),
+) as Record<keyof typeof SECTION_AXES, string[]>;
+
+describe('the reset scopes divide cleanly', () => {
+  it('no axis belongs to two sections', () => {
+    // A key in both would be silently overwritten by the later spread in
+    // RESET_AXES, and BOTH section resets would then write it — so
+    // "Reset effects" would quietly reach into Interface.
+    const seen = new Map<string, string>();
+    for (const [section, keys] of Object.entries(SECTION_KEYS)) {
+      for (const k of keys) {
+        expect(
+          seen.get(k),
+          `"${k}" is in ${seen.get(k)} and ${section} — a section reset would reach outside itself`,
+        ).toBeUndefined();
+        seen.set(k, section);
+      }
+    }
+  });
+
+  it('no section owns a container axis', () => {
+    // `mod` and `tokens` are the container's. Filed under a section,
+    // "Reset interface" would uninstall the look that supplied all four
+    // sections — which is not what the words say.
+    for (const [section, keys] of Object.entries(SECTION_KEYS)) {
+      for (const c of Object.keys(CONTAINER_AXES)) {
+        expect(keys, `${section} claims the container's "${c}"`).not.toContain(c);
+      }
+    }
+  });
+
+  it('a section holds the same default the whole-card reset does', () => {
+    // Two spellings of one default drift; the section reset would then
+    // land somewhere "Reset mods" does not.
+    for (const axes of Object.values(SECTION_AXES)) {
+      for (const [k, v] of Object.entries(axes)) {
+        expect((RESET_AXES as Record<string, unknown>)[k], `"${k}" disagrees`).toBe(v);
+      }
+    }
+  });
+
+  it('every section either owns axes or is declared axis-free', () => {
+    // Adding a section must be a decision, not a silent no-op. `sounds`
+    // is the declared exception: its state lives in preference keys
+    // (mods.sound.pack / .volume), not in the theme object, so it has no
+    // theme axes and its reset writes those keys directly. `mods` is the
+    // container's row, and the container's axes are CONTAINER_AXES.
+    const AXIS_FREE = ['mods', 'sounds'];
+    for (const section of MOD_SECTIONS) {
+      const owns = section in SECTION_KEYS;
+      const declared = AXIS_FREE.includes(section);
+      expect(
+        owns !== declared,
+        `"${section}" is ${owns && declared ? 'both' : 'neither'} — say which it is`,
+      ).toBe(true);
+    }
+  });
+});
+
