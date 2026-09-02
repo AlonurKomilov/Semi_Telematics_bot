@@ -32,6 +32,11 @@ Owners are never scoped and are skipped.  Tier keys (``fleet__manager``)
 and company-specific rows fold INTO their base role — role_vehicle_scope
 has neither dimension — and a disagreement between them is reported
 as MIXED.
+
+Run from the repo root, either form:
+
+    python3 -m scripts.fold_pair_width            # dry run
+    python3 scripts/fold_pair_width.py --apply    # after review
 """
 
 from __future__ import annotations
@@ -40,10 +45,15 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from dataclasses import asdict as _asdict
 
-from dotenv import load_dotenv
+# Project root on sys.path, so ``python3 scripts/<name>.py`` works as
+# well as ``python3 -m scripts.<name>`` — the house's two conventions.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
