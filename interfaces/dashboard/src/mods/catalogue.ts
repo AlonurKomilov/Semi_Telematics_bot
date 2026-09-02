@@ -167,6 +167,53 @@ export const MODS: readonly Mod[] = [
     why: 'A display read from across the room' },
 ] as const;
 
+/**
+ * Which category each thing a mod carries lands in — GX shows an
+ * installed mod's footprint as a checklist, and this is the map that
+ * makes ours say the same thing in the same words the sections use.
+ *
+ * Typed as a total Record over the Mod fields, so ADDING A FIELD IS A
+ * COMPILE ERROR until someone says where it belongs. That is stronger
+ * than a test: it cannot be skipped, and it fails at the moment the
+ * field is written rather than the moment the suite runs.
+ *
+ * `id`, `label` and `why` are metadata about the mod, not things it
+ * changes about the app, so they are the excluded three.
+ */
+export const MOD_FIELD_SECTION: Record<
+  keyof Omit<Mod, 'id' | 'label' | 'why'>,
+  'interface' | 'effects' | 'sounds' | 'size'
+> = {
+  accent: 'interface',
+  radius: 'interface',
+  material: 'interface',
+  icons: 'interface',
+  motion: 'effects',
+  entrance: 'effects',
+  sound: 'sounds',
+  size: 'size',
+};
+
+/** In the order the card renders them, so the footprint reads down the
+ *  page rather than in whatever order the fields happen to be declared. */
+const SECTION_ORDER = ['interface', 'sounds', 'effects', 'size'] as const;
+
+/**
+ * The categories this mod actually writes into.
+ *
+ * Every field is optional but `accent`, so two mods can carry very
+ * different amounts — Cab brings a sound pack and Wall does not, and
+ * before this there was no way to know that without reading the source.
+ */
+export const modFootprint = (m: Mod): readonly string[] => {
+  const touched = new Set(
+    (Object.keys(m) as (keyof Mod)[])
+      .filter((k) => k in MOD_FIELD_SECTION && m[k] !== undefined)
+      .map((k) => MOD_FIELD_SECTION[k as keyof typeof MOD_FIELD_SECTION]),
+  );
+  return SECTION_ORDER.filter((s) => touched.has(s));
+};
+
 export const modById = (id: string): Mod | undefined =>
   MODS.find((m) => m.id === id);
 

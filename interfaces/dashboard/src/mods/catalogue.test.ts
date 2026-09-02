@@ -20,9 +20,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { MOD_SECTIONS } from './ModPanel';
 import { join } from 'node:path';
 import {
   THEME_PACKS, MODS, MOD_ICONS, ICON_STROKE,
+  MOD_FIELD_SECTION, modFootprint,
   PACK_TOKENS, packById, modById, activeModId, modMatchesAxes,
 } from './catalogue';
 import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
@@ -328,3 +330,55 @@ describe('installed is not the same question as matching', () => {
     expect(modMatchesAxes.length, 'modMatchesAxes must not be given the stored id').toBe(2);
   });
 });
+
+/**
+ * What a mod carries, said in the words the card uses.
+ *
+ * A mod can set up to eight things and, before this, said none of them —
+ * "what will Wall change?" had no answer short of reading the source.
+ * GX answers it with a checklist on the installed mod; this is the same
+ * answer in our vocabulary.
+ *
+ * The totality of MOD_FIELD_SECTION is enforced by the COMPILER, not
+ * here: it is typed as a Record over `keyof Omit<Mod, 'id'|'label'|'why'>`,
+ * so adding a field to Mod fails the build until someone places it. A
+ * runtime test for that would be weaker and later.
+ */
+describe('a mod says what it carries', () => {
+  it('places every field in a section the card actually renders', () => {
+    // One vocabulary in both places. If the footprint said "colour" and
+    // the card said "Interface", the checklist would name something the
+    // person cannot find.
+    const known = new Set<string>([...MOD_SECTIONS, 'size']);
+    for (const [field, section] of Object.entries(MOD_FIELD_SECTION)) {
+      expect(known, `"${field}" lands in "${section}", which no section renders`)
+        .toContain(section);
+    }
+  });
+
+  it('never files a field under the container row', () => {
+    // `mods` is the container's own chip row, not somewhere a mod writes.
+    expect(Object.values(MOD_FIELD_SECTION)).not.toContain('mods');
+  });
+
+  it.each(MODS.map((m) => [m.id, m] as const))('%s carries something', (_id, m) => {
+    // A mod that touched nothing would render an empty footprint and
+    // read as "this changes nothing", which no shipped mod is.
+    expect(modFootprint(m).length).toBeGreaterThan(0);
+  });
+
+  it('reports the two shipped mods exactly', () => {
+    // Concrete, because a purely structural assertion would pass on a
+    // footprint that returned every section for every mod.
+    expect(modFootprint(modById('cab')!)).toEqual(['interface', 'sounds', 'size']);
+    expect(modFootprint(modById('wall')!)).toEqual(['interface', 'effects', 'size']);
+  });
+
+  it('leaves out what a mod does not set', () => {
+    // Wall carries no sound and Cab no entrance; a footprint that listed
+    // every section regardless would be worse than none.
+    expect(modFootprint(modById('wall')!)).not.toContain('sounds');
+    expect(modFootprint(modById('cab')!)).not.toContain('effects');
+  });
+});
+

@@ -13,7 +13,7 @@ import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
   THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS,
-  modMatchesAxes, modById, type Mod,
+  modMatchesAxes, modById, modFootprint, type Mod,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { MODS_HREF } from './href';
@@ -213,6 +213,11 @@ export function ModControls({ compact = false, onNavigate, section }: {
   const activeMod = theme.mod ?? '';
   const installed = modById(activeMod);
   const activeWhy = installed?.why ?? '';
+  // What it CARRIES, by category — GX shows an installed mod's footprint
+  // as a checklist, and "what will this change?" had no answer here at
+  // all. Only for the installed one: a footprint under every chip would
+  // be four lines of prose in a w-56 popover.
+  const activeCarries = installed ? modFootprint(installed) : [];
   // Whether what you see is still exactly what it asked for. A separate
   // question from identity, and the reason the two were split.
   const modified = installed !== undefined && !modMatchesAxes(installed, {
@@ -310,6 +315,12 @@ export function ModControls({ compact = false, onNavigate, section }: {
             {activeWhy && (
               <p className="text-2xs text-muted-foreground mt-1.5">
                 {activeWhy}
+                {activeCarries.length > 0 && (
+                  <>
+                    <br />
+                    <span className="capitalize">{activeCarries.join(' · ')}</span>
+                  </>
+                )}
                 {/* Says what happened rather than scolding: the mod
                     is still installed, some of it has been changed,
                     and the way back is the chip you already see. */}
