@@ -617,10 +617,36 @@ export default function Vehicles() {
           message={stage === 'slow' ? t('scorecards.loading_slow') : t('common.loading')}
         />
       ) : vehicles.length === 0 ? (
+        /* This branch is NEVER a filter result. `vehicles` is the raw
+           server list; segments and column filters are applied inside
+           DataGrid, after this. So zero here means the account has no
+           vehicles at all — and the old copy, "No vehicles match this
+           filter", blamed a filter at the one moment no filter exists.
+           design.md: an empty state names the constraint that emptied
+           it, and inventing one is worse than naming none.
+
+           This is also a brand-new customer's first look at the page,
+           so it names the two ways a vehicle arrives. The action follows
+           `canManage`, the same gate as the header's button: offering a
+           control someone cannot use is a promise the page cannot keep.
+           The route to Integrations is named in words rather than
+           linked, because that page answers to `can_manage_integrations`
+           — a different permission, so the link would be the same broken
+           promise in another shape. */
         <EmptyState
           icon={Truck}
-          title={t('vehicles.no_matches')}
-          description={t('common.no_data')}
+          title={t('vehicles.empty_title', 'No vehicles yet')}
+          description={canManage
+            ? t('vehicles.empty_manage',
+              'Vehicles appear here once a telematics provider is connected — or add one by hand to get started.')
+            : t('vehicles.empty_view',
+              'Nothing has been added to this account. An admin can connect a telematics provider or add vehicles by hand.')}
+          action={canManage ? (
+            <Button type="button" size="sm" onClick={() => setDialog({ vehicle: null })}>
+              <Plus />
+              Add vehicle
+            </Button>
+          ) : undefined}
         />
       ) : (
         <DataGrid

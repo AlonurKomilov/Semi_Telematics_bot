@@ -242,10 +242,20 @@ export function ScorecardRulesPanel() {
           <CardSkeleton height="h-32" />
         </div>
       ) : Object.keys(grouped).length === 0 ? (
+        /* `grouped` is the FILTERED set, so this branch is two states
+           wearing one message. With a category or a search active,
+           naming them is the remedy. With neither, it told someone to
+           clear a search they had never typed — design.md's rule read
+           backwards: name the constraint that emptied the view, and do
+           not invent one. */
         <EmptyState
           icon={Trophy}
-          title="No rules match"
-          description="Try a different category or clear the search."
+          title={filter !== 'all' || search
+            ? 'No rules match'
+            : 'No scoring rules yet'}
+          description={filter !== 'all' || search
+            ? 'Try a different category or clear the search.'
+            : 'Rules decide how a driver is scored. None have been added to this account.'}
         />
       ) : (
         <div className="space-y-6">

@@ -232,7 +232,13 @@ export default function Cameras() {
         <EmptyState
           icon={Camera}
           title={vehicleFilter ? 'No cameras match this filter' : 'No camera checks yet'}
-          description="Camera checks accrue automatically once Samsara dashcams report status. Try widening the filter."
+          /* Gated on the same condition as the title above it. Ungated,
+             the box read "No camera checks yet" and then told the reader
+             to widen a filter they had never set — two sentences
+             contradicting each other inside one empty state. */
+          description={vehicleFilter
+            ? 'Try widening the filter, or clear it to see every camera check.'
+            : 'Camera checks accrue automatically once Samsara dashcams report status.'}
         />
       ) : (
         <DataGrid
