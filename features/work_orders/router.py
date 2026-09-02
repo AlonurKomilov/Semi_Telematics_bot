@@ -41,6 +41,7 @@ from interfaces.api.rate_limit import limiter
 from adapters.storage.work_orders import normalize_wo_status
 
 from interfaces.api.deps import (
+    member_unit_scope,
     get_current_user, get_platform_db, get_tenant_db,
     get_user_vehicle_nums, require_permission, resolve_user_id,
     get_user_company_codes, filter_by_allowed_companies,
@@ -174,18 +175,22 @@ class LinkTasks(BaseModel):
 
 
 async def _wo_access(user: dict) -> tuple[bool, bool]:
-    """Account-aware work-order permissions for *user*: ``(can_all, has_any)``.
+    """``(wide, can_view)`` for *user* — width and door, not writes.
 
-    Resolves through ``can_for_account`` so per-account overrides set in
-    the Role Permissions matrix take effect — not just the role defaults.
+    The caller audit this function owed: both consumers use the first
+    element purely as WIDTH ("skip / apply the per-truck wall"), never
+    as a write right — writes are gated at the route dependencies
+    (``require_permission("can_manage_work_orders")``).  So the first
+    element now answers through the shared width core, which honours
+    the legacy pair AND the member's three-layer Team Management scope
+    — the weave the verb sweep deferred.  Identical today (no
+    overrides stored); a member- or role-narrowed manager is filtered
+    to their trucks the day an owner sets one.
     """
     role, acct = Role(user["role"]), user["account_id"]
-    # The verb grammar: manage = write rights (and, during the
-    # bridge, wide width — the member-scope weave for WO comes with
-    # this feature's own width pass); view = may open at all.
-    can_all = await can_for_account(acct, role, "can_manage_work_orders")
+    wide = (await member_unit_scope(user, "work_orders")) == "all"
     can_view = await can_for_account(acct, role, "can_view_work_orders")
-    return can_all, can_view
+    return wide, can_view
 
 
 def _driver_owns_vehicle(
@@ -219,7 +224,7 @@ async def _require_visible_work_order(
     or cross-truck access so we don't leak existence to drivers who
     aren't supposed to see other trucks' records.
     """
-    can_all, has_access = await _wo_access(user)
+    wide, has_access = await _wo_access(user)
     if not has_access:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
@@ -228,12 +233,12 @@ async def _require_visible_work_order(
     _allowed = await get_user_company_codes(user)
     if _allowed and not filter_by_allowed_companies([wo], _allowed, key="company_code"):
         raise HTTPException(status_code=404, detail="Work order not found")
-    if not can_all:
+    if not wide:
         from interfaces.api.deps import get_user_vehicle_scope
         scope = await get_user_vehicle_scope(user)
         trucks = await get_user_vehicle_nums(user)
         if not _driver_owns_vehicle(
-            can_all, wo.get("vehicle_name", ""), trucks or [], scope=scope,
+            wide, wo.get("vehicle_name", ""), trucks or [], scope=scope,
         ):
             raise HTTPException(status_code=404, detail="Work order not found")
     return wo
@@ -260,7 +265,7 @@ async def list_work_orders(
     tenant_db=Depends(get_tenant_db),
 ):
     """List work orders for the account with optional filters."""
-    can_all, has_access = await _wo_access(user)
+    wide, has_access = await _wo_access(user)
     if not has_access:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     rows = await tenant_db.list_work_orders(
@@ -268,13 +273,13 @@ async def list_work_orders(
         status=status, payment_status=payment_status, vehicle_name=vehicle,
     )
     rows = filter_by_allowed_companies(rows, await get_user_company_codes(user), key="company_code")
-    if not can_all:
+    if not wide:
         from interfaces.api.deps import get_user_vehicle_scope
         scope = await get_user_vehicle_scope(user)
         trucks = await get_user_vehicle_nums(user)
         rows = [r for r in rows
                 if _driver_owns_vehicle(
-                    can_all, r.get("vehicle_name", ""), trucks or [],
+                    wide, r.get("vehicle_name", ""), trucks or [],
                     scope=scope,
                 )]
     return {"work_orders": rows, "count": len(rows)}
