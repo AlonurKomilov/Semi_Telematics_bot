@@ -73,7 +73,42 @@ private key. (A `key.pem` inside the zip is the pre-2020 method — the store ig
 
 ## Review access
 
-The panel is behind a login, so the reviewer needs an account: **Access → Test
-instructions** carries the email/password of a review user (a Viewer-type user with only
-the live-map permission, on an account with live vehicles), plus two lines on what to
-expect. Rotate or delete that user after approval.
+The panel is behind a login AND the consent step happens on the dashboard, so the
+reviewer signs in for real — on a real account, with whatever the role permits. The
+account is the narrowest one that can still see a map, and it is made by a script that
+refuses anything wider:
+
+    python3 -m scripts.review_user --account <id> --company <CODE> --trucks 142,143,220 --email <yours>
+    python3 -m scripts.review_user ... --apply
+
+- Role **driver**: the one role with `can_view_location` and not a single `can_manage_*`
+  — it cannot write anything. (Dispatcher, the next-narrowest, edits loads, geofences
+  and inspections.)
+- **Two or three real trucks assigned** (non-primary): the map shows those and nothing
+  else. `--trucks` is required — a driver with NO assignment sees every vehicle (legacy
+  behaviour in `filter_by_assigned_trucks`), not an empty map.
+- One company, `vehicle_scope='assigned'`, email pre-verified, random password printed
+  once. The script resolves the account's EFFECTIVE driver permissions (seed + stored
+  override) and refuses if any write/invite/camera/account-wide flag is on.
+- Use an email you control: "forgot password" mails a reset link there.
+- Before handing it over, sign in as that user and walk every sidebar item, the Alerts
+  inbox and the AI assistant — whatever you see, the reviewer sees. Known, accepted: the
+  assigned trucks' documents and the real driver paired with them on scorecards/events.
+
+Retire it the day the item is approved — this also denylists every token it was issued,
+which deactivation alone would not:
+
+    python3 -m scripts.review_user --account <id> --email <yours> --delete --apply
+
+**Additional instructions** (492 of the 500 characters allowed):
+
+```
+LIVE account: the vehicles and positions are real, and a change would affect a real company. Please look only — do not edit or delete anything.
+
+1. Click the 4truck icon in the toolbar to open the side panel.
+2. Press "Connect to 4truck" — a 4truck.us tab opens.
+3. Sign in with the credentials above, then press Connect to confirm.
+4. The panel lists the vehicles and shows them live on the map. Click one, then "Open in Google Maps".
+
+The panel is read-only and sees vehicle positions only.
+```

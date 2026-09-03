@@ -5,7 +5,9 @@ function jwt(payload: Record<string, unknown>): string {
   const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, '');
   return `${b64({ alg: 'HS256' })}.${b64(payload)}.sig`;
 }
-const EXT = jwt({ aud: 'extension', scope: ['can_location_map', 'can_location_vehicle'], sub: '1' });
+// Every name the server has used for the live-map scope, so the vector
+// is the real token under the verb migration and before it alike.
+const EXT = jwt({ aud: 'extension', scope: ['can_view_location', 'can_location_map', 'can_location_vehicle'], sub: '1' });
 const FULL = jwt({ sub: '1', role: 'owner' });
 const pending: PendingConnect = { state: 'a'.repeat(64), expires: 2_000 };
 
