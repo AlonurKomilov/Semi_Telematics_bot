@@ -64,7 +64,7 @@ async def list_service_tasks(
     include_archived: bool = False,
     vehicle_type: str = "",
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
+        "can_manage_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -90,7 +90,7 @@ async def list_service_tasks(
 @router.post("")
 async def create_service_task(
     body: ServiceTaskCreate,
-    user: dict = Depends(require_permission("can_service_tasks")),
+    user: dict = Depends(require_permission("can_manage_service_tasks")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Add a task.  Names are unique per account (Fleetio's rule — two
@@ -138,7 +138,7 @@ async def create_service_task(
 async def update_service_task(
     task_id: int,
     body: ServiceTaskUpdate,
-    user: dict = Depends(require_permission("can_service_tasks")),
+    user: dict = Depends(require_permission("can_manage_service_tasks")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Edit a task.  A STANDARD task's name is immutable (its
@@ -216,7 +216,7 @@ async def update_service_task(
 @router.get("/systems")
 async def list_systems(
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
+        "can_manage_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
 ):
     """The system vocabulary — the reporting axis above a task.
@@ -239,7 +239,7 @@ class MergeBody(BaseModel):
 @router.post("/merge")
 async def merge_service_tasks(
     body: MergeBody,
-    user: dict = Depends(require_permission("can_service_tasks")),
+    user: dict = Depends(require_permission("can_manage_service_tasks")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Fold a duplicate task into the canonical one.
@@ -280,7 +280,7 @@ async def merge_service_tasks(
 async def service_task_defaults(
     task: str,
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
+        "can_manage_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -307,7 +307,7 @@ class TaskPartLink(BaseModel):
 async def list_task_parts(
     task_id: int,
     user: dict = Depends(require_permission_any(
-        "can_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
+        "can_manage_service_tasks", "can_manage_maintenance", "can_manage_work_orders",
     )),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -323,7 +323,7 @@ async def list_task_parts(
 async def link_task_part(
     task_id: int,
     body: TaskPartLink,
-    user: dict = Depends(require_permission("can_service_tasks")),
+    user: dict = Depends(require_permission("can_manage_service_tasks")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Link a catalog part to this task so work orders pre-fill it."""
@@ -342,7 +342,7 @@ async def link_task_part(
 async def unlink_task_part(
     task_id: int,
     link_id: int,
-    user: dict = Depends(require_permission("can_service_tasks")),
+    user: dict = Depends(require_permission("can_manage_service_tasks")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Unlink a part.  Work orders already created keep their lines —
@@ -355,7 +355,7 @@ async def unlink_task_part(
 @router.delete("/{task_id}")
 async def delete_service_task(
     task_id: int,
-    user: dict = Depends(require_permission("can_service_tasks")),
+    user: dict = Depends(require_permission("can_manage_service_tasks")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Delete a CUSTOM task that nothing references.  Standard tasks

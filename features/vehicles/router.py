@@ -344,7 +344,7 @@ async def vehicles_list(
     # cap.  The dashboard fetches one page; past 500 real vehicles the
     # page must switch to walking total_pages (the useFleetList pattern).
     page_size: int = Query(50, ge=1, le=500, description="Items per page"),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Vehicle list with location and engine state — supports filtering, sorting, pagination."""
     allowed = await get_user_company_codes(user)
@@ -472,7 +472,7 @@ async def vehicles_list(
 @router.get("/overview")
 async def fleet_overview(
     company: str | None = Query(None, description="Filter by company code"),
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission("can_view_faults")),
 ):
     """Fleet snapshot — vehicles with status, location, faults.
 
@@ -491,7 +491,7 @@ async def fleet_overview(
 
 @router.get("/weather")
 async def fleet_weather(
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission("can_view_faults")),
 ):
     """Ambient temperature readings from vehicle sensors.
 
@@ -535,7 +535,7 @@ async def fleet_weather(
 @router.get("/utilization-summary")
 async def fleet_utilization_summary(
     days: int = Query(30, ge=7, le=365),
-    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
+    user: dict = Depends(require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Per-vehicle utilization across the entire visible fleet.
 
@@ -1513,7 +1513,7 @@ async def _document_callouts(account_id: int, tenant, vehicle_ids) -> list:
 async def vehicle_detail(
     vehicle_name: str,
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Single vehicle detail by name.
 
@@ -1613,7 +1613,7 @@ async def vehicle_detail(
 async def vehicle_health(
     vehicle_name: str,
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_health", "can_vehicle_vehicle")),
+    user: dict = Depends(require_permission_any("can_view_health", "can_view_vehicles")),
 ):
     """Vehicle health stats: battery, oil, coolant, DEF, seatbelt, engine load."""
     allowed = await get_user_company_codes(user)
@@ -1638,7 +1638,7 @@ async def vehicle_health(
 async def vehicle_faults(
     vehicle_name: str,
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
+    user: dict = Depends(require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Active fault codes for a specific vehicle."""
     allowed = await get_user_company_codes(user)
@@ -1693,7 +1693,7 @@ async def vehicle_reading_as_of(
     vehicle_name: str,
     date: str = Query(..., description="Service date (YYYY-MM-DD)"),
     user: dict = Depends(require_permission_any(
-        "can_manage_work_orders", "can_faults", "can_vehicle_vehicle",
+        "can_manage_work_orders", "can_view_faults", "can_view_vehicles",
     )),
 ):
     """Odometer + engine-hours for a vehicle AS OF a date — backs the
@@ -1721,7 +1721,7 @@ async def vehicle_timeline(
     vehicle_name: str,
     days: int = Query(7, ge=1, le=30),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
+    user: dict = Depends(require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Hourly telemetry roll-up for a single vehicle (warehouse).
 
@@ -1753,7 +1753,7 @@ async def vehicle_usage(
     vehicle_name: str,
     days: int = Query(30, ge=7, le=365),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_faults", "can_view_vehicles")),
+    user: dict = Depends(require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Per-vehicle usage summary + daily series over the window.
 
@@ -1911,7 +1911,7 @@ async def create_vehicle(
 async def vehicle_provider_links(
     vehicle_id: int,
     user: dict = Depends(
-        require_permission_any("can_faults", "can_vehicle_vehicle")),
+        require_permission_any("can_view_faults", "can_view_vehicles")),
 ):
     """Where to open this truck at the provider that supplies it.
 

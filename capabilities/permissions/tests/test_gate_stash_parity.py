@@ -21,7 +21,7 @@ from capabilities.permissions.roles import FeatureSet
 @pytest.mark.asyncio
 async def test_singular_stashes_perms_and_matched(monkeypatch):
     from interfaces.api import deps
-    fs = FeatureSet(can_vehicle_all=True)
+    fs = FeatureSet(can_view_vehicles=True)
 
     async def _fake(role, account_id, **kw):
         return fs
@@ -36,7 +36,7 @@ async def test_singular_stashes_perms_and_matched(monkeypatch):
 @pytest.mark.asyncio
 async def test_any_and_singular_agree_on_the_stash(monkeypatch):
     from interfaces.api import deps
-    fs = FeatureSet(can_vehicle_all=True)
+    fs = FeatureSet(can_view_vehicles=True)
 
     async def _fake(role, account_id, **kw):
         return fs

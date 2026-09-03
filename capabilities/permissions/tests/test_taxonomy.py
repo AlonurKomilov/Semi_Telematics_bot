@@ -22,15 +22,18 @@ FLAGS = {f.name for f in dataclasses.fields(FeatureSet)
          if f.name.startswith("can_")}
 
 
-def test_bijection_both_ways():
-    """Every flag has exactly one verdict; every verdict names a flag.
-
-    A flag added to FeatureSet without a verdict is a migration hole;
-    a verdict for a deleted flag is the table lying about the world.
-    """
-    assert TAXONOMY.keys() == FLAGS, (
-        f"missing verdicts: {sorted(FLAGS - TAXONOMY.keys())}; "
-        f"stale verdicts: {sorted(TAXONOMY.keys() - FLAGS)}")
+def test_the_contract_matches_the_flipped_featureset():
+    """Post-flip invariant: every verb TARGET is a physical field, every
+    non-verb flag (derived / service / config / parked) survives under
+    its own name, and no legacy pair name is a field any more."""
+    targets = {v.target for v in TAXONOMY.values() if v.target}
+    survivors = {f for f, v in TAXONOMY.items()
+                 if v.fate in (Fate.DERIVED, Fate.SERVICE, Fate.CONFIG, Fate.OWN_LATER)}
+    assert targets | survivors == FLAGS, (
+        f"fields without a contract: {sorted(FLAGS - targets - survivors)}; "
+        f"contract names that are not fields: {sorted((targets | survivors) - FLAGS)}")
+    dead = {f for f, v in TAXONOMY.items() if v.fate is Fate.SCOPE_SPLIT}
+    assert not (dead & FLAGS), f"dying names still physical: {sorted(dead & FLAGS)}"
 
 
 def test_verb_targets_speak_the_grammar():
@@ -127,8 +130,10 @@ def test_non_verb_fates_carry_no_target():
 
 
 def test_dark_features_keep_their_darkness_across_the_rename():
-    for flag in DARK_FEATURE_FIELDS:
-        v = TAXONOMY[flag]
-        assert "DARK" in v.note, (
-            f"{flag} is a dark feature; its verdict must carry the DARK "
-            "note so the rename stage knows to move the darkness too")
+    """DARK_FEATURE_FIELDS names canonical fields now; the contract row
+    that produced each must carry the DARK note."""
+    by_target = {v.target: (f, v) for f, v in TAXONOMY.items() if v.target}
+    for field in DARK_FEATURE_FIELDS:
+        assert field in by_target, field
+        _flag, v = by_target[field]
+        assert "DARK" in v.note, field

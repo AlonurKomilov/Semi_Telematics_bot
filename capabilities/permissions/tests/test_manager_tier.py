@@ -69,7 +69,7 @@ class TestManagerTier:
         """Each team-lead tier seeds exactly the agreed delta (owners retune
         per-account afterward — these are only the defaults)."""
         assert TIER_GRANTS[Role.FLEET].grants == frozenset(
-            {"can_invite", "can_manage_work_hours", "can_risk_report_all",
+            {"can_invite", "can_manage_work_hours", "can_view_risk_reports",
              "can_manage_role_bot", "can_manage_config_role"})
         # Safety's scoring-config ownership rode can_manage_scorecard_rules
         # until that flag folded into the account-scope config permission
@@ -87,8 +87,8 @@ class TestManagerTier:
             {"can_manage_work_hours", "can_manage_applications",
              "can_manage_role_bot", "can_manage_config_role"})
         assert TIER_GRANTS[Role.ACCOUNTING].grants == frozenset(
-            {"can_work_orders_all", "can_maintenance_all",
-             "can_parts", "can_service_tasks", "can_manage_role_bot",
+            {"can_manage_work_orders", "can_manage_maintenance",
+             "can_manage_parts", "can_manage_service_tasks", "can_manage_role_bot",
              "can_manage_config_role"})
         # Every seed grant must be flags the BASE role lacks (a real delta).
         from dataclasses import asdict

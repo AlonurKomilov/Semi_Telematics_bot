@@ -727,7 +727,7 @@ async def ai_summary(
 async def ai_diagnose(
     body: DiagnoseRequest,
     request: Request,
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission("can_view_faults")),
     platform_db=Depends(get_platform_db),
 ):
     """AI-powered fault code diagnosis for a specific vehicle."""

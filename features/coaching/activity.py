@@ -12,5 +12,5 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "coaching", "Coaching", "coaching",
-    view_permissions=('can_coaching_admin',),
+    view_permissions=('can_manage_coaching',),
 ))

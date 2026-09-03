@@ -151,7 +151,7 @@ def _clean_rows(rows: object, *, max_rows: int = 150) -> list[dict]:
 @router.get("/carriers")
 async def list_carriers(
     fields: int = 0,
-    user: dict = Depends(require_permission("can_carrier_directory")),
+    user: dict = Depends(require_permission("can_view_carrier_directory")),
     platform_db=Depends(get_platform_db),
 ):
     """The directory list.
@@ -182,7 +182,7 @@ async def list_carriers(
 @router.get("/carriers/{carrier_id:int}")
 async def get_carrier(
     carrier_id: int,
-    user: dict = Depends(require_permission("can_carrier_directory")),
+    user: dict = Depends(require_permission("can_view_carrier_directory")),
     platform_db=Depends(get_platform_db),
 ):
     row = await platform_db.get_carrier_profile(user["account_id"], carrier_id)

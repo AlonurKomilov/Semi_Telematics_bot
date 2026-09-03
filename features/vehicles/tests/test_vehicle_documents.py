@@ -283,21 +283,19 @@ async def test_a_shared_unit_number_only_claims_its_own_company(
 
 def test_the_document_flags_were_seeded_to_the_access_they_replaced():
     """Vehicle documents used to ride ``can_manage_vehicles`` (manage)
-    and ``can_faults`` OR ``can_vehicle_vehicle`` (view).  Splitting
-    them into their own pair is only safe if every role keeps exactly
-    what it had — the same rule the auto-pilot defaults follow.  A
-    future role edit that diverges should be a DECISION, so it fails
-    here first.
-    """
+    and ``can_faults`` OR the own-truck half of the vehicles pair (view).
+    The verb/scope flip folded that pair into one view verb with width
+    elsewhere, so the derivation the original test replayed cannot be
+    expressed any more — the seeds are pinned by ROLE instead.  Moving a
+    role in or out of either set is a conscious edit here, never drift."""
     from capabilities.permissions.roles import ROLE_PERMISSIONS
-
+    view = sorted(r.value for r, f in ROLE_PERMISSIONS.items() if f.can_view_vehicle_docs)
+    manage = sorted(r.value for r, f in ROLE_PERMISSIONS.items() if f.can_manage_vehicle_docs)
+    assert view == ['admin', 'dispatcher', 'driver', 'fleet', 'owner', 'safety']
+    assert manage == ['admin', 'fleet', 'owner']
     for role, f in ROLE_PERMISSIONS.items():
-        could_view = f.can_faults or f.can_vehicle_vehicle
-        assert f.can_vehicle_docs == could_view, (
-            f"{role.value}: document VIEW drifted from the gate it replaced")
         assert f.can_manage_vehicle_docs == f.can_manage_vehicles, (
             f"{role.value}: document MANAGE drifted from can_manage_vehicles")
-
 
 def test_the_endpoints_ask_for_the_document_flags_not_the_vehicle_ones():
     """The point of the split: filing a truck's papers must not require
@@ -308,7 +306,7 @@ def test_the_endpoints_ask_for_the_document_flags_not_the_vehicle_ones():
 
     src = inspect.getsource(doc)
     assert 'require_permission("can_manage_vehicle_docs")' in src
-    assert 'require_permission("can_vehicle_docs")' in src
+    assert 'require_permission("can_view_vehicle_docs")' in src
     assert 'require_permission("can_manage_vehicles")' not in src, (
         "a documents route still rides the rename/archive grant")
     assert 'require_permission_any(' not in src, (

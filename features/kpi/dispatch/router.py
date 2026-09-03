@@ -16,7 +16,7 @@ from interfaces.api.deps import (
 
 router = APIRouter(prefix="/kpi", tags=["kpi"])
 
-_view_kpi = require_permission("can_kpi")
+_view_kpi = require_permission("can_view_kpi")
 
 
 @router.get("/dispatchers")
@@ -46,7 +46,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 from features.kpi.dispatch import runs as runs_service  # noqa: E402
 from interfaces.api.deps import resolve_user_id  # noqa: E402
 
-_incentives = require_permission("can_kpi")
+_incentives = require_permission("can_view_kpi")
 
 
 class RunCreate(BaseModel):

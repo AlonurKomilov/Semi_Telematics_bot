@@ -51,8 +51,23 @@ async def user_me(
     # Both grammars on the wire — every legacy field plus every
     # canonical verb name — so the dashboard can move to the new
     # grammar page by page, independent of a backend deploy.
-    from capabilities.permissions.roles import wire_perms
+    from capabilities.permissions.roles import wire_perms, PAIRED_UNIT_FEATURES, UNIT_FEATURES
     perm_dict = wire_perms(perms)
+    # The legacy *_all / *_vehicle aliases meant WIDTH to the clients
+    # that still read them (live-map layers, overview cards, the mini
+    # app).  On /me the member is known, so the aliases say what they
+    # used to: _all = opens AND width 'all', _vehicle = opens AND
+    # narrow.  Role-level wires (the matrix) have no member and keep
+    # the halves equal.  Dies with the alias layer.
+    _my_scope = await get_member_vehicle_scope(user)
+    for _noun, (_wide, _narrow) in PAIRED_UNIT_FEATURES.items():
+        _view, _manage = UNIT_FEATURES[_noun]
+        opens = bool(perm_dict.get(_view))
+        if _manage is None:
+            perm_dict[_wide] = opens and _my_scope == "all"
+        perm_dict[_narrow] = opens and _my_scope != "all"
+    perm_dict["can_alerts_all"] = bool(perm_dict.get("can_view_vehicles")) and _my_scope == "all"
+    perm_dict["can_alerts_vehicle"] = bool(perm_dict.get("can_view_vehicles")) and _my_scope != "all"
 
     # Get multi-truck assignments
     trucks = await platform_db.get_user_vehicle_nums(db_user.id)
@@ -153,7 +168,7 @@ async def user_me(
         # cross-department rule and the width-aware surfaces read this
         # when the pair-death stage flips them; the TM page shows it
         # now.  Fail-closed by construction (get_member_vehicle_scope).
-        "vehicle_scope": await get_member_vehicle_scope(user),
+        "vehicle_scope": _my_scope,
         # Driver Pay is an Accounting feature now — "available" == Accounting
         # module on (per-user access is the can_driver_pay_admin permission).
         # Field name kept for frontend compat.

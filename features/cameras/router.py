@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from adapters.storage.object_storage import get_object_storage_for_account
 from interfaces.api.deps import (
+    require_any_or_wide,
     require_permission_any, get_tenant_db,
     get_user_company_codes, filter_by_company_map, vehicle_company_map,
 )
@@ -63,7 +64,7 @@ async def camera_checks(
     # can_view_vehicles, so the grammar has no wide-only name and
     # migrating here would ADMIT every assigned-width viewer.  Moves
     # in the width pass, when a width-aware dependency exists.
-    user: dict = Depends(require_permission_any("can_cameras", "can_vehicle_all")),
+    user: dict = Depends(require_any_or_wide("can_view_cameras")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Camera check history — obstruction, alignment, quality per vehicle."""
@@ -85,7 +86,7 @@ async def camera_check_image(
     # can_view_vehicles, so the grammar has no wide-only name and
     # migrating here would ADMIT every assigned-width viewer.  Moves
     # in the width pass, when a width-aware dependency exists.
-    user: dict = Depends(require_permission_any("can_cameras", "can_vehicle_all")),
+    user: dict = Depends(require_any_or_wide("can_view_cameras")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Serve the dashcam screenshot for a camera check."""

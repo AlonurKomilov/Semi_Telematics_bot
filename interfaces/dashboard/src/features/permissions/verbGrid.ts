@@ -55,7 +55,7 @@ const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_r
   // the surface the grant actually opens.
   can_view_vehicles: ['can_manage_config_all', 'source precedence + auto-pilot'],
   can_view_scorecards: ['can_manage_config_all', 'rules + pillar caps'],
-  can_kpi: ['can_manage_config_all', 'grade thresholds'],
+  can_view_kpi: ['can_manage_config_all', 'grade thresholds'],
   can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
   can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],
   can_manage_account: ['can_manage_config_all', 'account-wide values'],

@@ -1,10 +1,9 @@
-"""The alias bridge: every canonical verb name works TODAY.
+"""The alias layer after the flip: legacy names over canonical fields.
 
-Stage C of the verb/scope migration.  Legacy fields stay physical
-(production speaks them); the canonical grammar is installed as
-properties over them, and both live on the wire.  These tests walk the
-TAXONOMY — the contract — not the built artifacts, so a contract row
-whose bridge is missing fails loudly instead of vanishing from a loop.
+Stage E part 2 of the verb/scope migration.  Canonical fields are
+PHYSICAL; every legacy name is a deprecated property over its target
+until the legacy-pair ratchet reaches zero.  These walk the TAXONOMY —
+the contract — not the built maps.
 """
 
 from __future__ import annotations
@@ -13,147 +12,85 @@ import os
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-from dataclasses import replace
+from dataclasses import fields, replace
 
 from capabilities.permissions.roles import (
-    CANONICAL_TO_LEGACY,
-    FeatureSet,
-    MANAGER_GRANTS,
-    TIER_GRANTS,
-    ROLE_PERMISSIONS,
-    normalize_stored_perm_keys,
-    wire_perms,
+    LEGACY_TO_CANONICAL, PAIRED_UNIT_FEATURES, UNIT_FEATURES,
+    FeatureSet, MANAGER_GRANTS, TIER_GRANTS, ROLE_PERMISSIONS,
+    normalize_stored_perm_keys, wire_perms,
 )
 from capabilities.permissions.taxonomy import TAXONOMY, Fate
 
+FIELDS = {f.name for f in fields(FeatureSet)}
 
-def test_every_contract_target_is_readable_on_a_featureset():
-    fs = FeatureSet()
+
+def test_every_legacy_name_is_an_alias_and_not_a_field():
+    for legacy, canonical in LEGACY_TO_CANONICAL.items():
+        assert legacy not in FIELDS, legacy
+        assert canonical in FIELDS, canonical
+        assert isinstance(getattr(FeatureSet, legacy), property), legacy
+
+
+def test_alias_mirrors_its_field_for_every_rename():
     for flag, v in TAXONOMY.items():
-        if v.target:
-            assert isinstance(getattr(fs, v.target), bool), v.target
-
-
-def test_alias_equals_primary_for_every_rename():
-    """The PERSONA recipe's core claim, walked from the contract:
-    flip the legacy field and the canonical property flips with it."""
-    for flag, v in TAXONOMY.items():
-        if v.fate.value.startswith("verb_") and v.target != flag \
-                and v.target in CANONICAL_TO_LEGACY:
+        if v.fate in (Fate.VERB_VIEW, Fate.VERB_MANAGE) and v.target != flag and flag in LEGACY_TO_CANONICAL:
+            target = LEGACY_TO_CANONICAL[flag]
             base = FeatureSet()
-            flipped = replace(base, **{flag: not getattr(base, flag)})
-            assert getattr(flipped, v.target) == getattr(flipped, flag), flag
+            default = getattr(base, target)          # some fields default True
+            assert getattr(base, flag) is default, flag
+            flipped = replace(base, **{target: not default})
+            assert getattr(flipped, flag) is (not default), flag
 
 
-def test_pair_view_verbs_are_an_or_of_their_pair():
-    """can_view_maintenance asks "may open the feature at all" —
-    width is Team Management's business now, not this layer's."""
-    driver = FeatureSet(can_maintenance_vehicle=True)
-    assert driver.can_view_maintenance and not driver.can_manage_maintenance
-    fleet = FeatureSet(can_maintenance_all=True)
-    assert fleet.can_view_maintenance and fleet.can_manage_maintenance
-    nobody = FeatureSet()
-    assert not nobody.can_view_maintenance
-    # And a pure-view pair, both directions:
-    assert FeatureSet(can_events_vehicle=True).can_view_events
-    assert FeatureSet(can_events_all=True).can_view_events
-    assert not FeatureSet().can_view_events
+def test_pair_aliases_read_the_folded_fields():
+    for noun, (wide, narrow) in PAIRED_UNIT_FEATURES.items():
+        view, manage = UNIT_FEATURES[noun]
+        fs = replace(FeatureSet(), **{view: True})
+        assert getattr(fs, narrow) is True            # narrow half → view
+        if manage:
+            assert getattr(fs, wide) is False         # wide half → manage
+            assert getattr(replace(fs, **{manage: True}), wide) is True
+        else:
+            assert getattr(fs, wide) is True          # pure view pair: both → view
 
 
-def test_stored_canonical_keys_land_on_legacy_fields():
-    """The merge site drops unknown keys, so a grant stored under a
-    canonical name MUST be mapped before that filter — otherwise a
-    custom edit silently reverts to the role default."""
-    out = normalize_stored_perm_keys({"can_view_faults": True})
-    assert out == {"can_faults": True}
+def test_stored_legacy_keys_fold_onto_canonical():
+    out = normalize_stored_perm_keys({"can_faults": True})
+    assert out == {"can_view_faults": True}
+    # pure-view pair: either half opens the feature
+    assert normalize_stored_perm_keys({"can_events_all": False, "can_events_vehicle": True}) == {"can_view_events": True}
+    # manage-pair: wide → manage (and implies opening), narrow → view
+    assert normalize_stored_perm_keys({"can_maintenance_all": True, "can_maintenance_vehicle": False}) == {
+        "can_manage_maintenance": True, "can_view_maintenance": True}
+    assert normalize_stored_perm_keys({"can_maintenance_all": False, "can_maintenance_vehicle": True}) == {
+        "can_manage_maintenance": False, "can_view_maintenance": True}
 
 
-def test_legacy_wins_a_collision():
-    """The matrix edits legacy today; a stale canonical duplicate must
-    not shadow the fresher legacy write."""
-    out = normalize_stored_perm_keys(
-        {"can_view_faults": True, "can_faults": False})
-    assert out == {"can_faults": False}
+def test_a_collision_grants_if_either_side_grants():
+    """A row carrying both a legacy key and its canonical target has no
+    timestamp per key, so neither may silently revoke the other: the
+    values combine by OR.  The sweep that rewrites stored rows to
+    canonical keys makes this case impossible afterwards."""
+    assert normalize_stored_perm_keys({"can_faults": True, "can_view_faults": False})["can_view_faults"] is True
+    assert normalize_stored_perm_keys({"can_faults": False, "can_view_faults": True})["can_view_faults"] is True
+    assert normalize_stored_perm_keys({"can_faults": False, "can_view_faults": False})["can_view_faults"] is False
 
 
 def test_wire_carries_both_grammars_equal_by_construction():
-    fs = FeatureSet(can_maintenance_all=True, can_faults=True)
-    d = wire_perms(fs)
-    for canonical, legacy in CANONICAL_TO_LEGACY.items():
-        assert d[canonical] == d[legacy], canonical
-    for flag, v in TAXONOMY.items():
-        if v.fate is Fate.SCOPE_SPLIT:
-            assert v.target in d, v.target
+    d = wire_perms(replace(FeatureSet(), can_manage_maintenance=True, can_view_faults=True))
+    for legacy, canonical in LEGACY_TO_CANONICAL.items():
+        assert d[legacy] == d[canonical], legacy
 
 
 def test_tier_and_manager_grants_are_physical_fields():
-    """senior_default_featureset applies grants with dataclasses.replace,
-    which rejects non-fields — so a grant string migrated to a
-    property-only name would crash tier resolution at runtime.  Pin it
-    here instead."""
-    fields = set(FeatureSet.__dataclass_fields__)
     for tier in TIER_GRANTS.values():
-        assert set(tier.grants) <= fields, set(tier.grants) - fields
+        assert set(tier.grants) <= FIELDS, set(tier.grants) - FIELDS
     for grants in MANAGER_GRANTS.values():
-        assert set(grants) <= fields, set(grants) - fields
+        assert set(grants) <= FIELDS, set(grants) - FIELDS
 
 
-def test_seeds_still_speak_legacy_only():
-    """Stage C invariant: role seeds stay in legacy names (the
-    physical fields).  The seed flip is stage E's move, after no
-    reader of a legacy name is left — a canonical kwarg here today
-    would crash FeatureSet(**seed) construction at import."""
+def test_seeds_speak_only_canonical():
+    # Constructing a FeatureSet with a legacy kwarg is a TypeError — so
+    # the seeds importing at all proves it; make the claim explicit.
     for role, fs in ROLE_PERMISSIONS.items():
         assert isinstance(fs, FeatureSet), role
-
-
-def test_the_merge_site_normalizes_before_its_unknown_key_filter():
-    """The stored-grant resolver drops unknown keys by design; the
-    normalize call must run BEFORE that filter or canonical-stored
-    grants silently revert to role defaults.  Source-pinned (the full
-    path needs a live platform DB); the semantics above are the real
-    guard — this pins the call site, and the trailing "(" pins the
-    CALL, not a mention in a comment (the wall-guard lesson)."""
-    import inspect
-    from capabilities.permissions import roles
-    src = inspect.getsource(roles._resolve_role_key_permissions) \
-        if hasattr(roles, "_resolve_role_key_permissions") else ""
-    if not src:  # resolver name differs — find it by its cache
-        for name in dir(roles):
-            fn = getattr(roles, name)
-            if callable(fn) and "known_fields" in (inspect.getsource(fn)
-                    if inspect.isfunction(fn) else ""):
-                src = inspect.getsource(fn)
-                break
-    assert "normalize_stored_perm_keys(" in src
-    assert src.index("normalize_stored_perm_keys(") < src.index("filtered")
-
-
-class TestPairViewWrites:
-    """Since the matrix flip: a view tick on a unit pair writes BOTH
-    halves; manage-pairs keep halves meaningful."""
-
-    def test_pure_view_pair_writes_both_halves_equal(self):
-        assert normalize_stored_perm_keys({"can_view_events": True}) == {
-            "can_events_all": True, "can_events_vehicle": True}
-        assert normalize_stored_perm_keys({"can_view_events": False}) == {
-            "can_events_all": False, "can_events_vehicle": False}
-
-    def test_manage_pair_view_lands_on_the_narrow_half(self):
-        assert normalize_stored_perm_keys({"can_view_maintenance": True}) == {
-            "can_maintenance_vehicle": True}
-        # revoking view revokes writes too — you cannot write what you
-        # cannot open
-        assert normalize_stored_perm_keys({"can_view_maintenance": False}) == {
-            "can_maintenance_vehicle": False, "can_maintenance_all": False}
-
-    def test_manage_grant_implies_opening(self):
-        assert normalize_stored_perm_keys({"can_manage_maintenance": True}) == {
-            "can_maintenance_all": True, "can_maintenance_vehicle": True}
-        assert normalize_stored_perm_keys({"can_manage_maintenance": False}) == {
-            "can_maintenance_all": False}
-
-    def test_legacy_still_wins_a_collision(self):
-        out = normalize_stored_perm_keys(
-            {"can_view_events": True, "can_events_all": False})
-        assert out["can_events_all"] is False and out["can_events_vehicle"] is True

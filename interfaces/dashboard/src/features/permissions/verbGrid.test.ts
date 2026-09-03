@@ -37,10 +37,10 @@ describe('verb grid completeness', () => {
     const withCfg = grid.bands.flatMap((b) => b.families).filter((f) => f.configVia);
     expect(withCfg.map((f) => ('allKey' in f.parent ? f.parent.allKey : (f.parent as { key: string }).key)).sort())
       .toEqual([
-        'can_kpi',
         'can_manage_account',
         'can_manage_applications',
         'can_manage_storage',
+        'can_view_kpi',
         'can_view_scorecards',
         // Vehicle source policy (precedence + auto-pilot).  Moved off
         // can_manage_integrations when its gear moved to the Vehicles

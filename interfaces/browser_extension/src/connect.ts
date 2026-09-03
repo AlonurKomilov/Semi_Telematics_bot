@@ -46,7 +46,7 @@ export function isExtensionToken(token: unknown): token is string {
   try {
     const [, payload] = token.split('.');
     const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-    return json.aud === 'extension' && Array.isArray(json.scope) && json.scope.includes('can_location_map');
+    return json.aud === 'extension' && Array.isArray(json.scope) && json.scope.includes('can_view_location');
   } catch {
     return false;
   }

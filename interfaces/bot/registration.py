@@ -65,13 +65,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_items.append("🔧 Faults · 🚨 Critical · 🏥 Health · 📊 Efficiency · 🌡 Weather")
     if perms.can_fuel:
         report_items.append("⛽ Fuel & DEF levels")
-    # Width claim, legacy pair on purpose — the vehicles pair is
-    # view/view, so can_view_vehicles cannot say "wide only".
-    # Moves in the width pass.
-    if perms.can_vehicle_all:
-        report_items.append("🚛 Search any vehicle")
-    elif perms.can_vehicle_vehicle:
-        report_items.append("🚛 View your vehicle")
+    # Width from the width core (Team Management's three layers) —
+    # the vehicles pair is gone; "any vehicle" vs "your vehicle" is a
+    # width fact, not a flag.
+    from capabilities.permissions.scope import unit_width
+    if perms.can_view_vehicles:
+        if await unit_width(user.account_id, user.role, user, "vehicles") == "all":
+            report_items.append("🚛 Search any vehicle")
+        else:
+            report_items.append("🚛 View your vehicle")
     if report_items:
         lines.append(f"\n  {t('help.reports_label')}")
         for item in report_items:
@@ -132,7 +134,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tenant = await get_tenant_db(user.account_id)
     companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
-    kb = main_menu_kb(user.role, company_codes)
+    from capabilities.permissions.scope import unit_width
+    kb = main_menu_kb(user.role, company_codes,
+                      wide=(await unit_width(user.account_id, user.role, user, "vehicles")) == "all")
     await _show(update, context, ["\n".join(lines)], keyboard=kb)
 
 
@@ -266,7 +270,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         companies = await tenant.get_account_companies(user.account_id)
         populate_company_display(companies)
         text = format_help(company_codes, user=user, account=account)
-        kb = main_menu_kb(user.role, company_codes)
+        from capabilities.permissions.scope import unit_width
+        kb = main_menu_kb(user.role, company_codes,
+                          wide=(await unit_width(user.account_id, user.role, user, "vehicles")) == "all")
         await _show(update, context, [text], keyboard=kb)
         return
 

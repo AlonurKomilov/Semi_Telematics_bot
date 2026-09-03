@@ -131,7 +131,8 @@ async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TY
         f"  {t('alerts.disabled_msg')}\n"
         f"  {t('alerts.disabled_hint')}"
     )
-    kb = main_menu_kb(user.role, company_codes)
+    kb = main_menu_kb(user.role, company_codes,
+                      wide=(await unit_width(user.account_id, user.role, user, "vehicles")) == "all")
     await _show(update, context, [text], keyboard=kb)
 
 

@@ -153,14 +153,14 @@ export const PERM_GROUPS: PermGroup[] = [
       // SUB-FEATURES of the Vehicles family: each has its OWN home
       // (features/vehicles/<x>/ with report.py / ai_tool.py / alert.py /
       // scoring_signal.py) and gates the live tab + report + AI tool.
-      { key: 'can_health',     kind: 'subfeature', label: 'Health', indented: true, description: 'Engine gauges — battery, oil, coolant, DEF, RPM' },
-      { key: 'can_faults',     kind: 'subfeature', label: 'Faults', indented: true, description: 'Active fault codes (DTCs) + the faults report' },
-      { key: 'can_fuel',       kind: 'subfeature', label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
-      { key: 'can_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
-      { key: 'can_vehicle_docs', kind: 'subfeature', label: 'Documents', indented: true, description: "Registration, title, insurance, annual inspections — read + download" },
+      { key: 'can_view_health',     kind: 'subfeature', label: 'Health', indented: true, description: 'Engine gauges — battery, oil, coolant, DEF, RPM' },
+      { key: 'can_view_faults',     kind: 'subfeature', label: 'Faults', indented: true, description: 'Active fault codes (DTCs) + the faults report' },
+      { key: 'can_view_fuel',       kind: 'subfeature', label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
+      { key: 'can_view_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
+      { key: 'can_view_vehicle_docs', kind: 'subfeature', label: 'Documents', indented: true, description: "Registration, title, insurance, annual inspections — read + download" },
       { key: 'can_view_geofence', kind: 'feature', label: 'Geofences' },
       { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
-      { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
+      { key: 'can_view_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       // COMPENSATION, deliberately its own flag: can_kpi is shared
       // analytics (grades, viewable widely); payout amounts are money.
       { key: 'can_manage_driver_docs', kind: 'feature', writeLevel: true, label: 'Drivers', description: 'Manage — driver list + document management' },
@@ -188,9 +188,9 @@ export const PERM_GROUPS: PermGroup[] = [
       // Vendors rides can_work_orders_all (same audience, one matrix
       // row governs both); Parts is feature-owned — its list still
       // serves the WO editor's autocomplete for can_work_orders_all.
-      { key: 'can_parts', kind: 'feature', label: 'Parts', description: 'Parts catalog + per-part analytics (recurrence, price per vendor)' },
-      { key: 'can_truck_anatomy', kind: 'feature', label: 'Truck Anatomy', description: '3D learning model of the rig (System → Assembly → Part). Ships dark — no role has it, the owner included, until it\u2019s granted right here.' },
-      { key: 'can_service_tasks', kind: 'feature', writeLevel: true, label: 'Service Tasks', description: 'Manage — the shared task list maintenance and work orders both pick from (reads stay open to anyone who can create those records)' },
+      { key: 'can_manage_parts', kind: 'feature', label: 'Parts', description: 'Parts catalog + per-part analytics (recurrence, price per vendor)' },
+      { key: 'can_view_truck_anatomy', kind: 'feature', label: 'Truck Anatomy', description: '3D learning model of the rig (System → Assembly → Part). Ships dark — no role has it, the owner included, until it\u2019s granted right here.' },
+      { key: 'can_manage_service_tasks', kind: 'feature', writeLevel: true, label: 'Service Tasks', description: 'Manage — the shared task list maintenance and work orders both pick from (reads stay open to anyone who can create those records)' },
       { key: 'can_view_inspections', kind: 'feature', label: 'PTI Inspections' },
       { key: 'can_manage_inspections', kind: 'action', label: 'Manage', indented: true, description: 'Review submissions and edit the checklist' },
     ],
@@ -206,7 +206,7 @@ export const PERM_GROUPS: PermGroup[] = [
       // holder edits any load, and the per-load accountability trail —
       // actor + old→new diffs, the HISTORY block in the load dialog —
       // replaced the wall.  can_loads_manage_all no longer exists.
-      { allKey: 'can_loads_all', vehicleKey: 'can_loads_own', kind: 'feature', label: 'Loads', scoped: true, description: 'See loads — every load in the account (drivers: their own, via the Driver panel)' },
+      { allKey: 'can_view_loads', vehicleKey: 'can_loads_own', kind: 'feature', label: 'Loads', scoped: true, description: 'See loads — every load in the account (drivers: their own, via the Driver panel)' },
       { key: 'can_manage_loads', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove ANY load — every change is recorded in the load’s history (who, what, old → new)' },
     ],
   },
@@ -214,12 +214,12 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Safety',
     flags: [
       { key: 'can_view_events', kind: 'feature', label: 'Safety Events' },
-      { key: 'can_cameras', kind: 'feature', label: 'Cameras', description: 'Dashcam footage' },
+      { key: 'can_view_cameras', kind: 'feature', label: 'Cameras', description: 'Dashcam footage' },
       { key: 'can_view_parking', kind: 'feature', label: 'Parking', description: 'Unsafe-parking events' },
       // The Risk Summary report tab — a stakeholder/personnel risk deliverable.
       // It's a report TYPE (feature), surfaced inside the always-on Reports
       // hub; it lives here because it's safety-owned data.
-      { allKey: 'can_risk_report_all', vehicleKey: 'can_risk_report_own', kind: 'feature', label: 'Risk Summary', scoped: true, description: 'Stakeholder Risk Summary report (in the Reports hub)' },
+      { allKey: 'can_view_risk_reports', vehicleKey: 'can_risk_report_own', kind: 'feature', label: 'Risk Summary', scoped: true, description: 'Stakeholder Risk Summary report (in the Reports hub)' },
     ],
   },
   {
@@ -227,14 +227,14 @@ export const PERM_GROUPS: PermGroup[] = [
     flags: [
       // can_coaching_view_own (a driver viewing their OWN coaching) is driver
       // self-service — it lives in the Driver panel, not here.
-      { key: 'can_coaching_admin',    kind: 'feature', writeLevel: true, label: 'Coaching', description: 'Manage — coaching rules, assignments & review' },
+      { key: 'can_manage_coaching',    kind: 'feature', writeLevel: true, label: 'Coaching', description: 'Manage — coaching rules, assignments & review' },
     ],
   },
   {
     title: 'Recruiting',
     flags: [
       { key: 'can_manage_applications', kind: 'feature', writeLevel: true, label: 'Applications', description: 'Manage — recruiting links + the driver-application dashboard' },
-      { key: 'can_carrier_directory', kind: 'feature', label: 'Carrier Directory', description: 'Reference directory of the external carriers we recruit for (pre-qual, presentation, process notes)' },
+      { key: 'can_view_carrier_directory', kind: 'feature', label: 'Carrier Directory', description: 'Reference directory of the external carriers we recruit for (pre-qual, presentation, process notes)' },
       { key: 'can_manage_carrier_directory', kind: 'action', label: 'Manage', indented: true, description: 'Add, edit & delete carriers — without this the directory is read-only' },
     ],
   },
@@ -242,12 +242,12 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Accounting',
     flags: [
       { header: 'Costs', description: 'fuel spend + cost-per-mile components' },
-      { key: 'can_fuel_cost',     kind: 'component', label: 'Fuel Costs', indented: true },
-      { key: 'can_cost_per_mile', kind: 'component', label: 'Cost per Mile', indented: true },
+      { key: 'can_view_fuel_cost',     kind: 'component', label: 'Fuel Costs', indented: true },
+      { key: 'can_view_cost_per_mile', kind: 'component', label: 'Cost per Mile', indented: true },
       // The Cost Reports tab — executive maintenance/work-order cost rollups,
       // a report TYPE (feature) surfaced in the always-on Reports hub.  Lives
       // here because it's cost-owned data (deliberately split from Maintenance).
-      { key: 'can_cost_reports', kind: 'feature', label: 'Cost Reports', description: 'Executive cost rollups (in the Reports hub)' },
+      { key: 'can_view_cost_reports', kind: 'feature', label: 'Cost Reports', description: 'Executive cost rollups (in the Reports hub)' },
       // billing = the platform charging family; the customer-facing label is
       // "Billing" (the page shows their plan).  Not driver pay (Driver Pay).
       { key: 'can_manage_billing',   kind: 'feature', writeLevel: true, label: 'Billing', description: 'Manage — the account’s plan & payment. Not driver pay (that’s Driver Pay)' },
@@ -255,7 +255,7 @@ export const PERM_GROUPS: PermGroup[] = [
       // Cost Reports / Billing — gated by the Accounting module.
       // can_driver_pay_view_own (a driver viewing their OWN paystubs via the
       // Telegram bot) is driver self-service — it lives in the Driver panel.
-      { key: 'can_driver_pay_admin',    kind: 'feature', writeLevel: true, label: 'Driver Pay', description: 'Manage — driver pay runs, statements & bonus rules' },
+      { key: 'can_manage_driver_pay',    kind: 'feature', writeLevel: true, label: 'Driver Pay', description: 'Manage — driver pay runs, statements & bonus rules' },
     ],
   },
 ];

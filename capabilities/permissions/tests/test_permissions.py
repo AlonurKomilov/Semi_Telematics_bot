@@ -81,10 +81,10 @@ class TestRolePermissions:
             f for t in TIER_GRANTS.values() for f in t.grants
         } - base_seeded
         perms = get_permissions(Role.OWNER)
-        # The derived service surfaces (Alerts inbox, AI assistant) are not
-        # plain "all True" flags — the inbox scope is mutually exclusive, so
-        # the owner gets the account-wide inbox (can_alerts_all) and NOT the
-        # redundant own-vehicle flag.  Assert those explicitly; blanket-check
+        # The derived service surfaces (Alerts inbox, AI assistant): since
+        # the verb/scope flip both inbox flags say one thing — the inbox
+        # exists iff Vehicles is visible; WIDTH is per member — so the
+        # owner holds both.  Assert those explicitly; blanket-check
         # every other field stays True for the owner.
         for field_name in FeatureSet.__dataclass_fields__:
             if (field_name in DERIVED_SERVICE_FIELDS
@@ -95,7 +95,7 @@ class TestRolePermissions:
                 f"Owner should have {field_name}=True"
             )
         assert perms.can_alerts_all is True        # account-wide Alerts inbox
-        assert perms.can_alerts_vehicle is False   # mutually exclusive with _all
+        assert perms.can_alerts_vehicle is True   # inbox exists; width is per member now
         assert perms.can_ai_chat is True           # always-on AI service
 
     def test_dark_features_seed_nobody_but_stay_grantable(self):
@@ -164,12 +164,17 @@ class TestRolePermissions:
     # ── Driver: own-only access ───────────────────────────────────
 
     def test_driver_own_truck_only(self):
-        assert can(Role.DRIVER, "can_vehicle_vehicle")
-        assert not can(Role.DRIVER, "can_vehicle_all")
+        # The driver opens Vehicles; WIDTH (own truck) is Team
+        # Management's built-in default, not a flag any more.
+        from capabilities.permissions.fold import builtin_width
+        assert can(Role.DRIVER, "can_view_vehicles")
+        assert builtin_width("driver") == "assigned"
 
     def test_driver_own_alerts_only(self):
+        # The inbox exists for anyone who sees vehicles; both derived
+        # flags say so, and width is per member.
         assert can(Role.DRIVER, "can_alerts_vehicle")
-        assert not can(Role.DRIVER, "can_alerts_all")
+        assert can(Role.DRIVER, "can_alerts_all")
 
     def test_driver_no_fleet_reports(self):
         for feat in ("can_faults", "can_fuel"):
@@ -281,31 +286,17 @@ class TestPrivilegeEscalation:
             assert not can(Role.DRIVER, feat)
 
     def test_driver_no_fleet_wide_access(self):
-        """Driver should never have *_all permissions."""
+        """A driver holds no MANAGE verb on any unit feature, and their
+        width is 'assigned' by the built-in layer — the two facts that
+        "no fleet-wide access" now decomposes into."""
+        from capabilities.permissions.fold import builtin_width
+        from capabilities.permissions.roles import UNIT_FEATURES
         perms = get_permissions(Role.DRIVER)
-        for field_name in FeatureSet.__dataclass_fields__:
-            if field_name.endswith("_all"):
-                assert not getattr(perms, field_name), (
-                    f"Driver should not have account-wide {field_name}"
-                )
-
-
-class TestPermSsotDriftDetection:
-    """Guard against drift between the canonical FeatureSet and the
-    dashboard's Role Permissions admin UI.
-
-    Every flag in ``FeatureSet`` must be customizable from the
-    dashboard's Permissions.tsx ``PERM_GROUPS`` constant.  When a
-    new flag is added to ``permissions.py`` but the admin UI is not
-    updated, this test fails — preventing the regression that was
-    found 2026-05-19 (4 flags were defined but invisible in the UI).
-
-    A flag is considered "exposed" when its string name appears as a
-    quoted literal inside the PERM_GROUPS array of Permissions.tsx.
-    This is a substring match rather than an AST parse so the test
-    works against the .tsx source without a TS toolchain.
-    """
-
+        for _noun, (_view, manage) in UNIT_FEATURES.items():
+            if manage:
+                assert not getattr(perms, manage), manage
+        assert not perms.can_manage_vehicles
+        assert builtin_width("driver") == "assigned"
     def test_every_flag_appears_in_dashboard_perm_groups(self):
         import os
         import re
@@ -364,15 +355,13 @@ class TestPermSsotDriftDetection:
         # halves, a manage tick on the wide half.  Built from the same
         # maps the PUT normalisation uses, so the guard and the write
         # path cannot disagree about what a row edits.
-        from capabilities.permissions.roles import (
-            CANONICAL_TO_LEGACY, _PAIR_VIEW_WRITES,
-        )
+        from capabilities.permissions.roles import LEGACY_TO_CANONICAL
+        # Fields are canonical since the flip; a row may still name a
+        # field by a legacy alias (the two parked scoped rows do), so a
+        # field counts as exposed under its own name or any alias of it.
         exposed_as: dict[str, set[str]] = {n: {n} for n in flag_names}
-        for canonical, legacy in CANONICAL_TO_LEGACY.items():
-            exposed_as.setdefault(legacy, set()).add(canonical)
-        for view, (wide, narrow, _mv) in _PAIR_VIEW_WRITES.items():
-            exposed_as.setdefault(wide, set()).add(view)
-            exposed_as.setdefault(narrow, set()).add(view)
+        for legacy, canonical in LEGACY_TO_CANONICAL.items():
+            exposed_as.setdefault(canonical, set()).add(legacy)
 
         def _exposed(n: str) -> bool:
             return any(f"'{a}'" in groups_src or f'"{a}"' in groups_src

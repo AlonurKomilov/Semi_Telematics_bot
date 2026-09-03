@@ -571,7 +571,11 @@ def _narrow_to_token_scope(perms, user: dict):
     if not isinstance(scope, list):
         return perms
     import dataclasses
-    allowed = set(scope)
+    # Tokens minted before the flip carry legacy names; a scoped token
+    # in the wild must keep working, so scope names map through the
+    # alias table (a legacy pair half → its view field).
+    from capabilities.permissions.roles import LEGACY_TO_CANONICAL
+    allowed = {LEGACY_TO_CANONICAL.get(x, x) for x in scope}
     narrowed = {
         f.name: False for f in dataclasses.fields(perms)
         if f.name not in allowed and isinstance(getattr(perms, f.name), bool)
@@ -628,6 +632,40 @@ async def require_system_owner(user: dict = Depends(get_current_user)) -> dict:
             detail="Restricted to platform operators (SYSTEM_OWNER_IDS).",
         )
     return user
+
+
+def require_wide(feature: str, view_flag: str | None = None):
+    """Dependency for an ACCOUNT-WIDE read: the caller must open the
+    feature AND have unit width 'all' (Team Management's answer).
+
+    Before the flip these routes gated on the dead wide-vehicle flag;
+    its alias now means "may open", so the width half of the old
+    meaning has to be asked of the width core.
+    403, like the gate it replaces.
+    """
+    from capabilities.permissions.roles import UNIT_FEATURES
+    flag = view_flag or UNIT_FEATURES[feature][0]
+
+    async def _check(user: dict = Depends(require_permission(flag))):
+        if await member_unit_scope(user, feature) != "all":
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return _check
+
+
+def require_any_or_wide(*features: str, wide_feature: str = "vehicles"):
+    """Cross-feature union gates of the shape "own feature OR wide
+    vehicles": any of ``features`` admits outright; otherwise the
+    caller must open ``wide_feature`` at width 'all'."""
+    from capabilities.permissions.roles import UNIT_FEATURES
+    wide_flag = UNIT_FEATURES[wide_feature][0]
+
+    async def _check(user: dict = Depends(require_permission_any(*features, wide_flag))):
+        if user.get("_matched_perm") == wide_flag \
+                and await member_unit_scope(user, wide_feature) != "all":
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return _check
 
 
 def require_permission_any(*features: str):

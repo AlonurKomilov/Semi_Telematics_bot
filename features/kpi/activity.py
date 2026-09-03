@@ -14,5 +14,5 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "kpi_run", "KPI run", "kpi",
-    view_permissions=("can_kpi",),
+    view_permissions=("can_view_kpi",),
 ))

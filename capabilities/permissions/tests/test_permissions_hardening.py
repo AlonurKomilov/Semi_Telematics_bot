@@ -212,7 +212,7 @@ async def test_stale_cache_entry_is_re_resolved(app_client):
     await s["client"].put(
         "/api/admin/permissions/roles",
         headers=_hdr(s["tokens"]["owner_a"]),
-        json={"role": "fleet", "permissions": {"can_faults": False}},
+        json={"role": "fleet", "permissions": {"can_view_faults": False}},
     )
     # The PUT also invalidates the cache; for a strict TTL-only test
     # we'd want to skip that path.  But the combined behavior is what
@@ -238,7 +238,7 @@ async def test_put_writes_trail_event_with_diff(app_client):
     await s["client"].put(
         "/api/admin/permissions/roles",
         headers=_hdr(s["tokens"]["owner_a"]),
-        json={"role": "fleet", "permissions": {"can_faults": False}},
+        json={"role": "fleet", "permissions": {"can_view_faults": False}},
     )
 
     events = await db.list_activity_events(
@@ -248,8 +248,8 @@ async def test_put_writes_trail_event_with_diff(app_client):
     ev = events[0]
     assert ev["entity_id"] == "fleet"
     assert ev["context"]["scope"] == "account-wide"
-    # can_faults flips True → False (Fleet default is True).
-    assert ev["changes"]["can_faults"] == {"from": True, "to": False}
+    # can_view_faults flips True → False (Fleet default is True).
+    assert ev["changes"]["can_view_faults"] == {"from": True, "to": False}
     assert ev["actor_user_id"] is not None
 
 
@@ -318,7 +318,7 @@ async def test_account_a_override_does_not_affect_account_b(app_client):
     await s["client"].put(
         "/api/admin/permissions/roles",
         headers=_hdr(s["tokens"]["owner_a"]),
-        json={"role": "fleet", "permissions": {"can_faults": False}},
+        json={"role": "fleet", "permissions": {"can_view_faults": False}},
     )
 
     perms_a = await get_account_permissions(Role.FLEET, s["acct_a"].id)

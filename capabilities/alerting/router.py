@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from interfaces.api.deps import require_permission, require_permission_any, member_unit_scope, get_tenant_db, get_user_vehicle_nums, paginate, active_view, get_user_company_codes, filter_by_company_map, vehicle_company_map as _deps_vehicle_company_map
+from interfaces.api.deps import require_wide  # noqa: E402
 from capabilities.alerting.service import filter_alerts_by_access
 
 logger = logging.getLogger("api.alerts")
@@ -1446,7 +1447,8 @@ async def acknowledge_vehicle_alerts(
 # Extracted from the governance router — these endpoints belong to THIS
 # domain (docs/FEATURES.md feature→component tree).  URLs unchanged.
 from typing import Optional
-from interfaces.api.deps import (  # noqa: F811 — section-local completeness
+from interfaces.api.deps import (
+    require_wide,  # noqa: F811 — section-local completeness
     get_current_db_user, get_current_user, get_platform_db,
     get_tenant_db, require_permission,
 )
@@ -1621,7 +1623,7 @@ async def update_my_alerts(
 
 @router.get("/escalations")
 async def escalation_summary(
-    user: dict = Depends(require_permission("can_alerts_all")),
+    user: dict = Depends(require_wide("vehicles")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Owner/admin oversight: how many active alerts are past their

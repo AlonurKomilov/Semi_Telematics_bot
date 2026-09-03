@@ -43,7 +43,7 @@ router = APIRouter(prefix="/parts", tags=["parts"])
 @router.get("")
 async def list_parts(
     user: dict = Depends(
-        require_permission_any("can_parts", "can_manage_work_orders")
+        require_permission_any("can_manage_parts", "can_manage_work_orders")
     ),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -75,7 +75,7 @@ class PartCreate(BaseModel):
 @router.post("")
 async def create_part(
     body: PartCreate,
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Add a part before its first invoice.  Resolve semantics (same
@@ -104,7 +104,7 @@ class PriceContextQuery(BaseModel):
 async def price_context(
     body: PriceContextQuery,
     user: dict = Depends(
-        require_permission_any("can_parts", "can_manage_work_orders")
+        require_permission_any("can_manage_parts", "can_manage_work_orders")
     ),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -135,7 +135,7 @@ async def price_context(
 @router.get("/assemblies")
 async def list_assemblies(
     user: dict = Depends(
-        require_permission_any("can_parts", "can_manage_work_orders")
+        require_permission_any("can_manage_parts", "can_manage_work_orders")
     ),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -152,7 +152,7 @@ async def list_assemblies(
 
 @router.post("/apply-assembly-suggestions")
 async def apply_assembly_suggestions(
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Bulk-confirm the keyword suggestions for parts with NO assembly.
@@ -186,7 +186,7 @@ async def apply_assembly_suggestions(
 @router.get("/public/browse")
 async def browse_public(
     q: str = "",
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """The Catalog tab: ACTIVE canonical part identities (operator-
@@ -210,7 +210,7 @@ async def browse_public(
 @router.get("/{part_id}")
 async def get_part(
     part_id: int,
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """The drill-down: part record + recurrence per vehicle (with the
@@ -270,7 +270,7 @@ async def get_part(
 async def link_public(
     part_id: int,
     entry_id: int,
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """The dedup dialog's PUBLIC branch: this part IS that canonical
@@ -290,7 +290,7 @@ async def link_public(
 @router.delete("/{part_id}/link-public")
 async def unlink_public(
     part_id: int,
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Unlink + SUPPRESS: the adopt fan-out will never silently
@@ -318,7 +318,7 @@ class PartUpdate(BaseModel):
 async def update_part(
     part_id: int,
     body: PartUpdate,
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Edit name/part-number/notes.  Line-row ``part_name`` snapshots
@@ -348,7 +348,7 @@ async def update_part(
 async def merge_parts(
     loser_id: int,
     winner_id: int,
-    user: dict = Depends(require_permission("can_parts")),
+    user: dict = Depends(require_permission("can_manage_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Fold a duplicate catalog part into the canonical one (same

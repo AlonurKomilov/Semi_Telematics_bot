@@ -132,11 +132,11 @@ const ROLE_TIERS: Record<string, RoleTierMirror> = {
   admin:      { senior: 'Full admin', base: 'Standard admin',
                 grants: ['can_manage_integrations', 'can_manage_storage', 'can_manage_permissions',
                          'can_manage_account', 'can_manage_work_hours'] },
-  fleet:      { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_work_hours', 'can_risk_report_all', 'can_manage_config_role'] },
+  fleet:      { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_work_hours', 'can_view_risk_reports', 'can_manage_config_role'] },
   safety:     { senior: 'Manager', base: 'Employee', grants: ['can_manage_config_all', 'can_invite', 'can_manage_config_role'] },
   dispatcher: { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_hours', 'can_manage_poi_layers', 'can_invite', 'can_manage_config_role'] },
   hr:         { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_hours', 'can_manage_applications', 'can_manage_config_role'] },
-  accounting: { senior: 'Manager', base: 'Employee', grants: ['can_work_orders_all', 'can_maintenance_all', 'can_manage_config_role'] },
+  accounting: { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_orders', 'can_manage_maintenance', 'can_manage_config_role'] },
 };
 const roleSupportsManager = (role: string) => role in ROLE_TIERS;
 

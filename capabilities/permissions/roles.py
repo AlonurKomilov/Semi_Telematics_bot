@@ -87,10 +87,10 @@ class FeatureSet:
     own-vehicle flag (guard-tested for completeness).
     """
     # Fleet reports
-    can_faults: bool = False         # /faults  PDF
-    can_fuel: bool = False           # /fuel
-    can_efficiency: bool = False     # /efficiency
-    can_health: bool = False         # /health
+    can_view_faults: bool = False         # /faults  PDF
+    can_view_fuel: bool = False           # /fuel
+    can_view_efficiency: bool = False     # /efficiency
+    can_view_health: bool = False         # /health
     # Vehicle DOCUMENTS — registration, title, insurance, annual
     # inspection certificates, per truck.  Its own pair rather than
     # riding ``can_manage_vehicles``, which is the grant to RENAME and
@@ -98,10 +98,9 @@ class FeatureSet:
     # retiring a tractor are different risks, and a compliance officer
     # needs the first without the second.  Mirrors the driver-documents
     # pair (``can_manage_driver_docs`` / ``can_driver_docs_own``).
-    can_vehicle_docs: bool = False        # read + download a truck's papers
+    can_view_vehicle_docs: bool = False        # read + download a truck's papers
     can_manage_vehicle_docs: bool = False # upload / delete them
-    can_vehicle_all: bool = False      # /vehicle <any>
-    can_vehicle_vehicle: bool = False      # /vehicle <own> (driver)
+    can_view_vehicles: bool = False      # /vehicle <any>
 
     # Alerts inbox — DERIVED, never stored/toggled.  Every role HAS the inbox
     # (it's a system service); derive_service_perms() only sets the SCOPE from
@@ -111,10 +110,9 @@ class FeatureSet:
     can_alerts_vehicle: bool = False     # own-vehicle Alerts inbox (derived)
     # Parking — own feature (NOT part of Alerts).  Defaults mirror the old
     # alerts/vehicle gate: everyone sees all, drivers see their assigned vehicle.
-    can_parking_all: bool = True     # unsafe-parking events (all trucks)
-    can_parking_vehicle: bool = False    # unsafe-parking events (assigned vehicle)
+    can_view_parking: bool = True     # unsafe-parking events (all trucks)
     # Cameras — own feature (NOT part of Faults).  Defaults mirror can_faults.
-    can_cameras: bool = False        # dashcam footage viewer
+    can_view_cameras: bool = False        # dashcam footage viewer
     # AI assistant — DERIVED, never stored/toggled.  derive_service_perms()
     # forces this True (always-on service); per-tool gating lives in
     # TOOL_PERMISSIONS.  The default below is a placeholder.
@@ -127,7 +125,7 @@ class FeatureSet:
     can_manage_vehicles: bool = False     # add/edit/remove vehicles in the registry
     # Loads (the load/shipment feature) — view-all vs own-scope vs manage,
     # the same split work orders / driver pay use.
-    can_loads_all: bool = False       # view every load
+    can_view_loads: bool = False       # view every load
     can_loads_own: bool = False       # view own loads (driver scope)
     can_manage_loads: bool = False    # add/edit/remove ANY load.  The old
                                       # dispatcher own-scope write wall
@@ -140,7 +138,7 @@ class FeatureSet:
     # KPI — the account-wide performance analytics surface (dispatcher
     # grades first; fleet/safety/driver sections later).  One shared page,
     # delegatable to any role via the matrix.
-    can_kpi: bool = False
+    can_view_kpi: bool = False
     can_manage_account: bool = False # /account settings (general config)
     # Settings components — granular delegation flags so account
     # administration can be split across roles (each Settings component
@@ -151,37 +149,33 @@ class FeatureSet:
     can_manage_work_hours: bool = False    # working-hours schedules
 
     # ── New features ──────────────────────────────────────────────
-    can_geofence_all: bool = False      # geofence alerts (all trucks)
-    can_geofence_vehicle: bool = False      # geofence alerts (assigned vehicle)
+    can_manage_geofence: bool = False      # geofence alerts (all trucks)
+    can_view_geofence: bool = False   # opens the feature; width is Team Management's
     can_digest: bool = True             # scheduled-report subscription (DERIVED — always on; see derive_service_perms)
-    can_maintenance_all: bool = False   # maintenance scheduler (all trucks)
-    can_maintenance_vehicle: bool = False   # maintenance scheduler (assigned vehicle)
-    can_work_orders_all: bool = False   # shop-invoice work orders (all trucks)
-    can_work_orders_vehicle: bool = False   # shop-invoice work orders (assigned vehicle)
-    can_parts: bool = False             # parts catalog + per-part analytics (feature-owned gate; the WO editor's autocomplete read is shared — see features/parts)
-    can_service_tasks: bool = False      # service-task master data — the shared Maintenance+Work Orders vocabulary (feature-owned gate; READS stay open to task/WO creators so pickers never break)
-    can_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
-    can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
-    can_scorecard_vehicle: bool = False     # scorecards for the assigned vehicle(s) only
+    can_manage_maintenance: bool = False   # maintenance scheduler (all trucks)
+    can_view_maintenance: bool = False   # opens the feature; width is Team Management's
+    can_manage_work_orders: bool = False   # shop-invoice work orders (all trucks)
+    can_view_work_orders: bool = False   # opens the feature; width is Team Management's
+    can_manage_parts: bool = False             # parts catalog + per-part analytics (feature-owned gate; the WO editor's autocomplete read is shared — see features/parts)
+    can_manage_service_tasks: bool = False      # service-task master data — the shared Maintenance+Work Orders vocabulary (feature-owned gate; READS stay open to task/WO creators so pickers never break)
+    can_view_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
+    can_view_scorecards: bool = False     # scorecards for all subjects (driver or vehicle)
     can_manage_role_bot: bool = False   # Settings → Telegram Bot reachability for role MANAGERS (their own row: group, Sub bot, topics).  Granted ONLY via the manager tier — never a base-role seed; the API re-checks is_manager+role per persona regardless.
     can_manage_config_role: bool = False  # Config family, ROLE scope: feature config for their OWN role (team-default page layouts today).  Seeded on at manager tier, delegatable to ANY tier via the matrix.  The own-role wall is code: only can_manage_account crosses roles.  NOTE: deliberately looser than can_manage_role_bot, which stays hard-locked to the manager tier.  SSOT: capabilities/config/docs/ARCHITECTURE.md.
     can_manage_config_all: bool = False  # Config family, ACCOUNT scope: a feature's SHARED settings — scorecard rules + pillar caps, KPI thresholds, every future one.  One truth per account (data-meaning config never varies by role).  Absorbed can_manage_scorecard_rules 2026-07-29 (stored grants carried over by migration).  SSOT: capabilities/config/docs/ARCHITECTURE.md.
-    can_truck_anatomy: bool = False     # Truck Anatomy — the 3D learning model (education). DARK FEATURE (see DARK_FEATURE_FIELDS): seeded to NOBODY, the owner included, until the owner grants it in the Permissions matrix.
-    can_location_map: bool = False      # live location map (all trucks)
-    can_location_vehicle: bool = False      # live location map (assigned vehicle)
-    can_fuel_cost: bool = False         # fuel cost tracker
-    can_route_all: bool = False         # route replay (all trucks)
-    can_route_vehicle: bool = False         # route replay (assigned vehicle)
-    can_cost_per_mile: bool = False     # cost-per-mile dashboard
-    can_events_all: bool = False        # safety events (all trucks)
-    can_events_vehicle: bool = False        # safety events (assigned vehicle)
+    can_view_truck_anatomy: bool = False     # Truck Anatomy — the 3D learning model (education). DARK FEATURE (see DARK_FEATURE_FIELDS): seeded to NOBODY, the owner included, until the owner grants it in the Permissions matrix.
+    can_view_location: bool = False      # live location map (all trucks)
+    can_view_fuel_cost: bool = False         # fuel cost tracker
+    can_view_routes: bool = False         # route replay (all trucks)
+    can_view_cost_per_mile: bool = False     # cost-per-mile dashboard
+    can_view_events: bool = False        # safety events (all trucks)
     can_manage_billing: bool = False    # the BILLING page (our charge to this account) — not Driver Pay
     can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
-    can_risk_report_all: bool = False   # generate Stakeholder Risk Summary for any subject
+    can_view_risk_reports: bool = False   # generate Stakeholder Risk Summary for any subject
     can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
-    can_driver_pay_admin: bool = False     # configure rules / trigger runs / view all paystubs
+    can_manage_driver_pay: bool = False     # configure rules / trigger runs / view all paystubs
     can_driver_pay_view_own: bool = False  # view own paystub history (driver self-service)
-    can_coaching_admin: bool = False    # manage coaching rules + assign manually + view all
+    can_manage_coaching: bool = False    # manage coaching rules + assign manually + view all
     can_coaching_view_own: bool = False # see + acknowledge own coaching assignments
     # Driver Module — profile + document management.
     # Admin permission grants full CRUD on any driver in the account
@@ -200,8 +194,8 @@ class FeatureSet:
     # walkaround.  ``can_inspections_all`` lets fleet/safety review
     # submissions across the whole account; ``can_inspections_vehicle``
     # lets a driver complete + submit their own assigned vehicle.
-    can_inspections_all: bool = False
-    can_inspections_vehicle: bool = False
+    can_manage_inspections: bool = False
+    can_view_inspections: bool = False   # opens the feature; width is Team Management's
     # Recruiting — driver-application intake.  ``can_manage_applications``
     # gates the Applications dashboard + recruiting-link management;
     # The public applicant form needs neither — it's unauthed.
@@ -219,7 +213,7 @@ class FeatureSet:
     # sheet, process notes).  ``can_carrier_directory`` reads it (recruiter +
     # manager); ``can_manage_carrier_directory`` is the edit right (manager
     # only).  Info-only — not wired to the apply flow or any other feature.
-    can_carrier_directory: bool = False
+    can_view_carrier_directory: bool = False
     can_manage_carrier_directory: bool = False
 
 
@@ -238,19 +232,9 @@ class FeatureSet:
 # (naming predates the ``*_all`` convention); ``can_alerts_vehicle``
 # is DERIVED from the vehicle grant by ``derive_service_perms`` —
 # never seeded directly.
-OWN_VEHICLE_SCOPE_FLAGS: tuple[str, ...] = (
-    "can_vehicle_vehicle",       # mini-app Vehicles tab + AI assistant ride this
-    "can_alerts_vehicle",        # own-vehicle Alerts inbox (derived)
-    "can_events_vehicle",        # safety events, own truck
-    "can_geofence_vehicle",      # geofence alerts, own truck
-    "can_parking_vehicle",       # parking events + bot parking screens, own truck
-    "can_maintenance_vehicle",   # maintenance schedule, own truck
-    "can_work_orders_vehicle",   # work orders, own truck
-    "can_inspections_vehicle",   # PTI / inspections, own truck
-    "can_location_vehicle",      # live location, own truck (pairs w/ can_location_map)
-    "can_route_vehicle",         # route replay, own truck
-    "can_scorecard_vehicle",     # scorecard, own subject
-)
+# OWN_VEHICLE_SCOPE_FLAGS is gone: the *_vehicle flags it registered
+# died in the verb/scope migration.  Width — all units or assigned
+# trucks — is Team Management's (User.resolved_vehicle_scope).
 
 
 # Dark features (owner decision 2026-07-30): shipped seeded to NOBODY —
@@ -260,134 +244,208 @@ OWN_VEHICLE_SCOPE_FLAGS: tuple[str, ...] = (
 # owner self-grants per account the day it's ready.  The owner
 # blanket-invariant test exempts exactly this set; keep it tiny and
 # deliberate.
-DARK_FEATURE_FIELDS: frozenset[str] = frozenset({"can_truck_anatomy"})
+DARK_FEATURE_FIELDS: frozenset[str] = frozenset({"can_view_truck_anatomy"})
 
 
-# ─── The canonical verb grammar (the alias bridge) ───────────────
+# ─── Legacy names: aliases over the canonical fields ─────────────
 #
-# The verb/scope contract (taxonomy.py) gives every flag a canonical
-# post-migration name.  During the bridge the STORED fields keep their
-# legacy names — production serves this tree and the matrix, seeds and
-# stored JSON all speak them — and every canonical name is installed
-# as a PROPERTY over the legacy fields, so enforcement sites can move
-# to the new grammar one feature at a time while nothing old breaks.
-# The physical field flip happens in the cleanup stage, when no reader
-# of a legacy name is left.  Recipe: docs/architecture/PERSONA.md
-# §wire-key rename (deprecated same-object alias + alias==primary).
+# The verb/scope migration's flip landed: the canonical verb grammar
+# (can_view_* / can_manage_*) is PHYSICAL — fields, seeds, wire — and
+# every legacy name is a deprecated alias property over its target, so
+# a straggling reader keeps working while the legacy-pair ratchet
+# drives it to zero.  Stored role_permissions rows written before the
+# flip still carry legacy keys; ``normalize_stored_perm_keys`` maps
+# them on read, and the one-time sweep script rewrites them.  The
+# alias layer is deleted when the ratchet baseline reaches zero.
 #
-# A *_vehicle/_all pair's view verb is deliberately an OR: "may open
-# the feature at all".  WIDTH is no longer this layer's business — it
-# comes from Team Management (User.resolved_vehicle_scope).
+# GENERATED DATA below (from taxonomy.py) — never hand-edit the maps;
+# a blanket rename over this file once rewrote a map key into its own
+# value and installed a property over a live field.
 
-from capabilities.permissions.taxonomy import TAXONOMY, Fate as _Fate
+from capabilities.permissions.taxonomy import TAXONOMY, Fate as _Fate  # noqa: F401
 
+#: legacy flag → canonical field (generated from the contract)
+LEGACY_TO_CANONICAL: dict[str, str] = {
+    "can_cameras": "can_view_cameras",
+    "can_carrier_directory": "can_view_carrier_directory",
+    "can_coaching_admin": "can_manage_coaching",
+    "can_cost_per_mile": "can_view_cost_per_mile",
+    "can_cost_reports": "can_view_cost_reports",
+    "can_driver_pay_admin": "can_manage_driver_pay",
+    "can_efficiency": "can_view_efficiency",
+    "can_events_all": "can_view_events",
+    "can_events_vehicle": "can_view_events",
+    "can_faults": "can_view_faults",
+    "can_fuel": "can_view_fuel",
+    "can_fuel_cost": "can_view_fuel_cost",
+    "can_geofence_all": "can_manage_geofence",
+    "can_geofence_vehicle": "can_view_geofence",
+    "can_health": "can_view_health",
+    "can_inspections_all": "can_manage_inspections",
+    "can_inspections_vehicle": "can_view_inspections",
+    "can_kpi": "can_view_kpi",
+    "can_loads_all": "can_view_loads",
+    "can_location_map": "can_view_location",
+    "can_location_vehicle": "can_view_location",
+    "can_maintenance_all": "can_manage_maintenance",
+    "can_maintenance_vehicle": "can_view_maintenance",
+    "can_parking_all": "can_view_parking",
+    "can_parking_vehicle": "can_view_parking",
+    "can_parts": "can_manage_parts",
+    "can_risk_report_all": "can_view_risk_reports",
+    "can_route_all": "can_view_routes",
+    "can_route_vehicle": "can_view_routes",
+    "can_scorecard_all": "can_view_scorecards",
+    "can_scorecard_vehicle": "can_view_scorecards",
+    "can_service_tasks": "can_manage_service_tasks",
+    "can_truck_anatomy": "can_view_truck_anatomy",
+    "can_vehicle_all": "can_view_vehicles",
+    "can_vehicle_docs": "can_view_vehicle_docs",
+    "can_vehicle_vehicle": "can_view_vehicles",
+    "can_work_orders_all": "can_manage_work_orders",
+    "can_work_orders_vehicle": "can_view_work_orders"
+}
 
-def _canonical_maps() -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
-    """(1:1 canonical→legacy renames, split target→its source flags)."""
-    split_sources: dict[str, list[str]] = {}
-    verb_by_target = {
-        v.target: flag for flag, v in TAXONOMY.items()
-        if v.fate in (_Fate.VERB_VIEW, _Fate.VERB_MANAGE)
-    }
-    for flag, v in TAXONOMY.items():
-        if v.fate is _Fate.SCOPE_SPLIT:
-            noun = v.target.removeprefix("can_view_")
-            wide = (verb_by_target.get(f"can_view_{noun}")
-                    or verb_by_target.get(f"can_manage_{noun}"))
-            split_sources.setdefault(v.target, []).append(flag)
-            if wide and wide not in split_sources[v.target]:
-                split_sources[v.target].insert(0, wide)
-    renames = {
-        v.target: flag for flag, v in TAXONOMY.items()
-        if v.fate in (_Fate.VERB_VIEW, _Fate.VERB_MANAGE)
-        and v.target != flag and v.target not in split_sources
-    }
-    return renames, {t: tuple(fl) for t, fl in split_sources.items()}
-
-
-CANONICAL_TO_LEGACY, _SPLIT_SOURCES = _canonical_maps()
-
-
-def _install_canonical_grammar() -> None:
-    for target, legacy in CANONICAL_TO_LEGACY.items():
-        setattr(FeatureSet, target,
-                property(lambda self, _l=legacy: getattr(self, _l)))
-    for target, sources in _SPLIT_SOURCES.items():
-        setattr(FeatureSet, target,
-                property(lambda self, _src=sources: any(
-                    getattr(self, f) for f in _src)))
-
-
-_install_canonical_grammar()
-
-
-# noun → (wide legacy flag, narrow legacy flag) for every paired unit
-# feature, from the contract.  The enforcement bridge's width helper
-# (interfaces/api/deps.member_unit_scope) rides this; it dies with the
-# pairs in the cleanup stage.
+#: the ten unit pairs, LEGACY names — kept for the stored-row sweep
+#: (which reads pre-flip JSON) and as the registry of unit features.
 PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
-    target.removeprefix("can_view_"): (sources[0], sources[1])
-    for target, sources in _SPLIT_SOURCES.items()
-    if len(sources) == 2
+    "events": (
+        "can_events_all",
+        "can_events_vehicle"
+    ),
+    "geofence": (
+        "can_geofence_all",
+        "can_geofence_vehicle"
+    ),
+    "inspections": (
+        "can_inspections_all",
+        "can_inspections_vehicle"
+    ),
+    "location": (
+        "can_location_map",
+        "can_location_vehicle"
+    ),
+    "maintenance": (
+        "can_maintenance_all",
+        "can_maintenance_vehicle"
+    ),
+    "parking": (
+        "can_parking_all",
+        "can_parking_vehicle"
+    ),
+    "routes": (
+        "can_route_all",
+        "can_route_vehicle"
+    ),
+    "scorecards": (
+        "can_scorecard_all",
+        "can_scorecard_vehicle"
+    ),
+    "vehicles": (
+        "can_vehicle_all",
+        "can_vehicle_vehicle"
+    ),
+    "work_orders": (
+        "can_work_orders_all",
+        "can_work_orders_vehicle"
+    )
+}
+
+#: noun → (view field, manage field or None) — the canonical shape
+UNIT_FEATURES: dict[str, tuple[str, str | None]] = {
+    "events": (
+        "can_view_events",
+        None
+    ),
+    "geofence": (
+        "can_view_geofence",
+        "can_manage_geofence"
+    ),
+    "inspections": (
+        "can_view_inspections",
+        "can_manage_inspections"
+    ),
+    "location": (
+        "can_view_location",
+        None
+    ),
+    "maintenance": (
+        "can_view_maintenance",
+        "can_manage_maintenance"
+    ),
+    "parking": (
+        "can_view_parking",
+        None
+    ),
+    "routes": (
+        "can_view_routes",
+        None
+    ),
+    "scorecards": (
+        "can_view_scorecards",
+        None
+    ),
+    "vehicles": (
+        "can_view_vehicles",
+        None
+    ),
+    "work_orders": (
+        "can_view_work_orders",
+        "can_manage_work_orders"
+    )
+}
+
+#: 1:1 renames, canonical → legacy (the drift guard and the wire use it)
+CANONICAL_TO_LEGACY: dict[str, str] = {
+    new: old for old, new in LEGACY_TO_CANONICAL.items()
+    if not any(old in pair for pair in PAIRED_UNIT_FEATURES.values())
 }
 
 
-#: pair view verb → (wide field, narrow field, manage verb or None)
-_PAIR_VIEW_WRITES: dict[str, tuple[str, str, str | None]] = {
-    target: (sources[0], sources[1],
-             next((t for t, src in CANONICAL_TO_LEGACY.items()
-                   if src == sources[0] and t.startswith("can_manage_")), None))
-    for target, sources in _SPLIT_SOURCES.items() if len(sources) == 2
-}
+def _install_legacy_aliases() -> None:
+    for legacy, canonical in LEGACY_TO_CANONICAL.items():
+        assert legacy not in FeatureSet.__dataclass_fields__, legacy
+        setattr(FeatureSet, legacy,
+                property(lambda self, _c=canonical: getattr(self, _c)))
+
+
+_install_legacy_aliases()
 
 
 def normalize_stored_perm_keys(perm_dict: dict) -> dict:
-    """Map canonical keys in a stored/inbound grant dict onto their
-    legacy fields.  Legacy keys WIN on collision — a stale canonical
-    duplicate must not shadow a fresher legacy write.
+    """Map a stored/inbound grant dict onto canonical fields.
 
-    Pair VIEW verbs are writable since the matrix flip (stage E):
-    WIDTH left the permission layer for Team Management, so "may open
-    the feature" is all a view tick means, and it lands on BOTH halves
-    of the legacy pair — equal, so the bridge's grant claim never
-    narrows on its own.  For a pair whose wide half is a MANAGE verb
-    (maintenance, work orders, inspections, geofence) the halves keep
-    their meanings: view → the narrow half (opening); manage → the
-    wide half (writing, which implies opening).  Revoking view revokes
-    both; granting manage grants both.
+    Legacy keys map through LEGACY_TO_CANONICAL; a legacy unit PAIR
+    folds as it always meant: view = wide OR narrow, and on a
+    manage-pair the wide half is the manage verb (which implies
+    opening).  When a row carries BOTH a legacy key and its canonical
+    target (a row written by hand, or by a script that predates the
+    flip and one that follows it), nothing says which is newer — so
+    a grant from either side grants: the values combine by OR.  That
+    is the bridge-safe reading, and it is temporary: the one-time
+    sweep rewrites stored rows to canonical keys, after which no
+    collision can exist.
     """
-    out: dict = {}
+    out: dict = {k: v for k, v in perm_dict.items() if k not in LEGACY_TO_CANONICAL}
     for k, v in perm_dict.items():
-        if k in _PAIR_VIEW_WRITES:
-            wide, narrow, manage_verb = _PAIR_VIEW_WRITES[k]
-            if manage_verb is None:
-                out[wide] = out[narrow] = v
-            else:
-                out[narrow] = v
-                if not v:
-                    out[wide] = False
-        elif k in CANONICAL_TO_LEGACY:
-            out[CANONICAL_TO_LEGACY[k]] = v
-            if v and k.startswith("can_manage_"):
-                for _t, (w, n, mv) in _PAIR_VIEW_WRITES.items():
-                    if mv == k:
-                        out[n] = True          # manage implies opening
-    out.update({k: v for k, v in perm_dict.items()
-                if k not in CANONICAL_TO_LEGACY and k not in _PAIR_VIEW_WRITES})
+        if k in LEGACY_TO_CANONICAL:
+            target = LEGACY_TO_CANONICAL[k]
+            out[target] = bool(out.get(target, False) or v)
+    for noun, (wide, _narrow) in PAIRED_UNIT_FEATURES.items():
+        view, manage = UNIT_FEATURES[noun]
+        if manage and perm_dict.get(wide):
+            out[view] = True
     return out
 
 
 def wire_perms(fs: FeatureSet) -> dict:
-    """A permission set for the wire: every legacy field PLUS every
-    canonical name (renames and pair view verbs alike), equal by
-    construction — both grammars live until the deprecation window
-    closes, so the dashboard can switch independently of a deploy."""
+    """Every canonical field PLUS every legacy alias, equal by
+    construction — the deprecation window for clients that still
+    read the old names."""
     from dataclasses import asdict as _asdict
     d = _asdict(fs)
-    for target in CANONICAL_TO_LEGACY:
-        d[target] = getattr(fs, target)
-    for target in _SPLIT_SOURCES:
-        d[target] = getattr(fs, target)
+    for legacy in LEGACY_TO_CANONICAL:
+        d[legacy] = getattr(fs, legacy)
     return d
 
 
@@ -395,158 +453,158 @@ def wire_perms(fs: FeatureSet) -> dict:
 
 ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.OWNER: FeatureSet(
-        can_vehicle_docs=True, can_manage_vehicle_docs=True,
-        can_faults=True, can_fuel=True, can_cameras=True,
-        can_efficiency=True, can_health=True,
-        can_vehicle_all=True, can_vehicle_vehicle=True,
+        can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
+        can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
+        can_view_efficiency=True, can_view_health=True,
+        can_view_vehicles=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
-        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
-        can_kpi=True,
+        can_view_loads=True, can_loads_own=True, can_manage_loads=True,
+        can_view_kpi=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
         can_manage_config_all=True,   # account-scope feature settings (owners delegate via the matrix)
-        can_geofence_all=True, can_geofence_vehicle=True,
-        can_parking_all=True, can_parking_vehicle=True,
-        can_maintenance_all=True, can_maintenance_vehicle=True,
-        can_work_orders_all=True, can_work_orders_vehicle=True,
-        can_parts=True,
-        can_service_tasks=True,
-        can_cost_reports=True,
-        can_scorecard_all=True, can_scorecard_vehicle=True,
-        can_location_map=True, can_location_vehicle=True,
-        can_fuel_cost=True,
-        can_route_all=True, can_route_vehicle=True,
-        can_cost_per_mile=True,
-        can_events_all=True, can_events_vehicle=True,
+        can_manage_geofence=True, can_view_geofence=True,
+        can_view_parking=True,
+        can_manage_maintenance=True, can_view_maintenance=True,
+        can_manage_work_orders=True, can_view_work_orders=True,
+        can_manage_parts=True,
+        can_manage_service_tasks=True,
+        can_view_cost_reports=True,
+        can_view_scorecards=True,
+        can_view_location=True,
+        can_view_fuel_cost=True,
+        can_view_routes=True,
+        can_view_cost_per_mile=True,
+        can_view_events=True,
         can_manage_billing=True,
         can_manage_poi_layers=True,
-        can_risk_report_all=True, can_risk_report_own=True,
-        can_driver_pay_admin=True, can_driver_pay_view_own=True,
-        can_coaching_admin=True, can_coaching_view_own=True,
+        can_view_risk_reports=True, can_risk_report_own=True,
+        can_manage_driver_pay=True, can_driver_pay_view_own=True,
+        can_manage_coaching=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
-        can_inspections_all=True, can_inspections_vehicle=True,
+        can_manage_inspections=True, can_view_inspections=True,
         can_manage_applications=True, can_onboard_drivers=True,
-        can_carrier_directory=True, can_manage_carrier_directory=True,
+        can_view_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.ADMIN: FeatureSet(
-        can_vehicle_docs=True, can_manage_vehicle_docs=True,
-        can_faults=True, can_fuel=True, can_cameras=True,
-        can_efficiency=True, can_health=True,
-        can_vehicle_all=True, can_vehicle_vehicle=True,
+        can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
+        can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
+        can_view_efficiency=True, can_view_health=True,
+        can_view_vehicles=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
-        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
-        can_kpi=True,
+        can_view_loads=True, can_loads_own=True, can_manage_loads=True,
+        can_view_kpi=True,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
-        can_geofence_all=True, can_geofence_vehicle=True,
-        can_maintenance_all=True, can_maintenance_vehicle=True,
-        can_work_orders_all=True, can_work_orders_vehicle=True,
-        can_parts=True,
-        can_service_tasks=True,
-        can_cost_reports=True,
-        can_scorecard_all=True, can_scorecard_vehicle=True,
-        can_location_map=True, can_location_vehicle=True,
-        can_fuel_cost=True,
-        can_route_all=True, can_route_vehicle=True,
-        can_cost_per_mile=True,
-        can_events_all=True, can_events_vehicle=True,
+        can_manage_geofence=True, can_view_geofence=True,
+        can_manage_maintenance=True, can_view_maintenance=True,
+        can_manage_work_orders=True, can_view_work_orders=True,
+        can_manage_parts=True,
+        can_manage_service_tasks=True,
+        can_view_cost_reports=True,
+        can_view_scorecards=True,
+        can_view_location=True,
+        can_view_fuel_cost=True,
+        can_view_routes=True,
+        can_view_cost_per_mile=True,
+        can_view_events=True,
         can_manage_billing=True,
         can_manage_poi_layers=True,
-        can_risk_report_all=True, can_risk_report_own=True,
-        can_driver_pay_admin=True, can_driver_pay_view_own=True,
-        can_coaching_admin=True, can_coaching_view_own=True,
+        can_view_risk_reports=True, can_risk_report_own=True,
+        can_manage_driver_pay=True, can_driver_pay_view_own=True,
+        can_manage_coaching=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
-        can_inspections_all=True, can_inspections_vehicle=True,
+        can_manage_inspections=True, can_view_inspections=True,
         can_manage_applications=True, can_onboard_drivers=True,
-        can_carrier_directory=True, can_manage_carrier_directory=True,
+        can_view_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.FLEET: FeatureSet(
-        can_vehicle_docs=True, can_manage_vehicle_docs=True,
-        can_faults=True, can_fuel=True, can_cameras=True,
-        can_efficiency=True, can_health=True,
-        can_vehicle_all=True, can_vehicle_vehicle=True,
+        can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
+        can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
+        can_view_efficiency=True, can_view_health=True,
+        can_view_vehicles=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         # Loads is a Dispatch-owned feature (dispatcher CRUDs, KPI grades on
         # can_kpi, driver pay reads loads server-side) — Fleet has no loads
         # consumer, so it is NOT granted here.  Left at the FeatureSet default
         # (False) rather than seeded True.
-        can_geofence_all=True, can_geofence_vehicle=True,
-        can_maintenance_all=True, can_maintenance_vehicle=True,
-        can_work_orders_all=True, can_work_orders_vehicle=True,
-        can_parts=True,
-        can_service_tasks=True,
-        can_cost_reports=True,
-        can_scorecard_all=True, can_scorecard_vehicle=True,
-        can_location_map=True, can_location_vehicle=True,
-        can_fuel_cost=True,
-        can_route_all=True, can_route_vehicle=True,
-        can_cost_per_mile=True,
-        can_events_all=True, can_events_vehicle=True,
+        can_manage_geofence=True, can_view_geofence=True,
+        can_manage_maintenance=True, can_view_maintenance=True,
+        can_manage_work_orders=True, can_view_work_orders=True,
+        can_manage_parts=True,
+        can_manage_service_tasks=True,
+        can_view_cost_reports=True,
+        can_view_scorecards=True,
+        can_view_location=True,
+        can_view_fuel_cost=True,
+        can_view_routes=True,
+        can_view_cost_per_mile=True,
+        can_view_events=True,
         can_manage_poi_layers=True,
-        can_risk_report_all=False, can_risk_report_own=True,
-        can_driver_pay_admin=False, can_driver_pay_view_own=False,
-        can_coaching_admin=True, can_coaching_view_own=False,
+        can_view_risk_reports=False, can_risk_report_own=True,
+        can_manage_driver_pay=False, can_driver_pay_view_own=False,
+        can_manage_coaching=True, can_coaching_view_own=False,
         # Fleet managers handle driver records day-to-day (assignments,
         # CDL renewals) so they get the admin permission too.
         can_manage_driver_docs=True, can_driver_docs_own=False,
         can_manage_drivers=True,   # runs the driver roster (trucks, TMS links)
-        can_inspections_all=True, can_inspections_vehicle=False,
+        can_manage_inspections=True, can_view_inspections=True,
     ),
     Role.SAFETY: FeatureSet(
-        can_vehicle_docs=True,
-        can_faults=True, can_fuel=False, can_cameras=True,
-        can_efficiency=False, can_health=True,
-        can_vehicle_all=True, can_vehicle_vehicle=True,
+        can_view_vehicle_docs=True,
+        can_view_faults=True, can_view_fuel=False, can_view_cameras=True,
+        can_view_efficiency=False, can_view_health=True,
+        can_view_vehicles=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_geofence_all=True, can_geofence_vehicle=True,
-        can_maintenance_all=True, can_maintenance_vehicle=True,
-        can_work_orders_all=True, can_work_orders_vehicle=True,
-        can_scorecard_all=True, can_scorecard_vehicle=True,
-        can_location_map=True, can_location_vehicle=True,
-        can_fuel_cost=False,
-        can_route_all=True, can_route_vehicle=True,
-        can_cost_per_mile=False,
-        can_events_all=True, can_events_vehicle=True,
-        can_risk_report_all=True, can_risk_report_own=True,
-        can_driver_pay_admin=False, can_driver_pay_view_own=False,
-        can_coaching_admin=True, can_coaching_view_own=False,
+        can_manage_geofence=True, can_view_geofence=True,
+        can_manage_maintenance=True, can_view_maintenance=True,
+        can_manage_work_orders=True, can_view_work_orders=True,
+        can_view_scorecards=True,
+        can_view_location=True,
+        can_view_fuel_cost=False,
+        can_view_routes=True,
+        can_view_cost_per_mile=False,
+        can_view_events=True,
+        can_view_risk_reports=True, can_risk_report_own=True,
+        can_manage_driver_pay=False, can_driver_pay_view_own=False,
+        can_manage_coaching=True, can_coaching_view_own=False,
         # Safety needs read-only access for compliance checks (CDL /
         # medical card expirations) — read-only via the admin route
         # is fine for MVP; a future ``can_view_driver_docs`` could
         # split read from write if needed.
         can_manage_driver_docs=True, can_driver_docs_own=False,
-        can_inspections_all=True, can_inspections_vehicle=False,
+        can_manage_inspections=True, can_view_inspections=True,
     ),
     Role.DISPATCHER: FeatureSet(
-        can_vehicle_docs=True,
-        can_faults=False, can_fuel=True,
-        can_efficiency=False, can_health=False,
-        can_vehicle_all=True, can_vehicle_vehicle=True,
-        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
+        can_view_vehicle_docs=True,
+        can_view_faults=False, can_view_fuel=True,
+        can_view_efficiency=False, can_view_health=False,
+        can_view_vehicles=True,
+        can_view_loads=True, can_loads_own=True, can_manage_loads=True,
         # Dispatchers need the geofence and safety-event features (granted
         # below) to react to deviations mid-shift.  Those alerts surface in the
         # always-on Alerts inbox every role has — the features decide WHICH
         # alerts show, not whether the inbox exists.
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_geofence_all=True, can_geofence_vehicle=True,
-        can_maintenance_all=False, can_maintenance_vehicle=False,
-        can_scorecard_all=True, can_scorecard_vehicle=True,
-        can_location_map=True, can_location_vehicle=True,
-        can_fuel_cost=False,
-        can_route_all=True, can_route_vehicle=True,
-        can_cost_per_mile=False,
-        can_events_all=True, can_events_vehicle=True,
-        can_risk_report_all=False, can_risk_report_own=False,
-        can_driver_pay_admin=False, can_driver_pay_view_own=False,
-        can_coaching_admin=False, can_coaching_view_own=False,
-        can_inspections_all=True, can_inspections_vehicle=False,
+        can_manage_geofence=True, can_view_geofence=True,
+        can_manage_maintenance=False, can_view_maintenance=False,
+        can_view_scorecards=True,
+        can_view_location=True,
+        can_view_fuel_cost=False,
+        can_view_routes=True,
+        can_view_cost_per_mile=False,
+        can_view_events=True,
+        can_view_risk_reports=False, can_risk_report_own=False,
+        can_manage_driver_pay=False, can_driver_pay_view_own=False,
+        can_manage_coaching=False, can_coaching_view_own=False,
+        can_manage_inspections=True, can_view_inspections=True,
     ),
     Role.HR: FeatureSet(
         # HR persona — people management.  Focus: driver compliance,
@@ -554,7 +612,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # financial perms.
         can_invite=True,                       # Onboarding new users
         can_manage_users=True,                 # User admin
-        can_coaching_admin=True,               # Training / coaching workflows
+        can_manage_coaching=True,               # Training / coaching workflows
         can_manage_driver_docs=True,           # CDL / medical / docs
         can_manage_drivers=True,               # driver roster
         # Onboarding is HR's job, so it's seeded on the BASE role, not the
@@ -563,60 +621,60 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # can_manage_drivers too but NOT this — hiring is granted on
         # purpose, never inherited from truck administration.
         can_onboard_drivers=True,
-        can_inspections_all=True,              # PTI review for compliance audit
+        can_manage_inspections=True, can_view_inspections=True,              # PTI review for compliance audit
         # Read-only context — HR needs to see WHO is doing WHAT,
         # not edit fleet ops:
-        can_vehicle_all=True,                  # Which vehicle a driver is on
-        can_location_map=True,                 # Where drivers are right now
-        can_events_all=True,                   # Safety events drive coaching
-        can_scorecard_all=True,                # Driver behaviour insight
-        can_risk_report_all=True,              # Personnel risk reporting
-        can_geofence_all=True,                 # See geofence context for incidents
+        can_view_vehicles=True,                  # Which vehicle a driver is on
+        can_view_location=True,                 # Where drivers are right now
+        can_view_events=True,                   # Safety events drive coaching
+        can_view_scorecards=True,                # Driver behaviour insight
+        can_view_risk_reports=True,              # Personnel risk reporting
+        can_manage_geofence=True, can_view_geofence=True,                 # See geofence context for incidents
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
         # cost analytics, driver pay, financial reports.  No driver
         # admin or vehicle-ops controls.
         can_manage_billing=True,               # Billing & subscriptions
-        can_fuel=True,                         # Fuel report
-        can_fuel_cost=True,                    # Fuel cost tracker
-        can_cost_per_mile=True,                # CPM dashboard
-        can_driver_pay_admin=True,                # Driver Pay runs + history
-        can_efficiency=True,                   # Efficiency report for cost analysis
+        can_view_fuel=True,                         # Fuel report
+        can_view_fuel_cost=True,                    # Fuel cost tracker
+        can_view_cost_per_mile=True,                # CPM dashboard
+        can_manage_driver_pay=True,                # Driver Pay runs + history
+        can_view_efficiency=True,                   # Efficiency report for cost analysis
         # Cost rollups by truck — used to be granted via the overloaded
         # ``can_maintenance_all`` flag; split into its own gate in
         # 2026-06 so toggling Maintenance for accounting no longer
         # silently also affects Cost Reports access.
-        can_cost_reports=True,
+        can_view_cost_reports=True,
         # Read-only context — accounting needs to see WHICH assets
         # generate WHICH costs:
-        can_vehicle_all=True,                  # Vehicle list for asset accounting
+        can_view_vehicles=True,                  # Vehicle list for asset accounting
     ),
     Role.DRIVER: FeatureSet(
-        can_vehicle_docs=True,
-        can_faults=False, can_fuel=False,
-        can_efficiency=False, can_health=False,
-        can_vehicle_all=False, can_vehicle_vehicle=True,
+        can_view_vehicle_docs=True,
+        can_view_faults=False, can_view_fuel=False,
+        can_view_efficiency=False, can_view_health=False,
+        can_view_vehicles=True,
         can_loads_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_geofence_all=False, can_geofence_vehicle=True,
-        can_maintenance_all=False, can_maintenance_vehicle=True,
-        can_work_orders_all=False, can_work_orders_vehicle=True,
-        can_parking_all=False, can_parking_vehicle=True,  # driver: assigned vehicle only
-        can_scorecard_all=False, can_scorecard_vehicle=True,
-        can_location_map=False, can_location_vehicle=True,
-        can_fuel_cost=False,
-        can_route_all=False, can_route_vehicle=True,
-        can_cost_per_mile=False,
-        can_events_all=False, can_events_vehicle=True,
-        can_risk_report_all=False, can_risk_report_own=True,
-        can_driver_pay_admin=False, can_driver_pay_view_own=True,
-        can_coaching_admin=False, can_coaching_view_own=True,
+        can_manage_geofence=False, can_view_geofence=True,
+        can_manage_maintenance=False, can_view_maintenance=True,
+        can_manage_work_orders=False, can_view_work_orders=True,
+        can_view_parking=True,  # driver: assigned vehicle only
+        can_view_scorecards=True,
+        can_view_location=True,
+        can_view_fuel_cost=False,
+        can_view_routes=True,
+        can_view_cost_per_mile=False,
+        can_view_events=True,
+        can_view_risk_reports=False, can_risk_report_own=True,
+        can_manage_driver_pay=False, can_driver_pay_view_own=True,
+        can_manage_coaching=False, can_coaching_view_own=True,
         # Drivers see their own profile + documents (read-only); they
         # never see other drivers' records.
         can_manage_driver_docs=False, can_driver_docs_own=True,
-        can_inspections_all=False, can_inspections_vehicle=True,
+        can_manage_inspections=False, can_view_inspections=True,
     ),
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
@@ -635,26 +693,26 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # owner who wants a recruiter to see vehicle data grants the
         # ``*_all`` flag per-account in the Permissions matrix — the
         # matrix stays the single truth of access for every role.
-        can_faults=False, can_fuel=False,
-        can_efficiency=False, can_health=False,
-        can_vehicle_all=False, can_vehicle_vehicle=False,
+        can_view_faults=False, can_view_fuel=False,
+        can_view_efficiency=False, can_view_health=False,
+        can_view_vehicles=False,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_geofence_all=False, can_geofence_vehicle=False,
-        can_maintenance_all=False, can_maintenance_vehicle=False,
-        can_work_orders_all=False, can_work_orders_vehicle=False,
-        can_parking_all=False, can_parking_vehicle=False,
-        can_scorecard_all=False, can_scorecard_vehicle=False,
-        can_location_map=False, can_location_vehicle=False,
-        can_fuel_cost=False,
-        can_route_all=False, can_route_vehicle=False,
-        can_cost_per_mile=False,
-        can_events_all=False, can_events_vehicle=False,
-        can_risk_report_all=False, can_risk_report_own=False,
-        can_driver_pay_admin=False, can_driver_pay_view_own=False,
-        can_coaching_admin=False, can_coaching_view_own=False,
+        can_manage_geofence=False, can_view_geofence=False,
+        can_manage_maintenance=False, can_view_maintenance=False,
+        can_manage_work_orders=False, can_view_work_orders=False,
+        can_view_parking=False,
+        can_view_scorecards=False,
+        can_view_location=False,
+        can_view_fuel_cost=False,
+        can_view_routes=False,
+        can_view_cost_per_mile=False,
+        can_view_events=False,
+        can_view_risk_reports=False, can_risk_report_own=False,
+        can_manage_driver_pay=False, can_driver_pay_view_own=False,
+        can_manage_coaching=False, can_coaching_view_own=False,
         can_manage_driver_docs=False, can_driver_docs_own=False,
-        can_inspections_all=False, can_inspections_vehicle=False,
+        can_manage_inspections=False, can_view_inspections=False,
         # Recruiting IS the recruiter's defining function — the pipeline
         # is granted by default so the role is usable out of the box.
         # ONBOARDING is not: approving is recruiting, minting a user is
@@ -663,7 +721,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # wants the old one-person flow just ticks Onboarding for the
         # recruiter on the Permissions page.
         can_manage_applications=True, can_onboard_drivers=False,
-        can_carrier_directory=True,   # read the carrier directory (managers also edit)
+        can_view_carrier_directory=True,   # read the carrier directory (managers also edit)
     ),
 }
 
@@ -716,7 +774,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
     Role.FLEET: RoleTier(
         senior_label="Manager", base_label="Employee",
         grants=frozenset({
-            "can_invite", "can_manage_work_hours", "can_risk_report_all",
+            "can_invite", "can_manage_work_hours", "can_view_risk_reports",
             "can_manage_role_bot", "can_manage_config_role",
         }),
     ),
@@ -750,8 +808,8 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         senior_label="Manager", base_label="Employee",
         # The accounting lead can review the shop invoices / maintenance
         # records behind the cost numbers (parts analytics included).
-        grants=frozenset({"can_work_orders_all", "can_maintenance_all",
-                          "can_parts", "can_service_tasks",
+        grants=frozenset({"can_manage_work_orders", "can_manage_maintenance",
+                          "can_manage_parts", "can_manage_service_tasks",
                           "can_manage_role_bot", "can_manage_config_role"}),
     ),
 }
@@ -919,12 +977,15 @@ def derive_service_perms(fs: FeatureSet) -> FeatureSet:
     buckets that DO concern them (Applications, Activity, System).
     """
     from dataclasses import replace
-    has_vehicle = bool(fs.can_vehicle_all or fs.can_vehicle_vehicle)
+    has_vehicle = bool(fs.can_view_vehicles)
     return replace(
         fs,
         can_ai_chat=True, can_digest=True,
-        can_alerts_all=bool(fs.can_vehicle_all),
-        can_alerts_vehicle=has_vehicle and not bool(fs.can_vehicle_all),
+        # Both derived flags now say one thing — the inbox exists iff
+        # vehicles are visible.  WIDTH is per member (Team Management),
+        # never a per-role flag, so the pair cannot disagree any more.
+        can_alerts_all=has_vehicle,
+        can_alerts_vehicle=has_vehicle,
     )
 
 
@@ -1272,33 +1333,28 @@ def role_emoji(role: Role) -> str:
 # Order = priority order in the briefing prompt.  Both the *_all and
 # *_vehicle scope flags map to the same topic; duplicates collapse.
 BRIEFING_TOPICS: tuple[tuple[str, str], ...] = (
-    ("can_location_map",       "current vehicle movement and locations"),
-    ("can_location_vehicle",   "current vehicle movement and locations"),
-    ("can_vehicle_all",        "which vehicles are rolling, idling, or parked"),
-    ("can_route_all",          "routes and vehicle availability"),
-    ("can_route_vehicle",      "routes and vehicle availability"),
-    ("can_parking_all",        "unsafe parking events"),
-    ("can_parking_vehicle",    "unsafe parking events"),
-    ("can_faults",             "active fault codes"),
-    ("can_health",             "vehicle health (battery, coolant, oil, DEF)"),
-    ("can_fuel",               "fuel levels"),
-    ("can_maintenance_all",    "pending and overdue maintenance"),
-    ("can_maintenance_vehicle","pending and overdue maintenance"),
-    ("can_work_orders_all",    "recent work orders and shop costs"),
-    ("can_work_orders_vehicle","recent work orders and shop costs"),
-    ("can_inspections_all",    "PTI inspections"),
-    ("can_inspections_vehicle","PTI inspections"),
-    ("can_events_all",         "safety events"),
-    ("can_events_vehicle",     "safety events"),
-    ("can_scorecard_all",      "driver scorecards"),
-    ("can_scorecard_vehicle",  "driver scorecards"),
-    ("can_coaching_admin",     "the driver-coaching backlog"),
-    ("can_efficiency",         "driver efficiency (MPG, idle time)"),
-    ("can_fuel_cost",          "fuel spend"),
-    ("can_cost_per_mile",      "cost per mile"),
-    ("can_alerts_all",         "open alerts"),
-    ("can_alerts_vehicle",     "open alerts"),
-    ("can_manage_applications","the driver-application (hiring) pipeline"),
+    ("can_view_location",          "current vehicle movement and locations"),
+    ("can_view_vehicles",          "which vehicles are rolling, idling, or parked"),
+    ("can_view_routes",            "routes and vehicle availability"),
+    ("can_view_parking",           "unsafe parking events"),
+    ("can_view_faults",            "active fault codes"),
+    ("can_view_health",            "vehicle health (battery, coolant, oil, DEF)"),
+    ("can_view_fuel",              "fuel levels"),
+    ("can_manage_maintenance",     "pending and overdue maintenance"),
+    ("can_view_maintenance",       "pending and overdue maintenance"),
+    ("can_manage_work_orders",     "recent work orders and shop costs"),
+    ("can_view_work_orders",       "recent work orders and shop costs"),
+    ("can_manage_inspections",     "PTI inspections"),
+    ("can_view_inspections",       "PTI inspections"),
+    ("can_view_events",            "safety events"),
+    ("can_view_scorecards",        "driver scorecards"),
+    ("can_manage_coaching",        "the driver-coaching backlog"),
+    ("can_view_efficiency",        "driver efficiency (MPG, idle time)"),
+    ("can_view_fuel_cost",         "fuel spend"),
+    ("can_view_cost_per_mile",     "cost per mile"),
+    ("can_alerts_all",             "open alerts"),
+    ("can_alerts_vehicle",         "open alerts"),
+    ("can_manage_applications",    "the driver-application (hiring) pipeline"),
 )
 
 
@@ -1620,44 +1676,44 @@ def is_kb_approver_role(role: Role | str) -> bool:
 # If ANY listed permission is True for the user's role, the tool is allowed.
 # None means always allowed.
 TOOL_PERMISSIONS: dict[str, list[str] | None] = {
-    "get_vehicle_faults":       ["can_faults"],                                # owner/admin/fleet/safety
-    "get_vehicle_detail":       ["can_vehicle_all", "can_vehicle_vehicle"],          # all roles
-    "get_driver_efficiency":    ["can_efficiency"],                          # owner/admin/fleet
-    "get_low_fuel_vehicles":    ["can_fuel"],                                # owner/admin/fleet/dispatcher
-    "get_vehicle_health":       ["can_health"],                              # owner/admin/fleet/safety
-    "get_weather":              ["can_vehicle_all"],                           # all except driver
-    "get_efficiency_summary":   ["can_efficiency"],                          # owner/admin/fleet
-    "get_vehicle_location":     ["can_location_map", "can_location_vehicle"],    # all roles
-    "get_geofences":            ["can_geofence_all", "can_geofence_vehicle"],    # all roles
-    "get_account_stats":        ["can_vehicle_all"],                           # all except driver
-    "get_vehicle_events":       ["can_events_all", "can_events_vehicle"],        # owner/admin/fleet/safety/driver(own)
-    "get_events_summary":       ["can_events_all"],                          # owner/admin/fleet/safety
-    "get_vehicle_maintenance":  ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
-    "get_maintenance_summary":  ["can_maintenance_all"],                     # owner/admin/fleet/safety
-    "get_vehicle_fuel_costs":   ["can_fuel_cost"],                           # owner/admin/fleet
-    "get_fuel_cost_summary":    ["can_fuel_cost"],                           # owner/admin/fleet
-    "check_vehicle_camera":     ["can_vehicle_all"],                           # all except driver
-    "get_driver_scorecard":     ["can_scorecard_all", "can_scorecard_vehicle"],  # all except dispatcher
-    "get_rolling_stopped":      ["can_vehicle_all"],                       # all except driver — account-wide fleet engine-state, follows Vehicles access like search_vehicles/get_parked_vehicles
-    "get_vehicle_odometer":     ["can_vehicle_all", "can_vehicle_vehicle"],          # all roles
-    "get_drivers_list":         ["can_vehicle_all"],                           # all except driver
-    "search_vehicles":          ["can_vehicle_all"],                           # all except driver
+    "get_vehicle_faults":       ["can_view_faults"],                                # owner/admin/fleet/safety
+    "get_vehicle_detail":       ["can_view_vehicles", "can_view_vehicles"],          # all roles
+    "get_driver_efficiency":    ["can_view_efficiency"],                          # owner/admin/fleet
+    "get_low_fuel_vehicles":    ["can_view_fuel"],                                # owner/admin/fleet/dispatcher
+    "get_vehicle_health":       ["can_view_health"],                              # owner/admin/fleet/safety
+    "get_weather":              ["can_view_vehicles"],                           # all except driver
+    "get_efficiency_summary":   ["can_view_efficiency"],                          # owner/admin/fleet
+    "get_vehicle_location":     ["can_view_location", "can_view_location"],    # all roles
+    "get_geofences":            ["can_manage_geofence", "can_view_geofence"],    # all roles
+    "get_account_stats":        ["can_view_vehicles"],                           # all except driver
+    "get_vehicle_events":       ["can_view_events", "can_view_events"],        # owner/admin/fleet/safety/driver(own)
+    "get_events_summary":       ["can_view_events"],                          # owner/admin/fleet/safety
+    "get_vehicle_maintenance":  ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
+    "get_maintenance_summary":  ["can_manage_maintenance"],                     # owner/admin/fleet/safety
+    "get_vehicle_fuel_costs":   ["can_view_fuel_cost"],                           # owner/admin/fleet
+    "get_fuel_cost_summary":    ["can_view_fuel_cost"],                           # owner/admin/fleet
+    "check_vehicle_camera":     ["can_view_vehicles"],                           # all except driver
+    "get_driver_scorecard":     ["can_view_scorecards", "can_view_scorecards"],  # all except dispatcher
+    "get_rolling_stopped":      ["can_view_vehicles"],                       # all except driver — account-wide fleet engine-state, follows Vehicles access like search_vehicles/get_parked_vehicles
+    "get_vehicle_odometer":     ["can_view_vehicles", "can_view_vehicles"],          # all roles
+    "get_drivers_list":         ["can_view_vehicles"],                           # all except driver
+    "search_vehicles":          ["can_view_vehicles"],                           # all except driver
     "search_knowledge_base":    None,                                        # all roles
-    "get_parked_vehicles":        ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
-    "get_undriven_vehicles":      ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
-    "get_driver_hos_status":    ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
+    "get_parked_vehicles":        ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
+    "get_undriven_vehicles":      ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
+    "get_driver_hos_status":    ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
     "get_alert_history":        ["can_alerts_all", "can_alerts_vehicle"],         # owner/admin/fleet/safety/driver(own)
-    "get_recent_work_orders":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
-    "get_recent_inspections":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
+    "get_recent_work_orders":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
+    "get_recent_inspections":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
     "get_driver_applications":  ["can_manage_applications"],                          # owner/admin/hr/recruiter — applicant-pipeline triage, account-wide
-    "get_vehicle_history":      ["can_vehicle_all", "can_vehicle_vehicle"],       # all roles — vehicle-specific tool, isolation enforced below
+    "get_vehicle_history":      ["can_view_vehicles", "can_view_vehicles"],       # all roles — vehicle-specific tool, isolation enforced below
     # ── Write actions (copilot "hands") — propose during a chat turn;
     # the SAME flag is re-checked at the approve endpoint before the write.
-    "create_maintenance_task":  ["can_maintenance_all"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
-    "create_work_order":        ["can_work_orders_all"],                         # mirrors POST /work-orders — permission SSOT, no role hardcoding
+    "create_maintenance_task":  ["can_manage_maintenance"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
+    "create_work_order":        ["can_manage_work_orders"],                         # mirrors POST /work-orders — permission SSOT, no role hardcoding
     "acknowledge_alerts":       ["can_alerts_all", "can_alerts_vehicle"],        # owner/admin/fleet/safety/driver(own)
     "file_vehicle_document":    ["can_manage_vehicle_docs"],                 # you may only file what you could upload
-    "get_vehicle_documents_status": ["can_vehicle_docs"],                    # whoever may read the papers may ask about them
+    "get_vehicle_documents_status": ["can_view_vehicle_docs"],                    # whoever may read the papers may ask about them
     "import_inventory_items":   ["can_manage_vehicles"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing
 }
 

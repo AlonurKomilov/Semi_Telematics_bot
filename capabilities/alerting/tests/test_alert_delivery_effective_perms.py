@@ -63,7 +63,7 @@ class TestRevoke:
         # Safety's seed allows events; this account's owner revoked it.
         seed = ROLE_PERMISSIONS[Role.SAFETY]
         perms_store[(1, "safety")] = replace(
-            seed, can_events_all=False, can_events_vehicle=False)
+            seed, can_view_events=False)
         users = [_user(10, "safety")]
         assert await filter_users_by_alert_access(users, "events") == []
 
@@ -71,7 +71,7 @@ class TestRevoke:
     async def test_toggle_ui_hides_revoked_type(self, perms_store):
         seed = ROLE_PERMISSIONS[Role.SAFETY]
         perms_store[(1, "safety")] = replace(
-            seed, can_events_all=False, can_events_vehicle=False)
+            seed, can_view_events=False)
         types = await alert_types_for_user("safety", 1)
         assert "events" not in types
 
@@ -82,7 +82,7 @@ class TestGrant:
         # Accounting's seed denies events; this owner granted it.
         assert "events" not in alert_types_for_role("accounting")
         seed = ROLE_PERMISSIONS[Role.ACCOUNTING]
-        perms_store[(1, "accounting")] = replace(seed, can_events_all=True)
+        perms_store[(1, "accounting")] = replace(seed, can_view_events=True)
         users = [_user(20, "accounting")]
         kept = await filter_users_by_alert_access(users, "events")
         assert [u.id for u in kept] == [20]
@@ -90,7 +90,7 @@ class TestGrant:
     @pytest.mark.asyncio
     async def test_toggle_ui_shows_granted_type(self, perms_store):
         seed = ROLE_PERMISSIONS[Role.ACCOUNTING]
-        perms_store[(1, "accounting")] = replace(seed, can_events_all=True)
+        perms_store[(1, "accounting")] = replace(seed, can_view_events=True)
         types = await alert_types_for_user("accounting", 1)
         assert "events" in types
 
@@ -103,7 +103,7 @@ class TestAgreementAndFallback:
         from capabilities.alerting.relevance import (
             ALERT_TYPE_REQUIRED_PERM, perms_allow_alert_type)
         seed = ROLE_PERMISSIONS[Role.DISPATCHER]
-        eff = replace(seed, can_parking_all=False, can_faults=True)
+        eff = replace(seed, can_view_parking=False, can_view_faults=True)
         perms_store[(1, "dispatcher")] = eff
         for atype in ALERT_TYPE_REQUIRED_PERM:
             delivered = await filter_users_by_alert_access(

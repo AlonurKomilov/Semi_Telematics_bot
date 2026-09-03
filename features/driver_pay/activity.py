@@ -12,5 +12,5 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "driver_pay_run", "Driver pay run", "driver_pay",
-    view_permissions=('can_driver_pay_admin',),
+    view_permissions=('can_manage_driver_pay',),
 ))

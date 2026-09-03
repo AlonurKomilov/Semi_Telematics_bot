@@ -56,7 +56,7 @@ router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 # access, so this split took nothing from anybody — it made the
 # narrowing possible.
 _manage = require_permission("can_manage_vehicle_docs")
-_view = require_permission("can_vehicle_docs")
+_view = require_permission("can_view_vehicle_docs")
 
 # Layer 1 of the three-layer cap (route → middleware → nginx) — same
 # number as driver documents: paperwork is PDFs and phone photos.

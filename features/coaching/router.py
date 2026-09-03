@@ -57,7 +57,7 @@ def disabled_to_403(_exc: CoachingDisabledError) -> HTTPException:
 @router.get("/topics")
 async def list_topics(
     user: dict = Depends(require_permission_any(
-        "can_coaching_admin", "can_coaching_view_own",
+        "can_manage_coaching", "can_coaching_view_own",
     )),
 ):
     try:
@@ -77,7 +77,7 @@ async def list_assignments(
     driver_id: Optional[str] = Query(default=None, max_length=128),
     status: Optional[str] = Query(default=None, max_length=32),
     limit: int = Query(default=200, ge=1, le=1000),
-    user: dict = Depends(require_permission("can_coaching_admin")),
+    user: dict = Depends(require_permission("can_manage_coaching")),
     platform_db=Depends(get_platform_db),
 ):
     try:
@@ -101,7 +101,7 @@ async def list_assignments(
 @router.get("/assignments/count")
 async def count_assignments(
     status: Optional[str] = Query(default=None, max_length=32),
-    user: dict = Depends(require_permission("can_coaching_admin")),
+    user: dict = Depends(require_permission("can_manage_coaching")),
 ):
     """Bare count of coaching assignments matching a status filter.
 
@@ -124,7 +124,7 @@ async def count_assignments(
 @router.post("/assign", status_code=201)
 async def assign_manual(
     body: AssignManualIn,
-    user: dict = Depends(require_permission("can_coaching_admin")),
+    user: dict = Depends(require_permission("can_manage_coaching")),
 ):
     try:
         aid = await svc.assign_manual(
@@ -142,7 +142,7 @@ async def assign_manual(
 @router.post("/assignments/{assignment_id}/cancel")
 async def cancel_assignment(
     assignment_id: int,
-    user: dict = Depends(require_permission("can_coaching_admin")),
+    user: dict = Depends(require_permission("can_manage_coaching")),
     platform_db=Depends(get_platform_db),
 ):
     # Company scope: a restricted admin can't cancel another company's
@@ -168,7 +168,7 @@ async def cancel_assignment(
 @router.post("/run-now", status_code=202)
 async def run_now(
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission("can_coaching_admin")),
+    user: dict = Depends(require_permission("can_manage_coaching")),
 ):
     """Manually trigger an evaluation pass (admin-only)."""
     try:
@@ -213,7 +213,7 @@ async def my_assignments(
     status: Optional[str] = Query(default=None, max_length=32),
     limit: int = Query(default=50, ge=1, le=500),
     user: dict = Depends(require_permission_any(
-        "can_coaching_admin", "can_coaching_view_own",
+        "can_manage_coaching", "can_coaching_view_own",
     )),
 ):
     """Return coaching assignments for the calling driver."""
@@ -234,7 +234,7 @@ async def ack_my_assignment(
     assignment_id: int,
     body: AcknowledgeIn,
     user: dict = Depends(require_permission_any(
-        "can_coaching_admin", "can_coaching_view_own",
+        "can_manage_coaching", "can_coaching_view_own",
     )),
 ):
     """Driver acknowledges an assignment.  Must own the assignment."""

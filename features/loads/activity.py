@@ -12,5 +12,5 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "load", "Load", "loads",
-    view_permissions=('can_loads_all',),
+    view_permissions=('can_view_loads',),
 ))

@@ -12,5 +12,5 @@ from capabilities.activity_trail.registry import (
 
 register_entity(EntityDescriptor(
     "part", "Part", "parts",
-    view_permissions=('can_parts',),
+    view_permissions=('can_manage_parts',),
 ))

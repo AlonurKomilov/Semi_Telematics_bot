@@ -12,10 +12,23 @@ from telegram import (
 from capabilities.localization.i18n import LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from adapters.storage import Role
 from capabilities.permissions.roles import get_permissions, can_access_company_submenu
+from capabilities.permissions.fold import builtin_width
 from infra.context import get_company_display
 
 
-def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:
+def _is_wide(role: Role, wide: bool | None) -> bool:
+    """The caller's unit width.  ``wide`` is the member's resolved width
+    (Team Management's three layers) when the caller could await it;
+    None falls back to the role's built-in — drivers narrow, everyone
+    else wide — exactly what the dead wide-vehicle flag said for
+    every seeded role."""
+    if wide is not None:
+        return wide
+    return builtin_width(role.value if hasattr(role, "value") else str(role)) == "all"
+
+
+def main_menu_kb(role: Role, company_codes: list[str] | None = None,
+                 wide: bool | None = None) -> InlineKeyboardMarkup:
     """Build role-appropriate main menu.
 
     Grouped into sub-menus to keep the top-level clean (max ~6 buttons).
@@ -39,7 +52,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         # top-level instead of forcing the user through an empty
         # wrapper.  The submenu_* builders below still exist as
         # fallbacks for cached buttons.
-        has_reports = (perms.can_vehicle_all
+        has_reports = ((perms.can_view_vehicles and _is_wide(role, wide))
                        or perms.can_view_events)
         has_parking = perms.can_view_parking
         has_fuel_cost = perms.can_fuel_cost
@@ -110,7 +123,8 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     return InlineKeyboardMarkup(rows)
 
 
-def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:  # noqa: ARG001
+def submenu_reports_kb(role: Role, company_codes: list[str] | None = None,
+                       wide: bool | None = None) -> InlineKeyboardMarkup:  # noqa: ARG001
     """Reports sub-menu — quick bot lookups only.
 
     Fleet-wide report buttons (Faults / Fuel / Health / Efficiency /
@@ -126,7 +140,7 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
     if perms.can_view_events:
         rows.append([InlineKeyboardButton(t("tools_menu.events"), callback_data="cmd_events")])
 
-    if perms.can_vehicle_all:
+    if perms.can_view_vehicles and _is_wide(role, wide):
         rows.append([InlineKeyboardButton(t("reports_menu.search_truck"), callback_data="cmd_vehicle_prompt")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])

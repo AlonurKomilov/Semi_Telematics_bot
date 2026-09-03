@@ -58,33 +58,29 @@ def to_disabled_csv(enabled: list[str] | tuple[str, ...]) -> str:
 # those at the nav layer instead.
 FLAG_MODULES: dict[str, frozenset[str]] = {
     # Fleet
-    "can_maintenance_all": frozenset({"fleet"}),
-    "can_maintenance_vehicle": frozenset({"fleet"}),
-    "can_work_orders_all": frozenset({"fleet"}),
-    "can_work_orders_vehicle": frozenset({"fleet"}),
-    "can_inspections_all": frozenset({"fleet"}),
-    "can_inspections_vehicle": frozenset({"fleet"}),
+    "can_view_maintenance": frozenset({"fleet"}),
+    "can_manage_maintenance": frozenset({"fleet"}),
+    "can_view_work_orders": frozenset({"fleet"}),
+    "can_manage_work_orders": frozenset({"fleet"}),
+    "can_view_inspections": frozenset({"fleet"}),
+    "can_manage_inspections": frozenset({"fleet"}),
     # Dispatch
-    "can_route_all": frozenset({"dispatch"}),
-    "can_route_vehicle": frozenset({"dispatch"}),
+    "can_view_routes": frozenset({"dispatch"}),
     # Geofences — fleet + dispatch
-    "can_geofence_all": frozenset({"fleet", "dispatch"}),
-    "can_geofence_vehicle": frozenset({"fleet", "dispatch"}),
+    "can_view_geofence": frozenset({"dispatch", "fleet"}),
+    "can_manage_geofence": frozenset({"dispatch", "fleet"}),
     # Cameras — safety + fleet
-    "can_cameras": frozenset({"safety", "fleet"}),
+    "can_view_cameras": frozenset({"safety", "fleet"}),
     # Parking — dispatch + fleet + safety
-    "can_parking_all": frozenset({"dispatch", "fleet", "safety"}),
-    "can_parking_vehicle": frozenset({"dispatch", "fleet", "safety"}),
+    "can_view_parking": frozenset({"dispatch", "fleet", "safety"}),
     # Safety + HR
-    "can_events_all": frozenset({"safety", "hr"}),
-    "can_events_vehicle": frozenset({"safety", "hr"}),
-    "can_scorecard_all": frozenset({"safety", "hr"}),
-    "can_scorecard_vehicle": frozenset({"safety", "hr"}),
+    "can_view_events": frozenset({"hr", "safety"}),
+    "can_view_scorecards": frozenset({"hr", "safety"}),
     # can_manage_config_all is deliberately NOT module-masked: it spans
     # features across modules (scorecard rules AND KPI thresholds).  The
     # scorecard-rules PAGE still masks with safety/hr via featureCatalog.
 
-    "can_coaching_admin": frozenset({"hr", "safety"}),
+    "can_manage_coaching": frozenset({"hr", "safety"}),
     "can_coaching_view_own": frozenset({"hr", "safety"}),
     # Drivers (documents) — hr + fleet + safety
     "can_manage_driver_docs": frozenset({"hr", "fleet", "safety"}),
@@ -97,9 +93,9 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     "can_manage_applications": frozenset({"hr"}),
     "can_onboard_drivers": frozenset({"hr"}),   # the Drivers-family sub-feature
     # Accounting (costs + driver pay)
-    "can_fuel_cost": frozenset({"accounting", "dispatch"}),
-    "can_cost_per_mile": frozenset({"accounting", "fleet"}),
-    "can_driver_pay_admin": frozenset({"accounting"}),
+    "can_view_fuel_cost": frozenset({"accounting", "dispatch"}),
+    "can_view_cost_per_mile": frozenset({"accounting", "fleet"}),
+    "can_manage_driver_pay": frozenset({"accounting"}),
     "can_driver_pay_view_own": frozenset({"accounting"}),
 }
 

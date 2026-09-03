@@ -441,6 +441,7 @@ async def tenant_registry(core_platform):
 # leaves the same leak open on the third.
 _PROCESS_CACHES = (
     ("adapters.storage.object_storage", "_per_account_stores"),
+    ("capabilities.permissions.scope", "_role_scope_cache"),
     ("adapters.storage.platform_settings", "_settings_cache"),
     ("capabilities.ai.cache", "_response_cache"),
     ("capabilities.ai.chat", "_chat_histories"),

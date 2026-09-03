@@ -15,6 +15,7 @@ from adapters.storage.object_storage import get_object_storage_for_account
 
 from interfaces.api import deps as _deps
 from interfaces.api.deps import (
+    require_wide,
     require_permission,
     require_permission_any, get_tenant_db, get_user_vehicle_nums,
     get_user_company_codes, filter_by_allowed_companies,
@@ -263,7 +264,7 @@ async def fleet_utilisation_heatmap(
     # can_view_vehicles, so the grammar has no wide-only name and
     # migrating here would ADMIT every assigned-width viewer.  Moves
     # in the width pass, when a width-aware dependency exists.
-    user: dict = Depends(require_permission("can_vehicle_all")),
+    user: dict = Depends(require_wide("vehicles")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Aggregate fleet activity points for the Owner / Admin Live Map

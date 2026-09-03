@@ -69,4 +69,10 @@ class TestDriverOmittedVehicleName:
             "get_drivers_list", {}, "driver", DRIVER_CTX,
         )
         assert denied is not None
-        assert "cannot use" in denied["error"]
+        # Since the verb/scope flip an account-wide tool is refused to a
+        # driver by the WIDTH block ("returns account-wide data outside
+        # your access scope"), not by the permission gate: the driver
+        # holds can_view_vehicles like everyone who opens Vehicles, and
+        # "all except driver" is a width fact now, not a flag.  Either
+        # refusal keeps the isolation; the message names which.
+        assert ("account-wide" in denied["error"]) or ("cannot use" in denied["error"])

@@ -274,13 +274,13 @@ async def overview_stats(
         "fleet": vehicles_block,
     }
 
-    if can(role, "can_faults"):
+    if can(role, "can_view_faults"):
         result["faults"] = sum(
             1 for v in overview
             if v.get("fault_codes", {}).get("j1939", {}).get("diagnosticTroubleCodes")
         )
 
-    if can(role, "can_fuel"):
+    if can(role, "can_view_fuel"):
         result["low_fuel"] = sum(
             1 for v in overview
             if isinstance(v.get("fuel"), dict)

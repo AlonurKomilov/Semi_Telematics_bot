@@ -210,7 +210,9 @@ def _company_line(breakdown: dict) -> str:
 async def _user_menu_kb(user) -> InlineKeyboardMarkup:
     """Build the role-aware main menu for this user."""
     company_codes = await get_user_company_codes(user.account_id)
-    return main_menu_kb(user.role, company_codes)
+    from capabilities.permissions.scope import unit_width
+    wide = (await unit_width(user.account_id, user.role, user, "vehicles")) == "all"
+    return main_menu_kb(user.role, company_codes, wide=wide)
 
 
 async def _render_audit_log(account_id: int) -> str:

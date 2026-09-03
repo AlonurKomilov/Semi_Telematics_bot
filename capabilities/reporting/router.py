@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
+from interfaces.api.deps import require_any_or_wide  # noqa: E402
 from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import can as _can
 from infra.services import get_client
@@ -163,7 +164,7 @@ async def report_efficiency(
     # can_view_vehicles, so the grammar has no wide-only name and
     # migrating here would ADMIT every assigned-width viewer.  Moves
     # in the width pass, when a width-aware dependency exists.
-    user: dict = Depends(require_permission_any("can_efficiency", "can_vehicle_all")),
+    user: dict = Depends(require_any_or_wide("can_view_efficiency")),
 ):
     """Fleet efficiency — miles, fuel, idle/drive time per vehicle."""
     allowed = await get_user_company_codes(user)
@@ -192,7 +193,7 @@ async def export_report(
     fmt: str = Query("pdf", description="pdf or csv"),
     company: str | None = Query(None),
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission_any("can_faults", "can_fuel", "can_health", "can_efficiency", "can_vehicle_all")),
+    user: dict = Depends(require_any_or_wide("can_view_faults", "can_view_fuel", "can_view_health", "can_view_efficiency")),
 ):
     """Download a report as PDF or CSV file."""
     from fastapi import HTTPException
@@ -479,7 +480,8 @@ router.get("/dot-binder")(_mt_export_dot_binder)
 # domain (docs/FEATURES.md feature→component tree).  URLs unchanged.
 from typing import Optional
 from pydantic import BaseModel, Field
-from interfaces.api.deps import (  # noqa: F811 — section-local completeness
+from interfaces.api.deps import (
+    require_any_or_wide,  # noqa: F811 — section-local completeness
     get_current_db_user, get_current_user, get_platform_db,
     get_tenant_db, require_permission,
 )

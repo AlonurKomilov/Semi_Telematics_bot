@@ -25,7 +25,7 @@ from interfaces.api.deps import (
 
 router = APIRouter(prefix="/loads", tags=["loads"])
 
-_view_loads = require_permission_any("can_loads_all", "can_loads_own")
+_view_loads = require_permission_any("can_view_loads", "can_loads_own")
 _manage_loads = require_permission("can_manage_loads")
 
 # Rows returned to the list screen per request.  The response carries a
@@ -52,7 +52,7 @@ async def _user_perms(user: dict):
 async def _scope_driver_id(user: dict) -> int | None:
     """None = account-wide; a user id = own-scope (driver) caller."""
     perms = await _user_perms(user)
-    if getattr(perms, "can_loads_all", False):
+    if getattr(perms, "can_view_loads", False):
         return None
     return await resolve_user_id(user)
 

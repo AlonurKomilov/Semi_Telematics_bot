@@ -103,8 +103,11 @@ class TestEventsPermissions:
 
     def test_driver_events_own_only(self):
         perms = get_permissions(Role.DRIVER)
-        assert perms.can_events_all is False
-        assert perms.can_events_vehicle is True
+        # Since the flip a driver OPENS events (one view verb); the
+        # own-truck narrowing is width — Team Management's built-in.
+        from capabilities.permissions.fold import builtin_width
+        assert perms.can_view_events is True
+        assert builtin_width("driver") == "assigned"
 
 
 # ══════════════════════════════════════════════════════════════════

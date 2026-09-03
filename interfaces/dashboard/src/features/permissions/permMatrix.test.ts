@@ -47,15 +47,17 @@ describe('every row declares its kind', () => {
     // write-level with a neutral name), so the set is pinned explicitly —
     // tagging or untagging a row is a conscious edit here, never drift.
     const tagged = tickable.filter((x) => x.writeLevel).map(primaryKey).sort();
+    // Sorted: the flip renamed can_coaching_admin / can_driver_pay_admin into
+    // the manage grammar and moved them in the alphabet.  Dispatcher incentive
+    // runs & payouts are compensation — one write-level flag beside
+    // driver_pay's, deliberately not can_view_kpi.
     expect(tagged).toEqual([
-      'can_coaching_admin',
-      'can_driver_pay_admin',
-    // Dispatcher incentive runs & payouts — compensation, one
-    // write-level flag beside driver_pay's, deliberately not can_kpi.
       'can_manage_applications',
       'can_manage_billing',
+      'can_manage_coaching',
       'can_manage_driver_docs',
-      'can_service_tasks',
+      'can_manage_driver_pay',
+      'can_manage_service_tasks',
     ]);
   });
 });

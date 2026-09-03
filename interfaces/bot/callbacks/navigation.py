@@ -7,6 +7,7 @@ from interfaces.bot.keyboards import (
 )
 from interfaces.bot.helpers import _show
 from capabilities.localization.i18n import t
+from capabilities.permissions.scope import unit_width
 from capabilities.formatting import format_help
 
 
@@ -21,7 +22,8 @@ async def cmd_menu(update, context):
     text = format_help(company_codes, user=user, account=account)
     if sys_owner:
         text += "\n\n  ⚙️ <i>System admin: /admin</i>"
-    kb = main_menu_kb(user.role, company_codes)
+    kb = main_menu_kb(user.role, company_codes,
+                      wide=(await unit_width(user.account_id, user.role, user, "vehicles")) == "all")
     await _show(update, context, [text], keyboard=kb)
 
 
@@ -36,7 +38,9 @@ async def submenu_reports(update, context):
         f"  {t('reports_menu.header')}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         f"\n  {t('reports_menu.subtitle')}"
-    ], keyboard=submenu_reports_kb(user.role, company_codes))
+    ], keyboard=submenu_reports_kb(
+        user.role, company_codes,
+        wide=(await unit_width(user.account_id, user.role, user, "vehicles")) == "all"))
 
 
 async def submenu_tools(update, context):

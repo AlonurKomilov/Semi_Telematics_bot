@@ -788,7 +788,7 @@ async def link_tasks(
 @router.get("/reports/per-vehicle")
 async def report_per_vehicle(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Spend per vehicle over ``days`` (default 90)."""
@@ -801,7 +801,7 @@ async def report_per_vehicle(
 @router.get("/reports/per-task-type")
 async def report_per_task_type(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Spend per maintenance task_type (joins through work_order_id)."""
@@ -814,7 +814,7 @@ async def report_per_task_type(
 @router.get("/reports/per-service-task")
 async def report_per_service_task(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Parts spend per service-task tag, summed at the PART level so a
@@ -829,7 +829,7 @@ async def report_per_service_task(
 @router.get("/reports/per-system")
 async def report_per_system(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Spend per SYSTEM — "what are brakes costing us?".  Rows whose
@@ -844,7 +844,7 @@ async def report_per_system(
 async def report_per_assembly(
     system: str,
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Assemblies within one system — the drill-down under a system
@@ -861,7 +861,7 @@ async def report_per_assembly(
 @router.get("/reports/per-part")
 async def report_per_part(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Usage + spend per part name — the "which part keeps costing us"
@@ -876,7 +876,7 @@ async def report_per_part(
 @router.get("/reports/per-vendor")
 async def report_per_vendor(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Spend per vendor — feeds the 'who do we send the most money to'
@@ -890,7 +890,7 @@ async def report_per_vendor(
 @router.get("/reports/summary")
 async def report_summary(
     days: int = Query(90, ge=1, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Headline totals for the current window AND the equivalent-length
@@ -946,7 +946,7 @@ async def report_summary(
 @router.get("/reports/monthly-trend")
 async def report_monthly_trend(
     days: int = Query(365, ge=30, le=3650),
-    user: dict = Depends(require_permission("can_cost_reports")),
+    user: dict = Depends(require_permission("can_view_cost_reports")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Spend grouped by calendar month — drives the trend chart on the

@@ -67,7 +67,7 @@ def disabled_to_403(exc: DriverPayDisabledError) -> HTTPException:
 
 @router.get("/settings")
 async def list_settings(
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     try:
         return await svc.list_driver_settings(user["account_id"])
@@ -79,7 +79,7 @@ async def list_settings(
 async def upsert_settings(
     driver_id: str,
     body: DriverPaySettingsIn,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     if not driver_id.strip():
         raise HTTPException(400, "driver_id required")
@@ -101,7 +101,7 @@ async def upsert_settings(
 @router.get("/runs")
 async def list_runs(
     limit: int = Query(50, ge=1, le=500),
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     try:
         return await svc.list_runs(user["account_id"], limit=limit)
@@ -112,7 +112,7 @@ async def list_runs(
 @router.post("/runs", status_code=201)
 async def create_run(
     body: CreateRunIn,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     ps = _parse_iso_date(body.period_start)
     pe = _parse_iso_date(body.period_end)
@@ -131,7 +131,7 @@ async def create_run(
 @router.get("/runs/{run_id}")
 async def get_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     detail = await svc.get_run_detail(user["account_id"], run_id)
     if detail is None:
@@ -142,7 +142,7 @@ async def get_run(
 @router.post("/runs/{run_id}/finalize")
 async def finalize_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     try:
         ok = await svc.finalize_run(
@@ -160,7 +160,7 @@ async def finalize_run(
 @router.post("/runs/{run_id}/recompute")
 async def recompute_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     """Refresh a DRAFT run's statements from the current loads — picks up
     additions/deductions added since it was created.  Finalized runs 400."""
@@ -180,7 +180,7 @@ async def recompute_run(
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
+    user: dict = Depends(require_permission("can_manage_driver_pay")),
 ):
     try:
         ok = await svc.cancel_run(
@@ -224,7 +224,7 @@ async def _resolve_caller_driver_id(user: dict) -> Optional[str]:
 async def my_paystubs(
     limit: int = Query(12, ge=1, le=60),
     user: dict = Depends(require_permission_any(
-        "can_driver_pay_admin", "can_driver_pay_view_own",
+        "can_manage_driver_pay", "can_driver_pay_view_own",
     )),
 ):
     """Return paystub history for the calling driver."""

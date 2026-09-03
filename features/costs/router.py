@@ -29,7 +29,7 @@ class FuelEntryCreate(BaseModel):
 async def fuel_entries(
     vehicle: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
-    user: dict = Depends(require_permission("can_fuel_cost")),
+    user: dict = Depends(require_permission("can_view_fuel_cost")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get fuel fill-up entries, optionally filtered by vehicle.
@@ -70,7 +70,7 @@ async def fuel_entries(
 @router.post("/fuel")
 async def add_fuel_entry(
     body: FuelEntryCreate,
-    user: dict = Depends(require_permission("can_fuel_cost")),
+    user: dict = Depends(require_permission("can_view_fuel_cost")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Log a new fuel fill-up entry."""
@@ -91,7 +91,7 @@ async def add_fuel_entry(
 
 @router.get("/fuel/summary")
 async def fuel_summary(
-    user: dict = Depends(require_permission("can_fuel_cost")),
+    user: dict = Depends(require_permission("can_view_fuel_cost")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Per-vehicle fuel cost summary — total gallons, cost, avg price, miles, MPG."""
@@ -105,7 +105,7 @@ async def fuel_summary(
 
 @router.get("/cpm")
 async def cost_per_mile(
-    user: dict = Depends(require_permission("can_cost_per_mile")),
+    user: dict = Depends(require_permission("can_view_cost_per_mile")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Per-vehicle cost-per-mile: fuel cost ÷ miles driven."""
