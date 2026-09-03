@@ -33,6 +33,7 @@ import type { ThemeMode } from './theme/palette';
 // Type-only, so no runtime cycle: registry.ts imports THEME_PACKS as a
 // value, and this import is erased.
 import type { ModRadius } from '../preferences/registry';
+import { MOD_FIELD_CATEGORY, CATEGORY_IDS } from './taxonomy';
 
 export interface ThemePack {
   /** The stored value, and the `data-accent` attribute. */
@@ -257,21 +258,13 @@ export const MODS: readonly Mod[] = [
 export const MOD_FIELD_SECTION: Record<
   keyof Omit<Mod, 'id' | 'label' | 'why'>,
   'interface' | 'effects' | 'sounds' | 'size'
-> = {
-  accent: 'interface',
-  radius: 'interface',
-  material: 'interface',
-  icons: 'interface',
-  font: 'interface',
-  motion: 'effects',
-  entrance: 'effects',
-  sound: 'sounds',
-  size: 'size',
-};
+> = MOD_FIELD_CATEGORY;
 
 /** In the order the card renders them, so the footprint reads down the
- *  page rather than in whatever order the fields happen to be declared. */
-const SECTION_ORDER = ['interface', 'sounds', 'effects', 'size'] as const;
+ *  page rather than in whatever order the fields happen to be declared.
+ *  Derived from the taxonomy — this used to be its own list, and it was
+ *  one of the four that disagreed about whether `size` existed. */
+const SECTION_ORDER = CATEGORY_IDS;
 
 /**
  * The categories this mod actually writes into.

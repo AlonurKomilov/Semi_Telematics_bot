@@ -64,6 +64,7 @@ vi.mock('../preferences', async (orig) => ({
 
 import { ModControls } from './ModPanel';
 import { MODS } from './catalogue';
+import { headingsOf } from './taxonomy';
 
 /** Sections every surface carries — the two questions asked most often. */
 const SHARED = ['Mods', 'Color'];
@@ -263,12 +264,18 @@ describe('only a mod may reach a mod-only axis', () => {
  * shows none of the others'. Without the negative half a section that
  * ignored the prop and rendered everything would pass.
  */
-const SECTIONS = {
-  mods: ['Mods'],
-  interface: ['Color', 'Corners', 'Material', 'Typeface', 'Icons'],
-  effects: ['Motion', 'Ambient mode'],
-  sounds: ['Sound'],
-} as const;
+/**
+ * Derived from the taxonomy rather than typed here. This table was the
+ * sixth hand-written copy of the category shape, and it decayed by one
+ * axis per axis added. A guard that reads its expected headings from the
+ * one declaration still catches the two failures that matter — a heading
+ * the panel renders that the taxonomy does not know, and a heading under
+ * the wrong section — and the sentinel below keeps an empty taxonomy
+ * from passing.
+ */
+const SECTIONS = Object.fromEntries(
+  (['mods', 'interface', 'effects', 'sounds'] as const).map((id) => [id, headingsOf(id)]),
+) as Record<'mods' | 'interface' | 'effects' | 'sounds', readonly string[]>;
 
 /**
  * The label class every group heading wears, so the test can find the
@@ -300,6 +307,15 @@ const NOT_A_GROUP = ['Interface sounds', 'Keyboard', 'Interface size'];
  * partition check below means anything.
  */
 describe('the section table knows every group the panel renders', () => {
+  it('is not empty — a derivation from nothing would pass everything below', () => {
+    // Literals, deliberately: a sentinel that read from the taxonomy too
+    // would pass on an empty taxonomy.
+    expect(SECTIONS.interface).toContain('Color');
+    expect(SECTIONS.sounds).toContain('Sound');
+    expect(SECTIONS.effects).toContain('Motion');
+    expect(Object.values(SECTIONS).flat().length).toBeGreaterThan(6);
+  });
+
   it('accounts for all of them', () => {
     const { container } = render(<ModControls />);
     const rendered = Array.from(container.querySelectorAll(HEADING))

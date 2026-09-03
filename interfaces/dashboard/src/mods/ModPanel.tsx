@@ -21,6 +21,7 @@ import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { KEY_PACKS, KEY_LIMITS, keyPackById } from './sound/keys';
 import { MODS_HREF } from './href';
 import { accentTokens } from './theme/accent';
+import { PANEL_SECTIONS } from './taxonomy';
 import { usePreference } from '../preferences';
 import { undoableAction } from '../components/banners/stagedAction';
 
@@ -347,7 +348,7 @@ function Chip<T extends string>({
  * `mods` is the container's own row, not a category — it is here because
  * `section="mods"` is how the card asks for that row.
  */
-export const MOD_SECTIONS = ['mods', 'interface', 'effects', 'sounds'] as const;
+export const MOD_SECTIONS = PANEL_SECTIONS;
 export type ModSection = (typeof MOD_SECTIONS)[number];
 
 export function ModControls({ compact = false, onNavigate, section }: {

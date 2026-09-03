@@ -21,6 +21,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { MOD_SECTIONS } from './ModPanel';
+import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
 import {
   THEME_PACKS, MODS, MOD_ICONS, ICON_STROKE,
@@ -356,15 +357,24 @@ describe('installed is not the same question as matching', () => {
  * runtime test for that would be weaker and later.
  */
 describe('a mod says what it carries', () => {
-  it('places every field in a section the card actually renders', () => {
-    // One vocabulary in both places. If the footprint said "colour" and
-    // the card said "Interface", the checklist would name something the
-    // person cannot find.
-    const known = new Set<string>([...MOD_SECTIONS, 'size']);
-    for (const [field, section] of Object.entries(MOD_FIELD_SECTION)) {
-      expect(known, `"${field}" lands in "${section}", which no section renders`)
-        .toContain(section);
-    }
+  it('files every field under exactly one item of the taxonomy', () => {
+    // MOD_FIELD_SECTION is DERIVED from the taxonomy now, so "every
+    // value is a real category" is true by construction and not worth
+    // asserting. What the `as Record<ModField, …>` cast in taxonomy.ts
+    // hides is the opposite drift: an item naming a `modField` that Mod
+    // does not have, or two items claiming the same one — the second
+    // silently overwrites the first in Object.fromEntries.
+    const claimed = TAXONOMY.flatMap((c) => c.items.flatMap((i) => (i.modField ? [i.modField] : [])));
+    const dupes = claimed.filter((f, i) => claimed.indexOf(f) !== i);
+    expect(dupes, 'a Mod field is claimed by two items').toEqual([]);
+
+    const fields = Object.keys(MOD_FIELD_SECTION).sort();
+    expect([...claimed].sort(), 'the taxonomy claims a field Mod does not have, or misses one')
+      .toEqual(fields);
+    // …and the map really is total over Mod: the sample mod below
+    // carries every field the type allows, so a field missing from the
+    // map would be a footprint that silently drops it.
+    expect(fields.length).toBeGreaterThan(6);
   });
 
   it('never files a field under the container row', () => {

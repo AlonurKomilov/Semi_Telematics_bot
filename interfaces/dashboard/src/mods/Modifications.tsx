@@ -28,6 +28,7 @@ import { undoableAction } from '../components/banners/stagedAction';
 import { usePreference, DEFS, MOD_DEFAULT } from '../preferences';
 import { useMods } from './context';
 import { ModControls, type ModSection } from './ModPanel';
+import { resetAxesOf } from './taxonomy';
 import SizeCard from './SizeCard';
 
 export { MODS_HREF } from './href';
@@ -53,23 +54,23 @@ const SOUND_VOLUME_DEFAULT = DEFS['mods.sound.volume'].default;
  *   `color` — a derived alias, re-written by `setTheme` on every write.
  *   It has no independent value to restore.
  */
+/**
+ * A category's reset targets, with the default each restores.
+ *
+ * The KEY SET comes from the taxonomy (`resetAxesOf`), so a category
+ * gaining an item gains a reset without anyone editing this file. The
+ * VALUES come from `MOD_DEFAULT`; an axis with no default — `brand`,
+ * whose default is absence — resets to `undefined`, which is the same
+ * thing said in the registry's vocabulary.
+ */
+const defaultsFor = (id: 'interface' | 'effects') =>
+  Object.fromEntries(
+    resetAxesOf(id).map((a) => [a, (MOD_DEFAULT as unknown as Record<string, unknown>)[a]]),
+  ) as Record<string, unknown>;
+
 export const SECTION_AXES = {
-  interface: {
-    accent: MOD_DEFAULT.accent,
-    // A picked colour is an interface choice, so "Reset interface"
-    // clears it — not only "Reset mods". It has no entry in
-    // `MOD_DEFAULT` because its default is ABSENCE: the packs are the
-    // floor, and nothing custom is what a new account wears.
-    brand: undefined,
-    font: MOD_DEFAULT.font,
-    radius: MOD_DEFAULT.radius,
-    material: MOD_DEFAULT.material,
-    icons: MOD_DEFAULT.icons,
-  },
-  effects: {
-    motion: MOD_DEFAULT.motion,
-    entrance: MOD_DEFAULT.entrance,
-  },
+  interface: defaultsFor('interface'),
+  effects: defaultsFor('effects'),
 } as const;
 
 /** The container's own axes — what "Reset mods" adds on top of the four. */
@@ -78,11 +79,11 @@ export const CONTAINER_AXES = { mod: undefined, tokens: undefined } as const;
 /** Every axis a reset touches, at any level. Kept as ONE object because
  *  `resetAppearance.test.tsx` walks it against `MOD_DEFAULT` to force a
  *  decision when an axis is added. */
-export const RESET_AXES = {
+export const RESET_AXES: Readonly<Record<string, unknown>> = {
   ...SECTION_AXES.interface,
   ...SECTION_AXES.effects,
   ...CONTAINER_AXES,
-} as const;
+};
 
 /** Read one axis off the stored shape by name. The partitions above are
  *  keyed by string, so the cast lives here once instead of at each use. */

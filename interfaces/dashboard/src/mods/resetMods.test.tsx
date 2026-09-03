@@ -93,7 +93,7 @@ describe('Reset appearance owns exactly the axes it should', () => {
     // and `tokens` would leave "Reset interface" showing a colour the
     // person just reset away from.
     expect(RESET_AXES).toHaveProperty('brand');
-    expect(RESET_AXES.brand).toBeUndefined();
+    expect(RESET_AXES['brand']).toBeUndefined();
     expect(SECTION_AXES.interface).toHaveProperty('brand');
     expect(CONTAINER_AXES).not.toHaveProperty('brand');
   });
