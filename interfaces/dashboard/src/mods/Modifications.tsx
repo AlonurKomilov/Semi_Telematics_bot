@@ -21,7 +21,9 @@
  * The catalogue page is deferred until there is content to browse — four
  * accents and two sound packs is not a catalogue.
  */
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, LayoutGrid } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MODS_PAGE_HREF } from './href';
 import { Card } from '../components/ui/card';
 import { SectionHeader } from '../components/shell';
 import { undoableAction } from '../components/banners/stagedAction';
@@ -117,8 +119,10 @@ function SectionReset({ label, atDefault, onReset }: {
   );
 }
 
-/** One category: its heading, its own reset, its controls. */
-function Section({ id, title, label, axes }: {
+/** One category: its heading, its own reset, its controls. Exported
+ *  so the /mods page's item level renders the same thing the card does
+ *  — one object, one face per surface. */
+export function Section({ id, title, label, axes }: {
   id: Exclude<ModSection, 'mods'>;
   title: string;
   label: string;
@@ -209,7 +213,18 @@ export default function Modifications() {
     <Card render={<section />} id="modifications" className="scroll-mt-20">
       <SectionHeader
         description="How the app looks, moves and sounds. Only affects what you see."
-        action={<ResetMods />}
+        action={
+          <div className="flex items-center gap-3">
+            {/* The same settings, drawn as depth. The card is the flat
+                list; the page is the map of it. */}
+            <Link to={MODS_PAGE_HREF}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground min-h-tap">
+              <LayoutGrid className="size-3.5" />
+              Open Mods
+            </Link>
+            <ResetMods />
+          </div>
+        }
       >
         Modifications
       </SectionHeader>

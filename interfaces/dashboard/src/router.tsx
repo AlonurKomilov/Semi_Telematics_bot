@@ -5,7 +5,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 // renders in. Adding or retiring a persona shell never touches this
 // file — the registry is the only place that mapping lives.
 import { pickShell } from './shells';
-import { MODS_HREF } from './mods';
+import { ModsPage } from './mods';
 import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AssistantHost from './features/ai/AssistantHost';
@@ -320,12 +320,16 @@ export default function AppRouter() {
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
-        {/* Mods is the ENGINE, not a page: the data lives in the user's
-            preferences and the surface lives with it, on /profile. This
-            route stays as a redirect so no link dies, and because /mods
-            comes back as the CATALOGUE once there is content to browse.
-            MODS_HREF is the one constant all three doors share. */}
-        <Route path="mods" element={<Navigate to={MODS_HREF} replace />} />
+        {/* Mods has three surfaces over one store: the top-bar popover
+            (quick), the card on /profile (the flat list), and this — the
+            same settings drawn as depth: hub → category → item, the URL
+            carrying the level. Personal, every authenticated user, no
+            permission, like /profile. Imported through the barrel rather
+            than lazily by path: the mods service is already in the
+            shell's graph, and a deep import would trip index.test.ts. */}
+        <Route path="mods" element={<ModsPage />} />
+        <Route path="mods/:category" element={<ModsPage />} />
+        <Route path="mods/:category/:item" element={<ModsPage />} />
         {/* Notifications are a cross-source PERSONAL surface on their own
             door (the topbar bell), not an Alerts sub-tab. /notifications =
             the browsable history (Notification center); /preferences = the

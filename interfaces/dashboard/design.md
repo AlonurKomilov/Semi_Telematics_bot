@@ -261,8 +261,10 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
     mods/catalogue.ts  MODS, the axes, THEME_PACKS
     mods/context.tsx   useMods, applyTheme
     mods/ModPanel.tsx  ModPanel (top-bar popover) + ModControls
-    mods/Modifications.tsx  the /profile card (was ModPage.tsx)
-    mods/href.ts       MODS_HREF, the one address
+    mods/taxonomy.ts   THE declaration: categories → items → axes
+    mods/Modifications.tsx  the /profile card
+    mods/page/         the /mods page: hub → category → item, from the taxonomy
+    mods/href.ts       MODS_HREF (the card) and MODS_PAGE_HREF (the page)
     mods/SizeCard.tsx  size, whole
     mods/inject.ts     installing token values
     mods/theme/        palette · contrast
@@ -271,17 +273,28 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
 
 ### A popover and a profile card are one component, not two ⭐
 
-**There is no `/mods` page.** `/mods` is a redirect —
-`router.tsx` sends it to `MODS_HREF`, which is
-`/profile#modifications` — and `ModPage.tsx` / `pages/Mods.tsx` were
-deleted. Mods is the ENGINE; its settings live where the rest of a
-person's settings live. The route stays so no old link dies, and it
-comes back as the CATALOGUE when there is content to browse; two sound
-packs and four accents are not a catalogue.
+**Three surfaces, one store.** Mods is the ENGINE; its data lives in
+the person's preferences and every surface reads the same rows. The
+surfaces differ in SHAPE, and that is GX's own split:
 
-Customization has two surfaces — the top-bar popover and the
-`Modifications` card on `/profile` — and they render the SAME
-`ModControls`, switched by a `compact` flag. Never
+- the top-bar **popover** — quick: the mod, the colour, the size, a door;
+- the **`Modifications` card on `/profile`** — the flat list, for
+  somebody who knows what they want;
+- the **`/mods` page** — the same settings drawn as depth: a hub of
+  categories with how far each is dialled, a category as a grid of
+  items each saying whether it has been touched, an item as its
+  control. `/mods/:category/:item` carries the level in the URL.
+
+`/mods` was deleted once, on the reasoning that a page is a CATALOGUE
+and there was nothing to browse. That read GX wrong: its page is where
+you see what you *have*; the store is a button on it. The page renders
+FROM `mods/taxonomy.ts` — every tile and route segment comes from the
+one declaration — so it is not a fourth copy of the category shape.
+Its item level renders the card's own `Section`, so the two cannot
+answer differently.
+
+The popover and the card render the SAME `ModControls`, switched by
+a `compact` flag; the page's item level renders the card's `Section`. Never
 two copies of one chip row: duplicated JSX drifts, the two surfaces
 answer the same question differently within a release, and nothing
 fails. What differs between them is which branch renders and one type
