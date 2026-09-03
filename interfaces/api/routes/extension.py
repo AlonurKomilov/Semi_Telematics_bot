@@ -112,6 +112,33 @@ def _build_zip() -> bytes:
     return buf.getvalue()
 
 
+@router.get("/me")
+async def extension_me(user: dict = Depends(get_current_user)):
+    """Who is connected — for the panel's avatar, and nothing more.
+
+    The panel's token is a key to the live map, so the panel must not
+    read ``/user/me``: that answer carries the whole permission matrix,
+    the email, the company list.  Three display strings is all an
+    avatar needs, and all a lifted panel token can learn here.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    account_name = None
+    try:
+        acct = await db.get_account(db_user.account_id)
+        account_name = getattr(acct, "name", None) or None
+    except Exception:
+        logger.debug("account name lookup failed", exc_info=True)
+    return {
+        "display_name": db_user.display_name or "",
+        "role": str(user.get("role") or ""),
+        "account_name": account_name,
+    }
+
+
 @router.get("/download")
 async def download_extension(user: dict = Depends(get_current_user)):
     """The built extension as a zip — sideload it from chrome://extensions."""

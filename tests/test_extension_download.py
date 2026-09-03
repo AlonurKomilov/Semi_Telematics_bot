@@ -77,3 +77,31 @@ def test_the_route_is_login_gated():
     import inspect
     for fn in (ext.download_extension, ext.extension_info):
         assert "Depends(get_current_user)" in inspect.getsource(fn)
+
+
+@pytest.mark.asyncio
+async def test_extension_me_is_three_display_strings_and_nothing_else(monkeypatch):
+    """The panel's token is a live-map key.  /user/me would hand it the
+    permission matrix, the email and the company list; this endpoint
+    hands it an avatar's worth and no more."""
+    from types import SimpleNamespace
+
+    db_user = SimpleNamespace(id=7, account_id=42, display_name="Allen Klein",
+                              email="allen@example.com", is_primary_owner=True)
+
+    class _DB:
+        async def get_account(self, account_id):
+            assert account_id == 42
+            return SimpleNamespace(name="Premier Trucking Group", plan="pro")
+
+    async def _db_user(user, db):
+        return db_user
+    monkeypatch.setattr(ext, "get_current_db_user", _db_user)
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db", lambda: _DB())
+
+    out = await ext.extension_me(user={"sub": "1", "uid": 7, "account_id": 42, "role": "owner",
+                                       "aud": "extension", "scope": ["can_location_map"]})
+    assert out == {"display_name": "Allen Klein", "role": "owner",
+                   "account_name": "Premier Trucking Group"}
+    assert "email" not in out and "permissions" not in out

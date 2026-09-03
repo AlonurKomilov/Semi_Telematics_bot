@@ -15,3 +15,14 @@ button, input { font: inherit; }
         padding:2px 8px; font-size:12px; cursor:pointer; min-height:24px; }
 .chip.on { background: var(--primary); border-color: var(--primary); color:#fff; }
 .row { display:flex; align-items:center; gap:8px; }
+.avatar { width:28px; height:28px; border-radius:50%; border:1px solid var(--border); background: var(--primary);
+          color:#fff; font-weight:600; font-size:12px; display:inline-flex; align-items:center; justify-content:center;
+          cursor:pointer; padding:0; }
+.menu { position:absolute; right:0; top:34px; min-width:200px; background: var(--card); border:1px solid var(--border);
+        border-radius:8px; padding:4px; z-index:10; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+.menu-head { padding:8px 10px 6px; border-bottom:1px solid var(--border); margin-bottom:4px; }
+.menu-item { display:block; width:100%; text-align:left; background:none; border:0; color: var(--fg);
+             padding:7px 10px; border-radius:6px; cursor:pointer; min-height:24px; }
+.menu-item:hover { background: rgba(255,255,255,.06); }
+.menu-item.danger { color: var(--danger); }
+.menu-sep { height:1px; background: var(--border); margin:4px 0; }

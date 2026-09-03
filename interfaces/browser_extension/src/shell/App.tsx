@@ -1,41 +1,68 @@
 import { Suspense, useEffect, useState } from 'react';
-import { clearToken, getToken, refreshIfNeeded, UnauthorizedError } from '../api/client';
+import { apiJSON, clearToken, getToken, refreshIfNeeded, UnauthorizedError } from '../api/client';
 import { FEATURES } from './registry';
 import Connect from './Connect';
+import Settings from './Settings';
+import UserMenu, { type Me } from './UserMenu';
 
 type Phase = 'loading' | 'login' | 'ready';
+type View = 'feature' | 'settings';
+
+/** GET /extension/me — an avatar's worth, by design nothing more. */
+interface MeWire { display_name?: string | null; role?: string | null; account_name?: string | null }
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('loading');
+  const [view, setView] = useState<View>('feature');
   const [featureId] = useState(FEATURES[0].id);
+  const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
     (async () => {
       await refreshIfNeeded();
       setPhase((await getToken()) ? 'ready' : 'login');
     })();
-    // A 401 anywhere returns the panel to the login screen.
+    // A 401 anywhere returns the panel to the connect screen.
     const onUnauthorized = (e: PromiseRejectionEvent) => {
-      if (e.reason instanceof UnauthorizedError) { e.preventDefault(); setPhase('login'); }
+      if (e.reason instanceof UnauthorizedError) { e.preventDefault(); setPhase('login'); setMe(null); }
     };
     window.addEventListener('unhandledrejection', onUnauthorized);
     return () => window.removeEventListener('unhandledrejection', onUnauthorized);
   }, []);
 
+  // Who is connected — for the avatar and its menu.  Best effort: the
+  // panel works without it, the avatar just shows "4".  Not /user/me:
+  // that answer is the whole account profile, and this token is a
+  // live-map key — /extension/me returns three display strings.
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    let cancelled = false;
+    apiJSON<MeWire>('/extension/me')
+      .then((w) => { if (!cancelled) setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null }); })
+      .catch(() => { if (!cancelled) setMe(null); });
+    return () => { cancelled = true; };
+  }, [phase]);
+
   if (phase === 'loading') return <p className="muted" style={{ padding: 16 }}>Loading…</p>;
   if (phase === 'login') return <Connect onDone={() => setPhase('ready')} />;
 
   const feature = FEATURES.find((f) => f.id === featureId) ?? FEATURES[0];
+  const disconnect = async () => { await clearToken(); setMe(null); setView('feature'); setPhase('login'); };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <header className="row" style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', justifyContent: 'space-between' }}>
-        <strong>4truck · {feature.label}</strong>
-        <button className="btn" onClick={async () => { await clearToken(); setPhase('login'); }}>Disconnect</button>
+      <header className="row" style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', justifyContent: 'space-between' }}>
+        <strong>4truck · {view === 'settings' ? 'Settings' : feature.label}</strong>
+        <UserMenu me={me} onSettings={() => setView('settings')} onDisconnect={() => void disconnect()} />
       </header>
-      <main style={{ flex: 1, minHeight: 0 }}>
-        <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
-          <feature.Component />
-        </Suspense>
+      <main style={{ flex: 1, minHeight: 0, overflowY: view === 'settings' ? 'auto' : undefined }}>
+        {view === 'settings' ? (
+          <Settings onBack={() => setView('feature')} />
+        ) : (
+          <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
+            <feature.Component />
+          </Suspense>
+        )}
       </main>
     </div>
   );
