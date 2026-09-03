@@ -75,25 +75,22 @@ private key. (A `key.pem` inside the zip is the pre-2020 method — the store ig
 
 The panel is behind a login AND the consent step happens on the dashboard, so the
 reviewer signs in for real — on a real account, with whatever the role permits. The
-account is the narrowest one that can still see a map, and it is made by a script that
-refuses anything wider:
+account is made by a script that resolves the account's EFFECTIVE permissions for the
+role and prints every write flag the reviewer will hold before anything is written:
 
-    python3 -m scripts.review_user --account <id> --company <CODE> --trucks 142,143,220 --email <yours>
+    python3 -m scripts.review_user --account <id> --company <CODE> --email <yours>            # role fleet
+    python3 -m scripts.review_user ... --role driver --trucks 142,143,220                     # narrowest
     python3 -m scripts.review_user ... --apply
 
-- Role **driver**: the one role with `can_view_location` and not a single `can_manage_*`
-  — it cannot write anything. (Dispatcher, the next-narrowest, edits loads, geofences
-  and inspections.)
-- **Two or three real trucks assigned** (non-primary): the map shows those and nothing
-  else. `--trucks` is required — a driver with NO assignment sees every vehicle (legacy
-  behaviour in `filter_by_assigned_trucks`), not an empty map.
-- One company, `vehicle_scope='assigned'`, email pre-verified, random password printed
-  once. The script resolves the account's EFFECTIVE driver permissions (seed + stored
-  override) and refuses if any write/invite/camera/account-wide flag is on.
+- **Role: fleet** (owner's decision). The extension is a desk tool for the people who run
+  vehicles, and the reviewer should see it as they will. Fleet carries write permissions on
+  the dashboard; the script lists them under EXPOSURE. The extension's own token cannot use
+  any of them — only the dashboard session can. `--role driver` is the no-write alternative
+  (needs `--trucks`, sees only those units).
+- One company only, email pre-verified, random password printed once. Owner/admin never.
 - Use an email you control: "forgot password" mails a reset link there.
 - Before handing it over, sign in as that user and walk every sidebar item, the Alerts
-  inbox and the AI assistant — whatever you see, the reviewer sees. Known, accepted: the
-  assigned trucks' documents and the real driver paired with them on scorecards/events.
+  inbox and the AI assistant — whatever you see, the reviewer sees.
 
 Retire it the day the item is approved — this also denylists every token it was issued,
 which deactivation alone would not:

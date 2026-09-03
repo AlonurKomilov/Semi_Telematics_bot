@@ -38,6 +38,25 @@ def test_the_seeded_driver_role_has_no_wide_flag():
     assert script.wide_flags(seed) == []
 
 
+def test_fleet_is_named_as_exposure_not_hidden():
+    """The owner chose fleet for the reviewer.  The script must not
+    pretend that is narrow: the seed carries write flags, and the
+    same function that refuses them for driver must NAME them here."""
+    import dataclasses
+    from adapters.storage import Role
+    from capabilities.permissions.roles import ROLE_PERMISSIONS
+    seed = dataclasses.asdict(ROLE_PERMISSIONS[Role.FLEET])
+    assert seed["can_view_location"] is True
+    wide = script.wide_flags(seed)
+    assert wide, "fleet has write flags; if this is ever empty, re-check wide_flags"
+    assert any(k.startswith("can_manage_") for k in wide)
+
+
+def test_owner_and_admin_are_never_a_reviewer_role():
+    assert "owner" not in script.ROLES_ALLOWED and "admin" not in script.ROLES_ALLOWED
+    assert script.ROLE_DEFAULT in script.ROLES_ALLOWED
+
+
 def test_the_password_meets_the_policy_and_is_typeable():
     for _ in range(50):
         pw = script.new_password()

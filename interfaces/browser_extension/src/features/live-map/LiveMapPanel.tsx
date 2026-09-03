@@ -112,7 +112,13 @@ export default function LiveMapPanel() {
       setVehicles(data.features ?? []);
       setError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load vehicles');
+      const msg = e instanceof Error ? e.message : 'Could not load vehicles';
+      // A 403 here is the permission gate: this role has no live map,
+      // or the token was minted before the server renamed the scope.
+      // Both end the same way — connect again.
+      setError(/insufficient permissions|scoped to the live map/i.test(msg)
+        ? 'This connection cannot read the live map — your role may not include it, or the connection is out of date. Disconnect and connect again.'
+        : msg);
     }
   }
 

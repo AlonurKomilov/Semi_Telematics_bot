@@ -110,7 +110,15 @@ function redirectAfterLoginIfNeeded(role: string | undefined): boolean {
     window.location.href = returnTo!;
     return true;
   }
-  window.location.href = `https://${target}/`;
+  // The browser extension's consent page is opened on the apex, the
+  // one host every role knows.  A person who had to sign in first must
+  // land on THAT page on their role's host — with its one-time state —
+  // not on the home page with nothing to confirm.  Same rule as
+  // App.forwardAuthenticatedFromApex.
+  const carry = window.location.pathname === '/extension/connect'
+    ? `${window.location.pathname}${window.location.search}`
+    : '/';
+  window.location.href = `https://${target}${carry}`;
   return true;
 }
 

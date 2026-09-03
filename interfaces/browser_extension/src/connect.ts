@@ -2,8 +2,10 @@
  * How the panel gets its token without ever seeing a password.
  *
  * 1. The panel makes a one-time ``state`` (32 random bytes), keeps it in
- *    ``chrome.storage.session`` for ten minutes, and opens the dashboard's
- *    consent page with it.
+ *    ``chrome.storage.session`` for ten minutes, and opens the consent page
+ *    on the APEX (4truck.us) — the one host every role knows; the apex
+ *    signs the person in if needed and forwards to their role's host with
+ *    the page and state intact.
  * 2. The person confirms THERE — signed in on 4truck.us, URL bar visible.
  * 3. The page hands the freshly minted, live-map-scoped token to the
  *    extension with ``chrome.runtime.sendMessage``; the service worker
@@ -16,7 +18,7 @@
 export const CONNECT_STATE_KEY = 'connectState';
 export const CONNECT_TTL_MS = 10 * 60_000;
 export const DASHBOARD_BASE =
-  (import.meta.env.VITE_DASHBOARD_BASE as string | undefined) ?? 'https://dash.4truck.us';
+  (import.meta.env.VITE_DASHBOARD_BASE as string | undefined) ?? 'https://4truck.us';
 
 export interface PendingConnect { state: string; expires: number }
 

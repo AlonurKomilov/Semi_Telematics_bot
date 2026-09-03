@@ -2,29 +2,30 @@
 
 The browser extension's consent step happens on the DASHBOARD, so the
 Chrome Web Store reviewer needs a real sign-in — and that sign-in gets
-whatever the role permits, on a real customer's data.  So the account
-this makes is the narrowest one that can still see a live map:
+whatever the role permits, on a real customer's data.  The owner picks
+the role with --role and this script tells the truth about it:
 
-  * role DRIVER — the one role that carries ``can_view_location`` and
-    NOT ONE ``can_manage_*``: it cannot write anything.  (Dispatcher,
-    the next-narrowest, can edit loads, geofences and inspections.)
-  * two or three real trucks, assigned as NON-primary rows, so the map
-    shows exactly those and nothing else.  A driver with no assignment
-    is NOT an empty map — deps.filter_by_assigned_trucks keeps legacy
-    behaviour and shows every vehicle — so --trucks is REQUIRED.
-  * ``users.vehicle_scope = 'assigned'`` pinned on the member, one
-    company only, email pre-verified (no inbox), password printed once.
-  * the account's EFFECTIVE driver permissions are resolved the way
-    request auth resolves them (seed + stored override for the chosen
-    company) and printed; --apply refuses if any write, invite, camera
-    or account-wide flag is on — an account that widened "driver" is
-    not a place to put a stranger.
+  * fleet (default — the owner's call): the extension is a desk tool for
+    the people who run vehicles, and a reviewer should see it the way
+    they will.  Fleet carries write permissions; every one of them is
+    printed under EXPOSURE before --apply so the choice is made with
+    eyes open.
+  * dispatcher: narrower (loads/geofence/inspections writes remain).
+  * driver: the only role with can_view_location and not a single
+    can_manage_*.  Needs --trucks (2-3 real units, assigned as NON-
+    primary rows): a driver with no assignment is NOT an empty map —
+    deps.filter_by_assigned_trucks keeps legacy behaviour and shows
+    every vehicle.  For driver the script REFUSES if the account's
+    driver role has been widened to any write flag.
+  * owner / admin: never — refused.
 
-What the reviewer WILL still see, knowingly: the assigned trucks' live
-positions, their documents, and any real driver paired with them on
-scorecards and safety events.  Nothing about anyone else.
+Always: one company only, email pre-verified (no inbox), a random
+24-character password printed once, the account's EFFECTIVE permissions
+for the role (seed + stored override for the company, else account-
+wide) resolved the way request auth resolves them.
 
-    python3 -m scripts.review_user --account 10000001 --company PTG --trucks 142,143,220 --email you@yours.com
+    python3 -m scripts.review_user --account 10000001 --company PTG --email you@yours.com
+    python3 -m scripts.review_user ... --role driver --trucks 142,143,220
     python3 -m scripts.review_user ... --apply
     python3 -m scripts.review_user --account 10000001 --email you@yours.com --delete --apply
 
@@ -48,12 +49,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ROLE = "driver"
+ROLES_ALLOWED = ("fleet", "dispatcher", "driver")
+ROLE_DEFAULT = "fleet"
 DISPLAY_NAME = "Chrome Web Store review"
 #: Letters and digits only: the password is typed by hand from a form
 #: field into a browser, and the policy asks for a letter and a digit.
 ALPHABET = string.ascii_letters + string.digits
-#: Flags that must be OFF for a stranger, whatever the account's matrix says.
+#: Flags a stranger should not hold.  For driver they are a hard refusal;
+#: for fleet/dispatcher they are printed as EXPOSURE — the owner's call.
 WIDE_PREFIXES = ("can_manage_",)
 WIDE_SUFFIXES = ("_all",)
 WIDE_EXACT = {"can_invite", "can_view_cameras", "can_manage_users"}
@@ -87,7 +90,7 @@ async def find_user(conn, email: str, account_id: int):
         email, account_id)
 
 
-async def effective_driver_perms(conn, account_id: int, company_id: int) -> dict:
+async def effective_perms(conn, account_id: int, company_id: int, role: str) -> dict:
     """Seed + the account's stored override, merged the way
     capabilities.permissions.roles._resolve_perms merges them (company
     override first, else account-wide, else seed).  Module masking and
@@ -95,14 +98,14 @@ async def effective_driver_perms(conn, account_id: int, company_id: int) -> dict
     read-only service flags, never a write."""
     from adapters.storage import Role
     from capabilities.permissions.roles import ROLE_PERMISSIONS, normalize_stored_perm_keys
-    seed = dataclasses.asdict(ROLE_PERMISSIONS[Role.DRIVER])
+    seed = dataclasses.asdict(ROLE_PERMISSIONS[Role(role)])
     row = await conn.fetchrow(
         "SELECT permissions FROM role_permissions WHERE account_id = $1 AND role = $2 AND company_id = $3",
-        account_id, ROLE, company_id)
+        account_id, role, company_id)
     if not row:
         row = await conn.fetchrow(
             "SELECT permissions FROM role_permissions WHERE account_id = $1 AND role = $2 AND company_id IS NULL",
-            account_id, ROLE)
+            account_id, role)
     if not row:
         return seed
     stored = json.loads(row["permissions"]) if isinstance(row["permissions"], str) else dict(row["permissions"])
@@ -116,12 +119,19 @@ def wide_flags(perms: dict) -> list[str]:
             k in WIDE_EXACT or k.startswith(WIDE_PREFIXES) or k.endswith(WIDE_SUFFIXES)))
 
 
-async def create(conn, *, email: str, account_id: int, company: str,
+async def create(conn, *, email: str, account_id: int, company: str, role: str,
                  trucks: list[str], apply: bool) -> int:
-    if not trucks:
-        print("REFUSING: --trucks is required.  A driver with no assignment sees EVERY vehicle "
-              "(legacy behaviour in deps.filter_by_assigned_trucks), not an empty map.")
+    if role not in ROLES_ALLOWED:
+        print(f"REFUSING: role {role!r}.  A stranger gets one of {', '.join(ROLES_ALLOWED)} — never owner or admin.")
         return 2
+    if role == "driver" and not trucks:
+        print("REFUSING: --trucks is required for driver.  A driver with no assignment sees EVERY "
+              "vehicle (legacy behaviour in deps.filter_by_assigned_trucks), not an empty map.")
+        return 2
+    if role != "driver" and trucks:
+        print(f"NOTE: --trucks is ignored for {role}: assignment only narrows drivers; "
+              f"a {role} sees the company's vehicles.")
+        trucks = []
     existing = await find_user(conn, email, account_id)
     if existing:
         print(f"REFUSING: {email} already exists on account {account_id} "
@@ -144,47 +154,59 @@ async def create(conn, *, email: str, account_id: int, company: str,
               f"Have: {', '.join(r['code'] for r in have)}")
         return 2
 
-    # The trucks must be real, active, this company's, not trailers —
-    # and no unit may be a substring of another unit in the company:
-    # one live-endpoint match is still by substring (a pre-existing
-    # over-match), and a reviewer must not see a truck by accident.
-    units = await conn.fetch(
-        "SELECT unit_number FROM vehicles WHERE account_id = $1 AND company_code = $2 "
-        "AND is_active = 1 AND coalesce(archived_reason, '') = '' "
-        "AND coalesce(vehicle_type, 'truck') <> 'trailer'",
-        account_id, co["code"])
-    known = {r["unit_number"] for r in units}
-    missing = [t for t in trucks if t not in known]
-    if missing:
-        print(f"ERROR: not active trucks of {co['code']}: {', '.join(missing)}")
-        return 2
-    clashing = [t for t in trucks if any(t != o and t in o for o in known)]
-    if clashing:
-        print(f"REFUSING: unit(s) {', '.join(clashing)} are substrings of other units in {co['code']} "
-              f"— pick trucks with distinct numbers.")
-        return 2
-    primaries = await conn.fetch(
-        "SELECT truck_num, user_id FROM driver_trucks WHERE account_id = $1 AND is_primary = 1 "
-        "AND truck_num = ANY($2::text[])", account_id, trucks)
+    primaries = []
+    if trucks:
+        # The trucks must be real, active, this company's, not trailers —
+        # and no unit may be a substring of another unit in the company:
+        # one live-endpoint match is still by substring (a pre-existing
+        # over-match), and a reviewer must not see a truck by accident.
+        units = await conn.fetch(
+            "SELECT unit_number FROM vehicles WHERE account_id = $1 AND company_code = $2 "
+            "AND is_active = 1 AND coalesce(archived_reason, '') = '' "
+            "AND coalesce(vehicle_type, 'truck') <> 'trailer'",
+            account_id, co["code"])
+        known = {r["unit_number"] for r in units}
+        missing = [t for t in trucks if t not in known]
+        if missing:
+            print(f"ERROR: not active trucks of {co['code']}: {', '.join(missing)}")
+            return 2
+        clashing = [t for t in trucks if any(t != o and t in o for o in known)]
+        if clashing:
+            print(f"REFUSING: unit(s) {', '.join(clashing)} are substrings of other units in {co['code']} "
+                  f"— pick trucks with distinct numbers.")
+            return 2
+        primaries = await conn.fetch(
+            "SELECT truck_num, user_id FROM driver_trucks WHERE account_id = $1 AND is_primary = 1 "
+            "AND truck_num = ANY($2::text[])", account_id, trucks)
 
-    perms = await effective_driver_perms(conn, account_id, co["id"])
+    perms = await effective_perms(conn, account_id, co["id"], role)
     on = sorted(k for k, v in perms.items() if v is True)
     wide = wide_flags(perms)
     role_scope = await conn.fetchval(
-        "SELECT scope FROM role_vehicle_scope WHERE account_id = $1 AND role = $2", account_id, ROLE)
+        "SELECT scope FROM role_vehicle_scope WHERE account_id = $1 AND role = $2", account_id, role)
+    vehicle_scope = "assigned" if role == "driver" else None
 
     password = new_password()
     print(f"account    {acct['id']}  {acct['name']}")
     print(f"email      {email}")
-    print(f"role       {ROLE}")
+    print(f"role       {role}")
     print(f"company    {co['code']} ({co['display_name']}) only")
-    print(f"trucks     {', '.join(trucks)}  (non-primary; "
-          f"{len(primaries)} of them already have a primary driver — untouched)")
-    print(f"scope      users.vehicle_scope='assigned'  (account's driver layer: {role_scope or 'built-in default'})")
-    print(f"effective  {len(on)} flags on for driver in {co['code']}: {', '.join(on)}")
-    if wide:
+    if trucks:
+        print(f"trucks     {', '.join(trucks)}  (non-primary; "
+              f"{len(primaries)} of them already have a primary driver — untouched)")
+    print(f"scope      users.vehicle_scope={vehicle_scope or 'NULL (role default)'}  "
+          f"(account's {role} layer: {role_scope or 'built-in default'})")
+    print(f"effective  {len(on)} flags on for {role} in {co['code']}: {', '.join(on)}")
+    if wide and role == "driver":
         print(f"\nREFUSING: this account's driver role carries write/wide flags: {', '.join(wide)}.  "
               f"Narrow the role in Permissions first, or do not put a stranger on this account.")
+        return 3
+    if wide:
+        print(f"\nEXPOSURE  {len(wide)} write/wide flag(s) the reviewer WILL hold on {co['code']}'s real data "
+              f"(owner's choice of role): {', '.join(wide)}")
+        print("           The extension's own token cannot use any of them — the dashboard session can.")
+    if not perms.get("can_view_location"):
+        print(f"\nREFUSING: {role} on this account has no live map — the extension would show nothing.")
         return 3
     print(f"password   {password}")
     if not apply:
@@ -198,9 +220,9 @@ async def create(conn, *, email: str, account_id: int, company: str,
             """INSERT INTO users
                (telegram_id, account_id, role, display_name, email, password_hash,
                 is_primary_owner, email_verified, vehicle_scope, created_at)
-               VALUES (NULL, $1, $2, $3, lower($4), $5, 0, 1, 'assigned', $6)
+               VALUES (NULL, $1, $2, $3, lower($4), $5, 0, 1, $6, $7)
                RETURNING id""",
-            account_id, ROLE, DISPLAY_NAME, email, hash_password(password), ts)
+            account_id, role, DISPLAY_NAME, email, hash_password(password), vehicle_scope, ts)
         await conn.execute(
             """INSERT INTO user_companies (user_id, account_id, company_id, assigned_by, assigned_at)
                VALUES ($1, $2, $3, 0, $4)""",
@@ -293,7 +315,9 @@ async def main() -> int:
     p.add_argument("--account", type=int, required=True, help="account id (PTG is 10000001)")
     p.add_argument("--email", required=True, help="an address YOU control — password resets go there")
     p.add_argument("--company", help="company CODE the reviewer may see (required to create)")
-    p.add_argument("--trucks", help="comma-separated unit numbers to assign (required to create; 2-3)")
+    p.add_argument("--role", default=ROLE_DEFAULT, choices=ROLES_ALLOWED,
+                   help=f"the reviewer's role (default {ROLE_DEFAULT}; owner/admin never)")
+    p.add_argument("--trucks", help="comma-separated unit numbers to assign (driver only; required for driver)")
     p.add_argument("--delete", action="store_true", help="retire the user instead of creating it")
     p.add_argument("--apply", action="store_true", help="write (default: dry-run report)")
     args = p.parse_args()
@@ -323,7 +347,7 @@ async def main() -> int:
             return 2
         trucks = [t.strip() for t in (args.trucks or "").split(",") if t.strip()]
         return await create(conn, email=args.email, account_id=args.account,
-                            company=args.company, trucks=trucks, apply=args.apply)
+                            company=args.company, role=args.role, trucks=trucks, apply=args.apply)
     finally:
         await conn.close()
 

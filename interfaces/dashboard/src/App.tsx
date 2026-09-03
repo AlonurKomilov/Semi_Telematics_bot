@@ -153,7 +153,14 @@ function forwardAuthenticatedFromApex(role: string | undefined): void {
     return;
   }
   const target = role ? ROLE_TO_HOST[role] : undefined;
-  window.location.replace(`https://${target ?? `dash.${APEX_DOMAIN}`}/`);
+  // The browser extension opens its consent page on the APEX — the one
+  // host every person knows, whatever their role — so the forward must
+  // carry that page (and its one-time state) to the role's host instead
+  // of dropping the person on the home page with nothing to confirm.
+  const carry = window.location.pathname === '/extension/connect'
+    ? `${window.location.pathname}${window.location.search}`
+    : '/';
+  window.location.replace(`https://${target ?? `dash.${APEX_DOMAIN}`}${carry}`);
 }
 
 // Routes reachable WITHOUT an authenticated session.  Rendered before

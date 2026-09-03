@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { initialsOf } from './initials';
+import { DASHBOARD_BASE } from '../connect';
 
 export interface Me { name?: string | null; role?: string | null; account_name?: string | null }
 
@@ -46,7 +47,7 @@ export default function UserMenu({ me, onSettings, onDisconnect }: {
             )}
           </div>
           <button type="button" role="menuitem" className="menu-item"
-                  onClick={pick(() => { void chrome.tabs.create({ url: 'https://dash.4truck.us/' }); })}>
+                  onClick={pick(() => { void chrome.tabs.create({ url: `${DASHBOARD_BASE}/` }); })}>
             Open 4truck
           </button>
           <button type="button" role="menuitem" className="menu-item" onClick={pick(onSettings)}>
