@@ -227,6 +227,10 @@ async def test_connect_mints_the_scoped_token_as_its_own_announced_session(monke
     import infra.platform as _cp
     monkeypatch.setattr(_cp, "get_platform_db", lambda: object())
 
+    async def _perms(role, account_id, **kw):
+        return SimpleNamespace(can_view_location=True)
+    monkeypatch.setattr(ext, "get_user_permissions", _perms)
+
     async def _mint(db, request, **kw):
         seen.update(kw)
         return "minted"
@@ -241,6 +245,65 @@ async def test_connect_mints_the_scoped_token_as_its_own_announced_session(monke
     assert seen["aud"] == EXTENSION_AUDIENCE and tuple(seen["scope"]) == EXTENSION_SCOPE
     assert seen["device_label"] == "Browser extension"
     assert seen["always_notify"] is True and seen["remember_me"] is True
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_a_role_without_the_live_map(monkeypatch):
+    """Permissions are the single source of truth; the token's scope only
+    narrows them.  A person whose role has no live map would connect
+    and then meet 403 on every request — so the consent step says no,
+    and no session is minted."""
+    from types import SimpleNamespace
+    from interfaces.api.routes import extension as ext
+
+    role = SimpleNamespace(value="accounting")
+    db_user = SimpleNamespace(id=9, telegram_id=2, account_id=42, role=role,
+                              is_active=True, is_manager=False,
+                              is_primary_owner=False, display_name="B")
+
+    async def _db_user(user, db):
+        return db_user
+    monkeypatch.setattr(ext, "get_current_db_user", _db_user)
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db", lambda: object())
+
+    async def _perms(role, account_id, **kw):
+        return SimpleNamespace(can_view_location=False)
+    monkeypatch.setattr(ext, "get_user_permissions", _perms)
+    minted = []
+
+    async def _mint(db, request, **kw):
+        minted.append(kw)
+        return "minted"
+    monkeypatch.setattr(ext, "mint_session_token", _mint)
+
+    class _Req:
+        headers = {"x-requested-with": "4truck-dashboard", "user-agent": "x"}
+        client = None
+    with pytest.raises(HTTPException) as e:
+        await ext.connect_extension.__wrapped__(
+            _Req(), user={"sub": "2", "account_id": 42, "role": "accounting", "uid": 9})
+    assert e.value.status_code == 403
+    assert "live map" in str(e.value.detail)
+    assert minted == []
+
+
+def test_the_panels_data_path_is_the_dashboards_gates_not_its_own():
+    """The extension writes no permission rule of its own: the two
+    endpoints it reads go through the same permission gate and the same
+    Team Management scope filters as the dashboard's Live Map — company
+    allow-list, then assigned-vehicle scope.  A future endpoint the
+    panel reads must be added to this list and pass the same checks."""
+    from tests._repo import REPO
+    src = (REPO / "features/location/router.py").read_text()
+    # The panel reads /map/vehicles and /map/vehicles/live.
+    panel = (REPO / "interfaces/browser_extension/src/features/live-map/LiveMapPanel.tsx").read_text()
+    assert "'/map/vehicles'" in panel and "'/map/vehicles/live'" in panel
+    # Both are permission-gated by the verdict the scope narrows to.
+    assert src.count('require_permission("can_view_location")') >= 2
+    # Both apply Team Management's company scope and the unit scope.
+    assert "filter_by_allowed_companies(" in src
+    assert "filter_by_assigned_trucks(" in src and "member_unit_scope(user, \"location\")" in src
 
 
 def test_the_signin_notice_points_at_the_one_session_to_disconnect():

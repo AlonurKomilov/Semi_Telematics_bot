@@ -37,7 +37,7 @@ export default function Connect({ onDone }: { onDone: () => void }) {
       <h1 style={{ fontSize: 16, margin: 0 }}>Connect to 4truck</h1>
       <p className="muted" style={{ margin: 0 }}>
         You confirm on 4truck.us — this panel never asks for a password. Once connected it
-        can see your vehicles&apos; live positions and nothing else.
+        shows the vehicles you are allowed to see, live, and nothing else.
       </p>
       {!waiting ? (
         <button className="btn primary" type="button" onClick={() => void start()}>Connect to 4truck</button>

@@ -93,7 +93,7 @@ export default function ExtensionConnect() {
               The extension in this browser wants to connect to your 4truck account.
             </p>
             <ul className="text-sm text-muted-foreground space-y-1.5 mb-4">
-              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It can see your vehicles' live positions on the map, and nothing else.</li>
+              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It can see the live positions of the vehicles you are allowed to see — the same ones as on your Live Map — and nothing else.</li>
               <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It cannot change anything in your account.</li>
               <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It appears as “Browser extension” under Active sessions on your profile, where you can disconnect it any time.</li>
             </ul>

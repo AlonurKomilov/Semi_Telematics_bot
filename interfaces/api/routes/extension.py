@@ -29,6 +29,8 @@ from interfaces.api.auth import (
 )
 from interfaces.api.deps import get_current_db_user, get_current_user
 from interfaces.api.rate_limit import limiter
+from adapters.storage import Role
+from capabilities.permissions.roles import get_user_permissions
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,20 @@ async def connect_extension(request: Request, user: dict = Depends(get_current_u
         # No session row means nothing to disconnect later — refuse
         # rather than mint a credential that cannot be revoked.
         raise HTTPException(status_code=403, detail="This sign-in cannot connect the extension.")
+    # Permissions are the single source of truth for what a person may
+    # see; the token's scope only NARROWS them, it grants nothing.  So a
+    # person whose role has no live map would connect and then meet 403
+    # on every request — say so here, before a session exists.
+    perms = await get_user_permissions(
+        Role(db_user.role.value), db_user.account_id,
+        is_manager=bool(db_user.is_manager),
+        is_primary_owner=bool(db_user.is_primary_owner),
+    )
+    if not getattr(perms, "can_view_location", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Your role does not include the live map, which is what the extension shows.",
+        )
     token = await mint_session_token(
         db, request,
         user_id=db_user.id, telegram_id=db_user.telegram_id,
