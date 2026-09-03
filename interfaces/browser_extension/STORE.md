@@ -64,8 +64,9 @@ private key. (A `key.pem` inside the zip is the pre-2020 method — the store ig
 
 1. Bump `version` in `public/manifest.json` and `package.json` (the store refuses a
    version it has already seen, drafts included).
-2. `npm run build`, then `python3 scripts_build_store.py` — strips `key` from the
-   manifest, which the store refuses.
+2. `npm run build`, then `python3 build_packages.py` → `versions/4truck-extension-store-<v>.zip`
+   (manifest without `key`, for the store) and `versions/4truck-extension-sideload-<v>.zip`
+   (with the key, for Load unpacked). Earlier packages move to `versions/_archive/`.
 3. Developer Dashboard → the item → **Package → Upload new package** → Submit for review.
 
 ## Review access

@@ -22,3 +22,29 @@ export async function openInGoogleMaps(url: string): Promise<void> {
     await chrome.tabs.create({ url });
   }
 }
+
+/**
+ * Selecting a vehicle while Google Maps is the tab in front moves
+ * Google's pin to it — the person reading Google's map does not have to
+ * press a button per truck.  ONLY that tab: with a load board or email
+ * in front nothing happens, the explicit buttons stay for that.
+ * Returns whether a tab was driven.
+ */
+export async function followInGoogleMaps(url: string): Promise<boolean> {
+  const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (active?.id != null && isGoogleMapsUrl(active.url)) {
+    await chrome.tabs.update(active.id, { url });
+    return true;
+  }
+  return false;
+}
+
+const FOLLOW_KEY = 'followGoogleMaps';
+/** On until the person switches it off; the choice survives the panel closing. */
+export async function getFollowPref(): Promise<boolean> {
+  const got = await chrome.storage.local.get(FOLLOW_KEY);
+  return got[FOLLOW_KEY] !== false;
+}
+export async function setFollowPref(on: boolean): Promise<void> {
+  await chrome.storage.local.set({ [FOLLOW_KEY]: on });
+}

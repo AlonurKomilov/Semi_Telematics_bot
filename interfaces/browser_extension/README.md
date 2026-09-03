@@ -10,6 +10,11 @@ Fourth client, same layer as `dashboard`, `miniapp`, `system_dashboard`.
     npm run build          # → dist/
     chrome://extensions → Developer mode → Load unpacked → dist/
 
+Packages for shipping: `python3 build_packages.py` writes `versions/4truck-extension-store-<v>.zip`
+(Web Store) and `versions/4truck-extension-sideload-<v>.zip` (Load unpacked) and moves earlier
+versions to `versions/_archive/`. The folder is git-ignored. Listing text and the upload
+recipe: [STORE.md](STORE.md).
+
 `VITE_API_BASE` defaults to `https://api.4truck.us` (nginx serves the API at that host's root); set it for another host.
 
 ## Server side

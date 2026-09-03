@@ -10,8 +10,8 @@ import L from 'leaflet';
 import { apiJSON } from '../../api/client';
 import { makeIcon } from './icons';
 import { applyFix, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, MAP_STATUS, type Phys } from './physics';
-import { TILES } from './tiles';
-import { directionsUrl, openInGoogleMaps, searchUrl } from './googleMaps';
+import { FALLBACK, TILES, shouldFallBack } from './tiles';
+import { directionsUrl, followInGoogleMaps, getFollowPref, openInGoogleMaps, searchUrl, setFollowPref } from './googleMaps';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
 const REFRESH_MS = 30_000;
@@ -29,8 +29,43 @@ export default function LiveMapPanel() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<MapVehicleFeature | null>(null);
   const [error, setError] = useState('');
+  const [tileNotice, setTileNotice] = useState('');
+  // "Follow in Google Maps": a ref as well as state, because marker click
+  // handlers are attached once and must read the CURRENT choice.
+  const [follow, setFollow] = useState(true);
+  const followRef = useRef(true);
+  // The latest feature per id — a marker's click handler was attached
+  // when the marker was born and must not hand out that first fix.
+  const latest = useRef<Map<string, MapVehicleFeature>>(new Map());
 
   const idOf = (f: MapVehicleFeature) => String(f.properties.id ?? f.properties.name);
+
+  /** Where the vehicle IS right now: the marker, which the 5-second poll
+   *  and the physics keep moving — not the 30-second list snapshot. */
+  const liveLatLng = (f: MapVehicleFeature): [number, number] => {
+    const m = markers.current.get(idOf(f))?.getLatLng();
+    if (m) return [m.lat, m.lng];
+    const [lng, lat] = f.geometry.coordinates;
+    return [lat, lng];
+  };
+
+  /** One place a vehicle gets selected: the card, the map, and — with
+   *  Google Maps in front and follow on — Google's pin. */
+  const select = (f: MapVehicleFeature, pan: boolean) => {
+    const cur = latest.current.get(idOf(f)) ?? f;
+    setSelected(cur);
+    const [lat, lng] = liveLatLng(cur);
+    if (pan) map.current?.setView([lat, lng], 14);
+    if (followRef.current) void followInGoogleMaps(searchUrl(lat, lng));
+  };
+  const selectRef = useRef(select);
+  selectRef.current = select;
+
+  const toggleFollow = () => {
+    const on = !follow;
+    setFollow(on); followRef.current = on;
+    void setFollowPref(on);
+  };
 
   // ── physics loop: one rAF per moving truck ──
   function startLoop(vid: string) {
@@ -58,6 +93,7 @@ export default function LiveMapPanel() {
       const seen = new Set<string>();
       for (const f of data.features ?? []) {
         const id = idOf(f); seen.add(id);
+        latest.current.set(id, f);
         const [lng, lat] = f.geometry.coordinates;
         const p = phys.current.get(id);
         if (p) p.engineState = f.properties.engine_state ?? 'Off';
@@ -68,11 +104,11 @@ export default function LiveMapPanel() {
           if (!p?.isMoving) existing.setLatLng([lat, lng]);
           existing.setIcon(icon);
         } else if (map.current) {
-          const m = L.marker([lat, lng], { icon }).addTo(map.current).on('click', () => setSelected(f));
+          const m = L.marker([lat, lng], { icon }).addTo(map.current).on('click', () => selectRef.current(f, false));
           markers.current.set(id, m);
         }
       }
-      markers.current.forEach((m, id) => { if (!seen.has(id)) { m.remove(); markers.current.delete(id); } });
+      markers.current.forEach((m, id) => { if (!seen.has(id)) { m.remove(); markers.current.delete(id); latest.current.delete(id); } });
       setVehicles(data.features ?? []);
       setError('');
     } catch (e) {
@@ -111,18 +147,32 @@ export default function LiveMapPanel() {
     const m = L.map(mapEl.current, { zoomControl: false }).setView([39.5, -98.35], 4);
     L.control.zoom({ position: 'bottomright' }).addTo(m);
     const t = TILES.standard;
-    L.tileLayer(t.url, { attribution: t.attr, maxZoom: t.maxZoom }).addTo(m);
+    const tiles = L.tileLayer(t.url, { attribution: t.attr, maxZoom: t.maxZoom }).addTo(m);
+    // A grey map is a failed source, not a slow one: count this view's
+    // errors against its loads and switch sources once, out loud.
+    let errors = 0, loads = 0, fellBack = false;
+    tiles.on('tileload', () => { loads += 1; });
+    tiles.on('tileerror', () => {
+      errors += 1;
+      if (fellBack || !shouldFallBack(errors, loads)) return;
+      fellBack = true;
+      tiles.remove();
+      L.tileLayer(FALLBACK.url, { attribution: FALLBACK.attr, maxZoom: FALLBACK.maxZoom }).addTo(m);
+      setTileNotice('OpenStreetMap is not answering from here — showing Esri street tiles.');
+    });
+    m.on('movestart', () => { if (!fellBack) { errors = 0; loads = 0; } });
     map.current = m;
+    void getFollowPref().then((on) => { setFollow(on); followRef.current = on; });
     // The cleanup reads the SAME maps this effect created, so hold them
     // in locals — React warns that a ref may point elsewhere by then.
-    const framesMap = frames.current, physMap = phys.current, markerMap = markers.current;
+    const framesMap = frames.current, physMap = phys.current, markerMap = markers.current, latestMap = latest.current;
     void loadVehicles();
     const a = setInterval(loadVehicles, REFRESH_MS);
     const b = setInterval(livePoll, LIVE_REFRESH_MS);
     return () => {
       clearInterval(a); clearInterval(b);
       framesMap.forEach((id) => cancelAnimationFrame(id));
-      framesMap.clear(); physMap.clear(); markerMap.clear();
+      framesMap.clear(); physMap.clear(); markerMap.clear(); latestMap.clear();
       m.remove(); map.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,11 +184,7 @@ export default function LiveMapPanel() {
   [vehicles, filter, search]);
   const count = (s: Filter) => s === 'all' ? vehicles.length : vehicles.filter((f) => vehicleStatus(f) === s).length;
 
-  const focus = (f: MapVehicleFeature) => {
-    setSelected(f);
-    const [lng, lat] = f.geometry.coordinates;
-    map.current?.setView([lat, lng], 14);
-  };
+  const focus = (f: MapVehicleFeature) => select(f, true);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -151,11 +197,16 @@ export default function LiveMapPanel() {
               {s[0].toUpperCase() + s.slice(1)} ({count(s)})
             </button>
           ))}
+          <button className={`chip ${follow ? 'on' : ''}`} onClick={toggleFollow} aria-pressed={follow}
+                  title="With Google Maps in front, selecting a vehicle moves Google's pin to it">
+            Follow in Google Maps
+          </button>
         </div>
         {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
+        {tileNotice && <p className="muted" style={{ margin: 0 }}>{tileNotice}</p>}
       </div>
       {selected && (() => {
-        const [lng, lat] = selected.geometry.coordinates;
+        const [lat, lng] = liveLatLng(selected);
         return (
           <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
