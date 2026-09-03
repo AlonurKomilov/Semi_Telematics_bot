@@ -20,6 +20,12 @@ export function useCue(): (name: CueName) => void {
 
   useEffect(() => { armAudio(); }, []);
 
+  // Resolution stays here rather than delegating to `playUiCue`: that
+  // one is gated on `mods.sound.ui`, and this one is the ALERT path,
+  // whose gate is `dispatch.soundOn` and lives at the call site. Two
+  // gates, two questions. What they share — pack lookup, volume floor,
+  // the engine call — is three lines, and merging them would mean one
+  // of the two silently answering to the other's switch.
   return useCallback((name: CueName) => {
     if (volume <= 0) return;
     const cue = soundPackById(packId)?.cues[name];

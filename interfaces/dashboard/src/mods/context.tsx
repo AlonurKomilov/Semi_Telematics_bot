@@ -5,6 +5,7 @@ import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
+import { armIfWanted } from './sound/cue';
 import type {
   ThemeColor,
   ThemeMode,
@@ -111,6 +112,10 @@ export function ModProvider({ children }: { children: ReactNode }) {
   // the DOM and exposes the partial-update ergonomics consumers expect.
   const { value: theme, setValue: setThemeValue } = usePreference('mods.theme');
   const { value: size, setValue: setSizeValue } = usePreference('mods.size');
+  // Read only to re-arm when either gate changes; the values themselves
+  // are the sound section's business, not the theme provider's.
+  const { value: uiSound } = usePreference('mods.sound.ui');
+  const { value: alertSound } = usePreference('dispatch.soundOn');
 
   // Deliberately NOT inside `applyTheme`. That function is the mapping
   // the pre-paint script re-implements, and `themeBoot.test.ts` compares
@@ -140,6 +145,19 @@ export function ModProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applySize(size);
   }, [size]);
+
+  // Audio is unlocked by a gesture, so something has to be listening
+  // BEFORE the gesture happens — and until now the only two listeners
+  // were inside the live-alert panel and the pack-preview handler.
+  // Dispatcher, fleet and safety could therefore hear the app; owner,
+  // admin, hr, accounting and recruiter had a volume dial and no path
+  // to sound at all.
+  //
+  // Armed here, once, and only for a screen that has asked: arming
+  // installs a listener that builds an AudioContext on the next click,
+  // and a context is never torn down. Keyed on the gates so flipping one
+  // on takes effect without a reload.
+  useEffect(() => { armIfWanted(); }, [uiSound, alertSound]);
 
   // Publishing the cross-device default belongs HERE, on the single
   // funnel every appearance write already passes through — not at the

@@ -867,6 +867,36 @@ export const DEFS = {
     note: 'Chime when a new live alert arrives.',
   }),
 
+  // ── Interface sounds ──────────────────────────────────────────────
+  /**
+   * Whether the INTERFACE makes a sound — an undo window opening, an
+   * undo landing, an undo refused.
+   *
+   * A second gate rather than a wider reading of `dispatch.soundOn`,
+   * because they answer different questions and reach different people.
+   * Alert sound belongs to the live-alert panel, which renders for
+   * dispatcher, fleet and safety only; every other role has been looking
+   * at a volume dial for a product that could not make a sound for them.
+   * This is the switch that makes that dial mean something.
+   *
+   * Device, for the reason `dispatch.soundOn` and `notif.bannerLevel`
+   * give: the same person's open-plan laptop and cab tablet want
+   * different answers, and a synced value is wrong on whichever they
+   * touched second.
+   *
+   * Default false, and it must stay false. `mods.sound.volume` is a
+   * LEVEL and defaults to 1 on purpose (see its own note) — so the gate
+   * is the only thing standing between a fresh account and sound it did
+   * not ask for. `engine.test.ts` holds that line for the alert gate;
+   * `cue.test.ts` holds it for this one.
+   */
+  'mods.sound.ui': def<boolean>({
+    default: false,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Play a short cue when an action can be undone.',
+  }),
+
   // ── Role preview (Owner/Admin "view as") ──────────────────────────
   // The previewed persona.  '' = no explicit choice (fall back to the
   // subdomain hint, then the user's real role).

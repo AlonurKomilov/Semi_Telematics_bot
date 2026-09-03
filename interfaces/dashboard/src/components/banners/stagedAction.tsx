@@ -30,6 +30,7 @@
  * effect matters and a reverse call exists.
  */
 import { toast } from 'sonner';
+import { playUiCue } from '../../mods/sound/cue';
 import { showBanner } from './AppBanner';
 
 const DEFAULT_SECONDS = 10;
@@ -153,6 +154,15 @@ export interface UndoableActionOptions {
  * time-boxed Undo.  (The action itself already ran — this only shows
  * the window.) */
 export function undoableAction(opts: UndoableActionOptions): void {
+  // The three cues this function was named for. `undo` marks the window
+  // OPENING — the sound means "that is reversible for a few seconds" —
+  // and the other two answer what happened when it was taken. All three
+  // were declared, packed and validated from the day the engine shipped
+  // and had no call site; this is the one.
+  //
+  // Imported by path, never through `../../mods`: that barrel exports
+  // ModPanel, which imports this file.
+  playUiCue('undo');
   showBanner({
     tone: 'ok',
     title: opts.label,
@@ -163,8 +173,10 @@ export function undoableAction(opts: UndoableActionOptions): void {
       onClick: async () => {
         try {
           await opts.undo();
+          playUiCue('success');
           toast.success('Undone');
         } catch (e) {
+          playUiCue('error');
           toast.error(e instanceof Error ? e.message : 'Undo failed');
         }
       },

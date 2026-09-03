@@ -27,6 +27,7 @@ const FROZEN_KEYS: readonly string[] = [
   // wrong on whichever you touched second.
   'mods.sound.pack',
   'mods.sound.volume',
+  'mods.sound.ui',
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
   'tour.state',

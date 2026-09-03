@@ -30,10 +30,20 @@ function walk(dir: string, out: string[] = []): string[] {
  * `test/themeBoot.test.ts` compares the pre-paint script against
  * `applyTheme` itself — the point is the specific implementation, not
  * whatever the barrel currently re-exports.
+ *
+ * The two undo wrappers reach `mods/sound/cue` directly because the
+ * barrel would close a ring: `mods/index` exports `ModPanel`, and
+ * `ModPanel` imports `undoableAction` from `components/banners/
+ * stagedAction`. Vite reports nothing for that — the binding is simply
+ * `undefined` at module-init — so the rule is worth more than the
+ * convenience. `mods/sound/cue` is a leaf: it imports the preferences
+ * store and the sound engine, and nothing in either reaches back.
  */
 const ALLOWED_DEEP = [
   'preferences/registry.ts',
   'test/themeBoot.test.ts',
+  'components/banners/stagedAction.tsx',
+  'lib/undoable.ts',
 ];
 
 describe('everything outside mods/ comes through the barrel', () => {

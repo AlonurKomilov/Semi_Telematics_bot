@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Palette, RotateCcw, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Slider } from '../components/ui/slider';
+import { Switch } from '../components/ui/switch';
 import { Tip } from '../components/tooltip';
 import {
   useMods, applySize, type Mode, type Accent, type RadiusVariant, type Material,
@@ -335,6 +336,7 @@ export function ModControls({ compact = false, onNavigate, section }: {
   // is used. Two controls for one boolean is the object-map problem
   // this line exists to solve, not to repeat.
   const { value: alertSoundOn } = usePreference('dispatch.soundOn');
+  const { value: uiSound, setValue: setUiSound } = usePreference('mods.sound.ui');
 
   /**
    * Hearing it is the only way to choose it, so every gesture in the
@@ -734,6 +736,41 @@ export function ModControls({ compact = false, onNavigate, section }: {
               }} />
           ))}
         </div>
+        {/* The gate this section can actually operate.
+            Two gates and one dial, which is the honest shape: the
+            volume is a LEVEL, and each thing that makes a sound has
+            its own switch. Alert sound's switch lives in the alerts
+            panel and only three of the nine roles ever see it — this
+            one is here, so every role has something the dial applies
+            to. Off by default, and it has to stay that way: the level
+            defaults to 1, so this switch is the whole distance between
+            a fresh account and noise on a shared floor. */}
+        <div className="flex items-center justify-between gap-2 mt-2">
+          <span className="text-xs text-foreground">
+            {t('mods.sound_ui_label', 'Interface sounds')}
+          </span>
+          <Switch
+            size="sm"
+            checked={uiSound}
+            onCheckedChange={(next) => {
+              setUiSound(next);
+              // Armed from inside the click that turned it on. A
+              // listener added mid-dispatch still receives the event on
+              // nodes it has not reached yet, and window is above the
+              // React root — so this same click unlocks audio and the
+              // first cue after it can be heard. The provider's effect
+              // covers the reload case; this covers the first try,
+              // which is the one that decides whether a person believes
+              // the feature works.
+              if (next) armAudio();
+            }}
+            aria-label={t('mods.sound_ui_label', 'Interface sounds')}
+          />
+        </div>
+        <p className="text-2xs text-muted-foreground mt-1">
+          {t('mods.sound_ui_hint', 'A short cue when something can be undone, and when it lands.')}
+        </p>
+
         {/* The gate's STATE, not merely its existence.
             The audit's sharpest finding: this section can read 100%
             while the product is silent, because `dispatch.soundOn`
