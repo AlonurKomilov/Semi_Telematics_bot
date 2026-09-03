@@ -945,6 +945,27 @@ export const DEFS = {
     note: 'The sound typing makes.',
   }),
 
+  // ── Ambient mode ──────────────────────────────────────────────────
+  /**
+   * Whether this screen settles into a read-from-across-the-room state
+   * when nobody touches it.
+   *
+   * Device, and not merely by the usual argument. This one is a property
+   * of the ROOM: the same account signed in on a laptop and on the
+   * display bolted to the yard-office wall wants opposite answers, and
+   * the display is the one that never gets touched. A synced value would
+   * be wrong on whichever was opened second, permanently.
+   *
+   * Default false. A dispatcher whose screen rearranged itself while
+   * they were reading a long report would not call it a feature.
+   */
+  'mods.ambient': def<boolean>({
+    default: false,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Grow the page when the screen goes untouched.',
+  }),
+
   // ── Role preview (Owner/Admin "view as") ──────────────────────────
   // The previewed persona.  '' = no explicit choice (fall back to the
   // subdomain hint, then the user's real role).

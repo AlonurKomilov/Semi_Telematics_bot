@@ -661,6 +661,37 @@
     --chart-5: oklch(0.728 0.124 316);
   }
 
+  /* ── Ambient ────────────────────────────────────────────────
+     What a screen does when nobody has touched it for a while. The
+     GROWTH half is not here — it rides `--size-*`, the same multiplier
+     the Size control writes, because a `scale()` would create a
+     containing block and break every `position: fixed` beneath it.
+
+     This is the other half: navigation recedes. It is faded and pulled
+     aside rather than removed, so nothing reflows and coming back is a
+     fade rather than a rebuild — the mode has to leave instantly when
+     somebody walks up, and a layout that has to be rebuilt cannot.
+
+     `pointer-events: none` matters more than the opacity: a control
+     nobody can see must not be a control somebody can hit.
+
+     Under `prefers-reduced-motion` the transition goes and the MODE
+     stays — the point of the mode is legibility, and taking that from
+     somebody who asked for less movement would be reading the request
+     backwards. No block here does that: the floor further down already
+     zeroes every transition with `!important`, and a second
+     reduced-motion block would be a second floor to keep in step. It
+     also broke `motion.test.ts`, which reads the FIRST such block as
+     the floor — the guard was right and this comment is the fix. */
+  :root[data-ambient] [data-ambient-recede] {
+    opacity: 0.25;
+    pointer-events: none;
+    transition: opacity 600ms var(--motion-ease, ease);
+  }
+  [data-ambient-recede] {
+    transition: opacity 200ms var(--motion-ease, ease);
+  }
+
   /* ── Typeface ───────────────────────────────────────────────
      One block per pack, keyed on [data-font] exactly like the accent
      and the corners. `--font-heading` follows `--font-sans` on its own

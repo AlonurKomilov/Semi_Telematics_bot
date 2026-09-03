@@ -376,6 +376,7 @@ export function ModControls({ compact = false, onNavigate, section }: {
   const { value: uiSound, setValue: setUiSound } = usePreference('mods.sound.ui');
   const { value: keySound, setValue: setKeySound } = usePreference('mods.sound.keyboard');
   const { value: keyPack, setValue: setKeyPack } = usePreference('mods.sound.keyboard.pack');
+  const { value: ambient, setValue: setAmbient } = usePreference('mods.ambient');
 
   /**
    * Hearing it is the only way to choose it, so every gesture in the
@@ -758,6 +759,29 @@ export function ModControls({ compact = false, onNavigate, section }: {
               onClick={(v) => setTheme({ motion: v })} />
           ))}
         </div>
+
+        {/* Ambient is an effect in the literal sense — it is a thing the
+            app does on its own, over time, without being asked. It sits
+            beside Motion rather than in Interface for that reason: a
+            person looking for "what does this screen do while I am not
+            here" is not looking under colours and corners. */}
+        <div className="flex items-center justify-between gap-2 mt-2.5">
+          <span className="text-xs text-foreground">
+            {t('mods.ambient_label', 'Ambient mode')}
+          </span>
+          <Switch
+            size="sm"
+            checked={ambient}
+            onCheckedChange={setAmbient}
+            aria-label={t('mods.ambient_label', 'Ambient mode')}
+          />
+        </div>
+        <p className="text-2xs text-muted-foreground mt-1">
+          {t(
+            'mods.ambient_hint',
+            'After a few untouched minutes the page grows and the menus fade, so it reads from across the room. Alerts stay their own size.',
+          )}
+        </p>
       </div>
       )}
 

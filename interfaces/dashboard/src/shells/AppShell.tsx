@@ -67,7 +67,10 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <div className="hidden lg:block">
+      {/* Recedes in ambient mode — see the [data-ambient] block in
+          index.css. Marked rather than selected by shape, so a shell
+          refactor cannot silently take the mode's meaning with it. */}
+      <div className="hidden lg:block" data-ambient-recede>
         <Sidebar />
       </div>
 
@@ -87,6 +90,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             not a persona contributes one.
             `controls` is this strip's Size region — see lib/sizeRegion. */}
         <header
+          data-ambient-recede
           style={sizeRegion('controls')}
           className="h-12 bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
         >

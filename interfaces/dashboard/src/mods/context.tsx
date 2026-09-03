@@ -6,6 +6,8 @@ import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
 import { armIfWanted, installKeySound } from './sound/cue';
+import { useAmbient } from './ambient/useAmbient';
+import { AMBIENT_SCALE } from './ambient/ambient';
 import type {
   ThemeColor,
   ThemeMode,
@@ -95,15 +97,28 @@ export function applyTheme(theme: Theme) {
  * Exported for the same reason as applyTheme: the boot script is its
  * second implementation and the drift test compares them.
  */
-export function applySize(size: Size) {
+export function applySize(size: Size, ambient = 1) {
   const root = document.documentElement;
-  const g = size.global;
+  // Ambient rides the SAME multiplier the Size control writes, rather
+  // than a transform. A `scale()` would create a containing block and
+  // break every `position: fixed` under it — the dialogs, the toasts and
+  // the assistant panel all live there. This is the axis the whole app
+  // already resizes through, so ambient costs no new mechanism and
+  // composes with whatever the person already chose.
+  const g = size.global * ambient;
   root.style.setProperty('--size-text', String(size.text * g));
   root.style.setProperty('--size-control', String(size.control * g));
   root.style.setProperty('--size-layout', String(size.layout * g));
   root.style.setProperty('--size-panel', String(size.panel * g));
   for (const r of SIZE_REGIONS) {
-    const v = size.regions[r];
+    const own = size.regions[r];
+    // OVERLAYS HOLD STILL. Regions multiply the global, so an alert
+    // would otherwise be blown up along with the page — and an alert
+    // that changes size depending on how long nobody has been at the
+    // desk is two designs fighting. It keeps the size it was drawn at
+    // and the ambient layout gives it room instead; the division is
+    // exact, so a person's own overlay setting still applies on top.
+    const v = r === 'overlays' && ambient !== 1 ? (own ?? 1) / ambient : own;
     if (v === undefined) root.style.removeProperty(`--size-region-${r}`);
     else root.style.setProperty(`--size-region-${r}`, String(v));
   }
@@ -121,6 +136,8 @@ export function ModProvider({ children }: { children: ReactNode }) {
   const { value: uiSound } = usePreference('mods.sound.ui');
   const { value: alertSound } = usePreference('dispatch.soundOn');
   const { value: keySound } = usePreference('mods.sound.keyboard');
+  const ambient = useAmbient();
+  const root = document.documentElement;
 
   // Deliberately NOT inside `applyTheme`. That function is the mapping
   // the pre-paint script re-implements, and `themeBoot.test.ts` compares
@@ -148,8 +165,12 @@ export function ModProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   useEffect(() => {
-    applySize(size);
-  }, [size]);
+    applySize(size, ambient ? AMBIENT_SCALE : 1);
+    // An attribute as well as the multiplier, so the stylesheet can let
+    // navigation recede — that half is not a size question.
+    if (ambient) root.dataset.ambient = '';
+    else delete root.dataset.ambient;
+  }, [size, ambient, root]);
 
   // Audio is unlocked by a gesture, so something has to be listening
   // BEFORE the gesture happens — and until now the only two listeners
