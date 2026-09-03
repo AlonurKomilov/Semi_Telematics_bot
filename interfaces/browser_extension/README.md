@@ -14,17 +14,17 @@ Fourth client, same layer as `dashboard`, `miniapp`, `system_dashboard`.
 
 ## Server side
 
-- CORS: the extension has a PERMANENT id — `manifest.json` carries the public half of a
-  signing key, so every install on every machine gets the same one:
+- CORS: the extension has ONE id, the Chrome Web Store's:
 
-      chrome-extension://bpfmimpagohdiafleecmpkkcglohcbge
+      chrome-extension://iihobedpipecckgmgegbhdpkmebabinn
 
-  Add that origin to `CORS_ALLOWED_ORIGINS` once, for every customer. It is the
-  extension package's id, not a user's or an account's: tenancy comes from the login
-  token, never from the extension. The private key lives OFF the repo at
-  `~/.4truck-extension/key.pem` on the server — it is what proves ownership of this id
-  when the extension is first published to the Web Store, so it must not be lost or
-  committed.
+  The store generated the package's key when the item was created and keeps the
+  private half; `manifest.json` carries the public half (Package → View public key), so
+  a sideloaded build and the store build compute the same id, and `/extension/info`
+  derives it from that key rather than repeating it. Add that origin to
+  `CORS_ALLOWED_ORIGINS` once, for every customer. It is the extension package's id,
+  not a user's or an account's: tenancy comes from the login token, never from the
+  extension.
 - Login sends `client: "extension"` to `/auth/login` and receives a token with
   `aud=extension` and `scope=[can_location_map, can_location_vehicle]`. Every other
   permission reads False for that token. It appears in Active Sessions as

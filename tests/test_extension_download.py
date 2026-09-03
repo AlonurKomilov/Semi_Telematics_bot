@@ -9,12 +9,25 @@ from fastapi import HTTPException
 
 from interfaces.api.routes import extension as ext
 
+# A public key and the id Chrome derives from it (the extension's first,
+# pre-store key — kept as a fixed vector for the derivation).
+KEY_B64 = (
+    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA11rqKsO6CyQuKFatyfSsaSOstiVoQkQk"
+    "BQwAs2wDYO9LxAub3dFS2qy6o5zyEtPlEB0pzXaO93aF12uJVD1NGFLE+2O/5iHV+f4ZFmOTThaZ"
+    "YXeqvUuPo+1lUd1zBkdFf/wH9caF9EMDU5YmMR81WVQflaQkfNtdiqBdsPIXUifGZZaFCKA7dMdi"
+    "U0kFOyecLcoMaqIH7UUndRpOXERawjZUa0bj5wL2WpP7CdPQPPPswz6bohI+pHMhCiiX3j65XdyQ"
+    "IUHKSbo9HJ+ziBXuJdtC6w3NJk9Mccv/7qzaAPHZxNNjSkFov8wck7LJ7UaqB1GVzVTPcenF/lef"
+    "Xt01NQIDAQAB"
+)
+KEY_ID = "bpfmimpagohdiafleecmpkkcglohcbge"
+
 
 @pytest.mark.asyncio
 async def test_a_signed_in_user_gets_the_built_package(tmp_path, monkeypatch):
     dist = tmp_path / "dist"
     (dist / "chunks").mkdir(parents=True)
-    (dist / "manifest.json").write_text('{"manifest_version":3,"version":"0.1.0"}')
+    (dist / "manifest.json").write_text(
+        '{"manifest_version":3,"version":"0.1.0","key":"%s"}' % KEY_B64)
     (dist / "sidepanel.js").write_text("// js")
     (dist / "chunks" / "a.js").write_text("// chunk")
     monkeypatch.setattr(ext, "_DIST", dist)
@@ -28,8 +41,25 @@ async def test_a_signed_in_user_gets_the_built_package(tmp_path, monkeypatch):
     assert res.headers["content-disposition"].startswith("attachment")
 
     info = await ext.extension_info(user={"account_id": 1, "sub": "1"})
-    assert info == {"built": True, "version": "0.1.0",
-                    "extension_id": "bpfmimpagohdiafleecmpkkcglohcbge"}
+    assert info == {"built": True, "version": "0.1.0", "extension_id": KEY_ID}
+
+
+def test_the_id_is_chromes_derivation_of_the_manifest_key():
+    """The id is never a literal anywhere on the server: it is computed
+    from the public key in the built manifest, the way Chrome computes
+    it, so the store build, a sideload and /extension/info cannot drift."""
+    assert ext.extension_id_from_key(KEY_B64) == KEY_ID
+    assert len(KEY_ID) == 32 and set(KEY_ID) <= set("abcdefghijklmnop")
+
+
+@pytest.mark.asyncio
+async def test_a_manifest_without_a_key_reports_no_id(tmp_path, monkeypatch):
+    dist = tmp_path / "dist"; dist.mkdir()
+    (dist / "manifest.json").write_text('{"manifest_version":3,"version":"0.2.0"}')
+    monkeypatch.setattr(ext, "_DIST", dist)
+    monkeypatch.setattr(ext, "_VERSION_FILE", dist / "manifest.json")
+    info = await ext.extension_info(user={"account_id": 1, "sub": "1"})
+    assert info == {"built": True, "version": "0.2.0", "extension_id": ""}
 
 
 @pytest.mark.asyncio

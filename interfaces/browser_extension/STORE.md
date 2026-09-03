@@ -42,7 +42,8 @@ account, and you can revoke it any time from your 4truck profile.
 **Remote code:** No. All code is bundled in the package.
 
 **Data usage (Privacy tab):**
-- Authentication information (email/password sent to 4truck to sign in; a token stored locally).
+- Personally identifiable information — the email address typed to sign in, sent to 4truck.
+- Authentication information (the password sent to 4truck to sign in; a token stored locally).
 - Location — of the user's *vehicles*, read from 4truck; the extension does not access the
   user's own device location.
 - Not sold, not used for ads, not shared with third parties; used only to display the
@@ -51,11 +52,25 @@ account, and you can revoke it any time from your 4truck profile.
 **Privacy policy URL:** https://4truck.us/privacy
 **Visibility:** Unlisted (only people with the link can install) — right for a B2B tool.
 
+## The id
+
+The store generated the package's key when the item was created — item id
+`iihobedpipecckgmgegbhdpkmebabinn`, and that is the only id there is. Its PUBLIC half
+(Package → **View public key**) sits in `public/manifest.json` as `key`, so a sideloaded
+build computes the same id; `/extension/info` derives the id from that key. Nobody keeps a
+private key. (A `key.pem` inside the zip is the pre-2020 method — the store ignores it.)
+
 ## Uploading a new version
 
 1. Bump `version` in `public/manifest.json` and `package.json` (the store refuses a
    version it has already seen, drafts included).
-2. `npm run build`, then `python3 scripts_build_store.py --update` — no `key.pem`; the
-   store knows the id from the first upload. Without `--update` the zip carries the key,
-   which is right ONLY for the very first upload of a brand-new item.
+2. `npm run build`, then `python3 scripts_build_store.py` — strips `key` from the
+   manifest, which the store refuses.
 3. Developer Dashboard → the item → **Package → Upload new package** → Submit for review.
+
+## Review access
+
+The panel is behind a login, so the reviewer needs an account: **Access → Test
+instructions** carries the email/password of a review user (a Viewer-type user with only
+the live-map permission, on an account with live vehicles), plus two lines on what to
+expect. Rotate or delete that user after approval.

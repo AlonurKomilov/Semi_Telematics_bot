@@ -1,17 +1,16 @@
 """Build the zip the Chrome Web Store accepts.
 
-The store refuses a manifest that carries ``key`` — it assigns the key
-itself.  To keep the SAME id the sideload build has, the private half
-travels inside the zip as ``key.pem`` on the FIRST upload only; the
-store reads it, derives the id, and never needs it again.  The file is
-read from the server's off-repo secrets dir and written nowhere else.
+The store refuses a manifest that carries ``key``: it generated the
+package's key itself when the item was created, and that key never
+leaves Google.  Our ``manifest.json`` carries the PUBLIC half of it
+(Package → View public key) so a sideloaded build gets the store's id —
+and the store build must not carry it.  This strips it, nothing else.
 
-    python3 scripts_build_store.py            # first upload: key.pem inside
-    python3 scripts_build_store.py --update   # every later version: no key
-    → 4truck-extension-store-<version>.zip (or the path given as the last arg)
+    npm run build && python3 scripts_build_store.py [out.zip]
+    → 4truck-extension-store-<version>.zip
 
-Once the store has the item it derives nothing from a key any more, and
-the docs ask that ``key.pem`` not travel in an update — hence ``--update``.
+Bump ``version`` first: the store refuses a version it has already
+seen, drafts included.
 """
 from __future__ import annotations
 
@@ -24,27 +23,20 @@ import zipfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 DIST = HERE / "dist"
-KEY = pathlib.Path.home() / ".4truck-extension" / "key.pem"
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    update = "--update" in sys.argv[1:]
     if not (DIST / "manifest.json").is_file():
         print("run `npm run build` first", file=sys.stderr); return 1
-    if not update and not KEY.is_file():
-        print(f"private key missing: {KEY}", file=sys.stderr); return 1
     with tempfile.TemporaryDirectory() as td:
         stage = pathlib.Path(td) / "pkg"
         shutil.copytree(DIST, stage)
         mf = stage / "manifest.json"
         d = json.loads(mf.read_text())
         version = d.get("version", "0.0.0")
-        d.pop("key", None)                       # the store assigns it
+        d.pop("key", None)                       # the store's own; it refuses a copy
         mf.write_text(json.dumps(d, indent=2) + "\n")
-        if not update:
-            shutil.copy(KEY, stage / "key.pem")  # first upload only
-        out = pathlib.Path(args[0]) if args else HERE / f"4truck-extension-store-{version}.zip"
+        out = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / f"4truck-extension-store-{version}.zip"
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             for f in sorted(stage.rglob("*")):
                 if f.is_file():
