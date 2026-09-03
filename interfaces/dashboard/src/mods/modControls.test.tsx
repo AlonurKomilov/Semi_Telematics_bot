@@ -68,7 +68,7 @@ import { MODS } from './catalogue';
 /** Sections every surface carries — the two questions asked most often. */
 const SHARED = ['Mods', 'Color'];
 /** Sections the page carries and the popover sends people to the page for. */
-const PAGE_ONLY = ['Corners', 'Material', 'Icons', 'Motion', 'Sound'];
+const PAGE_ONLY = ['Corners', 'Material', 'Typeface', 'Icons', 'Motion', 'Sound'];
 
 describe('every category that can carry an intensity shows one', () => {
   /**
@@ -157,6 +157,32 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
  * guard clicks the panel instead of reading it.
  */
 const MOD_ONLY = ['entrance'];
+
+describe('the Typeface control reaches the axis it names', () => {
+  it('writes the font, and writes nothing else', () => {
+    setTheme.mockClear();
+    render(<ModControls />);
+    const row = screen.getByText('Typeface').nextElementSibling as HTMLElement;
+    const chips = Array.from(row.querySelectorAll('button'));
+    expect(chips.length, 'the Typeface row has fewer than three faces').toBeGreaterThan(2);
+    fireEvent.click(chips[chips.length - 1]);
+    expect(setTheme, 'the Typeface chip wrote nothing').toHaveBeenCalled();
+    const wrote = setTheme.mock.calls.flatMap((c) => Object.keys(c[0] as object));
+    expect(wrote).toEqual(['font']);
+  });
+
+  it('draws each chip in the face it names', () => {
+    // The whole question a person is asking here is "what does it look
+    // like". A list of font names in one font cannot answer it.
+    render(<ModControls />);
+    const row = screen.getByText('Typeface').nextElementSibling as HTMLElement;
+    const faces = Array.from(row.children)
+      .map((el) => (el as HTMLElement).style.fontFamily)
+      .filter(Boolean);
+    expect(faces.length, 'the chips are not individually set').toBeGreaterThan(2);
+    expect(new Set(faces).size, 'every chip is drawn in the same face').toBe(faces.length);
+  });
+});
 
 describe('the Icons control reaches the axis it names', () => {
   it('writes the weight, and writes nothing else', () => {

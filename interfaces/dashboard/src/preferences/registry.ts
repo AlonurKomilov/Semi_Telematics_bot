@@ -41,6 +41,7 @@ import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
 import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/sound/engine';
 import { KEY_PACKS } from '../mods/sound/keys';
+import { MOD_FONTS } from '../mods/catalogue';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -189,6 +190,8 @@ export interface ModSetting {
    *  panel offers no control, so it only ever changes by taking a mod.
    *  A mod that is only a bundle of chips is a shortcut, not a look. */
   icons: ModIcons;
+  /** The typeface the app is set in. A `FONT_PACKS` id. */
+  font: string;
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
   /**
@@ -294,7 +297,8 @@ export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
 export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
-  motion: 'default', icons: 'regular', entrance: false, color: 'dark-blue',
+  motion: 'default', icons: 'regular', font: 'geist', entrance: false,
+  color: 'dark-blue',
 };
 
 /** @deprecated Only the migration and the alias use this. */
@@ -339,8 +343,15 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * of MOD_DEFAULT appears either here or in its own exclusion list — so
  * a new axis forces the decision instead of quietly skipping the guard.
  */
+/**
+ * `font` is here and not in the React layer, and it is the axis where
+ * that matters most. Every other pre-paint axis changes a colour or a
+ * corner; a typeface changes the WIDTH of every word on screen, so a
+ * font applied one frame after hydration is a visible reflow of the
+ * whole page rather than a flash of the wrong shade.
+ */
 export const PREPAINT_AXES = [
-  'mode', 'accent', 'radius', 'material', 'motion', 'color',
+  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'color',
 ] as const;
 
 export const SIZE_REGIONS: SizeRegion[] = [
@@ -481,6 +492,10 @@ export const DEFS = {
         ? o.motion as ModMotion : MOD_DEFAULT.motion;
       const icons = MOD_ICONS_LIST.includes(o.icons as ModIcons)
         ? o.icons as ModIcons : MOD_DEFAULT.icons;
+      // A pack that shipped and was later removed falls back to the one
+      // this app was drawn with, not to whatever the browser guesses.
+      const font = MOD_FONTS.includes(o.font as string)
+        ? o.font as string : MOD_DEFAULT.font;
       const entrance = typeof o.entrance === 'boolean' ? o.entrance : MOD_DEFAULT.entrance;
       // A stored id for a mod that no longer exists is dropped rather
       // than kept: the catalogue is ours and can shrink between
@@ -528,7 +543,7 @@ export const DEFS = {
           ?? { mode: MOD_DEFAULT.mode, accent: MOD_DEFAULT.accent };
 
       return {
-        mode, accent, radius, material, motion, icons, entrance,
+        mode, accent, radius, material, motion, icons, font, entrance,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.

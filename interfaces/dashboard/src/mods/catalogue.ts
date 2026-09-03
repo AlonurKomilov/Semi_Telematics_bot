@@ -120,6 +120,39 @@ export const motionPercent = (m: (typeof MOD_MOTIONS)[number]): number =>
  * ships and nothing here used — one mount point, zero call sites among
  * the 1,663 icon usages.
  */
+/**
+ * The typeface the whole app is set in.
+ *
+ * An AXIS, keyed on an attribute, exactly like the accent and the
+ * corners — not something a mod injects. `--font-sans` is deliberately
+ * unreachable by the token injector (pinned by `inject.test.ts`), and it
+ * should stay that way: a font-family is a name that has to resolve to
+ * something installed, and the injector's grammar cannot express or
+ * verify that.
+ *
+ * Every stack here costs ZERO bytes. Four of the five are faces the
+ * operating system already ships, and they are genuinely different from
+ * each other — a serif next to a monospace is not a subtle change. That
+ * is the foundation rather than the ceiling: adding a real bundled
+ * webfont later is one `@import` in index.css, one block beside the
+ * others, and one entry here. Nothing else in this file has to move.
+ */
+export interface FontPack {
+  readonly id: string;
+  readonly label: string;
+  /** What a person is actually looking at, for the panel to say. */
+  readonly note: string;
+}
+export const FONT_PACKS: readonly FontPack[] = [
+  { id: 'geist',   label: 'Geist',   note: 'The one this app was drawn with' },
+  { id: 'system',  label: 'System',  note: 'Whatever your computer uses' },
+  { id: 'serif',   label: 'Serif',   note: 'Book-like, with strokes on the letters' },
+  { id: 'mono',    label: 'Mono',    note: 'Every letter the same width' },
+  { id: 'rounded', label: 'Rounded', note: 'Softer corners on the letters' },
+];
+export const MOD_FONTS = FONT_PACKS.map((f) => f.id);
+export type ModFont = string;
+
 export const MOD_ICONS = ['hairline', 'regular', 'bold'] as const;
 /** The stroke widths those names mean. `regular` is lucide's own 2. */
 export const ICON_STROKE: Record<string, number> = {
@@ -168,8 +201,12 @@ export interface Mod {
   readonly material?: ModMaterial;
   /** How fast it moves. Omit and the person's own choice stands. */
   readonly motion?: ModMotion;
-  /** Icon stroke weight. Mod-only — the panel offers no control for it. */
+  /** Icon stroke weight. */
   readonly icons?: ModIcons;
+  /** The typeface. A `FONT_PACKS` id; omit and the person's own stands.
+   *  A look that changes the colour and not the lettering is half a
+   *  look — this is the field that lets a mod be one. */
+  readonly font?: ModFont;
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
@@ -225,6 +262,7 @@ export const MOD_FIELD_SECTION: Record<
   radius: 'interface',
   material: 'interface',
   icons: 'interface',
+  font: 'interface',
   motion: 'effects',
   entrance: 'effects',
   sound: 'sounds',

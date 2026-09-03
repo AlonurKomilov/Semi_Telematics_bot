@@ -511,7 +511,8 @@ describe('the axis set itself', () => {
      * Changing this list is the decision. Make it on purpose.
      */
     expect(Object.keys(MOD_DEFAULT).sort()).toEqual([
-      'accent', 'color', 'entrance', 'icons', 'material', 'mode', 'motion', 'radius',
+      'accent', 'color', 'entrance', 'font', 'icons', 'material', 'mode',
+      'motion', 'radius',
     ]);
   });
 });

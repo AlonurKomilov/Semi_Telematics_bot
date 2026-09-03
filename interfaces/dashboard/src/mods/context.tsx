@@ -69,6 +69,10 @@ export function applyTheme(theme: Theme) {
   // still see every value off disk.
   root.dataset.material = theme.material;
   root.dataset.motion = theme.motion;
+  // Last of the attributes, and the one the boot script most has to
+  // agree with: a typeface changes the width of every word, so getting
+  // it a frame late reflows the page rather than recolouring it.
+  root.dataset.font = theme.font;
 }
 
 /**

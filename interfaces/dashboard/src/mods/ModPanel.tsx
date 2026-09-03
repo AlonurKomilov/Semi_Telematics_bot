@@ -13,7 +13,7 @@ import {
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
-  THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS,
+  THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, FONT_PACKS,
   modMatchesAxes, modById, packById, modFootprint, motionPercent,
   type Mod, type ModIcons,
 } from './catalogue';
@@ -256,6 +256,23 @@ const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
  * only part there is anything to choose about — and a second pack, when
  * it comes, becomes a row above this one rather than a redesign.
  */
+/**
+ * What each chip is drawn in, so the choice can be SEEN rather than read.
+ *
+ * A second copy of the stacks in `index.css`, and `font.test.ts` parses
+ * the stylesheet and fails when the two disagree — the same bargain the
+ * boot script and `MOTION_SCALE` already make. It cannot be read out of
+ * the stylesheet at render time: the value lives on `:root[data-font=x]`,
+ * and only one of those is applied at a time.
+ */
+const FONT_PREVIEW: Record<string, string> = {
+  geist: "'Geist Variable', sans-serif",
+  system: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+  serif: "ui-serif, Georgia, Cambria, 'Times New Roman', serif",
+  mono: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  rounded: "ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Varela Round', system-ui, sans-serif",
+};
+
 const ICON_OPTIONS: { value: ModIcons; key: string; label: string }[] =
   MOD_ICONS.map((i) => ({
     value: i,
@@ -669,6 +686,27 @@ export function ModControls({ compact = false, onNavigate, section }: {
               onClick={(v) => setTheme({ material: v })} />
           ))}
         </div>
+      </div>
+
+      <div>
+        <p className={`${groupLabel} mb-1.5`}>
+          {t('mods.group_font', 'Typeface')}
+        </p>
+        {/* Each chip is SET IN ITS OWN FACE. A list of font names in one
+            font tells you nothing — the whole question a person is
+            asking here is "what does it look like", and the chip can
+            simply answer it. */}
+        <div className="flex flex-wrap gap-1">
+          {FONT_PACKS.map((f) => (
+            <span key={f.id} style={{ fontFamily: FONT_PREVIEW[f.id] }}>
+              <Chip value={f.id} current={theme.font} label={f.label}
+                onClick={(v) => setTheme({ font: v })} />
+            </span>
+          ))}
+        </div>
+        <p className="text-2xs text-muted-foreground mt-1.5">
+          {FONT_PACKS.find((f) => f.id === theme.font)?.note ?? ''}
+        </p>
       </div>
 
       <div>

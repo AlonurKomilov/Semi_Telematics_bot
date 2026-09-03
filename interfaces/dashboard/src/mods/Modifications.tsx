@@ -61,6 +61,7 @@ export const SECTION_AXES = {
     // `MOD_DEFAULT` because its default is ABSENCE: the packs are the
     // floor, and nothing custom is what a new account wears.
     brand: undefined,
+    font: MOD_DEFAULT.font,
     radius: MOD_DEFAULT.radius,
     material: MOD_DEFAULT.material,
     icons: MOD_DEFAULT.icons,

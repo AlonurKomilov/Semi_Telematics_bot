@@ -60,6 +60,11 @@
         var radius = pick(t.radius, ['sharp', 'rounded', 'pill'], 'rounded');
         var material = pick(t.material, ['solid', 'glass'], 'solid');
         var motion = pick(t.motion, ['calm', 'default', 'snappy'], 'default');
+        // The list is restated here rather than imported, like every
+        // other axis in this script — there is no module system before
+        // React. `themeBoot.test.ts` runs this script and applyTheme
+        // over the same inputs and fails when the two disagree.
+        var font = pick(t.font, ['geist', 'system', 'serif', 'mono', 'rounded'], 'geist');
 
         // Mode and accent, with the pre-split `color` as the fallback —
         // the same migration registry.ts's sanitiser does, written a
@@ -92,6 +97,7 @@
         root.dataset.radius = radius;
         root.dataset.material = material;
         root.dataset.motion = motion;
+        root.dataset.font = font;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts
         // — themeBoot.test.ts asserts that it does. 1 is "as designed".
