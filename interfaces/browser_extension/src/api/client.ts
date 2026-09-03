@@ -55,8 +55,12 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    // ``credentials: 'omit'``: the extension has host permission for the
+    // API, so the browser WOULD attach the person's .4truck.us dashboard
+    // cookie.  The panel must speak with its own scoped token only —
+    // never fall through to the full session behind it.
     const res = await fetch(`${API_BASE}${path}`, {
-      ...opts, headers, body: body as BodyInit, signal: controller.signal,
+      ...opts, headers, body: body as BodyInit, signal: controller.signal, credentials: 'omit',
     });
     if (res.status === 401) {
       await clearToken();

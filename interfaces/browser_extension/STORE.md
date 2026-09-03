@@ -25,9 +25,10 @@ What it shows today
 
 More of 4truck reaches the panel over time; each addition appears in this list.
 
-Requires a 4truck account. Sign in inside the panel with your 4truck email and password.
-The panel can read what it shows and nothing else — it cannot change anything in your
-account, and you can revoke it any time from your 4truck profile.
+Requires a 4truck account. The panel never asks for a password: press Connect, confirm
+once on 4truck.us, done. The panel can read what it shows and nothing else — it cannot
+change anything in your account, and you can disconnect it any time from your 4truck
+profile.
 
 **Single purpose:** A side panel for the signed-in user's 4truck vehicle-management account.
 
@@ -42,8 +43,9 @@ account, and you can revoke it any time from your 4truck profile.
 **Remote code:** No. All code is bundled in the package.
 
 **Data usage (Privacy tab):**
-- Personally identifiable information — the email address typed to sign in, sent to 4truck.
-- Authentication information (the password sent to 4truck to sign in; a token stored locally).
+- Authentication information — a sign-in token, stored locally, received from 4truck after
+  the person confirms on 4truck.us. The extension never sees an email or a password (those
+  are typed on the website, not in the extension), so PII stays UNchecked.
 - Location — of the user's *vehicles*, read from 4truck; the extension does not access the
   user's own device location.
 - Not sold, not used for ads, not shared with third parties; used only to display the

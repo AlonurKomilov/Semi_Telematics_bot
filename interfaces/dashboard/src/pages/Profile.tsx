@@ -966,11 +966,15 @@ function ActiveSessions() {
 
   useEffect(load, []);
 
-  const revoke = async (s: SessionRow) => {
-    if (!window.confirm(`Sign out ${s.device_label || 'this device'}?`)) return;
+  const revokeNow = async (s: SessionRow) => {
     setBusyId(s.id);
     try {
       const r = await apiFetch(`/user/sessions/${s.id}`, { method: 'DELETE' });
+      if (r.status === 404) {
+        // Already gone — the notice was acted on twice, or it expired.
+        setRows((prev) => prev.filter((x) => x.id !== s.id));
+        return;
+      }
       if (!r.ok) throw new Error(`Failed (${r.status})`);
       // Optimistic: drop the row immediately rather than wait for refetch.
       setRows((prev) => prev.filter((x) => x.id !== s.id));
@@ -980,6 +984,31 @@ function ActiveSessions() {
       setBusyId(null);
     }
   };
+
+  const revoke = async (s: SessionRow) => {
+    if (!window.confirm(`Sign out ${s.device_label || 'this device'}?`)) return;
+    await revokeNow(s);
+  };
+
+  // "Disconnect this session" from a sign-in notice lands here as
+  // /profile?session=<id>.  The URL only POINTS at the row: the person
+  // still confirms, so a mail scanner prefetching the link revokes
+  // nothing.  Read once, then cleared so a reload does not ask again.
+  const [askedId] = useState(() => Number(new URLSearchParams(window.location.search).get('session') || 0));
+  const [asked, setAsked] = useState(false);
+  useEffect(() => {
+    if (!askedId || loading || asked) return;
+    setAsked(true);
+    window.history.replaceState(null, '', window.location.pathname);
+    const s = rows.find((r) => r.id === askedId);
+    if (!s) { alert('That session is already signed out.'); return; }
+    document.getElementById(`session-${s.id}`)?.scrollIntoView({ block: 'center' });
+    if (s.jti === currentJti) { alert('That is this device — sign out from the menu instead.'); return; }
+    if (window.confirm(`Disconnect ${s.device_label || 'this device'}? It will be signed out at its next request.`)) {
+      void revokeNow(s);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedId, loading, asked]);
 
   const terminateOthers = async () => {
     const others = rows.filter((r) => r.jti !== currentJti).length;
@@ -1036,7 +1065,8 @@ function ActiveSessions() {
           const isCurrent = s.jti === currentJti;
           const isBusy = busyId === s.id;
           return (
-            <li key={s.id} className="flex items-start gap-3 py-3">
+            <li key={s.id} id={`session-${s.id}`}
+                className={`flex items-start gap-3 py-3 ${s.id === askedId ? 'bg-primary/5 -mx-2 px-2 rounded-md' : ''}`}>
               <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${isCurrent ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'}`}>
                 <Icon className="size-4.5" />
               </div>

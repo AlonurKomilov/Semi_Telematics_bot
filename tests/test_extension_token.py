@@ -90,9 +90,161 @@ def test_refresh_keeps_the_scope_it_was_given():
     assert 'aud=payload.get("aud")' in src and 'scope=payload.get("scope")' in src
 
 
-def test_login_from_the_extension_mints_a_scoped_token_and_no_cookie():
-    import inspect
-    src = inspect.getsource(auth_mod.auth_email_login)
-    assert 'body.client == EXTENSION_AUDIENCE' in src
-    assert 'device_label="Browser extension"' in src
-    assert 'if not is_extension:' in src, "the extension must not also receive an unscoped cookie"
+# ── The consent flow: one mint, no password in the panel ─────────────
+# (The password login used to mint the scoped token for a panel that sent
+# client="extension"; that path is gone — see the refusal test below.)
+
+
+def test_only_the_consent_endpoint_mints_an_extension_token():
+    """"Never silently connect" made grep-enforceable: the audience is
+    passed to the mint from exactly one place, the consent endpoint —
+    not from any password or Telegram login."""
+    import re
+    from tests._repo import REPO
+    auth_src = (REPO / "interfaces/api/auth.py").read_text()
+    ext_src = (REPO / "interfaces/api/routes/extension.py").read_text()
+    pat = re.compile(r"aud\s*=\s*EXTENSION_AUDIENCE\b")
+    assert not pat.search(auth_src), "auth.py must not mint an extension token"
+    assert len(pat.findall(ext_src)) == 1
+
+
+def test_the_login_endpoints_refuse_an_old_panel_instead_of_widening_it():
+    """A panel still sending client="extension" gets a 400 with the new
+    instruction — never an UNSCOPED token plus a cookie, which is what
+    dropping the branch silently would have produced."""
+    from tests._repo import REPO
+    src = (REPO / "interfaces/api/auth.py").read_text()
+    assert src.count('if body.client == EXTENSION_AUDIENCE:') == 3
+    assert src.count("Connect the browser extension from your 4truck dashboard.") == 3
+
+
+@pytest.mark.asyncio
+async def test_refresh_refuses_a_revoked_session(monkeypatch):
+    """Refresh would otherwise carry the expiry past the denylist entry
+    and a disconnected session would come back on its own."""
+    from starlette.responses import Response
+    tok = create_jwt(1, 42, "owner", user_id=7, jti="revoked-jti")
+
+    async def _revoked(jti):
+        return jti == "revoked-jti"
+    monkeypatch.setattr(auth_mod, "is_jti_revoked", _revoked)
+    # The handle is looked up before the token is read; no query may run
+    # for a revoked token, so an object with no methods is the proof.
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db", lambda: object())
+
+    class _Req:
+        headers = {"user-agent": "x"}
+        client = None
+    # ``__wrapped__``: past the rate limiter, which wants a real Request.
+    with pytest.raises(HTTPException) as e:
+        await auth_mod.refresh_token.__wrapped__(_Req(), Response(), authorization=f"Bearer {tok}")
+    assert e.value.status_code == 401
+    assert "revoked" in str(e.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_refreshing_an_extension_token_sets_no_cookie(monkeypatch):
+    """The panel's refresh must never become the dashboard's cookie: a
+    two-permission key would overwrite a full session, or a lifted
+    panel token would gain one."""
+    from starlette.responses import Response
+    from types import SimpleNamespace
+    tok = create_jwt(1, 42, "owner", user_id=7, jti="ext-jti",
+                     aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
+
+    async def _not_revoked(_jti):
+        return False
+    monkeypatch.setattr(auth_mod, "is_jti_revoked", _not_revoked)
+
+    role = SimpleNamespace(value="owner")
+    user = SimpleNamespace(id=7, telegram_id=1, account_id=42, role=role,
+                           is_active=True, is_manager=False, is_primary_owner=True,
+                           display_name="A")
+
+    class _DB:
+        async def get_user_by_telegram_id(self, _tid):
+            return user
+        async def update_user_session_on_refresh(self, *a, **k):
+            return None
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db", lambda: _DB())
+
+    class _Req:
+        headers = {"user-agent": "x"}
+        client = None
+    res = Response()
+    out = await auth_mod.refresh_token.__wrapped__(_Req(), res, authorization=f"Bearer {tok}")
+    assert decode_jwt(out.access_token)["aud"] == "extension"
+    assert "set-cookie" not in {k.decode().lower() for k, _ in res.raw_headers}
+
+    # And the unscoped counterpart DOES get its cookie — the guard is
+    # about the audience, not a regression for the dashboard.
+    plain = create_jwt(1, 42, "owner", user_id=7, jti="dash-jti")
+    res2 = Response()
+    await auth_mod.refresh_token.__wrapped__(_Req(), res2, authorization=f"Bearer {plain}")
+    assert "set-cookie" in {k.decode().lower() for k, _ in res2.raw_headers}
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_a_scoped_caller_and_a_bare_post(monkeypatch):
+    from interfaces.api.routes import extension as ext
+
+    class _Req:
+        headers = {"x-requested-with": "4truck-dashboard", "user-agent": "x"}
+        client = None
+    scoped = {"sub": "1", "account_id": 42, "role": "owner", "uid": 7,
+              "aud": "extension", "scope": list(EXTENSION_SCOPE)}
+    with pytest.raises(HTTPException) as e:
+        await ext.connect_extension.__wrapped__(_Req(), user=scoped)
+    assert e.value.status_code == 403
+
+    class _Bare:
+        headers = {"user-agent": "x"}
+        client = None
+    with pytest.raises(HTTPException) as e:
+        await ext.connect_extension.__wrapped__(_Bare(), user={"sub": "1", "account_id": 42, "role": "owner", "uid": 7})
+    assert e.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_connect_mints_the_scoped_token_as_its_own_announced_session(monkeypatch):
+    """The whole point in one call: a dashboard session in, a live-map
+    key out — its own session row, notified regardless of device label,
+    and no cookie anywhere."""
+    from types import SimpleNamespace
+    from interfaces.api.routes import extension as ext
+
+    role = SimpleNamespace(value="owner")
+    db_user = SimpleNamespace(id=7, telegram_id=1, account_id=42, role=role,
+                              is_active=True, is_manager=False,
+                              is_primary_owner=True, display_name="Allen")
+    seen = {}
+
+    async def _db_user(user, db):
+        return db_user
+    monkeypatch.setattr(ext, "get_current_db_user", _db_user)
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db", lambda: object())
+
+    async def _mint(db, request, **kw):
+        seen.update(kw)
+        return "minted"
+    monkeypatch.setattr(ext, "mint_session_token", _mint)
+
+    class _Req:
+        headers = {"x-requested-with": "4truck-dashboard", "user-agent": "x"}
+        client = None
+    out = await ext.connect_extension.__wrapped__(
+        _Req(), user={"sub": "1", "account_id": 42, "role": "owner", "uid": 7})
+    assert out.access_token == "minted"
+    assert seen["aud"] == EXTENSION_AUDIENCE and tuple(seen["scope"]) == EXTENSION_SCOPE
+    assert seen["device_label"] == "Browser extension"
+    assert seen["always_notify"] is True and seen["remember_me"] is True
+
+
+def test_the_signin_notice_points_at_the_one_session_to_disconnect():
+    from interfaces.api.security_notifications import signin_notice_action
+    assert signin_notice_action(91) == {
+        "label": "Disconnect this session", "url": "/profile?session=91"}
+    assert signin_notice_action(None)["url"] == "/profile"

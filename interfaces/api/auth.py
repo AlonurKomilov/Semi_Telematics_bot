@@ -305,8 +305,14 @@ async def mint_session_token(
     aud: str | None = None,
     scope: "tuple[str, ...] | list[str] | None" = None,
     device_label: str | None = None,
+    always_notify: bool = False,
 ) -> str:
     """Mint a JWT *and* record the session row in one shot.
+
+    ``always_notify`` skips the new-device check: an explicit grant to a
+    client (the browser extension) is always worth a notice, and label
+    matching would otherwise hide a second, uninvited connection beside
+    a legitimate one.
 
     Use this from every login flow in this module.  ``user_id`` is the
     integer PK from ``users``, NOT the Telegram id — needed so the
@@ -378,8 +384,8 @@ async def mint_session_token(
             # Both the check and the announce are non-fatal by construction.
             from interfaces.api.security_notifications import (
                 announce_new_device_signin, is_new_device)
-            notify_new_device = await is_new_device(db, user_id, device_label)
-            await db.create_user_session(
+            notify_new_device = always_notify or await is_new_device(db, user_id, device_label)
+            session_id = await db.create_user_session(
                 user_id=user_id,
                 jti=jti,
                 device_label=device_label,
@@ -394,7 +400,8 @@ async def mint_session_token(
             if notify_new_device:
                 await announce_new_device_signin(
                     db, account_id, user_id,
-                    device_label=device_label, ip=client_ip)
+                    device_label=device_label, ip=client_ip,
+                    session_id=session_id)
         except Exception as e:
             # Session bookkeeping is non-critical — never break login.
             logging.getLogger("api.auth").warning(
@@ -574,6 +581,10 @@ async def refresh_token(request: Request, response: Response, authorization: str
         payload = decode_jwt(token)
     except _JE:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # A revoked session does not get a fresh lease: a refresh would carry
+    # its expiry past the denylist entry and the session would come back.
+    if payload.get("jti") and await is_jti_revoked(str(payload["jti"])):
+        raise HTTPException(status_code=401, detail="Session revoked. Sign in again.")
 
     telegram_id = int(payload["sub"])
     user = await db.get_user_by_telegram_id(telegram_id)
@@ -631,7 +642,11 @@ async def refresh_token(request: Request, response: Response, authorization: str
             "session refresh bookkeeping failed for user=%s: %s",
             user.telegram_id, e,
         )
-    _set_auth_cookie(response, new_token, remember_me=remember)
+    # A scoped token stays a Bearer credential.  Setting the .4truck.us
+    # cookie from it would overwrite the dashboard's session with a
+    # two-permission key — or hand a lifted panel token a cookie.
+    if not payload.get("aud"):
+        _set_auth_cookie(response, new_token, remember_me=remember)
     return AuthResponse(
         access_token=new_token,
         user={
@@ -695,7 +710,15 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
-    is_extension = body.client == EXTENSION_AUDIENCE
+    if body.client == EXTENSION_AUDIENCE:
+        # The panel does not sign in with a password any more: an
+        # extension token is minted ONLY by POST /extension/connect, after
+        # the person confirms on the dashboard.  An old panel asking here
+        # gets a plain answer, never an unscoped token.
+        raise HTTPException(
+            status_code=400,
+            detail="Connect the browser extension from your 4truck dashboard.",
+        )
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
@@ -703,15 +726,8 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
-        aud=EXTENSION_AUDIENCE if is_extension else None,
-        scope=EXTENSION_SCOPE if is_extension else None,
-        device_label="Browser extension" if is_extension else None,
     )
-    # The extension authenticates with the Bearer header it stores; a
-    # cookie on the API domain would be a second, unscoped credential it
-    # never asked for.
-    if not is_extension:
-        _set_auth_cookie(response, token, remember_me=body.remember_me)
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -826,7 +842,15 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
-    is_extension = body.client == EXTENSION_AUDIENCE
+    if body.client == EXTENSION_AUDIENCE:
+        # The panel does not sign in with a password any more: an
+        # extension token is minted ONLY by POST /extension/connect, after
+        # the person confirms on the dashboard.  An old panel asking here
+        # gets a plain answer, never an unscoped token.
+        raise HTTPException(
+            status_code=400,
+            detail="Connect the browser extension from your 4truck dashboard.",
+        )
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
@@ -834,15 +858,8 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
-        aud=EXTENSION_AUDIENCE if is_extension else None,
-        scope=EXTENSION_SCOPE if is_extension else None,
-        device_label="Browser extension" if is_extension else None,
     )
-    # The extension authenticates with the Bearer header it stores; a
-    # cookie on the API domain would be a second, unscoped credential it
-    # never asked for.
-    if not is_extension:
-        _set_auth_cookie(response, token, remember_me=body.remember_me)
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -1450,7 +1467,15 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         ip_address=_ip, user_agent=_ua,
     )
 
-    is_extension = body.client == EXTENSION_AUDIENCE
+    if body.client == EXTENSION_AUDIENCE:
+        # The panel does not sign in with a password any more: an
+        # extension token is minted ONLY by POST /extension/connect, after
+        # the person confirms on the dashboard.  An old panel asking here
+        # gets a plain answer, never an unscoped token.
+        raise HTTPException(
+            status_code=400,
+            detail="Connect the browser extension from your 4truck dashboard.",
+        )
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
@@ -1458,15 +1483,8 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
-        aud=EXTENSION_AUDIENCE if is_extension else None,
-        scope=EXTENSION_SCOPE if is_extension else None,
-        device_label="Browser extension" if is_extension else None,
     )
-    # The extension authenticates with the Bearer header it stores; a
-    # cookie on the API domain would be a second, unscoped credential it
-    # never asked for.
-    if not is_extension:
-        _set_auth_cookie(response, token, remember_me=body.remember_me)
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={

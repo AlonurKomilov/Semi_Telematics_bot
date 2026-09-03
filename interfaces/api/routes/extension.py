@@ -21,14 +21,75 @@ import logging
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from interfaces.api.deps import get_current_user
+from interfaces.api.auth import (
+    EXTENSION_AUDIENCE, EXTENSION_SCOPE, AuthResponse, mint_session_token,
+)
+from interfaces.api.deps import get_current_db_user, get_current_user
+from interfaces.api.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/extension", tags=["extension"])
+
+#: The consent page sends this header.  A foreign origin cannot: the
+#: request would need a CORS preflight, and the allow-list refuses it —
+#: so a cookie-carrying cross-site POST (CSRF) never reaches the mint.
+CONNECT_HEADER = "x-requested-with"
+
+
+@router.post("/connect", response_model=AuthResponse)
+@limiter.limit("5/minute")
+async def connect_extension(request: Request, user: dict = Depends(get_current_user)):
+    """The ONLY place an ``aud=extension`` token is minted.
+
+    Reached from the dashboard's consent page after the person pressed
+    Confirm — never from the panel, which holds no credentials.  The
+    caller is the dashboard session (the ``.4truck.us`` cookie); the
+    answer is a token scoped to the live map, recorded as its own
+    "Browser extension" session, always announced, revocable from Active
+    Sessions.  No cookie is set from it.
+    """
+    if user.get("aud"):
+        # A narrowed token must not mint another credential — a lifted
+        # panel token could otherwise renew itself forever.
+        raise HTTPException(
+            status_code=403,
+            detail="Sign in to the dashboard to connect the extension.",
+        )
+    if not request.headers.get(CONNECT_HEADER):
+        raise HTTPException(status_code=400, detail="Missing X-Requested-With header")
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user or not getattr(db_user, "is_active", True):
+        raise HTTPException(status_code=403, detail="User no longer active")
+    if not db_user.id or db_user.id <= 0:
+        # No session row means nothing to disconnect later — refuse
+        # rather than mint a credential that cannot be revoked.
+        raise HTTPException(status_code=403, detail="This sign-in cannot connect the extension.")
+    token = await mint_session_token(
+        db, request,
+        user_id=db_user.id, telegram_id=db_user.telegram_id,
+        account_id=db_user.account_id, role=db_user.role.value,
+        is_manager=db_user.is_manager,
+        is_primary_owner=db_user.is_primary_owner,
+        remember_me=True,   # 30 days + refresh in place; daily re-consent trains people to stop reading it
+        aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE,
+        device_label="Browser extension",
+        always_notify=True,
+    )
+    return AuthResponse(
+        access_token=token,
+        user={
+            "telegram_id": db_user.telegram_id,
+            "name": db_user.display_name or "",
+            "role": db_user.role.value,
+            "account_id": db_user.account_id,
+        },
+    )
 
 #: The built package, produced by ``npm run build`` in
 #: interfaces/browser_extension on deploy.  Resolved from this file so a

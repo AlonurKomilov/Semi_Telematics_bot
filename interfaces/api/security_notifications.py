@@ -70,19 +70,34 @@ async def is_new_device(db: Any, user_id: int, device_label: str) -> bool:
         return False
 
 
+def signin_notice_action(session_id: int | None) -> dict[str, str]:
+    """The notice's one button.  With the session known it is
+    "Disconnect this session" → Active Sessions with THAT row focused,
+    where the existing confirm → revoke runs; the URL is only a pointer,
+    so a mail scanner prefetching the link revokes nothing.  Without it
+    (the row failed to insert) the generic review link."""
+    if session_id:
+        return {"label": "Disconnect this session",
+                "url": f"/profile?session={int(session_id)}"}
+    return {"label": "Review sessions", "url": "/profile"}
+
+
 async def announce_new_device_signin(
     db: Any, account_id: int, user_id: int, *,
-    device_label: str, ip: str = "",
+    device_label: str, ip: str = "", session_id: int | None = None,
 ) -> None:
     """Tell the user their account just signed in from a new device.
 
     Fully non-fatal — a notification failure must never break a login.
-    Call BEFORE the new session row is inserted (else it matches itself).
+    The new-device CHECK runs before the session row is inserted (else it
+    matches itself); this announce runs after, so ``session_id`` is the
+    row the notice can point at.
     """
     if not _SECURITY_EVENTS_ENABLED:
         return
     try:
         where = f" from {ip}" if ip else ""
+        action = signin_notice_action(session_id)
         await notify_user(
             db, account_id, user_id,
             NotificationContent(
@@ -95,9 +110,8 @@ async def announce_new_device_signin(
                 ),
                 category=SECURITY_SIGNIN,
                 severity="info",
-                url="/profile",
-                meta={"context": "Security",
-                      "action": {"label": "Review sessions", "url": "/profile"}},
+                url=action["url"],
+                meta={"context": "Security", "action": action},
             ),
         )
     except Exception:

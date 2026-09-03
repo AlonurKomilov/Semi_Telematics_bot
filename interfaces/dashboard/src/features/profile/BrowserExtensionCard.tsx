@@ -56,8 +56,8 @@ export default function BrowserExtensionCard() {
       <p className="text-xs text-muted-foreground mb-4">
         4truck in a Chrome side panel beside whatever you are working on — Google Maps,
         a load board, email. Today it shows your vehicles live on the map; more of 4truck
-        reaches the panel over time. Sign in inside it with your 4truck email and
-        password; it sees what it shows and nothing else.
+        reaches the panel over time. It never asks for a password: you connect it from
+        here, confirm once, and it sees what it shows and nothing else.
       </p>
 
       <Button type="button" size="sm" onClick={() => void download()} disabled={busy || info?.built === false}>
@@ -71,11 +71,12 @@ export default function BrowserExtensionCard() {
       <ol className="mt-3 space-y-1 text-xs text-muted-foreground list-decimal pl-4">
         <li>Unzip the download into a folder you will keep.</li>
         <li>Open <span className="font-mono">chrome://extensions</span>, turn on <b>Developer mode</b>, click <b>Load unpacked</b>, pick that folder.</li>
-        <li>Click the 4truck icon in the toolbar and sign in.</li>
+        <li>Click the 4truck icon in the toolbar, then <b>Connect to 4truck</b> — a page opens here where you confirm.</li>
       </ol>
       <p className="text-2xs text-muted-foreground mt-2">
-        One permanent id for every install — nothing to copy or configure. Revoke it any
-        time from Active sessions above, where it shows as “Browser extension”.
+        One permanent id for every install — nothing to copy or configure. Every connection
+        sends you a sign-in notice with a <b>Disconnect this session</b> button; it also shows
+        as “Browser extension” under Active sessions above.
       </p>
     </Card>
   );

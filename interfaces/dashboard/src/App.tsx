@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
+import ExtensionConnect from './pages/ExtensionConnect';
 
 /**
  * Apex (``4truck.us``) is the single canonical login host — every
@@ -271,6 +272,14 @@ export default function App() {
       );
     }
     return <Login />;
+  }
+
+  // The browser extension's consent page.  Signed in → the one question;
+  // signed out → Login, and because the URL (with its one-time state)
+  // is kept, the same page renders the moment the session exists.
+  // Outside the shell: a consent page has no sidebar.
+  if (location.pathname === '/extension/connect') {
+    return user ? <ExtensionConnect /> : <Login />;
   }
 
   if (!user) return <Login />;

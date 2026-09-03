@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { clearToken, getToken, refreshIfNeeded, UnauthorizedError } from '../api/client';
 import { FEATURES } from './registry';
-import Login from './Login';
+import Connect from './Connect';
 
 type Phase = 'loading' | 'login' | 'ready';
 
@@ -23,14 +23,14 @@ export default function App() {
   }, []);
 
   if (phase === 'loading') return <p className="muted" style={{ padding: 16 }}>Loading…</p>;
-  if (phase === 'login') return <Login onDone={() => setPhase('ready')} />;
+  if (phase === 'login') return <Connect onDone={() => setPhase('ready')} />;
 
   const feature = FEATURES.find((f) => f.id === featureId) ?? FEATURES[0];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header className="row" style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', justifyContent: 'space-between' }}>
         <strong>4truck · {feature.label}</strong>
-        <button className="btn" onClick={async () => { await clearToken(); setPhase('login'); }}>Sign out</button>
+        <button className="btn" onClick={async () => { await clearToken(); setPhase('login'); }}>Disconnect</button>
       </header>
       <main style={{ flex: 1, minHeight: 0 }}>
         <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
