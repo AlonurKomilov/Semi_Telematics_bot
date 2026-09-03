@@ -51,6 +51,12 @@ profile.
 - Not sold, not used for ads, not shared with third parties; used only to display the
   user's own 4truck data.
 
+**Screenshots (≥1, exactly 1280×800, 24-bit PNG):** take any capture — a full window with
+Google Maps beside the panel is the picture that explains the product — drop the PNGs in
+`versions/`, then `python3 store_screenshot.py versions/<file>.png [--focus right]` →
+`versions/store-screenshots/`. It scales to cover and centre-crops (portrait captures
+go on a dark canvas), and strips alpha.
+
 **Privacy policy URL:** https://4truck.us/privacy
 **Visibility:** Unlisted (only people with the link can install) — right for a B2B tool.
 
