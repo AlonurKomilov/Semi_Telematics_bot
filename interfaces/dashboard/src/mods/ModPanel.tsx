@@ -13,8 +13,9 @@ import {
 import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
-  THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS,
-  modMatchesAxes, modById, packById, modFootprint, motionPercent, type Mod,
+  THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS,
+  modMatchesAxes, modById, packById, modFootprint, motionPercent,
+  type Mod, type ModIcons,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { MODS_HREF } from './href';
@@ -241,6 +242,24 @@ const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
     value: m,
     key: `mods.motion_${m}`,
     label: m === 'default' ? 'Normal' : m === 'calm' ? 'Calm' : 'Snappy',
+  }));
+
+/**
+ * Icon stroke weight — the axis that had no control.
+ *
+ * It was mod-only for a stated reason: "a mod whose every setting is
+ * also a chip is a shortcut, not a look". The owner's call reverses
+ * that, and the reason it is safe to reverse is that icons are not
+ * really one axis. A pack decides WHICH glyphs; the weight decides how
+ * heavy they are drawn. We ship one pack (lucide), so the weight is the
+ * only part there is anything to choose about — and a second pack, when
+ * it comes, becomes a row above this one rather than a redesign.
+ */
+const ICON_OPTIONS: { value: ModIcons; key: string; label: string }[] =
+  MOD_ICONS.map((i) => ({
+    value: i,
+    key: `mods.icons_${i}`,
+    label: i === 'hairline' ? 'Hairline' : i === 'regular' ? 'Regular' : 'Bold',
   }));
 
 const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
@@ -647,6 +666,26 @@ export function ModControls({ compact = false, onNavigate, section }: {
               onClick={(v) => setTheme({ material: v })} />
           ))}
         </div>
+      </div>
+
+      <div>
+        <p className={`${groupLabel} mb-1.5`}>
+          {t('mods.group_icons', 'Icons')}
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {ICON_OPTIONS.map((o) => (
+            <Chip key={o.value} value={o.value} current={theme.icons} label={t(o.key, o.label)}
+              onClick={(v) => setTheme({ icons: v })} />
+          ))}
+        </div>
+        {/* The pack is named rather than offered. One chip in a row is
+            not a choice, and this codebase already says so about the
+            catalogue — "four accents and two sound packs is not a
+            catalogue". When a second pack ships, it becomes a chip row
+            here and this line goes away. */}
+        <p className="text-2xs text-muted-foreground mt-1.5">
+          {t('mods.icons_pack', 'Lucide')}
+        </p>
       </div>
       </>
       )}

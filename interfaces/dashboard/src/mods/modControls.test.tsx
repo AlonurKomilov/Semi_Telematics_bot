@@ -68,7 +68,7 @@ import { MODS } from './catalogue';
 /** Sections every surface carries — the two questions asked most often. */
 const SHARED = ['Mods', 'Color'];
 /** Sections the page carries and the popover sends people to the page for. */
-const PAGE_ONLY = ['Corners', 'Material', 'Motion', 'Sound'];
+const PAGE_ONLY = ['Corners', 'Material', 'Icons', 'Motion', 'Sound'];
 
 describe('every category that can carry an intensity shows one', () => {
   /**
@@ -134,11 +134,14 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
 });
 
 /**
- * The mod-only axes, and why a SOURCE grep could never guard them.
+ * The mod-only axis, and why a SOURCE grep could never guard it.
  *
- * `icons` and `entrance` are the two things a mod may carry that the
- * panel offers no control for — the asymmetry is the point, because a
- * mod whose every setting is also a chip is a shortcut, not a look.
+ * `entrance` is the one thing a mod may carry that the panel offers no
+ * control for. `icons` was the other until the owner's call put it on
+ * the Interface section — and the reason that is not a hole in the
+ * asymmetry is that icons were never really one axis: a PACK decides
+ * which glyphs, the weight decides how heavily they are drawn, and with
+ * one pack shipping there is nothing to choose but the weight.
  *
  * The guard that used to assert this read ModPanel.tsx and matched
  * /setTheme\(\{\s*icons:/ — which requires the axis to be the FIRST key
@@ -153,7 +156,33 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
  * behavioural: a MOD CHIP may write them, no other control may. So the
  * guard clicks the panel instead of reading it.
  */
-const MOD_ONLY = ['icons', 'entrance'];
+const MOD_ONLY = ['entrance'];
+
+describe('the Icons control reaches the axis it names', () => {
+  it('writes the weight, and writes nothing else', () => {
+    setTheme.mockClear();
+    render(<ModControls />);
+    // Found by label, not by position: the row is a sibling of Corners
+    // and Material and could be reordered without this being wrong.
+    const heading = screen.getByText('Icons');
+    const row = heading.nextElementSibling as HTMLElement;
+    const chips = Array.from(row.querySelectorAll('button'));
+    expect(chips.length, 'the Icons row has no chips').toBe(3);
+
+    fireEvent.click(chips[0]);
+    expect(setTheme, 'the Icons chip wrote nothing').toHaveBeenCalled();
+    const wrote = setTheme.mock.calls.flatMap((c) => Object.keys(c[0] as object));
+    expect(wrote).toEqual(['icons']);
+  });
+
+  it('names the pack the glyphs come from', () => {
+    // One chip in a row is not a choice, so the pack is stated rather
+    // than offered. When a second pack ships this becomes a chip row and
+    // this assertion is the thing that has to change deliberately.
+    render(<ModControls />);
+    expect(screen.getByText('Lucide'), 'the icon pack is unnamed').toBeTruthy();
+  });
+});
 
 describe('only a mod may reach a mod-only axis', () => {
   it('no other control writes one', () => {
