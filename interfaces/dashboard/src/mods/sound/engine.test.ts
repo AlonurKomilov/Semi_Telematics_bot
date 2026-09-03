@@ -7,7 +7,7 @@
  * authoring a cue can reach for 20 kHz at full gain by accident far
  * more easily than they can write a malformed colour.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -126,9 +126,17 @@ describe('playing is best-effort and never throws', () => {
     (window as unknown as { AudioContext: unknown }).AudioContext = class {
       currentTime = 0;
       destination = {};
+      // `state` and `suspend` are real here, and mutable, because the
+      // engine now reads and writes them. A stub without them does not
+      // fail loudly: a missing `suspend` throws inside a listener and
+      // vitest reports an Errors line while the summary still says every
+      // test passed. The state a browser owns is modelled, not asserted
+      // away.
+      state = 'running';
       createOscillator() { return node(); }
       createGain() { gainStages += 1; return node(); }
-      resume() { return Promise.resolve(); }
+      resume() { this.state = 'running'; return Promise.resolve(); }
+      suspend() { this.state = 'suspended'; return Promise.resolve(); }
       close() { return Promise.resolve(); }
     };
     return Object.assign(started, {
@@ -270,9 +278,17 @@ function stubAudioForVolume() {
   (window as unknown as { AudioContext: unknown }).AudioContext = class {
     currentTime = 0;
     destination = {};
+    // `state` and `suspend` are real here, and mutable, because the
+    // engine now reads and writes them. A stub without them does not
+    // fail loudly: a missing `suspend` throws inside a listener and
+    // vitest reports an Errors line while the summary still says every
+    // test passed. The state a browser owns is modelled, not asserted
+    // away.
+    state = 'running';
     createOscillator() { return node(); }
     createGain() { gainStages += 1; return node(); }
-    resume() { return Promise.resolve(); }
+    resume() { this.state = 'running'; return Promise.resolve(); }
+    suspend() { this.state = 'suspended'; return Promise.resolve(); }
     close() { return Promise.resolve(); }
   };
   return { peaks, get gainStages() { return gainStages; } };
@@ -304,5 +320,148 @@ describe('one volume, one gain', () => {
     // The structural half: linearity could also survive two stages whose
     // product happens to be right today. One cue, one gain stage.
     expect(rec.gainStages).toBe(3);
+  });
+});
+
+
+/**
+ * The audio thread stops while nobody is looking.
+ *
+ * The context is created once and never closed — correct, and it used to
+ * mean the audio callback ran for the whole session. On a tablet in a
+ * cab that session is a shift.
+ *
+ * The sharp edge is not the suspend, it is the cue that arrives after
+ * one. A suspended context has a frozen clock: schedule against it and
+ * the note is placed at a moment that never comes, `onended` never
+ * fires, and the disconnect never runs — so every cue played while
+ * suspended would leak a node pair onto the graph permanently, which is
+ * worse than the drain it was meant to fix.
+ */
+describe('audio sleeps when the tab does', () => {
+  interface StubCtx {
+    state: string;
+    suspends: number;
+    resumes: number;
+    started: number[];
+  }
+  let live: StubCtx | null = null;
+
+  /** A context that models the two things the browser owns. */
+  function stubLifecycle() {
+    live = null;
+    const node = () => ({
+      connect: () => {}, disconnect: () => {},
+      frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+      gain: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+      start: (t: number) => { live!.started.push(t); }, stop: () => {},
+      type: 'sine', onended: null,
+    });
+    (window as unknown as { AudioContext: unknown }).AudioContext = class {
+      currentTime = 0;
+      destination = {};
+      state = 'running';
+      suspends = 0;
+      resumes = 0;
+      started: number[] = [];
+      constructor() { live = this as unknown as StubCtx; }
+      createOscillator() { return node(); }
+      createGain() { return node(); }
+      resume() { this.resumes += 1; this.state = 'running'; return Promise.resolve(); }
+      suspend() { this.suspends += 1; this.state = 'suspended'; return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    };
+  }
+
+  const CUE = { wave: 'sine', from: 880, to: 440, dur: 0.3, gain: 0.2 } as const;
+
+  /** jsdom's `document.hidden` is a read-only accessor. */
+  const setHidden = (hidden: boolean) => {
+    Object.defineProperty(document, 'hidden', { value: hidden, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+
+  const unlockAndPlay = () => {
+    armAudio();
+    window.dispatchEvent(new Event('pointerdown'));
+    playCue(CUE, 1);
+  };
+
+  beforeEach(() => { stubLifecycle(); setHidden(false); });
+
+  it('the fixture is real — a cue plays and a context exists', () => {
+    // Without this the three tests below could all pass on `live` being
+    // null and nothing ever running.
+    unlockAndPlay();
+    expect(live, 'no context was constructed').not.toBeNull();
+    expect(live!.started.length, 'the cue did not play').toBe(1);
+    expect(live!.state).toBe('running');
+  });
+
+  it('suspends when the document hides', () => {
+    unlockAndPlay();
+    setHidden(true);
+    expect(live!.suspends, 'the audio thread kept running on a hidden tab').toBe(1);
+    expect(live!.state).toBe('suspended');
+  });
+
+  it('does not suspend twice, and does not suspend what is already asleep', () => {
+    unlockAndPlay();
+    setHidden(true);
+    setHidden(false);
+    setHidden(true);
+    // The second hide finds it already suspended and leaves it alone;
+    // only the first of each running→hidden transition calls through.
+    expect(live!.suspends).toBe(1);
+  });
+
+  it('resumes for the next cue, and the note actually lands', async () => {
+    unlockAndPlay();
+    setHidden(true);
+    expect(live!.state).toBe('suspended');
+
+    // Counted RELATIVE to here: arming resumes the context too, so an
+    // absolute number would be asserting about the gesture rather than
+    // about the wake-up.
+    const before = live!.resumes;
+
+    playCue(CUE, 1);
+    // Emitted from the resume promise, not in the same tick — that is
+    // the whole point, so the assertion has to wait for it.
+    expect(live!.started.length, 'played against a frozen clock').toBe(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(live!.resumes - before, 'the context was never resumed').toBe(1);
+    expect(live!.started.length, 'the cue after a suspend was lost').toBe(2);
+  });
+
+  it('installs ONE listener however many contexts come and go', () => {
+    // Not detectable through behaviour: `suspendIfRunning` bails on a
+    // context that is not running, so a second, third and fourth handler
+    // are each a silent no-op and the suspend count stays 1. Stacked
+    // listeners are invisible until something in the handler stops being
+    // idempotent — so this asserts the design directly rather than an
+    // effect of it.
+    unlockAndPlay();                     // the hook is installed by now
+    const spy = vi.spyOn(document, 'addEventListener');
+    try {
+      for (let i = 0; i < 2; i++) {
+        resetAudioForTests();
+        stubLifecycle();
+        unlockAndPlay();
+        expect(live, `no context was built on pass ${i} — nothing is proved`).not.toBeNull();
+      }
+      const added = spy.mock.calls.filter((c) => c[0] === 'visibilitychange');
+      expect(added.length, 'a listener per context — they stack for the life of the page')
+        .toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a hidden tab with no context at all is not an error', () => {
+    resetAudioForTests();
+    expect(() => setHidden(true)).not.toThrow();
+    expect(live, 'a context was built just to suspend it').toBeNull();
   });
 });

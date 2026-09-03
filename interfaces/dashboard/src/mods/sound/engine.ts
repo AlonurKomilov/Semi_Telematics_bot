@@ -150,10 +150,52 @@ function context(): AudioContext | null {
       ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
     ctx = new Ctor();
+    hookLifecycle();
     return ctx;
   } catch {
     return null;   // audio is best-effort and never breaks a page
   }
+}
+
+/**
+ * Stop the audio callback while nobody is looking.
+ *
+ * The context above is never torn down, deliberately — but "never torn
+ * down" used to mean the audio thread ran for the whole session, and a
+ * tablet in a cab has that session open for a shift. Suspending on hide
+ * costs nothing: the alert poll is frozen by the query client while the
+ * document is hidden, so no cue can arrive during the window anyway.
+ *
+ * An idle TIMER was the other half of this and is deliberately not here.
+ * It would have to fire on a visible screen, which is precisely where a
+ * cue must not be late — and the case it was meant for, a backgrounded
+ * tablet, is the case where browsers clamp `setTimeout` to a minute or
+ * more and the timer is least reliable. Hiding is the signal; a clock
+ * guessing at hiding is not.
+ *
+ * Installed once, after a context exists, and never removed. The handler
+ * reads the module-scope `ctx` rather than closing over one, so
+ * `resetAudioForTests` nulling it is automatically safe and there is no
+ * stacked-listener class of bug to reason about. The pattern is
+ * `components/banners/stagedAction.tsx`'s, for the same reasons.
+ */
+let lifecycleHooked = false;
+function hookLifecycle(): void {
+  if (lifecycleHooked || typeof document === 'undefined') return;
+  lifecycleHooked = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) suspendIfRunning();
+  });
+}
+
+function suspendIfRunning(): void {
+  const c = ctx;
+  // `state` is the browser's, and the browser suspends contexts under
+  // policies of its own — so it is the only authority. A boolean of our
+  // own tracking running-ness would be wrong the first time Chrome
+  // suspended one without asking.
+  if (!c || typeof c.suspend !== 'function' || c.state !== 'running') return;
+  void c.suspend().catch(() => { /* best-effort, like everything here */ });
 }
 
 /**
@@ -187,6 +229,22 @@ export function playCue(cue: Cue, volume: number): void {
   if (!unlocked || volume <= 0 || !isSafeCue(cue)) return;
   const c = context();
   if (!c) return;
+  // A suspended context has a FROZEN CLOCK. Scheduling against
+  // `currentTime` here would place the note at a moment that never
+  // arrives, `onended` would never fire, and the disconnect below would
+  // never run — so every cue played while suspended would leak an
+  // oscillator and a gain node onto the graph permanently. Resume first,
+  // then emit from the promise. Nothing is awaited on the way in: the
+  // signature stays `void`, and the rejection path stays swallowed.
+  if (c.state === 'suspended' && typeof c.resume === 'function') {
+    void c.resume().then(() => emit(c, cue, volume)).catch(() => { /* best-effort */ });
+    return;
+  }
+  emit(c, cue, volume);
+}
+
+/** The oscillator itself, once the context is known to be running. */
+function emit(c: AudioContext, cue: Cue, volume: number): void {
   try {
     const osc = c.createOscillator();
     const gain = c.createGain();
@@ -216,4 +274,9 @@ export function resetAudioForTests(): void {
   try { void ctx?.close(); } catch { /* ignore */ }
   ctx = null;
   unlocked = false;
+  // NOT `lifecycleHooked`. The listener is never removed — resetting the
+  // flag would let the next context stack a second one, and the handler
+  // reads module-scope `ctx` so the existing one keeps working across
+  // every reset. One listener for the life of the document is the whole
+  // design; forgetting it here is what would break it.
 }
