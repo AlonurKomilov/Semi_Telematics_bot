@@ -10,7 +10,9 @@ from fastapi import Cookie, Depends, HTTPException, Header, Request
 from jose import JWTError
 
 from interfaces.api.auth import (
-    AUTH_COOKIE_NAME, KNOWN_AUDIENCES as _KNOWN_AUDIENCES, decode_jwt, is_jti_revoked,
+    AUTH_COOKIE_NAME, EXTENSION_AUDIENCE as _EXTENSION_AUDIENCE,
+    EXTENSION_ROUTES as _EXTENSION_ROUTES,
+    KNOWN_AUDIENCES as _KNOWN_AUDIENCES, decode_jwt, is_jti_revoked,
 )
 from infra.platform import get_router as _get_router
 from capabilities.permissions.roles import get_user_permissions
@@ -142,6 +144,31 @@ def paginate(items: list, page: int = 1, page_size: int = _DEFAULT_PAGE_SIZE) ->
     }
 
 
+def _request_path(request) -> str:
+    try:
+        return str(request.url.path)
+    except Exception:
+        return ""
+
+
+def normalize_api_path(path: str) -> str:
+    """``/api/v1/map/vehicles/`` → ``/map/vehicles``: the two mount
+    prefixes and a trailing slash removed; the query never reaches here."""
+    p = path or ""
+    for prefix in ("/api/v1", "/api"):
+        if p == prefix or p.startswith(prefix + "/"):
+            p = p[len(prefix):]
+            break
+    return p.rstrip("/") or "/"
+
+
+def extension_route_allowed(request) -> bool:
+    """Exact membership in EXTENSION_ROUTES.  A request with no path
+    (a bare object in a test) normalizes to "/" and is refused — the
+    gate fails closed."""
+    return normalize_api_path(_request_path(request)) in _EXTENSION_ROUTES
+
+
 async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -201,6 +228,19 @@ async def get_current_user(
         if aud and aud not in _KNOWN_AUDIENCES:
             last_error = JWTError(f"unknown audience {aud!r}")
             continue
+        # A scoped token is refused OUTSIDE its allow-list of routes.
+        # The scope narrows permissions, but only inside require_permission;
+        # a login-only route (/user/me: the whole profile, the un-narrowed
+        # permission matrix) would otherwise read it in full.  403, not
+        # 401: the token is genuine, just forbidden here — and the panel's
+        # client drops its token on a 401, which a stray call must not do.
+        # No fall-through to the cookie candidate: a lifted panel token
+        # must not be rescued by the dashboard session behind it.
+        if aud == _EXTENSION_AUDIENCE and not extension_route_allowed(request):
+            import logging
+            logging.getLogger("api.deps").warning(
+                "scoped token outside its routes: jti=%s path=%s", jti, _request_path(request))
+            raise HTTPException(status_code=403, detail="This token is scoped to the live map.")
         _fire_heartbeats(payload)
         # Stamp the account onto the request so outer middleware (the
         # capacity metering counter) can attribute this request to a

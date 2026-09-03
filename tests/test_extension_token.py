@@ -16,6 +16,14 @@ from interfaces.api.auth import (
 )
 
 
+def _req(path: str):
+    """A request fake with what get_current_user reads: a path and a state."""
+    class _R:
+        url = type("U", (), {"path": path})()
+        state = type("S", (), {})()
+    return _R
+
+
 def test_a_scoped_token_carries_its_audience_and_scope():
     tok = create_jwt(1, 42, "owner", user_id=7,
                      aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
@@ -39,8 +47,7 @@ async def test_an_unknown_audience_is_refused_not_read_as_unscoped(monkeypatch):
         return False
     monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
 
-    class _Req:
-        state = type("S", (), {})()
+    _Req = _req("/api/map/vehicles")
     with pytest.raises(HTTPException) as e:
         await deps.get_current_user(_Req(), authorization=f"Bearer {tok}", auth_token=None)
     assert e.value.status_code == 401
@@ -61,8 +68,7 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
         return False
     monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
 
-    class _Req:
-        state = type("S", (), {})()
+    _Req = _req("/api/map/vehicles")
 
     scoped = create_jwt(1, acct, "owner", user_id=7, is_primary_owner=True,
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
@@ -311,3 +317,104 @@ def test_the_signin_notice_points_at_the_one_session_to_disconnect():
     assert signin_notice_action(91) == {
         "label": "Disconnect this session", "url": "/profile?session=91"}
     assert signin_notice_action(None)["url"] == "/profile"
+
+
+# ── Where a scoped token may knock at all ────────────────────────────
+
+
+def test_path_normalization_strips_both_mounts_and_a_trailing_slash():
+    from interfaces.api.deps import normalize_api_path
+    assert normalize_api_path("/api/v1/map/vehicles/") == "/map/vehicles"
+    assert normalize_api_path("/api/map/vehicles/live") == "/map/vehicles/live"
+    assert normalize_api_path("/api/extension/me") == "/extension/me"
+    assert normalize_api_path("/api") == "/"
+    assert normalize_api_path("") == "/"
+    assert normalize_api_path("/api/v1") == "/"
+
+
+@pytest.mark.asyncio
+async def test_a_scoped_token_is_refused_outside_its_routes_with_403(monkeypatch):
+    """"Cannot", not "does not": a lifted panel token knocking on the
+    profile, the package download or a custom-layer write is turned
+    away before any handler runs — 403, so a stray call does not make
+    the panel drop its token, and no fall-through to a cookie."""
+    from interfaces.api import deps
+
+    async def _not_revoked(_jti):
+        return False
+    monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
+    scoped = create_jwt(1, 42, "owner", user_id=7, jti="ext-1",
+                        aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
+
+    for path in ("/api/user/me", "/api/v1/user/me", "/api/extension/info",
+                 "/api/extension/download", "/api/map/custom-layers", "/api/vehicles",
+                 "/api/extension/connect"):
+        with pytest.raises(HTTPException) as e:
+            await deps.get_current_user(_req(path)(), authorization=f"Bearer {scoped}", auth_token=None)
+        assert e.value.status_code == 403, path
+
+    for path in ("/api/map/vehicles", "/api/v1/map/vehicles", "/api/map/vehicles/live",
+                 "/api/v1/map/vehicles/live/", "/api/extension/me"):
+        user = await deps.get_current_user(_req(path)(), authorization=f"Bearer {scoped}", auth_token=None)
+        assert user["aud"] == "extension", path
+
+    # The same person's ordinary token goes everywhere it always did.
+    full = create_jwt(1, 42, "owner", user_id=7, jti="dash-1")
+    assert (await deps.get_current_user(_req("/api/user/me")(), authorization=f"Bearer {full}", auth_token=None))["sub"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_a_scoped_bearer_is_not_rescued_by_the_cookie_behind_it(monkeypatch):
+    """Bearer first, cookie second is how a stale dashboard token falls
+    through to a fresh cookie.  For a scoped token outside its routes
+    that fall-through would be an escalation — so it is a hard stop."""
+    from interfaces.api import deps
+
+    async def _not_revoked(_jti):
+        return False
+    monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
+    scoped = create_jwt(1, 42, "owner", user_id=7, jti="ext-2",
+                        aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
+    cookie = create_jwt(1, 42, "owner", user_id=7, jti="dash-2")
+    with pytest.raises(HTTPException) as e:
+        await deps.get_current_user(_req("/api/user/me")(), authorization=f"Bearer {scoped}", auth_token=cookie)
+    assert e.value.status_code == 403
+
+
+def test_every_listed_route_exists_so_a_rename_breaks_ci_not_the_panel():
+    from interfaces.api.auth import EXTENSION_ROUTES
+    from interfaces.api.app import app
+    paths = {getattr(r, "path", "") for r in app.routes}
+    for route in EXTENSION_ROUTES:
+        assert f"/api{route}" in paths, f"{route} is not mounted under /api"
+        assert f"/api/v1{route}" in paths, f"{route} is not mounted under /api/v1"
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_an_extension_session_instead_of_shrugging(monkeypatch):
+    """A raw jwt.decode refuses any token with an ``aud``, so the panel's
+    logout used to log "already invalid?" and answer ok — leaving the
+    session live.  Now the row is revoked and the jti denylisted."""
+    from starlette.responses import Response
+    revoked, denylisted = [], []
+
+    class _DB:
+        async def revoke_user_session_by_jti(self, jti):
+            revoked.append(jti)
+            return {"expires_at": "2099-01-01T00:00:00+00:00"}
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db", lambda: _DB())
+
+    async def _mark(jti, expires_at=None):
+        denylisted.append(jti)
+    monkeypatch.setattr(auth_mod, "mark_jti_revoked", _mark)
+
+    tok = create_jwt(1, 42, "owner", user_id=7, jti="ext-3",
+                     aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
+
+    class _Req:
+        headers = {"user-agent": "x"}
+        client = None
+    await auth_mod.auth_logout(_Req(), Response(), authorization=f"Bearer {tok}", auth_token=None)
+    assert revoked == ["ext-3"]
+    assert denylisted == ["ext-3"]

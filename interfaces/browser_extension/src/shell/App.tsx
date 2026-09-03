@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useState } from 'react';
-import { apiJSON, clearToken, getToken, refreshIfNeeded, UnauthorizedError } from '../api/client';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { apiFetch, apiJSON, clearToken, getToken, refreshIfNeeded, UnauthorizedError } from '../api/client';
 import { FEATURES } from './registry';
 import Connect from './Connect';
 import Settings from './Settings';
@@ -19,6 +19,9 @@ export default function App() {
   // Why the connect screen is showing again — a session disconnected
   // from the profile (or expired) looks different from a first run.
   const [disconnected, setDisconnected] = useState(false);
+  // True while the person's own Disconnect runs, so the storage
+  // listener below does not read it as a revocation.
+  const ownDisconnect = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -36,7 +39,13 @@ export default function App() {
     // including for the quiet 5-second poll that swallows its errors.
     const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area !== 'local' || !('jwt' in changes)) return;
-      if (changes.jwt.newValue === undefined) { setPhase('login'); setMe(null); setDisconnected(true); }
+      if (changes.jwt.newValue === undefined) {
+        setPhase('login'); setMe(null);
+        if (!ownDisconnect.current) setDisconnected(true);
+        // Consumed HERE, after it was read: storage change events are
+        // delivered as their own dispatch, after disconnect() has moved on.
+        ownDisconnect.current = false;
+      }
     };
     chrome.storage.onChanged.addListener(onStorage);
     return () => {
@@ -64,8 +73,16 @@ export default function App() {
   }
 
   const feature = FEATURES.find((f) => f.id === featureId) ?? FEATURES[0];
-  // Own choice, not a revocation: the connect screen reads as a first run.
-  const disconnect = async () => { setDisconnected(false); await clearToken(); setMe(null); setView('feature'); setPhase('login'); };
+  // Own choice, not a revocation: the session is ended on the server
+  // too (the Active Sessions row goes), then the token is dropped
+  // whatever the server said, and the connect screen reads as a first run.
+  const disconnect = async () => {
+    ownDisconnect.current = true;
+    setDisconnected(false);
+    try { await apiFetch('/auth/logout', { method: 'POST' }); } catch { /* the token is dropped either way; the row expires on its own */ }
+    finally { await clearToken(); }
+    setMe(null); setView('feature'); setPhase('login');
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

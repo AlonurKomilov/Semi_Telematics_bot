@@ -153,6 +153,18 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> dict:
 EXTENSION_AUDIENCE = "extension"
 KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE})
 EXTENSION_SCOPE: tuple[str, ...] = ("can_location_map", "can_location_vehicle")
+#: Where a scoped token may go AT ALL — matched exactly by
+#: deps.get_current_user after the /api and /api/v1 mount prefixes and a
+#: trailing slash are removed; anything else is 403.  Not a prefix list:
+#: "/map/" would admit every future login-only route mounted there.
+#: The scope says what the token may DO, this says where it may KNOCK;
+#: they live together so they are read together.  refresh and logout
+#: decode the token themselves and never pass through the gate — they
+#: are listed for intent.
+EXTENSION_ROUTES: frozenset[str] = frozenset({
+    "/map/vehicles", "/map/vehicles/live", "/extension/me",
+    "/auth/refresh", "/auth/logout",
+})
 
 
 def create_jwt(
@@ -1292,9 +1304,10 @@ class EmailLoginRequest(BaseModel):
     # "Remember me" decides the JWT lifetime (long = 30 days vs short
     # = 8 hours).  See ``create_jwt`` for the rationale.
     remember_me: bool = False
-    # The browser extension sends "extension" and receives a token scoped
-    # to the live map, labelled as its own device in Active Sessions.  Any
-    # other value is ignored rather than trusted.
+    # The browser extension no longer signs in here: an old panel sending
+    # "extension" is refused with the instruction to connect from the
+    # dashboard (POST /extension/connect is the only mint of a scoped
+    # token).  Any other value is ignored rather than trusted.
     client: str | None = None
 
 
@@ -1860,7 +1873,11 @@ async def auth_logout(
 
     if token:
         try:
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            # decode_jwt, not a raw jwt.decode: the raw call refuses any
+            # token that carries an ``aud`` ("Invalid audience"), so the
+            # browser extension's logout used to log "already invalid?"
+            # and answer ok — without revoking anything.
+            payload = decode_jwt(token)
             jti = str(payload.get("jti") or "")
             if jti:
                 # Mark the user_sessions row revoked (so the session

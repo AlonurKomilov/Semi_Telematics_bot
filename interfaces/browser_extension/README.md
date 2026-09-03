@@ -42,6 +42,13 @@ recipe: [STORE.md](STORE.md).
   it. Every connection sends the person a sign-in notice with **Disconnect this session**,
   and the session shows as **Browser extension** in Active Sessions. Password logins
   refuse `client: "extension"` outright.
+- The scoped token is refused OUTSIDE an exact allow-list of routes (`EXTENSION_ROUTES`
+  beside the scope in `interfaces/api/auth.py`: `/map/vehicles`, `/map/vehicles/live`,
+  `/extension/me`, `/auth/refresh`, `/auth/logout`) — 403 from `get_current_user`, no
+  fall-through to the dashboard cookie. Permission narrowing only runs inside
+  `require_permission`; the allow-list is what keeps a lifted token off login-only routes
+  such as `/user/me`. A test checks every listed route is mounted. Disconnect in the panel
+  calls `/auth/logout` first, so the Active Sessions row goes too.
 
 ## Security posture
 
