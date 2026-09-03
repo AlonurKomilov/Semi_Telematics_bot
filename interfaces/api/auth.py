@@ -91,8 +91,12 @@ class AuthRequest(BaseModel):
     # scripted callers).  Defaulting to False keeps the 8-hour short
     # session the safe baseline.
     remember_me: bool = False
-
-
+    # Which client is signing in: the Chrome extension sends
+    # ``"extension"`` (and gets a scoped token); the mini app and the
+    # scripted callers send nothing.  Optional, because the handler
+    # reads it unconditionally and a missing field is not an error —
+    # it raised AttributeError on every mini-app login instead.
+    client: str | None = None
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -152,7 +156,11 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> dict:
 # senior the person behind it.  Unknown audiences are rejected at decode.
 EXTENSION_AUDIENCE = "extension"
 KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE})
-EXTENSION_SCOPE: tuple[str, ...] = ("can_location_map", "can_location_vehicle")
+# Canonical first; the two legacy names ride along for one release so
+# an installed extension that still checks the old scope string keeps
+# connecting (interfaces/browser_extension/src/connect.ts moved to the
+# canonical one).  Drop the legacy pair with the alias layer.
+EXTENSION_SCOPE: tuple[str, ...] = ("can_view_location", "can_location_map", "can_location_vehicle")
 #: Where a scoped token may go AT ALL — matched exactly by
 #: deps.get_current_user after the /api and /api/v1 mount prefixes and a
 #: trailing slash are removed; anything else is 403.  Not a prefix list:
@@ -766,8 +774,12 @@ class LoginWidgetRequest(BaseModel):
     # explicitly opt-in to 30-day tokens (the dashboard always sends
     # an explicit value from the "Remember me" checkbox).
     remember_me: bool = False
-
-
+    # Which client is signing in: the Chrome extension sends
+    # ``"extension"`` (and gets a scoped token); the mini app and the
+    # scripted callers send nothing.  Optional, because the handler
+    # reads it unconditionally and a missing field is not an error —
+    # it raised AttributeError on every mini-app login instead.
+    client: str | None = None
 def validate_telegram_login_widget(data: dict, bot_token: str) -> None:
     """Validate Telegram Login Widget data using SHA256 HMAC.
 
