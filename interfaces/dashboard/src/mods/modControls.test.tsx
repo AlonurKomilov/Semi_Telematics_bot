@@ -265,10 +265,63 @@ describe('only a mod may reach a mod-only axis', () => {
  */
 const SECTIONS = {
   mods: ['Mods'],
-  interface: ['Color', 'Corners', 'Material'],
-  effects: ['Motion'],
+  interface: ['Color', 'Corners', 'Material', 'Typeface', 'Icons'],
+  effects: ['Motion', 'Ambient mode'],
   sounds: ['Sound'],
 } as const;
+
+/**
+ * The label class every group heading wears, so the test can find the
+ * headings without knowing what they say. `uppercase tracking-wide` is
+ * the stable half of it — the size differs between the popover and the
+ * page (`text-2xs` vs `text-xs`, ModPanel.tsx:484-486).
+ */
+const HEADING = '.uppercase.tracking-wide';
+
+/**
+ * Sound's own sub-items are switches, not group headings, so they carry
+ * no caps label and are not in the table above. They are checked by
+ * `cue.test.ts` and `keys.test.ts` instead.
+ */
+const NOT_A_GROUP = ['Interface sounds', 'Keyboard', 'Interface size'];
+
+/**
+ * The guard on the guard.
+ *
+ * `SECTIONS` above is hand-maintained, and a hand-maintained partition
+ * decays by exactly one axis per axis added — measured: Typeface, Icons
+ * and Ambient mode all shipped into the panel without being listed, and
+ * every test stayed green because a label in NO list is a label nothing
+ * asserts about.
+ *
+ * So the table is checked against the panel itself. Adding a group
+ * heading without filing it under a section is now a red test rather
+ * than a silent gap, which is the only reason the negative half of the
+ * partition check below means anything.
+ */
+describe('the section table knows every group the panel renders', () => {
+  it('accounts for all of them', () => {
+    const { container } = render(<ModControls />);
+    const rendered = Array.from(container.querySelectorAll(HEADING))
+      .map((el) => (el.textContent ?? '').trim())
+      .filter((t) => t && !NOT_A_GROUP.includes(t));
+
+    // Sentinel: a selector that matched nothing would make the set
+    // comparison below pass by describing an empty panel.
+    expect(rendered.length, 'no group headings found — the selector is stale')
+      .toBeGreaterThan(4);
+
+    const filed = new Set(Object.values(SECTIONS).flat() as string[]);
+    const unfiled = [...new Set(rendered)].filter((t) => !filed.has(t));
+    expect(
+      unfiled,
+      'a group the panel renders is in no section of the table above. Add it to '
+        + 'the right section — until you do, nothing checks which section it '
+        + 'appears under, and a control can render under the wrong heading with '
+        + 'the whole suite green.',
+    ).toEqual([]);
+  });
+});
 
 describe('each section renders its own controls and only its own', () => {
   it.each(Object.keys(SECTIONS) as (keyof typeof SECTIONS)[])(
