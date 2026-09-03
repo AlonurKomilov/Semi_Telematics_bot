@@ -5,7 +5,7 @@ import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
-import { armIfWanted } from './sound/cue';
+import { armIfWanted, installKeySound } from './sound/cue';
 import type {
   ThemeColor,
   ThemeMode,
@@ -116,6 +116,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
   // are the sound section's business, not the theme provider's.
   const { value: uiSound } = usePreference('mods.sound.ui');
   const { value: alertSound } = usePreference('dispatch.soundOn');
+  const { value: keySound } = usePreference('mods.sound.keyboard');
 
   // Deliberately NOT inside `applyTheme`. That function is the mapping
   // the pre-paint script re-implements, and `themeBoot.test.ts` compares
@@ -157,7 +158,14 @@ export function ModProvider({ children }: { children: ReactNode }) {
   // installs a listener that builds an AudioContext on the next click,
   // and a context is never torn down. Keyed on the gates so flipping one
   // on takes effect without a reload.
-  useEffect(() => { armIfWanted(); }, [uiSound, alertSound]);
+  useEffect(() => {
+    armIfWanted();
+    // Installed once and never removed — a listener that comes and goes
+    // with a preference is a listener that stacks. It reads the gate
+    // itself on every press, so installing it while the gate is on and
+    // leaving it there costs one early-return per keystroke.
+    if (keySound) installKeySound();
+  }, [uiSound, alertSound, keySound]);
 
   // Publishing the cross-device default belongs HERE, on the single
   // funnel every appearance write already passes through — not at the

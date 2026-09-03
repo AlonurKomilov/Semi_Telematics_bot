@@ -73,14 +73,30 @@ export const CUE_LIMITS = {
 const inRange = (v: unknown, { min, max }: { min: number; max: number }) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
-export function isSafeCue(c: unknown): c is Cue {
+/** The shape of a bounds table. Structural, not `typeof CUE_LIMITS` —
+ *  that const is `as const`, so its type is the literal numbers and no
+ *  other band could ever satisfy it. Parameterised because a keyboard
+ *  click and a notification cue are not the same kind of sound and must
+ *  not share one band — see `KEY_LIMITS`. */
+export interface Bounds { readonly min: number; readonly max: number }
+export interface CueLimits {
+  readonly freq: Bounds;
+  readonly dur: Bounds;
+  readonly gain: Bounds;
+}
+
+export function isCueWithin(c: unknown, limits: CueLimits): c is Cue {
   if (!c || typeof c !== 'object') return false;
   const q = c as Partial<Cue>;
   return (WAVES as readonly string[]).includes(q.wave as string)
-    && inRange(q.from, CUE_LIMITS.freq)
-    && inRange(q.to, CUE_LIMITS.freq)
-    && inRange(q.dur, CUE_LIMITS.dur)
-    && inRange(q.gain, CUE_LIMITS.gain);
+    && inRange(q.from, limits.freq)
+    && inRange(q.to, limits.freq)
+    && inRange(q.dur, limits.dur)
+    && inRange(q.gain, limits.gain);
+}
+
+export function isSafeCue(c: unknown): c is Cue {
+  return isCueWithin(c, CUE_LIMITS);
 }
 
 // ── the packs ────────────────────────────────────────────────────────
@@ -225,8 +241,8 @@ export function armAudio(): void {
  * the cue is malformed. A sound that fails is a sound nobody hears; a
  * sound that throws is a page that stops.
  */
-export function playCue(cue: Cue, volume: number): void {
-  if (!unlocked || volume <= 0 || !isSafeCue(cue)) return;
+export function playCue(cue: Cue, volume: number, limits: CueLimits = CUE_LIMITS): void {
+  if (!unlocked || volume <= 0 || !isCueWithin(cue, limits)) return;
   const c = context();
   if (!c) return;
   // A suspended context has a FROZEN CLOCK. Scheduling against

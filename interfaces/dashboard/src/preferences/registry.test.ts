@@ -28,6 +28,8 @@ const FROZEN_KEYS: readonly string[] = [
   'mods.sound.pack',
   'mods.sound.volume',
   'mods.sound.ui',
+  'mods.sound.keyboard',
+  'mods.sound.keyboard.pack',
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
   'tour.state',

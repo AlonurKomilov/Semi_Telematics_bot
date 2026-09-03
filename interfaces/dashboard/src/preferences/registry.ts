@@ -40,6 +40,7 @@ import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
 import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/sound/engine';
+import { KEY_PACKS } from '../mods/sound/keys';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -895,6 +896,38 @@ export const DEFS = {
     scope: 'device',
     sanitize: asBool,
     note: 'Play a short cue when an action can be undone.',
+  }),
+
+  // ── Keyboard sound ────────────────────────────────────────────────
+  /**
+   * Whether typing makes a sound.
+   *
+   * Its own gate, not a wider reading of `mods.sound.ui`: somebody may
+   * well want to hear an undo window open and not want to hear every
+   * letter they type. Two questions, two switches — the same rule that
+   * keeps alert sound separate from interface sound.
+   *
+   * Device, and default false, for the reason the other two give and
+   * one more of its own: a dispatch floor is shared, and typing is the
+   * one sound a person makes continuously.
+   */
+  'mods.sound.keyboard': def<boolean>({
+    default: false,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Play a short click while typing.',
+  }),
+  /**
+   * Which keyboard pack. SYNCED, unlike the gate above — the same split
+   * `mods.sound.pack` and `mods.sound.volume` already make: the pack is
+   * a property of the person and should follow them, the switch is a
+   * property of the room they are sitting in and should not.
+   */
+  'mods.sound.keyboard.pack': def<string>({
+    default: 'click',
+    scope: 'synced',
+    sanitize: (v) => (KEY_PACKS.some((p) => p.id === v) ? String(v) : 'click'),
+    note: 'The sound typing makes.',
   }),
 
   // ── Role preview (Owner/Admin "view as") ──────────────────────────

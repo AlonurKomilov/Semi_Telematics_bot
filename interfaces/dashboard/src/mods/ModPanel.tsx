@@ -18,6 +18,7 @@ import {
   type Mod, type ModIcons,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
+import { KEY_PACKS, KEY_LIMITS, keyPackById } from './sound/keys';
 import { MODS_HREF } from './href';
 import { accentTokens } from './theme/accent';
 import { usePreference } from '../preferences';
@@ -356,6 +357,8 @@ export function ModControls({ compact = false, onNavigate, section }: {
   // this line exists to solve, not to repeat.
   const { value: alertSoundOn } = usePreference('dispatch.soundOn');
   const { value: uiSound, setValue: setUiSound } = usePreference('mods.sound.ui');
+  const { value: keySound, setValue: setKeySound } = usePreference('mods.sound.keyboard');
+  const { value: keyPack, setValue: setKeyPack } = usePreference('mods.sound.keyboard.pack');
 
   /**
    * Hearing it is the only way to choose it, so every gesture in the
@@ -789,6 +792,17 @@ export function ModControls({ compact = false, onNavigate, section }: {
               }} />
           ))}
         </div>
+        {/* Sounds is a GROUP of named things, not one switch.
+            That is GX's shape — its Sounds category holds Background
+            Music, Browser sound and Keyboard sound as separate items —
+            and the owner's call. Ours holds three: what the interface
+            does, what the keyboard does, and what alerts do. One volume
+            above them all, because `engine.test.ts` holds the line that
+            there is exactly ONE intensity: two numbers multiplying into
+            one gain is how a person reaches 40% of 40%, hears almost
+            nothing, and decides the feature is broken. */}
+        <div className="border-t border-border mt-2.5 pt-2.5" />
+
         {/* The gate this section can actually operate.
             Two gates and one dial, which is the honest shape: the
             volume is a LEVEL, and each thing that makes a sound has
@@ -823,6 +837,39 @@ export function ModControls({ compact = false, onNavigate, section }: {
         <p className="text-2xs text-muted-foreground mt-1">
           {t('mods.sound_ui_hint', 'A short cue when something can be undone, and when it lands.')}
         </p>
+
+        <div className="flex items-center justify-between gap-2 mt-2">
+          <span className="text-xs text-foreground">
+            {t('mods.sound_keys_label', 'Keyboard')}
+          </span>
+          <Switch
+            size="sm"
+            checked={keySound}
+            onCheckedChange={(next) => {
+              setKeySound(next);
+              // Same click, same reason as the switch above: a listener
+              // added mid-dispatch still reaches window, so the gesture
+              // that turns this on is the gesture that unlocks audio.
+              if (next) armAudio();
+            }}
+            aria-label={t('mods.sound_keys_label', 'Keyboard')}
+          />
+        </div>
+        <p className="text-2xs text-muted-foreground mt-1">
+          {t('mods.sound_keys_hint', 'Typing clicks. Never in a password or payment field.')}
+        </p>
+        {keySound && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {KEY_PACKS.map((p) => (
+              <Chip key={p.id} value={p.id} current={keyPack} label={p.label}
+                onClick={(v) => {
+                  setKeyPack(v);
+                  // Preview the letter, the one a person hears most.
+                  if (volume > 0) playCue(keyPackById(v)!.cues.letter, volume, KEY_LIMITS);
+                }} />
+            ))}
+          </div>
+        )}
 
         {/* The gate's STATE, not merely its existence.
             The audit's sharpest finding: this section can read 100%

@@ -708,7 +708,10 @@ function ProfileTab({
             <input type="date" className={inputCls} value={String(v('med_card_expires'))} onChange={(e) => set('med_card_expires', e.target.value)} />
           </Field>
           <Field label="DOB">
-            <input type="date" className={inputCls} value={String(v('dob'))} onChange={(e) => set('dob', e.target.value)} />
+            {/* Typing here makes no sound. Four key classes are enough
+                to make a date of birth audible as length and structure
+                on a shared floor — see mods/sound/keys.ts. */}
+            <input data-no-key-sound type="date" className={inputCls} value={String(v('dob'))} onChange={(e) => set('dob', e.target.value)} />
           </Field>
         </div>
       </Section>
