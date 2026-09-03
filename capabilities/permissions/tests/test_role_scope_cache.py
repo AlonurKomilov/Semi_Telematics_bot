@@ -79,3 +79,47 @@ async def test_ttl_expiry_rereads(monkeypatch):
     t[0] += _PERMS_CACHE_TTL_S + 1
     await scope.role_scope_layer(1, "fleet", db)
     assert db.calls == 2
+
+
+class TestWidthIgnoresThePair:
+    """The E1c regression, pinned: a member whose role was granted View
+    but not Manage on a manage-pair keeps their Team Management width.
+    The pair's halves are verbs now, not width."""
+
+    @pytest.mark.asyncio
+    async def test_fleet_view_only_maintenance_stays_wide(self, monkeypatch):
+        from adapters.storage.models import User
+        from capabilities.permissions import roles
+        fleet = User(id=1, telegram_id=1, account_id=1, role=Role.FLEET,
+                     truck_num=None, alerts_on=False, is_active=True, created_at="")
+        # if the core still consulted the grant, this would fire
+        async def _boom(*a, **k): raise AssertionError("width read the permission pair")
+        monkeypatch.setattr(roles, "can_for_account", _boom)
+        async def _no_role_layer(*a, **k): return None
+        monkeypatch.setattr(scope, "role_scope_layer", _no_role_layer)
+        assert await scope.unit_width(1, Role.FLEET, fleet, "maintenance") == "all"
+
+    @pytest.mark.asyncio
+    async def test_driver_is_still_assigned_from_the_builtin_layer(self, monkeypatch):
+        from adapters.storage.models import User
+        drv = User(id=2, telegram_id=2, account_id=1, role=Role.DRIVER,
+                   truck_num="T1", alerts_on=False, is_active=True, created_at="")
+        async def _no_role_layer(*a, **k): return None
+        monkeypatch.setattr(scope, "role_scope_layer", _no_role_layer)
+        assert await scope.unit_width(1, "driver", drv, "maintenance") == "assigned"
+
+    @pytest.mark.asyncio
+    async def test_unknown_feature_is_a_loud_error(self):
+        with pytest.raises(KeyError):
+            await scope.unit_width(1, Role.FLEET, None, "not_a_feature")
+
+
+class TestNoMemberRowFallsBackToBuiltin:
+    @pytest.mark.asyncio
+    async def test_driver_without_a_row_is_assigned(self):
+        assert await scope.unit_width(1, Role.DRIVER, None, "events") == "assigned"
+
+    @pytest.mark.asyncio
+    async def test_wide_role_without_a_row_stays_wide(self):
+        for r in (Role.OWNER, Role.FLEET, Role.SAFETY):
+            assert await scope.unit_width(1, r, None, "events") == "all", r

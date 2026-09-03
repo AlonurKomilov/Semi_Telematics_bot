@@ -368,19 +368,10 @@ async def get_member_vehicle_scope(user: dict) -> str:
 
 async def member_unit_scope(user: dict, feature: str) -> str:
     """'all' or 'assigned' — the unit-width answer for one paired
-    feature during the verb/scope bridge.
-
-    Two narrows, EITHER of which narrows (both are live claims):
-
-      * the effective GRANT is vehicle-only — the legacy pair the
-        matrix still edits, honored per-account via can_for_account,
-        so an account that narrowed a role keeps its narrowing;
-      * the member's Team Management scope says 'assigned' — the new
-        home for width.  Additive today: no overrides are stored yet,
-        so at deploy this changes nothing.
-
-    When the pairs die in the cleanup stage the first claim goes with
-    them and this helper collapses into get_member_vehicle_scope.
+    feature: the member's three-layer Team Management scope.  The
+    bridge's second claim (a vehicle-only GRANT narrows) retired when
+    the matrix began writing verbs — see capabilities/permissions/
+    scope.unit_width for why it had become a hazard.
     """
     # One implementation for every surface —
     # capabilities/permissions/scope.py holds the two-claim logic and

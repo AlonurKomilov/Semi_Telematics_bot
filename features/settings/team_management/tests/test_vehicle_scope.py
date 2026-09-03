@@ -111,10 +111,13 @@ class TestTheBridgeHelperAsksTwoDifferentQuestions:
 
       * "what is this member's scope?" — unknown → 'assigned', the
         cautious answer, because we are describing a person.
-      * "should this WIDE-granted request be narrowed?" — unknown
-        means no override is KNOWN, and inventing one deletes a
-        legitimate caller's data.  The grant is authoritative during
-        the bridge, so unknown → 'all'.
+      * "should this request be narrowed?" — unknown means no override
+        is KNOWN, and inventing one deletes a legitimate caller's data.
+        So unknown → the role's BUILT-IN width: 'all' for a wide role,
+        'assigned' for a driver.  (During the bridge a vehicle-only
+        GRANT also narrowed here; that claim retired when the matrix
+        began writing verbs and the pair's halves stopped meaning
+        width.)
     """
 
     @pytest.mark.asyncio
@@ -127,10 +130,12 @@ class TestTheBridgeHelperAsksTwoDifferentQuestions:
         assert got == "all"
 
     @pytest.mark.asyncio
-    async def test_a_narrow_grant_still_narrows_without_any_lookup(self):
+    async def test_a_driver_still_narrows_without_any_lookup(self):
         from interfaces.api.deps import member_unit_scope
-        # Driver: the seeded grant is vehicle-only, so the answer is
-        # 'assigned' from the grant alone — no member row needed.
+        # Driver, no platform in this test: the BUILT-IN layer answers
+        # 'assigned' with no member row.  This used to come from the
+        # grant claim; when that retired, a blanket fail-open would have
+        # widened an unreadable driver — pinned here so it cannot.
         got = await member_unit_scope(
             {"role": "driver", "account_id": 1}, "maintenance")
         assert got == "assigned"

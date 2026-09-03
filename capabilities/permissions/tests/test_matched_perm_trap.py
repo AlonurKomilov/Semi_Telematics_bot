@@ -87,6 +87,11 @@ def test_the_width_helper_is_the_migration_target_for_these_reads():
     # the API adapter delegates to it — one implementation per rule,
     # or the copies drift.
     core = inspect.getsource(scope.unit_width)
-    assert "PAIRED_UNIT_FEATURES[feature]" in core
-    assert "can_for_account(" in core
+    assert "PAIRED_UNIT_FEATURES" in core
+    # Width is Team Management's alone now: the core must NOT read the
+    # permission pair.  It did during the bridge, and once the matrix
+    # wrote verbs that read turned View-without-Manage into "narrow
+    # this member" — a wide member revoked writes saw nothing.
+    assert "can_for_account(" not in core
+    assert "scope_with_role_default(" in core
     assert "unit_width(" in inspect.getsource(deps.member_unit_scope)

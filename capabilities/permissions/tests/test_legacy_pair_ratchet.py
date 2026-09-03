@@ -36,7 +36,14 @@ _HOME = re.compile(
 )
 
 #: mentions per file at the moment the ratchet was set (2026-09-02).
-#: Lower an entry when you migrate a site; never raise one.
+#: Lower an entry when you migrate a site; never raise one — with ONE
+#: recorded exception: 2026-09-03, the browser extension's scoped token
+#: (interfaces/api/auth.py EXTENSION_SCOPE + connect.ts) arrived
+#: speaking the Live Map pair.  That is a WIRE contract with a shipped
+#: Chrome client, so it migrates as a pair — server emits legacy AND
+#: canonical scope strings, the extension checks the canonical one —
+#: in part 2, not by editing another author's day-old code.  Entries
+#: added: auth.py 2, connect.ts 1.
 BASELINE: dict[str, int] = json.loads('''
 {
     "adapters/storage/parking.py": 1,
@@ -52,10 +59,12 @@ BASELINE: dict[str, int] = json.loads('''
     "features/parking/service.py": 2,
     "features/scorecards/router.py": 4,
     "features/vehicles/router.py": 5,
+    "interfaces/api/auth.py": 2,
     "interfaces/bot/callbacks/parking.py": 2,
     "interfaces/bot/geofences.py": 1,
     "interfaces/bot/keyboards.py": 2,
     "interfaces/bot/registration.py": 2,
+    "interfaces/browser_extension/src/connect.ts": 1,
     "interfaces/dashboard/src/components/tour/types.ts": 2,
     "interfaces/dashboard/src/config/poiLayers.ts": 1,
     "interfaces/dashboard/src/features/live-map/sections/CompanyColorPartition.tsx": 2,

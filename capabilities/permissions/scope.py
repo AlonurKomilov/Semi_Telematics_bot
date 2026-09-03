@@ -9,15 +9,19 @@ row they already hold).  One implementation, because the width rule
 duplicated per surface is the rule that drifts — the company wall's
 ``company_allows`` lesson, applied again.
 
-Two claims, EITHER of which narrows (both live during the bridge):
+One answer: the member's three-layer Team Management scope (member
+override ⊃ account role width ⊃ built-in role default).
 
-  * the effective GRANT is vehicle-only — the legacy pair the matrix
-    still edits, honoured per-account via ``can_for_account``;
-  * the member's three-layer Team Management scope (member override ⊃
-    account role width ⊃ built-in role default).
-
-When the pairs die in the cleanup stage the first claim goes with
-them, and this collapses into the model predicate plus the role layer.
+During the bridge this also honoured a second claim — "the effective
+grant is vehicle-only" — so an account that had narrowed a role
+through the old permission pairs kept its narrowing.  That claim
+retired one stage early, and for a reason: once the matrix started
+writing verbs, a pair's halves stopped meaning width.  On a manage-
+pair, View-without-Manage stores wide=False, narrow=True — and the
+grant claim read that as "narrow this member", so revoking WRITES
+silently made a wide member see nothing.  The pre-flight had already
+proven no stored row was narrow-only, so the claim had nothing left
+to protect and one new thing to break.
 """
 
 from __future__ import annotations
@@ -28,7 +32,6 @@ from typing import Optional
 from capabilities.permissions.roles import (
     PAIRED_UNIT_FEATURES,
     Role,
-    can_for_account,
 )
 
 _log = logging.getLogger(__name__)
@@ -88,19 +91,28 @@ async def unit_width(
     """'all' or 'assigned' for one paired unit feature.
 
     ``db_user`` is the member's DB row when the caller has it (the bot
-    always does), or None when it could not be loaded — which fails
-    OPEN to 'all' for a wide-granted caller, deliberately: asked
-    "should this WIDE-granted request be narrowed", an unloadable row
-    means we cannot know of an override, and inventing one would make
-    a wide-granted caller's data vanish whenever the platform hiccups.
-    The cautious fail-closed answer belongs to the OTHER question
-    ("what is this member's scope" — deps.get_member_vehicle_scope).
+    always does), or None when it could not be loaded — which falls
+    back to the role's BUILT-IN width: an unloadable row means no
+    override is KNOWN, and inventing one would make a wide role's data
+    vanish whenever the platform hiccups, while a driver stays
+    'assigned' regardless.  The cautious fail-closed answer belongs to
+    the OTHER question ("what is this member's scope" —
+    deps.get_member_vehicle_scope).
     """
-    wide_flag, _narrow_flag = PAIRED_UNIT_FEATURES[feature]
+    if feature not in PAIRED_UNIT_FEATURES:
+        raise KeyError(f"not a unit-paired feature: {feature!r}")
     role_enum = role if isinstance(role, Role) else Role(role)
-    if not await can_for_account(int(account_id), role_enum, wide_flag):
-        return "assigned"
     if db_user is None:
-        return "all"
+        # No member row (bot surface, script, a platform hiccup).  The
+        # documented fail-open — "do not invent an override that would
+        # narrow a wide caller to nothing" — used to sit BEHIND the grant
+        # claim, which had already narrowed drivers.  With that claim
+        # retired, blanket 'all' here would widen a driver whose row
+        # could not be read.  So the fallback is the role's BUILT-IN
+        # width: still 'all' for every wide role, 'assigned' for a
+        # driver — the same answer the three layers give with no
+        # override and no role row.
+        from capabilities.permissions.fold import builtin_width
+        return builtin_width(role_enum.value)
     return db_user.scope_with_role_default(
         await role_scope_layer(account_id, role_enum))
