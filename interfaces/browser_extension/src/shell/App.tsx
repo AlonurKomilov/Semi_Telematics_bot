@@ -16,6 +16,9 @@ export default function App() {
   const [view, setView] = useState<View>('feature');
   const [featureId] = useState(FEATURES[0].id);
   const [me, setMe] = useState<Me | null>(null);
+  // Why the connect screen is showing again — a session disconnected
+  // from the profile (or expired) looks different from a first run.
+  const [disconnected, setDisconnected] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -24,10 +27,22 @@ export default function App() {
     })();
     // A 401 anywhere returns the panel to the connect screen.
     const onUnauthorized = (e: PromiseRejectionEvent) => {
-      if (e.reason instanceof UnauthorizedError) { e.preventDefault(); setPhase('login'); setMe(null); }
+      if (e.reason instanceof UnauthorizedError) { e.preventDefault(); setPhase('login'); setMe(null); setDisconnected(true); }
     };
     window.addEventListener('unhandledrejection', onUnauthorized);
-    return () => window.removeEventListener('unhandledrejection', onUnauthorized);
+    // The token leaving storage is THE disconnect signal, whoever
+    // caused it: "Disconnect this session" on the profile makes the
+    // next request 401, the client drops the token, and this fires —
+    // including for the quiet 5-second poll that swallows its errors.
+    const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== 'local' || !('jwt' in changes)) return;
+      if (changes.jwt.newValue === undefined) { setPhase('login'); setMe(null); setDisconnected(true); }
+    };
+    chrome.storage.onChanged.addListener(onStorage);
+    return () => {
+      window.removeEventListener('unhandledrejection', onUnauthorized);
+      chrome.storage.onChanged.removeListener(onStorage);
+    };
   }, []);
 
   // Who is connected — for the avatar and its menu.  Best effort: the
@@ -44,10 +59,13 @@ export default function App() {
   }, [phase]);
 
   if (phase === 'loading') return <p className="muted" style={{ padding: 16 }}>Loading…</p>;
-  if (phase === 'login') return <Connect onDone={() => setPhase('ready')} />;
+  if (phase === 'login') {
+    return <Connect disconnected={disconnected} onDone={() => { setDisconnected(false); setPhase('ready'); }} />;
+  }
 
   const feature = FEATURES.find((f) => f.id === featureId) ?? FEATURES[0];
-  const disconnect = async () => { await clearToken(); setMe(null); setView('feature'); setPhase('login'); };
+  // Own choice, not a revocation: the connect screen reads as a first run.
+  const disconnect = async () => { setDisconnected(false); await clearToken(); setMe(null); setView('feature'); setPhase('login'); };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

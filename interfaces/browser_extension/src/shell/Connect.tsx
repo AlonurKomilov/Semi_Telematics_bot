@@ -6,7 +6,7 @@ import { beginConnect, clearPending } from '../connect';
  * — URL bar in view — and confirms there; the token arrives through the
  * service worker and this screen goes away on its own.
  */
-export default function Connect({ onDone }: { onDone: () => void }) {
+export default function Connect({ onDone, disconnected = false }: { onDone: () => void; disconnected?: boolean }) {
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState('');
 
@@ -35,6 +35,11 @@ export default function Connect({ onDone }: { onDone: () => void }) {
   return (
     <div style={{ padding: 16, display: 'grid', gap: 10 }}>
       <h1 style={{ fontSize: 16, margin: 0 }}>Connect to 4truck</h1>
+      {disconnected && (
+        <p style={{ margin: 0, color: 'var(--warn)' }}>
+          This connection was ended — from your 4truck profile, or it expired. Connect again to continue.
+        </p>
+      )}
       <p className="muted" style={{ margin: 0 }}>
         You confirm on 4truck.us — this panel never asks for a password. Once connected it
         shows the vehicles you are allowed to see, live, and nothing else.
