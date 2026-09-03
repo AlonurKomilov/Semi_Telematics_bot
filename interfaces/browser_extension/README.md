@@ -1,6 +1,7 @@
 # 4truck browser extension
 
-A Chrome side panel: the Live Map beside whatever you are working on.
+A Chrome side panel for 4truck beside whatever you are working on. Features register
+in `src/shell/registry.ts`; Live Map is the first.
 Fourth client, same layer as `dashboard`, `miniapp`, `system_dashboard`.
 
 ## Build and sideload

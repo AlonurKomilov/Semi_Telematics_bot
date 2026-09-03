@@ -35,7 +35,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
     <form onSubmit={submit} style={{ padding: 16, display: 'grid', gap: 10 }}>
       <h1 style={{ fontSize: 16, margin: 0 }}>Sign in to 4truck</h1>
       <p className="muted" style={{ margin: 0 }}>
-        This panel can see your trucks&apos; positions and nothing else.
+        This panel can see your vehicles&apos; live positions and nothing else.
       </p>
       <input className="input" type="email" placeholder="Email" value={email}
              onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />

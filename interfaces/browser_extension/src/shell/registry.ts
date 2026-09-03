@@ -1,5 +1,5 @@
 /**
- * The features this panel can show.  Live Map is #1; alerts, truck
+ * The features this panel can show.  Live Map is #1; alerts, vehicle
  * lookup and the rest register here as folders under src/features/ —
  * the same one-home-per-feature rule the dashboard follows.
  */

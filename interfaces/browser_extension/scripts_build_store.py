@@ -6,8 +6,12 @@ travels inside the zip as ``key.pem`` on the FIRST upload only; the
 store reads it, derives the id, and never needs it again.  The file is
 read from the server's off-repo secrets dir and written nowhere else.
 
-    python3 scripts_build_store.py            # after `npm run build`
-    → ../../../tmp… /4truck-extension-store-<version>.zip
+    python3 scripts_build_store.py            # first upload: key.pem inside
+    python3 scripts_build_store.py --update   # every later version: no key
+    → 4truck-extension-store-<version>.zip (or the path given as the last arg)
+
+Once the store has the item it derives nothing from a key any more, and
+the docs ask that ``key.pem`` not travel in an update — hence ``--update``.
 """
 from __future__ import annotations
 
@@ -24,9 +28,11 @@ KEY = pathlib.Path.home() / ".4truck-extension" / "key.pem"
 
 
 def main() -> int:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    update = "--update" in sys.argv[1:]
     if not (DIST / "manifest.json").is_file():
         print("run `npm run build` first", file=sys.stderr); return 1
-    if not KEY.is_file():
+    if not update and not KEY.is_file():
         print(f"private key missing: {KEY}", file=sys.stderr); return 1
     with tempfile.TemporaryDirectory() as td:
         stage = pathlib.Path(td) / "pkg"
@@ -36,8 +42,9 @@ def main() -> int:
         version = d.get("version", "0.0.0")
         d.pop("key", None)                       # the store assigns it
         mf.write_text(json.dumps(d, indent=2) + "\n")
-        shutil.copy(KEY, stage / "key.pem")      # first upload only
-        out = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / f"4truck-extension-store-{version}.zip"
+        if not update:
+            shutil.copy(KEY, stage / "key.pem")  # first upload only
+        out = pathlib.Path(args[0]) if args else HERE / f"4truck-extension-store-{version}.zip"
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             for f in sorted(stage.rglob("*")):
                 if f.is_file():

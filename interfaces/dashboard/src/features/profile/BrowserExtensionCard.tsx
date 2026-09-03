@@ -54,9 +54,10 @@ export default function BrowserExtensionCard() {
         {info?.version && <span className="ml-auto text-xs text-muted-foreground">v{info.version}</span>}
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Your trucks, live, in a Chrome side panel beside whatever you are working on —
-        Google Maps, a load board, email. Sign in inside the panel with your 4truck email
-        and password; it sees the live map and nothing else.
+        4truck in a Chrome side panel beside whatever you are working on — Google Maps,
+        a load board, email. Today it shows your vehicles live on the map; more of 4truck
+        reaches the panel over time. Sign in inside it with your 4truck email and
+        password; it sees what it shows and nothing else.
       </p>
 
       <Button type="button" size="sm" onClick={() => void download()} disabled={busy || info?.built === false}>
