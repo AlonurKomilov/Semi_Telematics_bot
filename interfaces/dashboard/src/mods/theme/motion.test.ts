@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { MOTION_SCALE, motionPercent } from '../catalogue';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const CONFIG = readFileSync(join(ROOT, 'tailwind.config.js'), 'utf8');
@@ -92,6 +93,45 @@ describe('the axis itself', () => {
       expect(dir > 0 ? v > 1 : v < 1, `${name} scales the wrong way (${v})`).toBe(true);
       expect(v, `${name} is not a sane multiplier`).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The panel says how much motion there is. It can only say it from a
+ * copy of numbers that live in a stylesheet, so the copy has to be
+ * watched — the same bargain the pre-paint script makes with applyTheme.
+ */
+describe('the percentage the panel shows', () => {
+  it('matches the multipliers index.css actually ships', () => {
+    for (const [name, scale] of Object.entries(MOTION_SCALE)) {
+      if (name === 'default') {
+        // No attribute block — the neutral value is the bare :root one.
+        const m = /:root\s*\{[^}]*--motion-scale:\s*([\d.]+)/.exec(CODE);
+        expect(m, ':root declares no --motion-scale').not.toBeNull();
+        expect(Number(m![1]), 'the neutral scale drifted').toBe(scale);
+        continue;
+      }
+      const m = new RegExp(`\\[data-motion="${name}"\\]\\s*\\{[^}]*--motion-scale:\\s*([\\d.]+)`).exec(CODE);
+      expect(m, `no [data-motion="${name}"] block — MOTION_SCALE names a setting the CSS does not`).not.toBeNull();
+      expect(Number(m![1]), `${name}: the panel would show a number the app does not use`).toBe(scale);
+    }
+  });
+
+  it('reads as MORE motion, not as a longer duration', () => {
+    // The trap this exists for: --motion-scale multiplies DURATION, so
+    // calm is the BIGGER number while being the setting that moves
+    // least. Printed raw it would be the only percentage on the card
+    // where a higher number means less of the thing named.
+    expect(motionPercent('calm'), 'calm reads as more motion than default').toBeLessThan(100);
+    expect(motionPercent('default')).toBe(100);
+    expect(motionPercent('snappy'), 'snappy reads as less motion than default').toBeGreaterThan(100);
+    // The exact figures, so a change to either half is deliberate.
+    expect(motionPercent('calm')).toBe(63);
+    expect(motionPercent('snappy')).toBe(167);
+  });
+
+  it('prints a number rather than NaN when handed a value the axis lost', () => {
+    expect(motionPercent('normal' as never)).toBe(100);
   });
 });
 

@@ -14,7 +14,7 @@ import { SIZE_MIN, SIZE_MAX } from '../preferences';
 import { cn } from '../lib/utils';
 import {
   THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS,
-  modMatchesAxes, modById, packById, modFootprint, type Mod,
+  modMatchesAxes, modById, packById, modFootprint, motionPercent, type Mod,
 } from './catalogue';
 import { SOUND_PACKS, armAudio, playCue, type SoundPack } from './sound/engine';
 import { MODS_HREF } from './href';
@@ -653,9 +653,23 @@ export function ModControls({ compact = false, onNavigate, section }: {
 
       {has('effects') && (
       <div>
-        <p className={`${groupLabel} mb-1.5`}>
-          {t('mods.group_motion', 'Motion')}
-        </p>
+        {/* The header carries the intensity, exactly as Sound's does.
+            GX gives every mods category a percentage; ours had one for
+            Sound and one for Size and nothing here, even though motion
+            has been a multiplier all along.
+
+            It is INVERTED on the way out — see `motionPercent`. The
+            stored scale multiplies duration, so calm is 1.6; every other
+            percentage on this card means more of the thing named, and a
+            "Motion 160%" that moves least would be the only one lying. */}
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <p className={groupLabel}>
+            {t('mods.group_motion', 'Motion')}
+          </p>
+          <span className="text-2xs tabular-nums text-muted-foreground">
+            {motionPercent(theme.motion)}%
+          </span>
+        </div>
         {/* A multiplier on every transition. Spinners and pulses are
             deliberately not on it — see index.css. */}
         <div className="flex flex-wrap gap-1">

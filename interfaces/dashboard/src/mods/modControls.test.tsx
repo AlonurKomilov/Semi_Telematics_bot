@@ -46,7 +46,7 @@ vi.mock('./context', () => ({
   useMods: () => ({
     theme: {
       mode: 'dark', accent: 'blue', radius: 'md', material: 'solid',
-      motion: 'normal', icons: 'regular', mod: '',
+      motion: 'default', icons: 'regular', mod: '',
     },
     setTheme,
     size: { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
@@ -69,6 +69,35 @@ import { MODS } from './catalogue';
 const SHARED = ['Mods', 'Color'];
 /** Sections the page carries and the popover sends people to the page for. */
 const PAGE_ONLY = ['Corners', 'Material', 'Motion', 'Sound'];
+
+describe('every category that can carry an intensity shows one', () => {
+  /**
+   * GX gives each mods category a percentage. Ours had one for Sound and
+   * one for Size and none for Effects — even though motion has been a
+   * multiplier since the axis shipped, so the number existed and was
+   * simply never said out loud.
+   *
+   * The fixture above is `motion: 'default'`, which is 100%. It used to
+   * be `'normal'` — a value the axis does not have — and the panel would
+   * have printed "NaN%" from it.
+   */
+  it('Effects reads out the motion intensity beside its heading', () => {
+    render(<ModControls />);
+    const heading = screen.getByText('Motion');
+    const row = heading.parentElement!;
+    expect(row.textContent, 'Motion has no intensity readout').toMatch(/\d+%/);
+  });
+
+  it('and the number is the one the axis actually means', () => {
+    render(<ModControls />);
+    const row = screen.getByText('Motion').parentElement!;
+    // Inverted on purpose: the stored scale multiplies duration, so calm
+    // is the bigger number while moving least. 'default' is the one
+    // value where raw and inverted agree, so this pins the wiring, and
+    // motion.test.ts pins the direction.
+    expect(row.textContent).toContain('100%');
+  });
+});
 
 describe('the panel is a compact view of the page, not a copy of it', () => {
   it('compact: size plus a door to everything else', () => {

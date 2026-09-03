@@ -44,7 +44,7 @@ const THEME_KEY = 'mods.theme';
 const SIZE_KEY = 'mods.size';
 const BASE = {
   mode: 'dark' as const, accent: 'blue', radius: 'md', material: 'solid',
-  motion: 'normal', icons: 'regular', entrance: false, color: 'dark-blue',
+  motion: 'default', icons: 'regular', entrance: false, color: 'dark-blue',
 };
 const SIZE = { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {} };
 

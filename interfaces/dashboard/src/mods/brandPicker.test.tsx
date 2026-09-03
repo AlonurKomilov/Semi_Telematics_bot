@@ -51,7 +51,7 @@ import { THEME_PACKS } from './catalogue';
 
 const BASE = {
   mode: 'dark' as const, accent: 'blue', radius: 'md', material: 'solid',
-  motion: 'normal', icons: 'regular', mod: '',
+  motion: 'default', icons: 'regular', mod: '',
 };
 
 const mount = (over: Record<string, unknown> = {}) => {

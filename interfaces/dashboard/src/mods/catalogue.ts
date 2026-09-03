@@ -73,6 +73,43 @@ export const MOD_MATERIALS = ['solid', 'glass'] as const;
  *  motion tokens in index.css for why the infinite loops are excluded. */
 export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
 /**
+ * What each setting does to a duration, so the panel can say it.
+ *
+ * A SECOND copy of numbers that live in `index.css` — the axis is keyed
+ * on an attribute, so the values have to be in a stylesheet, and a
+ * component cannot read a stylesheet without `getComputedStyle` in
+ * render. `motion.test.ts` parses the CSS and fails when the two
+ * disagree, which is the same bargain the boot script already makes with
+ * `applyTheme`.
+ *
+ * These multiply DURATION, so the number and the feeling run opposite
+ * ways: calm is 1.6 because it takes longer. Anything showing this to a
+ * person has to invert it — see `motionPercent`.
+ */
+export const MOTION_SCALE: Readonly<Record<(typeof MOD_MOTIONS)[number], number>> = {
+  calm: 1.6,
+  default: 1,
+  snappy: 0.6,
+};
+
+/**
+ * The intensity a person reads, as a percentage.
+ *
+ * Inverted, and that is the whole point of it being a function. Every
+ * other percentage on this surface means MORE of the thing named: 160%
+ * sound is louder, 150% size is bigger. A raw motion scale would break
+ * that — calm would read 160% while being the setting that moves least.
+ * So the number shown is how fast the app moves, not how long it takes:
+ * calm 63%, default 100%, snappy 167%.
+ */
+export const motionPercent = (m: (typeof MOD_MOTIONS)[number]): number =>
+  // Falls back to the neutral scale rather than dividing by undefined.
+  // The registry sanitises this axis, so a bad value cannot arrive at
+  // runtime — but `100 / undefined` renders the string "NaN%" on a
+  // person's screen, and a panel that prints NaN because a test fixture
+  // held a stale enum is a worse outcome than one that prints 100.
+  Math.round(100 / (MOTION_SCALE[m] ?? 1));
+/**
  * Icon stroke weight, and the FIRST property a mod carries that the
  * panel does not expose.
  *
