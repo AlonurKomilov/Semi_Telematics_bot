@@ -11,11 +11,16 @@ import { apiJSON } from '../../api/client';
 import { makeIcon } from './icons';
 import { applyFix, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, MAP_STATUS, type Phys } from './physics';
 import { FALLBACK, TILES, shouldFallBack } from './tiles';
+import { levelsOf } from './levels';
+import SourceMarks from './SourceMarks';
+import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
+import { getFlag, setFlag } from '../../prefs';
 import { directionsUrl, followInGoogleMaps, getFollowPref, openInGoogleMaps, searchUrl, setFollowPref } from './googleMaps';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
 const REFRESH_MS = 30_000;
 const LIVE_REFRESH_MS = 5_000;
+const LIST_OPEN_KEY = 'liveMapListOpen';
 type Filter = 'all' | VehicleStatus;
 
 export default function LiveMapPanel() {
@@ -30,15 +35,34 @@ export default function LiveMapPanel() {
   const [selected, setSelected] = useState<MapVehicleFeature | null>(null);
   const [error, setError] = useState('');
   const [tileNotice, setTileNotice] = useState('');
+  // Ages are read against ONE clock per render, so two rows can never
+  // disagree by the milliseconds between their own Date.now() calls.
+  // The 30-second reload re-renders, which is how the ages advance.
+  const now = Date.now();
   // "Follow in Google Maps": a ref as well as state, because marker click
   // handlers are attached once and must read the CURRENT choice.
   const [follow, setFollow] = useState(true);
   const followRef = useRef(true);
+  // The map is the point of the panel; the list is the index to it.
+  // Collapsing gives the map the whole strip, and the choice sticks.
+  const [listOpen, setListOpen] = useState(true);
+  // Keep the chosen truck in view as it drives.  Centring once was not
+  // enough: a truck at highway speed leaves the frame in a couple of
+  // minutes and the panel quietly becomes a map of where it USED to be.
+  // The person's own hand wins — one drag and the map stays put.
+  const [keepInView, setKeepInView] = useState(true);
+  const keepRef = useRef(true);
+  const setKeep = (on: boolean) => { keepRef.current = on; setKeepInView(on); };
+  const sheetEl = useRef<HTMLDivElement>(null);
   // The latest feature per id — a marker's click handler was attached
   // when the marker was born and must not hand out that first fix.
   const latest = useRef<Map<string, MapVehicleFeature>>(new Map());
 
   const idOf = (f: MapVehicleFeature) => String(f.properties.id ?? f.properties.name);
+  // The live poll runs from an interval closed over the first render, so
+  // it reads the selection from a ref rather than stale state.
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selected ? idOf(selected) : null;
 
   /** Where the vehicle IS right now: the marker, which the 5-second poll
    *  and the physics keep moving — not the 30-second list snapshot. */
@@ -49,13 +73,31 @@ export default function LiveMapPanel() {
     return [lat, lng];
   };
 
+  /** Put a point in the middle of the map a person can actually SEE —
+   *  the selected-vehicle card covers the lower strip, so a truck
+   *  centred the naive way sits behind it. */
+  const centreOn = (lat: number, lng: number, opts: { zoom?: number; animate?: boolean } = {}) => {
+    const m = map.current;
+    if (!m) return;
+    const zoom = opts.zoom ?? m.getZoom();
+    const cardH = sheetEl.current?.offsetHeight ?? 0;
+    // Push the map's centre DOWN by half the card, so the truck rides
+    // that much above it — the same trick as a bottom sheet's inset.
+    const pt = m.project([lat, lng], zoom).add([0, cardH / 2]);
+    const target = m.unproject(pt, zoom);
+    if (opts.zoom != null) m.setView(target, zoom, { animate: opts.animate ?? false });
+    else m.panTo(target, { animate: opts.animate ?? true });
+  };
+
   /** One place a vehicle gets selected: the card, the map, and — with
    *  Google Maps in front and follow on — Google's pin. */
   const select = (f: MapVehicleFeature, pan: boolean) => {
     const cur = latest.current.get(idOf(f)) ?? f;
     setSelected(cur);
+    setKeep(true);              // a fresh choice always starts centred
     const [lat, lng] = liveLatLng(cur);
-    if (pan) map.current?.setView([lat, lng], 14);
+    // The card is measured AFTER it renders, so centre on the next frame.
+    if (pan) requestAnimationFrame(() => centreOn(lat, lng, { zoom: 14 }));
     if (followRef.current) void followInGoogleMaps(searchUrl(lat, lng));
   };
   const selectRef = useRef(select);
@@ -144,6 +186,12 @@ export default function LiveMapPanel() {
         } else if (!next.isMoving) {
           m.setLatLng([pos.lat, pos.lng]);
         }
+        // The followed truck pulls the map along — a glide every five
+        // seconds, not a jump, and never while the person is reading a
+        // spot they panned to themselves.
+        if (keepRef.current && selectedIdRef.current === vid) {
+          centreOn(pos.lat, pos.lng, { animate: true });
+        }
       }
     } catch { /* the 30s poll surfaces errors; the fast one stays quiet */ }
   }
@@ -151,7 +199,9 @@ export default function LiveMapPanel() {
   useEffect(() => {
     if (!mapEl.current || map.current) return;
     const m = L.map(mapEl.current, { zoomControl: false }).setView([39.5, -98.35], 4);
-    L.control.zoom({ position: 'bottomright' }).addTo(m);
+    // Top-right: the selected-vehicle card owns the bottom of the map,
+    // and zoom buttons half-hidden behind it are worse than no buttons.
+    L.control.zoom({ position: 'topright' }).addTo(m);
     const t = TILES.standard;
     const tiles = L.tileLayer(t.url, { attribution: t.attr, maxZoom: t.maxZoom }).addTo(m);
     // A grey map is a failed source, not a slow one: count this view's
@@ -167,8 +217,13 @@ export default function LiveMapPanel() {
       setTileNotice('OpenStreetMap is not answering from here — showing Esri street tiles.');
     });
     m.on('movestart', () => { if (!fellBack) { errors = 0; loads = 0; } });
+    // ``dragstart`` fires ONLY for a hand on the map — our own panTo and
+    // setView don't raise it.  That makes it the honest signal for "the
+    // person took over", with no flag to keep in sync.
+    m.on('dragstart', () => { if (keepRef.current) setKeep(false); });
     map.current = m;
     void getFollowPref().then((on) => { setFollow(on); followRef.current = on; });
+    void getFlag(LIST_OPEN_KEY, true).then(setListOpen);
     // The cleanup reads the SAME maps this effect created, so hold them
     // in locals — React warns that a ref may point elsewhere by then.
     const framesMap = frames.current, physMap = phys.current, markerMap = markers.current, latestMap = latest.current;
@@ -192,9 +247,83 @@ export default function LiveMapPanel() {
 
   const focus = (f: MapVehicleFeature) => select(f, true);
 
+  // Leaflet caches its container size; after the list opens or closes the
+  // map is a different height and would render tiles for the old one.
+  useEffect(() => {
+    const t = setTimeout(() => map.current?.invalidateSize(), 180);
+    return () => clearTimeout(t);
+  }, [listOpen]);
+
+  const toggleList = () => {
+    const open = !listOpen;
+    setListOpen(open);
+    void setFlag(LIST_OPEN_KEY, open);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div ref={mapEl} style={{ height: '40%', minHeight: 180 }} />
+      {/* The map takes whatever the list leaves — all of it when the
+          list is collapsed.  The selected vehicle floats over its lower
+          edge instead of pushing it up. */}
+      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 200 }}>
+        <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
+        {selected && (() => {
+          const [lat, lng] = liveLatLng(selected);
+          const levels = levelsOf(selected.properties);
+          return (
+            <div className="sheet" ref={sheetEl}>
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selected.properties.name}
+                </strong>
+                <div className="row" style={{ gap: 6 }}>
+                  {/* On: the map rides along. Off (you panned away): the
+                      same control brings it back and re-engages. */}
+                  <button className={`chip ${keepInView ? 'on' : ''}`} aria-pressed={keepInView}
+                          title={keepInView
+                            ? 'The map follows this vehicle — drag the map to stop'
+                            : 'Bring this vehicle back into view and follow it again'}
+                          onClick={() => {
+                            if (keepInView) { setKeep(false); return; }
+                            setKeep(true);
+                            centreOn(lat, lng, { animate: true });
+                          }}>
+                    {keepInView ? 'Keeping in view' : 'Keep in view'}
+                  </button>
+                  <button className="btn" onClick={() => { setKeep(false); setSelected(null); }}>Close</button>
+                </div>
+              </div>
+              <p className="muted" style={{ margin: 0 }}>{selected.properties.address || '—'}</p>
+              <SourceMarks sources={selected.properties.sources} source={selected.properties.source} />
+              {(() => {
+                const age = ageMs(selected.properties.updated_at, now);
+                const s = stalenessOf(age);
+                const old = s === 'stale' || s === 'very_stale';
+                return (
+                  <p style={{ margin: 0, fontSize: 12, color: old ? 'var(--warn)' : 'var(--muted)' }}
+                     title={describeAge(age)}>
+                    {s === 'unknown' ? 'No position time reported' : `Updated ${formatAge(age)} ago`}
+                    {s === 'very_stale' && ' — this is not a live position'}
+                  </p>
+                );
+              })()}
+              {levels.map((l) => (
+                <div key={l.key}>
+                  <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
+                    <span className={l.low ? '' : 'muted'} style={l.low ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{l.label}</span>
+                    <span className={l.low ? '' : 'muted'} style={l.low ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{l.pct}%</span>
+                  </div>
+                  <div className={`bar ${l.low ? 'low' : ''}`}><i style={{ width: `${l.pct}%` }} /></div>
+                </div>
+              ))}
+              <div className="row">
+                <button className="btn primary" onClick={() => void openInGoogleMaps(searchUrl(lat, lng))}>Open in Google Maps</button>
+                <button className="btn" onClick={() => void openInGoogleMaps(directionsUrl(lat, lng))}>Directions</button>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
       <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}>
         <input className="input" placeholder="Search vehicles…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -211,23 +340,18 @@ export default function LiveMapPanel() {
         {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
         {tileNotice && <p className="muted" style={{ margin: 0 }}>{tileNotice}</p>}
       </div>
-      {selected && (() => {
-        const [lat, lng] = liveLatLng(selected);
-        return (
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}>
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <strong>{selected.properties.name}</strong>
-              <button className="btn" onClick={() => setSelected(null)}>Close</button>
-            </div>
-            <p className="muted" style={{ margin: 0 }}>{selected.properties.address || '—'}</p>
-            <div className="row">
-              <button className="btn primary" onClick={() => void openInGoogleMaps(searchUrl(lat, lng))}>Open in Google Maps</button>
-              <button className="btn" onClick={() => void openInGoogleMaps(directionsUrl(lat, lng))}>Directions</button>
-            </div>
-          </div>
-        );
-      })()}
-      <div style={{ flex: 1, overflowY: 'auto' }} role="region" aria-label="Vehicles" tabIndex={0}>
+      <button type="button" onClick={toggleList} aria-expanded={listOpen}
+              className="row"
+              style={{ width: '100%', justifyContent: 'space-between', padding: '6px 10px', background: 'none',
+                       border: 0, borderBottom: '1px solid var(--border)', color: 'var(--fg)', cursor: 'pointer' }}>
+        <span style={{ fontWeight: 600 }}>
+          Vehicles <span className="muted" style={{ fontWeight: 400 }}>({filtered.length})</span>
+        </span>
+        <span className="muted" aria-hidden>{listOpen ? '▾' : '▴'}</span>
+      </button>
+      <div hidden={!listOpen}
+           style={{ flex: '0 1 45%', minHeight: 96, overflowY: 'auto' }}
+           role="region" aria-label="Vehicles" tabIndex={0}>
         {filtered.map((f) => {
           const p = f.properties, status = vehicleStatus(f), warn = hasLowLevelWarning(p);
           return (
@@ -238,13 +362,36 @@ export default function LiveMapPanel() {
                 <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: statusColor(status),
                                boxShadow: warn ? `0 0 0 2px ${MAP_STATUS.danger}` : undefined }} />
                 <span style={{ fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                {(() => {
+                  // A stale fix says so in the row, so the list can be
+                  // scanned for "what is actually reporting" without
+                  // opening anything.
+                  const s = stalenessOf(ageMs(p.updated_at, now));
+                  if (s === 'fresh') return null;
+                  const age = ageMs(p.updated_at, now);
+                  return (
+                    <span style={{ color: 'var(--warn)', fontSize: 12 }} title={describeAge(age)}>
+                      {s === 'unknown' ? '· no fix' : `· ${formatAge(age)}`}
+                    </span>
+                  );
+                })()}
                 {p.fuel_percent != null && <span className="muted">⛽ {Math.round(p.fuel_percent)}%</span>}
               </div>
               <p className="muted" style={{ margin: '2px 0 0 18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.address || '—'}</p>
             </button>
           );
         })}
-        {!vehicles.length && !error && <p className="muted" style={{ padding: 12 }}>Loading vehicles…</p>}
+        {/* Rows in the shape of the answer, not the word "Loading" —
+            the panel is a strip, and a lone sentence in it reads as an
+            empty account rather than a pending request. */}
+        {!vehicles.length && !error && Array.from({ length: 6 }, (_, i) => (
+          <div key={i} style={{ padding: '10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}
+               aria-hidden={i > 0} role={i === 0 ? 'status' : undefined}
+               aria-label={i === 0 ? 'Loading vehicles' : undefined}>
+            <div className="skel" style={{ width: `${45 - i * 3}%` }} />
+            <div className="skel" style={{ width: `${80 - i * 5}%`, marginLeft: 18 }} />
+          </div>
+        ))}
       </div>
     </div>
   );

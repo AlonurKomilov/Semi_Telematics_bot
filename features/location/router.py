@@ -89,6 +89,15 @@ async def map_vehicles(
                 "id": v.get("id"),
                 "name": v.get("name", ""),
                 "company": v.get("_org", ""),
+                # Who supplies this record.  Already on the row from the
+                # registry merge, so carrying it costs nothing and saves
+                # every map surface a second request: the dashboard's
+                # Live Map and the browser extension both draw the
+                # provenance beside the unit number, the same way the
+                # vehicle page does.  ``source`` is the creator,
+                # ``sources`` is creator-then-enrichers.
+                "source": v.get("source") or "",
+                "sources": list(v.get("sources") or []),
                 "speed_mph": speed,
                 "address": address,
                 "engine_state": engine_state,

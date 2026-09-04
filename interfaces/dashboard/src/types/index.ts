@@ -469,6 +469,11 @@ export interface MapVehicleProperties {
   company?: string;
   heading?: number | null;
   updated_at?: string;
+  /** Who supplies this record — `source` is the creator, `sources` is
+   *  creator-then-enrichers.  Carried by /map/vehicles from the registry
+   *  merge so a map surface can show provenance without a second call. */
+  source?: string;
+  sources?: string[];
 }
 
 export interface MapVehicleFeature {

@@ -10,6 +10,7 @@ import { POI_LAYERS } from '../../config/poiLayers';
 import { MAP_STATUS, MARKER_HALO, MARKER_SHADOW } from '../../config/mapColors';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
+import SourceMarks from '../vehicles/SourceMarks';
 import type L from 'leaflet';
 import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
 import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
@@ -769,7 +770,14 @@ export default function LiveMap() {
             >
               <ArrowLeft className="size-3" /> Back
             </button>
-            <h3 className="text-lg font-semibold leading-tight">{selected.name}</h3>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="text-lg font-semibold leading-tight">{selected.name}</h3>
+              {/* Who supplies this truck's record — the same marks the
+                  vehicle page shows beside its number.  No links here:
+                  a provider deep link costs a per-vehicle lookup this
+                  panel has no reason to pay. */}
+              <SourceMarks sources={selected.sources} source={selected.source} />
+            </div>
             <p className="text-muted-foreground text-xs">{selected.address || 'Unknown location'}</p>
 
             {/* Quick stats grid */}

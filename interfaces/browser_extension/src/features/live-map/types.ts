@@ -4,6 +4,9 @@ export interface MapVehicleProperties {
   engine_state?: string; status?: 'moving' | 'idle' | 'stopped' | string;
   fuel_percent?: number; def_percent?: number; fault_count?: number;
   company?: string; heading?: number | null; updated_at?: string;
+  /** Who supplies this record: `source` is the creator,
+   *  `sources` is creator-then-enrichers. */
+  source?: string; sources?: string[];
 }
 export interface MapVehicleFeature {
   type: 'Feature';
