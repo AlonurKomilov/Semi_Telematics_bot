@@ -306,7 +306,7 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "can_work_orders_vehicle": "can_view_work_orders"
 }
 
-#: the ten unit pairs, LEGACY names — kept for the stored-row sweep
+#: the unit pairs, LEGACY names — kept for the stored-row sweep
 #: (which reads pre-flip JSON) and as the registry of unit features.
 PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
     "events": (
