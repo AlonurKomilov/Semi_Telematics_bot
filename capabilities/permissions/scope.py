@@ -86,7 +86,7 @@ async def role_scope_layer(
 
 
 async def unit_width(
-    account_id: int, role, db_user, feature: str,
+    account_id: int, role, db_user, feature: str, platform_db=None,
 ) -> str:
     """'all' or 'assigned' for one paired unit feature.
 
@@ -115,4 +115,4 @@ async def unit_width(
         from capabilities.permissions.fold import builtin_width
         return builtin_width(role_enum.value)
     return db_user.scope_with_role_default(
-        await role_scope_layer(account_id, role_enum))
+        await role_scope_layer(account_id, role_enum, platform_db))

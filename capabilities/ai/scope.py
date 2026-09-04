@@ -4,10 +4,19 @@ Vehicle Access (Team Management → Access tab) is the single source of truth
 for *which vehicles' data* a user may see.  It has three modes, stored in the
 same tables the dashboard / API read:
 
-  * **All**      → unrestricted (owners, and anyone left on "All")
-  * **Vehicle**  → the exact vehicles picked (``driver_trucks`` junction);
-                   a Driver is simply this case scoped to their truck(s)
-  * **Company**  → every vehicle in the allowed companies (``user_companies``)
+  * **Assigned** → the member's unit width is 'assigned' (the three-layer
+                   answer: own override ⊃ account role width ⊃ built-in,
+                   ``capabilities.permissions.scope.unit_width``) — exactly
+                   the trucks assigned to them, NOTHING when none are
+  * **Company**  → a wide member limited to companies: every vehicle in
+                   the allowed companies (``user_companies``)
+  * **All**      → unrestricted (owners, and every wide member with no
+                   company restriction)
+
+Width is Team Management's answer, never the role's: a driver an
+account widened to 'all' reads like a dispatcher; a dispatcher narrowed
+to 'assigned' reads like a driver.  Assignments on a WIDE member are
+what they are on every other surface — not a restriction.
 
 ``resolve_vehicle_scope`` collapses those modes into the concrete set of
 vehicle *names* the AI may serve the user:
@@ -35,30 +44,47 @@ async def resolve_vehicle_scope(
     user_id: int,
     role: object,
     truck_num: Optional[str] = None,
+    db_user=None,
 ) -> Optional[list[str]]:
     """Return the vehicle names a user may access via the AI, or ``None`` if
-    unrestricted.  See module docstring for the None / list / [] contract."""
+    unrestricted.  See module docstring for the None / list / [] contract.
+
+    ``db_user`` is the member's row when the caller has it (both entry
+    points do); without it the width falls back to the role's built-in
+    default, exactly as ``unit_width`` documents."""
     role_str = role.value if hasattr(role, "value") else (str(role or "").lower())
 
     # Owners are never scope-restricted.
     if role_str == "owner":
         return None
 
-    # Vehicle mode (and Drivers): an explicit per-vehicle assignment wins.
+    # Width — Team Management's answer, the same predicate the API and
+    # the bot menus use.  When the predicate itself fails, a KNOWN role
+    # takes its built-in width (the layers' answer with no override and
+    # no role row); a role string the platform does not know has no
+    # built-in width, so it is narrow — never the account.
     try:
-        vehicle_nums = list(await platform_db.get_user_vehicle_nums(user_id) or [])
-    except Exception as e:  # pragma: no cover - defensive
-        logger.warning("AI scope: get_user_vehicle_nums failed user=%s: %s", user_id, e)
-        vehicle_nums = []
-    if not vehicle_nums and truck_num:
-        vehicle_nums = [truck_num]
+        from capabilities.permissions.scope import unit_width
+        narrow = await unit_width(
+            account_id, role_str, db_user, "vehicles", platform_db=platform_db,
+        ) == "assigned"
+    except Exception as e:
+        from capabilities.permissions.fold import builtin_width
+        from capabilities.permissions.roles import Role
+        logger.warning("AI scope: unit width failed user=%s: %s", user_id, e)
+        known = role_str in {r.value for r in Role}
+        narrow = (not known) or builtin_width(role_str) == "assigned"
 
-    if role_str == "driver":
-        # Drivers are ALWAYS isolated to their own vehicle(s) — an unassigned
-        # driver gets an empty (fail-closed) scope, never "All".
-        return [v for v in vehicle_nums if v]
-
-    if vehicle_nums:
+    if narrow:
+        # Assigned width: exactly the member's trucks.  No trucks → an
+        # empty (fail-closed) scope, never "All".
+        try:
+            vehicle_nums = list(await platform_db.get_user_vehicle_nums(user_id) or [])
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("AI scope: get_user_vehicle_nums failed user=%s: %s", user_id, e)
+            vehicle_nums = []
+        if not vehicle_nums and truck_num:
+            vehicle_nums = [truck_num]
         return [v for v in vehicle_nums if v]
 
     # Company mode: expand the allowed companies to their vehicles.

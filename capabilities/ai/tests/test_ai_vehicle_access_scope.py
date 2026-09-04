@@ -87,15 +87,39 @@ class TestGateVehicleAccessScope:
 
 
 class _FakeDB:
-    def __init__(self, vehicle_nums=None, company_codes=None):
+    def __init__(self, vehicle_nums=None, company_codes=None, role_scope=None):
         self._v = vehicle_nums or []
         self._c = company_codes or []
+        self._role_scope = role_scope  # the account's ROLE-level width
 
     async def get_user_vehicle_nums(self, user_id):
         return list(self._v)
 
     async def get_user_company_codes(self, user_id):
         return list(self._c)
+
+    async def get_role_vehicle_scope(self, account_id, role):
+        return self._role_scope
+
+
+class _FakeUser:
+    """A member row: the three-layer width predicate, as the model has it."""
+    def __init__(self, role, vehicle_scope=None):
+        self.role = role
+        self.vehicle_scope = vehicle_scope
+
+    def scope_with_role_default(self, role_scope):
+        from capabilities.permissions.fold import builtin_width
+        return self.vehicle_scope or role_scope or builtin_width(self.role)
+
+
+_ACCT = iter(range(1000, 100000))
+
+
+def _acct() -> int:
+    """A fresh account id per test: the role-width layer is cached per
+    (account, role), and two tests sharing one id would share the cache."""
+    return next(_ACCT)
 
 
 @pytest.mark.asyncio
@@ -108,9 +132,63 @@ class TestResolveVehicleScope:
         scope = await resolve_vehicle_scope(_FakeDB(), 1, 10, "fleet")
         assert scope is None
 
-    async def test_vehicle_mode_uses_assigned(self):
-        scope = await resolve_vehicle_scope(_FakeDB(vehicle_nums=["001", "002"]), 1, 10, "admin")
+    async def test_assigned_width_uses_assigned_trucks(self):
+        # A wide-by-default role narrowed by Team Management (own
+        # override) reads exactly the assigned trucks.
+        scope = await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["001", "002"]), _acct(), 10, "admin",
+            db_user=_FakeUser("admin", vehicle_scope="assigned"),
+        )
         assert scope == ["001", "002"]
+
+    async def test_wide_member_with_assignments_is_not_restricted(self):
+        # Width is Team Management's answer.  An admin left wide who
+        # happens to have trucks assigned sees the account, as on every
+        # other surface — the assignment is not a restriction.
+        scope = await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["001", "002"]), _acct(), 10, "admin",
+            db_user=_FakeUser("admin"),
+        )
+        assert scope is None
+
+    async def test_role_layer_narrows_a_wide_role(self):
+        # The account narrowed the whole dispatcher role; no own override.
+        scope = await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["D-7"], role_scope="assigned"), _acct(), 10, "dispatcher",
+            db_user=_FakeUser("dispatcher"),
+        )
+        assert scope == ["D-7"]
+
+    async def test_role_layer_widens_a_driver(self):
+        # The account widened its drivers: this one reads the account.
+        scope = await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["T-1"], role_scope="all"), _acct(), 10, "driver",
+            db_user=_FakeUser("driver"),
+        )
+        assert scope is None
+
+    async def test_narrowed_member_without_trucks_gets_nothing(self):
+        scope = await resolve_vehicle_scope(
+            _FakeDB(), _acct(), 10, "dispatcher",
+            db_user=_FakeUser("dispatcher", vehicle_scope="assigned"),
+        )
+        assert scope == []
+
+    async def test_unknown_role_is_narrow(self):
+        # A role string the platform does not know has no built-in
+        # width: the member reads their trucks, or nothing — never the
+        # account.
+        assert await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["T-1"]), _acct(), 10, "ghost") == ["T-1"]
+        assert await resolve_vehicle_scope(_FakeDB(), _acct(), 10, "ghost") == []
+
+    async def test_no_member_row_falls_back_to_builtin_width(self):
+        # No row (a script, a hiccup): the built-in width — a driver
+        # stays assigned, an admin stays wide.
+        assert await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["T-1"]), _acct(), 10, "driver") == ["T-1"]
+        assert await resolve_vehicle_scope(
+            _FakeDB(vehicle_nums=["T-1"]), _acct(), 10, "admin") is None
 
     async def test_driver_failsclosed_when_unassigned(self):
         # Driver with no assignment → empty (blocked), NEVER unrestricted.

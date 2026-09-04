@@ -343,8 +343,8 @@ async def _check_geofences_account(bot_app: Application, account):
                     logger.debug("Maintenance cross-ref failed for %s: %s", vname, exc)
 
             # Role-based subscriber filtering
-            filtered_subscribers = _filter_subscribers_for_zone(
-                all_subscribers, zone_roles, vname
+            filtered_subscribers = await _filter_subscribers_for_zone(
+                all_subscribers, zone_roles, vname, account.id,
             )
             if not filtered_subscribers:
                 continue
@@ -364,24 +364,35 @@ async def _check_geofences_account(bot_app: Application, account):
             )
 
 
-def _filter_subscribers_for_zone(
+async def _filter_subscribers_for_zone(
     subscribers: list,
     zone_roles: set,
     vehicle_name: str,
+    account_id: int,
 ) -> list:
-    """Return subscribers whose role is in zone_roles, with driver isolation.
+    """Return subscribers whose role is in zone_roles, walled by width.
 
-    Drivers are included only if the vehicle matches their assigned truck_num.
+    An assigned-width member (Team Management's answer — a driver by
+    default, or anyone the account narrowed) receives the alert only
+    for their own truck; with no truck assigned they receive nothing,
+    never the whole account's crossings.
     """
+    from capabilities.permissions.scope import unit_width
+
     result = []
     for sub in subscribers:
         role = getattr(sub, "role", "")
         if role not in zone_roles:
             continue
-        # Driver isolation: assigned width — only own vehicle
-        if role == "driver":
+        try:
+            narrow = await unit_width(account_id, role, sub, "geofence") == "assigned"
+        except Exception:
+            # An unknown role string: the built-in width for it is not
+            # knowable, so treat the member as narrow.
+            narrow = True
+        if narrow:
             truck = getattr(sub, "truck_num", None)
-            if truck and truck != vehicle_name:
+            if not truck or truck != vehicle_name:
                 continue
         result.append(sub)
     return result

@@ -9,8 +9,8 @@ Features:
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from adapters.storage import Role
 from capabilities.permissions.roles import can, is_management_role
+from capabilities.permissions.scope import unit_width
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_client, get_platform_db, get_tenant_db
@@ -98,6 +98,7 @@ async def _build_user_context(user) -> dict:
         ctx["scoped_vehicle_nums"] = await resolve_vehicle_scope(
             get_platform_db(), user.account_id, user.id,
             getattr(user, "role", None), truck_num=getattr(user, "truck_num", None),
+            db_user=user,
         )
         ctx["scoped_vehicle_ladder"] = await resolve_scope_ladder(
             user.account_id, ctx["scoped_vehicle_nums"],
@@ -167,12 +168,43 @@ async def _dtcs_from_ack(account_id: int, ack_id: int) -> list[dict]:
 
 
 async def _gather_vehicles_snapshot(account_id: int,
-                                 vehicle_num: str | None = None) -> dict:
-    """Build a compact fleet data snapshot for AI context.
+                                 vehicle_num: str | None = None,
+                                 vehicle_nums: list[str] | None = None) -> dict:
+    """Build a compact vehicle data snapshot for AI context.
 
     Delegates to the shared builder in ai.intelligence.
     """
-    return await ai.build_context(account_id, vehicle_num=vehicle_num)
+    return await ai.build_context(
+        account_id, vehicle_num=vehicle_num, vehicle_nums=vehicle_nums,
+    )
+
+
+_SCOPE_UNSET = object()
+
+
+def _scope_filter(user, user_ctx: dict) -> tuple[bool, list[str] | None]:
+    """(blocked, vehicle_nums) for the prompt snapshot, from the resolved
+    Vehicle-Access scope the tool gate also reads.
+
+    ``None`` = the whole account; a list = only those trucks; ``[]`` =
+    an assigned-width member with no truck, who gets NOTHING — the
+    caller shows "no vehicle assigned" instead of building a snapshot
+    (``build_context`` reads an empty list as "no filter").  When the
+    resolver could not answer at all the built-in width of the role
+    decides, the same floor the tool gate falls back to.
+    """
+    scope = user_ctx.get("scoped_vehicle_nums", _SCOPE_UNSET)
+    if scope is _SCOPE_UNSET:
+        from capabilities.permissions.fold import builtin_width
+        role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        if builtin_width(role) == "all":
+            return False, None
+        scope = [user.truck_num] if getattr(user, "truck_num", None) else []
+    if scope is None:
+        return False, None
+    if not scope:
+        return True, []
+    return False, list(scope)
 
 
 def _ai_menu_kb(user_role=None, account_id=None, telegram_id=None) -> InlineKeyboardMarkup:
@@ -261,7 +293,8 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = context.user_data["_db_user"]
     await ai.ensure_account_model(user.account_id)
-    role_desc = "your truck" if user.role == Role.DRIVER else "your fleet"
+    narrow = await unit_width(user.account_id, user.role, user, "vehicles") == "assigned"
+    role_desc = "your truck" if narrow else "your vehicles"
 
     text = (
         "━━━━━━━━━━━━━━━━━━━\n"
@@ -352,13 +385,13 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     suggestions = []
     try:
-        # Driver: only sees their own truck
-        vehicle_filter = None
-        if user.role == Role.DRIVER and user.truck_num:
-            vehicle_filter = user.truck_num
-
+        blocked, vehicle_filter = _scope_filter(user, user_ctx)
+        if blocked:
+            await _show(update, context, [t('vehicle.no_vehicle_assigned')],
+                        keyboard=back_kb())
+            return
         snapshot = await _gather_vehicles_snapshot(
-            user.account_id, vehicle_num=vehicle_filter,
+            user.account_id, vehicle_nums=vehicle_filter,
         )
         samsara = await get_client(user.account_id)
         tenant_db = await get_tenant_db(user.account_id)
@@ -496,12 +529,13 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
 
     try:
-        vehicle_filter = None
-        if user.role == Role.DRIVER and user.truck_num:
-            vehicle_filter = user.truck_num
-
+        blocked, vehicle_filter = _scope_filter(user, user_ctx)
+        if blocked:
+            await _show(update, context, [t('vehicle.no_vehicle_assigned')],
+                        keyboard=back_kb())
+            return
         snapshot = await _gather_vehicles_snapshot(
-            user.account_id, vehicle_num=vehicle_filter,
+            user.account_id, vehicle_nums=vehicle_filter,
         )
         # generate_summary() passes action="summary" through generate(),
         # which writes a router telemetry row per model attempt — no

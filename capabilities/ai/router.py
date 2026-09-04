@@ -221,6 +221,7 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
     scope = await resolve_vehicle_scope(
         platform_db, user_obj.account_id, user_obj.id,
         user_context.get("role"), truck_num=getattr(user_obj, "truck_num", None),
+        db_user=user_obj,
     )
     user_context["scoped_vehicle_nums"] = scope
     from capabilities.ai.scope import resolve_scope_ladder

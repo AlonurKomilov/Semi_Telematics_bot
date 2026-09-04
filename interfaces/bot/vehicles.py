@@ -11,7 +11,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from adapters.storage import Role
 from capabilities.permissions.roles import can
 from infra.context import get_company_display
 from capabilities.formatting import format_vehicle_detail, format_vehicle_picker
@@ -95,18 +94,17 @@ async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         except ValueError:
                             pass
 
-    # Driver role: force own truck
-    if user.role == Role.DRIVER:
+    # Assigned width (Team Management's answer, not the role): the
+    # member's own truck, whoever they are — a driver by default, or a
+    # dispatcher an account narrowed.  No truck → nothing, never the
+    # account.
+    if await _unit_width(user.account_id, user.role, user, "vehicles") != "all":
         if not user.truck_num:
             await _show(update, context,
                         [t('vehicle.no_vehicle_assigned')],
                         keyboard=back_kb())
             return
         vehicle_name = user.truck_num
-    elif await _unit_width(user.account_id, user.role, user, "vehicles") != "all":
-        if update.callback_query:
-            await update.callback_query.answer(t("access.no_access"), show_alert=True)
-        return
 
     if not vehicle_name:
         await _show(update, context,

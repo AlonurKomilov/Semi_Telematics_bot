@@ -86,8 +86,9 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None,
                 web_app=WebAppInfo(url=f"{WEBAPP_URL}#map"),
             )])
 
-        # Driver: show truck shortcut
-        if role == Role.DRIVER:
+        # Assigned width: the shortcut to the member's own truck.  Width
+        # is Team Management's answer (``wide``), not the role's.
+        if not _is_wide(role, wide):
             rows.append([InlineKeyboardButton("🚛 My Vehicle", callback_data="cmd_myvehicle")])
 
         # Per-company buttons (only when >1 company and role can filter)
