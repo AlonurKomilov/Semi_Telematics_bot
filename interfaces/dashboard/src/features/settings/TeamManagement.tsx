@@ -336,6 +336,7 @@ export default function TeamManagement() {
   const { t } = useTranslation();
   const { user: me } = useAuth();
   const qc = useQueryClient();
+  const { refreshVehicleScope } = useRoleView();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selected, setSelected] = useState<AdminUser | null>(null);
