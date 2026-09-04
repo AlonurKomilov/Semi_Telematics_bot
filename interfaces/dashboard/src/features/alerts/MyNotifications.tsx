@@ -174,7 +174,7 @@ export default function MyNotifications() {
               Telegram held to the same standard, and it carries the way
               OUT rather than only the diagnosis. */}
           {prefs.telegram?.state === 'needs_connect' && (
-            <div className="mb-3 rounded-md border border-warn/40 bg-warn-bg/40 p-3">
+            <div className="mb-3 rounded-md border border-warn-bd bg-warn-bg p-3">
               <p className="text-xs text-warn inline-flex items-start gap-1.5">
                 <AlertTriangle className="size-3.5 shrink-0 mt-px" aria-hidden />
                 <span>{prefs.telegram.reason}</span>
