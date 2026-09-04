@@ -158,6 +158,69 @@ class Payload:
     extra: dict = field(default_factory=dict)
 
 
+# Failures a retry can never fix.
+#
+# The flush loop kept EVERY failed batch for the next hour, which is right
+# for a network blip and wrong for an address that no longer exists: five
+# users' Telegram answered "Chat not found" 1,493 times between 2026-08-14
+# and 2026-09-04, once an hour, while their notifications sat undelivered
+# until the 14-day retention sweep quietly deleted them.  Nobody was ever
+# told — not the recipient, not the operator.
+#
+# Matched against ``DeliveryResult.error``, which channels format as
+# "ExceptionName: message".  Substrings rather than exception types: the
+# service layer must not import a transport's dialect, which is the same
+# one-way boundary that keeps the notifications core from importing
+# alerting.
+_PERMANENT_MARKERS = (
+    "chat not found",          # never started the bot, or a stale chat id
+    "bot was blocked",         # the user blocked it
+    "user is deactivated",     # the Telegram account is gone
+    "chat_id is empty",
+    "bad_handle",              # our own: the stored address is unusable
+    "peer_id_invalid",
+    "recipient rejected",      # SMTP 550-class: the mailbox does not exist
+    "mailbox unavailable",
+    "no such user",
+)
+
+
+# The human name of a transport, for copy the RECIPIENT reads.
+#
+# The dashboard keeps its own map (features/alerts/_shared/channels.tsx)
+# because it labels controls; this one exists because the server now
+# writes a sentence a person reads ("Telegram is disconnected") and
+# "telegram_dm" is not that sentence.  Unknown keys fall back to the
+# de-underscored key rather than raising — a new channel gets a plain
+# name, never a crash in a notice about something already broken.
+_CHANNEL_LABELS = {
+    "telegram_dm": "Telegram",
+    "telegram_topic": "the Telegram group",
+    "email": "Email",
+    "web_push": "Push notifications",
+    "in_app": "The bell",
+}
+
+
+def channel_label(key: str) -> str:
+    """A transport's name as a person would say it."""
+    return _CHANNEL_LABELS.get(key, (key or "").replace("_", " ") or "That channel")
+
+
+def is_permanent_failure(error: str | None) -> bool:
+    """True when retrying this send can only ever fail again.
+
+    Deliberately CONSERVATIVE: anything unrecognised is transient, so an
+    unfamiliar error keeps its messages queued rather than discarding
+    them.  Dropping a notification that would have arrived is the worse
+    mistake of the two, and the retention sweep bounds the queue anyway.
+    """
+    if not error:
+        return False
+    low = error.lower()
+    return any(m in low for m in _PERMANENT_MARKERS)
+
+
 @dataclass
 class DeliveryResult:
     """Outcome of one ``send``/``edit``.

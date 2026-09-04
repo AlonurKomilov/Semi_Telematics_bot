@@ -31,6 +31,8 @@ from capabilities.notifications.categories import (
     get_category,
 )
 from capabilities.notifications.channels import (
+    channel_label,
+    is_permanent_failure,
     SEVERITY_RANK,
     DeliveryResult,
     NotificationContent,
@@ -530,12 +532,69 @@ async def flush_digests(db: Any, cadence: str, *, limit: int = 2000) -> int:
             logger.error("flush_digests: send failed (%s): %s", chan_key, e)
             continue
         if not res.ok:
-            logger.warning("flush_digests: %s not delivered (%s) — items kept",
-                           chan_key, res.error)
+            if not is_permanent_failure(res.error):
+                logger.warning(
+                    "flush_digests: %s not delivered (%s) — items kept",
+                    chan_key, res.error)
+                continue
+            await _retire_dead_channel(db, account_id, rtype, rid, chan_key,
+                                       ids, res.error, "flush_digests")
             continue
         await db.clear_digest_items(ids, account_id=account_id)
         sent += 1
     return sent
+
+
+async def _retire_dead_channel(db, account_id: int, rtype: str, rid,
+                               chan_key: str, ids: list, error: str,
+                               where: str) -> None:
+    """A permanently undeliverable batch: drop it, switch the channel
+    off so nothing queues behind it, and tell the person.
+
+    Shared by both queue drains because it is one rule, and the copy
+    that drifts is the one written twice.  ``flush_digests`` carries the
+    same always-keep branch and is only dormant because no recipient
+    currently chooses a batched cadence — a bug waiting for its first
+    user is still a bug.
+    """
+    logger.warning("%s: %s permanently undeliverable for %s/%s (%s) — "
+                   "%d dropped, channel disabled",
+                   where, chan_key, rtype, rid, error, len(ids))
+    await db.clear_digest_items(ids, account_id=account_id)
+    try:
+        await db.disable_notification_channel(
+            account_id, rtype, str(rid), chan_key)
+        await _warn_channel_dead(db, account_id, rtype, rid, chan_key)
+    except Exception:
+        # The drop already happened and is the important half; a failed
+        # notice must not resurrect the loop.
+        logger.exception("%s: could not flag dead %s for %s/%s",
+                         where, chan_key, rtype, rid)
+
+
+async def _warn_channel_dead(db, account_id: int, rtype: str, rid,
+                             chan_key: str) -> None:
+    """Tell the person their channel stopped working, in the ONE place
+    that cannot itself fail: the in-app inbox.
+
+    A dead transport is exactly when an out-of-band message is useless —
+    mailing someone to say their mail is broken.  The bell is a database
+    write with no address to be wrong, so it is the honest floor here.
+    One notice per incident, not one per undelivered item: the failure is
+    the channel, and repeating it per message would bury its own fix.
+    """
+    if rtype != "user" or not str(rid).lstrip("-").isdigit():
+        return
+    await db.add_inbox_notice(
+        account_id, int(rid),
+        category="system.channel_broken",
+        title=f"{channel_label(chan_key)} is disconnected",
+        body=("We could not deliver your notifications there, so it has "
+              "been switched off. Reconnect it in Notification "
+              "preferences to start receiving them again."),
+        severity="warning",
+        url="/notifications/preferences",
+    )
 
 
 async def flush_quiet_deferrals(db: Any, *, limit: int = 2000) -> int:
@@ -593,8 +652,17 @@ async def flush_quiet_deferrals(db: Any, *, limit: int = 2000) -> int:
                          chan_key, e)
             continue
         if not res.ok:
-            logger.warning("flush_quiet_deferrals: %s not delivered (%s) — kept",
-                           chan_key, res.error)
+            # The address is dead, not busy.  Keeping the batch meant
+            # retrying it hourly until the retention sweep deleted it
+            # unread — silence for the recipient, a doomed API call every
+            # hour for the operator, and nobody told either way.
+            if not is_permanent_failure(res.error):
+                logger.warning(
+                    "flush_quiet_deferrals: %s not delivered (%s) — kept",
+                    chan_key, res.error)
+                continue
+            await _retire_dead_channel(db, account_id, rtype, rid, chan_key,
+                                       ids, res.error, "flush_quiet_deferrals")
             continue
         await db.clear_digest_items(ids, account_id=account_id)
         sent += 1
