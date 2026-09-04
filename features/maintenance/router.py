@@ -250,7 +250,7 @@ async def list_tasks(
     # corrected for exactly this and this second copy was left behind —
     # so it now shares the one engine instead of re-deciding membership.
     #
-    # Safe-deny: a user with can_maintenance_vehicle but NO assigned
+    # Safe-deny: an assigned-width can_view_maintenance user with NO assigned
     # trucks gets an empty list, never the unfiltered account dataset.
     # That is the OPPOSITE of deps.py's "no assignments = unrestricted"
     # and is preserved deliberately — maintenance has always denied here,
@@ -426,8 +426,8 @@ async def get_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await _require_company_visible_task(task, user)
-    # Check truck ownership for _own permission.  Safe-deny: a user with
-    # can_maintenance_vehicle but no assigned trucks must NOT see anything.
+    # Check truck ownership for the assigned width.  Safe-deny: a user with
+    # can_view_maintenance but no assigned trucks must NOT see anything.
     scope = await _maintenance_vehicle_scope(user, tenant_db)
     if scope is not None and not scope.allows_row(task, name_key="vehicle_name"):
         raise HTTPException(status_code=404, detail="Task not found")
@@ -789,8 +789,8 @@ async def get_task_history(
     """
     # The gate is the REGISTRY's, not a local role check.  This route
     # used to ask has_maintenance_access(), which passes on
-    # can_maintenance_vehicle — driver grade — while the entity declares
-    # can_maintenance_all and the generic history endpoint enforces
+    # can_view_maintenance — the driver grade — while the entity declares
+    # can_manage_maintenance and the generic history endpoint enforces
     # exactly that.  Two doors onto one trail must not have two locks.
     from capabilities.activity_trail.registry import (
         ensure_declarations_loaded, entity_descriptor,

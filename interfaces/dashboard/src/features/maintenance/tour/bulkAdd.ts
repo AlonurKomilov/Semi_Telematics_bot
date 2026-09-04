@@ -29,8 +29,8 @@ export const bulkAdd: TourSpec = {
     { anchor: 'maintenance.create', advanceOn: 'click-gone',
       commit: true, countFrom: 'maintenance.vehicle-chips' },
   ],
-  // Every create route on this page is can_maintenance_all-only, and
-  // the page itself opens on _vehicle too — so the walk needs the
+  // Every create route on this page is can_manage_maintenance-only, and
+  // the page itself opens on can_view_maintenance too — so the walk needs the
   // narrower grant, not the page's.
   requires: ['can_manage_maintenance'],
   signals: ['maintenance_task:create'],

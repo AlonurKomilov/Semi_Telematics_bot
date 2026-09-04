@@ -33,7 +33,10 @@ interface KpiDef {
   icon: LucideIcon;
   hint?: string;
   href?: string;
-  permission?: (has: (flag: string) => boolean) => boolean;
+  permission?: (
+    has: (flag: string) => boolean,
+    hasWide: (flag: string) => boolean,
+  ) => boolean;
   showWhen?: () => boolean;
 }
 
@@ -41,6 +44,7 @@ export default function OverviewKpiGrid({
   stats,
   navigate,
   has,
+  hasWide,
   kpiPriority,
 }: OverviewSectionProps) {
   const unsafeParking =
@@ -125,7 +129,9 @@ export default function OverviewKpiGrid({
       icon: Truck,
       hint: 'Filter by status, fuel, or faults',
       href: '/vehicles',
-      permission: (h) => h('can_vehicle_all'),
+      // The tile links to /vehicles: the verb AND width 'all' — a
+      // narrow member has the verb but not the account-wide list.
+      permission: (_h, wide) => wide('can_view_vehicles'),
     },
     {
       key: 'routesLink',
@@ -142,7 +148,7 @@ export default function OverviewKpiGrid({
   const visible = kpiPriority
     .map((k) => allKpis.find((c) => c.key === k))
     .filter((c): c is KpiDef => !!c)
-    .filter((c) => (c.permission ? c.permission(has) : true))
+    .filter((c) => (c.permission ? c.permission(has, hasWide) : true))
     .filter((c) => (c.showWhen ? c.showWhen() : true));
 
   if (visible.length === 0) return null;

@@ -651,14 +651,14 @@ async def my_scorecard(
 
     Returns the caller's own composite card plus:
       * ``rank_in_pillar`` — ``{pillar: {pos, total}}`` across the full
-        account leaderboard.  Drivers with ``can_scorecard_vehicle`` only
-        see aggregate ranks (no other drivers' details leak).
+        account leaderboard.  Assigned-width members (``can_view_scorecards``, width 'assigned')
+        only see aggregate ranks (no other drivers' details leak).
       * ``week_delta`` — point change vs. the snapshot ~7 days ago,
         per-pillar and total.  Returns ``None`` for any pillar without
         a prior-week snapshot.
     """
-    # Driver-role hardening: when the caller has *only* can_scorecard_vehicle
-    # (no can_scorecard_all), suppress every cross-driver field
+    # Driver-role hardening: when the caller's unit width is 'assigned'
+    # (can_view_scorecards without width 'all'), suppress every cross-driver field
     # (rank_in_pillar, rank_total, account_size) so the response cannot
     # be used to enumerate the rest of the fleet.  The caller's own
     # card and week_delta are still returned.
@@ -676,7 +676,7 @@ async def my_scorecard(
 
     # Full leaderboard (driver subject) — needed for rank.  Evaluating
     # the whole account is unavoidable because pillar ranks require
-    # comparing against everyone.  ``can_scorecard_vehicle`` users still
+    # comparing against everyone.  Assigned-width users still
     # only ever see their *own* card; ranks are aggregate counts.
     all_cards = await _svc_evaluate_subjects(
         user["account_id"], subject="driver", days=days,

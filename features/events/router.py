@@ -30,9 +30,9 @@ router = APIRouter(prefix="/safety", tags=["safety"])
 
 
 async def _events_vehicle_scope(user: dict, tenant_db):
-    """The vehicle wall for a ``can_events_vehicle`` (_own) caller, or None.
+    """The vehicle wall for an assigned-width ``can_view_events`` caller, or None.
 
-    ``None`` means unrestricted — the caller holds the ``_all`` grade.
+    ``None`` means unrestricted — the caller's unit width is 'all'.
     Anything else is authoritative, INCLUDING an empty scope, which denies
     every row (a truck-scoped caller with no assignments sees nothing).
 
@@ -315,7 +315,7 @@ async def safety_event_video(
     itself doesn't require auth, so the returned URL can be assigned
     directly to ``<video src>`` once the dashboard has it.
 
-    Driver-role users (``can_events_vehicle``) can only fetch videos for
+    Assigned-width members (``can_view_events``, unit width 'assigned') can only fetch videos for
     events on their assigned truck(s).
     """
     client = await get_client(user["account_id"])

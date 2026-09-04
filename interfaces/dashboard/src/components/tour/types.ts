@@ -105,9 +105,9 @@ export interface TourSpec {
    * catalog's own `permission`.
    *
    * The feature's catalog permission is not enough: a page often opens
-   * on a wider grant than its controls need.  Maintenance admits both
-   * can_maintenance_all and can_maintenance_vehicle, but every write
-   * control on it is _all-only — so a _vehicle viewer could open the
+   * on a wider grant than its controls need.  Maintenance opens on
+   * can_view_maintenance, but every write control on it needs
+   * can_manage_maintenance — so a view-only member could open the
    * library, see a card for a tour whose very first step points at a
    * button they cannot see, and follow it into a fifteen-second wait
    * and a silent exit.  Not a leak (the control does not exist for

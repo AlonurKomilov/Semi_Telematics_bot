@@ -7,9 +7,9 @@
  * red/orange incident heatmap so a viewer can have BOTH on simultaneously
  * without confusion).
  *
- * Permission-gated by ``can_vehicle_all`` — matches the backend's
- * route guard.  No-ops cleanly for personas without account-wide
- * vehicle access.
+ * Gated by ``can_view_vehicles`` AND unit width 'all' (``hasWide``) —
+ * matches the backend's ``require_wide("vehicles")`` route guard.
+ * No-ops cleanly for members without account-wide vehicle access.
  *
  * Uses the same ``leaflet.heat`` plugin SafetyEventOverlay uses;
  * silently no-ops when the plugin isn't loaded (older builds /
@@ -30,8 +30,8 @@ export default function UtilisationHeatmap({
   isReady,
   utilHeatOn,
 }: LiveMapSectionProps) {
-  const { has } = useViewPermissions();
-  const hasAccess = has('can_vehicle_all');
+  const { hasWide } = useViewPermissions();
+  const hasAccess = hasWide('can_view_vehicles');
   const layerRef = useRef<L.Layer | null>(null);
 
   useEffect(() => {

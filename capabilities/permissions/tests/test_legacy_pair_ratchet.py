@@ -44,37 +44,13 @@ _HOME = re.compile(
 #: canonical scope strings, the extension checks the canonical one —
 #: in part 2, not by editing another author's day-old code.  Entries
 #: added: auth.py 2, connect.ts 1.
+#: 2026-09-04: every in-repo reader migrated (the stored rows were
+#: swept canonical the same day).  What remains is EXTENSION_SCOPE's
+#: legacy scope strings — a wire contract with installed extensions,
+#: deleted with the alias layer after one extension release.
 BASELINE: dict[str, int] = json.loads('''
 {
-    "adapters/storage/parking.py": 1,
-    "capabilities/alerting/relevance.py": 1,
-    "capabilities/scorecards/service.py": 1,
-    "features/events/router.py": 2,
-    "features/inspections/router.py": 6,
-    "features/location/router.py": 1,
-    "features/maintenance/router.py": 4,
-    "features/parking/router.py": 2,
-    "features/parking/service.py": 2,
-    "features/scorecards/router.py": 4,
-    "interfaces/api/auth.py": 2,
-    "interfaces/bot/callbacks/parking.py": 2,
-    "interfaces/bot/geofences.py": 1,
-    "interfaces/dashboard/src/components/tour/types.ts": 2,
-    "interfaces/dashboard/src/config/poiLayers.ts": 1,
-    "interfaces/dashboard/src/features/live-map/sections/CompanyColorPartition.tsx": 2,
-    "interfaces/dashboard/src/features/live-map/sections/GeofenceBoundariesLayer.tsx": 2,
-    "interfaces/dashboard/src/features/live-map/sections/UnsafeParkingMarkers.tsx": 1,
-    "interfaces/dashboard/src/features/live-map/sections/UtilisationHeatmap.tsx": 2,
-    "interfaces/dashboard/src/features/maintenance/ServiceHistoryModal.tsx": 1,
-    "interfaces/dashboard/src/features/maintenance/Tasks.tsx": 3,
-    "interfaces/dashboard/src/features/maintenance/tour/bulkAdd.ts": 1,
-    "interfaces/dashboard/src/features/overview/sections/OverviewKpiGrid.tsx": 1,
-    "interfaces/dashboard/src/features/overview/sections/OverviewStatusGrid.tsx": 1,
-    "interfaces/dashboard/src/features/reports/DotBinder.tsx": 1,
-    "interfaces/dashboard/src/features/reports/ReportsLayout.tsx": 1,
-    "interfaces/dashboard/src/features/vehicles/sections/VehicleFaults.tsx": 1,
-    "interfaces/miniapp/src/components/BottomNav.tsx": 1,
-    "interfaces/miniapp/src/components/PTIChip.tsx": 1
+  "interfaces/api/auth.py": 2
 }
 ''')
 

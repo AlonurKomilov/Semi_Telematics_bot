@@ -45,7 +45,7 @@ function buildMonthlySeries(tasks: MaintenanceTask[]): Array<{ label: string; co
 }
 
 /** Slim invoice row merged into the vehicle timeline (Tier-2 B2).
- *  Present only for callers with can_work_orders_all. */
+ *  Present only for callers with can_manage_work_orders. */
 interface HistoryWorkOrder {
   id: number;
   service_date: string | null;

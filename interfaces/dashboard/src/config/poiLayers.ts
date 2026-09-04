@@ -143,7 +143,7 @@ function esc(v: unknown): string {
  * Identity-only popup for the platform vendor directory (Phase C2 of
  * capabilities/platform/docs/vendor-parts-master-data.md): name, services,
  * address, phone, website.  Deliberately NO ratings or usage counts —
- * the map is visible to every role with can_location_map, while review
+ * the map is visible to every role with can_view_location, while review
  * data stays behind the manager-gated vendor endpoints.  Widening that
  * is a product decision, not a popup tweak.
  */

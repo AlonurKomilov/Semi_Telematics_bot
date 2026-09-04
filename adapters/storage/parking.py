@@ -450,7 +450,7 @@ class ParkingMixin:
         # restriction.  Company scope is a per-USER assignment (Team
         # Management), independent of role — only ``owner`` is
         # auto-unrestricted — so a company-restricted holder of
-        # ``can_vehicle_all`` reaches this query and must not receive
+        # account-wide ``can_view_vehicles`` reaches this query and must not receive
         # another company's parking density.
         cur = await self._db.execute(
             "SELECT latitude, longitude, duration_hours, company_code "

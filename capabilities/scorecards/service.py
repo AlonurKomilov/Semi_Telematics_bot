@@ -76,7 +76,7 @@ async def evaluate_subjects(
       cards instead of 18.
 
     *vehicle_nums* (when set) filters scope to those truck identifiers,
-    used by ``can_scorecard_vehicle`` callers in the bot.  In ``vehicle``
+    used by assigned-width ``can_view_scorecards`` callers in the bot.  In ``vehicle``
     mode it filters by exact (case-insensitive) truck name.  In
     ``driver`` mode it filters drivers whose ``_vehicle_summaries``
     intersect the list (existing behaviour).

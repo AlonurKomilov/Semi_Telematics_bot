@@ -107,9 +107,9 @@ export default function Tasks() {
   // will 403 teaches the permission by failure.
   const { has: hasPerm } = useViewPermissions();
   const canCreateTasks = hasPerm('can_service_tasks');
-  // Every maintenance WRITE route requires can_maintenance_all
+  // Every maintenance WRITE route requires can_manage_maintenance
   // strictly (create, bulk, update, snooze, delete, templates) — a
-  // can_maintenance_vehicle viewer is read-only by backend design, and
+  // view-only (can_view_maintenance) member is read-only by backend design, and
   // this page finally says so instead of offering buttons that 403.
   // While permissions load, has() is false and the write chrome stays
   // hidden: for WRITE affordances, hidden-until-known is the safe
@@ -475,7 +475,7 @@ export default function Tasks() {
           who it is and what it can see. */}
       <TourHost
         feature="maintenance"
-        // canCreate: every create route requires can_maintenance_all,
+        // canCreate: every create route requires can_manage_maintenance,
         // so the tour must not offer a walk that ends in a 403.  (An
         // earlier comment here claimed the page permission was the
         // gate — it was wrong: _vehicle-scoped viewers reach this page

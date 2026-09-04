@@ -36,7 +36,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
   const navigate = useNavigate();
   const hasFaultsPerm = has('can_faults');
   // The bridge button only shows to users who can actually create a
-  // work order (that route is gated ``can_maintenance_all``) — else it
+  // work order (that route is gated ``can_manage_maintenance``) — else it
   // would just lead to a 403.
   const canCreateWorkOrder = has('can_manage_maintenance');
   // createFrom checks for an already-open WO on this vehicle for the

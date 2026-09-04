@@ -378,7 +378,7 @@ def _filter_subscribers_for_zone(
         role = getattr(sub, "role", "")
         if role not in zone_roles:
             continue
-        # Driver isolation: can_geofence_vehicle — only own vehicle
+        # Driver isolation: assigned width — only own vehicle
         if role == "driver":
             truck = getattr(sub, "truck_num", None)
             if truck and truck != vehicle_name:

@@ -8,12 +8,11 @@
  * triage spatially (a cluster on one street vs. scattered across
  * three states changes the response priority).
  *
- * Permission-gated by ``can_view_vehicles`` (alerts follow vehicle visibility) /
- * ``can_vehicle_all`` — same gate the /parking/active route uses.
- * Legacy pair flag on purpose: a WIDTH claim, and the vehicles
- * pair is view/view, so can_view_vehicles cannot say wide-only.
- * so the overlay silently no-ops for personas without access
- * (HR / Accounting / Driver).
+ * Permission-gated by ``can_view_vehicles`` (alerts follow vehicle
+ * visibility), so the overlay silently no-ops for personas without
+ * access (HR / Accounting).  The ``/parking/active`` route itself
+ * gates on ``can_view_parking`` and walls an assigned-width member to
+ * their own trucks.
  *
  * Pin click opens a popup with vehicle name, duration parked, and
  * a link to the standalone Parking page for the full triage flow.

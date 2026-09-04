@@ -42,7 +42,7 @@ from capabilities.permissions.roles import ROLE_PERMISSIONS, FeatureSet
 # Mapping from canonical alert type → required permission(s).
 #
 # When the value is a list, the role needs ANY ONE of the listed
-# permissions (so a driver with only ``can_parking_vehicle`` still gets
+# permissions (so a driver with assigned-width ``can_view_parking`` still gets
 # the parking toggle for their own truck).
 #
 # Adding a new alert type: add an entry here AND make sure the

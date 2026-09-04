@@ -1,10 +1,17 @@
 import { useCallback } from 'react';
 import { useRoleView } from '../context/RoleViewContext';
 import { useAuth } from '../context/AuthContext';
+import { hasWideScope, type VehicleScope } from '../config/unitWidth';
 
 interface UseViewPermissionsReturn {
   has: (flag: string) => boolean;
   hasAny: (...flags: string[]) => boolean;
+  /** ``hasAny(...flags)`` AND the member's unit width is 'all' — for
+   * surfaces the backend guards with ``require_wide``.  Width is Team
+   * Management's answer (``/me`` ``vehicle_scope``), not a flag. */
+  hasWide: (...flags: string[]) => boolean;
+  /** The member's unit width from ``/me``; undefined until loaded. */
+  vehicleScope: VehicleScope | undefined;
   role: string | undefined;
   /** See ``viewPermsReady`` on RoleViewContext.  Hiding UI on a false
    * ``has`` is fine without it; REDIRECTING on one is not. */
@@ -39,5 +46,10 @@ export function useViewPermissions(): UseViewPermissionsReturn {
   const hasAny = useCallback(
     (...flags: string[]) => viewHasAny(...flags), [viewHasAny],
   );
-  return { has, hasAny, role: user?.role, ready: viewPermsReady };
+  const vehicleScope = user?.vehicle_scope;
+  const hasWide = useCallback(
+    (...flags: string[]) => hasWideScope(viewHasAny, vehicleScope, ...flags),
+    [viewHasAny, vehicleScope],
+  );
+  return { has, hasAny, hasWide, vehicleScope, role: user?.role, ready: viewPermsReady };
 }

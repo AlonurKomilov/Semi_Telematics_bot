@@ -2,12 +2,12 @@
 
 Three logical groups:
 
-  * **Driver-facing** (``/me/...`` paths, ``can_inspections_vehicle``) —
+  * **Driver-facing** (``/me/...`` paths, ``can_view_inspections``) —
     fetch current inspection, walk items, attach media, submit.
-  * **Fleet-facing** (``/...`` paths, ``can_inspections_all``) —
+  * **Fleet-facing** (``/...`` paths, ``can_view_inspections`` at unit width 'all') —
     list submissions, view detail, review.
   * **Template editor** (``/template/...`` paths,
-    ``can_inspections_all``) — fleet edits the checklist their drivers
+    ``can_manage_inspections``) — fleet edits the checklist their drivers
     will use.  PTI is a fleet-ops responsibility, not a global account
     setting, so the gate is the same permission used for reviewing
     submissions.  Account owners + admins inherit it via the default
@@ -872,9 +872,9 @@ async def sign(
     account's compliance workflow needs a second human in the chain.
 
     Permission split:
-      * ``role == "driver"`` requires ``can_inspections_vehicle`` (also
-        granted via the catch-all ``can_inspections_all``).
-      * ``role == "reviewer"`` requires ``can_inspections_all`` —
+      * ``role == "driver"`` requires ``can_view_inspections`` (the
+        service layer then matches the inspection's own user_id).
+      * ``role == "reviewer"`` requires ``can_manage_inspections`` —
         drivers can't co-sign their own work.
     """
     if body.role not in ("driver", "reviewer"):

@@ -18,6 +18,7 @@ import {
   type NavGroupKey,
   type CatalogFeature, UNIT_VIEW_VERBS,
 } from '../../config/featureCatalog';
+import { isWideScope } from '../../config/unitWidth';
 
 // The shape the Sidebar renders (moved here from the old defaultNav.ts).
 export interface NavItem {
@@ -126,7 +127,7 @@ export function generateNav(
     // never surface cross-department.
     const unitViews = flags.filter((k) => UNIT_VIEW_VERBS.includes(k));
     if (unitViews.length > 0) {
-      return vehicleScope !== 'assigned' && has(...unitViews);
+      return isWideScope(vehicleScope) && has(...unitViews);
     }
     const accountWide = flags.filter((k) => !OWN_SCOPE_FLAG.test(k));
     return accountWide.length > 0 && has(...accountWide);

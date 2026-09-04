@@ -36,7 +36,7 @@ import DriverOverview from './DriverOverview';
 
 export default function Overview() {
   const navigate = useNavigate();
-  const { has } = useViewPermissions();
+  const { has, hasWide } = useViewPermissions();
   const { user } = useAuth();
   // Page is the ONE place that reads persona; sections receive
   // pre-resolved config via sectionProps so they stay
@@ -107,6 +107,7 @@ export default function Overview() {
         stats,
         navigate,
         has,
+        hasWide,
         greetingName,
         fetchedAt: dataUpdatedAt,
         isFetching,

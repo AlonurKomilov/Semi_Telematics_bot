@@ -12,7 +12,7 @@ import { Truck, Activity, CircleDot, CircleSlash } from 'lucide-react';
 import { KpiCard } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 
-export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSectionProps) {
+export default function OverviewStatusGrid({ stats, navigate, hasWide }: OverviewSectionProps) {
   // Role-neutral key with legacy-alias fallback (pre-rename API).
   const f = stats.vehicles ?? stats.fleet ?? {};
   const total = f.total ?? 0;
@@ -35,7 +35,8 @@ export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSec
     return null;
   }
 
-  const vehiclesHref = has('can_vehicle_all') ? '/vehicles' : undefined;
+  // /vehicles is the account-wide list: the verb AND width 'all'.
+  const vehiclesHref = hasWide('can_view_vehicles') ? '/vehicles' : undefined;
 
   return (
     <div className="grid grid-cols-fit-36 gap-4 mb-6">

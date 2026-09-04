@@ -30,7 +30,7 @@ const ALL_TABS: { id: Page; labelKey: string; icon: React.ReactNode; permKeys?: 
   { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_view_vehicles'] },
   { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_view_scorecards'] },
   // AI uses the same own-vehicle gate as the dashboard sidebar so drivers
-  // (who have can_vehicle_vehicle=True) get access to chat with the assistant.
+  // (who hold can_view_vehicles at assigned width) get access to chat with the assistant.
   { id: 'ai',        labelKey: 'tabs.ai',        icon: <Icon24MessageOutline />,      permKeys: ['can_view_vehicles'] },
   { id: 'profile',   labelKey: 'tabs.profile',   icon: <Icon24UserOutline /> },
 ];

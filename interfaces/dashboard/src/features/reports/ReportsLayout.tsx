@@ -48,7 +48,7 @@ const SUB_NAV: SubNavEntry[] = [
   { to: '',                 label: 'Reports',           icon: FileText,    perms: ['can_faults'] },
   { to: 'risk-summary',     label: 'Risk Summary',      icon: AlertTriangle, perms: ['can_risk_report_all', 'can_risk_report_own'] },
   { to: 'cost-reports',     label: 'Cost Reports',      icon: TrendingUp,  perms: ['can_cost_reports'] },
-  // DOT Binder — gated on can_maintenance_all (managers only).
+  // DOT Binder — gated on can_manage_maintenance (managers only).
   // Moved here from the Maintenance page in 2026-06 because it's
   // conceptually a stakeholder-facing audit PDF like Risk Summary,
   // not an operational task editor; see

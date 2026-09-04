@@ -11,7 +11,7 @@
  *
  * Reads ``/geofences`` (same endpoint as the standalone
  * Geofences page) so the data is consistent.  Permission-gated by
- * ``can_geofence_all`` / ``can_geofence_vehicle`` — overlay silently
+ * ``can_view_geofence`` — overlay silently
  * no-ops when the user lacks geofence access, so layouts can
  * include this overlay without per-persona conditional logic.
  *

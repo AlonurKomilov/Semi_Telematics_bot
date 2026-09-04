@@ -15,8 +15,8 @@ from capabilities.permissions.scope import unit_width
 async def _own_only(user) -> bool:
     """True when this caller may only see parking events for their own truck.
 
-    A driver who lacks ``can_parking_all`` (the account-wide flag) but holds
-    ``can_parking_vehicle`` falls into this branch.  The list/history/detail
+    A member whose unit width is 'assigned' (``can_view_parking`` without
+    width 'all' — Team Management's answer) falls into this branch.  The list/history/detail
     callbacks must filter results to the user's assigned truck before they
     are rendered or the bot will leak every vehicle's parking activity.
     """

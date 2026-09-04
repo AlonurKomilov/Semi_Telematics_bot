@@ -278,7 +278,8 @@ async def fleet_utilisation_heatmap(
     same wire shape the Safety event heatmap uses, so the frontend
     overlay reuses the heatLayer wiring.
 
-    Permission-gated by ``can_vehicle_all`` — only roles whose job
+    Gated by ``require_wide("vehicles")`` — ``can_view_vehicles`` at unit
+    width 'all' — only members whose job
     spans the full fleet (Owner / Admin / Fleet / Safety / Dispatch
     today) see utilisation density.  Driver / HR / Accounting either
     don't reach the Live Map or have their own persona overlay.
@@ -287,7 +288,7 @@ async def fleet_utilisation_heatmap(
     is a per-USER assignment (Team Management) that is orthogonal to
     role: ``get_user_company_codes`` auto-unrestricts only ``owner``, so
     a company-restricted Fleet/Dispatch/Safety user holds
-    ``can_vehicle_all`` and still must not see another company's
+    account-wide ``can_view_vehicles`` and still must not see another company's
     density.  Points are aggregated, but "where do that company's trucks
     park" is exactly what the restriction exists to withhold.  Truck
     scope is deliberately NOT applied — this permission means the caller

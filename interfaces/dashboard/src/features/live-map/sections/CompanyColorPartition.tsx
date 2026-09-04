@@ -13,9 +13,10 @@
  * a random palette that would confuse "wait, my Company A trucks
  * were blue yesterday").
  *
- * Permission-gated by ``can_manage_companies`` OR
- * ``can_vehicle_all`` — both are roles whose job involves spanning
- * multiple companies under one account.  The overlay no-ops for
+ * Permission-gated by ``can_manage_companies`` OR account-wide
+ * vehicle access (``can_view_vehicles`` with unit width 'all') — both
+ * are members whose job involves spanning multiple companies under
+ * one account.  The overlay no-ops for
  * personas without that scope.
  */
 import { useEffect, useRef } from 'react';
@@ -42,9 +43,9 @@ export default function CompanyColorPartition({
   vehicles,
   companyColorsOn,
 }: LiveMapSectionProps) {
-  const { has } = useViewPermissions();
+  const { has, hasWide } = useViewPermissions();
   const hasMultiCompanyScope =
-    has('can_manage_companies') || has('can_vehicle_all');
+    has('can_manage_companies') || hasWide('can_view_vehicles');
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {

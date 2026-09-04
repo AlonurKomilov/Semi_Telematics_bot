@@ -20,6 +20,9 @@ export interface OverviewSectionProps {
   stats: DashboardStats;
   navigate: NavigateFunction;
   has: (flag: string) => boolean;
+  /** ``has`` AND the member's unit width is 'all' — for links whose
+   * target route is ``require_wide`` (see config/unitWidth.ts). */
+  hasWide: (flag: string) => boolean;
   greetingName: string;
   /** When the data was last fetched — for the LastUpdated chip in OverviewHeader. */
   fetchedAt?: number;

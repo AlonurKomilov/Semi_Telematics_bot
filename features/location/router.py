@@ -35,7 +35,7 @@ async def map_vehicles(
 ):
     """Current positions for all vehicles — optimized for map rendering.
 
-    Drivers (``can_location_vehicle`` only) get the same payload but the
+    Assigned-width members (``can_view_location``, unit width 'assigned') get the same payload but the
     response is restricted to their assigned truck(s) by
     ``filter_by_assigned_trucks`` below, so the miniapp can render a
     map for them too.

@@ -12,7 +12,7 @@ six endpoints in router.py, and the copies had drifted into three
 distinct defects:
 
   1. LIST ENDPOINTS LEAKED TO UNASSIGNED DRIVERS.  ``/active`` and
-     ``/history`` guarded with ``if trucks:`` — so a ``can_parking_vehicle``
+     ``/history`` guarded with ``if trucks:`` — so an assigned-width ``can_view_parking``
      caller whose truck list came back EMPTY got no filter at all and saw
      the whole account.  An empty list is reachable and ordinary: a
      newly-invited driver, or one whose assignment was just removed
@@ -40,7 +40,7 @@ Scope model, stated plainly:
   * company_codes == []  -> unrestricted (owner, or a user with no
     company restriction).  This is the documented contract of
     ``get_user_company_codes``.
-  * truck_names is None  -> caller is not truck-scoped (``can_parking_all``).
+  * truck_names is None  -> caller is not truck-scoped (unit width 'all').
   * truck_names == []    -> caller IS truck-scoped but has no trucks:
     sees NOTHING.  Never "sees everything".
 """

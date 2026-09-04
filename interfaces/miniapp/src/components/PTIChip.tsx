@@ -11,7 +11,7 @@ import { haptics } from '../hooks/useTelegram';
  * Shows when the driver has an open inspection (scheduled, in-progress,
  * or returned for revision).  Tap routes to the PTI tab so the driver
  * doesn't have to hunt for it in the bottom-nav.  Hidden completely
- * for drivers without the ``can_inspections_vehicle`` permission and for
+ * for drivers without the ``can_view_inspections`` permission and for
  * drivers with no current inspection.
  */
 

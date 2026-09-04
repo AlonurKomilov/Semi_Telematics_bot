@@ -8,7 +8,7 @@
  * was always conceptually a Report; the button on Maintenance was
  * miscategorised next to operational task editing).
  *
- * Permission-scoped to ``can_maintenance_all`` at the route level
+ * Permission-scoped to ``can_manage_maintenance`` at the route level
  * (router.tsx); managers only, since the binder is sensitive
  * aggregate data managers — not drivers — are authorised to disclose.
  */
