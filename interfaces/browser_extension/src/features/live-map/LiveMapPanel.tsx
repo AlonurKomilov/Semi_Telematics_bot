@@ -266,9 +266,13 @@ export default function LiveMapPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* The map takes whatever the rest leaves — all of it when the
-          list is collapsed and nothing is selected. */}
-      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 200 }}>
+      {/* The map and the list SHARE what the fixed rows leave, and the
+          map takes the larger share.  With a flex-basis of auto the map
+          was the only thing that could give, so selecting a vehicle
+          squeezed it to its floor: the card, the search row, the chips
+          and the list header are all fixed-height, and the list was
+          holding 45%.  Now both give, in proportion. */}
+      <div style={{ position: 'relative', flex: '3 1 45%', minHeight: 220 }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew
@@ -360,7 +364,7 @@ export default function LiveMapPanel() {
         <span className="muted" aria-hidden>{listOpen ? '▾' : '▴'}</span>
       </button>
       <div hidden={!listOpen}
-           style={{ flex: '0 1 45%', minHeight: 96, overflowY: 'auto' }}
+           style={{ flex: '2 1 25%', minHeight: 80, overflowY: 'auto' }}
            role="region" aria-label="Vehicles" tabIndex={0}>
         {filtered.map((f) => {
           const p = f.properties, status = vehicleStatus(f), warn = hasLowLevelWarning(p);
