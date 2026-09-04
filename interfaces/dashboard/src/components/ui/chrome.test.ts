@@ -723,6 +723,8 @@ const COLOUR_LITERAL_ALLOWED: { file: string; why: string }[] = [
     why: 'computes a readable label for a colour the CUSTOMER chose at runtime' },
   { file: 'mods/catalogue.ts',
     why: 'the pack catalogue: these hexes ARE the seeds, and themePacks.test.ts proves the shipped CSS is what they derive' },
+  { file: 'mods/theme/canvas.ts',
+    why: 'the canvas seeds, for the same reason: a colour INPUT needs a hex to open on and the stylesheet declares oklch — canvas.test.ts parses index.css and fails when the two disagree, which is how the dark seed was caught being #030303 rather than the #0a0a0a it was written as' },
 ];
 
 /** Colour literals in CODE — comments stripped, data shapes excluded. */

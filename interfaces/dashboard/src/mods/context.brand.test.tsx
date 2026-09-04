@@ -39,6 +39,8 @@ import { useState } from 'react';
 import { ModProvider, useMods } from './context';
 import { modStyleText } from './inject';
 import { accentTokens } from './theme/accent';
+import { paletteTokens } from './theme/canvas';
+import { packById } from './catalogue';
 
 const THEME_KEY = 'mods.theme';
 const SIZE_KEY = 'mods.size';
@@ -136,5 +138,61 @@ describe('a picked colour is a seed, not a set of values', () => {
     mount({});
     expect(modStyleText()).toBeNull();
     expect(document.documentElement.hasAttribute('data-mod-accent')).toBe(false);
+  });
+});
+
+
+describe('a canvas is a seed too, and it claims the whole palette', () => {
+  it('installs every derived token, not the accent\'s four', () => {
+    mount({ canvas: '#ffffff', mode: 'light' });
+    const sheet = modStyleText() ?? '';
+    // Surfaces the accent path never writes — the proof it is the full
+    // palette rather than the four-token one.
+    for (const token of ['--background', '--card', '--sidebar', '--border', '--muted-foreground'])
+      expect(sheet, `${token} missing — this is not the full palette`).toContain(token);
+  });
+
+  it('derives from the pack in force when no custom accent is picked', () => {
+    mount({ canvas: '#ffffff', mode: 'light', accent: 'green' });
+    const seed = packById('green')!.seed.light;
+    const want = paletteTokens('#ffffff', seed, 'light').tokens!;
+    expect(modStyleText()).toContain(`--primary: ${want['--primary']};`);
+  });
+
+  it('derives from the person\'s own accent when they picked one', () => {
+    mount({ canvas: '#ffffff', mode: 'light', brand: '#ff6a00' });
+    const want = paletteTokens('#ffffff', '#ff6a00', 'light').tokens!;
+    expect(modStyleText()).toContain(`--primary: ${want['--primary']};`);
+  });
+
+  it('re-derives on a mode change instead of wearing the other mode\'s palette', () => {
+    mount({ canvas: '#0a0a0a', mode: 'dark', brand: '#ff6a00' });
+    const darkCard = paletteTokens('#0a0a0a', '#ff6a00', 'dark').tokens!['--card'];
+    expect(modStyleText()).toContain(`--card: ${darkCard};`);
+
+    // A canvas the other mode CAN wear, so the switch is about the
+    // derivation rather than about the gate refusing.
+    write({ mode: 'light', canvas: '#ffffff' });
+    act(() => bump());
+    const lightCard = paletteTokens('#ffffff', '#ff6a00', 'light').tokens!['--card'];
+    expect(lightCard, 'the two modes derive the same card — nothing is proved')
+      .not.toBe(darkCard);
+    expect(modStyleText(), 'the palette did not re-derive on a mode change')
+      .toContain(`--card: ${lightCard};`);
+  });
+
+  it('falls back to the accent path when the canvas cannot be worn', () => {
+    // Cream in dark mode breaks --warn. The person is not stranded on a
+    // half-applied palette; their accent still paints.
+    mount({ canvas: '#f5f0e8', mode: 'dark', brand: '#ff6a00' });
+    const sheet = modStyleText() ?? '';
+    const accentOnly = accentTokens('#ff6a00', 'dark').tokens!;
+    expect(sheet).toContain(`--primary: ${accentOnly['--primary']};`);
+    expect(sheet, 'a refused canvas repainted the page anyway').not.toContain('--background');
+  });
+
+  it('a canvas alone still paints — no custom accent required', () => {
+    mount({ canvas: '#ffffff', mode: 'light' });
+    expect(modStyleText()).toContain('--background');
   });
 });

@@ -79,7 +79,7 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     panel: true,
     items: [
       { id: 'theme',    title: 'Color',    heading: 'Color',
-        axes: ['mode', 'accent', 'brand'], keep: ['mode'], modField: 'accent' },
+        axes: ['mode', 'accent', 'brand', 'canvas'], keep: ['mode'], modField: 'accent' },
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modField: 'radius' },
       { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modField: 'material' },
       { id: 'typeface', title: 'Typeface', heading: 'Typeface', axes: ['font'],     modField: 'font' },

@@ -23,6 +23,7 @@ import {
 import { accentTokens } from '../theme/accent';
 import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
+import { CanvasChip } from './CanvasChip';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -168,6 +169,18 @@ export function ColorGroup({ label }: { label: LabelClass }) {
           wearing={(packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode]}
           onPick={(hex) => setTheme({ brand: hex })}
           onClear={() => setTheme({ brand: undefined })}
+        />
+      </div>
+      {/* The other half of a palette. Its own row, because it claims
+          far more than the accent does — a background repaints every
+          surface in the app, and putting it in the accent row would
+          make the two look like the same size of decision. */}
+      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        <CanvasChip
+          canvas={theme.canvas}
+          mode={theme.mode}
+          onPick={(hex) => setTheme({ canvas: hex })}
+          onClear={() => setTheme({ canvas: undefined })}
         />
       </div>
     </div>

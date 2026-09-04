@@ -235,6 +235,19 @@ export interface ModSetting {
    * block down. Two answers to one question, never both live.
    */
   brand?: string;
+  /**
+   * The page canvas this person picked — the other half of a palette
+   * they authored themselves.
+   *
+   * A SEED like `brand`, and for the same reason: a palette computed for
+   * one mode and worn in the other is unreadable, so what is stored is
+   * the two colours and `derivePalette` runs again on every mode change.
+   *
+   * Absent means the built-in canvas, which is what `--background`
+   * already is. Set, it installs all twenty-four derived tokens rather
+   * than the accent's four.
+   */
+  canvas?: string;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -527,6 +540,13 @@ export const DEFS = {
       const brand = typeof o.brand === 'string' && parseHex(o.brand)
         ? o.brand.trim().toLowerCase()
         : undefined;
+      // Validated as a colour only. Whether it is a WEARABLE canvas —
+      // whether the semantic tones stay readable on it — is a question
+      // about the mode being worn, which storage does not know; the
+      // engine asks it on every derive (`fitCanvas`).
+      const canvas = typeof o.canvas === 'string' && parseHex(o.canvas)
+        ? o.canvas.trim().toLowerCase()
+        : undefined;
 
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
@@ -549,6 +569,7 @@ export const DEFS = {
         // tokens" and "an empty set of them" should not be two states.
         ...(tokens ? { tokens } : {}),
         ...(brand ? { brand } : {}),
+        ...(canvas ? { canvas } : {}),
         color: themeColorAlias(mode, accent),
       };
     },

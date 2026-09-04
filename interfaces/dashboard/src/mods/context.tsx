@@ -5,6 +5,8 @@ import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
+import { paletteTokens } from './theme/canvas';
+import { packById, THEME_PACKS } from './catalogue';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { useAmbient } from './ambient/useAmbient';
 import { AMBIENT_SCALE } from './ambient/ambient';
@@ -155,10 +157,29 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // installing a mod writes an accent, and writing an accent clears
     // the picked colour — but if they ever did, the colour a person
     // typed outranks the one a mod brought with it.
-    const picked = theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null;
+    // Two seeds, one derivation, in order of how much they claim.
+    //
+    // A canvas installs the WHOLE palette — twenty-four tokens — so it
+    // supersedes the accent's four rather than merging with them; the
+    // accent is already inside what `derivePalette` returns. The brand
+    // it derives from is the person's own colour if they picked one, and
+    // otherwise the seed of the pack in force, so choosing a background
+    // does not silently discard the accent they are wearing.
+    //
+    // `fitCanvas` can refuse — the semantic tones follow the mode rather
+    // than the canvas, so a canvas chosen against its mode leaves them
+    // unreadable. A refusal falls back to the accent path rather than
+    // stranding the person on a half-applied palette; the panel says why.
+    const seedBrand = theme.brand
+      ?? (packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode];
+    const full = theme.canvas
+      ? paletteTokens(theme.canvas, seedBrand, theme.mode).tokens
+      : null;
+    const picked = full
+      ?? (theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null);
     const merged = picked ? { ...(theme.tokens ?? {}), ...picked } : (theme.tokens ?? null);
     applyModTokens(merged);
-  }, [theme.tokens, theme.brand, theme.mode]);
+  }, [theme.tokens, theme.brand, theme.canvas, theme.accent, theme.mode]);
 
   useEffect(() => {
     applyTheme(theme);
