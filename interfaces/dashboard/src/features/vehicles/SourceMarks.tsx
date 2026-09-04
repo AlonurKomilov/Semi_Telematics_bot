@@ -28,7 +28,26 @@ import { ExternalLink } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Tip } from '../../components/tooltip';
-import { orderedSources, sourceLabel, type ProviderLink } from './sourceLabels';
+import { orderedSources, providerLogo, sourceLabel, type ProviderLink } from './sourceLabels';
+
+/** The provider's own mark, when we have one, beside its name — never
+ *  instead of it. A logo alone asks the reader to recognise a shape;
+ *  the pair is read by everyone and still scannable by shape once it
+ *  IS familiar. Empty alt: the word next to it is the label. */
+function ProviderMark({ source }: { source: string }) {
+  const logo = providerLogo(source);
+  if (!logo) return null;
+  return (
+    <>
+      <img src={logo.src} alt="" aria-hidden data-icon="inline-start"
+           className={`size-3.5 object-contain ${logo.srcDark ? 'dark:hidden' : ''}`} />
+      {logo.srcDark && (
+        <img src={logo.srcDark} alt="" aria-hidden data-icon="inline-start"
+             className="size-3.5 object-contain hidden dark:block" />
+      )}
+    </>
+  );
+}
 
 /** How many marks stand on their own before the rest fold into a
  *  count.  Three is what a vehicle can carry today (created by one
@@ -74,11 +93,13 @@ export default function SourceMarks({
                        <a href={link.url} target="_blank" rel="noopener noreferrer"
                           aria-label={`${why} ${link.label}`} />
                      }>
+                <ProviderMark source={s} />
                 {label}
                 <ExternalLink data-icon="inline-end" aria-hidden />
               </Badge>
             ) : (
               <Badge variant="outline" className={i === 0 ? '' : 'text-muted-foreground'}>
+                <ProviderMark source={s} />
                 {label}
               </Badge>
             )}
