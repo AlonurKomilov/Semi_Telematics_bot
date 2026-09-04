@@ -558,13 +558,22 @@
      carries `.dark` — and which one wins would come down to source
      order, so moving a block would silently repaint the dark themes.
 
-     Light green is 0.48, not 0.52 like its siblings, and that is
-     deliberate: --ok light is oklch(0.52 0.15 150), so a 0.52 green
-     accent sat at dE2000 4.28 from the success colour and a primary
-     button read as a success state. Dropping the lightness separates
-     them the same way the dark themes already do (0.65 vs 0.76), and
-     lands at 6.59 — better than the blue-vs-info pair (6.29) that has
-     shipped all along.
+     Light green used to be 0.48, not 0.52 like its siblings, and the
+     reason was written here: --ok light was oklch(0.52 0.15 150), so a
+     0.52 green sat at dE2000 4.28 from the success colour and a primary
+     button read as a success state. Both numbers still reproduce
+     exactly — against the --ok that sentence names.
+
+     --ok now ships as oklch(0.49 0.132 150), and against THAT the move
+     runs backwards: 0.52 measures 6.17 and the 0.48 it was dropped to
+     measures 5.71. The exception was costing the separation it was made
+     to buy, and nobody re-measured when the tone moved. Green is back on
+     the band its siblings sit on.
+
+     It is still the closest pair we ship. Green's hue is 142 and --ok's
+     is 150 — eight degrees — so no lightness on the band clears the
+     floor a picked colour has to clear; only a hue move would, and that
+     is a brand decision rather than a correction.
 
      `:not([data-mod-accent])` is how a custom colour gets to exist.
      The injected sheet writes at `:root` — (0,1,0) — which is enough to
@@ -593,10 +602,13 @@
     --chart-1: oklch(0.52 0.20 300);
   }
   :root:not(.dark)[data-accent="green"]:not([data-mod-accent]) {
-    --primary: oklch(0.48 0.15 142);
-    --primary-hover: oklch(0.43 0.14 142);
-    --primary-text: oklch(0.44 0.145 142);
-    --chart-1: oklch(0.48 0.15 142);
+    --primary: oklch(0.52 0.15 142);
+    --primary-hover: oklch(0.47 0.15 142);
+    /* 0.149, not 0.15: at this lightness the green hue runs out of
+       sRGB a thousandth short, and an out-of-gamut authored value is a
+       number the display never shows. */
+    --primary-text: oklch(0.443 0.149 142);
+    --chart-1: oklch(0.52 0.15 142);
     /* The ramp rotates with the accent, and only here.
        Slot 1 IS the accent — that is the rule, and the accent blocks
        above already do it.  Slots 2-5 then have to drop whichever base

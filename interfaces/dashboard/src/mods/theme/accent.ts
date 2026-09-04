@@ -72,6 +72,26 @@ export const TONES: Readonly<Record<AccentMode, Readonly<Record<string, readonly
 };
 
 /**
+ * The tones a primary button must not be mistaken for.
+ *
+ * `--info` is deliberately absent, and the reason is what confusion
+ * COSTS rather than how close two colours are. Success, warning and
+ * danger each carry a STATE: a button the colour of `--ok` says the
+ * thing already happened, one the colour of `--danger` says stop. A
+ * button the colour of `--info` says nothing — info is the tone of a
+ * message that is merely present, so mistaking a button for it costs
+ * a reader nothing.
+ *
+ * It is also the difference between a rule and a wall. Measured against
+ * every tone, three of the four shipped packs failed the floor — blue
+ * at 6.49 from `--info`, and blue is 43.50 from the nearest tone that
+ * means anything. The hue our `--info` sits on is simply the hue most
+ * brands pick, and refusing every blue would have been a colour policy
+ * wearing a safety argument.
+ */
+export const STATEFUL_TONES = ['ok', 'warn', 'danger'] as const;
+
+/**
  * How far from a tone is far enough.
  *
  * A literal, and NOT the separation our own packs happen to have. The
@@ -123,10 +143,11 @@ export interface AccentResult {
   collidesWith?: string;
 }
 
-/** The nearest tone, and how near. */
+/** The nearest tone that MEANS something, and how near. */
 function nearestTone(rgb: RGB, mode: AccentMode): { name: string; d: number } {
   let name = '', d = Infinity;
-  for (const [n, [L, C, H]] of Object.entries(TONES[mode])) {
+  for (const n of STATEFUL_TONES) {
+    const [L, C, H] = TONES[mode][n];
     const t = distance(rgb, oklchToSrgb(L, C, H).rgb);
     if (t < d) { d = t; name = n; }
   }

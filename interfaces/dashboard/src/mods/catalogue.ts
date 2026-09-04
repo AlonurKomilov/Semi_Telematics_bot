@@ -49,7 +49,7 @@ export interface ThemePack {
 export const THEME_PACKS: readonly ThemePack[] = [
   { id: 'blue',   label: 'Blue',   seed: { light: '#2a5cda', dark: '#427bff' } },
   { id: 'purple', label: 'Purple', seed: { light: '#7d40c8', dark: '#9b61ea' } },
-  { id: 'green',  label: 'Green',  seed: { light: '#197112', dark: '#38aa2f' } },
+  { id: 'green',  label: 'Green',  seed: { light: '#287d22', dark: '#38aa2f' } },
   { id: 'azure',  label: 'Azure',  seed: { light: '#027689', dark: '#0796ae' } },
 ] as const;
 

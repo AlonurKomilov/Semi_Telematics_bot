@@ -10,7 +10,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  ACCENT_BAND, TONES, TONE_FLOOR, fitAccent, accentTokens, type AccentMode,
+  ACCENT_BAND, TONES, TONE_FLOOR, STATEFUL_TONES, fitAccent, accentTokens,
+  type AccentMode,
 } from './accent';
 import {
   oklchToSrgb, srgbToOklch, parseHex, toHex, distance, contrastRatio,
@@ -66,10 +67,12 @@ describe('the band is where the packs already live', () => {
         const L = srgbToOklch(parseHex(p.seed[mode])!).L;
         if (Math.abs(L - ACCENT_BAND[mode]) > 0.005) off.push(`${p.id}/${mode} L=${L.toFixed(3)}`);
       }
-    // Green is the one exception, in both modes, and it is deliberate —
-    // see the accent-preset comment in index.css. Listing it here rather
-    // than widening the tolerance keeps the band a real claim.
-    expect(off).toEqual(['green/light L=0.480', 'green/dark L=0.650']);
+    // Green/dark is the one exception left. Green/LIGHT used to be the
+    // other, at 0.480, on reasoning that stopped holding when `--ok`
+    // moved — it is back on the band with its siblings. Listing the
+    // survivor rather than widening the tolerance keeps the band a real
+    // claim.
+    expect(off).toEqual(['green/dark L=0.650']);
   });
 });
 
@@ -112,7 +115,7 @@ describe('what the shipped packs actually measure', () => {
       'blue/dark nearest --info at 18.71',
       'purple/light nearest --info at 20.79',
       'purple/dark nearest --info at 30.04',
-      'green/light nearest --ok at 5.71',
+      'green/light nearest --ok at 6.09',
       'green/dark nearest --ok at 11.77',
       'azure/light nearest --info at 20.25',
       'azure/dark nearest --info at 20.45',
@@ -121,15 +124,32 @@ describe('what the shipped packs actually measure', () => {
     expect(worst, 'the closest shipped pair').toBeLessThan(TONE_FLOOR);
   });
 
-  it('the two below the gate are the two we think they are', () => {
+  it('measured against the tones that MEAN something, only one pack is close', () => {
+    // The gate judges a picked colour against the stateful tones only —
+    // success, warning, danger — because those are the ones a primary
+    // button can lie about. Blue's 6.49 was entirely against `--info`,
+    // and blue is 43.50 from the nearest tone that carries a state.
     const below: string[] = [];
     for (const p of THEME_PACKS)
       for (const mode of MODES) {
         const rgb = parseHex(p.seed[mode])!;
-        const d = Math.min(...Object.keys(TONES[mode]).map((n) => distance(rgb, tone(mode, n))));
+        const d = Math.min(...STATEFUL_TONES.map((n) => distance(rgb, tone(mode, n))));
         if (d < TONE_FLOOR) below.push(`${p.id}/${mode}`);
       }
-    expect(below).toEqual(['blue/light', 'green/light']);
+    expect(below).toEqual(['green/light']);
+  });
+
+  it('and that one is a HUE collision no lightness on the band can fix', () => {
+    // Green sits at hue 142, `--ok` at 150 — eight degrees. Reverting
+    // green to the band bought 5.71 → 6.17 and that is all the band has
+    // to give; clearing the floor would take a hue move, which is a
+    // brand decision rather than a correction.
+    const g = srgbToOklch(parseHex(THEME_PACKS.find((p) => p.id === 'green')!.seed.light)!);
+    const okHue = TONES.light.ok[2];
+    expect(Math.abs(g.H - okHue), 'green stopped sharing a hue with --ok').toBeLessThan(12);
+    const best = Math.min(...STATEFUL_TONES.map((n) => distance(parseHex('#287d22')!, tone('light', n))));
+    expect(best).toBeGreaterThan(6);
+    expect(best, 'green/light cleared the floor without a hue move').toBeLessThan(TONE_FLOOR);
   });
 });
 
@@ -138,17 +158,29 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
   const wheel = (mode: AccentMode) =>
     Array.from({ length: 360 }, (_, H) => toHex(oklchToSrgb(ACCENT_BAND[mode], 0.2, H).rgb));
 
-  it('nothing it accepts sits closer to a tone than the floor', () => {
+  it('nothing it accepts sits closer than the floor to a tone that MEANS something', () => {
+    // `--info` is out of scope by design — see STATEFUL_TONES. A button
+    // the colour of the info tone lies about nothing, and holding every
+    // blue to this floor would have been a colour policy wearing a
+    // safety argument.
     const bad: string[] = [];
     for (const mode of MODES)
       for (const hex of wheel(mode)) {
         const { rgb } = fitAccent(hex, mode);
         if (!rgb) continue;
-        for (const n of Object.keys(TONES[mode]))
+        for (const n of STATEFUL_TONES)
           if (distance(rgb, tone(mode, n)) < TONE_FLOOR)
             bad.push(`${mode} ${hex} -> ${toHex(rgb)} is ${distance(rgb, tone(mode, n)).toFixed(2)} from --${n}`);
       }
     expect(bad).toEqual([]);
+  });
+
+  it('and it does NOT refuse a colour merely for looking like --info', () => {
+    // The inverse claim, which is the one the scope change is for: the
+    // info hue is the hue most brands pick, and a gate that refused it
+    // would refuse half the plausible accents.
+    const infoish = toHex(oklchToSrgb(ACCENT_BAND.light, 0.15, TONES.light.info[2]).rgb);
+    expect(fitAccent(infoish, 'light').rgb, 'an info-coloured accent was refused').not.toBeNull();
   });
 
   it('says so whenever it moved a colour, and never claims a move it did not make', () => {
@@ -186,8 +218,8 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
    * light tones sit at 0.49-0.52, inside the band, so they stay
    * themselves and the gate has to hold.
    */
-  it('never hands back a light accent that reads as its tone', () => {
-    for (const name of Object.keys(TONES.light)) {
+  it('never hands back a light accent that reads as a tone that means something', () => {
+    for (const name of STATEFUL_TONES) {
       const r = fitAccent(toHex(tone('light', name)), 'light');
       if (r.rgb === null) {
         expect(r.collidesWith, `--${name} refused without naming the tone`).toBe(name);
@@ -201,7 +233,7 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
   });
 
   it('a dark-mode tone is not a collision, because the band has already moved it', () => {
-    for (const name of Object.keys(TONES.dark)) {
+    for (const name of STATEFUL_TONES) {
       const r = fitAccent(toHex(tone('dark', name)), 'dark');
       expect(r.rgb, `dark --${name} refused`).not.toBeNull();
       expect(distance(r.rgb!, tone('dark', name))).toBeGreaterThanOrEqual(TONE_FLOOR);
@@ -219,7 +251,7 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
    * azure in light, sail through. Blue and green in light get nudged —
    * the same two the characterisation test records below the floor.
    */
-  it('would nudge exactly the two shipped seeds that sit below the gate', () => {
+  it('would nudge exactly the one shipped seed that sits below the gate', () => {
     const nudged: string[] = [];
     for (const p of THEME_PACKS)
       for (const mode of MODES) {
@@ -227,7 +259,7 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
         expect(r.rgb, `${p.id}/${mode} could not be rescued at all`).not.toBeNull();
         if (r.movedFrom) nudged.push(`${p.id}/${mode} away from --${r.movedFrom}`);
       }
-    expect(nudged).toEqual(['blue/light away from --info', 'green/light away from --ok']);
+    expect(nudged).toEqual(['green/light away from --ok']);
   });
 });
 
