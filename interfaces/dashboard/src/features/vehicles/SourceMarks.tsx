@@ -38,15 +38,26 @@ import { providerLogo } from './providerLogos';
  * "SAMSARA Samsara" is the thing this prevents. A GLYPH is a symbol,
  * which says nothing to a reader who has not learned it, so it sits
  * beside the name. A provider with no mark is simply its name.
+ *
+ * The wrapping span is load-bearing: Badge sizes every DIRECT svg child
+ * to 12×12 with `!important`, which is right for an icon and wrong for a
+ * 6:1 wordmark — it squashed the mark into a square and left the little
+ * external-link arrow looking oversized beside it. Wrapped, the rule
+ * reaches only the arrow, which is the one thing it was written for.
  */
 function ChipBody({ source, label }: { source: string; label: string }) {
   const logo = providerLogo(source);
   if (!logo) return <>{label}</>;
   const { Mark, kind } = logo;
-  if (kind === 'wordmark') return <Mark className="h-3.5" />;
+  const mark = (
+    <span className="inline-flex items-center">
+      <Mark className="h-3.5" />
+    </span>
+  );
+  if (kind === 'wordmark') return mark;
   return (
     <>
-      <Mark className="h-3.5" />
+      {mark}
       {label}
     </>
   );
