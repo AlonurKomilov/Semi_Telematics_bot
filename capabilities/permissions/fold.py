@@ -89,3 +89,42 @@ def plan_row_sweep(perm_dict: dict) -> tuple[dict, list[str], list[str]]:
         if target in perm_dict and bool(perm_dict[target]) != lv:
             collisions.append(target)
     return canonical, sorted(legacy), sorted(collisions)
+
+
+#: `*_own` flag → the verb that is WIDE today for the same feature.  A
+#: staff row holding only the own half would be widened by the fold
+#: (own folds into view, and staff width is 'all'); a driver row already
+#: holding the wide verb reads account-wide today on the loads router's
+#: "holds view = account-wide" proxy and narrows when the proxy becomes
+#: person_width.  Both are intent the fold must not guess at.
+OWN_TO_WIDE_VERB: dict[str, str] = {
+    "can_loads_own": "can_view_loads",
+    "can_risk_report_own": "can_view_risk_reports",
+    "can_driver_pay_view_own": "can_manage_driver_pay",
+    "can_coaching_view_own": "can_manage_coaching",
+    "can_driver_docs_own": "can_manage_driver_docs",
+}
+
+
+def plan_own_preflight(key: str, perm_dict: dict) -> list[tuple[str, str]]:
+    """Findings for one stored grant row before the own→view fold.
+
+    Returns ``[(flag, kind)]`` with kind ``staff_own_only`` (a non-driver
+    key granted the own half and NOT the wide verb — the fold would
+    WIDEN them) or ``driver_holds_wide`` (a driver key granted the wide
+    verb — today wide on the loads proxy, narrow after).  Owner keys are
+    never scoped and never reported.  Absent keys read as False.
+    """
+    role = key.split("__", 1)[0]
+    if role == Role.OWNER.value:
+        return []
+    out: list[tuple[str, str]] = []
+    for own, wide in OWN_TO_WIDE_VERB.items():
+        has_own = bool(perm_dict.get(own, False))
+        has_wide = bool(perm_dict.get(wide, False))
+        if role == Role.DRIVER.value:
+            if has_wide:
+                out.append((own, "driver_holds_wide"))
+        elif has_own and not has_wide:
+            out.append((own, "staff_own_only"))
+    return out

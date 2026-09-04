@@ -116,3 +116,40 @@ async def unit_width(
         return builtin_width(role_enum.value)
     return db_user.scope_with_role_default(
         await role_scope_layer(account_id, role_enum, platform_db))
+
+
+# ─── Person width ────────────────────────────────────────────────────
+#
+# The person-subject features ("my paystubs", "my coaching", "my
+# documents", "my loads") carry the same disease the ten unit pairs
+# had: a `*_own` grant that smuggles WIDTH into a permission.  Their
+# width has no customer for a third layer — "self" for anyone without a
+# driver row is nonsense, and "a driver who sees everyone's paystubs"
+# is a role change, not a width — so it is a pure function of the
+# role, with no storage, no role row and no Team Management control.
+# Each feature resolves its own self-key (loads → the member's user id;
+# pay and coaching → the bound driver id; documents → the member's own
+# row) exactly as unit features resolve their own assigned-truck list.
+
+#: noun → the `*_own` flag that folds into the noun's view verb.
+PAIRED_PERSON_FEATURES: dict[str, str] = {
+    "loads": "can_loads_own",
+    "driver_pay": "can_driver_pay_view_own",
+    "coaching": "can_coaching_view_own",
+    "driver_docs": "can_driver_docs_own",
+}
+
+
+def person_width(role, feature: str, is_manager: bool = False) -> str:
+    """'self' or 'all' for one person-subject feature.
+
+    A driver reads their own rows; every other role reads the
+    account's.  ``is_manager`` is accepted so the call sites carry the
+    tier they know, but a manager-tier driver is still a driver: the
+    tier adds VERBS (MANAGER_GRANTS), never width.
+    """
+    if feature not in PAIRED_PERSON_FEATURES:
+        raise KeyError(f"not a person-paired feature: {feature!r}")
+    role_enum = role if isinstance(role, Role) else Role(role)
+    del is_manager  # documented no-op — see docstring
+    return "self" if role_enum is Role.DRIVER else "all"
