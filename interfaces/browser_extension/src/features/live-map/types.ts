@@ -7,6 +7,9 @@ export interface MapVehicleProperties {
   /** Who supplies this record: `source` is the creator,
    *  `sources` is creator-then-enrichers. */
   source?: string; sources?: string[];
+  /** The registry row's own id — what a provider-link lookup is keyed
+   *  by, unlike `id`, which is the provider's own vehicle id. */
+  registry_id?: number | null;
 }
 export interface MapVehicleFeature {
   type: 'Feature';

@@ -13,6 +13,7 @@ import { applyFix, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColo
 import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
+import { linksFor, type ProviderLink } from './links';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
 import { getFlag, setFlag } from '../../prefs';
 import { directionsUrl, followInGoogleMaps, getFollowPref, openInGoogleMaps, searchUrl, setFollowPref } from './googleMaps';
@@ -35,6 +36,8 @@ export default function LiveMapPanel() {
   const [selected, setSelected] = useState<MapVehicleFeature | null>(null);
   const [error, setError] = useState('');
   const [tileNotice, setTileNotice] = useState('');
+  // The selected truck's provider links, fetched once per truck.
+  const [links, setLinks] = useState<ProviderLink[]>([]);
   // Ages are read against ONE clock per render, so two rows can never
   // disagree by the milliseconds between their own Date.now() calls.
   // The 30-second reload re-renders, which is how the ages advance.
@@ -53,7 +56,6 @@ export default function LiveMapPanel() {
   const [keepInView, setKeepInView] = useState(true);
   const keepRef = useRef(true);
   const setKeep = (on: boolean) => { keepRef.current = on; setKeepInView(on); };
-  const sheetEl = useRef<HTMLDivElement>(null);
   // The latest feature per id — a marker's click handler was attached
   // when the marker was born and must not hand out that first fix.
   const latest = useRef<Map<string, MapVehicleFeature>>(new Map());
@@ -73,20 +75,15 @@ export default function LiveMapPanel() {
     return [lat, lng];
   };
 
-  /** Put a point in the middle of the map a person can actually SEE —
-   *  the selected-vehicle card covers the lower strip, so a truck
-   *  centred the naive way sits behind it. */
+  /** Centre the map on a point.  Plain centring is correct now that the
+   *  selected-vehicle card sits BELOW the map rather than over it —
+   *  this used to offset by half the card's height to keep the truck
+   *  out from behind it. */
   const centreOn = (lat: number, lng: number, opts: { zoom?: number; animate?: boolean } = {}) => {
     const m = map.current;
     if (!m) return;
-    const zoom = opts.zoom ?? m.getZoom();
-    const cardH = sheetEl.current?.offsetHeight ?? 0;
-    // Push the map's centre DOWN by half the card, so the truck rides
-    // that much above it — the same trick as a bottom sheet's inset.
-    const pt = m.project([lat, lng], zoom).add([0, cardH / 2]);
-    const target = m.unproject(pt, zoom);
-    if (opts.zoom != null) m.setView(target, zoom, { animate: opts.animate ?? false });
-    else m.panTo(target, { animate: opts.animate ?? true });
+    if (opts.zoom != null) m.setView([lat, lng], opts.zoom, { animate: opts.animate ?? false });
+    else m.panTo([lat, lng], { animate: opts.animate ?? true });
   };
 
   /** One place a vehicle gets selected: the card, the map, and — with
@@ -94,10 +91,17 @@ export default function LiveMapPanel() {
   const select = (f: MapVehicleFeature, pan: boolean) => {
     const cur = latest.current.get(idOf(f)) ?? f;
     setSelected(cur);
+    // Links belong to the truck, not the selection: clear first so the
+    // previous truck's door never appears under this one's name.
+    setLinks([]);
+    const rid = cur.properties.registry_id;
+    void linksFor(rid).then((ls) => {
+      // Ignore an answer that arrived after the person moved on.
+      if (selectedIdRef.current === idOf(cur)) setLinks(ls);
+    });
     setKeep(true);              // a fresh choice always starts centred
     const [lat, lng] = liveLatLng(cur);
-    // The card is measured AFTER it renders, so centre on the next frame.
-    if (pan) requestAnimationFrame(() => centreOn(lat, lng, { zoom: 14 }));
+    if (pan) centreOn(lat, lng, { zoom: 14 });
     if (followRef.current) void followInGoogleMaps(searchUrl(lat, lng));
   };
   const selectRef = useRef(select);
@@ -262,20 +266,28 @@ export default function LiveMapPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* The map takes whatever the list leaves — all of it when the
-          list is collapsed.  The selected vehicle floats over its lower
-          edge instead of pushing it up. */}
+      {/* The map takes whatever the rest leaves — all of it when the
+          list is collapsed and nothing is selected. */}
       <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 200 }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
-        {selected && (() => {
+      </div>
+      {/* The selected vehicle sits BELOW the map, not over it: it grew
+          from three lines to seven, and by then it was hiding more of
+          the map than the map could spare — including, often, the very
+          truck it describes. */}
+      {selected && (() => {
           const [lat, lng] = liveLatLng(selected);
           const levels = levelsOf(selected.properties);
           return (
-            <div className="sheet" ref={sheetEl}>
+            <div className="sheet">
               <div className="row" style={{ justifyContent: 'space-between' }}>
-                <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {selected.properties.name}
-                </strong>
+                <span className="row" style={{ gap: 6, minWidth: 0 }}>
+                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selected.properties.name}
+                  </strong>
+                  {/* Who supplies this truck, next to what it is called. */}
+                  <SourceMarks sources={selected.properties.sources} source={selected.properties.source} links={links} />
+                </span>
                 <div className="row" style={{ gap: 6 }}>
                   {/* On: the map rides along. Off (you panned away): the
                       same control brings it back and re-engages. */}
@@ -294,7 +306,6 @@ export default function LiveMapPanel() {
                 </div>
               </div>
               <p className="muted" style={{ margin: 0 }}>{selected.properties.address || '—'}</p>
-              <SourceMarks sources={selected.properties.sources} source={selected.properties.source} />
               {(() => {
                 const age = ageMs(selected.properties.updated_at, now);
                 const s = stalenessOf(age);
@@ -323,7 +334,6 @@ export default function LiveMapPanel() {
             </div>
           );
         })()}
-      </div>
       <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}>
         <input className="input" placeholder="Search vehicles…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>

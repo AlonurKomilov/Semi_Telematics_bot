@@ -89,6 +89,10 @@ async def map_vehicles(
                 "id": v.get("id"),
                 "name": v.get("name", ""),
                 "company": v.get("_org", ""),
+                # The registry row's own id — what a provider-link lookup
+                # is keyed by.  NOT the provider's vehicle id, which is
+                # what ``id`` above carries.
+                "registry_id": v.get("_registry_id"),
                 # Who supplies this record.  Already on the row from the
                 # registry merge, so carrying it costs nothing and saves
                 # every map surface a second request: the dashboard's

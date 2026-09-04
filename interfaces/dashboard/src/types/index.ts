@@ -474,6 +474,9 @@ export interface MapVehicleProperties {
    *  merge so a map surface can show provenance without a second call. */
   source?: string;
   sources?: string[];
+  /** The registry row's own id — what a provider-link lookup is keyed
+   *  by, unlike `id`, which is the provider's own vehicle id. */
+  registry_id?: number | null;
 }
 
 export interface MapVehicleFeature {

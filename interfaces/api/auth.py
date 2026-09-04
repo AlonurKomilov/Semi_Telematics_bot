@@ -171,6 +171,7 @@ EXTENSION_SCOPE: tuple[str, ...] = ("can_view_location", "can_location_map", "ca
 #: are listed for intent.
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
+    "/extension/vehicle-link",
     "/auth/refresh", "/auth/logout",
 })
 

@@ -27,11 +27,11 @@ button, input { font: inherit; }
 .menu-item.danger { color: var(--danger); }
 .menu-sep { height:1px; background: var(--border); margin:4px 0; }
 
-/* The selected vehicle, floating over the map's lower edge — the map
-   keeps its height instead of being pushed up by a card below it. */
-.sheet { position:absolute; left:8px; right:8px; bottom:8px; z-index:500; background: var(--card);
-         border:1px solid var(--border); border-radius:8px; padding:8px 10px; display:grid; gap:6px;
-         box-shadow:0 6px 20px rgba(0,0,0,.45); }
+/* The selected vehicle, under the map.  It floated over the map while
+   it was three lines long; at seven it was hiding more than it showed —
+   often the very truck it describes. */
+.sheet { background: var(--card); border-bottom:1px solid var(--border);
+         padding:8px 10px; display:grid; gap:6px; }
 /* Fuel / DEF, the dashboard's level bars at panel scale. */
 .bar { height:6px; border-radius:999px; background: rgba(255,255,255,.10); overflow:hidden; }
 .bar > i { display:block; height:100%; background: var(--ok); }
@@ -48,3 +48,5 @@ button, input { font: inherit; }
 .mark { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--border);
         border-radius:4px; padding:1px 5px; font-size:11px; color: var(--muted); line-height:1.4; }
 .mark-art { height:11px; width:auto; color: var(--muted); }
+.mark-link { text-decoration:none; cursor:pointer; }
+.mark-link:hover { border-color: var(--primary); color: var(--fg); }

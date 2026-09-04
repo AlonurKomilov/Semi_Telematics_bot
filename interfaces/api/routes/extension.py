@@ -155,6 +155,48 @@ async def extension_me(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/vehicle-link")
+async def extension_vehicle_link(
+    vehicle: int,
+    user: dict = Depends(get_current_user),
+):
+    """Where to open ONE truck at the provider that supplies it.
+
+    Its own endpoint rather than the vehicle page's
+    ``/vehicles/registry/{id}/links``: that one is gated on
+    ``can_view_vehicles``/``can_view_faults``, which a live-map-scoped
+    token narrows to False — the panel would get a 403, and widening
+    the token to reach it would hand a truck-list key the vehicle
+    surface too.
+
+    The vehicle is taken as a QUERY parameter, not a path segment,
+    because ``EXTENSION_ROUTES`` matches paths exactly — a path that
+    carries an id could not be listed there without turning the
+    allow-list into prefix matching, which is what it exists to avoid.
+
+    The company wall still applies: a member restricted to one company
+    cannot reach a foreign truck's link by guessing its id.
+    """
+    from infra.platform import get_tenant_db
+    from interfaces.api.deps import get_user_company_codes
+    from features.vehicles.scope import company_allows
+    from features.vehicles.provider_links import build_provider_links
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    v = await tenant.get_vehicle(account_id, vehicle)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    allowed = await get_user_company_codes(user)
+    if not company_allows(getattr(v, "company_code", "") or "", allowed):
+        # Same answer as a truck that does not exist: a 403 here would
+        # confirm the id belongs to a company the caller may not see.
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    return {"links": await build_provider_links(account_id, v)}
+
+
 @router.get("/download")
 async def download_extension(user: dict = Depends(get_current_user)):
     """The built extension as a zip — sideload it from chrome://extensions."""

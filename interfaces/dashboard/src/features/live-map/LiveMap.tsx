@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, FlaskConical, Fuel, TriangleAlert } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
@@ -11,6 +12,7 @@ import { MAP_STATUS, MARKER_HALO, MARKER_SHADOW } from '../../config/mapColors';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
 import SourceMarks from '../vehicles/SourceMarks';
+import type { ProviderLink } from '../vehicles/sourceLabels';
 import type L from 'leaflet';
 import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
 import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
@@ -219,6 +221,16 @@ export default function LiveMap() {
 
   const [vehicles, setVehicles]     = useState<MapVehicleFeature[]>([]);
   const [selected, setSelected]     = useState<MapVehicleProperties | null>(null);
+  // The selected truck's provider door, asked per selection and shared
+  // with the vehicle page by query KEY — the org id behind it is stable
+  // for the life of an account, so one answer serves both surfaces.
+  const { data: linkData } = useQuery<{ links: ProviderLink[] }>({
+    queryKey: ['vehicle-links', selected?.registry_id ?? null],
+    queryFn: () => apiJSON(`/vehicles/registry/${selected?.registry_id}/links`),
+    enabled: selected?.registry_id != null,
+    staleTime: 30 * 60 * 1000,
+  });
+  const selectedLinks = linkData?.links ?? [];
   // Lat/lng of the selected vehicle for nearest-POI calculation
   const [selectedPos, setSelectedPos] = useState<[number, number] | null>(null);
   // Mirror selected id in a ref so the filter effect always sees current value
@@ -776,7 +788,8 @@ export default function LiveMap() {
                   vehicle page shows beside its number.  No links here:
                   a provider deep link costs a per-vehicle lookup this
                   panel has no reason to pay. */}
-              <SourceMarks sources={selected.sources} source={selected.source} />
+              <SourceMarks sources={selected.sources} source={selected.source}
+                           links={selectedLinks} />
             </div>
             <p className="text-muted-foreground text-xs">{selected.address || 'Unknown location'}</p>
 

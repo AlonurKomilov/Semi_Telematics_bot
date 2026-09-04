@@ -1937,27 +1937,8 @@ async def vehicle_provider_links(
         raise HTTPException(503, "tenant DB unavailable")
     v = await _wall_registry_vehicle(tenant, account_id, vehicle_id, user)
 
-    links: list[dict[str, str]] = []
-    if v.telematics_ref:
-        try:
-            from adapters.samsara.client import samsara_vehicle_url
-            from infra.services import get_client
-            client = await get_client(account_id)
-            # Idempotent and instance-cached: the first call per process
-            # fetches, the rest are free.
-            await client.ensure_org_ids()
-            url = samsara_vehicle_url(
-                client.org_ids.get(v.company_code, ""), v.telematics_ref)
-            if url:
-                links.append({
-                    "source": "samsara",
-                    "label": "Open in Samsara",
-                    "url": url,
-                })
-        except Exception:
-            logger.debug("samsara link unavailable acct=%d v=%d",
-                         account_id, vehicle_id, exc_info=True)
-    return {"links": links}
+    from features.vehicles.provider_links import build_provider_links
+    return {"links": await build_provider_links(account_id, v)}
 
 
 @router.get("/registry/archived")
