@@ -165,7 +165,8 @@ class EmailChannel:
     async def send(self, recipient: Recipient, payload: Payload) -> DeliveryResult:
         import asyncio
 
-        from capabilities.email import is_email_configured, send_email
+        from capabilities.email import (
+            is_email_configured, send_email_detailed)
 
         to = (recipient.address or "").strip()
         if not to or "@" not in to:
@@ -182,8 +183,11 @@ class EmailChannel:
             headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
         try:
-            ok = await asyncio.to_thread(
-                lambda: send_email(
+            # The DETAILED sender: a bare bool cannot tell "the relay is
+            # busy" from "that mailbox does not exist", and the two need
+            # opposite responses — retry, or stop and tell the owner.
+            ok, reason = await asyncio.to_thread(
+                lambda: send_email_detailed(
                     to=to,
                     subject=payload.subject or "Notification",
                     body=payload.text,
@@ -194,4 +198,5 @@ class EmailChannel:
         except Exception as e:                    # transport must never crash fan-out
             logger.warning("email send failed for %s: %s", recipient.id, e)
             return DeliveryResult(ok=False, error=type(e).__name__)
-        return DeliveryResult(ok=bool(ok), error="" if ok else "send_failed")
+        return DeliveryResult(ok=bool(ok),
+                              error="" if ok else (reason or "send_failed"))

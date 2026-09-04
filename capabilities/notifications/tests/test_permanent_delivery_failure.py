@@ -165,3 +165,66 @@ class TestBothDrainsShareTheRule:
         assert not conn["enabled_master"]
         notices = await pg_db.list_inbox_notices(acct.id, u.id, limit=20)
         assert [n for n in notices if n["category"] == "system.channel_broken"]
+
+
+class TestEmailGetsTheSameTreatment:
+    """Nothing in this machinery is Telegram-specific but the label.
+
+    Email had the identical blind spot: "Verified" from the moment you
+    confirm the address, and never revisited. A mailbox that starts
+    bouncing is verified AND unreachable at the same time, and the card
+    showed only the first half — the exact shape that let five users'
+    Telegram sit dead for three weeks.
+    """
+
+    def test_a_refused_mailbox_is_permanent(self):
+        assert is_permanent_failure(
+            "SMTPRecipientsRefused: 550 5.1.1 no such user")
+        assert is_permanent_failure("bad_email")
+
+    def test_a_server_problem_is_not_the_recipients_fault(self):
+        """The one that would be a disaster to get wrong: SMTP being
+        unconfigured must never disable every user's email and tell them
+        all to reconnect."""
+        assert not is_permanent_failure("email_not_configured")
+        assert not is_permanent_failure("SMTPServerDisconnected: bye")
+
+    async def test_the_smtp_reason_survives_the_bool_wrapper(self):
+        """``send_email`` returns a bare bool for ~20 existing callers,
+        which is why the reason never reached the classifier. The
+        detailed sibling carries it; the wrapper keeps their contract."""
+        from capabilities.email import send_email, send_email_detailed
+        ok, reason = send_email_detailed(
+            to="nobody@example.invalid", subject="s", body="b")
+        assert ok is False and reason           # a REASON, not just False
+        assert send_email(to="nobody@example.invalid",
+                          subject="s", body="b") is False   # unchanged
+
+    async def test_the_card_is_told_only_on_evidence(self, pg_db):
+        """A channel is called broken on the flush's notice, never on the
+        switch being off — off is usually a choice, and telling someone
+        their own decision is a fault is how a page earns being ignored."""
+        import json as _json
+        from capabilities.notifications.router import channel_health
+        acct = await pg_db.create_account("Email Health Co")
+        u = await pg_db.create_user(telegram_id=7401, account_id=acct.id,
+                                    role=Role.FLEET)
+
+        # Switched off, nothing on record → the person's own choice.
+        assert (await channel_health(
+            pg_db, acct.id, u.id, "email", {"enabled_master": 0}))["state"] == "ok"
+
+        # The flush records a failure for THIS channel → needs attention.
+        await pg_db.add_inbox_notice(
+            acct.id, u.id, category="system.channel_broken",
+            title="Email is disconnected", body="We couldn't deliver there.",
+            severity="warning", meta=_json.dumps({"channel": "email"}))
+        h = await channel_health(pg_db, acct.id, u.id, "email",
+                                 {"enabled_master": 0})
+        assert h["state"] == "needs_attention"
+        assert "couldn" in h["reason"]
+
+        # A failure on a DIFFERENT channel must not accuse this one.
+        h2 = await channel_health(pg_db, acct.id, u.id, "web_push",
+                                  {"enabled_master": 0})
+        assert h2["state"] == "ok"

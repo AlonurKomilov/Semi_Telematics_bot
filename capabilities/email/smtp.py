@@ -66,7 +66,7 @@ def is_email_configured() -> bool:
     return bool(_env("SMTP_HOST") and _env("SMTP_FROM"))
 
 
-def send_email(
+def send_email_detailed(
     *,
     to: str,
     subject: str,
@@ -121,10 +121,10 @@ def send_email(
         # Down-graded to debug — the no-op state is the default in
         # dev, and we don't want every scheduler tick to spam INFO.
         logger.debug("send_email skipped: SMTP not configured")
-        return False
+        return False, "email_not_configured"
     if not to or "@" not in to:
         logger.debug("send_email skipped: invalid 'to' address: %r", to)
-        return False
+        return False, "bad_email"
 
     host = _env("SMTP_HOST") or ""
     port = int(_env("SMTP_PORT", "587") or "587")
@@ -207,7 +207,7 @@ def send_email(
                     "(%d bytes > %d limit)",
                     filename, len(payload), MAX_ATTACHMENT_BYTES,
                 )
-                return False
+                return False, "attachment_too_large"
             maintype, _, subtype = mimetype.partition("/")
             msg.add_attachment(
                 payload,
@@ -226,10 +226,23 @@ def send_email(
             if user and password:
                 smtp.login(user, password)
             smtp.send_message(msg)
-        return True
+        return True, ""
     except Exception as e:
-        # Best-effort: log + swallow.  The Telegram path that called
-        # us either already succeeded or already failed; the email
-        # outcome doesn't change the scheduler's exit status.
+        # Best-effort for the bool callers: log + swallow.  But the
+        # REASON now travels, because "mailbox does not exist" and "the
+        # relay timed out" need opposite responses — one should stop
+        # trying and tell the person, the other should try again.
         logger.warning("send_email to %s failed: %s", to, e)
-        return False
+        return False, f"{type(e).__name__}: {e}"[:200]
+
+
+def send_email(**kwargs) -> bool:
+    """Backwards-compatible wrapper: did it go out?
+
+    Every existing caller wants a yes/no and nothing more.  Callers that
+    must act on WHY it failed — the notification channel, which stops
+    retrying a dead mailbox and tells its owner — use
+    ``send_email_detailed``.
+    """
+    ok, _reason = send_email_detailed(**kwargs)
+    return ok

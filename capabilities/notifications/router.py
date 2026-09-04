@@ -15,6 +15,7 @@ bad tokens, so a guesser learns nothing.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Literal
 
@@ -104,6 +105,42 @@ _EMAIL_DEFAULT_CADENCE = _CHANNEL_DEFAULT_CADENCE["email"]
 MatrixChannel = Literal["email", "web_push"]
 
 
+async def channel_health(db, account_id: int, user_id: int,
+                         channel: str, conn: dict | None) -> dict:
+    """Can this channel actually deliver, and if not, what does the
+    person do about it?
+
+    Every channel card used to state its SETUP and stop there — Email
+    said "Verified" from the moment you confirmed the address and never
+    revisited it, exactly as Telegram said "enabled" while the bot got
+    "Chat not found" for three weeks.  Setup is not health: a verified
+    mailbox that starts bouncing is verified and unreachable at once.
+
+    A channel is only called broken on EVIDENCE — the notice the flush
+    writes when a send permanently fails — never on the switch being
+    off, because off is usually a choice and telling someone their own
+    decision is a fault is how a page earns being ignored.
+    """
+    if conn is not None and conn.get("enabled_master"):
+        return {"state": "ok", "reason": ""}
+    try:
+        notices = await db.list_inbox_notices(account_id, user_id, limit=40)
+    except Exception:
+        return {"state": "ok", "reason": ""}
+    for n in notices:
+        if n.get("category") != "system.channel_broken":
+            continue
+        try:
+            meta = json.loads(n.get("meta") or "{}")
+        except Exception:
+            meta = {}
+        if meta.get("channel") == channel:
+            return {"state": "needs_attention",
+                    "reason": n.get("body") or
+                    "We couldn't deliver here, so it was switched off."}
+    return {"state": "ok", "reason": ""}
+
+
 @router.get("/prefs/{channel}")
 @limiter.limit("30/minute")
 async def get_channel_prefs(
@@ -148,6 +185,9 @@ async def get_channel_prefs(
         "cadence": cadence,
         "types": {t: types.get(t, False) for t in relevant},
     }
+    # Setup state above; whether it can actually DELIVER, here.
+    state["health"] = await channel_health(
+        db, db_user.account_id, db_user.id, channel, conn)
     if channel == "web_push":
         devices = await db.list_push_subscriptions(db_user.account_id, db_user.id)
         state["devices"] = [

@@ -370,9 +370,12 @@ def test_email_send_calls_transport_with_unsubscribe_header(monkeypatch):
 
     def _fake_send_email(**kw):
         captured.update(kw)
-        return True
+        # The channel now calls the DETAILED sender, because a bare bool
+        # cannot tell "the relay is busy" from "that mailbox does not
+        # exist" — and those need opposite responses.
+        return True, ""
 
-    with patch("capabilities.email.send_email", _fake_send_email), \
+    with patch("capabilities.email.send_email_detailed", _fake_send_email), \
          patch("capabilities.email.is_email_configured", return_value=True):
         payload = Payload(text="body", subject="Subj",
                           extra={"html": "<p>body</p>",

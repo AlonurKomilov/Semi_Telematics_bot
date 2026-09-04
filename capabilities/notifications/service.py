@@ -21,6 +21,7 @@ it is the path Email (and every later channel) will take.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from typing import Any, Callable, Iterable
@@ -594,6 +595,10 @@ async def _warn_channel_dead(db, account_id: int, rtype: str, rid,
               "preferences to start receiving them again."),
         severity="warning",
         url="/notifications/preferences",
+        # The channel key, so a reader can MATCH on it instead of parsing
+        # the title — the title is a sentence for a person and will be
+        # reworded or translated; the key is the fact.
+        meta=json.dumps({"channel": chan_key}),
     )
 
 

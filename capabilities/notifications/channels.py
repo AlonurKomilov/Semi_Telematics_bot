@@ -182,6 +182,9 @@ _PERMANENT_MARKERS = (
     "recipient rejected",      # SMTP 550-class: the mailbox does not exist
     "mailbox unavailable",
     "no such user",
+    # Our own: the stored address is not an address.  Retrying cannot
+    # make it parse, and the owner is the only one who can fix it.
+    "bad_email",
 )
 
 

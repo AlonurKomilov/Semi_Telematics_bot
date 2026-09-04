@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Mail, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, Mail, CheckCircle2, Clock } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,10 @@ interface EmailPrefs {
   email: {
     connected: boolean;
     verified: boolean;
+    /** Whether it can actually DELIVER — setup is not health.
+     *  Additive: an older server omits it and the card reads
+     *  exactly as before. */
+    health?: { state: string; reason: string };
     address: string;
     enabled_master: boolean;
     cadence: string;
@@ -122,6 +126,7 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
 
   const { email } = prefs;
   const showForm = editing || !email.connected;
+  const broken = email.health?.state === 'needs_attention';
 
   return (
     <Card render={<section />}>
@@ -131,7 +136,15 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
             Email
           </SectionHeader>
         {email.connected && (
-          email.verified
+          // Health outranks setup in the badge: a verified mailbox that
+          // started bouncing is verified AND unreachable, and showing
+          // only "Verified" is the exact half-truth that let five users'
+          // Telegram sit dead for three weeks.
+          email.health?.state === 'needs_attention'
+            ? <span className="inline-flex items-center gap-1 text-xs font-medium text-warn">
+                <AlertTriangle className="size-3.5" /> Not delivering
+              </span>
+          : email.verified
             ? <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">
                 <CheckCircle2 className="size-3.5" /> Verified
               </span>
@@ -140,6 +153,18 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
               </span>
         )}
       </div>
+      {broken && (
+        <div className="mb-3 rounded-md border border-warn/40 bg-warn-bg/40 p-3">
+          <p className="text-xs text-warn inline-flex items-start gap-1.5">
+            <AlertTriangle className="size-3.5 shrink-0 mt-px" aria-hidden />
+            <span>{email.health?.reason}</span>
+          </p>
+          <p className="text-2xs text-muted-foreground mt-1.5">
+            Check the address below and verify it again to start
+            receiving email here.
+          </p>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground mb-3">
         Get the alerts you choose by email, on your own schedule. Separate from your login email.
       </p>
