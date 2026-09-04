@@ -21,6 +21,7 @@ import {
   THEME_PACKS, MOD_MATERIALS, MOD_ICONS, FONT_PACKS, packById, type ModIcons,
 } from '../catalogue';
 import { accentTokens } from '../theme/accent';
+import { fitCanvas } from '../theme/canvas';
 import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
@@ -149,6 +150,20 @@ function writeCanvas(
   return { surfaces: Object.keys(next).length ? next : undefined };
 }
 
+/**
+ * The dot a scope chip wears: the background that place is actually
+ * painting, or nothing.
+ *
+ * Stored is not the same as worn. A canvas the current mode cannot
+ * wear is refused by the gate and the place falls back to the global
+ * look — so showing its dot would point at a colour nobody can see,
+ * the same mistake `brandWorn` exists to avoid on the pack chips.
+ */
+function wornCanvas(hex: string | undefined, mode: Mode): string | undefined {
+  if (!hex) return undefined;
+  return fitCanvas(hex, mode).rgb ? hex : undefined;
+}
+
 export function ColorGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
@@ -210,7 +225,10 @@ export function ColorGroup({ label }: { label: LabelClass }) {
         />
       </div>
 
-      {/* WHERE the background applies. The accent has no such row: it
+      {/* WHERE the background applies. Each chip wears the background
+          that place is painting, so which places carry one is legible
+          without clicking through all four — state that can only be
+          discovered by probing is state a person forgets they set. The accent has no such row: it
           is the brand and stays global, so a page can change the
           conditions it is read in without the product looking like
           several products.
@@ -229,9 +247,11 @@ export function ColorGroup({ label }: { label: LabelClass }) {
       </p>
       <div className="flex flex-wrap gap-1">
         <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
+          dot={wornCanvas(theme.canvas, theme.mode)}
           onClick={() => setTarget('')} />
         {SURFACES.map((s) => (
           <Chip key={s.id} value={s.id} current={target} label={s.title}
+            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode)}
             onClick={(v) => setTarget(v)} />
         ))}
       </div>
