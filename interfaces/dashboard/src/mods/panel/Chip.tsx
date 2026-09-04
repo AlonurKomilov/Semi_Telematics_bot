@@ -18,9 +18,11 @@ export function Chip<T extends string>({
   value: T;
   current: T;
   label: string;
-  /** A `--swatch-*` CSS value, not a class — the colour is data here, so
-   *  it cannot be a Tailwind class name (those must be statically
-   *  scannable) and must not be a literal (that is what the tokens fix). */
+  /** A CSS colour VALUE, not a class — the colour is data here, so it
+   *  cannot be a Tailwind class name (those must be statically
+   *  scannable). A `--swatch-*` token where the colour is ours to
+   *  choose; a raw hex only where the person chose it, which is the
+   *  one thing no token can name. */
   dot?: string;
   onClick: (v: T) => void;
 }) {

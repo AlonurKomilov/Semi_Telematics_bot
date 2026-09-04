@@ -162,4 +162,18 @@ describe('a chip shows what its place is painting', () => {
     mount({ surfaces: { loads: REFUSED! } });
     expect(dotOf('Loads')).toBeUndefined();
   });
+
+  /** A bare chip must not say two things at once. Without this line,
+   *  "no colour set" and "one set that this mode refuses" look alike —
+   *  and the second is the one you need to know before picking over it. */
+  it('and says WHY it is bare, naming the place and the mode', () => {
+    mount({ surfaces: { loads: REFUSED! } });
+    expect(screen.getByText(/not worn in dark mode: loads\./i)).toBeTruthy();
+  });
+
+  it('which it does not say when every stored place is wearing its colour', () => {
+    mount({ surfaces: { loads: WORN! } });
+    expect(screen.queryByText(/not worn in/i), 'warned about a place that is fine').toBeNull();
+    expect(screen.getByText(/one background for the whole app/i)).toBeTruthy();
+  });
 });

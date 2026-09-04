@@ -175,6 +175,17 @@ export function ColorGroup({ label }: { label: LabelClass }) {
   // being worn — not merely whether one is stored. The pack chips read
   // their highlight off this, because a chip highlighted while its block
   // stands down is pointing at a colour nobody can see.
+  /** Places holding a background this mode refuses. A bare chip would
+   *  otherwise say two things at once — no colour set, or one set and
+   *  standing down — and the difference is what somebody needs to know
+   *  before picking again over the top of it. */
+  const unworn = useMemo(
+    () => SURFACES.filter((s) => {
+      const hex = theme.surfaces?.[s.id];
+      return Boolean(hex) && !wornCanvas(hex, theme.mode);
+    }),
+    [theme.surfaces, theme.mode],
+  );
   const brandWorn = useMemo(
     () => (theme.brand ? accentTokens(theme.brand, theme.mode).tokens !== null : false),
     [theme.brand, theme.mode],
@@ -258,7 +269,10 @@ export function ColorGroup({ label }: { label: LabelClass }) {
       <p className="text-2xs text-muted-foreground mt-1.5">
         {target
           ? `${surfaceById(target)?.title} — ${surfaceById(target)?.why}.`
-          : t('theme.scope_all_hint', 'One background for the whole app.')}
+          : unworn.length
+            ? `${t('theme.scope_unworn', 'Not worn in {{mode}} mode')
+                .replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
+            : t('theme.scope_all_hint', 'One background for the whole app.')}
       </p>
     </div>
   );
