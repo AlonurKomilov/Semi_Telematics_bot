@@ -57,7 +57,7 @@ vi.mock('../preferences/usePreference', () => ({
 }));
 
 import { RESET_AXES, SECTION_AXES, CONTAINER_AXES, ResetMods } from './Modifications';
-import { MOD_SECTIONS } from './ModPanel';
+import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 
 describe('Reset appearance owns exactly the axes it should', () => {
   it('covers every axis of MOD_DEFAULT, or names why not', () => {

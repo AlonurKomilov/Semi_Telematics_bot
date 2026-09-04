@@ -200,7 +200,7 @@ describe('the level is not a second gate', () => {
 
 describe('the panel section', () => {
   const panel = readFileSync(
-    join(__dirname, '..', 'ModPanel.tsx'), 'utf8');
+    join(__dirname, '..', 'panel', 'Sounds.tsx'), 'utf8');
 
   it('offers every pack', () => {
     // Generated from the catalogue, so adding a pack cannot half-land as

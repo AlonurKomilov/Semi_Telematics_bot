@@ -32,7 +32,7 @@ import { Card } from '../../components/ui/card';
 import { cn } from '../../lib/utils';
 import { usePreference, preferences } from '../../preferences';
 import { useMods } from '../context';
-import { ModControls } from '../ModPanel';
+import { ModControls } from '../panel/ModControls';
 import { Section, SECTION_AXES } from '../Modifications';
 import SizeCard from '../SizeCard';
 import { modById } from '../catalogue';

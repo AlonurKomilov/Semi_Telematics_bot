@@ -34,7 +34,8 @@ export {
   type Material, type Motion, type Size, type ColorTheme,
 } from './context';
 
-export { ModPanel, ModControls } from './ModPanel';
+export { ModPanel } from './panel/ModPanel';
+export { ModControls } from './panel/ModControls';
 export { default as Modifications } from './Modifications';
 export { MODS_HREF, MODS_PAGE_HREF } from './href';
 export { default as ModsPage } from './page/ModsPage';

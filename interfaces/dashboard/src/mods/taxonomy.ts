@@ -142,6 +142,11 @@ export const PANEL_SECTIONS = [
   ...TAXONOMY.filter((c) => c.panel).map((c) => c.id),
 ] as const;
 
+/** What `ModControls` narrows itself to. A fact about the product, so it
+ *  lives with the product's shape rather than with the component that
+ *  happens to branch on it. */
+export type ModSection = (typeof PANEL_SECTIONS)[number];
+
 /** Which category a Mod field writes into. Was MOD_FIELD_SECTION, and
  *  typed as a total Record so a Mod field with no item is a build error
  *  rather than a footprint that silently omits it. */

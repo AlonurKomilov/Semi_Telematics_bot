@@ -15,7 +15,7 @@ import { FONT_PACKS, MOD_FONTS } from '../catalogue';
 import { MOD_DEFAULT } from '../../preferences';
 
 const CSS = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8');
-const PANEL = readFileSync(join(__dirname, '..', 'ModPanel.tsx'), 'utf8');
+const PANEL = readFileSync(join(__dirname, '..', 'panel', 'Interface.tsx'), 'utf8');
 const BOOT = readFileSync(join(__dirname, '..', '..', '..', 'index.html'), 'utf8');
 
 /** The stack a `[data-font]` block declares, or null. */

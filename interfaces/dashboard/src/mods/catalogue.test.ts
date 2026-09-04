@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { MOD_SECTIONS } from './ModPanel';
+import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
 import {
@@ -255,7 +255,7 @@ describe('the properties a mod carries and the panel does not', () => {
     // The regression this whole change exists to prevent: going back to
     // deriving identity from the axes would work perfectly until a mod
     // carried a sound pack, and then editing a corner would silence it.
-    const panel = readFileSync(join(__dirname, 'ModPanel.tsx'), 'utf8');
+    const panel = readFileSync(join(__dirname, 'panel', 'ModsRow.tsx'), 'utf8');
     // `.not.toContain` succeeds on an empty string, so a file that moved
     // or emptied would satisfy the negative assertion below while proving
     // nothing. Read something before asserting the absence of something.

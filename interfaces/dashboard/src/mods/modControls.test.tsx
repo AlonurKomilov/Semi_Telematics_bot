@@ -62,7 +62,7 @@ vi.mock('../preferences', async (orig) => ({
   }),
 }));
 
-import { ModControls } from './ModPanel';
+import { ModControls } from './panel/ModControls';
 import { MODS } from './catalogue';
 import { headingsOf } from './taxonomy';
 

@@ -29,7 +29,8 @@ import { SectionHeader } from '../components/shell';
 import { undoableAction } from '../components/banners/stagedAction';
 import { usePreference, DEFS, MOD_DEFAULT } from '../preferences';
 import { useMods } from './context';
-import { ModControls, type ModSection } from './ModPanel';
+import { ModControls } from './panel/ModControls';
+import type { ModSection } from './taxonomy';
 import { resetAxesOf } from './taxonomy';
 import SizeCard from './SizeCard';
 

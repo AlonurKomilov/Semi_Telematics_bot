@@ -44,7 +44,7 @@ vi.mock('../preferences', async (orig) => ({
 }));
 vi.mock('../components/banners/stagedAction', () => ({ undoableAction }));
 
-import { ModControls } from './ModPanel';
+import { ModControls } from './panel/ModControls';
 import { accentTokens, TONES, ACCENT_BAND } from './theme/accent';
 import { oklchToSrgb, toHex } from './theme/contrast';
 import { THEME_PACKS } from './catalogue';
