@@ -370,6 +370,28 @@ async def update_user_vehicle_scope(
     return {"ok": True, "vehicle_scope": body.scope}
 
 
+@router.get("/roles/vehicle-scope")
+async def list_role_vehicle_scopes(
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+):
+    """Every role's RESOLVED width — the account's role row where one
+    exists, else the built-in default — so a client previewing a role
+    (the dashboard's "view as") asks Team Management for the width the
+    way it asks Permissions for the verbs, and never re-derives the
+    built-in rule itself.  Owner is always 'all'.
+    """
+    from capabilities.permissions.fold import builtin_width
+    stored = await platform_db.get_all_role_vehicle_scopes(user["account_id"])
+    return {
+        "role_vehicle_scopes": {
+            r.value: ("all" if r.value == "owner"
+                      else (stored.get(r.value) or builtin_width(r.value)))
+            for r in Role
+        },
+    }
+
+
 @router.put("/roles/{role}/vehicle-scope")
 async def update_role_vehicle_scope(
     role: str,

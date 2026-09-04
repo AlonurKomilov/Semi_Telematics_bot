@@ -10,7 +10,8 @@ interface UseViewPermissionsReturn {
    * surfaces the backend guards with ``require_wide``.  Width is Team
    * Management's answer (``/me`` ``vehicle_scope``), not a flag. */
   hasWide: (...flags: string[]) => boolean;
-  /** The member's unit width from ``/me``; undefined until loaded. */
+  /** The active view's unit width (own from ``/me``; a previewed
+   * role's from Team Management); undefined until loaded. */
   vehicleScope: VehicleScope | undefined;
   role: string | undefined;
   /** See ``viewPermsReady`` on RoleViewContext.  Hiding UI on a false
@@ -40,13 +41,15 @@ interface UseViewPermissionsReturn {
  * the previewed persona.
  */
 export function useViewPermissions(): UseViewPermissionsReturn {
-  const { viewHas, viewHasAny, viewPermsReady } = useRoleView();
+  const { viewHas, viewHasAny, viewPermsReady, viewVehicleScope } = useRoleView();
   const { user } = useAuth();
   const has = useCallback((flag: string) => viewHas(flag), [viewHas]);
   const hasAny = useCallback(
     (...flags: string[]) => viewHasAny(...flags), [viewHasAny],
   );
-  const vehicleScope = user?.vehicle_scope;
+  // The VIEW's width, not the viewer's — a preview of a narrowed role
+  // hides the wide-only surfaces exactly as its verbs hide the rest.
+  const vehicleScope = viewVehicleScope;
   const hasWide = useCallback(
     (...flags: string[]) => hasWideScope(viewHasAny, vehicleScope, ...flags),
     [viewHasAny, vehicleScope],

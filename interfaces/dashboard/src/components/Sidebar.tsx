@@ -64,12 +64,15 @@ export default function Sidebar({ forceExpanded = false }: {
   // Admin previewing as another role, it uses that role's perm set so
   // the sidebar reflects what the previewed persona would see — no
   // bouncing back to "but they're Owner so show everything".
-  const { viewHasAny, activeView } = useRoleView();
+  const { viewHasAny, activeView, viewVehicleScope } = useRoleView();
 
   // The generated nav already applies module + permission filtering; the
   // only thing left is the two account kill-switches (driver-pay / coaching)
   // which are separate from the department modules.
-  const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules, user?.vehicle_scope);
+  // Width follows the VIEW, as the verbs do: a preview of a narrowed
+  // role must not surface the cross-department items the real member
+  // never sees.
+  const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules, viewVehicleScope);
 
   const settingsGroup = navConfig.find((g) => g.collapsible);
   const inSettingsArea = !!settingsGroup && (

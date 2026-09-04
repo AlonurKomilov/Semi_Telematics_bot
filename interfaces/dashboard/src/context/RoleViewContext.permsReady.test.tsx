@@ -13,15 +13,21 @@ import { render, screen, cleanup, act } from '@testing-library/react';
  */
 let resolveRoles: (v: unknown) => void;
 let rejectRoles: (e: unknown) => void;
-const apiJSON = vi.fn(() => new Promise((res, rej) => {
-  resolveRoles = res;
-  rejectRoles = rej;
+// URL-aware: the provider now fetches the roles' unit WIDTHS from Team
+// Management beside the roles' VERBS from Permissions.  Readiness is
+// about the verbs only (a missing width reads as wide, never as a
+// denial), so only the verbs fetch is what these tests settle.
+const apiJSON = vi.fn((url: string) => new Promise((res, rej) => {
+  if (url === '/admin/permissions/roles') {
+    resolveRoles = res;
+    rejectRoles = rej;
+  }
 }));
 
 const authUser = { role: 'owner' as string };
 
 vi.mock('../api/client', () => ({
-  apiJSON: (...a: unknown[]) => apiJSON(...(a as [])),
+  apiJSON: (...a: unknown[]) => apiJSON(...(a as [string])),
   setActiveViewForApi: () => {},
 }));
 vi.mock('./AuthContext', () => ({

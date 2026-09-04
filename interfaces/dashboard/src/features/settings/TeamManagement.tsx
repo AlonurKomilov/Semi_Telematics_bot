@@ -23,6 +23,7 @@ import { Button } from '../../components/ui/button';
 import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
+import { useRoleView } from '../../context/RoleViewContext';
 import { toast } from 'sonner';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { ActionMenu } from '../../components/ui/context-menu';
@@ -550,6 +551,10 @@ export default function TeamManagement() {
   const handleRoleWidthChange = async (role: string, scope: 'all' | 'assigned' | null) => {
     try {
       await apiJSON('/admin/roles/' + role + '/vehicle-scope', { method: 'PUT', body: { scope } });
+      // The "view as" preview reads role widths from RoleViewContext,
+      // fetched once per session — refresh so a preview opened next
+      // shows the width just set, as the matrix refreshes its verbs.
+      refreshVehicleScope();
       qc.setQueryData<{ users: AdminUser[]; role_vehicle_scopes?: Record<string, 'all' | 'assigned'> } | undefined>(
         ['admin-users'], (d) => {
           if (!d) return d;

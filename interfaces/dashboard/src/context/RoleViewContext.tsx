@@ -175,6 +175,17 @@ interface RoleViewContextValue {
    * (default true — Owners should see everything) or the plain employee. */
   previewAsManager: boolean;
   setPreviewAsManager: (v: boolean) => void;
+  /** The ACTIVE VIEW's unit width — Team Management's answer, the
+   * way ``viewHas`` is Permissions'.  Self view: the member's own
+   * resolved width from ``/me``.  Preview: the previewed ROLE's width
+   * (account role row, else built-in) from Team Management; undefined
+   * while loading or when the fetch fails, which every consumer treats
+   * as wide (config/unitWidth.ts). */
+  viewVehicleScope: 'all' | 'assigned' | undefined;
+  /** Reload the roles' widths — Team Management calls it after a
+   * role-width edit, as the matrix calls ``refreshPermissions`` after
+   * a verb edit, so a preview opened next reads the new answer. */
+  refreshVehicleScope: () => void;
 }
 
 const RoleViewContext = createContext<RoleViewContextValue | null>(null);
@@ -289,6 +300,26 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     fetchRolePerms();
   }, [fetchRolePerms]);
 
+  // The roles' unit widths (Team Management's layer), for previews.
+  // A verb set without its width would make a preview of a narrowed
+  // role show the wide-only surfaces the real member never sees.
+  const [roleWidths, setRoleWidths] = useState<Record<string, 'all' | 'assigned'>>({});
+  const fetchRoleWidths = useCallback(async () => {
+    if (!canSwitch) return;
+    try {
+      const data = await apiJSON<{ role_vehicle_scopes: Record<string, 'all' | 'assigned'> }>(
+        '/admin/roles/vehicle-scope',
+      );
+      setRoleWidths(data.role_vehicle_scopes ?? {});
+    } catch {
+      // Not authorized or transient: widths stay unknown (= wide),
+      // the same fail-open the nav documents for a missing width.
+    }
+  }, [canSwitch]);
+  useEffect(() => {
+    fetchRoleWidths();
+  }, [fetchRoleWidths]);
+
   const switchView = useCallback((role: string) => {
     if (!canSwitch) return;
     // Defensive: only allow PREVIEWABLE roles, even though the
@@ -388,6 +419,9 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   const viewLabel = VIEW_LABELS[activeView] ?? activeView;
   const homeRoute = VIEW_HOME_ROUTE[activeView] ?? '/';
   const isPreviewing = canSwitch && activeView !== realRole;
+  const viewVehicleScope: 'all' | 'assigned' | undefined = (!canSwitch || isSelfView)
+    ? user?.vehicle_scope
+    : roleWidths[activeView];
 
   return (
     <RoleViewContext.Provider value={{
@@ -399,6 +433,7 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
         ? { senior: ROLE_TIERS[activeView].senior, base: ROLE_TIERS[activeView].base }
         : null,
       previewAsManager, setPreviewAsManager,
+      viewVehicleScope, refreshVehicleScope: fetchRoleWidths,
     }}>
       {children}
     </RoleViewContext.Provider>

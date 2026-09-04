@@ -296,6 +296,27 @@ class TestScopeEndpoints:
                     user=caller, platform_db=pg_db, tenant_db=None)
             assert e.value.status_code == 400
 
+    async def test_role_widths_come_back_resolved(self, pg_db, _quiet_trail):
+        # The preview client asks Team Management for every role's
+        # width and never re-derives the built-in rule: a stored row
+        # answers as stored, an absent one as the built-in, owner is
+        # always wide.
+        tm = _quiet_trail
+        acct = (await pg_db.create_account("Scope EP G")).id
+        owner = await pg_db.create_user(9106, acct, role=Role.OWNER)
+        caller = {"account_id": acct, "role": "owner",
+                  "sub": str(owner.telegram_id), "uid": owner.id}
+        await tm.update_role_vehicle_scope(
+            "dispatcher", tm.VehicleScopeUpdate(scope="assigned"),
+            user=caller, platform_db=pg_db, tenant_db=None)
+        widths = (await tm.list_role_vehicle_scopes(
+            user=caller, platform_db=pg_db))["role_vehicle_scopes"]
+        assert widths["dispatcher"] == "assigned"   # the stored row
+        assert widths["driver"] == "assigned"       # built-in, no row
+        assert widths["fleet"] == "all"             # built-in, no row
+        assert widths["owner"] == "all"
+        assert set(widths) == {r.value for r in Role}
+
 
 class TestMembersListCarriesWidth:
     @pytest.mark.asyncio

@@ -94,7 +94,8 @@ export function generateNav(
   activeView: string,
   has: (...flags: string[]) => boolean,
   enabledModules: string[] | undefined,
-  /** The member's unit width from ``/me`` (Team Management's answer).
+  /** The ACTIVE VIEW's unit width (Team Management's answer): the
+   *  member's own from ``/me``, or the previewed role's.
    *  ``undefined`` = not loaded: treated as wide, because the sidebar
    *  is discovery, not a boundary — every route and API gates on its
    *  own.  Narrowing the nav on a missing value would hide granted
