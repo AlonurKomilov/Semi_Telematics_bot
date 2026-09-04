@@ -27,6 +27,7 @@ import type { AnyColumn } from '../../types';
 import UtilizationSummary from './UtilizationSummary';
 import Mileage from './Mileage';
 import VehicleManageDialog from './VehicleManageDialog';
+import { SOURCE_LABEL } from './sourceLabels';
 import VehiclesConfigPanel from './config/VehiclesConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import DeviceEventsCard from './DeviceEventsCard';
@@ -36,12 +37,11 @@ const TYPE_LABEL: Record<string, string> = {
   truck: 'Truck', trailer: 'Trailer', other: 'Other',
 };
 
-// The wire says `manual`; a person reading the grid gets "Local" —
-// somebody on 4truck added this truck by hand.  Provider names are
-// simply themselves.
-const SOURCE_VALUE_LABEL: Record<string, string> = {
-  samsara: 'Samsara', datatruck: 'Datatruck', manual: 'Local',
-};
+// One spelling per provider, owned by SourceMarks — the column, the
+// detail header and the Source card all read it from there, so a
+// rename cannot land in two of the three.  (`manual` reads as "Local":
+// somebody on 4truck added this truck by hand.)
+const SOURCE_VALUE_LABEL = SOURCE_LABEL;
 
 // Personas that benefit from the 30-day utilization roll-up at the top
 // of the Vehicles page.  Drivers + Dispatch don't need it (drivers care

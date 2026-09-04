@@ -7,9 +7,13 @@
  * the title is always known.
  */
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
+import { apiJSON } from '../../../api/client';
 import { Callout } from '../../../components/callouts';
 import DeviceEventsCard from '../DeviceEventsCard';
+import SourceMarks from '../SourceMarks';
+import type { ProviderLink } from '../sourceLabels';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { useVehicle, useVehicleCallouts } from './_shared/useVehicle';
 import type { VehicleSectionProps } from './_shared/types';
@@ -21,6 +25,17 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
   // find empty further down the page.
   const callouts = useVehicleCallouts(vehicleName, company);
   const { has } = useViewPermissions();
+
+  // The same query key the Source card uses, so the two share ONE
+  // request however the page is laid out.  A missing link costs a mark
+  // its door, never the header its render.
+  const registryId = data?.registry_id ?? null;
+  const { data: linkData } = useQuery<{ links: ProviderLink[] }>({
+    queryKey: ['vehicle-links', registryId],
+    queryFn: () => apiJSON(`/vehicles/registry/${registryId}/links`),
+    enabled: registryId != null,
+    staleTime: 30 * 60 * 1000,
+  });
 
   // Spans the full grid width so the page heading sits above the
   // 2-col card grid on lg, even when this section is rendered as part
@@ -34,11 +49,15 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
         <ChevronLeft className="size-3.5" />
         Back to vehicles
       </Link>
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <h1 className="text-2xl font-bold">{vehicleName}</h1>
         {data?.company && (
           <span className="text-sm text-muted-foreground">{data.company}</span>
         )}
+        {/* Who supplies this record, next to what it is called — the
+            Source card at the foot of the page keeps the detail. */}
+        <SourceMarks sources={data?.sources} source={data?.source}
+                     links={linkData?.links ?? []} className="self-center" />
       </div>
       {/* Identity questions about THIS truck, in the same lane as its
           callouts.  They used to live only on the fleet-wide review

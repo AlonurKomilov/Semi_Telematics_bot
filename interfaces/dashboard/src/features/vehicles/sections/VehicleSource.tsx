@@ -21,18 +21,8 @@ import { apiJSON } from '../../../api/client';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 import { useVehicle } from './_shared/useVehicle';
+import { orderedSources, sourceLabel, type ProviderLink } from '../sourceLabels';
 import type { VehicleSectionProps } from './_shared/types';
-
-interface ProviderLink {
-  source: string;
-  label: string;
-  url: string;
-}
-
-/** The wire says `manual`; a person reading it gets "Local" — the same
- *  word the Source column and the manage dialog use. */
-const sourceLabel = (x: string) =>
-  x === 'manual' ? 'Local' : x.charAt(0).toUpperCase() + x.slice(1);
 
 export default function VehicleSource({ vehicleName, company }: VehicleSectionProps) {
   const { vehicle } = useVehicle(vehicleName, company);
@@ -47,9 +37,7 @@ export default function VehicleSource({ vehicleName, company }: VehicleSectionPr
     staleTime: 30 * 60 * 1000,
   });
 
-  const all = vehicle?.sources?.length
-    ? vehicle.sources
-    : (vehicle?.source ? [vehicle.source] : []);
+  const all = orderedSources(vehicle?.sources, vehicle?.source);
   const links = data?.links ?? [];
 
   // A truck the registry has not caught yet has no provenance to state
