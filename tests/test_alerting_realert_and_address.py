@@ -40,10 +40,16 @@ class TestReAlertConfig:
 
     def test_build_keyboard_critical_with_ack(self):
         from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        from capabilities.alerting.spine_actions import ACK_ACTION
         kb = build_alert_button_specs(AlertSeverity.CRITICAL, "CO1", "101", ack_id=42)
         labels = [b["text"] for r in kb for b in r]
         callbacks = [b.get("callback_data") for r in kb for b in r]
-        assert "✅ Acknowledge" in labels
+        # Read the label from the SSOT, not a copy of it: this test
+        # spelled "✅ Acknowledge" and went red when the button became
+        # "✅ Done".  What the test is actually for is that the ack
+        # button is DRAWN and carries its callback — the wording is
+        # spine_actions' to choose.
+        assert ACK_ACTION["label"] in labels
         assert "🤖 AI Diagnose" in labels
         assert "📋 View Truck #101" in labels
         assert "ack_alert_42" in callbacks
@@ -52,9 +58,10 @@ class TestReAlertConfig:
 
     def test_build_keyboard_warning_with_ack(self):
         from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        from capabilities.alerting.spine_actions import ACK_ACTION
         kb = build_alert_button_specs(AlertSeverity.WARNING, "CO1", "202", ack_id=99)
         labels = [b["text"] for r in kb for b in r]
-        assert "✅ Acknowledge" in labels
+        assert ACK_ACTION["label"] in labels
         assert "🤖 AI Diagnose" in labels
 
     def test_build_keyboard_health_type(self):

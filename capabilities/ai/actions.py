@@ -51,6 +51,12 @@ HIGH_RISK_WRITES_ENABLED = False
 # the moment a new executor invents a third.
 _AI_TRAIL_ENTITY: dict[str, str] = {
     "vehicle_inventory": "inventory_item",
+    # A filed document is an act on the TRUCK, not a trail of its own:
+    # the router files it that way for the same reason (someone asking
+    # "what happened to unit 110?" wants its papers, its VIN changes
+    # and its archive in one list).  The executor's target_id is
+    # already the vehicle's id, so the AI write lands in that same list.
+    "vehicle_document": "vehicle",
 }
 
 

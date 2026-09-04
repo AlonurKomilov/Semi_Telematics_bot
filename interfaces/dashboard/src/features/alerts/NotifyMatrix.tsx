@@ -37,6 +37,9 @@ const TYPE_LABEL: Record<string, string> = {
   camera: 'Camera Issues',
   parking: 'Unsafe Parking',
   maintenance: 'Maintenance Due',
+  // The same name the Telegram forum topic carries, so one person
+  // reading both surfaces sees one feature, not two.
+  vehicle_documents: 'Vehicle Documents',
 };
 
 interface ChannelPrefs {
