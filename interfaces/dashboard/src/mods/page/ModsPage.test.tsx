@@ -101,9 +101,23 @@ describe('an item', () => {
       expect(box.textContent, `${label} missing — the item level is not the card's Section`).toContain(label);
   });
 
-  it('renders SizeCard for the size category', () => {
+  it('renders SizeCard for the size category — once, and not inside another card', () => {
     at('/mods/size/global');
-    expect(screen.getByTestId('mods-item').textContent).toContain('Interface size');
+    const box = screen.getByTestId('mods-item');
+    expect(box.textContent).toContain('Interface size');
+    // SizeCard is a Card of its own and owns the #interface-size anchor.
+    // Wrapping it in a second Card enclosed a box in a box and mounted
+    // that id twice — the layout audit's first finding.
+    expect(document.querySelectorAll('#interface-size').length, 'the size anchor is mounted twice').toBe(1);
+    expect(box.querySelectorAll('section section').length, 'a card inside a card').toBe(0);
+  });
+
+  it('renders a section standalone — no stray rule above its heading', () => {
+    at('/mods/interface/corners');
+    const box = screen.getByTestId('mods-item');
+    // On the profile card a Section stacks under the mod row and carries
+    // a top rule; alone in its own card that rule has nothing above it.
+    expect(box.querySelector('.border-t'), 'the section brought its stacking rule with it').toBeNull();
   });
 
   it('renders the sounds section for a sound item', () => {

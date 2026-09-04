@@ -188,14 +188,20 @@ function ItemControl({ id, itemId }: { id: CategoryId; itemId: string }) {
     <div className="space-y-6">
       <Crumb to={`${MODS_PAGE_HREF}/${cat.id}`}>{cat.title}</Crumb>
       <PageHeader icon={iconFor(cat.id, item)} title={item?.title ?? cat.title} />
-      <Card render={<section />} data-testid="mods-item">
-        {cat.id === 'size'
-          ? <SizeCard />
-          : cat.id === 'sounds'
-            ? <Section id="sounds" title="Sounds" label="Reset sounds" axes={{}} />
-            : <Section id={cat.id} title={cat.title} label={`Reset ${cat.title.toLowerCase()}`}
-                axes={SECTION_AXES[cat.id]} />}
-      </Card>
+      {/* SizeCard is already a Card of its own (it owns #interface-size
+          and its pinned styles); wrapping it again would enclose a box
+          in a box and mount that anchor id twice. The other categories
+          render the profile card's Section, standalone, inside one Card. */}
+      {cat.id === 'size'
+        ? <div data-testid="mods-item"><SizeCard /></div>
+        : (
+          <Card render={<section />} data-testid="mods-item">
+            {cat.id === 'sounds'
+              ? <Section id="sounds" title="Sounds" label="Reset sounds" axes={{}} standalone />
+              : <Section id={cat.id} title={cat.title} label={`Reset ${cat.title.toLowerCase()}`}
+                  axes={SECTION_AXES[cat.id]} standalone />}
+          </Card>
+        )}
     </div>
   );
 }

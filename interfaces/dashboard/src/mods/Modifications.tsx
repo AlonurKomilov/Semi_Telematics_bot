@@ -122,11 +122,19 @@ function SectionReset({ label, atDefault, onReset }: {
 /** One category: its heading, its own reset, its controls. Exported
  *  so the /mods page's item level renders the same thing the card does
  *  — one object, one face per surface. */
-export function Section({ id, title, label, axes }: {
+export function Section({ id, title, label, axes, standalone = false }: {
   id: Exclude<ModSection, 'mods'>;
   title: string;
   label: string;
   axes: Record<string, unknown>;
+  /**
+   * On the card, a section STACKS under the mod row and its siblings,
+   * so it carries a top rule and the card's `max-w-2xl` column. On the
+   * /mods page it is the sole content of its own card: a rule with
+   * nothing above it reads as a stray line, and the column cap leaves a
+   * third of the card empty at `lg`. Same section, no chrome of its own.
+   */
+  standalone?: boolean;
 }) {
   const { theme, setTheme } = useMods();
   const { value: pack, setValue: setPack } = usePreference('mods.sound.pack');
@@ -159,7 +167,7 @@ export function Section({ id, title, label, axes }: {
   };
 
   return (
-    <div className="border-t border-border pt-4 max-w-2xl">
+    <div className={standalone ? undefined : 'border-t border-border pt-4 max-w-2xl'}>
       <SectionHeader
         size="card"
         action={<SectionReset label={label} atDefault={atDefault} onReset={reset} />}
