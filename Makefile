@@ -478,7 +478,7 @@ build: dashboard-build miniapp-build system-dashboard-build browser-extension-bu
 ## Build the dashboard React app (always rebuilds)
 dashboard-build:
 	@echo "   🔨 Building dashboard (~1-3 min)..."
-	@cd interfaces/dashboard && npm run build
+	@scripts/build_spa.sh dashboard
 	@echo "   ✅ Dashboard built → interfaces/dashboard/dist/"
 
 ## Build the operator-only system console.  Installs deps on first run.
@@ -487,7 +487,7 @@ browser-extension-build:
 	@if [ ! -d interfaces/browser_extension/node_modules ]; then \
 		cd interfaces/browser_extension && npm install --silent; \
 	fi
-	@cd interfaces/browser_extension && npm run build
+	@scripts/build_spa.sh browser_extension sidepanel.html
 	@echo "   ✅ Extension built → interfaces/browser_extension/dist/ (served by /extension/download)"
 
 system-dashboard-build:
@@ -496,7 +496,7 @@ system-dashboard-build:
 		echo "   📦 Installing system-dashboard deps (first run)..."; \
 		cd interfaces/system_dashboard && npm install --silent; \
 	fi
-	@cd interfaces/system_dashboard && npm run build
+	@scripts/build_spa.sh system_dashboard
 	@echo "   ✅ System console built → interfaces/system_dashboard/dist/"
 
 # Everything whose change should invalidate a built bundle.
@@ -899,7 +899,7 @@ miniapp-install:
 ## Build the Mini App for production (output → interfaces/miniapp/dist/)
 miniapp-build:
 	@echo "   🔨 Building Mini App..."
-	@cd interfaces/miniapp && npm run build
+	@scripts/build_spa.sh miniapp
 	@echo "   ✅ Mini App built → interfaces/miniapp/dist/"
 
 ## Start Mini App dev server (port 8003, API proxied to localhost:8000)

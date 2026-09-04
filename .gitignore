@@ -29,6 +29,10 @@ env/
 interfaces/dashboard/dist/
 interfaces/miniapp/dist/
 interfaces/system_dashboard/dist/
+# scripts/build_spa.sh stages a build here and swaps it in, so nginx
+# never serves a half-written dist; dist.prev is the outgoing one.
+interfaces/*/dist.staging/
+interfaces/*/dist.prev/
 node_modules/
 *.tar.gz
 
