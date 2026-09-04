@@ -28,7 +28,7 @@ import { ExternalLink } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Tip } from '../../components/tooltip';
-import { orderedSources, sourceLabel, type ProviderLink } from './sourceLabels';
+import { orderedSources, positionSources, sourceLabel, type ProviderLink } from './sourceLabels';
 import { providerLogo } from './providerLogos';
 
 /**
@@ -51,7 +51,7 @@ function ChipBody({ source, label }: { source: string; label: string }) {
   const { Mark, kind } = logo;
   const mark = (
     <span className="inline-flex items-center">
-      <Mark className="h-3.5" />
+      <Mark className="h-4" />
     </span>
   );
   if (kind === 'wordmark') return mark;
@@ -70,18 +70,24 @@ function ChipBody({ source, label }: { source: string; label: string }) {
 export const MAX_VISIBLE_MARKS = 3;
 
 export default function SourceMarks({
-  sources, source, links = [], showLabel = false, className = '',
+  sources, source, links = [], showLabel = false, positionOnly = false, className = '',
 }: {
   sources?: string[] | null;
   source?: string | null;
   links?: ProviderLink[];
+  /** Map surfaces set this: they ask who supplies the POSITION, and a
+   *  TMS mark beside a moving truck claims credit for someone else's
+   *  work.  The vehicle page shows every contributor, because there it
+   *  is the whole record being described. */
+  positionOnly?: boolean;
   /** Name what the chips ARE. Worth it beside a title, where a bare
    *  "Samsara" could read as a status; noise inside a card that
    *  already says Source in its heading. */
   showLabel?: boolean;
   className?: string;
 }) {
-  const all = orderedSources(sources, source);
+  const everyone = orderedSources(sources, source);
+  const all = positionOnly ? positionSources(everyone) : everyone;
   if (!all.length) return null;
   const linkFor = (s: string) => links.find((l) => l.source === s);
   const shown = all.slice(0, MAX_VISIBLE_MARKS);
@@ -108,7 +114,7 @@ export default function SourceMarks({
                           aria-label={`${why} ${link.label}`} />
                      }>
                 <ChipBody source={s} label={label} />
-                <ExternalLink data-icon="inline-end" aria-hidden />
+                <ExternalLink data-icon="inline-end" aria-hidden className="opacity-70" />
               </Badge>
             ) : (
               <Badge variant="outline" className={i === 0 ? '' : 'text-muted-foreground'}>

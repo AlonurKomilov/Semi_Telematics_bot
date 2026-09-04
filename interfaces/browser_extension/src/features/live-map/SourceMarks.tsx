@@ -11,7 +11,7 @@
  * can.
  */
 import type { ProviderLink } from './links';
-import { orderedSources, providerLogo, sourceLabel } from './providerLogos';
+import { orderedSources, positionSources, providerLogo, sourceLabel } from './providerLogos';
 
 const MAX_VISIBLE = 3;
 
@@ -20,7 +20,8 @@ export default function SourceMarks({ sources, source, links = [] }: {
   source?: string | null;
   links?: ProviderLink[];
 }) {
-  const all = orderedSources(sources, source);
+  // A panel is a map: it speaks only for who supplies the position.
+  const all = positionSources(orderedSources(sources, source));
   if (!all.length) return null;
   const shown = all.slice(0, MAX_VISIBLE);
   const rest = all.slice(MAX_VISIBLE);

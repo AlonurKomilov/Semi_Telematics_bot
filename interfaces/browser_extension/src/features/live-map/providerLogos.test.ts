@@ -7,7 +7,7 @@
  * per-app, and therefore tested here, is how a mark is USED.
  */
 import { describe, it, expect } from 'vitest';
-import { PROVIDER_LOGO, orderedSources, providerLogo, sourceLabel } from './providerLogos';
+import { PROVIDER_LOGO, PROVIDER_ROLE, SOURCE_LABEL, orderedSources, positionSources, providerLogo, sourceLabel } from './providerLogos';
 
 describe('the panel decides how a mark is used', () => {
   it('Samsara is a wordmark, so it stands in PLACE of the name', () => {
@@ -32,5 +32,21 @@ describe('the panel and the dashboard say the same words', () => {
     expect(orderedSources(['samsara', '', 'manual'], 'samsara')).toEqual(['samsara', 'manual']);
     expect(orderedSources(null, 'datatruck')).toEqual(['datatruck']);
     expect(orderedSources(null, null)).toEqual([]);
+  });
+});
+
+describe('a map speaks only for who supplies the position', () => {
+  it('a TMS does not get credit for a moving truck', () => {
+    expect(positionSources(['samsara', 'datatruck'])).toEqual(['samsara']);
+    expect(positionSources(['datatruck'])).toEqual([]);
+    expect(positionSources(['manual'])).toEqual([]);
+  });
+  it('an unknown provider is excluded, not assumed', () => {
+    expect(positionSources(['someone-new'])).toEqual([]);
+  });
+  it('every provider we can name has a declared role — a new one that\'s\n     forgotten here would silently vanish from the map', () => {
+    for (const key of Object.keys(SOURCE_LABEL)) {
+      expect(PROVIDER_ROLE[key]).toBeDefined();
+    }
   });
 });

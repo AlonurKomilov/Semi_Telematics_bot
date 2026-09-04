@@ -789,7 +789,7 @@ export default function LiveMap() {
                   a provider deep link costs a per-vehicle lookup this
                   panel has no reason to pay. */}
               <SourceMarks sources={selected.sources} source={selected.source}
-                           links={selectedLinks} />
+                           links={selectedLinks} positionOnly />
             </div>
             <p className="text-muted-foreground text-xs">{selected.address || 'Unknown location'}</p>
 

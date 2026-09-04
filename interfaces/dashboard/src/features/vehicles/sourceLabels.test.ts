@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderedSources, sourceLabel, SOURCE_LABEL } from './sourceLabels';
+import { orderedSources, positionSources, sourceLabel, PROVIDER_ROLE, SOURCE_LABEL } from './sourceLabels';
 
 describe('source labels', () => {
   it('the wire word manual reads as Local', () => {
@@ -26,3 +26,24 @@ describe('source labels', () => {
   });
 });
 
+
+describe('a map speaks only for who supplies the position', () => {
+  it('a TMS does not get credit for a moving truck', () => {
+    expect(positionSources(['samsara', 'datatruck'])).toEqual(['samsara']);
+    expect(positionSources(['datatruck'])).toEqual([]);
+    expect(positionSources(['manual'])).toEqual([]);
+  });
+  it('an unknown provider is excluded, not assumed', () => {
+    expect(positionSources(['someone-new'])).toEqual([]);
+  });
+  it('every provider we can name has a declared role', () => {
+    for (const key of Object.keys(SOURCE_LABEL)) {
+      expect(PROVIDER_ROLE[key]).toBeDefined();
+    }
+  });
+  it('the two apps agree on who does what — the panel keeps its own copy', () => {
+    expect(PROVIDER_ROLE.samsara).toBe('telematics');
+    expect(PROVIDER_ROLE.datatruck).toBe('tms');
+    expect(PROVIDER_ROLE.manual).toBe('local');
+  });
+});

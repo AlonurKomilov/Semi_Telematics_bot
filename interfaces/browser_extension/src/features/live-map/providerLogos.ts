@@ -39,6 +39,27 @@ export function orderedSources(
   return all.filter((x): x is string => Boolean(x));
 }
 
+/**
+ * What a provider actually DOES for a truck.  The panel is a MAP: the
+ * only question it asks is who supplies the POSITION, and a TMS mark
+ * beside a moving truck claims credit for something it did not do.
+ * (The dashboard's vehicle page shows every contributor, because there
+ * it is the whole record being described, paperwork and all.)
+ */
+export type ProviderRole = 'telematics' | 'tms' | 'local';
+export const PROVIDER_ROLE: Record<string, ProviderRole> = {
+  samsara: 'telematics',
+  datatruck: 'tms',
+  manual: 'local',
+};
+
+/** An unknown provider is EXCLUDED rather than assumed: claiming a
+ *  position came from somewhere we cannot vouch for is the failure this
+ *  filter exists to prevent. */
+export function positionSources(all: string[]): string[] {
+  return all.filter((s) => PROVIDER_ROLE[s] === 'telematics');
+}
+
 export const PROVIDER_LOGO: Record<string, ProviderLogo> = {
   samsara: { Mark: SamsaraWordmark, kind: 'wordmark' },
 };
