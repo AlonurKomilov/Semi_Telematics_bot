@@ -30,7 +30,7 @@ import Sidebar from '../components/Sidebar';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { ModPanel, useMods } from '../mods';
+import { ModPanel, useMods, surfaceFor } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -64,6 +64,19 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Which named place this route is, stamped on <html> so the injector's
+  // `:root[data-surface="…"]` block can take effect. On <html> rather
+  // than on a wrapper because three MutationObservers read theme tokens
+  // off the document element — a token scoped to a subtree would be
+  // invisible to the 3D truck, the DataGrid canvas and the radius
+  // reader, and they would paint the previous page's colours.
+  useEffect(() => {
+    const s = surfaceFor(pathname);
+    const root = document.documentElement;
+    if (s) root.dataset.surface = s.id;
+    else delete root.dataset.surface;
+  }, [pathname]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">

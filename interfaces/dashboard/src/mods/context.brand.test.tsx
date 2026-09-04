@@ -39,7 +39,7 @@ import { useState } from 'react';
 import { ModProvider, useMods } from './context';
 import { modStyleText } from './inject';
 import { accentTokens } from './theme/accent';
-import { paletteTokens } from './theme/canvas';
+import { paletteTokens, surfaceTokens } from './theme/canvas';
 import { packById } from './catalogue';
 
 const THEME_KEY = 'mods.theme';
@@ -194,5 +194,57 @@ describe('a canvas is a seed too, and it claims the whole palette', () => {
   it('a canvas alone still paints — no custom accent required', () => {
     mount({ canvas: '#ffffff', mode: 'light' });
     expect(modStyleText()).toContain('--background');
+  });
+});
+
+
+describe('a place can wear its own conditions', () => {
+  it('emits a scoped block that the global one does not reach', () => {
+    mount({ surfaces: { loads: '#f5f0e8' }, mode: 'light' });
+    const sheet = modStyleText() ?? '';
+    expect(sheet, 'no scoped block was emitted').toContain(':root[data-surface="loads"]');
+    const want = surfaceTokens('#f5f0e8', packById('blue')!.seed.light, 'light').tokens!;
+    expect(sheet).toContain(`--background: ${want['--background']};`);
+  });
+
+  it('scopes ONLY that place — the others are untouched', () => {
+    mount({ surfaces: { loads: '#f5f0e8' }, mode: 'light' });
+    const sheet = modStyleText() ?? '';
+    for (const s of ['live-map', 'work-orders'])
+      expect(sheet, `${s} got a block nobody asked for`).not.toContain(`data-surface="${s}"`);
+  });
+
+  it('never writes the accent into a scoped block', () => {
+    // The brand is global. A scoped accent would lose under purple,
+    // green and azure while appearing to work under blue.
+    mount({ surfaces: { loads: '#f5f0e8' }, mode: 'light', brand: '#ff6a00' });
+    const sheet = modStyleText() ?? '';
+    const scoped = sheet.slice(sheet.indexOf(':root[data-surface="loads"]'));
+    expect(scoped, 'a scoped block set the accent').not.toContain('--primary:');
+  });
+
+  it('and the global accent still paints', () => {
+    mount({ surfaces: { loads: '#f5f0e8' }, mode: 'light', brand: '#ff6a00' });
+    const sheet = modStyleText() ?? '';
+    const global = sheet.slice(0, sheet.indexOf(':root[data-surface'));
+    expect(global, 'the surface swallowed the accent').toContain('--primary:');
+  });
+
+  it('re-derives a scoped canvas on a mode change like the global one', () => {
+    mount({ surfaces: { loads: '#ffffff' }, mode: 'light' });
+    const lightBg = surfaceTokens('#ffffff', packById('blue')!.seed.light, 'light').tokens!['--background'];
+    expect(modStyleText()).toContain(`--background: ${lightBg};`);
+
+    write({ mode: 'dark', surfaces: { loads: '#030303' } });
+    act(() => bump());
+    const darkBg = surfaceTokens('#030303', packById('blue')!.seed.dark, 'dark').tokens!['--background'];
+    expect(darkBg, 'the two modes derive the same ground — nothing is proved').not.toBe(lightBg);
+    expect(modStyleText(), 'the scoped canvas did not re-derive').toContain(`--background: ${darkBg};`);
+  });
+
+  it('a place whose canvas this mode cannot wear contributes no block', () => {
+    mount({ surfaces: { loads: '#f5f0e8' }, mode: 'dark' });
+    expect(modStyleText() ?? '', 'a refused canvas emitted a block anyway')
+      .not.toContain('data-surface="loads"');
   });
 });

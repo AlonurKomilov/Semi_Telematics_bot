@@ -37,7 +37,7 @@
 import {
   parseHex, oklchToSrgb, contrastRatio, AA_LARGE, type RGB,
 } from './contrast';
-import { derivePalette } from './palette';
+import { derivePalette, DERIVED_TOKENS } from './palette';
 import { TONES, type AccentMode } from './accent';
 
 /**
@@ -129,4 +129,46 @@ export function paletteTokens(
   // canvas has already parsed — so this guards the BRAND the caller
   // resolved, which is the one it did not check.
   return palette ? { tokens: palette } : { tokens: null };
+}
+
+
+/**
+ * The accent family, which a SURFACE may not touch.
+ *
+ * A per-place accent would have to out-rank the `[data-accent]` blocks
+ * the way the global one does, and the `:not([data-mod-accent])`
+ * stand-down that makes that work is written per BLOCK rather than per
+ * surface — so a scoped accent would lose under purple, green and azure
+ * while appearing to work under blue. That is the exact shape of the
+ * bug `accentCascade.test.ts` exists for.
+ *
+ * It is also the right product answer independently: the accent is the
+ * brand, and a brand that changes between pages is not one.
+ */
+const ACCENT_FAMILY = [
+  '--primary', '--primary-foreground', '--primary-hover', '--primary-text',
+] as const;
+
+/** Everything a surface MAY set: the derived palette minus the accent. */
+export const SURFACE_TOKENS = DERIVED_TOKENS
+  .filter((t) => !(ACCENT_FAMILY as readonly string[]).includes(t));
+
+/**
+ * One place's colours, derived from its own canvas.
+ *
+ * The brand still goes in — `derivePalette` needs one and some derived
+ * inks are measured against it — but the accent family comes straight
+ * back out, so what a surface installs is surfaces, inks, boundaries
+ * and the sidebar. The page keeps the accent it always had.
+ */
+export function surfaceTokens(
+  canvas: string,
+  brand: string,
+  mode: AccentMode,
+): CanvasResult {
+  const full = paletteTokens(canvas, brand, mode);
+  if (!full.tokens) return full;
+  const out: Record<string, string> = {};
+  for (const t of SURFACE_TOKENS) if (full.tokens[t]) out[t] = full.tokens[t];
+  return { tokens: out };
 }

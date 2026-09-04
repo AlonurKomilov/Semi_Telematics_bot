@@ -5,7 +5,7 @@ import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
 import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
-import { paletteTokens } from './theme/canvas';
+import { paletteTokens, surfaceTokens } from './theme/canvas';
 import { packById, THEME_PACKS } from './catalogue';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { useAmbient } from './ambient/useAmbient';
@@ -178,8 +178,20 @@ export function ModProvider({ children }: { children: ReactNode }) {
     const picked = full
       ?? (theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null);
     const merged = picked ? { ...(theme.tokens ?? {}), ...picked } : (theme.tokens ?? null);
-    applyModTokens(merged);
-  }, [theme.tokens, theme.brand, theme.canvas, theme.accent, theme.mode]);
+
+    // Per-place canvases. Derived here for the same reason the global
+    // one is: a palette computed for one mode and worn in the other is
+    // unreadable, so the store holds hexes and this runs again on every
+    // mode change. A surface whose canvas the current mode cannot wear
+    // simply contributes nothing — the page falls back to the global
+    // look rather than to half a palette.
+    const scoped: Record<string, Record<string, string>> = {};
+    for (const [id, hex] of Object.entries(theme.surfaces ?? {})) {
+      const t = surfaceTokens(hex, seedBrand, theme.mode).tokens;
+      if (t) scoped[id] = t;
+    }
+    applyModTokens(merged, document, Object.keys(scoped).length ? scoped : null);
+  }, [theme.tokens, theme.brand, theme.canvas, theme.surfaces, theme.accent, theme.mode]);
 
   useEffect(() => {
     applyTheme(theme);

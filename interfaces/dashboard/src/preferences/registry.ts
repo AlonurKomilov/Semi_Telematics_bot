@@ -42,6 +42,7 @@ import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/sound/engine';
 import { KEY_PACKS } from '../mods/sound/keys';
 import { MOD_FONTS } from '../mods/catalogue';
+import { SURFACES } from '../mods/surfaces';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -248,6 +249,15 @@ export interface ModSetting {
    * than the accent's four.
    */
   canvas?: string;
+  /**
+   * A canvas for one named place — `{ 'loads': '#101010' }`.
+   *
+   * The keys are `SURFACES` ids, and only the CANVAS is per-surface:
+   * the accent is the brand and stays global, so a page can change the
+   * conditions it is read in without the product looking like several
+   * products. Seeds again, re-derived per mode like the global one.
+   */
+  surfaces?: Record<string, string>;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -547,6 +557,21 @@ export const DEFS = {
       const canvas = typeof o.canvas === 'string' && parseHex(o.canvas)
         ? o.canvas.trim().toLowerCase()
         : undefined;
+      // Keys checked against the surface list, not merely against being
+      // strings: a stored id for a surface we no longer ship would sit
+      // in the object forever, invisible and unreachable. Capped at the
+      // number of surfaces that exist so a corrupt store cannot grow it.
+      let surfaces: Record<string, string> | undefined;
+      if (o.surfaces && typeof o.surfaces === 'object' && !Array.isArray(o.surfaces)) {
+        const kept: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o.surfaces as Record<string, unknown>)) {
+          if (!SURFACES.some((x) => x.id === k)) continue;
+          if (typeof v !== 'string' || !parseHex(v)) continue;
+          if (Object.keys(kept).length >= SURFACES.length) break;
+          kept[k] = v.trim().toLowerCase();
+        }
+        if (Object.keys(kept).length) surfaces = kept;
+      }
 
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
@@ -570,6 +595,7 @@ export const DEFS = {
         ...(tokens ? { tokens } : {}),
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),
+        ...(surfaces ? { surfaces } : {}),
         color: themeColorAlias(mode, accent),
       };
     },

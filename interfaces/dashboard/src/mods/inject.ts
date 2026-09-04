@@ -199,11 +199,33 @@ export interface ApplyResult {
 export function applyModTokens(
   tokens: Record<string, string> | null,
   doc: Document = document,
+  /**
+   * Per-place overrides — `{ loads: { '--background': '…' } }`.
+   *
+   * Emitted as `:root[data-surface="loads"]`, which is (0,2,0) and so
+   * beats the global `:root` block outright rather than by source
+   * order. That matters because the two blocks live in one sheet and a
+   * future reorder must not silently change which wins.
+   *
+   * These carry surface colours only — never `--primary`. A per-place
+   * accent would have to out-rank the `[data-accent]` blocks the way
+   * the global one does, and the `:not([data-mod-accent])` stand-down
+   * that makes that work is written per BLOCK, not per surface: a
+   * scoped accent would lose under purple, green and azure while
+   * appearing to work under blue, which is the exact failure this
+   * file's header records. The accent stays global on purpose.
+   */
+  surfaces?: Record<string, Record<string, string>> | null,
 ): ApplyResult {
   const result: ApplyResult = { applied: 0, rejectedNames: [], rejectedValues: [] };
   const existing = doc.getElementById(STYLE_ID);
 
-  if (!tokens || Object.keys(tokens).length === 0) {
+  // "Nothing to install" has to count BOTH halves. Checking only the
+  // global set meant a person who themed one place and left the app's
+  // own colours alone got their sheet removed on every render — the
+  // scoped blocks were built and then never reached.
+  const hasScoped = Object.keys(surfaces ?? {}).length > 0;
+  if ((!tokens || Object.keys(tokens).length === 0) && !hasScoped) {
     existing?.remove();
     delete doc.documentElement.dataset.mod;
     doc.documentElement.removeAttribute(ACCENT_ATTR);
@@ -212,7 +234,7 @@ export function applyModTokens(
 
   const decls: string[] = [];
   let ownsAccent = false;
-  for (const [name, value] of Object.entries(tokens)) {
+  for (const [name, value] of Object.entries(tokens ?? {})) {
     if (!isModToken(name)) { result.rejectedNames.push(String(name)); continue; }
     if (!isSafeValue(value)) { result.rejectedValues.push(name); continue; }
     // After both gates, never before: a rejected `--primary` has not been
@@ -223,7 +245,7 @@ export function applyModTokens(
   }
   result.applied = decls.length;
 
-  if (decls.length === 0) {
+  if (decls.length === 0 && !hasScoped) {
     existing?.remove();
     delete doc.documentElement.dataset.mod;
     doc.documentElement.removeAttribute(ACCENT_ATTR);
@@ -231,7 +253,28 @@ export function applyModTokens(
   }
 
   // `@media screen` is the whole print story — see the header.
-  const css = `@media screen {\n  :root {\n    ${decls.join('\n    ')}\n  }\n}`;
+  // A `:root` block is emitted only when there is something to put in
+  // it: an empty rule is still a rule, and one sitting ahead of the
+  // scoped blocks reads as though the global look were being set.
+  const blocks = decls.length
+    ? [`  :root {\n    ${decls.join('\n    ')}\n  }`]
+    : [];
+  for (const [id, own] of Object.entries(surfaces ?? {})) {
+    // Same two gates as the global set. A surface is stored data like
+    // any other, and "it came from our own picker" is not a property
+    // this function can check.
+    if (!/^[a-z][a-z0-9-]*$/.test(id)) { result.rejectedNames.push(String(id)); continue; }
+    const scoped: string[] = [];
+    for (const [name, value] of Object.entries(own)) {
+      if (!isModToken(name)) { result.rejectedNames.push(String(name)); continue; }
+      if (!isSafeValue(value)) { result.rejectedValues.push(name); continue; }
+      scoped.push(`${name}: ${value.trim()};`);
+    }
+    if (!scoped.length) continue;
+    result.applied += scoped.length;
+    blocks.push(`  :root[data-surface="${id}"] {\n    ${scoped.join('\n    ')}\n  }`);
+  }
+  const css = `@media screen {\n${blocks.join('\n')}\n}`;
 
   const el = existing ?? doc.createElement('style');
   if (!existing) {

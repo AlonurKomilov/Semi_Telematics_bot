@@ -14,7 +14,7 @@
  * `Section` already does exactly this — a component takes what it uses
  * rather than being handed eleven props it mostly ignores.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
 import {
@@ -24,6 +24,7 @@ import { accentTokens } from '../theme/accent';
 import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
+import { SURFACES, surfaceById } from '../surfaces';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -127,9 +128,34 @@ const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
 
 /** Colour: the mode, the four packs, and the one nobody curated.
  *  The only Interface group the popover carries. */
+/**
+ * Write a canvas to the global seed or to one place.
+ *
+ * A pure function over the stored shape rather than two call sites,
+ * because the empty case matters: a `surfaces` object with no entries
+ * left is not the same state as one that was never written, and the
+ * sanitiser drops an empty object anyway. Clearing the last surface
+ * removes the field.
+ */
+function writeCanvas(
+  theme: { canvas?: string; surfaces?: Record<string, string> },
+  target: string,
+  hex: string | undefined,
+): { canvas?: string } | { surfaces?: Record<string, string> } {
+  if (!target) return { canvas: hex };
+  const next = { ...(theme.surfaces ?? {}) };
+  if (hex) next[target] = hex;
+  else delete next[target];
+  return { surfaces: Object.keys(next).length ? next : undefined };
+}
+
 export function ColorGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
+  /** Which place the background picker is aiming at. Deliberately NOT
+   *  stored: it is a question about this moment, not a preference, and
+   *  a remembered target is one a person returns to having forgotten. */
+  const [target, setTarget] = useState('');
   // Whether a picked colour is what is actually painting, in the mode
   // being worn — not merely whether one is stored. The pack chips read
   // their highlight off this, because a chip highlighted while its block
@@ -177,12 +203,43 @@ export function ColorGroup({ label }: { label: LabelClass }) {
           make the two look like the same size of decision. */}
       <div className="flex flex-wrap items-center gap-1 mt-1.5">
         <CanvasChip
-          canvas={theme.canvas}
+          canvas={target ? theme.surfaces?.[target] : theme.canvas}
           mode={theme.mode}
-          onPick={(hex) => setTheme({ canvas: hex })}
-          onClear={() => setTheme({ canvas: undefined })}
+          onPick={(hex) => setTheme(writeCanvas(theme, target, hex))}
+          onClear={() => setTheme(writeCanvas(theme, target, undefined))}
         />
       </div>
+
+      {/* WHERE the background applies. The accent has no such row: it
+          is the brand and stays global, so a page can change the
+          conditions it is read in without the product looking like
+          several products.
+
+          A named list rather than a route pattern — we own all
+          forty-one routes, so a pattern would buy nothing and cost
+          the two things a list gives: a typo fails loudly, and the
+          control is a button rather than a text field. */}
+      {/* A plain sub-label, NOT the caps group class. This is a
+          question WITHIN Color — where does the background you just
+          picked apply — and giving it the weight of a heading made it
+          read as a peer of Corners and Material. The section guard
+          caught that: it saw a group the taxonomy had never heard of. */}
+      <p className="text-xs text-foreground mt-2.5 mb-1.5">
+        {t('theme.canvas_scope', 'Background applies to')}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
+          onClick={() => setTarget('')} />
+        {SURFACES.map((s) => (
+          <Chip key={s.id} value={s.id} current={target} label={s.title}
+            onClick={(v) => setTarget(v)} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {target
+          ? `${surfaceById(target)?.title} — ${surfaceById(target)?.why}.`
+          : t('theme.scope_all_hint', 'One background for the whole app.')}
+      </p>
     </div>
   );
 }
