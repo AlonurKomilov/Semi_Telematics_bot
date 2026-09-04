@@ -65,6 +65,8 @@ export default function LiveMapPanel() {
   // it reads the selection from a ref rather than stale state.
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selected ? idOf(selected) : null;
+  const selectedRef = useRef<MapVehicleFeature | null>(null);
+  selectedRef.current = selected;
 
   /** Where the vehicle IS right now: the marker, which the 5-second poll
    *  and the physics keep moving — not the 30-second list snapshot. */
@@ -251,12 +253,26 @@ export default function LiveMapPanel() {
 
   const focus = (f: MapVehicleFeature) => select(f, true);
 
-  // Leaflet caches its container size; after the list opens or closes the
-  // map is a different height and would render tiles for the old one.
+  // Leaflet caches its container size, and TWO things change it: the
+  // list opening or closing, and a vehicle being selected — the card
+  // appears BELOW the map and shortens it.  Selecting centred the truck
+  // against the taller container it was about to stop being, so the
+  // truck ended up sitting low in the map instead of in the middle.
+  // Re-measure once the layout has settled, then put it back.
+  const cardShown = selected != null;
   useEffect(() => {
-    const t = setTimeout(() => map.current?.invalidateSize(), 180);
+    const t = setTimeout(() => {
+      const m = map.current;
+      if (!m) return;
+      m.invalidateSize();
+      if (keepRef.current && selectedRef.current) {
+        const [lat, lng] = liveLatLng(selectedRef.current);
+        centreOn(lat, lng, { animate: false });
+      }
+    }, 180);
     return () => clearTimeout(t);
-  }, [listOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listOpen, cardShown]);
 
   const toggleList = () => {
     const open = !listOpen;
