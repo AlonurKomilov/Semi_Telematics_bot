@@ -51,3 +51,41 @@ def system_trail_context(why: str, **extra) -> dict:
     not.  Both pre-flight scripts build their context here.
     """
     return {"system": why, **extra}
+
+
+def plan_row_sweep(perm_dict: dict) -> tuple[dict, list[str], list[str]]:
+    """What the stored-row sweep would do to one role_permissions row.
+
+    Returns ``(canonical_row, removed_legacy_keys, collisions)``:
+
+      * ``canonical_row`` — the row as ``normalize_stored_perm_keys``
+        reads it today, i.e. exactly the effective grant set, now
+        written under canonical keys only;
+      * ``removed_legacy_keys`` — the legacy keys that vanish;
+      * ``collisions`` — targets where a legacy key and its canonical
+        key were BOTH present with different values, so the OR rule
+        decided.  Reported so the owner can see where a hand-written
+        row's intent was ambiguous; the effective value does not
+        change, because reads already applied the same rule.
+
+    A row with no legacy key plans nothing (idempotent).
+    """
+    from capabilities.permissions.roles import (
+        LEGACY_TO_CANONICAL, normalize_stored_perm_keys,
+    )
+    legacy = [k for k in perm_dict if k in LEGACY_TO_CANONICAL]
+    if not legacy:
+        return dict(perm_dict), [], []
+    canonical = normalize_stored_perm_keys(perm_dict)
+    # A collision is a CANONICAL key disagreeing with what its legacy
+    # keys say — not two halves of a legacy pair differing, which is
+    # the pair's own (narrow-only) meaning and folds by definition.
+    collisions = []
+    legacy_or: dict[str, bool] = {}
+    for k in legacy:
+        t = LEGACY_TO_CANONICAL[k]
+        legacy_or[t] = legacy_or.get(t, False) or bool(perm_dict[k])
+    for target, lv in legacy_or.items():
+        if target in perm_dict and bool(perm_dict[target]) != lv:
+            collisions.append(target)
+    return canonical, sorted(legacy), sorted(collisions)
