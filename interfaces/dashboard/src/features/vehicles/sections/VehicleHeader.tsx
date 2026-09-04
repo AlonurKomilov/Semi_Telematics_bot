@@ -57,7 +57,7 @@ export default function VehicleHeader({ vehicleName, company }: VehicleSectionPr
         {/* Who supplies this record, next to what it is called — the
             Source card at the foot of the page keeps the detail. */}
         <SourceMarks sources={data?.sources} source={data?.source}
-                     links={linkData?.links ?? []} className="self-center" />
+                     links={linkData?.links ?? []} showLabel className="self-center" />
       </div>
       {/* Identity questions about THIS truck, in the same lane as its
           callouts.  They used to live only on the fleet-wide review

@@ -30,21 +30,36 @@ import { Badge } from '@/components/ui/badge';
 import { Tip } from '../../components/tooltip';
 import { orderedSources, sourceLabel, type ProviderLink } from './sourceLabels';
 
+/** How many marks stand on their own before the rest fold into a
+ *  count.  Three is what a vehicle can carry today (created by one
+ *  integration, enriched by another, touched by hand); the cap exists
+ *  so a fourth integration widens a tooltip, not the page title. */
+export const MAX_VISIBLE_MARKS = 3;
+
 export default function SourceMarks({
-  sources, source, links = [], className = '',
+  sources, source, links = [], showLabel = false, className = '',
 }: {
   sources?: string[] | null;
   source?: string | null;
   links?: ProviderLink[];
+  /** Name what the chips ARE. Worth it beside a title, where a bare
+   *  "Samsara" could read as a status; noise inside a card that
+   *  already says Source in its heading. */
+  showLabel?: boolean;
   className?: string;
 }) {
   const all = orderedSources(sources, source);
   if (!all.length) return null;
   const linkFor = (s: string) => links.find((l) => l.source === s);
+  const shown = all.slice(0, MAX_VISIBLE_MARKS);
+  const rest = all.slice(MAX_VISIBLE_MARKS);
 
   return (
     <span className={`inline-flex flex-wrap items-center gap-1 ${className}`}>
-      {all.map((s, i) => {
+      {showLabel && (
+        <span className="text-xs text-muted-foreground">Source</span>
+      )}
+      {shown.map((s, i) => {
         const label = sourceLabel(s);
         // The creator carries the record; the rest add to it. Saying so
         // means the ORDER does not have to be guessed — and it is not
@@ -70,6 +85,13 @@ export default function SourceMarks({
           </Tip>
         );
       })}
+      {rest.length > 0 && (
+        <Tip label={`Also enriched by ${rest.map(sourceLabel).join(', ')}.`}>
+          <Badge variant="outline" className="text-muted-foreground">
+            +{rest.length}
+          </Badge>
+        </Tip>
+      )}
     </span>
   );
 }
