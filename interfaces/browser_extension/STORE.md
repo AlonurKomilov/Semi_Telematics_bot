@@ -43,9 +43,12 @@ profile.
 **Remote code:** No. All code is bundled in the package.
 
 **Data usage (Privacy tab):**
+- Personally identifiable information — the person's display NAME, read from
+  `/extension/me` to label the avatar menu. The extension never sees an email or a
+  password (those are typed on 4truck.us, not in the panel) — but a name is PII, so the
+  box stays CHECKED. Under-declaring is what gets an item pulled.
 - Authentication information — a sign-in token, stored locally, received from 4truck after
-  the person confirms on 4truck.us. The extension never sees an email or a password (those
-  are typed on the website, not in the extension), so PII stays UNchecked.
+  the person confirms on 4truck.us.
 - Location — of the user's *vehicles*, read from 4truck; the extension does not access the
   user's own device location.
 - Not sold, not used for ads, not shared with third parties; used only to display the
