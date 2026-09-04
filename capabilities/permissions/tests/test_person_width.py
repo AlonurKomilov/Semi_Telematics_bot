@@ -76,3 +76,66 @@ class TestPreflightPlanner:
         assert plan_own_preflight("fleet", {}) == []
         assert plan_own_preflight("fleet", {"can_risk_report_own": True}) == [
             ("can_risk_report_own", "staff_own_only")]
+
+
+class TestStaleOwnCrumbs:
+    """The residue the person fold must not enshrine.
+
+    Shapes taken from the owner's pre-flight (2026-09-04): eleven
+    recruiter rows carrying all four own flags the seed turned off in
+    327bf160, and nine fleet rows carrying the risk-summary own flag
+    the fleet seed still grants.
+    """
+
+    def test_the_recruiter_shape_is_residue(self):
+        from capabilities.permissions.fold import stale_own_crumbs
+        row = {"can_risk_report_own": True, "can_driver_pay_view_own": True,
+               "can_coaching_view_own": True, "can_driver_docs_own": True}
+        assert stale_own_crumbs("recruiter", row) == [
+            "can_coaching_view_own", "can_driver_docs_own",
+            "can_driver_pay_view_own", "can_risk_report_own",
+        ]
+
+    def test_the_tier_row_is_swept_with_its_base(self):
+        from capabilities.permissions.fold import stale_own_crumbs
+        assert stale_own_crumbs("recruiter__manager", {"can_coaching_view_own": True}) == [
+            "can_coaching_view_own"]
+
+    def test_a_seed_that_still_grants_the_own_half_is_a_default_not_residue(self):
+        # fleet's risk summary: the CURRENT seed grants it, so the row
+        # is a live default and the owner decides it in the matrix.
+        from capabilities.permissions.fold import stale_own_crumbs
+        assert stale_own_crumbs("fleet", {"can_risk_report_own": True}) == []
+
+    def test_a_seed_that_grants_the_wide_half_is_not_residue_either(self):
+        from capabilities.permissions.fold import stale_own_crumbs
+        # safety seeds can_manage_coaching: the own key beside it is a
+        # default's shadow, not residue.
+        assert "can_coaching_view_own" not in stale_own_crumbs(
+            "safety", {"can_coaching_view_own": True})
+
+    def test_a_wide_grant_on_the_row_is_someones_choice(self):
+        from capabilities.permissions.fold import stale_own_crumbs
+        row = {"can_coaching_view_own": True, "can_manage_coaching": True}
+        assert stale_own_crumbs("recruiter", row) == []
+
+    def test_owner_rows_and_unknown_keys_are_left_alone(self):
+        from capabilities.permissions.fold import stale_own_crumbs
+        row = {"can_risk_report_own": True}
+        assert stale_own_crumbs("owner", row) == []
+        assert stale_own_crumbs("owner__co", row) == []
+        assert stale_own_crumbs("nonsense", row) == []
+
+    def test_a_false_crumb_is_not_swept(self):
+        from capabilities.permissions.fold import stale_own_crumbs
+        assert stale_own_crumbs("recruiter", {"can_risk_report_own": False}) == []
+
+    def test_the_sweep_leaves_every_other_key_exactly_as_stored(self):
+        # The script builds the cleaned row this way; pin the shape.
+        from capabilities.permissions.fold import stale_own_crumbs
+        row = {"can_risk_report_own": True, "can_view_faults": True,
+               "can_invite": False, "can_manage_carrier_directory": True}
+        crumbs = stale_own_crumbs("recruiter", row)
+        cleaned = {k: v for k, v in row.items() if k not in crumbs}
+        assert cleaned == {"can_view_faults": True, "can_invite": False,
+                           "can_manage_carrier_directory": True}

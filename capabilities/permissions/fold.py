@@ -128,3 +128,37 @@ def plan_own_preflight(key: str, perm_dict: dict) -> list[tuple[str, str]]:
         elif has_own and not has_wide:
             out.append((own, "staff_own_only"))
     return out
+
+
+def stale_own_crumbs(key: str, perm_dict: dict) -> list[str]:
+    """The `*_own` keys on one stored row that are seed residue.
+
+    The recruiter seed carried the own-record baseline — own risk
+    summary, own paystubs, own coaching, own documents — until
+    327bf160 turned them off along with the `*_vehicle` crumbs.  The
+    SEED changed; the rows materialised from it never did, so they
+    have kept granting what the seed no longer does.  The `*_vehicle`
+    half of that residue was swept before the pair death; this is the
+    other half, and the person fold would enshrine it as a real view
+    grant — an account-wide one, since staff width is 'all'.
+
+    Deliberately narrow, the same decision the pair sweep used: an own
+    key stored True, for a feature the CURRENT seed grants NEITHER
+    half of, on a row carrying no wide grant for it.  A seed that
+    still grants the own half (fleet's risk summary) is a live
+    default, not residue.  A wide grant on the row is someone's
+    choice, and is never touched.
+    """
+    seed = seed_for_key(key)
+    if seed is None:
+        return []
+    out = []
+    for own, wide in OWN_TO_WIDE_VERB.items():
+        if not perm_dict.get(own, False):
+            continue
+        if getattr(seed, own, False) or getattr(seed, wide, False):
+            continue          # the seed still grants a half: a default
+        if perm_dict.get(wide, False):
+            continue          # the row was given the wide verb: a choice
+        out.append(own)
+    return sorted(out)
