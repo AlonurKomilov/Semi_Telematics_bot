@@ -1489,6 +1489,96 @@ class AlertPrefsRequest(BaseModel):
     alert_resolve_receipts: Optional[bool] = None
 
 
+async def _telegram_health(platform_db, db_user) -> dict:
+    """Can we actually reach this person on Telegram, and if not, how do
+    they fix it?
+
+    The page showed one checkbox and nothing else, so a channel Telegram
+    itself was rejecting read as fully working: five users sat at
+    "Personal alerts enabled" with every alert row On while the bot got
+    "Chat not found" for three weeks.  Email states "Verified" and Push
+    offers "Enable on this device"; Telegram said nothing.
+
+    Two states matter because only two lead to different ACTIONS:
+
+      ok             nothing to do.
+      needs_connect  we cannot reach you — here is the button.
+
+    "Off because you switched it off" is deliberately NOT a problem
+    state: the checkbox already says that, and dressing a choice up as a
+    fault would nag people who meant it.  The two are told apart by the
+    breakage notice the flush writes when a send permanently fails —
+    which is the only evidence that the switch moved on its own.
+    """
+    acct = db_user.account_id
+    row = await platform_db.get_notification_channel(
+        acct, "user", str(db_user.id), "telegram_dm")
+    broken = False
+    try:
+        notices = await platform_db.list_inbox_notices(acct, db_user.id, limit=40)
+        broken = any(n.get("category") == "system.channel_broken"
+                     and "telegram" in (n.get("title") or "").lower()
+                     for n in notices)
+    except Exception:
+        # No evidence either way: say nothing rather than accuse a
+        # working channel of being broken.
+        broken = False
+
+    if not row or not (row.get("address") or ""):
+        state, reason = "needs_connect", (
+            "You haven’t opened the bot yet, so we have nowhere to send "
+            "your Telegram alerts.")
+    elif broken and not row.get("enabled_master"):
+        state, reason = "needs_connect", (
+            "We couldn’t deliver to your Telegram, so it was switched "
+            "off. Reconnect to start receiving alerts again.")
+    else:
+        state, reason = "ok", ""
+
+    out: dict = {"state": state, "reason": reason, "connect_url": ""}
+    if state == "needs_connect":
+        try:
+            out["connect_url"] = await _telegram_connect_url(platform_db, db_user)
+        except Exception:
+            # A missing bot username must not 500 the whole prefs page —
+            # the person still needs to read the rest of it.
+            logger.debug("telegram connect link unavailable", exc_info=True)
+    return out
+
+
+async def _telegram_connect_url(platform_db, db_user) -> str:
+    """A one-click link that opens the bot and binds this chat.
+
+    Reuses the SAME token flow Team Management issues (``start=link_``,
+    consumed by interfaces/bot/registration.py) rather than inventing a
+    second pairing scheme — one flow means one place for it to be wrong.
+    The difference is who it is for: that one is an admin inviting
+    somebody else, this one is you repairing your own channel from the
+    page you are already looking at.
+    """
+    import secrets
+
+    from infra.cache import cache_set as redis_set
+    from interfaces.bot.config import TELEGRAM_LINK_PREFIX
+
+    bot_un = ""
+    try:
+        acct = await platform_db.get_account(db_user.account_id)
+        bot_un = (getattr(acct, "bot_username", "") or "").lstrip("@")
+    except Exception:
+        bot_un = ""
+    if not bot_un:
+        from interfaces.bot.config import bot_username as _global_un
+        bot_un = (_global_un or "").lstrip("@")
+    if not bot_un:
+        return ""
+    token = secrets.token_urlsafe(32)
+    await redis_set(f"{TELEGRAM_LINK_PREFIX}{token}",
+                    {"status": "pending", "user_id": db_user.id},
+                    ttl=72 * 3600)
+    return f"https://t.me/{bot_un}?start=link_{token}"
+
+
 @user_router.get("/me/alerts")
 async def get_my_alerts(
     user: dict = Depends(get_current_user),
@@ -1533,6 +1623,10 @@ async def get_my_alerts(
         ),
         "relevant_types": relevant,
         "toggles": toggles,
+        # Whether the switches above can actually deliver, and the way
+        # to fix it when they can't.  Additive field: an older client
+        # ignores it and behaves exactly as before.
+        "telegram": await _telegram_health(platform_db, db_user),
     }
 
 

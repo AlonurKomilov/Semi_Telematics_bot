@@ -244,3 +244,81 @@ class TestTheCompanyWallOnTriggers:
                 "metric": "def_pct", "threshold": 10,
                 "vehicles": [mine]})
             assert ok.status_code == 200, ok.text
+
+
+class TestTheTelegramCardTellsTheTruth:
+    """A channel that cannot deliver must say so, and say how to fix it.
+
+    The preferences page showed Telegram as one checkbox and nothing
+    else, so a channel Telegram itself was rejecting read as fully
+    working: five users sat at "Personal alerts enabled" with every alert
+    row On while the bot got "Chat not found" for three weeks. Email
+    states "Verified" and Push offers "Enable on this device"; this is
+    Telegram held to the same standard.
+    """
+
+    async def _me(self, db, acct, **kw):
+        from adapters.storage.models import Role
+        return await db.create_user(
+            telegram_id=kw.pop("tg", 7501), account_id=acct.id,
+            role=Role.FLEET, **kw)
+
+    async def test_a_working_channel_asks_for_nothing(self, api):
+        _app, db = api
+        from capabilities.alerting.router import _telegram_health
+        acct = await db.create_account("TG Fine Co")
+        me = await self._me(db, acct, tg=7501)
+        await db.upsert_notification_channel(
+            acct.id, "user", me.id, "telegram_dm", address="7501", verified=True)
+
+        h = await _telegram_health(db, me)
+        assert h["state"] == "ok"
+        assert h["reason"] == "" and h["connect_url"] == ""
+
+    async def test_never_opened_the_bot_gets_a_way_in(self, api):
+        """No address at all — the person has nowhere to receive, and
+        until now the page said nothing about it."""
+        _app, db = api
+        from capabilities.alerting.router import _telegram_health
+        acct = await db.create_account("TG New Co")
+        me = await self._me(db, acct, tg=7502)
+
+        h = await _telegram_health(db, me)
+        assert h["state"] == "needs_connect"
+        assert "haven" in h["reason"]           # "haven't opened the bot yet"
+
+    async def test_a_broken_channel_is_told_apart_from_a_chosen_one(self, api):
+        """The distinction the fix depends on: a channel switched off by
+        the delivery failure looks identical to one the person switched
+        off themselves. Only the breakage notice tells them apart, and
+        dressing a deliberate choice up as a fault would nag people who
+        meant it."""
+        _app, db = api
+        from capabilities.alerting.router import _telegram_health
+        acct = await db.create_account("TG Broken Co")
+        me = await self._me(db, acct, tg=7503)
+        await db.upsert_notification_channel(
+            acct.id, "user", me.id, "telegram_dm", address="7503", verified=True)
+        await db.disable_notification_channel(
+            acct.id, "user", str(me.id), "telegram_dm")
+
+        # Switched off, no breakage on record → the person's own choice.
+        assert (await _telegram_health(db, me))["state"] == "ok"
+
+        # The flush records a failure → now it is a fault, with a way out.
+        await db.add_inbox_notice(
+            acct.id, me.id, category="system.channel_broken",
+            title="Telegram is disconnected", body="", severity="warning")
+        h = await _telegram_health(db, me)
+        assert h["state"] == "needs_connect"
+        assert "couldn" in h["reason"]          # "we couldn't deliver"
+
+    async def test_the_prefs_endpoint_carries_it(self, api):
+        app, db = api
+        acct = await db.create_account("TG Route Co")
+        me = await self._me(db, acct, tg=7504)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as c:
+            r = await c.get("/api/user/me/alerts", headers=_headers(me, acct))
+        assert r.status_code == 200, r.text
+        assert r.json()["telegram"]["state"] == "needs_connect"

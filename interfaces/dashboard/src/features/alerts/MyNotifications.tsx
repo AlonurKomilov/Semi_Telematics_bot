@@ -26,7 +26,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';
@@ -54,6 +54,10 @@ interface AlertPrefsResponse {
   alert_resolve_receipts: boolean;
   relevant_types: string[];
   toggles: Record<string, boolean>;
+  /** Whether the switches can actually deliver, and how to fix it when
+   *  they can't. Additive — an older server omits it and the card falls
+   *  back to showing only the master switch, as before. */
+  telegram?: { state: string; reason: string; connect_url: string };
 }
 
 export default function MyNotifications() {
@@ -162,6 +166,34 @@ export default function MyNotifications() {
           <p className="text-xs text-muted-foreground mb-3">
             Direct messages from the bot to your personal chat.
           </p>
+          {/* Telegram used to show a checkbox and nothing else, so a
+              channel Telegram itself was rejecting read as fully working
+              — five users sat at "enabled" with every row On while the
+              bot got "Chat not found" for three weeks.  Email states
+              "Verified" and Push offers "Enable on this device"; this is
+              Telegram held to the same standard, and it carries the way
+              OUT rather than only the diagnosis. */}
+          {prefs.telegram?.state === 'needs_connect' && (
+            <div className="mb-3 rounded-md border border-warn/40 bg-warn-bg/40 p-3">
+              <p className="text-xs text-warn inline-flex items-start gap-1.5">
+                <AlertTriangle className="size-3.5 shrink-0 mt-px" aria-hidden />
+                <span>{prefs.telegram.reason}</span>
+              </p>
+              {prefs.telegram.connect_url && (
+                <a
+                  href={prefs.telegram.connect_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 h-8 px-3 rounded-md
+                             bg-primary text-primary-foreground text-xs font-medium
+                             hover:bg-primary-hover transition-colors min-h-tap"
+                >
+                  <Send className="size-3.5" aria-hidden />
+                  Connect Telegram
+                </a>
+              )}
+            </div>
+          )}
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -215,7 +247,13 @@ export default function MyNotifications() {
       <NotifyMatrix
         onSaved={flashSaved}
         relevantTypes={prefs.relevant_types}
-        telegramMasterOn={prefs.alerts_on}
+        // A column that cannot deliver must say so rather than
+        // render a live-looking tick — the rule the Push column
+        // already follows, and the one Telegram was exempt from.
+        telegramMasterOn={prefs.alerts_on
+          && prefs.telegram?.state !== 'needs_connect'}
+        telegramBlockedReason={prefs.telegram?.state === 'needs_connect'
+          ? prefs.telegram.reason : ''}
         telegramToggles={prefs.toggles}
         onTelegramToggle={setField}
         refreshKey={refreshKey}
@@ -229,7 +267,13 @@ export default function MyNotifications() {
           is the whole grain the matrix above cannot express. */}
       <SourceLabel>My triggers — where they reach you</SourceLabel>
       <TriggerDeliveryMatrix
-        telegramMasterOn={prefs.alerts_on}
+        // A column that cannot deliver must say so rather than
+        // render a live-looking tick — the rule the Push column
+        // already follows, and the one Telegram was exempt from.
+        telegramMasterOn={prefs.alerts_on
+          && prefs.telegram?.state !== 'needs_connect'}
+        telegramBlockedReason={prefs.telegram?.state === 'needs_connect'
+          ? prefs.telegram.reason : ''}
         refreshKey={refreshKey}
         onSaved={flashSaved}
       />

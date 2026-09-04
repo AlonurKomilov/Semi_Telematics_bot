@@ -56,9 +56,12 @@ interface ChannelPrefs {
 const API = '/alerts/triggers';
 
 export default function TriggerDeliveryMatrix({
-  telegramMasterOn, refreshKey, onSaved,
+  telegramMasterOn, telegramBlockedReason, refreshKey, onSaved,
 }: {
   telegramMasterOn: boolean;
+  /** Why the column is dead, when it is dead for a reason the
+   *  person did not choose. Empty = they switched it off. */
+  telegramBlockedReason?: string;
   /** Bumped by the channel cards after connect/verify/device changes so
    *  the column enable-states stay fresh. */
   refreshKey: number;
@@ -132,7 +135,8 @@ export default function TriggerDeliveryMatrix({
   const pushOn = (push?.devices?.length ?? 0) > 0 && !!push?.enabled_master;
 
   const colHint: Record<string, string> = {
-    telegram_dm: telegramMasterOn ? '' : 'Personal alerts are switched off above',
+    telegram_dm: telegramMasterOn ? ''
+      : (telegramBlockedReason || 'Personal alerts are switched off above'),
     email: emailOn ? '' : 'Connect and verify your email above first',
     web_push: pushOn ? '' : 'Enable push on at least one device above first',
   };

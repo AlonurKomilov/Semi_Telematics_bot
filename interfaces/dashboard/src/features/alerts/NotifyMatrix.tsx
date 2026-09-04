@@ -56,6 +56,9 @@ interface MatrixProps {
    * until the matrix reader flip). */
   relevantTypes: string[];
   telegramMasterOn: boolean;
+  /** Why the column is dead, when it is dead for a reason the
+   *  person did not choose. Empty = they switched it off. */
+  telegramBlockedReason?: string;
   telegramToggles: Record<string, boolean>;
   onTelegramToggle: (field: string, value: boolean) => Promise<void>;
   /** Bumped by the channel cards after connect/verify/device changes so
@@ -66,7 +69,8 @@ interface MatrixProps {
 }
 
 export default function NotifyMatrix({
-  relevantTypes, telegramMasterOn, telegramToggles, onTelegramToggle,
+  relevantTypes, telegramMasterOn, telegramBlockedReason,
+  telegramToggles, onTelegramToggle,
   refreshKey, onSaved,
 }: MatrixProps) {
   const [email, setEmail] = useState<ChannelPrefs | null>(null);
@@ -110,7 +114,8 @@ export default function NotifyMatrix({
   const pushOn = (push?.devices?.length ?? 0) > 0 && !!push?.enabled_master;
 
   const colHint = {
-    telegram: telegramMasterOn ? '' : 'Personal alerts are switched off above',
+    telegram: telegramMasterOn ? ''
+      : (telegramBlockedReason || 'Personal alerts are switched off above'),
     email: emailOn ? '' : 'Connect and verify your email above first',
     push: pushOn ? '' : 'Enable push on at least one device above first',
   };
