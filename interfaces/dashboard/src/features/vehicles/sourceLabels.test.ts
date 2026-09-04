@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderedSources, providerLogo, sourceLabel, PROVIDER_LOGO, SOURCE_LABEL, type ProviderLogo } from './sourceLabels';
+import { orderedSources, sourceLabel, SOURCE_LABEL } from './sourceLabels';
 
 describe('source labels', () => {
   it('the wire word manual reads as Local', () => {
@@ -26,18 +26,3 @@ describe('source labels', () => {
   });
 });
 
-describe('provider logos', () => {
-  it('none yet — the marks render as words, which is the shipped state', () => {
-    expect(providerLogo('samsara')).toBeNull();
-    expect(providerLogo('datatruck')).toBeNull();
-    expect(PROVIDER_LOGO).toEqual({});
-  });
-  it('an entry, when one lands, is a src and optionally a dark variant', () => {
-    const withLogo: Record<string, ProviderLogo> = {
-      samsara: { src: '/integrations/samsara/logo.svg' },
-      datatruck: { src: '/a.svg', srcDark: '/a-dark.svg' },
-    };
-    expect(withLogo.samsara.srcDark).toBeUndefined();
-    expect(withLogo.datatruck.srcDark).toBe('/a-dark.svg');
-  });
-});

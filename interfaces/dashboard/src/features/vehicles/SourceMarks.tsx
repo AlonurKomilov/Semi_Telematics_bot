@@ -19,32 +19,35 @@
  *   a link rather than a button that lands on somebody's dashboard
  *   root. A mark must never look like a door it cannot open.
  *
- * Text marks, not provider logos: we ship no logo assets, a third
- * party's mark carries its own permissions question, and a row of
- * images is weight on a list that is scanned. If logos come later they
- * come inside this component and no call site changes.
+ * A provider with a real mark shows it (providerLogos.ts); one without
+ * shows its name. Both are the same chip and the same call site — which
+ * is why the marks became a component before there was any artwork to
+ * put in one.
  */
 import { ExternalLink } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Tip } from '../../components/tooltip';
-import { orderedSources, providerLogo, sourceLabel, type ProviderLink } from './sourceLabels';
+import { orderedSources, sourceLabel, type ProviderLink } from './sourceLabels';
+import { providerLogo } from './providerLogos';
 
-/** The provider's own mark, when we have one, beside its name — never
- *  instead of it. A logo alone asks the reader to recognise a shape;
- *  the pair is read by everyone and still scannable by shape once it
- *  IS familiar. Empty alt: the word next to it is the label. */
-function ProviderMark({ source }: { source: string }) {
+/**
+ * What goes inside one chip.
+ *
+ * A WORDMARK draws the brand's name, so it stands in PLACE of the text —
+ * "SAMSARA Samsara" is the thing this prevents. A GLYPH is a symbol,
+ * which says nothing to a reader who has not learned it, so it sits
+ * beside the name. A provider with no mark is simply its name.
+ */
+function ChipBody({ source, label }: { source: string; label: string }) {
   const logo = providerLogo(source);
-  if (!logo) return null;
+  if (!logo) return <>{label}</>;
+  const { Mark, kind } = logo;
+  if (kind === 'wordmark') return <Mark className="h-3.5" />;
   return (
     <>
-      <img src={logo.src} alt="" aria-hidden data-icon="inline-start"
-           className={`size-3.5 object-contain ${logo.srcDark ? 'dark:hidden' : ''}`} />
-      {logo.srcDark && (
-        <img src={logo.srcDark} alt="" aria-hidden data-icon="inline-start"
-             className="size-3.5 object-contain hidden dark:block" />
-      )}
+      <Mark className="h-3.5" />
+      {label}
     </>
   );
 }
@@ -93,14 +96,12 @@ export default function SourceMarks({
                        <a href={link.url} target="_blank" rel="noopener noreferrer"
                           aria-label={`${why} ${link.label}`} />
                      }>
-                <ProviderMark source={s} />
-                {label}
+                <ChipBody source={s} label={label} />
                 <ExternalLink data-icon="inline-end" aria-hidden />
               </Badge>
             ) : (
               <Badge variant="outline" className={i === 0 ? '' : 'text-muted-foreground'}>
-                <ProviderMark source={s} />
-                {label}
+                <ChipBody source={s} label={label} />
               </Badge>
             )}
           </Tip>
