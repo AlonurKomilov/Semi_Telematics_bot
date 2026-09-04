@@ -35,9 +35,9 @@ async def dispatcher_kpis(
 
 # ── Incentive runs ───────────────────────────────────────────────────
 #
-# Gated by can_kpi — the owner's 2026-08-17 decision folded the
+# Gated by can_view_kpi — the owner's 2026-08-17 decision folded the
 # separate can_kpi_incentives flag away: the incentives surface IS the
-# Dispatch KPI page, so one flag carries it (granting can_kpi grants
+# Dispatch KPI page, so one flag carries it (granting can_view_kpi grants
 # payout visibility).  The config that FEEDS these runs stays on
 # can_manage_config_all at /kpi/config/incentives.
 
@@ -170,7 +170,7 @@ async def payouts_for_month(month: str, user: dict = Depends(_incentives)):
 @router.get("/dispatch/me")
 async def my_payouts(user: dict = Depends(get_current_user)):
     """A dispatcher's OWN finalized payouts — self-scoped by design:
-    plain auth, no can_kpi (that flag is for the people who RUN the
+    plain auth, no can_view_kpi (that flag is for the people who RUN the
     settlement; this endpoint only ever shows the caller their own
     rows, matched by their user id)."""
     uid = await resolve_user_id(user)

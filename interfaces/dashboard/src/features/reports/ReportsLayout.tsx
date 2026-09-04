@@ -42,12 +42,12 @@ interface SubNavEntry {
 }
 
 const SUB_NAV: SubNavEntry[] = [
-  // Reports landing — gated on can_faults today (faults is the
+  // Reports landing — gated on can_view_faults today (faults is the
   // default tab); fuel/health/efficiency tabs filter further at the
-  // page level.  Hide the tab for personas without can_faults.
-  { to: '',                 label: 'Reports',           icon: FileText,    perms: ['can_faults'] },
-  { to: 'risk-summary',     label: 'Risk Summary',      icon: AlertTriangle, perms: ['can_risk_report_all', 'can_risk_report_own'] },
-  { to: 'cost-reports',     label: 'Cost Reports',      icon: TrendingUp,  perms: ['can_cost_reports'] },
+  // page level.  Hide the tab for personas without can_view_faults.
+  { to: '',                 label: 'Reports',           icon: FileText,    perms: ['can_view_faults'] },
+  { to: 'risk-summary',     label: 'Risk Summary',      icon: AlertTriangle, perms: ['can_view_risk_reports', 'can_risk_report_own'] },
+  { to: 'cost-reports',     label: 'Cost Reports',      icon: TrendingUp,  perms: ['can_view_cost_reports'] },
   // DOT Binder — gated on can_manage_maintenance (managers only).
   // Moved here from the Maintenance page in 2026-06 because it's
   // conceptually a stakeholder-facing audit PDF like Risk Summary,

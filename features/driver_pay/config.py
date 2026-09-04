@@ -10,7 +10,7 @@ blast-radius rule squarely — the same reasoning that put scorecard rules
 and coaching rules behind ``can_manage_config_all``.
 
 WHAT IT COSTS, stated plainly because it is a money feature: a holder of
-``can_driver_pay_admin`` alone can no longer edit bonus rules.  They keep
+``can_manage_driver_pay`` alone can no longer edit bonus rules.  They keep
 everything else — creating and finalizing runs, recomputing, cancelling,
 reading the roster, and setting each driver's own pay via
 ``PUT /driver-pay/settings/{driver_id}``.  Editing the rule set now needs
@@ -20,7 +20,7 @@ WHAT DID **NOT** MOVE, and why.  ``/driver-pay/settings`` looks like
 config and is not: ``list_driver_settings`` returns one row per driver —
 base pay, pay model, rate — and ``PUT /settings/{driver_id}`` sets one
 driver's. That is per-entity DATA, not an account-wide value, so it stays
-on ``can_driver_pay_admin`` with the rest of the feature's operations.
+on ``can_manage_driver_pay`` with the rest of the feature's operations.
 The name is the only thing config-shaped about it.
 
 LIKE SCORECARDS AND COACHING, the verbs stay per-row: rules are rows with

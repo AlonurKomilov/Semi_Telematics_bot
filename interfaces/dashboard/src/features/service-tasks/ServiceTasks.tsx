@@ -60,7 +60,7 @@ export default function ServiceTasks() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { has } = useViewPermissions();
-  const canManage = has('can_service_tasks');
+  const canManage = has('can_manage_service_tasks');
 
   // Page-level surface tabs, like Vendors/Parts.
   const [tab, setTab] = useState<'mine' | 'standard'>('mine');

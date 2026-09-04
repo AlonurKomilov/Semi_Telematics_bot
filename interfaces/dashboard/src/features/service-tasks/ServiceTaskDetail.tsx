@@ -65,7 +65,7 @@ export default function ServiceTaskDetail() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { has } = useViewPermissions();
-  const canManage = has('can_service_tasks');
+  const canManage = has('can_manage_service_tasks');
 
   const [partsOpen, setPartsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);

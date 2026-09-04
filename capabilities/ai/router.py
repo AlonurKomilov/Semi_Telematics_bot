@@ -262,7 +262,7 @@ async def ai_chat(
     role (capabilities/permissions/taxonomy.py): the assistant answers
     only from data the caller's own feature grants already expose, so
     its access IS its features' access.  (This docstring described an
-    older gate — can_faults / can_vehicle_* — for long enough that the
+    older gate — can_view_faults / can_vehicle_* — for long enough that the
     verb migration's sweep is what noticed; the code has gated on
     can_ai_chat since the service split.)
     """

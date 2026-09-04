@@ -15,7 +15,7 @@ was 1,999 lines across 48 endpoints before the same split.
 This module is interface-layer, exactly as ``router.py`` is: both are
 co-located with their domain and both may import ``interfaces.api.deps``.
 
-VIEW AND CONFIG ARE TWO ACTIONS, not two strengths of one.  ``can_kpi``
+VIEW AND CONFIG ARE TWO ACTIONS, not two strengths of one.  ``can_view_kpi``
 is the VIEW action — the grades, already computed.  The thresholds are
 the CONFIG action: the ``kpi_thresholds`` account_settings row, which
 config.md's table puts in the Config column's account scope and the
@@ -23,7 +23,7 @@ blast-radius rule pins there ("anything a computation reads is
 account-wide, always").
 
 So BOTH verbs are gated here, the READ included.  Gating the GET on
-can_kpi was the mixing in miniature: it looked like a harmless read, but
+can_view_kpi was the mixing in miniature: it looked like a harmless read, but
 its only caller is the editor panel.  The KPI page never asks for
 thresholds, because grades arrive already graded.  A read that exists
 solely to populate an editor is part of Config, not part of View.

@@ -39,7 +39,7 @@ const ALL_TABS: { key: TabKey; label: string }[] = REPORTS
 // (executive view); Fleet sees mechanical (faults + health + fuel &
 // DEF + efficiency); Safety sees only efficiency (driver behaviour
 // contributes to scorecards); Dispatcher doesn't reach this page
-// (no can_faults).  HR / Accounting don't reach this page either.
+// (no can_view_faults).  HR / Accounting don't reach this page either.
 //
 // To see another persona's tabs the operator switches view via the
 // persona selector — different subdomain, different active view,
@@ -49,7 +49,7 @@ const TABS_FOR_VIEW: Record<string, ReadonlyArray<TabKey>> = {
   admin:      ['faults', 'fuel', 'health', 'efficiency'],
   fleet:      ['faults', 'fuel', 'health', 'efficiency'],
   safety:     ['efficiency'],
-  dispatcher: ['fuel'],  // dispatcher doesn't have can_faults today but defensive
+  dispatcher: ['fuel'],  // dispatcher doesn't have can_view_faults today but defensive
   hr:         [],
   accounting: ['fuel', 'efficiency'],
   driver:     [],

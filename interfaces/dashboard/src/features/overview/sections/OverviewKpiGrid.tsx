@@ -75,7 +75,7 @@ export default function OverviewKpiGrid({
       tone: (stats.low_fuel ?? 0) > 0 ? 'critical' : 'positive',
       icon: Fuel,
       hint: 'Below 20%',
-      permission: (h) => h('can_fuel'),
+      permission: (h) => h('can_view_fuel'),
       showWhen: () => stats.low_fuel !== undefined,
     },
     {
@@ -86,7 +86,7 @@ export default function OverviewKpiGrid({
       icon: Wrench,
       hint: 'Open diagnostic codes',
       href: '/vehicles',
-      permission: (h) => h('can_faults'),
+      permission: (h) => h('can_view_faults'),
       showWhen: () => stats.faults !== undefined,
     },
     {
@@ -119,7 +119,7 @@ export default function OverviewKpiGrid({
       icon: Sparkles,
       hint: 'Status summary & recommendations',
       href: '/ai/chat?tab=briefing',
-      permission: (h) => h('can_faults'),
+      permission: (h) => h('can_view_faults'),
     },
     {
       key: 'vehiclesLink',

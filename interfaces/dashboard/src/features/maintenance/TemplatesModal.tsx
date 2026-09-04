@@ -32,7 +32,7 @@ interface Props {
 // expected workflow is "delete + recreate" since templates are tiny.
 export function TemplatesModal({ onClose, onChange }: Props) {
   const { has: hasPerm } = useViewPermissions();
-  const canCreateTasks = hasPerm('can_service_tasks');
+  const canCreateTasks = hasPerm('can_manage_service_tasks');
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['maintenance-templates'],

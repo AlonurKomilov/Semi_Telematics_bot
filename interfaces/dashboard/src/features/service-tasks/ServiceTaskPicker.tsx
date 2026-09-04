@@ -30,7 +30,7 @@ interface Props {
   value: string;
   onChange: (next: string) => void;
   className?: string;
-  /** Gates the inline-create affordance (``can_service_tasks``).
+  /** Gates the inline-create affordance (``can_manage_service_tasks``).
    *  Defaults to true so callers needn't thread the permission. */
   canCreate?: boolean;
   /** Adds a blank "— none —" option (work-order task groups allow an

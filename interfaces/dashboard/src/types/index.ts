@@ -1,6 +1,9 @@
 // ── User & Auth ──────────────────────────────────────────────
 
 export interface Permissions {
+  // Canonical verbs (`can_view_x` / `can_manage_x`) are the wire's
+  // names; the bare legacy names beside them are the alias layer's
+  // output for one more release and go with it.
   can_vehicle_all: boolean;
   can_vehicle_vehicle: boolean;
   can_location_map: boolean;
@@ -18,10 +21,15 @@ export interface Permissions {
   can_events_all: boolean;
   can_events_vehicle: boolean;
   can_faults: boolean;
+  can_view_faults: boolean;
   can_health: boolean;
+  can_view_health: boolean;
   can_fuel: boolean;
+  can_view_fuel: boolean;
   can_fuel_cost: boolean;
+  can_view_fuel_cost: boolean;
   can_cost_per_mile: boolean;
+  can_view_cost_per_mile: boolean;
   can_maintenance_all: boolean;
   can_maintenance_vehicle: boolean;
   /** The canonical verb grammar (the verb/scope bridge) — the wire
@@ -42,6 +50,7 @@ export interface Permissions {
   can_view_events: boolean;
   can_view_scorecards: boolean;
   can_cost_reports: boolean;
+  can_view_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;
   can_manage_account: boolean;
@@ -52,16 +61,29 @@ export interface Permissions {
   can_manage_billing: boolean;
   can_invite: boolean;
   can_efficiency: boolean;
+  can_view_efficiency: boolean;
   can_digest: boolean;
   can_manage_poi_layers: boolean;
   can_driver_pay_admin: boolean;
+  can_manage_driver_pay: boolean;
   can_driver_pay_view_own: boolean;
   can_coaching_admin: boolean;
+  can_manage_coaching: boolean;
   can_coaching_view_own: boolean;
   can_manage_driver_docs: boolean;
   can_manage_drivers: boolean;
   can_driver_docs_own: boolean;
   [key: string]: boolean;
+  // Canonical verbs whose legacy name never had a typed key here.
+  can_view_cameras: boolean;
+  can_view_carrier_directory: boolean;
+  can_view_kpi: boolean;
+  can_view_loads: boolean;
+  can_manage_parts: boolean;
+  can_view_risk_reports: boolean;
+  can_manage_service_tasks: boolean;
+  can_view_truck_anatomy: boolean;
+  can_view_vehicle_docs: boolean;
 }
 
 export interface User {

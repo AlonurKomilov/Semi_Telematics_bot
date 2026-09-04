@@ -9,7 +9,7 @@
  * trigger a refetch.
  *
  * The endpoint already exists and is role-aware on the server side —
- * it returns ``can_faults`` / ``can_fuel`` / ``can_maintenance_*``
+ * it returns ``can_view_faults`` / ``can_view_fuel`` / ``can_maintenance_*``
  * gated fields based on the caller's permissions.  So a Safety user
  * who can't see fuel data won't get ``low_fuel`` in the response, and
  * the hero just hides that chip.

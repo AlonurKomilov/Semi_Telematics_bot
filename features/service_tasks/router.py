@@ -6,7 +6,7 @@ one of them.  It did, and the vocabulary drifted into three
 disagreeing copies (dashboard dropdown, maintenance AI tool, work-order
 matcher) with no owner.
 
-Access model: ``can_service_tasks`` owns every WRITE (create / edit /
+Access model: ``can_manage_service_tasks`` owns every WRITE (create / edit /
 archive / delete).  The LIST read is deliberately wider —
 ``can_manage_maintenance`` / ``can_manage_work_orders`` also pass — because
 it feeds the task pickers on both forms; gating the read strictly

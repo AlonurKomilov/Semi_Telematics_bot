@@ -6,12 +6,12 @@ management screen).  Work Orders CONSUMES parts (line resolve at save
 time via the shared ``Database``, autocomplete via ``GET /parts``); it
 never owns them.
 
-Access model: ``can_parts`` — the feature-owned gate (seeded for
+Access model: ``can_manage_parts`` — the feature-owned gate (seeded for
 owner/admin/fleet + the accounting senior tier).  The one shared read
 is the catalog LIST, which also feeds the work-order editor's parts
 autocomplete: it accepts ``can_manage_work_orders`` too, so an account
-that narrows ``can_parts`` doesn't silently break invoice entry.
-Everything else — analytics, edit, merge — is strictly ``can_parts``
+that narrows ``can_manage_parts`` doesn't silently break invoice entry.
+Everything else — analytics, edit, merge — is strictly ``can_manage_parts``
 (a part profile aggregates the whole account's spend, so vehicle-scoped
 users must not read it).
 

@@ -4,7 +4,7 @@ router.py is interface-layer code co-located with its domain
 (docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
 # import interfaces.api.deps; nothing else in the feature may.
 
-Visibility: ``can_loads_all`` sees the account's loads; ``can_loads_own``
+Visibility: ``can_view_loads`` sees the account's loads; ``can_loads_own``
 (drivers) sees only loads linked to the caller's user id.  Writes need the
 delegatable ``can_manage_loads``.
 """

@@ -71,7 +71,7 @@ REPORTS: tuple[ReportSpec, ...] = (
     ReportSpec(
         key="faults", emoji="🔧",
         label_short="Faults", label_full="Faults",
-        permission="can_faults",
+        permission="can_view_faults",
         pdf_generator=generate_fault_report_pdf,
         csv_generator=generate_fault_csv,
         data_method="get_fault_codes",
@@ -79,7 +79,7 @@ REPORTS: tuple[ReportSpec, ...] = (
     ReportSpec(
         key="fuel", emoji="⛽",
         label_short="Fuel & DEF", label_full="Fuel & DEF",
-        permission="can_fuel",
+        permission="can_view_fuel",
         pdf_generator=generate_fuel_report_pdf,
         csv_generator=generate_fuel_csv,
         data_method="get_fuel_levels",
@@ -87,7 +87,7 @@ REPORTS: tuple[ReportSpec, ...] = (
     ReportSpec(
         key="health", emoji="🏥",
         label_short="Health", label_full="Vehicle Health",
-        permission="can_health",
+        permission="can_view_health",
         pdf_generator=generate_vehicle_health_pdf,
         csv_generator=generate_health_csv,
         data_method="get_vehicle_health",
@@ -95,7 +95,7 @@ REPORTS: tuple[ReportSpec, ...] = (
     ReportSpec(
         key="efficiency", emoji="📊",
         label_short="Efficiency", label_full="Efficiency",
-        permission="can_efficiency",
+        permission="can_view_efficiency",
         pdf_generator=generate_fleet_efficiency_pdf,
         csv_generator=generate_efficiency_csv,
         data_method="get_fleet_efficiency",

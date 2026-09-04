@@ -7,7 +7,7 @@
  * scene renders one node per assembly: real GLB when one exists under
  * /models/truck-anatomy/<key>.glb, labeled placeholder otherwise.
  *
- * DARK by permission (owner decision): gated on can_truck_anatomy,
+ * DARK by permission (owner decision): gated on can_view_truck_anatomy,
  * seeded to NOBODY — the owner included — so nothing is marketed
  * before it's ready, anywhere.  The owner self-grants in the
  * Permissions matrix (the flag is deliberately not owner-protected);

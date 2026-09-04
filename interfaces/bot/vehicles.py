@@ -132,7 +132,7 @@ async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if len(matches) == 1:
             vehicle = matches[0]
-            _show_faults = can(user.role, "can_faults")
+            _show_faults = can(user.role, "can_view_faults")
             messages = format_vehicle_detail(
                 vehicle,
                 show_company=len(company_codes) > 1,
@@ -158,7 +158,7 @@ async def cmd_vehicle_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           vehicle_name: str = "", company: str = ""):
     """Generate a single-truck fault detail PDF."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_faults"):
+    if not can(user.role, "can_view_faults"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -214,7 +214,7 @@ async def cmd_vehicle_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 f"\n  {t('vehicle.no_active_faults_caption')}"
             )
 
-        kb = vehicle_kb(vehicle_name, company, show_faults=can(user.role, "can_faults"))
+        kb = vehicle_kb(vehicle_name, company, show_faults=can(user.role, "can_view_faults"))
         msg = await context.bot.send_document(
             chat_id=chat_id,
             document=pdf_buf,
@@ -235,7 +235,7 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
                        company: str | None = None):
     """Generate critical fault report PDF."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_faults"):
+    if not can(user.role, "can_view_faults"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return

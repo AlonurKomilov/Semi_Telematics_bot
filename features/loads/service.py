@@ -3,7 +3,7 @@
 KPI, reports, and AI tools read loads THROUGH here, never by querying the
 table directly (service-contract rule, docs/FEATURES.md).  The visibility
 scope lives here too, so every consumer applies the same rule: callers with
-``can_loads_all`` see the account's loads; own-scope callers (drivers) see
+``can_view_loads`` see the account's loads; own-scope callers (drivers) see
 only loads linked to their user id.
 """
 

@@ -37,7 +37,7 @@ async def _assert_enabled(account_id: int) -> None:
     pdb = get_db()
     acct = await pdb.get_account(account_id)
     # Driver Pay is an Accounting feature (docs/FEATURES.md): available when
-    # the Accounting module is on; who may use it is the can_driver_pay_admin
+    # the Accounting module is on; who may use it is the can_manage_driver_pay
     # permission (masked off with the module).  No standalone switch.
     if acct is None or not module_enabled(
         getattr(acct, "disabled_modules", ""), "accounting",

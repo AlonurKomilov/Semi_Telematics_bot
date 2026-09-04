@@ -1052,7 +1052,7 @@ async def cmd_ai_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show AI-enhanced alert toggle screen."""
     user = context.user_data["_db_user"]
 
-    if not can(user.role, "can_faults"):
+    if not can(user.role, "can_view_faults"):
         if update.callback_query:
             await update.callback_query.answer("No access", show_alert=True)
         return

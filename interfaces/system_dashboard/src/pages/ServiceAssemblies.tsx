@@ -49,7 +49,7 @@ export default function ServiceAssembliesPage() {
         apiJSON<{ assemblies: Assembly[] }>('/system/service-assemblies'),
         // System-owner-gated, like every other call this console makes.
         // This previously fetched the tenant `/service-tasks/systems`,
-        // which is gated on TENANT permissions (can_service_tasks etc.)
+        // which is gated on TENANT permissions (can_manage_service_tasks etc.)
         // — it only worked when the operator's Telegram id also
         // belonged to a customer account holding those perms.  Any
         // operator without that coincidence got a 403 and a page of

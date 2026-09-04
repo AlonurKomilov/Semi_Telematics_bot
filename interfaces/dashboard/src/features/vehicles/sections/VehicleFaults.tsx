@@ -9,8 +9,8 @@
  * AI diagnosis to have lights context.  TanStack Query dedupes when
  * both sections are present.
  *
- * Permission gate: ``can_faults`` controls the fault feed; the AI
- * Diagnose button additionally checks ``can_faults`` (same flag
+ * Permission gate: ``can_view_faults`` controls the fault feed; the AI
+ * Diagnose button additionally checks ``can_view_faults`` (same flag
  * for now — change here if the AI flow gets its own permission).
  */
 import { useState } from 'react';
@@ -34,7 +34,7 @@ import { Sparkles } from 'lucide-react';
 export default function VehicleFaults({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
   const navigate = useNavigate();
-  const hasFaultsPerm = has('can_faults');
+  const hasFaultsPerm = has('can_view_faults');
   // The bridge button only shows to users who can actually create a
   // work order (that route is gated ``can_manage_maintenance``) — else it
   // would just lead to a 403.

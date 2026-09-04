@@ -40,7 +40,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 @router.get("/faults")
 async def report_faults(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission("can_view_faults")),
 ):
     """Fault report — all vehicles with active fault codes.
 
@@ -78,7 +78,7 @@ async def report_faults(
 @router.get("/fuel-levels")
 async def report_fuel_levels(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_fuel")),
+    user: dict = Depends(require_permission("can_view_fuel")),
 ):
     """Live fuel & DEF tank levels from telematics — not the same as
     /costs/fuel (which tracks logged fill-up entries).
@@ -129,7 +129,7 @@ async def report_fuel_levels(
 @router.get("/fuel", include_in_schema=False)
 async def _legacy_report_fuel(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_fuel")),
+    user: dict = Depends(require_permission("can_view_fuel")),
 ):
     """Deprecated alias — use /reports/fuel-levels instead."""
     return await report_fuel_levels(company=company, user=user)
@@ -138,7 +138,7 @@ async def _legacy_report_fuel(
 @router.get("/health")
 async def report_health(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_health")),
+    user: dict = Depends(require_permission("can_view_health")),
 ):
     """Vehicle health — battery, oil, coolant, DEF, engine data."""
     allowed = await get_user_company_codes(user)
@@ -266,7 +266,7 @@ async def report_risk_summary(
     days: int = Query(30, ge=1, le=90),
     company: str | None = Query(None),
     user: dict = Depends(require_permission_any(
-        "can_risk_report_all", "can_risk_report_own",
+        "can_view_risk_reports", "can_risk_report_own",
     )),
 ):
     """Universal Stakeholder Risk Summary — per-subject risk profile.
@@ -355,7 +355,7 @@ async def report_risk_summary_me(
     fmt: str = Query("pdf", pattern="^(pdf|csv)$"),
     days: int = Query(30, ge=1, le=90),
     user: dict = Depends(require_permission_any(
-        "can_risk_report_all", "can_risk_report_own",
+        "can_view_risk_reports", "can_risk_report_own",
     )),
 ):
     """Self-service Risk Summary for the calling user (miniapp shortcut).

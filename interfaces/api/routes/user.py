@@ -170,7 +170,7 @@ async def user_me(
         # now.  Fail-closed by construction (get_member_vehicle_scope).
         "vehicle_scope": _my_scope,
         # Driver Pay is an Accounting feature now — "available" == Accounting
-        # module on (per-user access is the can_driver_pay_admin permission).
+        # module on (per-user access is the can_manage_driver_pay permission).
         # Field name kept for frontend compat.
         "payroll_enabled": "accounting" not in _parse_disabled(
             getattr(acct, "disabled_modules", ""),

@@ -22,16 +22,21 @@ import json
 import re
 import subprocess
 
-from capabilities.permissions.roles import PAIRED_UNIT_FEATURES
+from capabilities.permissions.roles import CANONICAL_TO_LEGACY, PAIRED_UNIT_FEATURES
 
-_NAMES = sorted({n for pair in PAIRED_UNIT_FEATURES.values() for n in pair})
+#: every dying name: the ten pairs AND the eighteen 1:1 renames — the
+#: alias layer serves both, and both go when it goes.
+_NAMES = sorted(
+    {n for pair in PAIRED_UNIT_FEATURES.values() for n in pair}
+    | set(CANONICAL_TO_LEGACY.values())
+)
 _RX = re.compile(r"\b(" + "|".join(map(re.escape, _NAMES)) + r")\b")
 
 #: files where the names legitimately LIVE until the physical flip
 _HOME = re.compile(
     r"(^|/)(tests?/|.*\.test\.|roles\.py|taxonomy\.py|fold\.py|scope\.py|"
     r"migrations\.py|platform_migrations\.py|modules\.py|permRows\.ts|"
-    r"verbGrid\.ts|types/index\.ts|featureCatalog\.ts|RoleViewContext\.tsx|"
+    r"verbGrid\.ts|types/index\.ts|RoleViewContext\.tsx|"
     r"generateNav\.ts|scripts/|node_modules/)"
 )
 
@@ -48,8 +53,11 @@ _HOME = re.compile(
 #: swept canonical the same day).  What remains is EXTENSION_SCOPE's
 #: legacy scope strings — a wire contract with installed extensions,
 #: deleted with the alias layer after one extension release.
+#: 2026-09-04 (later): the eighteen 1:1 renames joined the watched set
+#: after their 156 in-repo readers moved to the canonical names.
 BASELINE: dict[str, int] = json.loads('''
 {
+  "conftest.py": 1,
   "interfaces/api/auth.py": 2
 }
 ''')

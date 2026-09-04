@@ -3,7 +3,7 @@
 Incentive runs decide what people are PAID, so every mutation that can
 move a payout writes a trail event on the run: created, row inputs
 edited (day marks, extras), override set/cleared, finalized, discarded.
-Viewing follows the page's own gate (can_kpi); no restore — a
+Viewing follows the page's own gate (can_view_kpi); no restore — a
 discarded draft is regenerable from its period, not restorable.
 """
 

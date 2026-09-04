@@ -606,7 +606,7 @@ export default function WorkOrderForm() {
   // Matches the backend gate on POST /service-tasks — it was
   // can_manage_maintenance before, which both offered the option to roles
   // the server refuses AND hid it from roles the server allows.
-  const canManageTaskTypes = has('can_service_tasks');
+  const canManageTaskTypes = has('can_manage_service_tasks');
 
   const entriesFor = (task: string) =>
     parts.map((pt, idx) => ({ pt, idx })).filter(e => (e.pt.service_task || '') === task);

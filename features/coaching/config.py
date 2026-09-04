@@ -14,7 +14,7 @@ caps, which live at ``/scorecards/config/*`` behind
 ``account_settings`` never disqualified scorecards and does not
 disqualify these.
 
-``can_coaching_admin`` keeps the feature's real operational work —
+``can_manage_coaching`` keeps the feature's real operational work —
 assigning, cancelling, running the sweep now, reading the roster.  What
 it no longer owns is the rule set those operations execute.
 

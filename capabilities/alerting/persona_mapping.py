@@ -110,11 +110,11 @@ def canonical_types_for_persona(persona: str) -> list[str]:
 # gets Safety Events), that role's group topics — and the alert
 # fan-out — follow automatically.  any-of semantics per type.
 ALERT_TYPE_FEATURE_FLAGS: Final[dict[str, tuple[str, ...]]] = {
-    "faults":      ("can_faults",),
-    "health":      ("can_health",),
-    "fuel":        ("can_fuel",),
+    "faults":      ("can_view_faults",),
+    "health":      ("can_view_health",),
+    "fuel":        ("can_view_fuel",),
     "events":      ("can_view_events",),
-    "camera":      ("can_cameras",),
+    "camera":      ("can_view_cameras",),
     "parking":     ("can_view_parking",),
     "geofence":    ("can_view_geofence",),
     "scorecard":   ("can_view_scorecards",),
@@ -122,7 +122,7 @@ ALERT_TYPE_FEATURE_FLAGS: Final[dict[str, tuple[str, ...]]] = {
     "documents":   ("can_manage_driver_docs",),
     # Vehicle papers — its own row beside the driver one, because the
     # two answer to different grants and reach different desks.
-    "vehicle_documents": ("can_vehicle_docs",),
+    "vehicle_documents": ("can_view_vehicle_docs",),
     "system":      ("can_manage_integrations", "can_manage_account"),
 }
 

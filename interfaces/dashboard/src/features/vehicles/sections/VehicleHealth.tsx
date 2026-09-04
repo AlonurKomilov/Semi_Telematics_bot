@@ -4,7 +4,7 @@
  * account-wide weather feed.
  *
  * Layouts list this for Fleet primary and Safety as incident context.
- * Permission gate (``can_health``) is independent — a user without
+ * Permission gate (``can_view_health``) is independent — a user without
  * that permission renders nothing here even when the layout includes
  * the section.
  */
@@ -45,7 +45,7 @@ interface FleetWeatherResponse {
 export default function VehicleHealth({ vehicleName, company }: VehicleSectionProps) {
   const engineCallouts = useVehicleCallouts(vehicleName, company);
   const { has } = useViewPermissions();
-  const hasHealthPerm = has('can_health');
+  const hasHealthPerm = has('can_view_health');
 
   const { data: health, isLoading: healthLoading } = useQuery<HealthResponse | null>({
     queryKey: ['vehicle-health', vehicleName, company ?? ''],

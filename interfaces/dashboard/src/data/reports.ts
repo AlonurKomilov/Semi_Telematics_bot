@@ -26,10 +26,10 @@ export interface ReportSpec {
 }
 
 export const REPORTS: readonly ReportSpec[] = [
-  { key: 'faults',     emoji: '🔧', labelShort: 'Faults',     labelFull: 'Faults',         permission: 'can_faults',     hasApiExport: true },
-  { key: 'fuel',       emoji: '⛽', labelShort: 'Fuel & DEF', labelFull: 'Fuel & DEF',     permission: 'can_fuel',       hasApiExport: true },
-  { key: 'health',     emoji: '🏥', labelShort: 'Health',     labelFull: 'Vehicle Health', permission: 'can_health',     hasApiExport: true },
-  { key: 'efficiency', emoji: '📊', labelShort: 'Efficiency', labelFull: 'Efficiency',     permission: 'can_efficiency', hasApiExport: true },
+  { key: 'faults',     emoji: '🔧', labelShort: 'Faults',     labelFull: 'Faults',         permission: 'can_view_faults',     hasApiExport: true },
+  { key: 'fuel',       emoji: '⛽', labelShort: 'Fuel & DEF', labelFull: 'Fuel & DEF',     permission: 'can_view_fuel',       hasApiExport: true },
+  { key: 'health',     emoji: '🏥', labelShort: 'Health',     labelFull: 'Vehicle Health', permission: 'can_view_health',     hasApiExport: true },
+  { key: 'efficiency', emoji: '📊', labelShort: 'Efficiency', labelFull: 'Efficiency',     permission: 'can_view_efficiency', hasApiExport: true },
   { key: 'camera',     emoji: '📷', labelShort: 'Cameras',    labelFull: 'Camera Check',   permission: 'can_digest',     hasApiExport: false },
 ] as const;
 

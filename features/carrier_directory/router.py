@@ -1,6 +1,6 @@
 """Carrier Knowledge Base API.
 
-Read (list/detail) is gated on ``can_carrier_directory`` — held by every
+Read (list/detail) is gated on ``can_view_carrier_directory`` — held by every
 ``recruiter`` (employee or manager).  Every write (create/update/delete) is
 gated on ``can_manage_carrier_directory`` — granted only to a recruiting
 MANAGER (``recruiter`` + ``is_manager``, via MANAGER_GRANTS) — so plain

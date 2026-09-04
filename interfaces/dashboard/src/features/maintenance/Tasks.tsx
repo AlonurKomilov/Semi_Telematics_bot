@@ -102,11 +102,11 @@ export default function Tasks() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Inline task creation is gated by can_service_tasks — the picker's
+  // Inline task creation is gated by can_manage_service_tasks — the picker's
   // backend gate.  Offering the "+ Add" option to a role the server
   // will 403 teaches the permission by failure.
   const { has: hasPerm } = useViewPermissions();
-  const canCreateTasks = hasPerm('can_service_tasks');
+  const canCreateTasks = hasPerm('can_manage_service_tasks');
   // Every maintenance WRITE route requires can_manage_maintenance
   // strictly (create, bulk, update, snooze, delete, templates) — a
   // view-only (can_view_maintenance) member is read-only by backend design, and

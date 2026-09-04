@@ -116,7 +116,7 @@ const P_LOCATION = 'can_view_location';
 // derives own-shell vs account-wide placement from the pair.
 const P_VEHICLE = 'can_view_vehicles';
 const P_ALERTS = ['can_view_vehicles'];
-const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', 'can_cost_reports', 'can_digest'];
+const P_REPORTS = ['can_view_faults', 'can_view_risk_reports', 'can_risk_report_own', 'can_view_cost_reports', 'can_digest'];
 
 /** Canonical verb-grammar flags live on the wire (both grammars are
  *  emitted, equal by construction) even where the catalog still holds
@@ -152,12 +152,12 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], kind: 'service', permission: P_REPORTS, navGroup: 'reports' },
   // KPI — the account-wide performance analytics surface (dispatcher grades
   // first; fleet/safety/driver sections later).  Shared-tier, delegatable via
-  // can_kpi.  Tagged `account` (like Billing) so it lives in the Owner/Admin
+  // can_view_kpi.  Tagged `account` (like Billing) so it lives in the Owner/Admin
   // persona's own sidebar — it's management oversight, not a department tool;
   // dispatch/accounting surface it for department leads granted the flag.
-  { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['account', 'dispatch', 'accounting'], tier: 'shared', permission: ['can_kpi'], navGroup: 'reports' },
+  { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['account', 'dispatch', 'accounting'], tier: 'shared', permission: ['can_view_kpi'], navGroup: 'reports' },
   // Self-scoped: the endpoint only ever returns the CALLER's own
-  // finalized payout rows, so no can_* flag gates it — can_kpi is for
+  // finalized payout rows, so no can_* flag gates it — can_view_kpi is for
   // the people who RUN the settlement, not the people it pays.
   { id: 'kpi_my_payouts', labelKey: 'nav.my_payouts',     path: '/kpi/my-payouts', icon: BadgeDollarSign, modules: ['dispatch'], tier: 'shared', permission: null, navGroup: 'reports' },
   { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
@@ -174,7 +174,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Sits directly under Vehicles in the sidebar — a destination, unlike
   // the per-truck card (which is a detail-page section).
   { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_vehicles', navGroup: 'operations', parentId: 'vehicles' },
-  { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
+  { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_view_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────
   { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: 'can_view_maintenance', navGroup: 'operations' },
@@ -182,12 +182,12 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'vendors', labelKey: 'nav.vendors', path: '/vendors', icon: Store,             modules: ['fleet'], tier: 'role', permission: 'can_manage_work_orders', navGroup: 'operations' },
   // Parts — master data + per-part analytics (recurrence, price per
   // vendor).  Graduated from a Work Orders component; feature-owned gate.
-  { id: 'parts', labelKey: 'nav.parts', path: '/parts', icon: Cog,                      modules: ['fleet'], tier: 'role', permission: 'can_parts', navGroup: 'operations' },
-  { id: 'service-tasks', labelKey: 'nav.service_tasks', path: '/service-tasks', icon: ClipboardList, modules: ['fleet'], tier: 'role', permission: 'can_service_tasks', navGroup: 'operations' },
+  { id: 'parts', labelKey: 'nav.parts', path: '/parts', icon: Cog,                      modules: ['fleet'], tier: 'role', permission: 'can_manage_parts', navGroup: 'operations' },
+  { id: 'service-tasks', labelKey: 'nav.service_tasks', path: '/service-tasks', icon: ClipboardList, modules: ['fleet'], tier: 'role', permission: 'can_manage_service_tasks', navGroup: 'operations' },
   // Truck Anatomy — the 3D learning model (education).  DARK FEATURE:
   // seeded to NOBODY, owner included (DARK_FEATURE_FIELDS in roles.py);
   // the nav entry exists only after a grant in the Permissions matrix.
-  { id: 'truck-anatomy', labelKey: 'nav.truck_anatomy', path: '/truck-anatomy', icon: Truck, modules: ['fleet'], tier: 'shared', permission: 'can_truck_anatomy', navGroup: 'operations' },
+  { id: 'truck-anatomy', labelKey: 'nav.truck_anatomy', path: '/truck-anatomy', icon: Truck, modules: ['fleet'], tier: 'shared', permission: 'can_view_truck_anatomy', navGroup: 'operations' },
   { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: 'can_view_inspections', navGroup: 'operations' },
   // Geofences: zones serve both fleet (sites/yards) and dispatch
   // (routing boundaries) — surfaced when EITHER department is on.
@@ -198,7 +198,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Loads — the canonical load/shipment list.  Dispatch owns entry; owners,
   // fleet and drivers read it (drivers see their own — scoped server-side),
   // so it's shared-tier like Vehicles.
-  { id: 'loads',   labelKey: 'nav.loads',   path: '/loads',   icon: Package,       modules: ['dispatch'], tier: 'shared', permission: ['can_loads_all', 'can_loads_own'], navGroup: 'operations' },
+  { id: 'loads',   labelKey: 'nav.loads',   path: '/loads',   icon: Package,       modules: ['dispatch'], tier: 'shared', permission: ['can_view_loads', 'can_loads_own'], navGroup: 'operations' },
   // Parking is a single-purpose feature (UNSAFE-parking events only — no
   // zones or general parking management), so it's role-tier like Safety
   // Events; the module list still lets dispatch + fleet surface it.
@@ -206,14 +206,14 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
 
   // ── SAFETY (behaviour + incidents) ────────────────────────────────
   { id: 'events', labelKey: 'nav.events', path: '/safety-events', icon: AlertTriangle, modules: ['safety', 'hr'], tier: 'role', permission: 'can_view_events', navGroup: 'monitoring' },
-  { id: 'cameras',       labelKey: 'nav.cameras',       path: '/cameras',       icon: Camera,        modules: ['safety', 'fleet'], tier: 'role', permission: ['can_cameras'], navGroup: 'monitoring' },
+  { id: 'cameras',       labelKey: 'nav.cameras',       path: '/cameras',       icon: Camera,        modules: ['safety', 'fleet'], tier: 'role', permission: ['can_view_cameras'], navGroup: 'monitoring' },
   // Scorecards are a Safety/coaching capability — surfaced only when the
   // Safety or HR department is on.  A Fleet-only or Dispatch-only company
   // won't see them (they can enable Safety to get them).
   { id: 'scorecards', labelKey: 'nav.scorecards', path: '/scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: 'can_view_scorecards', navGroup: 'monitoring' },
 
   // ── HR (people) ───────────────────────────────────────────────────
-  { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_coaching_admin'], navGroup: 'people' },
+  { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_manage_coaching'], navGroup: 'people' },
   // Drivers (documents/compliance) — HR owns it; fleet + safety read it.
   { id: 'drivers', labelKey: 'nav.drivers', path: '/workforce/drivers', icon: IdCard, modules: ['hr', 'fleet', 'safety'], tier: 'shared', permission: ['can_manage_driver_docs'], navGroup: 'people' },
   // Recruiting intake — recruiter sends an apply.* link, prospects submit
@@ -221,7 +221,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'applications', labelKey: 'nav.applications', path: '/workforce/applications', icon: UserPlus, modules: ['hr'], tier: 'role', permission: ['can_manage_applications'], navGroup: 'people' },
   // Carrier Knowledge Base — recruiter reference directory of external
   // carriers.  Read for recruiters; managers edit (page-level gate).
-  { id: 'carrier_directory', labelKey: 'nav.carrier_directory', path: '/workforce/carrier-directory', icon: Building2, modules: ['hr'], tier: 'role', permission: ['can_carrier_directory'], navGroup: 'people' },
+  { id: 'carrier_directory', labelKey: 'nav.carrier_directory', path: '/workforce/carrier-directory', icon: Building2, modules: ['hr'], tier: 'role', permission: ['can_view_carrier_directory'], navGroup: 'people' },
   // Working Hours has been folded into Team Management → Working
   // Hours tab.  Sidebar entry removed so operators don't see two
   // doors to the same config (Team Management nav entry covers it).
@@ -229,12 +229,12 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // redirect in router.tsx for any legacy bookmark.
 
   // ── ACCOUNTING (money) ────────────────────────────────────────────
-  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_driver_pay_admin'], navGroup: 'costs' },
+  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_manage_driver_pay'], navGroup: 'costs' },
   // Costs — one accounting-leaning feature with two components (Fuel
   // Costs + Cost per Mile), so both are role-tier; the module lists let
   // dispatch (fuel) and fleet (CPM) surface their half.
-  { id: 'fuel_costs',    labelKey: 'nav.fuel_costs',    path: '/costs/fuel', icon: Fuel,       modules: ['accounting', 'dispatch'], tier: 'role', permission: ['can_fuel_cost'], navGroup: 'costs' },
-  { id: 'cost_per_mile', labelKey: 'nav.cost_per_mile', path: '/costs/cpm',  icon: DollarSign, modules: ['accounting', 'fleet'], tier: 'role', permission: ['can_cost_per_mile'], navGroup: 'costs' },
+  { id: 'fuel_costs',    labelKey: 'nav.fuel_costs',    path: '/costs/fuel', icon: Fuel,       modules: ['accounting', 'dispatch'], tier: 'role', permission: ['can_view_fuel_cost'], navGroup: 'costs' },
+  { id: 'cost_per_mile', labelKey: 'nav.cost_per_mile', path: '/costs/cpm',  icon: DollarSign, modules: ['accounting', 'fleet'], tier: 'role', permission: ['can_view_cost_per_mile'], navGroup: 'costs' },
 
   // ── ACCOUNT ADMIN (always on for owner/admin) ─────────────────────
   // Invites is reached via the Team Management page tab now (navHidden),

@@ -2,7 +2,7 @@
  * Dispatch KPI — the dispatch section's page: the settlement sheet.
  *
  * Owner decision (2026-08-17): the incentives surface IS Dispatch KPI —
- * one page, gated by ``can_kpi`` (the separate can_kpi_incentives flag
+ * one page, gated by ``can_view_kpi`` (the separate can_kpi_incentives flag
  * was folded away; granting KPI grants payout visibility).  The A–D
  * grades page retired with it; its backend endpoint + thresholds
  * config remain for a future return.

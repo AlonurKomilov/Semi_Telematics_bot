@@ -3,7 +3,7 @@
  *
  * SELF-SCOPED by design: the endpoint (/kpi/dispatch/me) only ever
  * returns the caller's own rows, so the route carries no can_* flag —
- * ``can_kpi`` is for the people who RUN the settlement, not the
+ * ``can_view_kpi`` is for the people who RUN the settlement, not the
  * people it pays.  Finalized runs only: a draft number that
  * could still drop is never shown as "your payout".
  */

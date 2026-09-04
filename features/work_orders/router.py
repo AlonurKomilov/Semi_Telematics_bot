@@ -330,7 +330,7 @@ async def create_work_order(
 
 
 # Parts master data GRADUATED to features/parts (own /parts prefix +
-# can_parts gate).  The old /work-orders/parts-catalog URLs live on
+# can_manage_parts gate).  The old /work-orders/parts-catalog URLs live on
 # there as deprecated aliases; this router only CONSUMES parts via
 # ``resolve_or_create_part`` on line saves.
 

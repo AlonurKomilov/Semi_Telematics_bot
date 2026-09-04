@@ -202,7 +202,7 @@ export default function AppRouter() {
         {/* Before the parametric vehicle route for the same reason the
             API mounts its list first — otherwise "documents" resolves
             as a truck name. */}
-        <Route path="vehicles/documents" element={L(<P perm={['can_vehicle_docs']}><VehicleDocuments /></P>)} />
+        <Route path="vehicles/documents" element={L(<P perm={['can_view_vehicle_docs']}><VehicleDocuments /></P>)} />
         <Route path="vehicles/:name" element={L(<P perm={['can_view_vehicles']}><VehicleDetail /></P>)} />
         <Route path="routes" element={L(<P perm={['can_view_routes']}><RoutesPage /></P>)} />
         <Route path="geofences" element={L(<P perm={['can_view_geofence']}><Geofences /></P>)} />
@@ -210,7 +210,7 @@ export default function AppRouter() {
         <Route path="alerts" element={L(<P perm="can_view_vehicles"><Alerts /></P>)} />
         <Route path="scorecards" element={L(<P perm="can_view_scorecards"><Scorecards /></P>)} />
         <Route path="safety-events" element={L(<P perm={['can_view_events']}><Events /></P>)} />
-        <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
+        <Route path="cameras" element={L(<P perm="can_view_faults"><Cameras /></P>)} />
 
         {/* AI Assistant — gate on the SAME flag as the sidebar entry
             (featureCatalog `ai_assistant` → can_ai_chat), so any persona
@@ -232,14 +232,14 @@ export default function AppRouter() {
           path="reports"
           element={L(
             <P perm={[
-              'can_faults', 'can_risk_report_all', 'can_risk_report_own',
-              'can_cost_reports', 'can_digest', 'can_manage_maintenance',
+              'can_view_faults', 'can_view_risk_reports', 'can_risk_report_own',
+              'can_view_cost_reports', 'can_digest', 'can_manage_maintenance',
             ]}><ReportsLayout /></P>
           )}
         >
-          <Route index             element={L(<P perm="can_faults"><Reports /></P>)} />
-          <Route path="risk-summary"     element={L(<P perm={['can_risk_report_all', 'can_risk_report_own']}><RiskSummary /></P>)} />
-          <Route path="cost-reports"     element={L(<P perm="can_cost_reports"><CostReports /></P>)} />
+          <Route index             element={L(<P perm="can_view_faults"><Reports /></P>)} />
+          <Route path="risk-summary"     element={L(<P perm={['can_view_risk_reports', 'can_risk_report_own']}><RiskSummary /></P>)} />
+          <Route path="cost-reports"     element={L(<P perm="can_view_cost_reports"><CostReports /></P>)} />
           <Route path="dot-binder"        element={L(<P perm="can_manage_maintenance"><DotBinder /></P>)} />
           <Route path="scheduled-reports" element={L(<P perm="can_digest"><ScheduledReports /></P>)} />
         </Route>
@@ -249,8 +249,8 @@ export default function AppRouter() {
         <Route path="cost-reports" element={<Navigate to="/reports/cost-reports" replace />} />
 
         {/* Costs */}
-        <Route path="costs/fuel" element={L(<P perm="can_fuel_cost"><FuelCosts /></P>)} />
-        <Route path="costs/cpm" element={L(<P perm="can_cost_per_mile"><CostPerMile /></P>)} />
+        <Route path="costs/fuel" element={L(<P perm="can_view_fuel_cost"><FuelCosts /></P>)} />
+        <Route path="costs/cpm" element={L(<P perm="can_view_cost_per_mile"><CostPerMile /></P>)} />
 
         {/* Maintenance */}
         <Route path="maintenance" element={L(<P perm="can_view_maintenance"><Maintenance /></P>)} />
@@ -263,20 +263,20 @@ export default function AppRouter() {
         {/* Work Orders — separate module from Maintenance.  Maintenance
             tracks "what needs doing"; Work Orders is "what was done"
             (shop visits, costs, parts, attachments). */}
-        <Route path="loads"               element={L(<P perm={['can_loads_all', 'can_loads_own']}><Loads /></P>)} />
+        <Route path="loads"               element={L(<P perm={['can_view_loads', 'can_loads_own']}><Loads /></P>)} />
         {/* /kpi follows the active role view to its section; each
             section is its own page + backend package (per-role KPI
             isolation — sections cannot affect each other). */}
-        <Route path="kpi"                 element={L(<P perm="can_kpi"><KpiEntry /></P>)} />
+        <Route path="kpi"                 element={L(<P perm="can_view_kpi"><KpiEntry /></P>)} />
         {/* The dispatch section's page IS the settlement surface (owner
             decision: one page, one flag).  /kpi/incentives below stays
             as an alias — bookmarks and auto-run notifications link it. */}
-        <Route path="kpi/dispatch"        element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
+        <Route path="kpi/dispatch"        element={L(<P perm="can_view_kpi"><IncentiveRuns /></P>)} />
         {/* Config lives UNDER its section (KPI configuration · Dispatch);
             the old flat URL stays as a redirect for bookmarks. */}
         <Route path="kpi/dispatch/configuration" element={L(<P perm="can_manage_config_all"><KpiConfiguration /></P>)} />
         <Route path="kpi/configuration"   element={<Navigate to="/kpi/dispatch/configuration" replace />} />
-        <Route path="kpi/incentives"      element={L(<P perm="can_kpi"><IncentiveRuns /></P>)} />
+        <Route path="kpi/incentives"      element={L(<P perm="can_view_kpi"><IncentiveRuns /></P>)} />
         {/* Self-scoped (own rows only) — authenticated, no can_* flag. */}
         <Route path="kpi/my-payouts"      element={L(<MyPayouts />)} />
         <Route path="work-orders"         element={L(<P perm="can_view_maintenance"><WorkOrders /></P>)} />
@@ -285,10 +285,10 @@ export default function AppRouter() {
             read it (their WO visibility is per-truck). */}
         <Route path="vendors"             element={L(<P perm="can_manage_work_orders"><Vendors /></P>)} />
         <Route path="vendors/:id"         element={L(<P perm="can_manage_work_orders"><VendorProfile /></P>)} />
-        <Route path="parts"               element={L(<P perm="can_parts"><Parts /></P>)} />
-        <Route path="service-tasks"       element={L(<P perm="can_service_tasks"><ServiceTasks /></P>)} />
-        <Route path="service-tasks/:id"   element={L(<P perm="can_service_tasks"><ServiceTaskDetail /></P>)} />
-        <Route path="parts/:id"           element={L(<P perm="can_parts"><PartDetail /></P>)} />
+        <Route path="parts"               element={L(<P perm="can_manage_parts"><Parts /></P>)} />
+        <Route path="service-tasks"       element={L(<P perm="can_manage_service_tasks"><ServiceTasks /></P>)} />
+        <Route path="service-tasks/:id"   element={L(<P perm="can_manage_service_tasks"><ServiceTaskDetail /></P>)} />
+        <Route path="parts/:id"           element={L(<P perm="can_manage_parts"><PartDetail /></P>)} />
         <Route path="work-orders/new"     element={L(<P perm="can_manage_maintenance"><WorkOrderForm /></P>)} />
         <Route path="work-orders/:id"     element={L(<P perm="can_view_maintenance"><WorkOrderForm /></P>)} />
         {/* Cost Reports route lives under /reports/* (see above) since
@@ -301,11 +301,11 @@ export default function AppRouter() {
         {/* The tour library — browse + re-run every walkthrough. */}
         <Route path="tours" element={L(<ToursPage />)} />
         {/* Truck Anatomy — the taxonomy as a 3D learning model.  Gated
-            by can_truck_anatomy: a DARK feature — seeded to nobody,
+            by can_view_truck_anatomy: a DARK feature — seeded to nobody,
             the owner included — until granted per-account in the
             Permissions matrix.  Whole feature = features/truck-anatomy/
             + this line — removable as a unit. */}
-        <Route path="truck-anatomy" element={L(<P perm="can_truck_anatomy"><TruckAnatomy /></P>)} />
+        <Route path="truck-anatomy" element={L(<P perm="can_view_truck_anatomy"><TruckAnatomy /></P>)} />
 
         {/* Account / Settings pages — clean top-level paths (the
             meaningless /admin/* prefix was retired 2026-06-11).  Each
@@ -373,12 +373,12 @@ export default function AppRouter() {
           path="admin/inspection-template"
           element={<Navigate to="/inspections?tab=template" replace />}
         />
-        <Route path="driver-pay" element={L(<P perm="can_driver_pay_admin"><DriverPay /></P>)} />
-        <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
+        <Route path="driver-pay" element={L(<P perm="can_manage_driver_pay"><DriverPay /></P>)} />
+        <Route path="coaching" element={L(<P perm="can_manage_coaching"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
         <Route path="workforce/applications" element={L(<P perm="can_manage_applications"><Applications /></P>)} />
-        <Route path="workforce/carrier-directory" element={L(<P perm="can_carrier_directory"><CarrierDirectory /></P>)} />
-        <Route path="workforce/carrier-directory/:id" element={L(<P perm="can_carrier_directory"><CarrierProfile /></P>)} />
+        <Route path="workforce/carrier-directory" element={L(<P perm="can_view_carrier_directory"><CarrierDirectory /></P>)} />
+        <Route path="workforce/carrier-directory/:id" element={L(<P perm="can_view_carrier_directory"><CarrierProfile /></P>)} />
         <Route path="*" element={L(<NotFound />)} />
       </Route>
     </Routes>

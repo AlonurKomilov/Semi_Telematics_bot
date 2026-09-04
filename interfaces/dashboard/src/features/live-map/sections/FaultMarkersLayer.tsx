@@ -10,7 +10,7 @@
  *
  * Reads ``vehicles`` from the shared section props (already fetched
  * by the host LiveMap page).  No additional API call.  Permission-
- * gated by ``can_faults`` so the overlay is a no-op for personas
+ * gated by ``can_view_faults`` so the overlay is a no-op for personas
  * without fault access.
  *
  * The fault ring uses the shared ``warn`` map colour, which stays
@@ -38,7 +38,7 @@ export default function FaultMarkersLayer({
   vehicles,
 }: LiveMapSectionProps) {
   const { has } = useViewPermissions();
-  const hasFaultsPerm = has('can_faults');
+  const hasFaultsPerm = has('can_view_faults');
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {

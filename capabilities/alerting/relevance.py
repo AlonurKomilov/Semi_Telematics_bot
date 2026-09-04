@@ -22,7 +22,7 @@ Two callers consume this:
 
 1. ``adapters/storage/users.py:get_typed_alert_subscribers`` —
    subscriber-fetch gate.  Even if a user has ``alert_fuel=1`` cached
-   from before role-filtering, if their role doesn't have ``can_fuel``
+   from before role-filtering, if their role doesn't have ``can_view_fuel``
    they're filtered out.  Prevents UI from lying when toggles are
    hidden for irrelevant types (option B from the design discussion).
 
@@ -50,16 +50,16 @@ from capabilities.permissions.roles import ROLE_PERMISSIONS, FeatureSet
 # ``adapters/storage/platform_schema.py`` for the column list.
 ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
     # Engine fault codes (SPN/FMI).
-    "faults":   "can_faults",
+    "faults":   "can_view_faults",
     # Camera-issue alerts belong to the Cameras feature and gate on its
-    # own permission.  (They rode ``can_faults`` until 2026-07-27 as a
+    # own permission.  (They rode ``can_view_faults`` until 2026-07-27 as a
     # "vehicle-health adjacent" shortcut — owner decision: each alert
     # type obeys its owning feature's permission.)
-    "camera":   "can_cameras",
+    "camera":   "can_view_cameras",
     # Mechanical telemetry — oil / coolant / battery / DEF readings.
-    "health":   "can_health",
+    "health":   "can_view_health",
     # Fuel level + DEF + fuel efficiency events.
-    "fuel":     "can_fuel",
+    "fuel":     "can_view_fuel",
     # Safety / harsh-event alerts (braking, cornering, speeding, etc.).
     "events":   ["can_view_events"],
     # Geofence entry/exit alerts on platform-defined zones.
@@ -77,7 +77,7 @@ ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
     # dispatch explicitly excluded — and dispatch is precisely who needs
     # to know a tractor's insurance lapses on Friday.  Same idea,
     # different audience, so its own category.
-    "vehicle_documents": "can_vehicle_docs",
+    "vehicle_documents": "can_view_vehicle_docs",
 }
 
 

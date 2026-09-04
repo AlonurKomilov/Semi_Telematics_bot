@@ -61,9 +61,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Fleet Reports
     report_items = []
-    if perms.can_faults:
+    if perms.can_view_faults:
         report_items.append("🔧 Faults · 🚨 Critical · 🏥 Health · 📊 Efficiency · 🌡 Weather")
-    if perms.can_fuel:
+    if perms.can_view_fuel:
         report_items.append("⛽ Fuel & DEF levels")
     # Width from the width core (Team Management's three layers) —
     # the vehicles pair is gone; "any vehicle" vs "your vehicle" is a
@@ -96,9 +96,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Cost & Maintenance
     cost_items = []
-    if perms.can_fuel_cost:
+    if perms.can_view_fuel_cost:
         cost_items.append("💰 Fuel cost tracker")
-    if perms.can_cost_per_mile:
+    if perms.can_view_cost_per_mile:
         cost_items.append("📊 Cost per mile")
     if perms.can_view_maintenance:
         cost_items.append("🔧 Maintenance scheduler")

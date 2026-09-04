@@ -20,7 +20,7 @@ from interfaces.bot.auth import _require_registered
 async def cmd_fuelcost(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show fuel cost menu."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_fuel_cost"):
+    if not can(user.role, "can_view_fuel_cost"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -39,7 +39,7 @@ async def cmd_fuelcost(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_fuelcost_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start fuel logging wizard — step 1: truck name."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_fuel_cost"):
+    if not can(user.role, "can_view_fuel_cost"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -157,7 +157,7 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
 async def cmd_fuelcost_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show per-truck fuel cost summary."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_fuel_cost"):
+    if not can(user.role, "can_view_fuel_cost"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return

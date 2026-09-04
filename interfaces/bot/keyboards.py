@@ -55,7 +55,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None,
         has_reports = ((perms.can_view_vehicles and _is_wide(role, wide))
                        or perms.can_view_events)
         has_parking = perms.can_view_parking
-        has_fuel_cost = perms.can_fuel_cost
+        has_fuel_cost = perms.can_view_fuel_cost
 
         row1 = []
         if has_reports:
@@ -177,7 +177,7 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
     perms = get_permissions(role)
     rows = []
 
-    if perms.can_fuel_cost:
+    if perms.can_view_fuel_cost:
         rows.append([InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])

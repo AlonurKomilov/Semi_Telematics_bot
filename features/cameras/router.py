@@ -42,7 +42,7 @@ async def _company_scoped(rows: list[dict], user: dict, tenant_db) -> list[dict]
     company's dashcam frames (24k checks across 6 companies in the live
     account).  It went unnoticed because the only company-restricted
     users today are a dispatcher and two drivers, and none of them holds
-    ``can_cameras``.
+    ``can_view_cameras``.
 
     Fail-open on ambiguity, matching ``filter_by_company_map``: no
     restriction, a cold map, or an unresolved vehicle keeps the row.
