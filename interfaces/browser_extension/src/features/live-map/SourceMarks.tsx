@@ -42,7 +42,13 @@ export default function SourceMarks({ sources, source, links = [] }: {
              title={`${why} — ${link.label.toLowerCase()}`}
              aria-label={`${why}. ${link.label}`}>
             {body}
-            <span aria-hidden style={{ fontSize: 9, opacity: .8 }}>↗</span>
+            {/* A wordmark carries no arrow — its letters sit lower than
+                any icon we could put beside them, so the arrow reads as
+                the bigger of the two.  The link says so in its title
+                and its hover instead. */}
+            {logo?.kind !== 'wordmark' && (
+              <span aria-hidden style={{ fontSize: 9, opacity: .8 }}>↗</span>
+            )}
           </a>
         ) : (
           <span key={s} className="mark" title={why}>{body}</span>

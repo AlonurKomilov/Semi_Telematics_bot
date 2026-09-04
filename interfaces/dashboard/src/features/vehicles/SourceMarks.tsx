@@ -63,6 +63,15 @@ function ChipBody({ source, label }: { source: string; label: string }) {
   );
 }
 
+/** A wordmark's box carries vertical padding its letters do not fill,
+ *  so its CAPS land near ten pixels while the icon ladder starts at
+ *  twelve — the arrow reads as the larger of the two however the mark
+ *  is scaled, and the only sizes that would match are off the ladder.
+ *  So a wordmark chip carries no arrow: it is still a link, and says so
+ *  in its tooltip, its aria-label and its hover. A TEXT chip keeps the
+ *  arrow, where a 12px icon sits beside 12px text and the pair is even. */
+const wearsArrow = (source: string) => providerLogo(source)?.kind !== 'wordmark';
+
 /** How many marks stand on their own before the rest fold into a
  *  count.  Three is what a vehicle can carry today (created by one
  *  integration, enriched by another, touched by hand); the cap exists
@@ -114,7 +123,7 @@ export default function SourceMarks({
                           aria-label={`${why} ${link.label}`} />
                      }>
                 <ChipBody source={s} label={label} />
-                <ExternalLink data-icon="inline-end" aria-hidden className="opacity-70" />
+                {wearsArrow(s) && <ExternalLink data-icon="inline-end" aria-hidden />}
               </Badge>
             ) : (
               <Badge variant="outline" className={i === 0 ? '' : 'text-muted-foreground'}>
