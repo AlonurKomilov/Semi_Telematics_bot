@@ -8,7 +8,7 @@
  * single intensity inventing one.
  */
 import { describe, it, expect } from 'vitest';
-import { itemState, categoryTouched, categoryIntensity } from './state';
+import { itemState, itemSummary, labelOf, categoryTouched, categoryIntensity } from './state';
 import { TAXONOMY, categoryById } from '../taxonomy';
 import { MOD_DEFAULT, SIZE_DEFAULT, DEFS, type ModSetting } from '../../preferences';
 
@@ -86,5 +86,81 @@ describe('categoryIntensity', () => {
 
   it('interface has no single number, and says so with null rather than inventing one', () => {
     expect(categoryIntensity(categoryById('interface')!, theme({ accent: 'purple' }), SIZE_DEFAULT, prefs())).toBeNull();
+  });
+});
+
+
+describe('itemSummary — the tile answers instead of announcing', () => {
+  it('names the value, using the label a pack already ships', () => {
+    expect(itemSummary(item('interface', 'typeface'), theme({ font: 'mono' }), prefs())).toBe('Mono');
+    expect(itemSummary(item('interface', 'theme'), theme({ accent: 'azure' }), prefs())).toContain('Azure');
+  });
+
+  it('title-cases an axis that has no label list anywhere', () => {
+    // radius/material/icons are bare string enums — inventing a fifth
+    // label list for four words would be worse than title-casing.
+    expect(itemSummary(item('interface', 'corners'), theme({ radius: 'pill' }), prefs())).toBe('Pill');
+    expect(itemSummary(item('interface', 'material'), theme({ material: 'glass' }), prefs())).toBe('Glass');
+  });
+
+  it('shows the mode alongside the accent, in the item\'s own axis order', () => {
+    const sum = itemSummary(item('interface', 'theme'), theme({ mode: 'light', accent: 'green' }), prefs());
+    expect(sum).toBe('Light · Green');
+  });
+
+  it('short-circuits to Off when the gate is down — a pack that cannot be heard', () => {
+    const sum = itemSummary(item('sounds', 'keyboard'), theme(),
+      prefs({ 'mods.sound.keyboard': false, 'mods.sound.keyboard.pack': 'soft' }));
+    expect(sum, 'named a keyboard pack while typing makes no sound').toBe('Off');
+  });
+
+  it('names the pack once the gate is up, without saying On as well', () => {
+    const sum = itemSummary(item('sounds', 'keyboard'), theme(),
+      prefs({ 'mods.sound.keyboard': true, 'mods.sound.keyboard.pack': 'soft' }));
+    expect(sum).toBe('Soft');
+  });
+
+  it('says On for a gate that has nothing else to show', () => {
+    expect(itemSummary(item('effects', 'ambient'), theme(), prefs({ 'mods.ambient': true }))).toBe('On');
+    expect(itemSummary(item('effects', 'ambient'), theme(), prefs())).toBe('Off');
+  });
+
+  it('reads the default as a value, not as blank — the tile always says something', () => {
+    for (const cat of TAXONOMY)
+      for (const it of cat.items) {
+        const sum = itemSummary(it, theme(), prefs());
+        // Size's items own no axis and no preference of their own; the
+        // card beneath them is the whole control.
+        if (cat.id === 'size') continue;
+        expect(sum, `${cat.id}/${it.id} shows nothing at all`).toBeTruthy();
+      }
+  });
+});
+
+
+describe('labelOf prefers a pack\'s own label over title-casing its id', () => {
+  /**
+   * Every id shipping today title-cases to its own label, so against
+   * the real lists this branch cannot be seen — a mutation that ignored
+   * the labels entirely passed all 32 tests. The lists are a parameter
+   * for exactly this reason.
+   */
+  const PACK = [[{ id: 'hi-contrast', label: 'High contrast' }]];
+
+  it('uses the label when title-casing would get it wrong', () => {
+    expect(labelOf('hi-contrast', PACK)).toBe('High contrast');
+    // …and the fallback really is wrong for it, or the case proves nothing.
+    expect(labelOf('hi-contrast', [])).toBe('Hi-contrast');
+  });
+
+  it('falls back to title case for an axis no list covers', () => {
+    expect(labelOf('pill', PACK)).toBe('Pill');
+  });
+
+  it('reads booleans and numbers as a person would', () => {
+    expect(labelOf(true)).toBe('On');
+    expect(labelOf(false)).toBe('Off');
+    expect(labelOf(0.4)).toBe('40%');
+    expect(labelOf(undefined)).toBeNull();
   });
 });

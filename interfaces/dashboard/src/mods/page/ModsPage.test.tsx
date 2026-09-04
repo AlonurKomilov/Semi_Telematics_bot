@@ -19,7 +19,8 @@ vi.mock('react-i18next', async (orig) => ({
 import ModsPage from './ModsPage';
 import { ModProvider } from '../context';
 import { TAXONOMY } from '../taxonomy';
-import { preferences } from '../../preferences';
+import { MODS } from '../catalogue';
+import { preferences, MOD_DEFAULT, SIZE_DEFAULT, DEFS } from '../../preferences';
 
 const at = (path: string) => render(
   <MemoryRouter initialEntries={[path]}>
@@ -33,7 +34,18 @@ const at = (path: string) => render(
   </MemoryRouter>,
 );
 
-beforeEach(() => { cleanup(); localStorage.clear(); });
+beforeEach(() => {
+  cleanup();
+  localStorage.clear();
+  // The store keeps values in memory too — clearing storage alone left
+  // one test's mod installed for the next one, and the failure read as
+  // "multiple elements with the text: Cab" three tests later.
+  preferences.set('mods.theme', MOD_DEFAULT);
+  preferences.set('mods.size', SIZE_DEFAULT);
+  for (const k of ['mods.sound.ui', 'mods.sound.keyboard', 'dispatch.soundOn', 'mods.ambient'] as const)
+    preferences.set(k, false);
+  preferences.set('mods.sound.volume', DEFS['mods.sound.volume'].default);
+});
 
 describe('the hub', () => {
   it('shows one tile per category the taxonomy declares', () => {
@@ -59,6 +71,16 @@ describe('the hub', () => {
     expect(hub).toMatch(/\d+ of \d+ changed/);   // interface — no single number
   });
 
+  it('does not print an installed mod\'s reason twice', () => {
+    const cab = MODS.find((m) => m.id === 'cab')!;
+    preferences.set('mods.theme', { ...preferences.get('mods.theme'), mod: cab.id });
+    at('/mods');
+    // `ModControls` already prints `why` under the chip in force; the
+    // hub header repeating it put the same sentence on screen twice.
+    const hits = screen.queryAllByText(cab.why);
+    expect(hits.length, 'the mod\'s reason appears more than once').toBe(1);
+  });
+
   it('renders the mod row at the centre', () => {
     at('/mods');
     expect(screen.getByText('Cab')).toBeTruthy();
@@ -74,6 +96,13 @@ describe('a category', () => {
     expect(grid.querySelectorAll('a').length).toBe(cat.items.length);
     for (const item of cat.items) expect(grid.textContent).toContain(item.title);
     expect(grid.textContent).toMatch(/Default|Changed|Off/);
+  });
+
+  it('shows the current value on the tile, not only that it changed', () => {
+    at('/mods/interface');
+    const corners = screen.getByText('Corners').closest('a')!;
+    // Default is a value too — the tile answers before it is clicked.
+    expect(corners.textContent, 'the tile announces a change without naming it').toContain('Rounded');
   });
 
   it('marks a touched item as changed', () => {

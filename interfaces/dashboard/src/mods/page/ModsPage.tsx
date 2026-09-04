@@ -38,7 +38,9 @@ import SizeCard from '../SizeCard';
 import { modById } from '../catalogue';
 import { TAXONOMY, categoryById, type CategoryId, type TaxonomyItem } from '../taxonomy';
 import { MODS_PAGE_HREF, MODS_HREF } from '../href';
-import { itemState, categoryTouched, categoryIntensity, type TileState } from './state';
+import {
+  itemState, itemSummary, categoryTouched, categoryIntensity, type TileState,
+} from './state';
 
 /**
  * A glyph per tile. Presentation only — the taxonomy stays data, and a
@@ -129,7 +131,14 @@ function Hub() {
           the popover render — a mod is a way of writing the axes, and
           this is where a person picks one before tuning it below. */}
       <Card render={<section />}>
-        <SectionHeader size="card" description={installed?.why ?? 'No mod installed — every category is set by hand.'}>
+        {/* The description is for the NO-MOD case only. When a mod is
+            installed, `ModControls` already prints its `why` under the
+            chip in force (ModPanel.tsx) — repeating it here put the same
+            sentence on the screen twice. */}
+        <SectionHeader
+          size="card"
+          description={installed ? undefined : 'No mod installed — every category is set by hand.'}
+        >
           {installed ? installed.label : 'Your own'}
         </SectionHeader>
         <div className="mt-3 max-w-2xl">
@@ -172,6 +181,10 @@ function CategoryGrid({ id }: { id: CategoryId }) {
             to={`${MODS_PAGE_HREF}/${cat.id}/${item.id}`}
             icon={iconFor(cat.id, item)}
             title={item.title}
+            // The VALUE, not merely that it moved. A tile that says
+            // "Changed" makes a person click to find out what; one that
+            // says "Pill" has already answered.
+            meta={itemSummary(item, theme, read) ?? undefined}
             state={itemState(item, theme, read)}
           />
         ))}

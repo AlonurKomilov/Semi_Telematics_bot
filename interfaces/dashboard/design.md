@@ -302,6 +302,23 @@ step (the popover's caps label runs `text-2xs font-semibold` because
 seven of them stack inside `w-56`; the page uses §4's canonical
 `text-xs font-medium`).
 
+**A component that IS a Card is never rendered inside a Card.** ⭐
+`SizeCard` owns its own `<Card id="interface-size">` and its pinned
+styles; the /mods item level wrapped it in a second one and got a box
+inside a box — and the anchor id mounted twice, which a `#hash` link
+resolves to whichever came first. A wrapper that needs a box asks the
+child whether it already is one; the two live cases are `SizeCard` and
+`Modifications` itself.
+
+**Stacking chrome belongs to the container, not the section.** ⭐
+`Section` carries `border-t border-border pt-4 max-w-2xl` because on the
+profile card it stacks under the mod row and its siblings. Alone in its
+own card that rule has nothing above it and the column cap leaves a
+third of the card empty. A section that can render alone takes a
+`standalone` prop rather than a second copy — same section, no chrome of
+its own. The general rule: if a class exists only because of what sits
+ABOVE a component, it is the parent's to apply.
+
 **The split, and the one axis deliberately on both sides.** The popover
 holds what changes often — which mod is installed, the colour it wears,
 the global size — plus a door to the rest. Corners, material, motion,
