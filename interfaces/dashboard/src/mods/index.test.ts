@@ -44,6 +44,13 @@ const ALLOWED_DEEP = [
   'test/themeBoot.test.ts',
   'components/banners/stagedAction.tsx',
   'lib/undoable.ts',
+  // The banner lane sounds the notification it is showing, and it is
+  // the third file in the same ring as the two above: `mods/index`
+  // exports the panel, the panel imports `undoableAction`, and
+  // `undoableAction` raises a banner. Reaching `mods/sound/cue` by path
+  // keeps that ring open — the barrel would close it, with no error,
+  // just an `undefined` binding at module-init.
+  'components/banners/AppBanner.tsx',
 ];
 
 describe('everything outside mods/ comes through the barrel', () => {

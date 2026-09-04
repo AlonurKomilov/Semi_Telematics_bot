@@ -97,6 +97,9 @@ export function stagedAction(opts: StagedActionOptions): void {
       _pendingFlushes.add(flush);
       showBanner({
         tone: 'danger',
+    // This file plays its own cues (see `playUiCue` below); the lane
+    // must not add a second one on top.
+    cue: false,
         title: `${opts.label} failed`,
         detail: e instanceof Error ? e.message : undefined,
         onClose: () => {
@@ -132,6 +135,9 @@ export function stagedAction(opts: StagedActionOptions): void {
 
   showBanner({
     tone: 'info',
+    // This file plays its own cues (see `playUiCue` below); the lane
+    // must not add a second one on top.
+    cue: false,
     title: opts.label,
     detail: opts.detail,
     seconds,
@@ -165,6 +171,9 @@ export function undoableAction(opts: UndoableActionOptions): void {
   playUiCue('undo');
   showBanner({
     tone: 'ok',
+    // This file plays its own cues (see `playUiCue` below); the lane
+    // must not add a second one on top.
+    cue: false,
     title: opts.label,
     seconds: opts.seconds ?? DEFAULT_SECONDS,
     countdown: 'dismiss',

@@ -13,8 +13,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { playUiCue } = vi.hoisted(() => ({ playUiCue: vi.fn() }));
-vi.mock('../../mods/sound/cue', () => ({ playUiCue, armIfWanted: () => {} }));
+const { playUiCue, playBannerCue } = vi.hoisted(() => ({
+  playUiCue: vi.fn(), playBannerCue: vi.fn(),
+}));
+vi.mock('../../mods/sound/cue', () => ({
+  playUiCue, playBannerCue, armIfWanted: () => {}, installKeySound: () => {},
+}));
 
 const { toast } = vi.hoisted(() => ({
   toast: Object.assign(vi.fn(), {
@@ -45,16 +49,21 @@ const undoHandler = () => {
 };
 
 beforeEach(() => {
-  playUiCue.mockClear();
+  playUiCue.mockClear(); playBannerCue.mockClear();
   toast.custom.mockClear(); toast.success.mockClear();
   toast.error.mockClear(); toast.loading.mockClear();
   apiJSON.mockReset();
 });
 
 describe('the banner wrapper', () => {
-  it('sounds the undo cue when the window opens', () => {
+  it('sounds the undo cue when the window opens — and ONLY that one', () => {
     undoableAction({ label: 'Acknowledged 12 alerts', undo: async () => {} });
     expect(playUiCue).toHaveBeenCalledWith('undo');
+    // The banner lane sounds every notification by tone. This one is an
+    // `ok` banner, so the lane would say "success" over the "undo" this
+    // function already said — two sounds for one event. `cue: false` is
+    // what stops it, and this is the assertion that keeps it there.
+    expect(playBannerCue, 'the lane spoke over the undo cue').not.toHaveBeenCalled();
     // The banner itself must still be raised — a cue that replaced the
     // control instead of accompanying it would pass a naive assertion.
     expect(toast.custom, 'the banner stopped being shown').toHaveBeenCalled();

@@ -21,7 +21,7 @@ export function SoundsGroup({ label: groupLabel }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
   const { value: volume, setValue: setVolume } = usePreference('mods.sound.volume');
-  const { value: alertSoundOn } = usePreference('dispatch.soundOn');
+  const { value: alertSoundOn, setValue: setAlertSoundOn } = usePreference('dispatch.soundOn');
   const { value: uiSound, setValue: setUiSound } = usePreference('mods.sound.ui');
   const { value: keySound, setValue: setKeySound } = usePreference('mods.sound.keyboard');
   const { value: keyPack, setValue: setKeyPack } = usePreference('mods.sound.keyboard.pack');
@@ -182,22 +182,29 @@ export function SoundsGroup({ label: groupLabel }: { label: LabelClass }) {
           </div>
         )}
 
-        {/* The gate's STATE, not merely its existence.
-            The audit's sharpest finding: this section can read 100%
-            while the product is silent, because `dispatch.soundOn`
-            defaults to false and lives in the alerts panel. Naming
-            that a switch exists somewhere does not help — a person
-            who reads it still has to go hunting. So it says which
-            switch, what state it is in, and where. */}
-        <p className="text-2xs text-muted-foreground mt-1.5">
-          {t('mods.sound_gate_label', 'Live alerts')}
-          {' · '}
-          <span className={alertSoundOn ? 'text-foreground' : undefined}>
-            {alertSoundOn ? t('mods.sound_gate_on', 'on') : t('mods.sound_gate_off', 'off')}
+        {/* Alert sound is a SWITCH here, not a status line pointing
+            somewhere else. It used to read "Live alerts · off — turn on
+            in the alerts panel", which was honest about the state and
+            useless about the fix: that panel renders for dispatcher,
+            fleet and safety only, so six of the nine roles were told
+            where to go and could not go there. Same preference, reachable
+            from the one place every role can see. */}
+        <div className="flex items-center justify-between gap-2 mt-2">
+          <span className="text-xs text-foreground">
+            {t('mods.sound_gate_label', 'Live alerts')}
           </span>
-          {!alertSoundOn && (
-            <> {t('mods.sound_gate_where', '— turn on in the alerts panel')}</>
-          )}
+          <Switch
+            size="sm"
+            checked={alertSoundOn}
+            onCheckedChange={(next) => {
+              setAlertSoundOn(next);
+              if (next) armAudio();
+            }}
+            aria-label={t('mods.sound_gate_label', 'Live alerts')}
+          />
+        </div>
+        <p className="text-2xs text-muted-foreground mt-1">
+          {t('mods.sound_gate_hint', 'A cue when an alert arrives — louder for critical ones.')}
         </p>
       </div>
   );

@@ -103,9 +103,11 @@ export default function LiveAckPanel() {
     // baseline is what made a first visit announce the whole queue as
     // new, so the count only starts tracking once a response lands.
     if (isLoading) return;
-    if (prevPendingRef.current !== null && pending > prevPendingRef.current && soundOn) {
-      cue('alert');
-    }
+    // No chime here any more. A rising queue and an arriving alert are
+    // the same event seen twice: the banner lane sounds when the alert
+    // ARRIVES (AppBanner.showBanner), globally and by severity, so a
+    // dispatcher standing on this page used to hear both. The count is
+    // still tracked — the panel reads it — it just no longer speaks.
     prevPendingRef.current = pending;
   }, [pending, soundOn, isLoading, cue]);
 

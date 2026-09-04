@@ -20,6 +20,7 @@ import type { Tone } from '@/lib/status';
 // lane cannot show different icons for the same meaning.
 import { TONE_ICON, toneText } from '@/lib/status';
 import { formatAgoShort } from '@/utils/datetime';
+import { playBannerCue, type BannerCue } from '../../mods/sound/cue';
 
 // Progress underline per tone (solid foreground colours, token-based).
 const TONE_BAR: Record<Tone, string> = {
@@ -54,6 +55,15 @@ export interface BannerOptions {
    *  (e.g. an alert's company code), so a banner disambiguates the same
    *  way the bell rows do. */
   tag?: string;
+  /**
+   * The sound this banner makes, or `false` for none.
+   *
+   * Omitted means "by tone" — see `TONE_CUE` in `mods/sound/cue.ts`.
+   * A caller that already sounds its own cue passes `false`; the undo
+   * window is the live case, because "you can take this back" is not
+   * what the tone of an `ok` banner would have said.
+   */
+  cue?: BannerCue | false;
   actions?: BannerAction[];
   /** Seconds on the countdown; omit for a sticky banner (manual ✕). */
   seconds?: number;
@@ -250,6 +260,16 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
 export function showBanner(
   opts: BannerOptions, existingId?: string | number,
 ): string | number {
+  // The banner IS the notification, so this is where a notification
+  // makes its sound — one place, whatever raised it, by priority.
+  //
+  // NOT when `existingId` is passed: that path re-renders a banner
+  // already on screen so it can learn something (a colleague claiming
+  // the alert it is asking about). Sounding there would announce the
+  // same alert again every time somebody annotated it.
+  if (existingId === undefined && opts.cue !== false) {
+    playBannerCue(opts.cue ?? opts.tone);
+  }
   return toast.custom((id) => <AppBanner id={id} opts={opts} />, {
     duration: Infinity,          // AppBanner owns its own countdown
     ...(existingId !== undefined ? { id: existingId } : {}),

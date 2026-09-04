@@ -224,13 +224,17 @@ describe('the panel section', () => {
     expect(panel).toMatch(/beforeMute\.current = volume/);
   });
 
-  it('reports the gate\'s STATE and where it lives, not just that one exists', () => {
-    // The audit's sharpest finding. A section reading 100% while the
-    // product is silent is a section that reads as broken — and naming
-    // that "a switch exists somewhere" leaves the person hunting.
+  it('carries the alert gate as a CONTROL, not a pointer to one', () => {
+    // The audit's sharpest finding was that this section could read 100%
+    // while the product was silent, because the switch lived in the
+    // alerts panel. Naming where it lived was the first fix and only
+    // half of one: that panel renders for three of the nine roles, so
+    // the other six were told where to go and could not go there. The
+    // switch is here now, on the surface every role can see.
     expect(panel, 'the gate is no longer reported').toContain('mods.sound_gate_label');
-    expect(panel, 'the gate reports existence, not state').toContain('alertSoundOn');
-    expect(panel, 'the gate does not say where it lives').toContain('mods.sound_gate_where');
+    expect(panel, 'the gate is read but not writable here').toContain('setAlertSoundOn');
+    expect(panel, 'the gate is still a signpost rather than a switch')
+      .not.toContain('mods.sound_gate_where');
   });
 
   it('puts reset last in the header, as the size section does', () => {

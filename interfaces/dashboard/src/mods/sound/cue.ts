@@ -95,3 +95,84 @@ export function installKeySound(): void {
   keySoundInstalled = true;
   window.addEventListener('keydown', playKeyCue);
 }
+
+
+// ── The notification lane ────────────────────────────────────────────
+
+/**
+ * What a banner may sound: a cue by name, or a tone to map from.
+ *
+ * `Tone` is not imported — `lib/status` is a UI module and this file is
+ * a leaf the preferences registry depends on. The five tone names are
+ * restated as a union instead, and `bannerCue.test.ts` checks the two
+ * lists agree.
+ */
+export type BannerTone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral';
+export type BannerCue = CueName | BannerTone;
+
+/**
+ * Priority, as sound.
+ *
+ * The banner already knows how serious it is — `LiveAlertWatcher` maps
+ * an alert's severity to a tone before it raises one — so the tone is
+ * the priority signal, already computed, already on screen as colour.
+ * This is the same fact said out loud.
+ *
+ * `info` and `neutral` are deliberately silent. A notification lane
+ * that chimes for everything trains people to stop hearing it, and the
+ * things that arrive as `info` are the ones nobody needs to look up for.
+ */
+const TONE_CUE: Readonly<Record<BannerTone, CueName | null>> = {
+  danger: 'critical',
+  warn: 'alert',
+  ok: 'success',
+  info: null,
+  neutral: null,
+};
+
+const isTone = (v: BannerCue): v is BannerTone => v in TONE_CUE;
+
+/**
+ * The floor between two banner cues.
+ *
+ * `LiveAlertWatcher` raises up to three banners on one poll tick, and
+ * every cue connects its own gain straight to the destination — so
+ * three would SUM into one loud noise rather than three sounds. One
+ * poll should announce itself once. 400ms is longer than the longest
+ * cue (0.45s critical is the outlier and overlaps by 50ms at worst,
+ * which is inaudible) and far shorter than the 60s poll, so two
+ * genuinely separate arrivals are never merged.
+ *
+ * DROP, not queue: a chime that arrives after the banner it belongs to
+ * has been read is worse than no chime.
+ */
+const BANNER_GAP_MS = 400;
+let lastBannerAt = -Infinity;
+
+/** Test seam — the floor is module state, like the audio context. */
+export function resetBannerCueForTests(): void {
+  lastBannerAt = -Infinity;
+}
+
+/**
+ * Sound one notification.
+ *
+ * Gated by `dispatch.soundOn`, which is the switch that has always meant
+ * "tell me out loud when something arrives" — its own note says so. It
+ * is device-scoped and off by default, because a shared dispatch floor
+ * is the room this feature lives in.
+ */
+export function playBannerCue(cue: BannerCue): void {
+  if (!preferences.get('dispatch.soundOn')) return;
+  const name = isTone(cue) ? TONE_CUE[cue] : cue;
+  if (!name) return;
+  const volume = preferences.get('mods.sound.volume');
+  if (volume <= 0) return;
+
+  const now = performance.now();
+  if (now - lastBannerAt < BANNER_GAP_MS) return;
+  lastBannerAt = now;
+
+  const c = soundPackById(preferences.get('mods.sound.pack'))?.cues[name];
+  if (c) playCue(c, volume);
+}

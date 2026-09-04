@@ -17,12 +17,22 @@ self.addEventListener('push', (event) => {
     data = { title: 'Notification', body: event.data && event.data.text() };
   }
   const title = data.title || 'Notification';
+  // PRIORITY, as the only thing we can control out here. A service
+  // worker has no page and no AudioContext, so the cue the dashboard
+  // plays for an in-app banner is unavailable — the operating system
+  // makes the noise, and `silent` is the whole of our say in it. So the
+  // severity that the backend already puts in the payload, and that
+  // this worker used to drop on the floor, decides whether a push is
+  // worth interrupting somebody for. Anything below a warning arrives
+  // quietly and waits to be looked at.
+  var loud = data.severity === 'critical' || data.severity === 'warning';
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || '',
       tag: data.tag || 'notif',
       icon: '/favicon-64.png',
       badge: '/favicon-32.png',
+      silent: !loud,
       data: { url: data.url || '/alerts' },
     })
   );
