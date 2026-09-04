@@ -93,18 +93,6 @@ class AssignmentCreate(BaseModel):
 # ── Helpers ────────────────────────────────────────────────────
 
 
-def _driver_visibility_check(target_user_id: int, caller: dict) -> bool:
-    """Is the caller allowed to see this driver?
-
-    Admins / fleet managers / safety with ``can_manage_driver_docs``
-    see everyone in their account.  Drivers with ``can_driver_docs_own``
-    see only their own row.  Anyone else: 404 (don't leak existence).
-    """
-    if caller.get("_matched_perm") == "can_driver_docs_own":
-        return int(caller["sub"]) == 0  # placeholder — resolved below
-    return True
-
-
 async def _resolve_caller_user_id(caller: dict, platform_db) -> int:
     """Map JWT subject (telegram_id) → platform users.id."""
     db_user = await platform_db.get_user_by_telegram_id(int(caller["sub"]))
