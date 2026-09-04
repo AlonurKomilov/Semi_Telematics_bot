@@ -57,6 +57,20 @@ describe('the packs the panel offers are packs the browser can apply', () => {
     }
   });
 
+  it('every pack has a preview, including the one with no CSS block', () => {
+    // The comparison below skips packs with no `[data-font]` block, and
+    // the default has none by design — so `geist`'s preview stack was
+    // compared against nothing at all. Drop or corrupt it and the chip
+    // renders with `fontFamily: undefined` and no test notices.
+    for (const f of FONT_PACKS) {
+      const m = new RegExp(`${f.id}:\\s*("[^"]+"|'[^']+')`).exec(PANEL);
+      expect(m, `${f.id} has no preview stack`).not.toBeNull();
+    }
+    // …and the default names the face this app actually bundles.
+    expect(PANEL, 'the default preview does not name the bundled family')
+      .toMatch(/geist:\s*["'][^\n]*Geist Variable/);
+  });
+
   it('the chip previews match the stacks the stylesheet ships', () => {
     // The chips are drawn in the face they name; a preview that drifted
     // from the block would show one thing and apply another.

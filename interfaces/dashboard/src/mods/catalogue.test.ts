@@ -261,7 +261,14 @@ describe('the properties a mod carries and the panel does not', () => {
     // nothing. Read something before asserting the absence of something.
     expect(panel.length, 'read an empty ModPanel.tsx').toBeGreaterThan(1000);
     expect(panel, 'the panel is deriving mod identity again').not.toContain('activeModId(');
-    expect(panel, 'the panel does not read the stored mod').toContain('theme.mod');
+    // A WORD BOUNDARY, not a substring. `theme.mod` is a prefix of
+    // `theme.mode`, and the panel is full of the latter — so
+    // `toContain('theme.mod')` was satisfied by the colour mode and
+    // could never have failed. It reads the real axis only because the
+    // split happened to leave `theme.mode` in another file; this makes
+    // that independent of where the code lives.
+    expect(panel, 'the panel does not read the stored mod')
+      .toMatch(/theme\.mod\b(?!e)/);
   });
 
   // "keeps the mod-only axes out of the panel" LIVED HERE and was deleted

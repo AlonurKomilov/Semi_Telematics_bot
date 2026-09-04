@@ -83,3 +83,93 @@ describe('everything outside mods/ comes through the barrel', () => {
     }
   });
 });
+
+
+/**
+ * No runtime import cycle between the mods service and the preferences
+ * store — measured, not assumed.
+ *
+ * The two lean on each other by design: `mods/context` reads the store,
+ * and `preferences/registry` imports five mods LEAVES (the catalogue,
+ * the injector, the two sound modules and the contrast maths) because
+ * validating a stored value belongs with the thing that defines what a
+ * valid value is. That arrangement is sound only while those five stay
+ * leaves. The moment one of them imports the store back, the ring
+ * closes — and a JS cycle does not throw. Vite reports nothing; a
+ * binding is simply `undefined` at module-init, which surfaces later as
+ * a blank theme or a sanitiser that silently rejects everything.
+ *
+ * `import type` is EXCLUDED, and that is the whole reason this can be
+ * checked at all: the catalogue already imports `ModRadius` from the
+ * registry, and taxonomy imports `Mod` from the catalogue. Both are
+ * erased at build time and cannot participate in a runtime cycle —
+ * counting them would make this test red on a structure that works.
+ */
+describe('the service and the store do not close a ring', () => {
+  const ROOTS = ['mods', 'preferences'];
+
+  const walkAll = (dir: string, out: string[] = []): string[] => {
+    for (const name of readdirSync(join(SRC, dir))) {
+      const rel = `${dir}/${name}`;
+      if (statSync(join(SRC, rel)).isDirectory()) walkAll(rel, out);
+      else if (/\.tsx?$/.test(name) && !name.includes('.test.')) out.push(rel);
+    }
+    return out;
+  };
+
+  /** Value imports only — a clause that is entirely `type` is erased. */
+  const valueImports = (rel: string): string[] => {
+    const src = readFileSync(join(SRC, rel), 'utf8');
+    const out: string[] = [];
+    for (const m of src.matchAll(/^import\s+(?!type\b)([^;]*?)\s+from\s+'(\.[^']+)'/gm)) {
+      const clause = m[1].trim();
+      const inner = clause.startsWith('{') ? clause.slice(1, -1) : '';
+      if (inner && inner.split(',').every((t) => !t.trim() || t.trim().startsWith('type '))) continue;
+      const base = join(rel, '..', m[2]);
+      for (const ext of ['.ts', '.tsx', '/index.ts']) {
+        const cand = base + ext;
+        try { statSync(join(SRC, cand)); out.push(cand.replace(/\\/g, '/')); break; } catch { /* next */ }
+      }
+    }
+    return out;
+  };
+
+  const files = ROOTS.flatMap((r) => walkAll(r));
+
+  it('finds the files it is checking', () => {
+    // A walker that returned nothing would report "no cycles" forever.
+    expect(files.length, 'no source files found in mods/ or preferences/').toBeGreaterThan(25);
+    expect(files.some((f) => f === 'preferences/registry.ts')).toBe(true);
+  });
+
+  it('sees the edges that exist, so a clean result means something', () => {
+    // The registry really does import mods leaves; if this reader stopped
+    // seeing those, the cycle check below would pass vacuously.
+    const fromRegistry = valueImports('preferences/registry.ts');
+    expect(fromRegistry.filter((f) => f.startsWith('mods/')).length,
+      'the reader no longer sees preferences → mods edges').toBeGreaterThan(3);
+  });
+
+  it('has no cycle', () => {
+    const graph = new Map(files.map((f) => [f, valueImports(f)]));
+    const found: string[] = [];
+    const seen = new Set<string>();
+    const stack: string[] = [];
+    const walk = (n: string) => {
+      const at = stack.indexOf(n);
+      if (at >= 0) { found.push([...stack.slice(at), n].join(' → ')); return; }
+      if (seen.has(n)) return;
+      seen.add(n); stack.push(n);
+      for (const m of graph.get(n) ?? []) walk(m);
+      stack.pop();
+    };
+    for (const f of files) walk(f);
+    expect(
+      found,
+      'a runtime import cycle. JS does not throw on one — the binding is '
+        + 'undefined at module-init and surfaces later as a blank theme or a '
+        + 'sanitiser that rejects everything. Break it by importing the leaf '
+        + 'directly, or by making the back-edge `import type`.',
+    ).toEqual([]);
+  });
+});
