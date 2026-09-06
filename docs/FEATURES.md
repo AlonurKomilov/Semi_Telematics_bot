@@ -22,6 +22,13 @@ feature; the Permissions page bands its rows the same way.
 | **Data scope** | whose data do they see? (All / Company / Vehicle) | Team Management, per-user |
 | **Backend pattern** (hub / entity / workflow) | how is it implemented? | not a tier — see below |
 
+The backend's unit of "what" is the **feature registry**
+(`capabilities/permissions/registry.py`): one entry per catalog id with
+its kind, tier, departments and every flag under it.  The department
+mask is derived from it, and tomorrow's plan entitlement will be too;
+`tests/test_feature_registry_drift.py` holds it, the catalog and the
+matrix rows together.
+
 "Admin" is **not** the permission axis' name either — `can_manage_*` gates
 are just permissions, and the governance features they gate now have their
 own tier (Administration).

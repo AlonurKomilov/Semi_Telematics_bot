@@ -11,15 +11,13 @@ the disabled set (rather than the enabled set) means existing accounts —
 whose column defaults to ``''`` — are all-on automatically, with no
 backfill.  This is the "all free, default all-on" rollout.
 
-The frontend mirrors this list in interfaces/dashboard/src/config/
-featureCatalog.ts (TOGGLEABLE_MODULES); keep the two in sync.
+The department list and the flag → module mask come from the feature
+registry (capabilities/permissions/registry.py); the frontend catalog
+mirrors both, and tests/test_feature_registry_drift.py holds them together.
 """
 from __future__ import annotations
 
-# Order is display order on the Permissions page's department bands.
-TOGGLEABLE_MODULES: tuple[str, ...] = (
-    "fleet", "dispatch", "safety", "hr", "accounting",
-)
+from capabilities.permissions.registry import TOGGLEABLE_MODULES, derive_flag_modules
 
 
 def parse_disabled(csv: str | None) -> set[str]:
@@ -41,63 +39,18 @@ def to_disabled_csv(enabled: list[str] | tuple[str, ...]) -> str:
     return ",".join(m for m in TOGGLEABLE_MODULES if m not in enabled_set)
 
 
-# ── Module → permission mask ──────────────────────────────────────
-# Which department module(s) "own" each permission flag.  A flag is
-# forced OFF only when EVERY module that owns it is disabled — so a
-# shared feature (e.g. Geofences = fleet+dispatch) survives as long as
-# one of its departments is on.  This is what makes a disabled module
-# hide its features *through the permission system* rather than via a
-# second, parallel filter.  Mirrors the `modules` arrays in the frontend
-# feature catalog (interfaces/dashboard/src/config/featureCatalog.ts).
-#
-# NB: flags NOT listed here are never masked — that means the universal
-# (core) flags (location/vehicle/alerts/reports/AI) and the account-admin
-# flags (manage_*).  A couple of features (Parking → can_alerts, Cameras
-# → can_faults) are gated by a *system* flag, so they can't be masked
-# here; the generated sidebar applies the catalog's module filter for
-# those at the nav layer instead.
-FLAG_MODULES: dict[str, frozenset[str]] = {
-    # Fleet
-    "can_view_maintenance": frozenset({"fleet"}),
-    "can_manage_maintenance": frozenset({"fleet"}),
-    "can_view_work_orders": frozenset({"fleet"}),
-    "can_manage_work_orders": frozenset({"fleet"}),
-    "can_view_inspections": frozenset({"fleet"}),
-    "can_manage_inspections": frozenset({"fleet"}),
-    # Dispatch
-    "can_view_routes": frozenset({"dispatch"}),
-    # Geofences — fleet + dispatch
-    "can_view_geofence": frozenset({"dispatch", "fleet"}),
-    "can_manage_geofence": frozenset({"dispatch", "fleet"}),
-    # Cameras — safety + fleet
-    "can_view_cameras": frozenset({"safety", "fleet"}),
-    # Parking — dispatch + fleet + safety
-    "can_view_parking": frozenset({"dispatch", "fleet", "safety"}),
-    # Safety + HR
-    "can_view_events": frozenset({"hr", "safety"}),
-    "can_view_scorecards": frozenset({"hr", "safety"}),
-    # can_manage_config_all is deliberately NOT module-masked: it spans
-    # features across modules (scorecard rules AND KPI thresholds).  The
-    # scorecard-rules PAGE still masks with safety/hr via featureCatalog.
-
-    "can_manage_coaching": frozenset({"hr", "safety"}),
-    "can_view_coaching": frozenset({"hr", "safety"}),
-    # Drivers (documents) — hr + fleet + safety
-    "can_manage_driver_docs": frozenset({"hr", "fleet", "safety"}),
-    "can_view_driver_docs": frozenset({"hr", "fleet", "safety"}),
-    # Driver roster management (invite/assign/link) — hr + fleet.
-    "can_manage_drivers": frozenset({"hr", "fleet"}),
-    # Recruiting (driver-application intake) — hr.  Masking these with the
-    # HR module means disabling HR turns recruiting OFF at the API too, not
-    # just hidden in the nav — so "module off" is a real switch.
-    "can_manage_applications": frozenset({"hr"}),
-    "can_onboard_drivers": frozenset({"hr"}),   # the Drivers-family sub-feature
-    # Accounting (costs + driver pay)
-    "can_view_fuel_cost": frozenset({"accounting", "dispatch"}),
-    "can_view_cost_per_mile": frozenset({"accounting", "fleet"}),
-    "can_manage_driver_pay": frozenset({"accounting"}),
-    "can_view_driver_pay": frozenset({"accounting"}),
-}
+# ── Module → permission mask ────────────────────────────
+# Which department module(s) "own" each permission flag — DERIVED from
+# the feature registry (capabilities/permissions/registry.py): a flag
+# takes its feature's departments, or its own narrower set (Onboarding
+# is HR's although Drivers is HR + Fleet + Safety).  A flag is forced
+# OFF only when EVERY module that owns it is disabled, so a shared
+# feature (Geofences = fleet + dispatch) survives as long as one of its
+# departments is on.  This is what makes a disabled module hide its
+# features *through the permission system* rather than via a second,
+# parallel filter.  The hand-written list this replaced had drifted
+# from the catalog on seven flags; registry.MASK_DRIFT names them.
+FLAG_MODULES: dict[str, frozenset[str]] = derive_flag_modules()
 
 
 def module_enabled(disabled_csv: str | None, module: str) -> bool:
