@@ -18,6 +18,11 @@ button, input { font: inherit; }
 .avatar { width:28px; height:28px; border-radius:50%; border:1px solid var(--border); background: var(--primary);
           color:#fff; font-weight:600; font-size:12px; display:inline-flex; align-items:center; justify-content:center;
           cursor:pointer; padding:0; }
+/* Leaflet stacks its panes at z-index 200–1000 and its container is not a
+   stacking context, so those numbers leak into the panel: a menu at 10
+   opened UNDER the map and looked like a button that did nothing.  The map
+   keeps its ladder to itself; anything the shell floats sits above it. */
+.leaflet-container { isolation: isolate; }
 .menu { position:absolute; right:0; top:34px; min-width:200px; background: var(--card); border:1px solid var(--border);
         border-radius:8px; padding:4px; z-index:10; box-shadow:0 8px 24px rgba(0,0,0,.4); }
 .menu-head { padding:8px 10px 6px; border-bottom:1px solid var(--border); margin-bottom:4px; }
