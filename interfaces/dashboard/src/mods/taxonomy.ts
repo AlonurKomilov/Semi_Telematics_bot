@@ -52,8 +52,15 @@ export interface TaxonomyItem {
   readonly keep?: readonly string[];
   /** Preference keys outside `mods.theme` this item owns. */
   readonly prefs?: readonly string[];
-  /** The Mod field a look uses to carry this, if a look can. */
-  readonly modField?: ModField;
+  /**
+   * The Mod fields a look uses to carry this, if a look can.
+   *
+   * A LIST, because an item can be two halves of one question: Icons
+   * owns both the pack and the weight, and a single `modField` meant a
+   * look could carry one of them and not the other — which is how
+   * `iconPack` was declarable nowhere while `icons` was.
+   */
+  readonly modFields?: readonly ModField[];
   /**
    * A look may switch this on; a person may not.
    *
@@ -95,17 +102,15 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     items: [
       { id: 'theme',    title: 'Color',    heading: 'Color',
         axes: ['mode', 'accent', 'brand', 'canvas', 'surfaces'],
-        keep: ['mode'], modField: 'accent' },
-      { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modField: 'radius' },
-      { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modField: 'material' },
-      { id: 'typeface', title: 'Typeface', heading: 'Typeface', axes: ['font'],     modField: 'font' },
+        keep: ['mode'], modFields: ['accent'] },
+      { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modFields: ['radius'] },
+      { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modFields: ['material'] },
+      { id: 'typeface', title: 'Typeface', heading: 'Typeface', axes: ['font'],     modFields: ['font'] },
       // Two halves of one question — WHICH glyphs, and how heavily they
-      // are drawn — so one item, one reset, one tile. `modField` names
-      // the weight because that is what a look has always carried; a
-      // look that wants the pack too will need a second field, and the
-      // total-Record type below will say so.
+      // are drawn — so one item, one reset, one tile, and a look may
+      // carry either or both.
       { id: 'icons',    title: 'Icons',    heading: 'Icons',
-        axes: ['icons', 'iconPack'], modField: 'icons' },
+        axes: ['icons', 'iconPack'], modFields: ['icons', 'iconPack'] },
     ],
   },
   {
@@ -118,7 +123,7 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     prefs: ['mods.sound.volume'],
     items: [
       { id: 'interface', title: 'Interface sounds',
-        axes: [], prefs: ['mods.sound.ui', 'mods.sound.pack'], modField: 'sound' },
+        axes: [], prefs: ['mods.sound.ui', 'mods.sound.pack'], modFields: ['sound'] },
       { id: 'keyboard',  title: 'Keyboard',
         axes: [], prefs: ['mods.sound.keyboard', 'mods.sound.keyboard.pack'] },
       { id: 'alerts',    title: 'Live alerts',
@@ -130,10 +135,10 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     title: 'Effects',
     panel: true,
     items: [
-      { id: 'motion',   title: 'Motion',   heading: 'Motion', axes: ['motion'],   modField: 'motion' },
+      { id: 'motion',   title: 'Motion',   heading: 'Motion', axes: ['motion'],   modFields: ['motion'] },
       // A look may switch the page entrance on; the panel offers no
       // control, and the effects reset still clears it.
-      { id: 'entrance', title: 'Entrance', axes: ['entrance'], modField: 'entrance',
+      { id: 'entrance', title: 'Entrance', axes: ['entrance'], modFields: ['entrance'],
         modOnly: true },
       { id: 'ambient',  title: 'Ambient mode', axes: [], prefs: ['mods.ambient'] },
     ],
@@ -144,7 +149,7 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     panel: false,
     prefs: ['mods.size'],
     items: [
-      { id: 'global',  title: 'Everything', axes: [], modField: 'size' },
+      { id: 'global',  title: 'Everything', axes: [], modFields: ['size'] },
       { id: 'regions', title: 'By area',    axes: [] },
     ],
   },
@@ -174,7 +179,7 @@ export type ModSection = (typeof PANEL_SECTIONS)[number];
  *  typed as a total Record so a Mod field with no item is a build error
  *  rather than a footprint that silently omits it. */
 export const MOD_FIELD_CATEGORY = Object.fromEntries(
-  TAXONOMY.flatMap((c) => c.items.filter((i) => i.modField).map((i) => [i.modField, c.id])),
+  TAXONOMY.flatMap((c) => c.items.flatMap((i) => (i.modFields ?? []).map((f) => [f, c.id]))),
 ) as Record<ModField, CategoryId>;
 
 /** The `ModSetting` axes a category's reset restores — every item's

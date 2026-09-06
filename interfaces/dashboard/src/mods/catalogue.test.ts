@@ -450,10 +450,12 @@ describe('a mod says what it carries', () => {
     // MOD_FIELD_SECTION is DERIVED from the taxonomy now, so "every
     // value is a real category" is true by construction and not worth
     // asserting. What the `as Record<ModField, …>` cast in taxonomy.ts
-    // hides is the opposite drift: an item naming a `modField` that Mod
+    // hides is the opposite drift: an item naming a mod field that Mod
     // does not have, or two items claiming the same one — the second
-    // silently overwrites the first in Object.fromEntries.
-    const claimed = TAXONOMY.flatMap((c) => c.items.flatMap((i) => (i.modField ? [i.modField] : [])));
+    // silently overwrites the first in Object.fromEntries. The list is
+    // plural now (Icons owns the pack AND the weight), so a duplicate
+    // is easier to write than it was and this matters more.
+    const claimed = TAXONOMY.flatMap((c) => c.items.flatMap((i) => i.modFields ?? []));
     const dupes = claimed.filter((f, i) => claimed.indexOf(f) !== i);
     expect(dupes, 'a Mod field is claimed by two items').toEqual([]);
 

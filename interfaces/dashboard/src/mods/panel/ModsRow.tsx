@@ -10,7 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { usePreference } from '../../preferences';
 import { undoableAction } from '../../components/banners/stagedAction';
 import { useMods, type Accent } from '../context';
-import { MODS, modById, modMatchesAxes, modFootprint, type Mod } from '../catalogue';
+import {
+  MODS, MOD_THEME_FIELDS, modById, modMatchesAxes, modFootprint, type Mod,
+} from '../catalogue';
+import type { ModSetting } from '../../preferences/registry';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';
 
@@ -60,10 +63,13 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
     // and "let me just see what Wall looks like" is the most likely
     // reason anyone clicks here. The same helper guards SizeCard's
     // reset, for the same reason.
+    // What to put back, read from the SAME list the install walks. It
+    // used to be typed out here, and it had already fallen behind: a
+    // look carrying a typeface would have been undone into the wrong
+    // one, if a look carrying a typeface had done anything at all.
     const previous = {
-      mod: theme.mod, accent: theme.accent, radius: theme.radius,
-      material: theme.material, motion: theme.motion,
-      icons: theme.icons, entrance: theme.entrance,
+      mod: theme.mod,
+      ...Object.fromEntries(MOD_THEME_FIELDS.map((f) => [f, theme[f as keyof typeof theme]])),
     };
     const previousSize = size.global;
     const previousSound = soundPack;
@@ -72,16 +78,18 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
       // an already-installed mod therefore RESTORES it — the useful
       // second meaning of the same gesture.
       mod: m.id,
-      accent: m.accent as Accent,
-      ...(m.radius === undefined ? {} : { radius: m.radius }),
-      ...(m.material === undefined ? {} : { material: m.material }),
-      ...(m.motion === undefined ? {} : { motion: m.motion }),
-      // Mod-only axes. The panel has no chip for either, so a mod is the
-      // only way to reach them — and the only way back is another mod or
-      // a reset, which is why neither may be irreversible or unreadable.
-      ...(m.icons === undefined ? {} : { icons: m.icons }),
-      ...(m.entrance === undefined ? {} : { entrance: m.entrance }),
-    });
+      // WALKED, not listed. Every field this hand-written list forgot
+      // was a promise the catalogue made and nothing kept: `font` was
+      // declared on `Mod`, filed under Typeface, shown in the footprint
+      // — and never applied, so a look that changed the lettering
+      // changed nothing. `MOD_FIELD_APPLIER` is total over the type, so
+      // a new field either comes through here or names another home.
+      ...Object.fromEntries(
+        MOD_THEME_FIELDS
+          .filter((f) => m[f] !== undefined)
+          .map((f) => [f, m[f]]),
+      ),
+    } as Partial<ModSetting>);
     // Not part of the theme preference — sound is its own key, and a mod
     // sets the pack without touching the volume.
     if (m.sound !== undefined) setSoundPack(m.sound);

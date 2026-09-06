@@ -30,6 +30,7 @@
  * at runtime.
  */
 import { ICON_WEIGHTS } from '../lib/icons/weight';
+import type { IconPack } from '../lib/icons';
 import type { ThemeMode } from './theme/palette';
 // Type-only, so no runtime cycle: registry.ts imports THEME_PACKS as a
 // value, and this import is erased.
@@ -213,8 +214,13 @@ export interface Mod {
   readonly material?: ModMaterial;
   /** How fast it moves. Omit and the person's own choice stands. */
   readonly motion?: ModMotion;
-  /** Icon stroke weight. */
+  /** How heavily icons are drawn. Omit and the person's own stands. */
   readonly icons?: ModIcons;
+  /** WHICH glyphs — an `ICON_PACKS` id. The larger half of the same
+   *  question, and the one a look is most likely to want: a set is a
+   *  vocabulary, a weight is how firmly it is spoken. A pack that is
+   *  not the base one is FETCHED when the look is worn. */
+  readonly iconPack?: IconPack;
   /** The typeface. A `FONT_PACKS` id; omit and the person's own stands.
    *  A look that changes the colour and not the lettering is half a
    *  look — this is the field that lets a mod be one. */
@@ -292,6 +298,35 @@ export const modFootprint = (m: Mod): readonly string[] => {
   );
   return SECTION_ORDER.filter((s) => touched.has(s));
 };
+
+/**
+ * How each thing a mod carries is INSTALLED.
+ *
+ * `theme` fields go through `setTheme` under their own name; the other
+ * two have homes of their own — size is its own preference with its own
+ * card, sound is its own key so a look can set the pack without
+ * touching the volume.
+ *
+ * Total over the Mod fields, the same way `MOD_FIELD_SECTION` is, and
+ * for a sharper reason. `font` was declared, given a category, shown in
+ * the footprint — and never applied by anything, because the installer
+ * listed the fields it knew by hand and nobody noticed the list had
+ * stopped matching the type. A mod promising a typeface changed
+ * nothing. Walking this map is what makes that impossible: a field with
+ * no entry does not compile, and one with `theme` is applied by
+ * construction.
+ */
+export const MOD_FIELD_APPLIER: Record<
+  keyof Omit<Mod, 'id' | 'label' | 'why'>, 'theme' | 'size' | 'sound'
+> = {
+  accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
+  icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
+  size: 'size', sound: 'sound',
+};
+
+/** The fields `setTheme` installs, under their own names. */
+export const MOD_THEME_FIELDS = (Object.keys(MOD_FIELD_APPLIER) as (keyof typeof MOD_FIELD_APPLIER)[])
+  .filter((k) => MOD_FIELD_APPLIER[k] === 'theme');
 
 export const modById = (id: string): Mod | undefined =>
   MODS.find((m) => m.id === id);
