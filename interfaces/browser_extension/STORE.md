@@ -2,8 +2,8 @@
 
 The product is 4truck — vehicle management. The extension is 4truck in a side
 panel; Live Map is the FIRST feature in it, not the definition of it. Every
-new panel feature gets one bullet under "What it shows today" and nothing else
-in this file changes. Permissions and data-usage describe what the package
+new panel feature gets its own block — a CAPS heading and its bullets — under
+WHAT IT SHOWS TODAY, and nothing else in this file changes. Permissions and data-usage describe what the package
 actually does TODAY — the review compares them with the code, so widen them
 only in the same upload that widens the code.
 
@@ -14,22 +14,57 @@ only in the same upload that widens the code.
 **Language:** English
 **Official URL:** https://4truck.us
 
-**Description:**
-4truck for Chrome brings your 4truck account into a side panel, beside whatever you are
-working on — Google Maps, a load board, email, your TMS — so you never switch tabs to
-answer a question about your vehicles.
+**Description** (plain text — the store renders no markup; structure comes from CAPS
+headings, blank lines, `•` and `✓`. Paste verbatim):
 
-What it shows today
-• Live map — every vehicle's position, status, fuel and DEF, moving as it moves, each
-  reading stamped with how fresh it is and which system supplies it. Pick one to open its
-  spot or directions in Google Maps, or the truck itself in Samsara, with one click.
+```
+4truck for Chrome puts your 4truck account in a side panel, beside whatever you are working on — Google Maps, a load board, email, your TMS. Answer a question about your vehicles without switching tabs.
 
-More of 4truck reaches the panel over time; each addition appears in this list.
 
-Requires a 4truck account. The panel never asks for a password: press Connect, confirm
-once on 4truck.us, done. The panel can read what it shows and nothing else — it cannot
-change anything in your account, and you can disconnect it any time from your 4truck
-profile. No account yet? The panel points you to sign-up on 4truck.us.
+WHAT IT SHOWS TODAY
+
+LIVE MAP
+• Every vehicle's position, moving as it moves
+• Status at a glance — moving, idle, stopped — with one-click filters
+• Fuel and DEF level on each vehicle
+• How fresh each reading is, and which system supplies it
+• Open a vehicle's spot or directions in Google Maps with one click — or the vehicle itself in Samsara
+• Follow in Google Maps: the vehicle you pick is placed in the Google Maps tab you already have open, so you never juggle tabs
+
+More of 4truck reaches the panel over time. Each addition appears in this list.
+
+
+GET STARTED IN THREE STEPS
+
+1. Click the 4truck icon in the toolbar — the panel opens beside your page.
+2. Press "Connect to 4truck". A 4truck.us tab opens: sign in there and confirm once.
+3. Done. Your vehicles appear, live.
+
+No account yet? The panel points you to sign-up on 4truck.us.
+
+
+PRIVACY AND CONTROL
+
+✓ Never asks for a password — you sign in on 4truck.us, with the address bar in view
+✓ Read-only — the panel sees what it shows and cannot change anything in your account
+✓ Shows only the vehicles you are allowed to see, the same as your 4truck Live Map
+✓ Every connection sends you a sign-in notice with a "Disconnect this session" button
+✓ Disconnect any time from your 4truck profile — the panel signs out on its own
+✓ Nothing sold, no ads, no third parties: your data is shown to you and to nobody else
+
+Privacy policy: 4truck.us/privacy
+
+
+REQUIREMENTS
+
+• A 4truck account (4truck.us)
+• Google Chrome 114 or newer (the side panel)
+
+
+ABOUT 4TRUCK
+
+4truck is vehicle management for carriers — live location, maintenance and work orders, loads, safety events, vehicle documents and more, from one account. The extension brings that account to your browser.
+```
 
 **Single purpose:** A side panel for the signed-in user's 4truck vehicle-management account.
 
