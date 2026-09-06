@@ -119,6 +119,36 @@ async def map_vehicles(
     }
 
 
+@router.get("/engine")
+async def map_engine(
+    user: dict = Depends(require_permission("can_view_location")),
+):
+    """Which map this account's live map is drawn on, and what it needs.
+
+    Asked once when a map mounts, by every surface that draws one — the
+    dashboard Live Map today, the browser panel next.  Behind
+    ``can_view_location`` because it is part of drawing the map, and
+    because the Google key it may carry is billable: public by design
+    and referrer-restricted, but not something to hand an anonymous
+    caller.
+
+    The answer can differ from what the account asked for; it says both,
+    so a settings page can explain itself.  See
+    features/location/map_engine.py for why it fails to the free engine.
+    """
+    from features.location.map_engine import for_account
+    from infra.platform import get_tenant_db
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        # No tenant DB is no reason to draw no map.
+        from features.location.map_engine import OSM, ENGINES, google_available
+        return {"engine": OSM, "requested": OSM, "engines": list(ENGINES),
+                "google_available": google_available()}
+    return await for_account(account_id, tenant)
+
+
 @router.get("/vehicles/live")
 async def map_vehicles_live(
     company: str | None = Query(None),
