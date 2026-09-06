@@ -40,7 +40,6 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from capabilities.permissions.roles import can
 from features.inspections import service as pti_service
 from features.inspections.templates import (
     STANDARD_DOT_TRAILER_ITEMS,
@@ -56,6 +55,7 @@ from interfaces.api.deps import (
     require_permission,
     require_permission_any,
     resolve_user_id,
+    holds,
 )
 from infra.platform import get_router as _get_router
 
@@ -400,7 +400,7 @@ async def _require_visible_inspection(
     )
     if not ins:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    if not can(user["role"], "can_manage_inspections"):
+    if not await holds(user, "can_manage_inspections"):
         internal_uid = await _resolve_internal_user_id(user, tenant_db)
         if int(ins.get("user_id") or 0) != internal_uid:
             raise HTTPException(status_code=404, detail="Inspection not found")
@@ -470,7 +470,7 @@ async def update_item(
     if body.status is not None and body.status not in VALID_ITEM_STATUSES:
         raise HTTPException(status_code=422, detail="invalid status")
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
-    if not can(user["role"], "can_manage_inspections"):
+    if not await holds(user, "can_manage_inspections"):
         internal_uid = await _resolve_internal_user_id(user, tenant_db)
         if int(ins["user_id"]) != internal_uid:
             raise HTTPException(status_code=404, detail="Inspection not found")
@@ -879,7 +879,7 @@ async def sign(
     """
     if body.role not in ("driver", "reviewer"):
         raise HTTPException(status_code=422, detail="invalid role")
-    if body.role == "reviewer" and not can(user["role"], "can_manage_inspections"):
+    if body.role == "reviewer" and not await holds(user, "can_manage_inspections"):
         raise HTTPException(
             status_code=403,
             detail="only fleet reviewers can co-sign",

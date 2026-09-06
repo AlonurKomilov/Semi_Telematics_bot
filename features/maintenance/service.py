@@ -10,8 +10,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from capabilities.permissions.roles import can
-from adapters.storage import Role
 
 # ── Task type registry (SSOT used by both bot and API) ────────────────────────
 
@@ -27,29 +25,6 @@ TASK_TYPES: dict[str, str] = {
     "def_refill": "💧 DEF Refill",
     "custom": "✏️ Custom",
 }
-
-
-def has_maintenance_access(role: str) -> bool:
-    """Return True if *role* grants any maintenance permission."""
-    try:
-        r = Role(role) if not isinstance(role, Role) else role
-    except ValueError:
-        return False
-    return can(r, "can_view_maintenance")
-
-
-def has_work_orders_access(role: str) -> bool:
-    """Return True if *role* grants any work-order permission.
-
-    Work orders are gated independently of maintenance via the
-    ``can_work_orders_*`` flags — defaults mirror maintenance, but an
-    account can grant/revoke them separately in the Role Permissions matrix.
-    """
-    try:
-        r = Role(role) if not isinstance(role, Role) else role
-    except ValueError:
-        return False
-    return can(r, "can_view_work_orders")
 
 
 # ── Due-soon classifier (shared between API stats + scheduler) ─────

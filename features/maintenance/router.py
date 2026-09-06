@@ -12,11 +12,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
-from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope
+from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope, holds, effective_perms
 from capabilities.activity_trail import new_group_id
-from capabilities.permissions.roles import can
 from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
-from features.maintenance.service import apply_live_readings, has_maintenance_access, spawn_recurring_if_completed
+from features.maintenance.service import apply_live_readings, spawn_recurring_if_completed
 
 # Who-did-what now rides capabilities/activity_trail (recorded inside
 # the storage mutations, same transaction, field-level old→new — the
@@ -97,6 +96,15 @@ def _enrich_task(task: dict, name_map: dict[int, str]) -> dict:
         if name:
             task["attested_by_name"] = name
     return task
+
+async def _maintenance_access(user: dict) -> bool:
+    """May the caller open maintenance at all — the account's answer
+    (``effective_perms``), not the role's built-in default.  These
+    routes gate on ``get_current_user`` and ask here, so this IS their
+    permission check; it used to ask ``can(role, …)`` and ignored an
+    owner's matrix edit and a disabled Fleet department."""
+    return await holds(user, "can_view_maintenance")
+
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -227,7 +235,7 @@ async def list_tasks(
     platform_db=Depends(get_platform_db),
 ):
     """List maintenance tasks for the account."""
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     tasks = await tenant_db.get_maintenance_tasks(
@@ -419,7 +427,7 @@ async def get_task(
     platform_db=Depends(get_platform_db),
 ):
     """Get a single maintenance task."""
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
@@ -796,14 +804,9 @@ async def get_task_history(
         ensure_declarations_loaded, entity_descriptor,
     )
     from capabilities.activity_trail.router import history_in_company_scope
-    from capabilities.permissions.roles import Role, get_user_permissions
     ensure_declarations_loaded()
     d = entity_descriptor("maintenance_task")
-    perms = await get_user_permissions(
-        Role(user["role"]), user["account_id"],
-        is_manager=bool(user.get("is_manager")),
-        is_primary_owner=bool(user.get("is_primary_owner")),
-    )
+    perms = await effective_perms(user)
     if not (d and any(getattr(perms, p, False) for p in d.view_permissions)):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
@@ -858,7 +861,7 @@ async def upload_task_attachment(
     from capabilities.object_storage.tracking import track_for_sync_if_hybrid
     from capabilities.object_storage.paths import resolve_company_folder
     from features.work_orders.paths import safe_attachment_name
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
@@ -933,7 +936,7 @@ async def download_task_attachment(
     from adapters.storage.object_storage import get_object_storage_for_account
     from capabilities.object_storage.paths import resolve_company_folder
     from fastapi.responses import StreamingResponse
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
@@ -1157,7 +1160,7 @@ async def get_vehicle_odometer(
         "engine_hours": None,
         "engine_hours_time": None,
     }
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     # Assigned-width callers (drivers today): enforce truck ownership
     # so a driver cannot enumerate readings for the entire fleet by
@@ -1218,7 +1221,7 @@ async def get_service_history(
           }
         }
     """
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     # Drivers see only their own truck — matches the list-route policy.
     # Safe-deny: an unassigned driver gets a 404, never another truck's
@@ -1261,7 +1264,7 @@ async def get_service_history(
     # Manager-gated like the Work Orders pages themselves — drivers
     # keep the tasks-only view (WO rows carry invoice money).
     work_orders: list[dict] = []
-    if can(user["role"], "can_manage_work_orders"):
+    if await holds(user, "can_manage_work_orders"):
         wos = await tenant_db.list_work_orders(
             user["account_id"], vehicle_name=vehicle_name,
         )
@@ -1330,7 +1333,7 @@ async def list_templates(
     anyone with ``can_view_maintenance`` can SEE the templates; only
     ``can_manage_maintenance`` can mutate them (write routes below).
     """
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     items = await tenant_db.list_maintenance_templates(user["account_id"])
     return {"templates": items}
@@ -1434,7 +1437,7 @@ async def export_tasks_csv(
     import io
     from fastapi.responses import StreamingResponse
 
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     tasks = await tenant_db.get_maintenance_tasks(
@@ -1601,7 +1604,7 @@ async def maintenance_due_locations(
     Assigned-width callers (drivers / per-truck scoping) see
     only their assigned vehicles' tasks.
     """
-    if not has_maintenance_access(user["role"]):
+    if not await _maintenance_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     # Pull pending + overdue separately so the response can show the

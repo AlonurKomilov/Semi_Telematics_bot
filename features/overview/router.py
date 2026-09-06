@@ -24,9 +24,9 @@ from interfaces.api.deps import (
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
     active_view,
+    effective_perms,
 )
 from adapters.storage import Role
-from capabilities.permissions.roles import can
 from features.vehicles.service import get_vehicles_overview as _svc_vehicles_overview
 from features.vehicles.warehouse.service import get_fleet_weather as _svc_fleet_weather
 from features.vehicles.warehouse import readers as _wh_reader
@@ -97,9 +97,7 @@ async def overview_stats(
     the Overview hero card matches the workspace the SPA is showing.
     """
     account_id = user["account_id"]
-    # JWT payloads store role as a string; coerce to the str-backed enum so
-    # type-checkers see a real Role and downstream ``can()`` calls type-check
-    # against their declared signature.
+    # JWT payloads store role as a string; coerce to the str-backed enum.
     role = Role(user.get("role", "driver"))
 
     allowed = await get_user_company_codes(user)
@@ -118,7 +116,13 @@ async def overview_stats(
     # each role+view combination is independently re-hot.
     cache_key = None
     if role != Role.DRIVER:
-        cache_key = _stats_cache_key(account_id, f"{role}:{view_role}", company, allowed)
+        # The grants are the ACCOUNT's answer and differ per tier — a
+        # manager reads the ``{role}__manager`` row, a co-owner the
+        # ``owner__co`` row — so the tier is part of the key, or two
+        # members of one role would share the first one's blocks for
+        # 15 seconds.
+        tier = f"{int(bool(user.get('is_manager')))}{int(bool(user.get('is_primary_owner')))}"
+        cache_key = _stats_cache_key(account_id, f"{role}:{view_role}:{tier}", company, allowed)
         cached = _stats_cache_get(cache_key)
         if cached is not None:
             return cached
@@ -128,14 +132,17 @@ async def overview_stats(
     # forcing the user to wait ~350ms instead of ~250ms for the Overview page.
     # Skip the role-gated calls so a driver doesn't open three connections
     # only to discard the results.
+    # The caller's EFFECTIVE grants — the account's answer (matrix
+    # edits, disabled departments), not the role's built-in default.
+    perms = await effective_perms(user)
     fetch_alerts = (
         role == Role.DRIVER
-        or can(role, "can_view_vehicles")
+        or perms.can_view_vehicles
     )
-    fetch_parking = can(role, "can_view_vehicles")
+    fetch_parking = perms.can_view_vehicles
     # Wide-only fetch, exactly today's deny-set (the legacy _all
     # gate) — a width-aware assigned count is an E-stage question.
-    fetch_maintenance = can(role, "can_manage_maintenance")
+    fetch_maintenance = perms.can_manage_maintenance
 
     # Fetch ALL open tasks (pending / overdue / in_progress) when
     # the role can see maintenance — the count below filters them by
@@ -274,13 +281,13 @@ async def overview_stats(
         "fleet": vehicles_block,
     }
 
-    if can(role, "can_view_faults"):
+    if perms.can_view_faults:
         result["faults"] = sum(
             1 for v in overview
             if v.get("fault_codes", {}).get("j1939", {}).get("diagnosticTroubleCodes")
         )
 
-    if can(role, "can_view_fuel"):
+    if perms.can_view_fuel:
         result["low_fuel"] = sum(
             1 for v in overview
             if isinstance(v.get("fuel"), dict)

@@ -602,6 +602,39 @@ def _narrow_to_token_scope(perms, user: dict):
     return dataclasses.replace(perms, **narrowed)
 
 
+async def effective_perms(user: dict):
+    """The caller's EFFECTIVE FeatureSet — the answer the gates resolve:
+    seed, the account's matrix overrides, the manager tier, the module
+    masks, the token's scope.  A gated route already carries it on
+    ``user["_perms"]``; an ungated one resolves it here, once, and
+    stashes it the same way.
+
+    This is the only permission read a router or service should make.
+    The bare ``can(role, flag)`` is the role's BUILT-IN default — it is
+    account-aware only inside the bot, whose auth primes a contextvar
+    — so a route that reads it ignores every account-level layer: the
+    owner's matrix edit, a disabled department, tomorrow's plan.  A
+    guard (capabilities/permissions/tests/test_no_bare_can_outside_the_bot.py)
+    keeps it out of the API for that reason.
+    """
+    cached = user.get("_perms")
+    if cached is not None:
+        return cached
+    perms = _narrow_to_token_scope(await get_user_permissions(
+        Role(user["role"]), user["account_id"],
+        is_manager=bool(user.get("is_manager")),
+        is_primary_owner=bool(user.get("is_primary_owner")),
+    ), user)
+    user["_perms"] = perms
+    return perms
+
+
+async def holds(user: dict, flag: str) -> bool:
+    """Does the caller hold ``flag`` — as the gate resolves it (see
+    ``effective_perms``).  An unknown flag is False."""
+    return bool(getattr(await effective_perms(user), flag, False))
+
+
 def require_permission(feature: str):
     """Dependency factory: check the user's role has a specific permission."""
     async def _check(user: dict = Depends(get_current_user)):

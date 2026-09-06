@@ -11,10 +11,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, member_unit_scope, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
+from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, member_unit_scope, holds, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
 from interfaces.api.deps import require_any_or_wide  # noqa: E402
 from capabilities.activity_trail import record_simple
-from capabilities.permissions.roles import can as _can
 from infra.services import get_client
 from features.vehicles.warehouse.service import (
     get_vehicle_health as _svc_vehicle_health,
@@ -202,7 +201,7 @@ async def export_report(
         raise HTTPException(400, f"Unknown report type: {report_type}")
 
     # Enforce per-type permission so callers can only export what they can read.
-    if not _can(user["role"], spec.permission):
+    if not await holds(user, spec.permission):
         raise HTTPException(403, f"Role '{user['role']}' cannot export {report_type} reports")
 
     allowed = await get_user_company_codes(user)

@@ -43,6 +43,7 @@ from interfaces.api.deps import (
     get_platform_db, get_tenant_db, get_current_db_user,
     require_permission, require_permission_any,
     get_user_company_codes, filter_by_company_map, resolve_user_id,
+    holds,
 )
 from adapters.storage import Role
 from adapters.storage.drivers import VALID_DOC_TYPES
@@ -101,21 +102,6 @@ async def _resolve_caller_user_id(caller: dict, platform_db) -> int:
     return db_user.id
 
 
-def _holds(caller: dict, flag: str) -> bool:
-    """Does the caller hold ``flag`` — as the GATE resolved it.
-
-    ``user["_perms"]`` is the account-aware FeatureSet the route's own
-    dependency already computed (matrix overrides, manager tier, module
-    masks); every route here is gated, and both gates stash it.  The
-    bare ``can(role, flag)`` is the role's built-in default — it is
-    account-aware only inside the bot, whose auth primes a contextvar —
-    so reading it here let an owner's revocation go unhonoured.  A
-    caller with no stash (an ungated path, which should not exist)
-    holds nothing.
-    """
-    return bool(getattr(caller.get("_perms"), flag, False))
-
-
 async def _require_driver_visibility(
     target_user_id: int, caller: dict, platform_db,
 ) -> dict:
@@ -126,7 +112,7 @@ async def _require_driver_visibility(
     caller's width is 'self' (a driver) and the target isn't them.
 
     Width is the ROLE's (``person_width``); the manage verb is read
-    from the gate's resolved FeatureSet (``_holds``), never from the
+    from the gate's resolved FeatureSet (``deps.holds``), never from the
     role's built-in default.
     """
     caller_id = await _resolve_caller_user_id(caller, platform_db)
@@ -137,7 +123,7 @@ async def _require_driver_visibility(
         # Don't reveal existence cross-account.
         raise HTTPException(status_code=404, detail="Driver not found")
     from capabilities.permissions.scope import person_width
-    wide = (_holds(caller, "can_manage_driver_docs")
+    wide = (await holds(caller, "can_manage_driver_docs")
             or person_width(caller["role"], "driver_docs") == "all")
     if not wide and caller_id != target_user_id:
         raise HTTPException(status_code=404, detail="Driver not found")
@@ -370,7 +356,7 @@ async def update_driver(
     Everything else is silently ignored from a self call."""
     await _require_driver_visibility(user_id, user, platform_db)
 
-    is_admin = _holds(user, "can_manage_driver_docs")
+    is_admin = await holds(user, "can_manage_driver_docs")
     fields = body.model_dump(exclude_unset=True, exclude_none=True)
     if not is_admin:
         caller_id = await _resolve_caller_user_id(user, platform_db)

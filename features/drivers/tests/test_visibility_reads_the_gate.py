@@ -67,23 +67,29 @@ class TestTheWallReadsTheGate:
             await R._require_driver_visibility(20, _caller("driver", manage=False), _DB())
         assert e.value.status_code == 404
 
-    def test_edits_read_the_gate_too(self):
-        # update_driver's admin check is the same _holds: a fleet member
-        # (built-in Manage=True) whose account revoked it is NOT an admin.
-        assert R._holds(_caller("fleet", manage=False), "can_manage_driver_docs") is False
-        assert R._holds(_caller("dispatcher", manage=True), "can_manage_driver_docs") is True
+    async def test_edits_read_the_gate_too(self):
+        # update_driver's admin check is the same deps.holds: a fleet
+        # member (built-in Manage=True) whose account revoked it is NOT
+        # an admin.
+        from interfaces.api.deps import holds
+        assert await holds(_caller("fleet", manage=False), "can_manage_driver_docs") is False
+        assert await holds(_caller("dispatcher", manage=True), "can_manage_driver_docs") is True
 
     async def test_self_is_always_reachable(self):
         target = await R._require_driver_visibility(10, _caller("driver", manage=False), _DB())
         assert target.id == 10
 
-    async def test_a_caller_with_no_gate_stash_holds_nothing(self):
-        # No _perms (an ungated path): the manage verb is NOT assumed from
-        # the role — a self-width caller without the stash reads only
-        # themself, whatever their role's default would say.
+    async def test_a_caller_with_no_gate_stash_asks_the_account(self, monkeypatch):
+        # No _perms (an ungated path): the answer is RESOLVED the way the
+        # gate would — through the account — never assumed from the role.
+        from interfaces.api import deps
+        async def account_says_no(role, account_id, **kw):
+            return FeatureSet(can_view_driver_docs=True, can_manage_driver_docs=False)
+        monkeypatch.setattr(deps, "get_user_permissions", account_says_no)
         with pytest.raises(HTTPException):
             await R._require_driver_visibility(20, _caller("driver", manage=None), _DB())
-        assert R._holds(_caller("fleet", manage=None), "can_manage_driver_docs") is False
+        # fleet's seed says Manage=True; the account said no, and that wins
+        assert await deps.holds(_caller("fleet", manage=None), "can_manage_driver_docs") is False
 
     async def test_the_wall_never_asks_the_role_default(self, monkeypatch):
         # Mutation guard: a bare can() anywhere on this path would call
