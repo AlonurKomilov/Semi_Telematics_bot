@@ -20,6 +20,13 @@ export const CONNECT_TTL_MS = 10 * 60_000;
 export const DASHBOARD_BASE =
   (import.meta.env.VITE_DASHBOARD_BASE as string | undefined) ?? 'https://4truck.us';
 
+/** Where a person WITHOUT an account starts: the same site the consent
+ *  page lives on, opened at its Register tab — the panel holds no form
+ *  for this either.  Deliberately NOT chained into the connect flow: a
+ *  registration ends with an email to verify, which outlives the
+ *  ten-minute state, so the person comes back and presses Connect. */
+export const REGISTER_URL = `${DASHBOARD_BASE}/login?mode=register`;
+
 export interface PendingConnect { state: string; expires: number }
 
 export type ConnectMessage =

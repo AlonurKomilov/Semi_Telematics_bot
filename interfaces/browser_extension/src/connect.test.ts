@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { acceptConnectMessage, isExtensionToken, isTrustedOrigin, newState, statePending, type PendingConnect } from './connect';
+import { DASHBOARD_BASE, REGISTER_URL, acceptConnectMessage, isExtensionToken, isTrustedOrigin, newState, statePending, type PendingConnect } from './connect';
 
 function jwt(payload: Record<string, unknown>): string {
   const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, '');
@@ -45,5 +45,12 @@ describe('who may hand the panel a token', () => {
     const a = newState(), b = newState();
     expect(a).toMatch(/^[0-9a-f]{64}$/);
     expect(a).not.toBe(b);
+  });
+});
+
+describe('the register door', () => {
+  it('is on the same site as the consent page, at its Register tab — the panel holds no form for it', () => {
+    expect(REGISTER_URL.startsWith(`${DASHBOARD_BASE}/`)).toBe(true);
+    expect(new URL(REGISTER_URL).searchParams.get('mode')).toBe('register');
   });
 });

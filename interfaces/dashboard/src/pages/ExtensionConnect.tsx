@@ -20,7 +20,7 @@ import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Card } from '@/components/ui/card';
 
-type Phase = 'ask' | 'working' | 'done' | 'no-extension' | 'delivery-failed' | 'error' | 'no-state';
+type Phase = 'ask' | 'working' | 'done' | 'no-extension' | 'stale' | 'delivery-failed' | 'error' | 'no-state';
 
 interface ExtRuntime {
   sendMessage?: (id: string, msg: unknown, cb: (reply: unknown) => void) => void;
@@ -61,7 +61,12 @@ export default function ExtensionConnect() {
       // Reach the extension BEFORE minting: a token nobody receives is a
       // session with no holder.
       const ping = await ask(info.extension_id, { type: '4truck:ping', state });
-      if (!ping?.ok) { setPhase('no-extension'); return; }
+      if (!ping) { setPhase('no-extension'); return; }
+      // It answered, so it is installed — it just does not recognise this
+      // request: the state is spent, past its ten minutes (a sign-up or
+      // an email verification outlives it), or from an older attempt.
+      // Nothing has been minted; the fix is one click in the panel.
+      if (!ping.ok) { setPhase('stale'); return; }
       const out = await apiJSON<{ access_token: string }>('/extension/connect', {
         method: 'POST', headers: { 'X-Requested-With': '4truck-dashboard' },
       });
@@ -123,6 +128,12 @@ export default function ExtensionConnect() {
         {phase === 'no-extension' && (
           <p className="text-sm">
             The extension did not answer. Make sure 4truck for Chrome is installed in <i>this</i> browser profile and that you opened this page from its <b>Connect to 4truck</b> button, then try again.
+          </p>
+        )}
+
+        {phase === 'stale' && (
+          <p className="text-sm">
+            This connect request has expired — a request lasts ten minutes, and signing up or verifying an email takes longer. Nothing was connected. Open the panel and press <b>Connect to 4truck</b> again.
           </p>
         )}
 

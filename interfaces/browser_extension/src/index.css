@@ -50,3 +50,5 @@ button, input { font: inherit; }
 .mark-art { height:11px; width:auto; color: var(--muted); }
 .mark-link { text-decoration:none; cursor:pointer; }
 .mark-link:hover { border-color: var(--primary); color: var(--fg); }
+.link { color: var(--primary); text-decoration: underline; }
+.small { font-size: 12px; }

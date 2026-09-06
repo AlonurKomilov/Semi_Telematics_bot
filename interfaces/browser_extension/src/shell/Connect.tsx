@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { beginConnect, clearPending } from '../connect';
+import { REGISTER_URL, beginConnect, clearPending } from '../connect';
 
 /**
  * The panel's first screen.  No fields: the person signs in on 4truck.us
  * — URL bar in view — and confirms there; the token arrives through the
- * service worker and this screen goes away on its own.
+ * service worker and this screen goes away on its own.  A person with no
+ * account is sent to the same site's Register tab: still no field here.
  */
 export default function Connect({ onDone, disconnected = false }: { onDone: () => void; disconnected?: boolean }) {
   const [waiting, setWaiting] = useState(false);
@@ -45,7 +46,14 @@ export default function Connect({ onDone, disconnected = false }: { onDone: () =
         shows the vehicles you are allowed to see, live, and nothing else.
       </p>
       {!waiting ? (
-        <button className="btn primary" type="button" onClick={() => void start()}>Connect to 4truck</button>
+        <>
+          <button className="btn primary" type="button" onClick={() => void start()}>Connect to 4truck</button>
+          <p className="muted small" style={{ margin: 0 }}>
+            No 4truck account yet?{' '}
+            <a className="link" href={REGISTER_URL} target="_blank" rel="noopener noreferrer">Create one on 4truck.us</a>
+            {' '}— then come back here and press Connect.
+          </p>
+        </>
       ) : (
         <>
           <p className="muted" style={{ margin: 0 }}>Waiting for you to confirm in the 4truck tab…</p>
