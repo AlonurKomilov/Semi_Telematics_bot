@@ -12,8 +12,10 @@ credentials, without touching the running configuration:
   2. Does the environment agree with it?
   3. Can we build a client and get a real completion from the default
      model (``VERTEX_AI_MODEL``, today gemini-2.5-flash)?
-  4. Which of the registry's other models answer, and which return the
-     quota error that means "enabled, but this project has none yet"?
+  4. Which of the registry's other models answer — each down its OWN
+     api path, because Gemini, the OpenAI-compatible MaaS endpoint and
+     Anthropic-on-Vertex fail in different ways, and probing them all
+     as Gemini reports a working model as missing.
 
 Nothing is written and no configuration is changed.  Point it at the
 new files explicitly:
@@ -72,26 +74,92 @@ def inspect_creds(path: str) -> dict | None:
     return data
 
 
-async def probe_model(name: str) -> tuple[str, str]:
-    """Ask one model to say one word.  Returns (verdict, detail)."""
+def _classify(detail: str) -> tuple[str, str]:
+    """The four failures that look alike on a fresh project."""
+    low = detail.lower()
+    if "quota" in low or "429" in low or "resource_exhausted" in low:
+        return ("QUOTA", "reachable; this project has no quota granted yet")
+    if ("permission" in low or "403" in low or "denied" in low
+            or "consumer" in low):
+        return ("DENIED", "no roles/aiplatform.user, or not accepted in "
+                          "Model Garden for this project")
+    if "not found" in low or "404" in low:
+        return ("ABSENT", "not offered in this project/region")
+    if "billing" in low:
+        return ("BILLING", detail[:120])
+    return ("ERROR", detail[:150])
+
+
+async def _probe_gemini(name: str, location: str) -> tuple[str, str]:
     from capabilities.ai import models as m
+    caller = m._build_model(name, location)
+    out = await asyncio.to_thread(
+        caller.generate_content, "Reply with the single word: ok")
+    return ("OK", (getattr(out, "text", None) or "").strip()[:40]
+            or "(answered, no text part)")
+
+
+async def _bearer() -> str:
+    """An access token from the service account, the way the MaaS and
+    Anthropic paths get one — they are plain HTTPS, not google-genai."""
+    from capabilities.ai.registry import _get_credentials
+    import google.auth.transport.requests as gart
+    creds = _get_credentials()
+    if creds is None:
+        raise RuntimeError("credentials could not be loaded")
+    await asyncio.to_thread(creds.refresh, gart.Request())
+    return creds.token
+
+
+async def _probe_http(url: str, body: dict, headers: dict) -> tuple[str, str]:
+    import httpx
+    token = await _bearer()
+    headers = {"Authorization": f"Bearer {token}",
+               "Content-Type": "application/json", **headers}
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.post(url, json=body, headers=headers)
+    if r.status_code == 200:
+        return ("OK", "answered")
+    return _classify(f"{r.status_code} {r.text[:300]}")
+
+
+async def probe_model(name: str) -> tuple[str, str]:
+    """Ask one model to say one word, down ITS OWN api path.
+
+    Three paths exist and they fail differently, so probing every model
+    as if it were Gemini reports a working MaaS model as ABSENT — which
+    is exactly the wrong answer to base a migration on.
+    """
+    from capabilities.ai.registry import (
+        MODEL_REGISTRY, _anthropic_url, _maas_base_url)
+    info = MODEL_REGISTRY.get(name, {})
+    api = info.get("api_type", "gemini")
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    # Each model declares where it is served; the env default is only a
+    # fallback for entries that do not.
+    location = (info.get("locations") or
+                [os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")])[0]
     try:
-        caller = m._build_model(name, os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"))
-        out = await asyncio.to_thread(
-            caller.generate_content, "Reply with the single word: ok")
-        text = (getattr(out, "text", None) or "").strip()
-        return ("OK", text[:40] or "(answered, no text part)")
+        if api == "gemini":
+            return await _probe_gemini(name, location)
+        if api == "openai_compat":
+            return await _probe_http(
+                _maas_base_url(location, project),
+                {"model": info.get("maas_model_id", name),
+                 "messages": [{"role": "user", "content": "Reply: ok"}],
+                 "max_tokens": 8},
+                {})
+        if api == "anthropic":
+            model_id = info.get("anthropic_model_id") or name.replace(".", "-")
+            return await _probe_http(
+                _anthropic_url(location, project, model_id),
+                {"anthropic_version": "vertex-2023-10-16",
+                 "messages": [{"role": "user", "content": "Reply: ok"}],
+                 "max_tokens": 8},
+                {})
+        return ("SKIP", f"no probe for api_type {api!r}")
     except Exception as e:
-        detail = str(e)
-        low = detail.lower()
-        if "quota" in low or "429" in low or "resource_exhausted" in low:
-            return ("QUOTA", "enabled, but this project has no quota yet")
-        if "permission" in low or "403" in low or "denied" in low:
-            return ("DENIED", "service account lacks roles/aiplatform.user, "
-                              "or the model is not enabled in Model Garden")
-        if "not found" in low or "404" in low:
-            return ("ABSENT", "not available in this project/region")
-        return ("ERROR", detail[:160])
+        return _classify(str(e))
 
 
 async def run(creds: str | None, project: str | None, deep: bool) -> int:

@@ -101,3 +101,19 @@ interfaces/browser_extension/dist/
 # The extension manifest is source, not a build artefact — an earlier
 # rule ignoring manifest.json (PWA output) must not swallow it.
 !interfaces/browser_extension/public/manifest.json
+
+# ── Credentials — the last word, deliberately at the end ─────────
+# .gitignore's LAST matching rule wins, and the *.json rule above has
+# a dozen `!` exceptions.  A future exception written for source
+# (`!some/dir/*.json`) would silently un-ignore a service-account key
+# dropped in that directory, so these sit below every negation where
+# nothing can reach past them.  The pre-commit hook is the real guard
+# — it reads CONTENT, so a renamed key is caught too — and this is the
+# belt that keeps the file out of `git status` in the first place.
+*service-account*.json
+*service_account*.json
+*credentials*.json
+/truck-*.json
+*.pem
+*.p12
+*.keystore

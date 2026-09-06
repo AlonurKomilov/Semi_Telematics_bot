@@ -12,7 +12,7 @@ Run `./scripts/where.sh` if you want to know whether it is on.
 |---|---|---|
 | 1 | Staged Python must parse | Production imports from this working tree, so a half-saved file is a half-deployed file |
 | 2 | No undefined names in staged Python | A `NameError` killed every group-routed alert for four days; an unimported annotation sat red in CI for a week |
-| 3 | No secret-shaped files | `.env`, `*.pem`, `*.key`, `id_rsa` — except `.env.example`, judged by content (below) |
+| 3 | No secret-shaped files, and no service-account key under ANY name | `.env`, `*.pem`, `*.key`, `id_rsa`; a Google key is caught by its content — except `.env.example`, also judged by content (below) |
 | 4 | Warn when nothing is left unstaged | The footprint of `git add -A` in a shared tree |
 | 5 | No import of a module the commit removes | A rename shipped with ten importers left behind; HEAD could not start for hours |
 
@@ -39,6 +39,26 @@ Module paths only, never the imported names: `from a.b import c` is
 satisfied by `a/b` existing, because `c` may be a name rather than a
 submodule. Imports guarded by `try/except ImportError` are exempt —
 there are 19 legitimate ones in this repo.
+
+## Rule 3 catches a Google key by what it IS, not what it is called
+
+The two service-account keys in this tree stay out of `git status` only
+through the blanket `*.json` in `.gitignore` — which carries a dozen
+`!` exceptions for source. An exception written later for a directory
+(`!some/dir/*.json`) would silently un-ignore a key dropped there, and
+nothing would object. So the hook reads the staged CONTENT: it PARSES
+the file and refuses a JSON object whose type field says it is a
+service account and which carries a private key — whatever the file is
+called, which is also what catches a key renamed to look ordinary.
+
+It parses rather than searching for those field names as text. The
+first version grepped, and the first thing it refused was this README,
+which has to name the fields to explain the rule. A guard that cries at
+prose is a guard somebody switches off.
+
+`.gitignore` keeps a second set of credential patterns at the very
+bottom of the file, below every negation, because its LAST matching
+rule wins. That is the belt; this rule is the braces.
 
 ## Rule 3 and the one `.env.*` that is tracked
 

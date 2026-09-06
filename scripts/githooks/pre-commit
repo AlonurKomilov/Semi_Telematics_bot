@@ -15,6 +15,7 @@ Bypass, when you have a reason:
 """
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -275,8 +276,37 @@ def _template_secrets(blob: str) -> list[str]:
     return bad
 
 
+def _is_service_account_key(blob: str) -> bool:
+    """A Google service-account key, by what the file IS.
+
+    Checking CONTENT rather than the name is what survives a rename:
+    `.gitignore` protects the two keys in this tree only through a
+    blanket `*.json` carrying a dozen `!` exceptions, and a key dropped
+    in an excepted directory would be staged with nothing objecting.
+
+    It PARSES rather than grepping for the field names.  Grepping made
+    this hook refuse its own README, which documents the fields — and a
+    guard that cries at prose gets switched off.
+    """
+    head = blob.lstrip()
+    if not head.startswith("{"):
+        return False
+    try:
+        data = json.loads(blob)
+    except Exception:
+        return False
+    return (isinstance(data, dict)
+            and data.get("type") == "service_account"
+            and bool(data.get("private_key")))
+
+
 for p in paths:
     base = p.rsplit("/", 1)[-1]
+    blob = staged_blob(p) or ""
+    if _is_service_account_key(blob):
+        problems.append(
+            f"{p}: a service-account private key, whatever it is named")
+        continue
     if base == TEMPLATE_ENV:
         leaked = _template_secrets(staged_blob(p) or "")
         if leaked:
