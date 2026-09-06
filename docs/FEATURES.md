@@ -346,7 +346,7 @@ Standing rules (tightened by the consistency pass, same day):
 - Buried component endpoints extracted to their owners: scorecard-rules +
   pillar-caps + storage-quota out of `admin.py`; `/user/me/alerts`
   (My Notifications → alerting `user_router`) and
-  `/user/scheduled-reports` (→ reporting `user_router`) out of `user.py` —
+  `/user/scheduled-reports` (→ `capabilities/reporting/scheduled/`, the Reports service's sub-feature) out of `user.py` —
   all URLs unchanged (extra routers keep the historical prefixes).
   SUPERSEDED 2026-07-30: Companies / Invites / **Working Hours** /
   account settings / audit no longer live in `admin.py` — each has its own

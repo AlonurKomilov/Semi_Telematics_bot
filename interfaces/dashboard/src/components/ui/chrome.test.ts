@@ -138,7 +138,7 @@ const TITLE_NOT_YET_CONVERTED: string[] = [
   'features/maintenance/pickers.tsx',
   'features/object-storage/ObjectStorageBackendCard.tsx',
   'features/object-storage/ObjectStorageFileTable.tsx',
-  'features/reports/ScheduledReports.tsx',
+  'features/reports/scheduled/ScheduledReports.tsx',
   'features/safety-events/EventVideoModal.tsx',
   'features/scorecards/DriverInsights.tsx',
   'features/scorecards/ScorecardRules.tsx',

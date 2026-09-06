@@ -108,10 +108,15 @@ def test_a_narrowed_flag_keeps_its_own_departments():
 
 
 def test_sub_features_nest_under_a_real_parent():
+    # A sub-feature's parent is a feature (Documents under Vehicles) or
+    # a service (Scheduled Reports under Reports — the owner's call:
+    # one permission on the service covers its subscription).
     for e in ENTRIES:
         if e.parent:
-            assert e.parent in REGISTRY and REGISTRY[e.parent].kind == "feature", e.id
+            assert e.parent in REGISTRY, e.id
+            assert REGISTRY[e.parent].parent is None, f"{e.id}: nesting is one level deep"
     assert REGISTRY["vehicle_documents"].parent == "vehicles"
+    assert REGISTRY["scheduled_reports"].parent == "reports"
 
 
 def test_a_narrowed_flag_names_only_its_features_departments():

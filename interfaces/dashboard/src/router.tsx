@@ -93,7 +93,7 @@ const Cameras          = lazyWithReload(() => import('./features/cameras/Cameras
 const Parking          = lazyWithReload(() => import('./features/parking/Parking'));
 const ReportsLayout    = lazyWithReload(() => import('./features/reports/ReportsLayout'));
 const Reports          = lazyWithReload(() => import('./features/reports/Reports'));
-const ScheduledReports = lazyWithReload(() => import('./features/reports/ScheduledReports'));
+const ScheduledReports = lazyWithReload(() => import('./features/reports/scheduled/ScheduledReports'));
 const RiskSummary      = lazyWithReload(() => import('./features/reports/RiskSummary'));
 const DotBinder        = lazyWithReload(() => import('./features/reports/DotBinder'));
 const FuelCosts        = lazyWithReload(() => import('./features/costs/FuelCosts'));

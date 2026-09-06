@@ -61,7 +61,9 @@ value inside the tier union would claim services sit on an axis they don't.
   registered in the AI tools registry.
 
 ### 📄 Reports
-- **Surface**: the Reports hub page (tabbed) + the scheduled-report subscription.
+- **Surface**: the Reports hub page (tabbed) + the scheduled-report subscription —
+  a sub-feature with its own home, `capabilities/reporting/scheduled/` (API) and
+  `features/reports/scheduled/` (dashboard); the bot's hourly sender is its Telegram adapter.
 - **Access (derived)**: the hub **and** its scheduled-report subscription
   (`can_digest = True`) are always on for every role.
 - **Content gate**: which report **tabs** appear is gated per report **type** —
