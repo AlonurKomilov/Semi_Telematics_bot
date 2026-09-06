@@ -102,7 +102,10 @@ export default function MapTypeControl({
     if (id === provider || saving) return;
     setSaving(true);
     try {
-      await apiJSON('/map/config', { method: 'PUT', body: JSON.stringify({ engine: id }) });
+      // apiJSON stringifies an object body itself and sets the JSON
+      // header while doing so; a pre-stringified body passes through
+      // untouched and arrives as a string the server refuses (422).
+      await apiJSON('/map/config', { method: 'PUT', body: { engine: id } });
       engine?.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not change the map');
