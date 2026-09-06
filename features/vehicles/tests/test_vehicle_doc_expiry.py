@@ -122,7 +122,7 @@ def test_documents_is_a_real_alert_type_end_to_end():
     from capabilities.alerting.relevance import ALERT_TYPE_REQUIRED_PERM
 
     assert "vehicle_documents" in ALERT_TYPE_KEYS
-    assert ALERT_TYPE_REQUIRED_PERM["vehicle_documents"] == "can_vehicle_docs", (
+    assert ALERT_TYPE_REQUIRED_PERM["vehicle_documents"] == "can_view_vehicle_docs", (
         "whoever may read a truck's insurance certificate is who should "
         "hear that it lapses")
     src = inspect.getsource(UsersMixin.get_typed_alert_subscribers)
