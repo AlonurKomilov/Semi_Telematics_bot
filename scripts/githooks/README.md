@@ -12,7 +12,7 @@ Run `./scripts/where.sh` if you want to know whether it is on.
 |---|---|---|
 | 1 | Staged Python must parse | Production imports from this working tree, so a half-saved file is a half-deployed file |
 | 2 | No undefined names in staged Python | A `NameError` killed every group-routed alert for four days; an unimported annotation sat red in CI for a week |
-| 3 | No secret-shaped files | `.env`, `*.pem`, `*.key`, `id_rsa` |
+| 3 | No secret-shaped files | `.env`, `*.pem`, `*.key`, `id_rsa` — except `.env.example`, judged by content (below) |
 | 4 | Warn when nothing is left unstaged | The footprint of `git add -A` in a shared tree |
 | 5 | No import of a module the commit removes | A rename shipped with ten importers left behind; HEAD could not start for hours |
 
@@ -39,6 +39,25 @@ Module paths only, never the imported names: `from a.b import c` is
 satisfied by `a/b` existing, because `c` may be a name rather than a
 submodule. Imports guarded by `try/except ImportError` are exempt —
 there are 19 legitimate ones in this repo.
+
+## Rule 3 and the one `.env.*` that is tracked
+
+`.env.example` is the template every deployment copies, so it is in the
+repo and it is meant to be edited — every new setting gets documented
+there. The name rule refused it, and the ways around a refused commit
+are `--no-verify`, which switches off the other three rules as well, or
+leaving the setting undocumented. An undocumented setting is how a real
+key ends up pasted somewhere nobody is guarding, so the refusal was
+working against its own purpose.
+
+It now passes on CONTENT. A value is refused only when its key looks
+secret-shaped (`TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`, `PRIVATE`,
+`_KEY`) **and** the value does not read as a stand-in: placeholders
+(`your_…`, `changeme`, `example`, `<…>`, `xxx`, `…_here`), URLs, bare
+numbers and anything under 16 characters all pass, because those are
+what a template is for. The offending key is named in the refusal.
+
+Every other `.env.*` is refused on its name, as before.
 
 ## Rule 4, the expensive one
 
