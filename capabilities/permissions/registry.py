@@ -29,9 +29,8 @@ Each entry says:
 Three guards hold it to the truth: every ``FeatureSet`` field belongs
 to exactly one entry or the cross-feature bucket; the dashboard's
 catalog and matrix tree agree with it (tests/test_feature_registry_drift.py);
-and the module mask it derives is the mask the account has today
-(``MASK_DRIFT`` names the flags the hand-written mask never carried —
-a set that may only shrink).
+and the module mask it derives is pinned as a snapshot, so a
+department gaining or losing a flag is a deliberate edit, never drift.
 """
 
 from __future__ import annotations
@@ -198,32 +197,21 @@ def owner_of(flag: str) -> Entry | None:
     return None
 
 
-#: Flags the hand-written module mask never carried although their
-#: feature belongs to a toggleable department — i.e. a department
-#: switch hides their page in the nav but leaves their API open.  Kept
-#: here, named, so the registry's derived mask reproduces today's
-#: behaviour exactly; closing one is a deliberate change (delete it
-#: here and the flag starts honouring the switch).  May only shrink.
-MASK_DRIFT: frozenset[str] = frozenset({
-    "can_view_loads", "can_manage_loads",                       # loads · dispatch
-    "can_view_carrier_directory", "can_manage_carrier_directory",  # carrier directory · hr
-    "can_manage_parts",                                         # parts · fleet
-    "can_manage_service_tasks",                                 # service tasks · fleet
-    "can_view_truck_anatomy",                                   # truck anatomy · fleet
-    "can_view_risk_reports",                                    # risk summary · safety
-    "can_view_cost_reports",                                    # cost reports · accounting
-})
-
-
 def derive_flag_modules() -> dict[str, frozenset[str]]:
     """flag → owning departments, for every flag a department switch
-    may turn off — the registry's answer to ``modules.FLAG_MODULES``."""
+    may turn off — the registry's answer to ``modules.FLAG_MODULES``.
+
+    Every flag of a department-owned feature is here.  The hand-written
+    mask this replaced had drifted from the catalog on seven features
+    (nine flags) — loads, carrier directory, parts, service tasks, truck
+    anatomy, risk summary, cost reports — whose department switch hid
+    their page and left their API open; the owner closed that on
+    2026-09-06, so a switch is a switch everywhere.
+    """
     out: dict[str, frozenset[str]] = {}
     for e in ENTRIES:
         if not e.maskable:
             continue
         for flag in e.flags:
-            if flag in MASK_DRIFT:
-                continue
             out[flag] = e.modules_of(flag)
     return out

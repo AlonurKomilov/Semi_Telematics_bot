@@ -49,7 +49,9 @@ def to_disabled_csv(enabled: list[str] | tuple[str, ...]) -> str:
 # departments is on.  This is what makes a disabled module hide its
 # features *through the permission system* rather than via a second,
 # parallel filter.  The hand-written list this replaced had drifted
-# from the catalog on seven flags; registry.MASK_DRIFT names them.
+# from the catalog on seven features, nine flags (a switch hid the
+# page, not the API); closed 2026-09-06 — the registry carries no
+# exemptions.
 FLAG_MODULES: dict[str, frozenset[str]] = derive_flag_modules()
 
 

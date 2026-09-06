@@ -13,18 +13,20 @@ import os
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
 from capabilities.permissions.registry import (
-    CROSS_FEATURE_FLAGS, ENTRIES, FEATURES, MASK_DRIFT, REGISTRY, SERVICES,
+    CROSS_FEATURE_FLAGS, ENTRIES, FEATURES, REGISTRY, SERVICES,
     TOGGLEABLE_MODULES, derive_flag_modules, owner_of,
 )
 from capabilities.permissions.roles import FeatureSet
 
 FIELDS = set(FeatureSet.__dataclass_fields__)
 
-#: the hand-written mask the registry replaced (2026-09-06) — the
-#: derivation must reproduce it exactly, drift and all, so this step
-#: changes no account's behaviour.  Close a drift by deleting the flag
-#: from registry.MASK_DRIFT and adding it HERE with its departments.
-MASK_BEFORE = {
+#: the department mask, pinned.  The hand-written list the registry
+#: replaced (2026-09-06) had the first 24; the nine below it were the
+#: drift — features that belong to a department but whose switch only
+#: hid the page — closed the same day by the owner.  Adding a flag
+#: here is a deliberate edit: a new feature honours its department
+#: switch from its first day.
+MASK = {
     "can_view_maintenance": {"fleet"}, "can_manage_maintenance": {"fleet"},
     "can_view_work_orders": {"fleet"}, "can_manage_work_orders": {"fleet"},
     "can_view_inspections": {"fleet"}, "can_manage_inspections": {"fleet"},
@@ -39,6 +41,13 @@ MASK_BEFORE = {
     "can_manage_applications": {"hr"}, "can_onboard_drivers": {"hr"},
     "can_view_fuel_cost": {"accounting", "dispatch"}, "can_view_cost_per_mile": {"accounting", "fleet"},
     "can_manage_driver_pay": {"accounting"}, "can_view_driver_pay": {"accounting"},
+    # the seven features whose switch used to hide the page only
+    "can_view_loads": {"dispatch"}, "can_manage_loads": {"dispatch"},
+    "can_view_carrier_directory": {"hr"}, "can_manage_carrier_directory": {"hr"},
+    "can_manage_parts": {"fleet"}, "can_manage_service_tasks": {"fleet"},
+    "can_view_truck_anatomy": {"fleet"},
+    "can_view_risk_reports": {"safety"},
+    "can_view_cost_reports": {"accounting"},
 }
 
 
@@ -79,24 +88,21 @@ def test_core_and_account_are_never_masked():
             assert e.modules <= set(TOGGLEABLE_MODULES), e.id
 
 
-def test_the_derived_mask_is_the_mask_the_accounts_had():
-    assert derive_flag_modules() == {k: frozenset(v) for k, v in MASK_BEFORE.items()}
+def test_the_derived_mask_is_pinned():
+    assert derive_flag_modules() == {k: frozenset(v) for k, v in MASK.items()}
 
 
-def test_mask_drift_is_real_and_may_only_shrink():
-    # Every drifted flag belongs to a department-owned entry (else the
-    # entry is not drift, it is core) and stays out of the derived mask.
+def test_every_department_flag_honours_its_switch():
+    # No exemptions: every flag of a department-owned feature is in the
+    # mask — a switch is a switch for the API, not only for the nav.
     derived = derive_flag_modules()
-    for f in MASK_DRIFT:
-        e = owner_of(f)
-        assert e is not None and e.maskable, f
-        assert f not in derived, f
-    assert MASK_DRIFT <= {
-        "can_view_loads", "can_manage_loads",
-        "can_view_carrier_directory", "can_manage_carrier_directory",
-        "can_manage_parts", "can_manage_service_tasks", "can_view_truck_anatomy",
-        "can_view_risk_reports", "can_view_cost_reports",
-    }, "MASK_DRIFT grew — a new feature must honour its department switch from day one"
+    for e in ENTRIES:
+        if e.maskable:
+            for flag in e.flags:
+                assert flag in derived, (e.id, flag)
+        else:
+            for flag in e.flags:
+                assert flag not in derived, (e.id, flag)
 
 
 def test_a_narrowed_flag_keeps_its_own_departments():
