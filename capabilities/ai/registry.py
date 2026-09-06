@@ -122,6 +122,11 @@ MODEL_REGISTRY: dict[str, dict] = {
         "locations": ["global"],
         "max_output_tokens": 8192,
     },
+    # GLM 5.2 (zai-org/glm-5.2-maas) is in the Model Garden and answers —
+    # in ninety seconds on a cold call, and not at all inside a
+    # two-minute tool-calling request (2026-09-06).  The chain only
+    # moves on after a failure, so a model that hangs is worse than a
+    # model that is absent.  Re-probe before adding it.
     "glm-5": {
         "display": "GLM 5",
         "description": "Zhipu GLM 5 — large-scale general model",
@@ -148,6 +153,24 @@ MODEL_REGISTRY: dict[str, dict] = {
         "maas_model_id": "openai/gpt-oss-120b-maas",
         "locations": ["global"],
         "max_output_tokens": 8192,
+    },
+    "grok-4.6": {
+        "display": "Grok 4.6",
+        "description": "xAI's flagship — agentic, low hallucination, strong tool use",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "xai/grok-4.6",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    "grok-4.1-fast-reasoning": {
+        "display": "Grok 4.1 Fast Reasoning",
+        "description": "xAI Grok 4.1 Fast with reasoning — quick chain-of-thought",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "xai/grok-4.1-fast-reasoning",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
     },
     "grok-4.1-fast": {
         "display": "Grok 4.1 Fast",
@@ -204,13 +227,41 @@ MODEL_REGISTRY: dict[str, dict] = {
         "max_output_tokens": 8192,
     },
     # ── Gemini 3.x (native Vertex AI SDK, global only) ───────
-    "gemini-3.1-flash-lite-preview": {
-        "display": "Gemini 3.1 Flash-Lite",
-        "description": "Next-gen Gemini — ultra fast & cheap (preview)",
+    # Every id here was PROBED on the live project before it was
+    # written down (scripts/vertex_preflight.py --deep).  The Model
+    # Garden lists more Flash generations than this (3.5 Lite, 3.6,
+    # 3.7, 3 Flash Preview all answer); they are one quota pool and
+    # near-identical in role, so the picker carries the newest and
+    # the cheap one rather than a ladder of look-alikes.
+    "gemini-3.8-flash": {
+        "display": "Gemini 3.8 Flash",
+        "description": "Newest Gemini Flash — the current fast generation",
         "category": "gemini",
         "api_type": "gemini",
         "locations": ["global"],
         "max_output_tokens": 16384,
+        "thinking_budget": 0,
+    },
+    "gemini-3.1-flash-lite": {
+        # The -preview id this replaced went 404 on every project in
+        # 2026-09; the GA id answers.  Same slot, same role.
+        "display": "Gemini 3.1 Flash-Lite",
+        "description": "Gemini 3.1 Flash-Lite — ultra fast & cheap",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    "gemini-2.5-flash-lite": {
+        # The one Lite that also serves from us-central1, so the FAST
+        # chain keeps a cheap regional fallback when global misbehaves.
+        "display": "Gemini 2.5 Flash-Lite",
+        "description": "Cheapest Gemini — quick lookups, simple summaries",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global", "us-central1"],
+        "max_output_tokens": 16384,
+        "thinking_budget": 0,
     },
     "gemini-3.1-pro-preview": {
         "display": "Gemini 3.1 Pro",
@@ -293,7 +344,13 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     # Gemini (thinking separate from output in API)
     "gemini-2.5-flash":            {"input": 0.15, "output": 0.60, "thinking": 0.70},
     "gemini-2.5-pro":              {"input": 1.25, "output": 10.00, "thinking": 3.75},
-    "gemini-3.1-flash-lite-preview": {"input": 0.10, "output": 0.40, "thinking": 0.40},
+    # VERIFY on cloud.google.com/vertex-ai/generative-ai/pricing —
+    # the three lines below mirror their nearest sibling, not a
+    # looked-up price.  They keep cost analytics from falling to the
+    # $1/$2 default; they are not a quote.
+    "gemini-3.8-flash":            {"input": 0.15, "output": 0.60, "thinking": 0.70},   # VERIFY (mirrors 3.5 Flash)
+    "gemini-3.1-flash-lite":       {"input": 0.10, "output": 0.40, "thinking": 0.40},
+    "gemini-2.5-flash-lite":       {"input": 0.10, "output": 0.40, "thinking": 0.40},   # VERIFY (mirrors 3.1 Lite)
     "gemini-3.1-pro-preview":      {"input": 1.25, "output": 10.00, "thinking": 3.75},
     "gemini-3.5-flash":            {"input": 0.15, "output": 0.60, "thinking": 0.70},
     # MaaS reasoning models (thinking included in completion_tokens)
@@ -303,6 +360,8 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "kimi-k2-thinking":            {"input": 0.60, "output": 2.40, "thinking": 2.40},
     "qwen3-next-thinking":         {"input": 0.14, "output": 0.55, "thinking": 0.55},
     "grok-4.20-reasoning":         {"input": 3.00, "output": 15.00, "thinking": 15.00},
+    "grok-4.6":                    {"input": 3.00, "output": 15.00, "thinking": 15.00},   # VERIFY (mirrors 4.20; flagship, priced high on purpose)
+    "grok-4.1-fast-reasoning":     {"input": 0.20, "output": 0.50, "thinking": 0.50},    # VERIFY (mirrors 4.1 Fast)
     # MaaS non-reasoning models
     "deepseek-ocr":                {"input": 0.30, "output": 0.88},
     "qwen3-next":                  {"input": 0.14, "output": 0.27},
@@ -481,8 +540,10 @@ TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
         # the tier fails over to a DIFFERENT provider's quota pool with
         # tool-calling intact instead of the next Gemini in the same pool.
         "grok-4.1-fast",
+        "gemini-3.8-flash",
         "gemini-3.5-flash",
-        "gemini-3.1-flash-lite-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite",
         "gpt-oss-20b",
         "gemma-4-26b",
         "llama-4-scout",
@@ -491,6 +552,9 @@ TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
     TIER_THINKING: [
         "gemini-3.1-pro-preview",
         "gemini-2.5-pro",
+        # Non-Gemini early, for the same quota-pool reason as FAST:
+        # Claude below it has never held quota on any project of ours.
+        "grok-4.6",
         "claude-sonnet-4.6",
         "gpt-oss-120b",
         "llama-4-maverick",
@@ -506,6 +570,7 @@ TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
         "qwen3-next-thinking",
         "kimi-k2-thinking",
         "grok-4.20-reasoning",
+        "grok-4.1-fast-reasoning",
     ],
 }
 
@@ -782,7 +847,9 @@ _CLOUD_MODEL_MAP: dict[str, str] = {
     "gemini-2.5-flash": "gemini-2.5-flash",
     "gemini-2.5-pro": "gemini-2.5-pro",
     "gemini-2.5-pro-001": "gemini-2.5-pro",
-    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite-preview",
+    "gemini-3.8-flash": "gemini-3.8-flash",
+    "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
+    "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
     "gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
     "gemini-3.5-flash": "gemini-3.5-flash",
     "deepseek-r1-0528-maas": "deepseek-r1",
@@ -799,6 +866,8 @@ _CLOUD_MODEL_MAP: dict[str, str] = {
     "grok-4.20-reasoning": "grok-4.20-reasoning",
     "minimax-m2-maas": "minimax-m2",
     "glm-5-maas": "glm-5",
+    "grok-4.6": "grok-4.6",
+    "grok-4.1-fast-reasoning": "grok-4.1-fast-reasoning",
     "glm-4.7-maas": "glm-4.7",
     "gpt-oss-120b-maas": "gpt-oss-120b",
     "gpt-oss-20b-maas": "gpt-oss-20b",

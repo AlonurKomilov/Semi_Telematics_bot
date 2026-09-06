@@ -95,7 +95,7 @@ async def analyze_camera_image(
     _VISION_FALLBACK = [
         ("gemini-2.5-flash", "us-central1"),
         ("gemini-2.5-pro", "us-central1"),
-        ("gemini-3.1-flash-lite-preview", "global"),
+        ("gemini-3.1-flash-lite", "global"),
         ("gemini-3.1-pro-preview", "global"),
     ]
 

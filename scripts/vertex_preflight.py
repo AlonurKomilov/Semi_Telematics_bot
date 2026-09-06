@@ -75,10 +75,21 @@ def inspect_creds(path: str) -> dict | None:
 
 
 def _classify(detail: str) -> tuple[str, str]:
-    """The four failures that look alike on a fresh project."""
+    """The four failures that look alike on a fresh project.
+
+    A 429 is two different facts: a project that holds NO quota for the
+    model (permanent until somebody requests it) and a model that is
+    merely busy this second.  The picker's own probe tells them apart
+    by the wording Google uses for the first, and so does this — the
+    earlier version called every 429 QUOTA and reported llama-4-scout
+    as needing a request it did not need.
+    """
+    from capabilities.ai.probing import _looks_like_permanent_quota_zero
     low = detail.lower()
-    if "quota" in low or "429" in low or "resource_exhausted" in low:
-        return ("QUOTA", "reachable; this project has no quota granted yet")
+    if "429" in low or "quota" in low or "resource_exhausted" in low:
+        if _looks_like_permanent_quota_zero(detail):
+            return ("QUOTA", "reachable; this project has no quota granted yet")
+        return ("BUSY", "throttled this second, not a missing quota — retry")
     if ("permission" in low or "403" in low or "denied" in low
             or "consumer" in low):
         return ("DENIED", "no roles/aiplatform.user, or not accepted in "
