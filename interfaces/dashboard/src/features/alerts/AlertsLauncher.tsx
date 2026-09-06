@@ -15,7 +15,7 @@
  */
 import { useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { Bell } from 'lucide-react';
+import { Bell } from '../../lib/icons';
 import { useShellStats } from '../../shells/heroes/useShellStats';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { NotificationsPanel } from './NotificationsPanel';

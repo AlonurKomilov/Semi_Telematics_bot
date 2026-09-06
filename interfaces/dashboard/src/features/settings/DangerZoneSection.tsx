@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useTimezone } from '../../hooks/useTimezone';

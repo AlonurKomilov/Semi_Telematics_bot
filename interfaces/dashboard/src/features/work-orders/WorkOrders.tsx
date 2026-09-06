@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
+import { FileText, Plus, Paperclip, Receipt, X } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { workOrderRowMenu } from './contextMenu';

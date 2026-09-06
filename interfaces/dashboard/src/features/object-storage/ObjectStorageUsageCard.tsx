@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { HardDrive, Loader2, Trash2, AlertTriangle, RotateCw } from 'lucide-react';
+import { HardDrive, Loader2, Trash2, AlertTriangle, RotateCw } from '../../lib/icons';
 import { toneClasses } from '../../lib/status';
 
 import { apiJSON } from '../../api/client';

@@ -18,7 +18,7 @@ import {
   AlertTriangle, HeartPulse, Fuel, ShieldAlert, Camera, ParkingSquare,
   MapPin, BarChart3, Wrench, FileText, RefreshCw,
   type LucideIcon,
-} from 'lucide-react';
+} from '../../../lib/icons';
 import { useRoleView } from '../../../context/RoleViewContext';
 import { Card } from '@/components/ui/card';
 

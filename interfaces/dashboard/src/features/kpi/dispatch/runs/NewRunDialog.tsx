@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '../../../../lib/icons';
 import { toast } from '../../../../lib/toast';
 import { Button } from '../../../../components/ui/button';
 import { toneClasses } from '../../../../lib/status';

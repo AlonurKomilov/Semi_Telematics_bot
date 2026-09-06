@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Check, X } from 'lucide-react';
+import { Shield, Check, X } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';

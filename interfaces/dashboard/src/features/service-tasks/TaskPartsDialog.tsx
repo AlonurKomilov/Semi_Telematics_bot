@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
-import { Trash2 } from 'lucide-react';
+import { Trash2 } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,

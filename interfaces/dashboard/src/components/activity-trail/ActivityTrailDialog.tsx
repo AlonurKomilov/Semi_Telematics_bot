@@ -8,7 +8,7 @@
  * endpoints of their own (maintenance) keep their dedicated dialogs.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { History } from 'lucide-react';
+import { History } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 import { apiJSON } from '../../api/client';
 import {

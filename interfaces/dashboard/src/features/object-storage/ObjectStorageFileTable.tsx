@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
 import {
   RefreshCw, Loader2, AlertTriangle, RotateCcw, Clock,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';

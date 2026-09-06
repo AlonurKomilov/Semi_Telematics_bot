@@ -14,7 +14,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plug } from 'lucide-react';
+import { Plug } from '../../lib/icons';
 import { useTranslation } from 'react-i18next';
 import { CardSkeleton, PageHeader } from '../../components/shell';
 import IntegrationCard from './IntegrationCard';

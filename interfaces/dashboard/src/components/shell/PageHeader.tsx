@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { HelpCircle, type LucideIcon } from 'lucide-react';
+import { HelpCircle, type LucideIcon } from '../../lib/icons';
 import type { ReactNode } from 'react';
 import { InfoTip } from '../tooltip';
 

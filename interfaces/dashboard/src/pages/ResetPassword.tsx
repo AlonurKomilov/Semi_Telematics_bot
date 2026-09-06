@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from '../lib/icons';
 import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';

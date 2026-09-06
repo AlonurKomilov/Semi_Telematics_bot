@@ -13,7 +13,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3 } from '../../../lib/icons';
 import { apiJSON } from '../../../api/client';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import type { AlertType } from '../personaConfig';

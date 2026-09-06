@@ -21,7 +21,7 @@
  * The catalogue page is deferred until there is content to browse — four
  * accents and two sound packs is not a catalogue.
  */
-import { RotateCcw, LayoutGrid } from 'lucide-react';
+import { RotateCcw, LayoutGrid } from '../lib/icons';
 import { Link } from 'react-router-dom';
 import { MODS_PAGE_HREF } from './href';
 import { Card } from '../components/ui/card';

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
-import { X, AlertTriangle } from 'lucide-react';
+import { X, AlertTriangle } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';

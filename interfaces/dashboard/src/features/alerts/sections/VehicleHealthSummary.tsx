@@ -26,8 +26,8 @@
  * aggregate endpoint lands, add a card sourced from it.
  */
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, HeartPulse, Fuel } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { AlertTriangle, HeartPulse, Fuel } from '../../../lib/icons';
+import type { LucideIcon } from '../../../lib/icons';
 import { KpiCard } from '../../../components/shell';
 import { useAlertTypeCounts } from '../_shared/useAlertTypeCounts';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';

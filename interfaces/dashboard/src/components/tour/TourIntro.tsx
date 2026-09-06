@@ -9,7 +9,7 @@
  * snoozes — closing a window is not answering a question.
  */
 import { useTranslation } from 'react-i18next';
-import { Lightbulb } from 'lucide-react';
+import { Lightbulb } from '../../lib/icons';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
   DialogTitle,

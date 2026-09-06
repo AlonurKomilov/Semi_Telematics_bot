@@ -23,7 +23,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { getVehiclesConfig, putVehiclesConfig } from './api';
 import type { SourcePrecedence } from './api';
 import { useRoleView } from '../../../context/RoleViewContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '../../../lib/icons';
 import { Switch } from '../../../components/ui/switch';
 import { ErrorState } from '../../../components/shell';
 

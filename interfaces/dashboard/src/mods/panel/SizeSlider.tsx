@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw } from '../../lib/icons';
 import { Slider } from '../../components/ui/slider';
 import { Tip } from '../../components/tooltip';
 import { SIZE_MIN, SIZE_MAX } from '../../preferences';

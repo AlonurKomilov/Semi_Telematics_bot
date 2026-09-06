@@ -14,7 +14,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Clock, Bell } from 'lucide-react';
+import { Clock, Bell } from '../../../lib/icons';
 import { apiJSON, ApiError } from '../../../api/client';
 import { Card } from '@/components/ui/card';
 

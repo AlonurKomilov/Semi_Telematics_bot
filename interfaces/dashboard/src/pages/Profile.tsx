@@ -36,7 +36,7 @@ import {
   CheckCircle2,
   XCircle,
   ExternalLink,
-} from 'lucide-react';
+} from '../lib/icons';
 
 import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';

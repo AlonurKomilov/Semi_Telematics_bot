@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Fuel, Plus } from 'lucide-react';
+import { Fuel, Plus } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone } from '../../utils/datetime';

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Check, FileText, Receipt, X } from 'lucide-react';
+import { Check, FileText, Receipt, X } from '../../lib/icons';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';

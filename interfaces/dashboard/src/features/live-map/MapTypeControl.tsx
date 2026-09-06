@@ -18,7 +18,7 @@
 
 import { useState } from 'react';
 import { MAP_TYPE_PREVIEW } from '../../config/mapColors';
-import { Check, ChevronDown, ChevronUp, Map as MapIcon, Mountain, Satellite, type LucideIcon } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Map as MapIcon, Mountain, Satellite, type LucideIcon } from '../../lib/icons';
 import type { MapType } from '@/hooks/useLeafletMap';
 import { cn } from '@/lib/utils';
 

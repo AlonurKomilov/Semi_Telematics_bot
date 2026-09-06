@@ -11,7 +11,7 @@
  *   • the user holds one of the feature's permissions (null = open),
  *   • the feature isn't `navHidden` (route-only, e.g. Invites → a tab).
  */
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from '../../lib/icons';
 import {
   FEATURE_CATALOG,
   isPathModuleEnabled,

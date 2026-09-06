@@ -11,7 +11,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { KeyRound } from 'lucide-react';
+import { KeyRound } from '../../lib/icons';
 
 export default function CredentialsSection({
   title,

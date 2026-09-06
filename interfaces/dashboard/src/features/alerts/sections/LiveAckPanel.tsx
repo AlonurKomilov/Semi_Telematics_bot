@@ -22,7 +22,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Volume2, VolumeX, Activity, Clock } from 'lucide-react';
+import { Volume2, VolumeX, Activity, Clock } from '../../../lib/icons';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';

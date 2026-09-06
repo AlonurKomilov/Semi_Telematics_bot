@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Mail, MessageSquare, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
+import { Mail, MessageSquare, Pencil, Plus, Send, Trash2, X } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { CardSkeleton, ErrorState } from '../../components/shell';

@@ -14,7 +14,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { FileText } from 'lucide-react';
+import { FileText } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 import { apiFetch } from '../../api/client';
 import { DateRangePresets } from '../../components/shell';

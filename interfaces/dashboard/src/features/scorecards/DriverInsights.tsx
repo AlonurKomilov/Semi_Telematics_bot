@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, Sparkles, Lightbulb } from 'lucide-react';
+import { AlertTriangle, Sparkles, Lightbulb } from '../../lib/icons';
 import { toneClasses, toneText, type Tone } from '@/lib/status';
 import type { CompositeScorecard, ScoreEventBreakdown } from '@/types';
 import { Card } from '@/components/ui/card';

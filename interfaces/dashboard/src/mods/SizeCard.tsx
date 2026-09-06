@@ -14,7 +14,7 @@
  * claimed by the surface that already owns it (`lib/sizeRegion.ts`).
  */
 import { useRef, useState, type CSSProperties } from 'react';
-import { RotateCcw, ChevronRight } from 'lucide-react';
+import { RotateCcw, ChevronRight } from '../lib/icons';
 
 import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';

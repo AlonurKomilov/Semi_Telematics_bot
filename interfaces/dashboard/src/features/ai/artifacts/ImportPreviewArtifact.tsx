@@ -15,7 +15,7 @@
  * approve executes, so what's shown stays exactly what's written.
  */
 import { useState } from 'react';
-import { AlertTriangle, Info, Pencil, X, Check } from 'lucide-react';
+import { AlertTriangle, Info, Pencil, X, Check } from '../../../lib/icons';
 import DataGrid from '../../../components/datagrid';
 import {
   aiGetActionRows, aiEditActionRow, aiRemoveActionRow,

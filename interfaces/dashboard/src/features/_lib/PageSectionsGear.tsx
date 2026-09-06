@@ -15,7 +15,7 @@
  */
 import { useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
+import { Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw } from '../../lib/icons';
 import { Tip } from '../../components/tooltip';
 import { toneText } from '../../lib/status';
 import { usePagePreference } from '../../preferences';

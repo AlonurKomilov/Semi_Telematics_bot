@@ -7,7 +7,7 @@ import {
   IdCard, X, Truck, Upload, FileText, Trash2, Download, Save,
   AlertTriangle, Calendar, Plus, ClipboardCheck, GraduationCap, Clock,
   Check, Search, Link2, Link2Off, UserPlus, Copy,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { apiJSON, apiFetch } from '../../api/client';
 import { buildSignupInviteUrl, useSignupBase } from '../../lib/inviteUrl';

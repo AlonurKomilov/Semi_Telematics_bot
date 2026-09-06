@@ -11,7 +11,7 @@
  * gated on ``can_manage_vehicles`` (registry admin).
  */
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus } from '../../../lib/icons';
 import { CardSkeleton } from '../../../components/shell';
 import { Button } from '../../../components/ui/button';
 import { Freshness } from '../../../components/tooltip';

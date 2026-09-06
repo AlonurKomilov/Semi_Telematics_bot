@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, FlaskConical, Fuel, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, ArrowRight, FlaskConical, Fuel, TriangleAlert } from '../../lib/icons';
 import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';

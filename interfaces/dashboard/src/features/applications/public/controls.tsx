@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SIGNATURE_INK, SIGNATURE_PAPER } from '../../../config/documentColors';
 import type { ReactNode } from 'react';
-import { UploadCloud, Camera, X, FileText, Check } from 'lucide-react';
+import { UploadCloud, Camera, X, FileText, Check } from '../../../lib/icons';
 import { formatPhone, formatSsn } from './lib';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
 

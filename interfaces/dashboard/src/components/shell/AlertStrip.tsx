@@ -1,6 +1,6 @@
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from '../../lib/icons';
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '../../lib/icons';
 import { toneClasses, type Tone } from '../../lib/status';
 
 export interface AlertItem {

@@ -16,7 +16,7 @@
 // half-typed task no longer reappears on the next open.
 
 import { useEffect, useState } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 
 import { apiJSON } from '../../api/client';

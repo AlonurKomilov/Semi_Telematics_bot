@@ -10,7 +10,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BadgeDollarSign } from 'lucide-react';
+import { BadgeDollarSign } from '../../../lib/icons';
 import DataGrid from '../../../components/datagrid';
 import {
   EmptyState, ErrorState, PageHeader, TableSkeleton,

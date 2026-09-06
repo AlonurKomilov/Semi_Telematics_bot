@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, X } from 'lucide-react';
+import { Mail, X } from '../lib/icons';
 import { apiJSON } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 

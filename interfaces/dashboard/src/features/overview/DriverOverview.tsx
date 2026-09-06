@@ -19,7 +19,7 @@ import {
   MessageCircle,
   ShieldAlert,
   Route,
-} from 'lucide-react';
+} from '../../lib/icons';
 import type { NavigateFunction } from 'react-router-dom';
 import {
   PageHeader,

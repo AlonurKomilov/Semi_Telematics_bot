@@ -41,7 +41,7 @@ import { toast } from '../../../lib/toast';
 import {
   X, ExternalLink, Truck, BarChart3, GraduationCap, Video, CheckCircle2,
   Wrench,
-} from 'lucide-react';
+} from '../../../lib/icons';
 import { apiJSON, ApiError } from '../../../api/client';
 import { Button } from '../../../components/ui/button';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';

@@ -32,7 +32,7 @@ import {
   TrafficCone,
   Wrench,
   type LucideIcon,
-} from 'lucide-react';
+} from '../lib/icons';
 import { POPUP, POPUP_LINK } from './mapColors';
 
 /**

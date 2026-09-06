@@ -26,7 +26,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft, LayoutGrid, Palette, Square, Layers, PenLine, Sparkles,
   Volume2, Bell, Zap, Monitor, Maximize2, Puzzle, type LucideIcon,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { PageHeader, SectionHeader } from '../../components/shell';
 import { Card } from '../../components/ui/card';
 import { cn } from '../../lib/utils';

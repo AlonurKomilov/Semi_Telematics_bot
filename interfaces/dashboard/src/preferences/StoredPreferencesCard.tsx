@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Cloud, HardDrive, RotateCcw } from 'lucide-react';
+import { Cloud, HardDrive, RotateCcw } from '../lib/icons';
 import { toast } from '../lib/toast';
 
 import { Button } from '../components/ui/button';

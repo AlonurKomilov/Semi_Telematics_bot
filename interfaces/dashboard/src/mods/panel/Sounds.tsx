@@ -7,7 +7,7 @@
  */
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw, Volume2, VolumeX } from 'lucide-react';
+import { RotateCcw, Volume2, VolumeX } from '../../lib/icons';
 import { Slider } from '../../components/ui/slider';
 import { Switch } from '../../components/ui/switch';
 import { Tip } from '../../components/tooltip';

@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
 import { History as HistoryIcon,
   ArrowLeft, ClipboardList, Lock, Package, Pencil,
-} from 'lucide-react';
+} from '../../lib/icons';
 import TaskPartsDialog from './TaskPartsDialog';
 import MergeTaskDialog from './MergeTaskDialog';
 import EditTaskDialog from './EditTaskDialog';

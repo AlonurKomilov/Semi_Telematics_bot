@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserCog, LogOut, Palette } from 'lucide-react';
+import { UserCog, LogOut, Palette } from '../lib/icons';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
 import { MODS_HREF } from '../mods';

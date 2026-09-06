@@ -3,7 +3,7 @@
 // Each step is { title, sub, Render, validate }.  Render reads/writes the
 // shared `data` object by path; validate returns an error map (empty = ok).
 import { useRef, useState } from 'react';
-import { Plus, Trash2, ShieldCheck, ChevronDown, FileText, Camera, CheckCircle2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, ShieldCheck, ChevronDown, FileText, Camera, CheckCircle2, Loader2 } from '../../../lib/icons';
 import {
   deepGet, V, run, US_STATES, YES_NO, YEARS_AT_ADDR, CDL_CLASSES, ENDORSEMENTS,
   YEARS_CDL, EQUIPMENT_TYPES, REGIONS, PREFERRED_ROLE,

@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Boxes, Plus } from 'lucide-react';
+import { Boxes, Plus } from '../../../lib/icons';
 import { apiJSON } from '../../../api/client';
 import DataGrid from '../../../components/datagrid';
 import { Button } from '../../../components/ui/button';

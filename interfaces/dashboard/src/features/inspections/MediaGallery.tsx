@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Download, FileText, Pencil, X } from 'lucide-react';
+import { Download, FileText, Pencil, X } from '../../lib/icons';
 import { apiFetch } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';

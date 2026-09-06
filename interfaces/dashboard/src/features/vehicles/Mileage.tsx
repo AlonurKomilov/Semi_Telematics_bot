@@ -16,7 +16,7 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Route } from 'lucide-react';
+import { Route } from '../../lib/icons';
 
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';

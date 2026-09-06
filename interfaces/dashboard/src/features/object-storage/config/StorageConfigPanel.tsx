@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../../lib/toast';
-import { HardDrive, Cloud, RefreshCcw, Loader2 } from 'lucide-react';
+import { HardDrive, Cloud, RefreshCcw, Loader2 } from '../../../lib/icons';
 import { apiJSON } from '../../../api/client';
 import {
   BackendOption, type Backend, type StorageConfig,

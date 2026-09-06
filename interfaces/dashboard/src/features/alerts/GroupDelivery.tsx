@@ -18,7 +18,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
-import { Send } from 'lucide-react';
+import { Send } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import type { BotConfig } from '@/types';
 import { PageHeader, CardSkeleton, EmptyState } from '@/components/shell';

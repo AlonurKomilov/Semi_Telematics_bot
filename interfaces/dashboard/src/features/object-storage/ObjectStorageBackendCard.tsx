@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../lib/toast';
-import { AlertTriangle, CheckCircle2, Cloud, ExternalLink, HardDrive, Loader2, Star, Unlink } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Cloud, ExternalLink, HardDrive, Loader2, Star, Unlink } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { cn } from '@/lib/utils';

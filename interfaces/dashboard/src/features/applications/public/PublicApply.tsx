@@ -4,7 +4,7 @@
 // Submits multipart to POST /api/applications/apply: a JSON `application`
 // part (file blobs stripped) + the raw document files as their own parts.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Truck, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Lock } from 'lucide-react';
+import { Truck, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Lock } from '../../../lib/icons';
 import { STEPS } from './steps';
 import {
   deepGet, deepSet, DISCLOSURE_VERSION, todayISO,

@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import type L from 'leaflet';
-import { Check, ChevronDown, ChevronUp, Download, Map as MapIcon, Pencil, Trash2, TriangleAlert } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Download, Map as MapIcon, Pencil, Trash2, TriangleAlert } from '../../lib/icons';
 import { ContextMenu, type MenuAction } from '@/components/ui/context-menu';
 import { POI_GROUPS } from '@/config/poiLayers';
 import type { PoiLayerDef } from '@/config/poiLayers';

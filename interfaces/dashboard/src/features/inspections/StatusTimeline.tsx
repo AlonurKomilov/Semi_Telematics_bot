@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ClipboardList, Send, CheckCircle2, Circle, type LucideIcon } from 'lucide-react';
+import { ClipboardList, Send, CheckCircle2, Circle, type LucideIcon } from '../../lib/icons';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
 import type { PTIInspectionDetail } from '../../types';

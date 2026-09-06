@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { AlertTriangle, Mail, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, Mail, CheckCircle2, Clock } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

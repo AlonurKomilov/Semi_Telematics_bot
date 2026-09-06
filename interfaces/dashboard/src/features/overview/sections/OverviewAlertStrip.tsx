@@ -19,7 +19,7 @@
  * actionable — the AlertStrip component itself returns null in that
  * case.
  */
-import { Bell, Fuel, ParkingCircle, ClipboardList, Wrench } from 'lucide-react';
+import { Bell, Fuel, ParkingCircle, ClipboardList, Wrench } from '../../../lib/icons';
 import { AlertStrip, type AlertItem } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 

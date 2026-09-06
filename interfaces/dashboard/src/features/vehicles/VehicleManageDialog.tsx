@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
+import { Loader2, RotateCcw, Sparkles, Trash2 } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';

@@ -17,7 +17,7 @@
  */
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { X } from '../../lib/icons';
 
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';

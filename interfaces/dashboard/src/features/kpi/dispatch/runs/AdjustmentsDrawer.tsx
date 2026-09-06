@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Undo2 } from 'lucide-react';
+import { Loader2, Undo2 } from '../../../../lib/icons';
 import { toast } from '../../../../lib/toast';
 import { Button } from '../../../../components/ui/button';
 import {

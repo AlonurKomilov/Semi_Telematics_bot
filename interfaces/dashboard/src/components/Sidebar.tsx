@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Tip } from './tooltip';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from '../lib/icons';
 import { useAuth } from '../context/AuthContext';
 import { usePreference } from '../preferences';
 import { useRoleView } from '../context/RoleViewContext';

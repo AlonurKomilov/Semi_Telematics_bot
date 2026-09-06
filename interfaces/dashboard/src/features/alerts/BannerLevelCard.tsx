@@ -3,7 +3,7 @@
  * the dashboard.  A radio group (mutually-exclusive, so radios not
  * toggles): the choice applies instantly and is per-device.
  */
-import { BellRing } from 'lucide-react';
+import { BellRing } from '../../lib/icons';
 import {
   setBannerLevel, useBannerLevel, type BannerLevel,
 } from './bannerLevel';

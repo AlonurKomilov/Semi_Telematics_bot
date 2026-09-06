@@ -18,7 +18,7 @@ import {
   Search,
   Crown,
   IdCard,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';

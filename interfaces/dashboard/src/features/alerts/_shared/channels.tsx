@@ -19,8 +19,8 @@
  * change. The map itself cannot be server-driven: an icon is not a wire
  * value.
  */
-import { Mail, MonitorSmartphone, Send } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Mail, MonitorSmartphone, Send } from '../../../lib/icons';
+import type { LucideIcon } from '../../../lib/icons';
 
 export interface ChannelMeta {
   key: string;

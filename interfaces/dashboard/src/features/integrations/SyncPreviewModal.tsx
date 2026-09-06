@@ -9,7 +9,7 @@
  * until the operator approves; Decline discards the cached preview.
  */
 
-import { Loader2, Plus, ArrowUpCircle, AlertTriangle, RefreshCw, X } from 'lucide-react';
+import { Loader2, Plus, ArrowUpCircle, AlertTriangle, RefreshCw, X } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import {

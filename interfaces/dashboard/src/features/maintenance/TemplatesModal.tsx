@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
-import { X, Trash2, Plus } from 'lucide-react';
+import { X, Trash2, Plus } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import type { MaintenanceTemplate } from '../../types';
 import { PRIORITY_OPTIONS } from './badges';

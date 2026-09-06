@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
 import { undoableToast } from '../../lib/undoable';
-import { Check, ClipboardList, Plus } from 'lucide-react';
+import { Check, ClipboardList, Plus } from '../../lib/icons';
 import TaskPartsDialog from './TaskPartsDialog';
 import MergeTaskDialog from './MergeTaskDialog';
 import EditTaskDialog from './EditTaskDialog';

@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { LucideProvider } from 'lucide-react';
+import { LucideProvider } from '../../lib/icons';
 import { useMods } from '../context';
 import { ICON_STROKE } from '../catalogue';
 

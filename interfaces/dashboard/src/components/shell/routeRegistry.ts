@@ -7,7 +7,7 @@ import {
   UserPlus, Plug, Cloud,
   BadgeDollarSign,
   type LucideIcon,
-} from 'lucide-react';
+} from '../../lib/icons';
 
 export interface RouteEntry {
   label: string;

@@ -13,7 +13,7 @@ import {
   Archive,
   RefreshCw,
   ClipboardList,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { usePublishContext } from '../ai/PageContext';
 import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';

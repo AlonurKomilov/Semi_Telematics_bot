@@ -16,7 +16,7 @@
  * requirement: remove as a unit).
  */
 import { Suspense, lazy, useMemo, useState } from 'react';
-import { ChevronRight, RotateCcw, Search, Truck } from 'lucide-react';
+import { ChevronRight, RotateCcw, Search, Truck } from '../../lib/icons';
 import { PageHeader } from '../../components/shell';
 import { Button } from '../../components/ui/button';
 import { Switch } from '../../components/ui/switch';

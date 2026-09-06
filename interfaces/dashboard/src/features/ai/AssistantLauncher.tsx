@@ -13,7 +13,7 @@
  * the `/ai/*` full-page route (you're already in the assistant there).
  */
 import { useLocation } from 'react-router-dom';
-import { Bot, Loader2, Check } from 'lucide-react';
+import { Bot, Loader2, Check } from '../../lib/icons';
 import { useAssistant } from './AssistantContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Tip } from '../../components/tooltip';

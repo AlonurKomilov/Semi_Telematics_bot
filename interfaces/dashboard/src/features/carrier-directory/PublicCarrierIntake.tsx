@@ -12,7 +12,7 @@
 // accidental tab-close loses nothing; the link stays live until expiry so
 // the carrier can come back and revise (each submit overwrites).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, CheckCircle2, Plus, X, Loader2 } from 'lucide-react';
+import { Building2, CheckCircle2, Plus, X, Loader2 } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';

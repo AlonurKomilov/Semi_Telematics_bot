@@ -5,7 +5,7 @@
  * button.  Extracted verbatim from the original VehicleDetail.tsx.
  */
 import { useState } from 'react';
-import { Copy, Check, ExternalLink } from 'lucide-react';
+import { Copy, Check, ExternalLink } from '../../../../lib/icons';
 import { Freshness, Tip } from '../../../../components/tooltip';
 import { Row } from './Row';
 

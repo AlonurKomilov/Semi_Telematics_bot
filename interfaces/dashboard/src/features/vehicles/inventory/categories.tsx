@@ -3,10 +3,10 @@
  * Mirrors INVENTORY_CATEGORIES in the backend mixin; the API also ships
  * the category list, so an unknown value still renders (Package icon).
  */
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from '../../../lib/icons';
 import {
   Camera, CreditCard, RadioTower, HardDrive, Tablet, Package,
-} from 'lucide-react';
+} from '../../../lib/icons';
 
 export const CATEGORY_META: Record<string, { label: string; Icon: LucideIcon }> = {
   camera:           { label: 'Camera',          Icon: Camera },

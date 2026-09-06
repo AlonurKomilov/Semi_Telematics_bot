@@ -10,7 +10,7 @@
  * own-scope wall came down; the load's history trail answers "who
  * changed what" instead.
  */
-import { Pencil } from 'lucide-react';
+import { Pencil } from '../../lib/icons';
 import type { MenuAction } from '../../components/ui/context-menu';
 import type { LoadRow } from './api';
 

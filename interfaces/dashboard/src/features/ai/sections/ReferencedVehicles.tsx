@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Truck } from 'lucide-react';
+import { Truck } from '../../../lib/icons';
 import { toneClasses, type Tone } from '../../../lib/status';
 import { Tip } from '../../../components/tooltip';
 

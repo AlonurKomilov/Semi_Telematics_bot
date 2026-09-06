@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../lib/toast';
-import { PenLine } from 'lucide-react';
+import { PenLine } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useTimezone } from '../../hooks/useTimezone';

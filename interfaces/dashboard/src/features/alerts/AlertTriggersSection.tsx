@@ -37,7 +37,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from '../../lib/toast';
-import { BellRing, Pencil, Plus, Trash2 } from 'lucide-react';
+import { BellRing, Pencil, Plus, Trash2 } from '../../lib/icons';
 import { ApiError, apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 import { toneText } from '@/lib/status';

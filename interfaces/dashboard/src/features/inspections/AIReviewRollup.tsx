@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Sparkles } from 'lucide-react';
+import { Sparkles } from '../../lib/icons';
 import type { PTIInspectionDetail, PTIInspectionItem } from '../../types';
 import { toneClasses } from '../../lib/status';
 import { parseVerdict, isFlagged, type AIVerdict } from './aiVerdict';

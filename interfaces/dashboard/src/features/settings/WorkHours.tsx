@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Clock, Plus, Pencil, Trash2 } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
 import {

@@ -10,7 +10,7 @@
  */
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useEffect } from 'react';
-import { Check } from 'lucide-react';
+import { Check } from '../lib/icons';
 import { ActionMenu, type MenuAction } from './ui/context-menu';
 import { SUPPORTED_LOCALES, type Locale } from '../i18n';
 import { apiJSON } from '../api/client';

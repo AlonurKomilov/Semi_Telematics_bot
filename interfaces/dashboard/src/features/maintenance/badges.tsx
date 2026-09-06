@@ -2,7 +2,7 @@ import type { ElementType } from 'react';
 import {
   Wrench, Droplet, Droplets, Circle, Cog, Zap, Flame,
   ClipboardCheck, Landmark, OctagonAlert,
-} from 'lucide-react';
+} from '../../lib/icons';
 import type { MaintenanceTask } from '../../types';
 import { statusTone, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';

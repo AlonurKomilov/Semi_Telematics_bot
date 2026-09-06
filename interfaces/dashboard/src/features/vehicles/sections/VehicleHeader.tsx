@@ -8,7 +8,7 @@
  */
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft } from '../../../lib/icons';
 import { apiJSON } from '../../../api/client';
 import { Callout } from '../../../components/callouts';
 import DeviceEventsCard from '../DeviceEventsCard';

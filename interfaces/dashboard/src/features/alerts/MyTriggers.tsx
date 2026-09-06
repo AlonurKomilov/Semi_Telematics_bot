@@ -14,7 +14,7 @@
  * Nobody else's count moves when you set one.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing } from 'lucide-react';
+import { BellRing } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { PageHeader, CardSkeleton } from '@/components/shell';
 import EmptyState from '@/components/shell/EmptyState';

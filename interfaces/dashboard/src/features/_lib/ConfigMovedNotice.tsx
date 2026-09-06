@@ -18,7 +18,7 @@
  * together — a notice nobody can dismiss twice is just clutter with a
  * close button.
  */
-import { Cog, X } from 'lucide-react';
+import { Cog, X } from '../../lib/icons';
 import { usePreference, useSyncLoaded } from '../../preferences';
 
 export function ConfigMovedNotice({ what }: { what: string }) {

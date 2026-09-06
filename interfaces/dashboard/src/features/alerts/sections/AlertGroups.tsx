@@ -20,7 +20,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from '../../../lib/toast';
-import { Layers } from 'lucide-react';
+import { Layers } from '../../../lib/icons';
 
 import { apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';

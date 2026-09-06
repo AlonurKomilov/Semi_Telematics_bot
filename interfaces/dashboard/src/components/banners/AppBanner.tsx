@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from '../../lib/icons';
 import type { Tone } from '@/lib/status';
 // TONE_ICON moved to lib/status so this lane and the pinned callout
 // lane cannot show different icons for the same meaning.

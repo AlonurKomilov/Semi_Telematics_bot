@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, X } from '../../lib/icons';
 import { cn } from '@/lib/utils';
 import { cardVariants } from '@/components/ui/card';
 import type { TourSpec } from './types';

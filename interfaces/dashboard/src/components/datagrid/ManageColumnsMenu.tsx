@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { Check, RotateCcw, Columns3, Search } from 'lucide-react';
+import { Check, RotateCcw, Columns3, Search } from '../../lib/icons';
 import { cn } from '../../lib/utils';
 
 /**

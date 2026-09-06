@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, X, Loader2, ShieldAlert, Undo2, Paperclip } from 'lucide-react';
+import { Check, X, Loader2, ShieldAlert, Undo2, Paperclip } from '../../../lib/icons';
 import { aiApproveAction, aiRejectAction, aiUndoAction, aiGetActionStatus } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
 import { uploadSourceFiles } from '../sourceFileUpload';

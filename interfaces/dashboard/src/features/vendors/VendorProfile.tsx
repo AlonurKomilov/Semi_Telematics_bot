@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
-import { Store, ArrowLeft, Merge, Globe, History as HistoryIcon, Link2Off, Pencil, Star, TrendingUp } from 'lucide-react';
+import { Store, ArrowLeft, Merge, Globe, History as HistoryIcon, Link2Off, Pencil, Star, TrendingUp } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { ActivityTrailDialog } from '../../components/activity-trail/ActivityTrailDialog';
 import DataGrid from '../../components/datagrid';

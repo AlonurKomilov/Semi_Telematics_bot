@@ -26,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowRight, BadgeDollarSign, CalendarRange, Check, Download, History, ListChecks,
   Loader2, Lock, Pencil, Plus, Scale, Table2, Trash2,
-} from 'lucide-react';
+} from '../../../lib/icons';
 import { toast } from '../../../lib/toast';
 import DataGrid from '../../../components/datagrid';
 import { ActivityTrailDialog } from '../../../components/activity-trail/ActivityTrailDialog';

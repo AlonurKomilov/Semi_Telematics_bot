@@ -2,7 +2,7 @@
 // (no auth).  Two-factor lookup: an applicant enters their reference +
 // email and sees their application status — nothing else.
 import { useMemo, useState } from 'react';
-import { Truck, Search, CheckCircle2 } from 'lucide-react';
+import { Truck, Search, CheckCircle2 } from '../../../lib/icons';
 import { statusTone } from '../../../lib/status';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';

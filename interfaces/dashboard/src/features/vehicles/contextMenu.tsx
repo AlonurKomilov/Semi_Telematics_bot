@@ -9,7 +9,7 @@
  * carries the ``?company=`` disambiguator); Edit appears only for
  * managers on registry-backed rows, mirroring the inline pencil column.
  */
-import { ArrowUpRight, ExternalLink, Pencil, RotateCcw } from 'lucide-react';
+import { ArrowUpRight, ExternalLink, Pencil, RotateCcw } from '../../lib/icons';
 import type { MenuAction } from '../../components/ui/context-menu';
 import type { Vehicle } from '../../types';
 

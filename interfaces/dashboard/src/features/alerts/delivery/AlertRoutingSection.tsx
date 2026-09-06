@@ -4,7 +4,7 @@ import { toast } from '../../../lib/toast';
 import { apiJSON } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Info } from '../../../lib/icons';
 import { InfoTip, Tip } from '../../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
 import { Switch } from '../../../components/ui/switch';

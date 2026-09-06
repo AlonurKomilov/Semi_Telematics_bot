@@ -11,7 +11,7 @@
  * Enforced by ``check-role-drift.mjs`` — adding ``useShellConfig``
  * here would fail the drift check.
  */
-import { Truck } from 'lucide-react';
+import { Truck } from '../../../lib/icons';
 import { PageHeader, LastUpdated } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 

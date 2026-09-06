@@ -13,7 +13,7 @@
  * is derived here, not configured anywhere.
  */
 import { useEffect, useState } from 'react';
-import { Download, ExternalLink, Puzzle } from 'lucide-react';
+import { Download, ExternalLink, Puzzle } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 
 import { apiFetch, apiJSON } from '../../api/client';

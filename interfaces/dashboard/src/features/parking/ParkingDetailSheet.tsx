@@ -11,7 +11,7 @@
  * switching tabs and filtering by hand.
  */
 import { useEffect, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '../../lib/icons';
 
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Cloud, CloudOff, HardDrive, AlertTriangle, Loader2,
   CheckCircle2, RefreshCcw,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { toneClasses, toneText, type Tone } from '../../lib/status';
 import { Card } from '@/components/ui/card';

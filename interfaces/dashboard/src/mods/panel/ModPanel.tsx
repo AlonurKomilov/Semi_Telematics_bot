@@ -6,7 +6,7 @@
  */
 import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Palette } from 'lucide-react';
+import { Palette } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { useMods } from '../context';
 import { ModControls } from './ModControls';

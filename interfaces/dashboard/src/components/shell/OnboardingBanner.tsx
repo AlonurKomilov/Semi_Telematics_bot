@@ -9,7 +9,7 @@ import {
   Trophy,
   MapPin,
   Sparkles,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { toneClasses, toneText } from '../../lib/status';
 import { cn } from '@/lib/utils';
 import { cardVariants } from '@/components/ui/card';

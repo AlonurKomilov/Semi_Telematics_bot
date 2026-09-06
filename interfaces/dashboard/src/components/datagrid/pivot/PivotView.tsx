@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   TableProperties, ChevronRight, ChevronDown, ArrowUp, ArrowDown,
-} from 'lucide-react';
+} from '../../../lib/icons';
 
 import { cn } from '../../../lib/utils';
 import {

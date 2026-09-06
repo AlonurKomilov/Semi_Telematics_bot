@@ -15,7 +15,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles } from 'lucide-react';
+import { Sparkles } from '../../lib/icons';
 import type { TourSpec } from './types';
 
 interface Pos { top: number; left: number }

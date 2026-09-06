@@ -18,7 +18,7 @@
  * — so without an explicit name a screen reader announces eight identical
  * "checkbox, unchecked" and the grid is unusable.
  */
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from '../../../lib/icons';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tip } from '@/components/tooltip';

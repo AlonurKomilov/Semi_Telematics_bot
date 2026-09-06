@@ -11,7 +11,7 @@
 
 import CredentialsSection from './CredentialsSection';
 import { Button } from '../../components/ui/button';
-import { Pencil } from 'lucide-react';
+import { Pencil } from '../../lib/icons';
 import { Badge } from '@/components/ui/badge';
 
 export default function SingleCredentialPanel({

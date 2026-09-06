@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { Send, Mail, MonitorSmartphone, Check, Bell } from 'lucide-react';
+import { Send, Mail, MonitorSmartphone, Check, Bell } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 import { Card } from '@/components/ui/card';

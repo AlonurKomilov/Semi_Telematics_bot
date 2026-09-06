@@ -5,7 +5,7 @@
  */
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { ActionMenu } from '../../components/ui/context-menu';
 import { KPI_SECTIONS } from './sections';

@@ -14,7 +14,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '../../lib/icons';
 import { toneText } from '../../lib/status';
 import { getConflicts, resolveConflict } from './api';
 import type { DataConflict } from './api';

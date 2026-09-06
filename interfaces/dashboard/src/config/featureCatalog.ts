@@ -38,7 +38,7 @@ import {
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
   Plug, Store, Cog,
   type LucideIcon, Boxes, BadgeDollarSign,
-} from 'lucide-react';
+} from '../lib/icons';
 
 export type Module =
   | 'core'        // always on — universal features every account gets

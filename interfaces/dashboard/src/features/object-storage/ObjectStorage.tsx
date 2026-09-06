@@ -1,4 +1,4 @@
-import { Cloud } from 'lucide-react';
+import { Cloud } from '../../lib/icons';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../../components/shell';
 import ObjectStorageBackendCard from './ObjectStorageBackendCard';

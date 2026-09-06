@@ -22,7 +22,7 @@
  */
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { ChevronRight, SlidersHorizontal } from '../../lib/icons';
 import { MODS_HREF } from '../href';
 import type { ModSection } from '../taxonomy';
 import { ModsRow, HAS_MODS } from './ModsRow';

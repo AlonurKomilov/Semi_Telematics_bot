@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { Search, X, Check } from 'lucide-react';
+import { Search, X, Check } from '../../lib/icons';
 import { cn } from '../../lib/utils';
 import { sizeRegion } from '@/lib/sizeRegion';
 

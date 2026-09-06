@@ -3,7 +3,7 @@ import {
   Search, X, Check, Plus, GripVertical, MoreVertical,
   ChevronDown, ChevronUp, ArrowUp, ArrowDown,
   ChevronsUp, ChevronsDown, ListTree,
-} from 'lucide-react';
+} from '../../../lib/icons';
 import {
   DndContext, DragOverlay, pointerWithin, closestCorners, PointerSensor,
   KeyboardSensor, useSensor, useSensors, useDroppable,

@@ -10,8 +10,8 @@ import {
   // Category icons
   Wrench, ClipboardCheck, ScrollText, ShieldCheck, Fuel,
   Building2, GraduationCap, Snowflake,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+} from '../../lib/icons';
+import type { LucideIcon } from '../../lib/icons';
 import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 
 // Lucide icon per category key.  Falls back to BookOpen when the

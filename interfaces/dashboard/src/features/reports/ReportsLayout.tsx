@@ -25,7 +25,7 @@
 import { useState, useMemo, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FileText, Mail, TrendingUp, AlertTriangle, Shield } from 'lucide-react';
+import { FileText, Mail, TrendingUp, AlertTriangle, Shield } from '../../lib/icons';
 import { PageHeader } from '../../components/shell';
 import { useAuth } from '../../context/AuthContext';
 

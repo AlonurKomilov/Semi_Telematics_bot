@@ -13,7 +13,7 @@
  */
 import { useEffect, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Bot, X, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { Bot, X, Loader2, Maximize2, Minimize2 } from '../../lib/icons';
 import {
   useAssistant, clampPanelW, setPanelWidthVar, panelScale, PANEL_W_DEFAULT,
 } from './AssistantContext';

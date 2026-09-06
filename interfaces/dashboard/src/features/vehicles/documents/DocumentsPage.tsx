@@ -14,7 +14,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { FileText, Upload } from 'lucide-react';
+import { FileText, Upload } from '../../../lib/icons';
 
 import { apiFetch, apiJSON } from '../../../api/client';
 import DataGrid, { type DataGridSegment } from '../../../components/datagrid';

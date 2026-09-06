@@ -29,7 +29,7 @@ import type {
 } from '../../../types';
 import type { VehicleSectionProps } from './_shared/types';
 import { Card } from '@/components/ui/card';
-import { Sparkles } from 'lucide-react';
+import { Sparkles } from '../../../lib/icons';
 
 export default function VehicleFaults({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();

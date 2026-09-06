@@ -9,7 +9,7 @@ import TurnstileWidget from '../components/TurnstileWidget';
 import { toneClasses, toneText } from '../lib/status';
 import type { TelegramLoginData } from '../types';
 import { Card } from '@/components/ui/card';
-import { Bot, Check } from 'lucide-react';
+import { Bot, Check } from '../lib/icons';
 
 type Mode = 'login' | 'register';
 // Within the Register tab, the operator picks between two distinct flows:

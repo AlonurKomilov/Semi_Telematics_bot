@@ -20,7 +20,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   Tooltip as ChartTooltip, CartesianGrid,
 } from 'recharts';
-import { ArrowLeft, Check, Cog, Globe, History as HistoryIcon, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, Cog, Globe, History as HistoryIcon, Link2Off, Merge, Pencil, TriangleAlert } from '../../lib/icons';
 import { useAssemblies } from './useAssemblies';
 import { ActivityTrailDialog } from '../../components/activity-trail/ActivityTrailDialog';
 import { apiJSON } from '../../api/client';

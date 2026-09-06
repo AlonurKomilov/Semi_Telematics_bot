@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, RotateCcw } from 'lucide-react';
+import { Check, Loader2, RotateCcw } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { getBackfillStatus, resetBackfillStatus } from './api';
 import { backfillProgressLabel } from './labels';

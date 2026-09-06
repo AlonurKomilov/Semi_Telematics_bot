@@ -16,7 +16,7 @@
  */
 import type { ReactNode } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { Info } from 'lucide-react';
+import { Info } from '../../lib/icons';
 import { iconSizeClass } from '@/lib/iconSize';
 
 interface InfoTipProps {

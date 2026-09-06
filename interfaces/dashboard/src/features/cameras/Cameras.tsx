@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Camera, Filter } from 'lucide-react';
+import { Camera, Filter } from '../../lib/icons';
 import { apiFetch, apiJSON } from '../../api/client';
 import { toneClasses, toneText, type Tone } from '../../lib/status';
 import DataGrid from '../../components/datagrid';

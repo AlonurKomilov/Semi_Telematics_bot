@@ -8,7 +8,7 @@
  * empty `vehicles[]`) — the page falls through to just the table.
  */
 import { useQuery } from '@tanstack/react-query';
-import { Gauge } from 'lucide-react';
+import { Gauge } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { Card } from '@/components/ui/card';
 

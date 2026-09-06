@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from '../../../lib/icons';
 import {
   // Fleet & movement
   Truck, Car, Bus, Caravan, Route, MapPin, MapPinned, Map, Signpost,
@@ -25,7 +25,7 @@ import {
   // Analytics & media
   Activity, TrendingUp, TrendingDown, ChartColumn, ChartLine, ChartPie,
   Camera, Video, Wifi,
-} from 'lucide-react';
+} from '../../../lib/icons';
 
 /**
  * Curated leading-icon set for personal saved tabs — an on-brand lucide

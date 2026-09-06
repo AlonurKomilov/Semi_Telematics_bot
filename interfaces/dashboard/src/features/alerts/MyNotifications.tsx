@@ -26,7 +26,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { AlertTriangle, Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, CheckCircle2, Send } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';

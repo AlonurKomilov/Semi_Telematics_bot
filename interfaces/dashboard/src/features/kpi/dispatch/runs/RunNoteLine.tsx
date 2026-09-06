@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StickyNote } from 'lucide-react';
+import { StickyNote } from '../../../../lib/icons';
 import { toast } from '../../../../lib/toast';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';

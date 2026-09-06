@@ -3,14 +3,14 @@ import { toast } from '../../lib/toast';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Plus, Truck } from 'lucide-react';
+import { Pencil, Plus, Truck } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { vehicleRowMenu } from './contextMenu';
 import StatusBadge from '../../components/StatusBadge';
 import { Freshness, InfoTip, Tip } from '../../components/tooltip';
 import { useInventoryAlerts } from './inventory/useInventory';
-import { PackageX } from 'lucide-react';
+import { PackageX } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import {
   PageHeader,

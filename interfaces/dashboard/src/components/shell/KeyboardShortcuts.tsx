@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X } from '../../lib/icons';
 import { shortcut } from '../../utils/platform';
 import { Dialog, DialogContent } from '../ui/dialog';
 

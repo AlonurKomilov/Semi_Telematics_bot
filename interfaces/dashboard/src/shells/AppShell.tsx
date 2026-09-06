@@ -24,7 +24,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Search, Menu, X } from 'lucide-react';
+import { Search, Menu, X } from '../lib/icons';
 
 import Sidebar from '../components/Sidebar';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';

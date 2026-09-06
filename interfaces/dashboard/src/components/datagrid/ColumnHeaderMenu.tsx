@@ -5,7 +5,7 @@ import {
   ArrowLeftToLine, ArrowRightToLine,
   Group as GroupIcon, Ungroup as UngroupIcon, Plus, Check, ListTree,
   MoveHorizontal, Sigma,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { cn } from '../../lib/utils';
 import { Tip } from '../tooltip';
 import { type AggFn, AGG_FN_LABELS } from '../../types';

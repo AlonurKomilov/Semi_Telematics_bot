@@ -9,7 +9,7 @@
  */
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { X } from '../../lib/icons';
 import { cn } from '../../lib/utils';
 import { undoableAction } from '../../components/banners/stagedAction';
 import { accentTokens } from '../theme/accent';

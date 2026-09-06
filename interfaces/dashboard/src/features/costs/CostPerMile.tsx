@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DollarSign } from 'lucide-react';
+import { DollarSign } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { toneText, type Tone } from '../../lib/status';
 import DataGrid from '../../components/datagrid';

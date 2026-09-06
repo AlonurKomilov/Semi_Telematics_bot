@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
 import { VehiclePicker, type VehicleSummary } from '@/features/maintenance/pickers';
-import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from '../../lib/icons';
 import { ActionMenu } from '../../components/ui/context-menu';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';

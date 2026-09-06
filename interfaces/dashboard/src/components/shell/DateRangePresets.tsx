@@ -4,7 +4,7 @@ import { formatClock } from '../../utils/datetime';
 import {
   Select, SelectTrigger, SelectContent, SelectItem,
 } from '../ui/select';
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from '../../lib/icons';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay, todayInTimeZone } from '../../utils/datetime';
 

@@ -26,8 +26,8 @@ import {
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
   CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, Table2, EyeOff,
   AlertTriangle, RotateCw,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+} from '../../lib/icons';
+import type { LucideIcon } from '../../lib/icons';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { createPortal } from 'react-dom';
 import {

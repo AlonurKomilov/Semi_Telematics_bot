@@ -54,7 +54,7 @@
  */
 import {
   AlertTriangle, CheckCircle2, Info, XCircle, type LucideIcon,
-} from 'lucide-react';
+} from './icons';
 
 
 export type Tone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral';

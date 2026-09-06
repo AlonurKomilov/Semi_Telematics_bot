@@ -10,7 +10,7 @@
  * screen isn't the one for a cab tablet.
  */
 import { toast } from '../../lib/toast';
-import { PanelTopClose } from 'lucide-react';
+import { PanelTopClose } from '../../lib/icons';
 import {
   setNotifPosition, useNotifPosition, type NotifPosition,
 } from '@/components/banners';

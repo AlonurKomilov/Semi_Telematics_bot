@@ -18,7 +18,7 @@ import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Gauge } from 'lucide-react';
+import { ArrowLeft, Gauge } from '../../../lib/icons';
 import { toneClasses } from '../../../lib/status';
 import { PageHeader } from '../../../components/shell';
 import KpiConfigPanel from './KpiConfigPanel';

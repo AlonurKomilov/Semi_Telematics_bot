@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { toneText } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';

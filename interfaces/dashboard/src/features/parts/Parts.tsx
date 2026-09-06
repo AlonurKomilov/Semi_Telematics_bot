@@ -13,7 +13,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
-import { Check, Cog, Globe, Plus, Wand2 } from 'lucide-react';
+import { Check, Cog, Globe, Plus, Wand2 } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';

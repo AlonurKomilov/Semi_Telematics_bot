@@ -11,7 +11,7 @@
  * for every persona; persona-specific copy / actions live in their own
  * sections.
  */
-import { Bell } from 'lucide-react';
+import { Bell } from '../../../lib/icons';
 import { useTranslation } from 'react-i18next';
 import { PageHeader, LastUpdated } from '../../../components/shell';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';

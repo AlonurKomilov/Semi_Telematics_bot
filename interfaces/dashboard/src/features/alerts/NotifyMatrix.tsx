@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { Send, Mail, MonitorSmartphone } from 'lucide-react';
+import { Send, Mail, MonitorSmartphone } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';
 import { MatrixCell, MatrixTh } from './_shared/matrixCells';

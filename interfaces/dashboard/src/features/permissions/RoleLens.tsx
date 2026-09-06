@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, Eye, Link2, Lock } from 'lucide-react';
+import { Check, Eye, Link2, Lock } from '../../lib/icons';
 import { InfoTip, Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';

@@ -33,7 +33,7 @@
  */
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Wrench, Eye } from 'lucide-react';
+import { Bell, Wrench, Eye } from '../../../lib/icons';
 import {
   EmptyState,
   ErrorState,

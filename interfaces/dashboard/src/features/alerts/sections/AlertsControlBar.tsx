@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../../lib/toast';
-import { Eye } from 'lucide-react';
+import { Eye } from '../../../lib/icons';
 
 import { DateRangePresets } from '../../../components/shell';
 import { apiJSON } from '../../../api/client';

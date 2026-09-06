@@ -16,7 +16,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Truck } from 'lucide-react';
+import { Truck } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';

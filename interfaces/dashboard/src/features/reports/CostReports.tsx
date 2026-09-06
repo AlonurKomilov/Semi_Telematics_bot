@@ -7,7 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, CartesianGrid, PieChart, Pie, Legend,
 } from 'recharts';
-import { TrendingDown, Minus, Download, Receipt, DollarSign, Wallet, Users, TrendingUp } from 'lucide-react';
+import { TrendingDown, Minus, Download, Receipt, DollarSign, Wallet, Users, TrendingUp } from '../../lib/icons';
 import { apiJSON, apiFetch } from '../../api/client';
 import {
   EmptyState, ErrorState, CardSkeleton, DateRangePresets,

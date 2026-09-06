@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Bell, CheckCheck, Settings, ArrowRight, Loader2, BellOff,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { toast } from '../../lib/toast';
 import { apiJSON } from '@/api/client';
 import { PageHeader } from '@/components/shell';

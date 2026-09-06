@@ -14,7 +14,7 @@
  * question and two buttons, not a sidebar.
  */
 import { useState } from 'react';
-import { Puzzle, ShieldCheck } from 'lucide-react';
+import { Puzzle, ShieldCheck } from '../lib/icons';
 
 import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';

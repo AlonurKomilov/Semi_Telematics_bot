@@ -14,7 +14,7 @@ import { toast } from '../../../lib/toast';
 import { apiJSON } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
 import { usePreference } from '../../../preferences';
-import { Check, Info, X } from 'lucide-react';
+import { Check, Info, X } from '../../../lib/icons';
 
 interface ModeResponse {
   mode: 'single_group' | 'per_persona_groups';

@@ -20,7 +20,7 @@ import {
   Truck,
   Route,
   type LucideIcon,
-} from 'lucide-react';
+} from '../../../lib/icons';
 import { KpiCard } from '../../../components/shell';
 import type { KpiKey } from '../personaConfig';
 import type { OverviewSectionProps } from './_shared/types';

@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from '../../lib/toast';
-import { Monitor, Smartphone, ImagePlus, Sparkles, Loader2 } from 'lucide-react';
+import { Monitor, Smartphone, ImagePlus, Sparkles, Loader2 } from '../../lib/icons';
 import { apiJSON, apiFetch } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import PublicApply, { type Brand } from './public/PublicApply';

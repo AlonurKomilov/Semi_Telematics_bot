@@ -9,7 +9,7 @@
 // reload lands them on a fully working page.  App-level errors (4xx/500
 // JSON) never trigger any of this.
 import { useEffect, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '../lib/icons';
 import { Card } from '@/components/ui/card';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';

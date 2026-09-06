@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { toast } from '../../../lib/toast';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from '../../../lib/icons';
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';

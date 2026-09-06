@@ -10,7 +10,7 @@
  * is already a per-row function, so they can differ without splitting the
  * list in two.
  */
-import { CheckCircle2, MapPin, History } from 'lucide-react';
+import { CheckCircle2, MapPin, History } from '../../lib/icons';
 
 import type { MenuAction } from '../../components/ui/context-menu';
 import type { ParkingEvent } from './api';

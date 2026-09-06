@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnFiltersState } from '@tanstack/react-table';
-import { Plus, X, SlidersHorizontal, Search } from 'lucide-react';
+import { Plus, X, SlidersHorizontal, Search } from '../../../lib/icons';
 import type { AnyColumn } from '../../../types';
 import { cn } from '../../../lib/utils';
 import {

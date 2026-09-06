@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, Loader2, TriangleAlert, RefreshCw, Wand2, X } from 'lucide-react';
+import { Eye, Loader2, TriangleAlert, RefreshCw, Wand2, X } from '../../../lib/icons';
 
 import { toast } from '../../../lib/toast';
 

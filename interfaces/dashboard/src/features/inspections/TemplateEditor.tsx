@@ -5,7 +5,7 @@ import { toast } from '../../lib/toast';
 import {
   ClipboardCheck, ChevronUp, ChevronDown, Trash2, RotateCcw, Plus, X,
   Image as ImageIcon, Camera, FileText, CheckSquare,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import {
   EmptyState,

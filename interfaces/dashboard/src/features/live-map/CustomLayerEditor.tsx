@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, FileText, MapPin, Search, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, FileText, MapPin, Search, X, type LucideIcon } from '../../lib/icons';
 import type L from 'leaflet';
 import { apiFetch, apiJSON } from '@/api/client';
 import type { PoiLayerDef } from '@/config/poiLayers';

@@ -1,7 +1,7 @@
 import { Tip } from './tooltip';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, ChevronRight, Eye } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Eye } from '../lib/icons';
 import { useRoleView } from '../context/RoleViewContext';
 import { Card } from '@/components/ui/card';
 

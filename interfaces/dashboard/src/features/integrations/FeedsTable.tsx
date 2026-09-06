@@ -15,7 +15,7 @@
  */
 
 import { Fragment, type ReactNode } from 'react';
-import { Database, Loader2, RefreshCw } from 'lucide-react';
+import { Database, Loader2, RefreshCw } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import { Badge } from '@/components/ui/badge';

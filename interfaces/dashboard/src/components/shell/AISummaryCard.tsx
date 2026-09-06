@@ -1,4 +1,4 @@
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight } from '../../lib/icons';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardStats } from '../../types';
 import { useShellConfig } from '../../hooks/useShellConfig';

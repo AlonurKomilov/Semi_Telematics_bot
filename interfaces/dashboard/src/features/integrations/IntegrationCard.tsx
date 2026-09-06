@@ -18,7 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check, Plug, RefreshCw, X, AlertTriangle, Loader2,
   Pencil, Plus, Trash2, ChevronDown, ChevronRight,
-} from 'lucide-react';
+} from '../../lib/icons';
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';

@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { MonitorSmartphone, Trash2 } from 'lucide-react';
+import { MonitorSmartphone, Trash2 } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Tip } from '@/components/tooltip';

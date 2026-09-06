@@ -14,7 +14,7 @@
  * `{field: {from, to}}`, an `actor_name` resolved server-side, and
  * bulk actions pre-collapsed into `is_group` rows.
  */
-import { ArchiveRestore } from 'lucide-react';
+import { ArchiveRestore } from '../../lib/icons';
 import { formatDate } from '../../utils/datetime';
 
 export interface ActivityChange { from: unknown; to: unknown }

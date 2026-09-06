@@ -51,7 +51,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../lib/toast';
-import { Search } from 'lucide-react';
+import { Search } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { FEATURE_CATALOG } from '@/config/featureCatalog';
 import { Button } from '@/components/ui/button';

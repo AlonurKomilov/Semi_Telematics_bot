@@ -12,7 +12,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Copy, Check } from 'lucide-react';
+import { UserPlus, Copy, Check } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { InfoTip } from '../../components/tooltip';

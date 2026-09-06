@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Eye, Map, MapPin, Plus, Trash2, X } from 'lucide-react';
+import { Check, Eye, Map, MapPin, Plus, Trash2, X } from '../../lib/icons';
 import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import { apiJSON, apiFetch } from '../../api/client';
 import { useViewPermissions } from '../../hooks/useViewPermissions';

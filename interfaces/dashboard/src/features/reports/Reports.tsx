@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import { Download, Sparkles, FileText } from 'lucide-react';
+import { Download, Sparkles, FileText } from '../../lib/icons';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import StatusBadge from '../../components/StatusBadge';

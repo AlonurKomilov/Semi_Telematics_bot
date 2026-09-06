@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '../../../lib/icons';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { toneClasses } from '../../../lib/status';

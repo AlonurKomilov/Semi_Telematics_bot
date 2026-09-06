@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react';
-import { X, Printer, Download, Plus, AlertTriangle } from 'lucide-react';
+import { X, Printer, Download, Plus, AlertTriangle } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 import { Button } from '../../components/ui/button';
 import {

@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Clock, Package, Plus } from 'lucide-react';
+import { Clock, Package, Plus } from '../../lib/icons';
 import DataGrid, { TAB_PREFIX, type DataGridSegment } from '../../components/datagrid';
 import { loadRowMenu } from './contextMenu';
 import {

@@ -17,7 +17,7 @@
  * speed, on a flow whose most important field it could not ask for.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Sparkles, Upload } from 'lucide-react';
+import { Loader2, Sparkles, Upload } from '../../../lib/icons';
 import { toast } from '../../../lib/toast';
 
 import { apiFetch } from '../../../api/client';

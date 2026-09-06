@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react';
-import { Loader2, UserPlus } from 'lucide-react';
+import { Loader2, UserPlus } from '../../lib/icons';
 import { applyDriverImport, getDriverImportPlan } from './api';
 import type { DriverImportPlan, DriverImportResult } from './api';
 

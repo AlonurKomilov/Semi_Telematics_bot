@@ -5,7 +5,7 @@
 // carrier.  Info-only (v1).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, Plus, X, ExternalLink, Link2, Copy, Mail, Lock, Check, Ban, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Plus, X, ExternalLink, Link2, Copy, Mail, Lock, Check, Ban, RefreshCw } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';

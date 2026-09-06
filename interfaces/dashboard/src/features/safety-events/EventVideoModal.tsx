@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
+import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, formatDay, formatTime } from '@/utils/datetime';

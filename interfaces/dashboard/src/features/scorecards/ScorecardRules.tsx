@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldAlert, Trophy, Wrench, Zap, type LucideIcon } from 'lucide-react';
+import { ShieldAlert, Trophy, Wrench, Zap, type LucideIcon } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import {
   PageHeader,

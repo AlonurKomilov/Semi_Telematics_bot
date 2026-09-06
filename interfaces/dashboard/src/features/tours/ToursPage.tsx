@@ -13,7 +13,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, GraduationCap, Play, RotateCcw } from 'lucide-react';
+import { CheckCircle2, GraduationCap, Play, RotateCcw } from '../../lib/icons';
 import { PageHeader } from '@/components/shell';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

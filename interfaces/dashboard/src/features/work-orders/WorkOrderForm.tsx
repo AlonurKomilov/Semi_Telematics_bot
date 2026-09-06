@@ -9,7 +9,7 @@ import {
   FileText, Save, ArrowLeft, Trash2, Plus, Paperclip,
   Receipt, X, Link as LinkIcon, Image as ImageIcon, Loader2,
   Sparkles,
-} from 'lucide-react';
+} from '../../lib/icons';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../components/ui/dialog';

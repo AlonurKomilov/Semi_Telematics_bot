@@ -22,7 +22,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp } from '../../lib/icons';
 
 import { resolveCallout, CALLOUT_LINES, type CalloutLineName } from './useCallout';
 import { useGroupDismissal } from './useDismissal';

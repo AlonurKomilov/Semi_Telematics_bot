@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { X } from '../../../lib/icons';
 import { Tip } from '../../../components/tooltip';
 import { apiJSON } from '../../../api/client';
 

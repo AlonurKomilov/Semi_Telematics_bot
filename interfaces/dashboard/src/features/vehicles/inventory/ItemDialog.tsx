@@ -9,7 +9,7 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRightLeft, Check, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Check, Trash2 } from '../../../lib/icons';
 import { apiJSON } from '../../../api/client';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,

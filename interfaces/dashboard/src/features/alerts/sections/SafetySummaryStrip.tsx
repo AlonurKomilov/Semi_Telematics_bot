@@ -16,7 +16,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ShieldAlert, GraduationCap } from 'lucide-react';
+import { ShieldAlert, GraduationCap } from '../../../lib/icons';
 import { KpiCard } from '../../../components/shell';
 import { apiJSON, ApiError } from '../../../api/client';
 

@@ -1,6 +1,6 @@
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from '../../lib/icons';
 import type { ReactNode } from 'react';
-import { Inbox } from 'lucide-react';
+import { Inbox } from '../../lib/icons';
 import { cn } from '@/lib/utils';
 import { cardVariants } from '@/components/ui/card';
 

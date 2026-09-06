@@ -10,8 +10,8 @@
  * Handlers/permissions come in via ``deps`` — the builder stays a pure
  * data function over component-owned closures (testable, no god object).
  */
-import { ArrowUpRight, ExternalLink } from 'lucide-react';
-import { History } from 'lucide-react';
+import { ArrowUpRight, ExternalLink } from '../../lib/icons';
+import { History } from '../../lib/icons';
 import type { MenuAction } from '../../components/ui/context-menu';
 import type { WorkOrder } from '../../types';
 

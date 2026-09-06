@@ -23,7 +23,7 @@ import { useState, useEffect } from 'react';
 import {
   Bell, BellOff, Check, CheckSquare, FileText, Image as ImageIcon, Paperclip,
   RefreshCw, Upload, X, History, Trash2,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { toast } from '../../lib/toast';
 
 import { apiJSON, apiFetch } from '../../api/client';

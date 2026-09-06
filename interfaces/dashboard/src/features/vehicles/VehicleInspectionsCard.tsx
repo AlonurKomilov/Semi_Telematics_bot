@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ClipboardCheck, ChevronRight } from 'lucide-react';
+import { ClipboardCheck, ChevronRight } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { type Tone } from '../../lib/status';
 import type { PTIInspectionRow, PTIInspectionsResponse } from '../../types';

@@ -8,7 +8,7 @@
  * permission — total has its own permission gate for the click;
  * moving/idle/stopped tiles are read-only summaries.
  */
-import { Truck, Activity, CircleDot, CircleSlash } from 'lucide-react';
+import { Truck, Activity, CircleDot, CircleSlash } from '../../../lib/icons';
 import { KpiCard } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 

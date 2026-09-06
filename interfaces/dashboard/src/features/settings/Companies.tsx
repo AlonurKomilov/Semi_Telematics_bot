@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, KeyRound, Upload, Trash2 } from 'lucide-react';
+import { Building2, Plus, KeyRound, Upload, Trash2 } from '../../lib/icons';
 import { Link } from 'react-router-dom';
 import {
   Sheet, SheetContent, SheetBody, SheetHeader, SheetTitle,

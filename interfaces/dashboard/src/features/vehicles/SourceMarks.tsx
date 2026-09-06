@@ -24,7 +24,7 @@
  * is why the marks became a component before there was any artwork to
  * put in one.
  */
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink } from '../../lib/icons';
 
 import { Badge } from '@/components/ui/badge';
 import { Tip } from '../../components/tooltip';
