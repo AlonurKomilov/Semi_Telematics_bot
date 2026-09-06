@@ -42,8 +42,8 @@ def _gate(*names, user_id: int = 1):
     match used to fake — so a test that passes here proves EXACT-name
     behaviour rather than the old ``in`` comparison.
     """
-    from capabilities.permissions.vehicle_scope import VehicleScope
-    return {user_id: VehicleScope(names=frozenset(n.lower() for n in names))}
+    from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+    return {user_id: VehicleScope.from_names(names)}
 
 
 # Camera-issue payload shape mirrors what ``analyze_snapshot`` returns:
@@ -122,10 +122,10 @@ class TestCameraAlertIsolation:
         This test used to assert a SUBSTRING match instead, and that is
         what made it a disclosure: see the next test.
         """
-        from capabilities.permissions.vehicle_scope import VehicleScope
+        from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
         sub = _StubSub(role=Role.DRIVER, truck_num="107")
-        gate = {1: VehicleScope(names=frozenset({"107"}),
-                                external_ids=frozenset({"veh-abc"}))}
+        gate = {1: VehicleScope.of(
+            VehicleIdentity.make(external_id="veh-abc", name="107"))}
         issues = [
             {"vehicle": "TRUCK 107", "vehicle_id": "veh-abc", "status": "WARNING"},
             {"vehicle": "201", "vehicle_id": "veh-201", "status": "PROBLEM"},

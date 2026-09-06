@@ -11,7 +11,7 @@ endpoint beside it (capabilities/permissions/vehicle_scope).
 
 These tests exercise the ladder against the shapes that actually broke.
 """
-from capabilities.permissions.vehicle_scope import VehicleScope
+from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
 
 
 def _admitted(scope: VehicleScope, raw: list[dict]) -> set[str]:
@@ -29,18 +29,18 @@ def test_a_shorter_unit_number_does_not_admit_the_longer_ones():
         {"id": "p3", "name": "128"},
         {"id": "p4", "name": "101"},
     ]
-    scope = VehicleScope(names=frozenset({"1"}))
+    scope = VehicleScope.from_names(["1"])
     assert _admitted(scope, raw) == {"p1"}
 
 
 def test_230_does_not_admit_2303():
     raw = [{"id": "a", "name": "230"}, {"id": "b", "name": "2303"}]
-    assert _admitted(VehicleScope(names=frozenset({"230"})), raw) == {"a"}
+    assert _admitted(VehicleScope.from_names(["230"]), raw) == {"a"}
 
 
 def test_100_does_not_admit_a_trailer_whose_name_contains_it():
     raw = [{"id": "a", "name": "100"}, {"id": "b", "name": "AK1001"}]
-    assert _admitted(VehicleScope(names=frozenset({"100"})), raw) == {"a"}
+    assert _admitted(VehicleScope.from_names(["100"]), raw) == {"a"}
 
 
 def test_the_provider_id_decides_when_both_sides_carry_one():
@@ -51,14 +51,14 @@ def test_the_provider_id_decides_when_both_sides_carry_one():
     the rename cannot cost the driver their own truck.
     """
     raw = [{"id": "s-77", "name": "229 Idris Ahmed"}, {"id": "s-88", "name": "301"}]
-    scope = VehicleScope(external_ids=frozenset({"s-77"}), names=frozenset({"229"}))
+    scope = VehicleScope.of(VehicleIdentity.make(external_id="s-77", name="229"))
     assert _admitted(scope, raw) == {"s-77"}
 
 
 def test_a_vehicle_with_no_usable_rung_is_denied():
     """Wrong-hidden is an annoyance; wrong-shown is a breach."""
     raw = [{"id": "x", "name": ""}]
-    assert _admitted(VehicleScope(names=frozenset({"142"})), raw) == set()
+    assert _admitted(VehicleScope.from_names(["142"]), raw) == set()
 
 
 def test_an_empty_scope_admits_nothing():
@@ -67,40 +67,51 @@ def test_an_empty_scope_admits_nothing():
     assert _admitted(VehicleScope(), raw) == set()
 
 
-def test_a_mixed_linkage_assignment_loses_the_unlinked_truck_here():
-    """The ladder's sharp edge, pinned so it is known rather than found.
+def test_a_mixed_linkage_assignment_keeps_the_unlinked_truck():
+    """The edge this endpoint felt worst, now closed.
 
     A driver holds two trucks; only one has been linked to the provider
-    in our registry yet.  The scope then carries a non-empty external-id
-    set, so ``allows`` commits to rung 2 for BOTH rows — including the
-    unlinked truck's, whose provider id is not in the set.  It stops
-    there without trying the name that would have matched.
+    in our registry yet.  While the scope pooled its rungs, the linked
+    truck's provider id made the ladder commit to rung 2 for BOTH rows,
+    so the unlinked truck missed and was denied — the driver lost their
+    own truck here, and only here, because the raw provider payload
+    this endpoint reads carries no registry id to answer on rung 1.
 
-    The driver loses their own truck on this endpoint (the list endpoint
-    still shows it: that payload carries registry ids, so rung 1
-    answers).  It fails CLOSED, which is why it ships: the substring
-    this replaced admitted four trucks that were never theirs.
-
-    The fix is NOT to fall through to the name.  Unit numbers are reused
-    across companies in one account, so a name match would admit another
-    company's truck of the same number — a disclosure, in exchange for
-    an annoyance.  Correcting it properly means the scope carrying one
-    identity per vehicle instead of three flattened sets, which is its
-    own change across every consumer.
+    Each vehicle now answers for itself, so the unlinked one is still
+    judged on its name.
     """
-    scope = VehicleScope(
-        registry_ids=frozenset({1, 2}),
-        external_ids=frozenset({"prov-200"}),   # only truck 200 is linked
-        names=frozenset({"100", "200"}),
+    scope = VehicleScope.of(
+        VehicleIdentity.make(registry_id=1, name="100"),               # not linked yet
+        VehicleIdentity.make(registry_id=2, external_id="prov-200", name="200"),
     )
     raw = [{"id": "prov-100", "name": "100"}, {"id": "prov-200", "name": "200"}]
-    assert _admitted(scope, raw) == {"prov-200"}
+    assert _admitted(scope, raw) == {"prov-100", "prov-200"}
+
+
+def test_a_linked_truck_still_refuses_a_stranger_with_the_same_number():
+    """What per-vehicle must NOT cost: unit numbers are reused across
+    companies, so another company's "200" carries a different provider
+    id.  The assigned truck is linked, so it answers on rung 2 and says
+    no — it never drops to the name it shares."""
+    scope = VehicleScope.of(
+        VehicleIdentity.make(registry_id=1, name="100"),
+        VehicleIdentity.make(registry_id=2, external_id="prov-200", name="200"),
+    )
+    raw = [{"id": "other-co-200", "name": "200"}]
+    assert _admitted(scope, raw) == set()
 
 
 def test_a_name_only_scope_still_matches_every_assigned_truck():
-    """The edge above needs SOME linked truck to bite.  A driver whose
-    trucks are none of them linked keeps rung 3, which is the state the
-    ladder's own docstring calls its floor."""
-    scope = VehicleScope(names=frozenset({"100", "200"}))
+    """A driver whose trucks are none of them linked keeps rung 3,
+    which is the ladder's own documented floor."""
+    scope = VehicleScope.from_names(["100", "200"])
     raw = [{"id": "prov-100", "name": "100"}, {"id": "prov-200", "name": "200"}]
     assert _admitted(scope, raw) == {"prov-100", "prov-200"}
+
+
+def test_the_flattened_constructor_is_gone():
+    """Pooled sets are what chose a rung from the wrong vehicle.  A call
+    site that rebuilt them must fail loudly, not quietly work."""
+    import pytest
+    with pytest.raises(TypeError):
+        VehicleScope(registry_ids=frozenset({1}))       # type: ignore[call-arg]

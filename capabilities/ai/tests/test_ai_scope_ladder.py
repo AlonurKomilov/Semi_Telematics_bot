@@ -21,13 +21,24 @@ from capabilities.ai.tools.scope import (
 
 
 def _args(names=None, rids=None, exts=None):
+    """The wire the orchestrator injects.
+
+    The rungs travel as ONE ENTRY PER VEHICLE — ``_scope_identities`` —
+    not as two pooled lists.  Pooled, the caller's linked truck chose
+    the rung for their not-yet-linked one, which then missed and was
+    denied; this helper zips the three by position so the i-th name,
+    i-th registry id and i-th provider id are one truck, which is what
+    every one of these cases meant all along.
+    """
+    from itertools import zip_longest
     args: dict = {}
     if names is not None:
         args["_scope_vehicles"] = names
-    if rids is not None:
-        args["_scope_registry_ids"] = rids
-    if exts is not None:
-        args["_scope_external_ids"] = exts
+    if rids is not None or exts is not None:
+        args["_scope_identities"] = [
+            [r, e or "", (n or "").strip().lower()]
+            for r, e, n in zip_longest(rids or [], exts or [], names or [])
+        ]
     return args
 
 
@@ -108,15 +119,14 @@ class TestInjectionSafety:
             asyncio.run(
                 reg.execute_tool(
                     name,
-                    {"_scope_registry_ids": [999], "_scope_external_ids": ["x"]},
+                    {"_scope_identities": [[999, "x", "spoofed"]]},
                     None, 1, None,
                     scope_vehicles=None,
                 )
             )
         finally:
             reg._TOOL_REGISTRY.pop(name, None)
-        assert "_scope_registry_ids" not in seen
-        assert "_scope_external_ids" not in seen
+        assert "_scope_identities" not in seen
 
     def test_row_in_scope_reads_overview_id_key(self):
         # Overview rows carry the provider id under "id", not

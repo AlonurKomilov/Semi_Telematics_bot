@@ -49,7 +49,7 @@ from __future__ import annotations
 import logging
 
 from adapters.storage import Role
-from capabilities.permissions.vehicle_scope import VehicleScope
+from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
 from infra.platform import get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
@@ -146,18 +146,18 @@ async def load_vehicle_gate(account_id: int) -> "dict[int, VehicleScope] | None"
             # true; anyone adding a ``user_id in gate`` fast-path on the
             # old reading would reopen the disclosure this map closed.
             continue
-        registry_ids, external_ids = set(), set()
-        for n in clean:
-            rid, ext = by_name.get(n, (None, ""))
-            if rid is not None:
-                registry_ids.add(rid)
-            if ext:
-                external_ids.add(ext)
-        gate[int(user_id)] = VehicleScope(
-            registry_ids=frozenset(registry_ids),
-            external_ids=frozenset(external_ids),
-            names=frozenset(clean),
-        )
+        # One identity per assigned truck, carrying whatever rungs THAT
+        # truck resolved to.  Pooling them let a driver's linked truck
+        # decide the rung for their unlinked one, which then missed and
+        # denied — see capabilities/permissions/vehicle_scope.
+        gate[int(user_id)] = VehicleScope.of(*(
+            VehicleIdentity.make(
+                registry_id=by_name.get(n, (None, ""))[0],
+                external_id=by_name.get(n, (None, ""))[1],
+                name=n,
+            )
+            for n in clean
+        ))
     return gate
 
 

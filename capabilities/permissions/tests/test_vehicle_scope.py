@@ -12,18 +12,27 @@ from __future__ import annotations
 
 import pytest
 
+from itertools import zip_longest
+
 from capabilities.permissions.vehicle_scope import (
+    VehicleIdentity,
     VehicleScope,
     build_vehicle_scope,
 )
 
 
 def _scope(ids=(), ext=(), names=()):
-    return VehicleScope(
-        registry_ids=frozenset(ids),
-        external_ids=frozenset(ext),
-        names=frozenset(n.lower() for n in names),
-    )
+    """A scope of one identity per VEHICLE, zipped by position.
+
+    The i-th id, i-th provider id and i-th name are one truck.  The
+    scope used to pool all three into flat sets and pick its rung from
+    the pool, which is what let a driver's linked truck decide the rung
+    for their unlinked one — and deny it.
+    """
+    return VehicleScope.of(*(
+        VehicleIdentity.make(registry_id=i, external_id=e, name=n)
+        for i, e, n in zip_longest(ids, ext, names)
+    ))
 
 
 class TestNameRung:

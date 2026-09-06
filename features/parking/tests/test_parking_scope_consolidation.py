@@ -253,10 +253,9 @@ class TestPredicateUnit:
         events.  The id rung keeps the legitimate case and drops the leak.
         """
         from features.parking.service import is_visible
-        from capabilities.permissions.vehicle_scope import VehicleScope
-        scope = VehicleScope(
-            external_ids=frozenset({"sam_107"}), names=frozenset({"107"}),
-        )
+        from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+        scope = VehicleScope.of(
+            VehicleIdentity.make(external_id="sam_107", name="107"))
         own = {"vehicle_name": "Truck-107A", "vehicle_id": "sam_107",
                "company_code": "AAA"}
         assert is_visible(own, company_codes=[], truck_names=["107"],

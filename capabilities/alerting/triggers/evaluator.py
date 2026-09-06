@@ -178,9 +178,11 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
                 f"  AND company_code IN ({ph})",
                 (account_id, *codes),
             )
-            from capabilities.permissions.vehicle_scope import VehicleScope
-            walls.append(VehicleScope(
-                registry_ids=frozenset(int(r[0]) for r in await cur.fetchall())))
+            from capabilities.permissions.vehicle_scope import (
+                VehicleIdentity, VehicleScope)
+            walls.append(VehicleScope.of(*(
+                VehicleIdentity.make(registry_id=r[0])
+                for r in await cur.fetchall())))
 
         if role != "driver":
             return _AllOf(walls) if walls else None
@@ -250,15 +252,15 @@ async def _target_scope(tenant, account_id: int, ids: list[int]):
     except Exception as e:
         logger.warning("trigger targets unresolved acct=%s: %s", account_id, e)
         return _DENY_ALL
-    registry_ids = {int(r[0]) for r in rows}
-    external_ids = {str(r[1]) for r in rows if r[1]}
-    if not registry_ids:
+    if not rows:
         return _DENY_ALL
-    from capabilities.permissions.vehicle_scope import VehicleScope
-    # No ``names`` rung on purpose: a target is an identity, and falling
-    # back to a name is how "230" once matched 2303.
-    return VehicleScope(registry_ids=frozenset(registry_ids),
-                        external_ids=frozenset(external_ids))
+    from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+    # No ``name`` rung on purpose: a target is an identity, and falling
+    # back to a name is how "230" once matched 2303.  Each target keeps
+    # its OWN id pair, so a target with no provider id is still judged
+    # on its registry id rather than on a sibling's.
+    return VehicleScope.of(*(
+        VehicleIdentity.make(registry_id=r[0], external_id=r[1]) for r in rows))
 
 
 def _collapse_by_registry(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -62,7 +62,7 @@ async def test_an_assigned_driver_still_gets_a_real_scope(monkeypatch):
             return object()
 
     async def _build(_tenant, _acct, names):
-        return VehicleScope(names=frozenset(n.lower() for n in names))
+        return VehicleScope.from_names(names)
 
     monkeypatch.setattr(deps, "get_user_vehicle_nums", _some)
     monkeypatch.setattr(deps, "_get_router", lambda: _Router())

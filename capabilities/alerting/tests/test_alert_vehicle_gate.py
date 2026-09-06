@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from adapters.storage import Role
 from capabilities.alerting import vehicle_gate as vg
-from capabilities.permissions.vehicle_scope import VehicleScope
+from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
 import pytest
 
 
@@ -34,11 +34,13 @@ class _Sub:
 
 
 def _scope(names=(), external_ids=(), registry_ids=()):
-    return VehicleScope(
-        names=frozenset(n.lower() for n in names),
-        external_ids=frozenset(external_ids),
-        registry_ids=frozenset(registry_ids),
-    )
+    # One identity per vehicle, zipped by position — the i-th name, the
+    # i-th provider id and the i-th registry id are one truck.
+    from itertools import zip_longest
+    return VehicleScope.of(*(
+        VehicleIdentity.make(registry_id=i, external_id=e, name=n)
+        for n, e, i in zip_longest(names, external_ids, registry_ids)
+    ))
 
 
 class TestWhoIsScoped:

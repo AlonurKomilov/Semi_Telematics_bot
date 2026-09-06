@@ -217,7 +217,7 @@ async def test_personal_fanout_carries_vehicle_predicate(monkeypatch):
     from capabilities.permissions.vehicle_scope import VehicleScope
 
     async def _gate(account_id):
-        return {7: VehicleScope(names=frozenset({"truck 999"}))}
+        return {7: VehicleScope.from_names(["truck 999"])}
 
     monkeypatch.setattr(
         "capabilities.alerting.vehicle_gate.load_vehicle_gate", _gate)
@@ -242,7 +242,7 @@ async def test_an_alert_with_no_vehicle_is_not_gated(monkeypatch):
     from capabilities.permissions.vehicle_scope import VehicleScope
 
     async def _gate(account_id):
-        return {7: VehicleScope(names=frozenset({"truck 999"}))}
+        return {7: VehicleScope.from_names(["truck 999"])}
 
     monkeypatch.setattr(
         "capabilities.alerting.vehicle_gate.load_vehicle_gate", _gate)

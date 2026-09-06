@@ -182,20 +182,15 @@ async def map_vehicles_live(
         # is ALLOWED to see, so an over-match is a disclosure.
         #
         # The raw provider payload carries no registry id, so rung 1
-        # never fires here; rung 2 (the provider's own vehicle id,
-        # resolved from the registry's telematics_ref) decides.
+        # never fires here: the provider's own vehicle id decides, and a
+        # truck the registry has not linked yet falls to its exact name.
         #
-        # KNOWN SHARP EDGE, and it is the ladder's, not this call's: the
-        # rung is chosen from what the SCOPE carries in aggregate, not
-        # from what the row's own assigned truck carries.  A driver
-        # holding one linked truck and one not-yet-linked one has a
-        # non-empty external-id set, so rung 2 fires for the UNLINKED
-        # truck's row too, misses, and stops — the driver loses their
-        # own truck here while the list endpoint still shows it (that
-        # payload carries registry ids, so rung 1 answers).  It fails
-        # CLOSED, and the fix is not to fall through to the name: unit
-        # numbers are reused across companies, so a name match would
-        # admit somebody else's truck.  Pinned in
+        # This endpoint is why the scope holds one identity PER VEHICLE
+        # rather than three pooled sets.  Pooled, one linked truck's
+        # provider id chose the rung for every row, so a driver holding
+        # one linked and one unlinked truck lost the unlinked one — here
+        # only, because every other surface has a registry id to answer
+        # on rung 1.  Pinned in
         # features/location/tests/test_live_positions_scope.py.
         account_id = int(user["account_id"])
         tenant = await _get_router().get_tenant(account_id)

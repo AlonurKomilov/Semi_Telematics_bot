@@ -144,29 +144,28 @@ async def resolve_scope_ladder(
     """Resolve a name scope's identity rungs via the registry.
 
     Returns ``None`` for an unrestricted caller, else
-    ``{"registry_ids": [...], "external_ids": [...]}`` (either may be
-    empty when the registry does not know the names).  Names stay the
-    wire contract; the rungs ride beside them so tools can decide by
-    identity — a provider rename makes name equality miss the caller's
-    OWN truck, and name equality alone cannot separate same-number
-    twins across companies.
+    ``{"identities": [[registry_id, external_id, name], ...]}`` — ONE
+    entry per vehicle, so a tool judges a row against the truck it might
+    be rather than against a pool of rungs.  Names stay the wire
+    contract; the rungs ride beside them so tools can decide by identity
+    — a provider rename makes name equality miss the caller's OWN truck,
+    and name equality alone cannot separate same-number twins across
+    companies.
     """
     if names is None:
         return None
     if not names:
-        return {"registry_ids": [], "external_ids": []}
+        return {"identities": []}
     try:
         from capabilities.permissions.vehicle_scope import build_vehicle_scope
         from infra.platform import get_tenant_db as _get_tenant
         tenant = await _get_tenant(account_id)
         scope = await build_vehicle_scope(tenant, account_id, list(names))
-        return {
-            "registry_ids": sorted(scope.registry_ids),
-            "external_ids": sorted(scope.external_ids),
-        }
+        return {"identities": sorted(
+            [v.registry_id, v.external_id, v.name] for v in scope.vehicles)}
     except Exception as e:  # pragma: no cover - defensive
         logger.warning(
             "AI scope: ladder resolution failed acct=%s (name rung only): %s",
             account_id, e,
         )
-        return {"registry_ids": [], "external_ids": []}
+        return {"identities": []}

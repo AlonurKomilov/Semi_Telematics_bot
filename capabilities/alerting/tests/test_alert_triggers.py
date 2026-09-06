@@ -475,9 +475,9 @@ class TestVehicleTargeting:
         assert t.target_ids == [99, 12]
 
     def test_targeting_uses_the_same_ladder_as_the_permission_wall(self):
-        from capabilities.permissions.vehicle_scope import VehicleScope
-        target = VehicleScope(registry_ids=frozenset({99}),
-                              external_ids=frozenset({"dev-new"}))
+        from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+        target = VehicleScope.of(
+            VehicleIdentity.make(registry_id=99, external_id="dev-new"))
         assert target.allows_row({"registry_id": 99, "vehicle_id": "dev-old"})
         assert target.allows_row({"registry_id": None, "vehicle_id": "dev-new"})
         assert not target.allows_row({"registry_id": 41, "vehicle_id": "dev-x"})
@@ -486,8 +486,8 @@ class TestVehicleTargeting:
         """Deliberately absent.  Matching a target by NAME is how "230"
         once matched 2303 on a visibility wall — an over-match here is an
         alert about somebody else's truck."""
-        from capabilities.permissions.vehicle_scope import VehicleScope
-        target = VehicleScope(registry_ids=frozenset({99}))
+        from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+        target = VehicleScope.of(VehicleIdentity.make(registry_id=99))
         assert not target.allows_row(
             {"registry_id": None, "vehicle_id": "", "vehicle_name": "99"})
 
@@ -662,9 +662,9 @@ class TestCompanyWall:
         — the company wall knows registry ids, the driver ladder also
         knows external ids and names."""
         from capabilities.alerting.triggers.evaluator import _AllOf
-        from capabilities.permissions.vehicle_scope import VehicleScope
-        company = VehicleScope(registry_ids=frozenset({1, 2}))
-        driver = VehicleScope(registry_ids=frozenset({2, 3}))
+        from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+        company = VehicleScope.of(*(VehicleIdentity.make(registry_id=i) for i in (1, 2)))
+        driver = VehicleScope.of(*(VehicleIdentity.make(registry_id=i) for i in (2, 3)))
         both = _AllOf([company, driver])
         assert both.allows_row({"registry_id": 2, "vehicle_id": "x"})
         assert not both.allows_row({"registry_id": 1, "vehicle_id": "x"})
@@ -680,8 +680,8 @@ class TestCompanyWall:
         """An unplaced row (registry_id NULL, first ingest tick) must not
         pass a registry-keyed company wall by default — it cannot be
         proven to be in an allowed company."""
-        from capabilities.permissions.vehicle_scope import VehicleScope
-        company = VehicleScope(registry_ids=frozenset({1}))
+        from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
+        company = VehicleScope.of(VehicleIdentity.make(registry_id=1))
         assert not company.allows_row({"registry_id": None, "vehicle_id": "new"})
 
 

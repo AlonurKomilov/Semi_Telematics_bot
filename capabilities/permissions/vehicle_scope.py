@@ -10,8 +10,9 @@ for provider renames ("229 Idris Ahmed" still had to match an
 assignment of "229"); the registry link now solves the rename properly,
 which is what lets the substring die.
 
-``VehicleScope`` decides membership on a ladder, most reliable rung
-first, and a rung is consulted only when BOTH sides carry it:
+``VehicleScope`` is a set of VEHICLES, one ``VehicleIdentity`` per
+truck the person may see, and each decides membership on a ladder,
+most reliable rung first, consulted only when BOTH sides carry it:
 
   1. ``registry_id``  — the identity we own (vehicles.id).
   2. external id      — the provider's stable vehicle id.
@@ -21,7 +22,31 @@ The both-sides rule is what keeps the transition safe: rows written
 before the identity backfill carry no registry_id, and treating that
 absence as a verdict would either hide a driver's own truck or show
 somebody else's.  Wrong-hidden is an annoyance; wrong-shown is a
-breach — so a scope with no usable rung for a row denies it.
+breach — so a vehicle with no usable rung for a row denies it.
+
+PER VEHICLE is the load-bearing word, and it was not always so.  The
+scope used to hold three FLATTENED sets — every registry id, every
+provider id, every name, pooled — and picked its rung from what the
+POOL carried rather than from what the row's own truck carried.  A
+driver holding one linked truck and one not-yet-linked one therefore
+had a non-empty provider-id set, so the ladder committed to rung 2 for
+the unlinked truck's row too, missed, and stopped without trying the
+name that would have matched: the driver lost their own truck.  It was
+invisible wherever rows carry a registry id and total on
+``/map/vehicles/live``, where the raw provider payload carries none.
+
+Falling through to the name on a miss would have fixed that case and
+opened a worse one — unit numbers are REUSED across companies in one
+account, so another company's truck of the same number would have been
+admitted.  Asking each assigned vehicle separately fixes the first
+without opening the second: a LINKED truck still refuses a row whose
+provider id differs, whatever the pool contains.
+
+What this shape does NOT fix, and is not meant to: ``build_vehicle_scope``
+resolves an assignment string against ``unit_number`` account-wide, so
+a driver assigned "230" already receives both companies' "230" into
+their scope.  That is the assignment model's to answer, not the
+ladder's.
 
 Pure logic only (no I/O), like the alerting access helpers — the
 builder that resolves assignment strings through the registry lives
@@ -34,17 +59,43 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-@dataclass(frozen=True)
-class VehicleScope:
-    """One user's allowed vehicles, expressed on every rung we know."""
+def _as_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
-    registry_ids: frozenset[int] = field(default_factory=frozenset)
-    external_ids: frozenset[str] = field(default_factory=frozenset)
-    names: frozenset[str] = field(default_factory=frozenset)
+
+@dataclass(frozen=True)
+class VehicleIdentity:
+    """ONE vehicle, on however many rungs we could resolve for it.
+
+    Build with :meth:`make`, which normalises: ids to int, the provider
+    id stripped, the name stripped and lowercased.  Two identities for
+    the same truck must compare equal or the set would hold both.
+    """
+
+    registry_id: int | None = None
+    external_id: str = ""
+    name: str = ""
+
+    @staticmethod
+    def make(
+        registry_id: Any = None, external_id: Any = None, name: Any = None,
+    ) -> "VehicleIdentity":
+        return VehicleIdentity(
+            _as_id(registry_id),
+            str(external_id or "").strip(),
+            str(name or "").strip().lower(),
+        )
 
     @property
     def empty(self) -> bool:
-        return not (self.registry_ids or self.external_ids or self.names)
+        """A vehicle we can name on no rung admits nothing, so it is not
+        a wall with a hole — it is not a wall at all."""
+        return self.registry_id is None and not self.external_id and not self.name
 
     def allows(
         self,
@@ -53,19 +104,78 @@ class VehicleScope:
         external_id: Any = None,
         name: Any = None,
     ) -> bool:
-        """Membership by the strongest rung both sides share."""
-        if self.registry_ids and registry_id is not None:
-            try:
-                return int(registry_id) in self.registry_ids
-            except (TypeError, ValueError):
-                pass
+        """Is the row THIS vehicle?  By the strongest rung we both carry.
+
+        A rung both sides carry is the answer, including when the answer
+        is no: a truck whose registry id we know is not the row whose
+        registry id differs, and dropping to the name there would admit
+        another company's truck of the same number.
+        """
+        rid = _as_id(registry_id)
+        if self.registry_id is not None and rid is not None:
+            return rid == self.registry_id
         ext = str(external_id or "").strip()
-        if self.external_ids and ext:
-            return ext in self.external_ids
+        if self.external_id and ext:
+            return ext == self.external_id
         nm = str(name or "").strip().lower()
-        if self.names and nm:
-            return nm in self.names
-        return False
+        return bool(self.name and nm and nm == self.name)
+
+
+@dataclass(frozen=True)
+class VehicleScope:
+    """One user's allowed vehicles — a set of them, asked one at a time.
+
+    Constructed through :meth:`of` or :meth:`from_names`.  The flattened
+    ``registry_ids=``/``external_ids=``/``names=`` keywords are gone on
+    purpose: a call site that rebuilt three pooled sets would restore
+    the pooled ladder this shape exists to end, so a missed one must
+    raise rather than quietly work.
+    """
+
+    vehicles: frozenset[VehicleIdentity] = field(default_factory=frozenset)
+
+    @classmethod
+    def of(cls, *identities: VehicleIdentity) -> "VehicleScope":
+        """A scope from identities, dropping any that name no rung."""
+        return cls(frozenset(i for i in identities if not i.empty))
+
+    @classmethod
+    def from_names(cls, names) -> "VehicleScope":
+        """A NAME-ONLY scope — assignments the registry could not
+        resolve, and the shape most tests want."""
+        return cls.of(*(VehicleIdentity.make(name=n) for n in (names or [])))
+
+    @property
+    def empty(self) -> bool:
+        return not self.vehicles
+
+    # The three pooled views, derived.  Read-only, and for describing a
+    # scope (logs, the AI tool wire) — never for deciding membership,
+    # which is what pooling got wrong.
+    @property
+    def registry_ids(self) -> frozenset[int]:
+        return frozenset(v.registry_id for v in self.vehicles if v.registry_id is not None)
+
+    @property
+    def external_ids(self) -> frozenset[str]:
+        return frozenset(v.external_id for v in self.vehicles if v.external_id)
+
+    @property
+    def names(self) -> frozenset[str]:
+        return frozenset(v.name for v in self.vehicles if v.name)
+
+    def allows(
+        self,
+        *,
+        registry_id: Any = None,
+        external_id: Any = None,
+        name: Any = None,
+    ) -> bool:
+        """Membership: does ANY vehicle in this scope claim the row."""
+        return any(
+            v.allows(registry_id=registry_id, external_id=external_id, name=name)
+            for v in self.vehicles
+        )
 
     def allows_row(
         self,
@@ -93,7 +203,14 @@ async def build_vehicle_scope(
     renamed row carries the registry id, and rung 1 decides.
 
     Unknown assignment strings (a typo, a truck the registry has never
-    seen) stay name-only — rung 3 still honours them by exact equality.
+    seen) stay name-only — rung 3 still honours them by exact equality,
+    and because each vehicle is asked separately that is true even when
+    a SIBLING assignment did resolve to a provider id.
+
+    One unit number can resolve to more than one registry row — numbers
+    are reused across companies — and every one of them joins the
+    scope, exactly as before.  Narrowing that is the assignment model's
+    problem, not this function's.
     """
     names = sorted({
         n.strip().lower() for n in (assigned_names or []) if n and n.strip()
@@ -101,26 +218,31 @@ async def build_vehicle_scope(
     if not names:
         return VehicleScope()
 
-    registry_ids: set[int] = set()
-    external_ids: set[str] = set()
+    identities: list[VehicleIdentity] = []
+    resolved: set[str] = set()
     placeholders = ", ".join("?" for _ in names)
     # archived-ok: a scope is a PERMISSION, not a liveness check.
     # Someone scoped to a truck must keep reaching its records after it
     # is retired — that history is the reason archiving exists.  Whether
     # a retired truck may raise an ALERT is decided by the alerting
     # sites, which filter for themselves.
+    # ``unit_number`` joins the SELECT so each row can be tied back to
+    # the assignment it answers: the identity is per vehicle now, and a
+    # query that returned only ids could not say which name was which.
     cur = await tenant._db.execute(
-        f"SELECT id, telematics_ref FROM vehicles "
+        f"SELECT id, telematics_ref, lower(unit_number) FROM vehicles "
         f"WHERE account_id = ? AND lower(unit_number) IN ({placeholders})",
         (account_id, *names),
     )
     for row in await cur.fetchall():
-        registry_ids.add(int(row[0]))
-        if row[1]:
-            external_ids.add(str(row[1]))
+        unit = str(row[2] or "")
+        resolved.add(unit)
+        identities.append(VehicleIdentity.make(
+            registry_id=row[0], external_id=row[1], name=unit))
 
-    return VehicleScope(
-        registry_ids=frozenset(registry_ids),
-        external_ids=frozenset(external_ids),
-        names=frozenset(names),
-    )
+    # An assignment the registry did not answer keeps its name rung, so
+    # a typo or a truck we have never seen still means what it said.
+    identities.extend(
+        VehicleIdentity.make(name=n) for n in names if n not in resolved)
+
+    return VehicleScope.of(*identities)

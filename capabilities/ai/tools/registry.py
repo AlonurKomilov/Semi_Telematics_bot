@@ -504,9 +504,9 @@ async def execute_tool(tool_name: str, tool_args: dict,
     if not handler:
         return _stamp_ok({"error": f"Unknown tool: {tool_name}"})
     # Server-injected channels — a model-supplied value is never honored.
-    if "_scope_registry_ids" in tool_args or "_scope_external_ids" in tool_args:
+    if "_scope_identities" in tool_args:
         tool_args = {k: v for k, v in tool_args.items()
-                     if k not in ("_scope_registry_ids", "_scope_external_ids")}
+                     if k != "_scope_identities"}
     if scope_vehicles is not None:
         from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
         if tool_name in SCOPE_AWARE_TOOLS:
@@ -517,10 +517,11 @@ async def execute_tool(tool_name: str, tool_args: dict,
             # rename, and cannot split same-number twins across
             # companies.
             if scope_ladder:
-                tool_args["_scope_registry_ids"] = list(
-                    scope_ladder.get("registry_ids") or [])
-                tool_args["_scope_external_ids"] = list(
-                    scope_ladder.get("external_ids") or [])
+                # ONE entry per vehicle, not three pooled sets: pooling
+                # let a caller's linked truck pick the rung for their
+                # unlinked one, which then missed and denied it.
+                tool_args["_scope_identities"] = [
+                    list(i) for i in (scope_ladder.get("identities") or [])]
     if "_attachments" in tool_args or "_attachment_docs" in tool_args:
         # Server-injected channels — a model-supplied value is never honored.
         tool_args = {k: v for k, v in tool_args.items()
