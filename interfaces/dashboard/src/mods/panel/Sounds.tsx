@@ -146,7 +146,8 @@ export function SoundsGroup({ label: groupLabel }: { label: LabelClass }) {
           />
         </div>
         <p className="text-2xs text-muted-foreground mt-1">
-          {t('mods.sound_ui_hint', 'A short cue when something can be undone, and when it lands.')}
+          {t('mods.sound_ui_hint',
+            'A short cue when the app answers — something saved, something refused, or a few seconds to undo.')}
         </p>
 
         <div className="flex items-center justify-between gap-2 mt-2">

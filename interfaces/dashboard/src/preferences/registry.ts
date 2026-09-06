@@ -957,7 +957,7 @@ export const DEFS = {
     default: false,
     scope: 'device',
     sanitize: asBool,
-    note: 'Play a short cue when an action can be undone.',
+    note: 'Play a short cue when the app answers — saved, refused, or undoable.',
   }),
 
   // ── Keyboard sound ────────────────────────────────────────────────
