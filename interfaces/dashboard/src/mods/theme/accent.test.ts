@@ -59,20 +59,29 @@ describe('the tone table is the one that ships', () => {
       });
 });
 
+/** How far off `ACCENT_BAND` a seed may sit and still read as family. */
+const BAND_TOLERANCE = 0.005;
+
 describe('the band is where the packs already live', () => {
   it('every curated seed sits on its mode band', () => {
     const off: string[] = [];
     for (const p of THEME_PACKS)
       for (const mode of MODES) {
         const L = srgbToOklch(parseHex(p.seed[mode])!).L;
-        if (Math.abs(L - ACCENT_BAND[mode]) > 0.005) off.push(`${p.id}/${mode} L=${L.toFixed(3)}`);
+        if (Math.abs(L - ACCENT_BAND[mode]) > BAND_TOLERANCE) off.push(`${p.id}/${mode} L=${L.toFixed(3)}`);
       }
     // Green/dark is the one exception left. Green/LIGHT used to be the
     // other, at 0.480, on reasoning that stopped holding when `--ok`
     // moved — it is back on the band with its siblings. Listing the
     // survivor rather than widening the tolerance keeps the band a real
     // claim.
-    expect(off).toEqual(['green/dark L=0.650']);
+    //
+    // 0.651, and it used to read 0.650. The colour did not move: the
+    // seed is 0.6507 and was 0.6504, either side of where `toFixed(3)`
+    // rounds. Hue 135 offers no 8-bit green between 0.648 and 0.651, so
+    // there is no hex that keeps the old string — this is a rounding
+    // boundary written down, not a lightness change.
+    expect(off).toEqual(['green/dark L=0.651']);
   });
 });
 
@@ -81,20 +90,18 @@ describe('what the shipped packs actually measure', () => {
    * A characterisation test, not an approval.
    *
    * Every curated seed is recorded against its nearest tone so that any
-   * change to a pack, or to a tone, has to come through here. Two of
-   * these sit BELOW `TONE_FLOOR`: a customer picking light blue or light
-   * green would be refused the colours we ship. That inconsistency is
-   * real, it is the owner's to settle, and it is written down rather
-   * than dissolved by lowering the floor until it disappears.
+   * change to a pack, or to a tone, has to come through here.
    *
-   * Light green is the sharper half. `index.css` explains its 0.48 as
-   * separation from `--ok` — "a 0.52 green accent sat at dE2000 4.28…
-   * dropping the lightness… lands at 6.59". Both numbers reproduce
-   * exactly against the `--ok` that comment names, `oklch(0.52 0.15
-   * 150)`. `--ok` ships as `oklch(0.49 0.132 150)` today, and against
-   * THAT the move runs backwards: 0.52 measures 6.20 and the shipped
-   * 0.48 measures 5.71. The exception now costs the separation it was
-   * made to buy.
+   * Blue/light's 6.49 is the only one left below `TONE_FLOOR`, and it
+   * is measured against `--info` — a tone that carries no state, which
+   * is why the gate does not judge against it. See STATEFUL_TONES, and
+   * the test below that says so in a number.
+   *
+   * Green used to be the sharper half and is not any more. It sat at
+   * 6.09 from `--ok` on hue 142 while imposing a floor of 10 on anyone
+   * picking their own colour — the one pack that failed its own gate.
+   * The hue moved to 135 (owner's decision, 2026-09-06) and it now
+   * measures 10.13 light and 14.89 dark.
    */
   it('records every seed against its nearest tone', () => {
     const table: string[] = [];
@@ -115,41 +122,85 @@ describe('what the shipped packs actually measure', () => {
       'blue/dark nearest --info at 18.71',
       'purple/light nearest --info at 20.79',
       'purple/dark nearest --info at 30.04',
-      'green/light nearest --ok at 6.09',
-      'green/dark nearest --ok at 11.77',
+      'green/light nearest --ok at 10.13',
+      'green/dark nearest --ok at 14.89',
       'azure/light nearest --info at 20.25',
       'azure/dark nearest --info at 20.45',
     ]);
-    // The gap, stated as a number so it cannot be read as fine.
+    // The closest shipped pair is still under the floor, and is still
+    // stated as a number rather than described. What changed is WHICH
+    // pair: it is blue against `--info` now, not green against `--ok`,
+    // and only one of those is a tone a button can lie about.
     expect(worst, 'the closest shipped pair').toBeLessThan(TONE_FLOOR);
   });
 
-  it('measured against the tones that MEAN something, only one pack is close', () => {
+  /** The seed green shipped on hue 142, retired 2026-09-06. It is the
+   *  positive control below: the two tests that now assert an empty
+   *  list would both pass on a `distance` that returned Infinity, and
+   *  this hex is the one colour that must still be reported. */
+  const RETIRED_GREEN = '#287d22';
+
+  it('measured against the tones that MEAN something, no pack is close', () => {
     // The gate judges a picked colour against the stateful tones only —
     // success, warning, danger — because those are the ones a primary
-    // button can lie about. Blue's 6.49 was entirely against `--info`,
+    // button can lie about. Blue's 6.49 is entirely against `--info`,
     // and blue is 43.50 from the nearest tone that carries a state.
-    const below: string[] = [];
+    //
+    // This list was `['green/light']` until the hue moved. A pack that
+    // fails the gate it imposes on the customer is the inconsistency
+    // this file used to write down; now it holds the invariant instead.
+    const below = (seeds: [string, string, AccentMode][]) =>
+      seeds.filter(([, hex, mode]) =>
+        Math.min(...STATEFUL_TONES.map((n) => distance(parseHex(hex)!, tone(mode, n))))
+          < TONE_FLOOR).map(([id]) => id);
+
+    const shipped: [string, string, AccentMode][] = [];
     for (const p of THEME_PACKS)
-      for (const mode of MODES) {
-        const rgb = parseHex(p.seed[mode])!;
-        const d = Math.min(...STATEFUL_TONES.map((n) => distance(rgb, tone(mode, n))));
-        if (d < TONE_FLOOR) below.push(`${p.id}/${mode}`);
-      }
-    expect(below).toEqual(['green/light']);
+      for (const mode of MODES) shipped.push([`${p.id}/${mode}`, p.seed[mode], mode]);
+
+    expect(shipped, 'no seeds measured — the assertion below is vacuous')
+      .toHaveLength(THEME_PACKS.length * MODES.length);
+    expect(below([...shipped, ['retired-green/light', RETIRED_GREEN, 'light']]),
+      'the control colour stopped being reported — this test measures nothing')
+      .toEqual(['retired-green/light']);
+    expect(below(shipped), 'a shipped pack fails the gate it imposes on customers')
+      .toEqual([]);
   });
 
-  it('and that one is a HUE collision no lightness on the band can fix', () => {
-    // Green sits at hue 142, `--ok` at 150 — eight degrees. Reverting
-    // green to the band bought 5.71 → 6.17 and that is all the band has
-    // to give; clearing the floor would take a hue move, which is a
-    // brand decision rather than a correction.
+  it('and it was the HUE that fixed it — no lightness on the band could', () => {
+    // `--ok` is at hue 150. Green sat at 142, eight degrees away, and
+    // reverting it to the band bought 5.71 → 6.09, which is all the
+    // band had to give. 135 is seven degrees the other way and clears
+    // the floor outright; the sweep below is what says no lightness
+    // would have.
     const g = srgbToOklch(parseHex(THEME_PACKS.find((p) => p.id === 'green')!.seed.light)!);
     const okHue = TONES.light.ok[2];
-    expect(Math.abs(g.H - okHue), 'green stopped sharing a hue with --ok').toBeLessThan(12);
-    const best = Math.min(...STATEFUL_TONES.map((n) => distance(parseHex('#287d22')!, tone('light', n))));
-    expect(best).toBeGreaterThan(6);
-    expect(best, 'green/light cleared the floor without a hue move').toBeLessThan(TONE_FLOOR);
+    expect(Math.abs(g.H - okHue), 'green is back within eight degrees of --ok')
+      .toBeGreaterThanOrEqual(12);
+
+    // ON THE BAND, at the retired hue, at every lightness the band
+    // admits. `fitAccent` does clear hue 142 — it returns a colour, and
+    // the test below records that it moves `away from --ok` — but only
+    // by walking OFF the band, which is a licence a customer's colour
+    // has and a pack does not. A pack sits on the band by definition:
+    // that is what makes four accents read as one family.
+    const retiredHue = srgbToOklch(parseHex(RETIRED_GREEN)!).H;
+    const L0 = ACCENT_BAND.light;
+    let bestOnBand = 0;
+    for (let L = L0 - BAND_TOLERANCE; L <= L0 + BAND_TOLERANCE + 1e-9; L += 0.001) {
+      const rgb = oklchToSrgb(L, 0.15, retiredHue).rgb;
+      bestOnBand = Math.max(bestOnBand,
+        Math.min(...STATEFUL_TONES.map((n) => distance(rgb, tone('light', n)))));
+    }
+    expect(bestOnBand, 'a lightness ON THE BAND at hue 142 clears the floor after all')
+      .toBeLessThan(TONE_FLOOR);
+    // And the colour that DOES clear it is off the band — the proof
+    // that the nudge is a different licence, not a lightness the pack
+    // could have taken.
+    const rescued = fitAccent(RETIRED_GREEN, 'light').rgb!;
+    expect(Math.abs(srgbToOklch(rescued).L - L0),
+      'the nudge stayed on the band, so the pack could have done the same')
+      .toBeGreaterThan(BAND_TOLERANCE);
   });
 });
 
@@ -251,7 +302,7 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
    * azure in light, sail through. Blue and green in light get nudged —
    * the same two the characterisation test records below the floor.
    */
-  it('would nudge exactly the one shipped seed that sits below the gate', () => {
+  it('would nudge no shipped seed — every pack passes its own gate', () => {
     const nudged: string[] = [];
     for (const p of THEME_PACKS)
       for (const mode of MODES) {
@@ -259,7 +310,15 @@ describe('a picked colour is fitted or refused, never quietly wrong', () => {
         expect(r.rgb, `${p.id}/${mode} could not be rescued at all`).not.toBeNull();
         if (r.movedFrom) nudged.push(`${p.id}/${mode} away from --${r.movedFrom}`);
       }
-    expect(nudged).toEqual(['green/light away from --ok']);
+    // Was `['green/light away from --ok']`. A pack reaches the page as
+    // CSS and never passes through `fitAccent`, so this was the one
+    // measurement saying our own green would have been corrected had a
+    // customer typed it. The control below keeps the assertion honest.
+    expect(fitAccent('#287d22', 'light').movedFrom,
+      'the retired green stopped being nudged — fitAccent measures nothing')
+      .toBe('ok');
+    expect(nudged, 'a shipped seed needs the correction we apply to customers')
+      .toEqual([]);
   });
 });
 

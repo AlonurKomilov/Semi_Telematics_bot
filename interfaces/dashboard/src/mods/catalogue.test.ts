@@ -30,7 +30,7 @@ import {
 } from './catalogue';
 import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
 import { derivePalette } from './theme/palette';
-import { oklchToSrgb, parseHex, toHex, type RGB } from './theme/contrast';
+import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
 
 const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -125,6 +125,39 @@ describe('every pack is its own seed', () => {
   }
 });
 
+/**
+ * Every `--swatch-accent-*` declaration, measured against the hue its
+ * pack's seed installs.
+ *
+ * HUE, not the whole colour. A swatch is allowed its own lightness —
+ * light green's dot sits at 0.48 while its `--primary` sits at 0.522,
+ * because a chip 12px across needs more weight than a button does.
+ * What it may not do is name a different colour.
+ *
+ * Takes the stylesheet as an argument so the comparison can be shown to
+ * work on a fabricated one; reading `CSS` directly would leave it
+ * untestable, which is how a check like this ends up never firing.
+ */
+function swatchesAgainstSeeds(css: string): { off: string[]; checked: number } {
+  const off: string[] = [];
+  let checked = 0;
+  for (const pack of THEME_PACKS) {
+    const seedH = srgbToOklch(parseHex(pack.seed.light)!).H;
+    const re = new RegExp(
+      `--swatch-accent-${pack.id}\\s*:\\s*oklch\\(([\\d.]+)\\s+([\\d.]+)\\s+([\\d.]+)\\s*\\)`, 'g');
+    for (const m of css.matchAll(re)) {
+      checked++;
+      // A grey swatch has no meaningful hue; none ship, but chroma 0
+      // would make the comparison noise rather than a claim.
+      if (+m[2] < 0.01) continue;
+      const H = +m[3];
+      if (Math.abs(H - seedH) > 3)
+        off.push(`--swatch-accent-${pack.id} is hue ${H}, the pack installs ${seedH.toFixed(1)}`);
+    }
+  }
+  return { off, checked };
+}
+
 describe('the catalogue and the stylesheet agree', () => {
   it('has no accent block that no pack claims', () => {
     // The other direction: a pack deleted from the list but left in the
@@ -144,6 +177,56 @@ describe('the catalogue and the stylesheet agree', () => {
       const count = (CSS.match(re) || []).length;
       expect(count, `--swatch-accent-${pack.id} appears ${count} times, expected one per theme`)
         .toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  /**
+   * The dot is the promise; the block is what pays it.
+   *
+   * A swatch that exists is not a swatch that is right. Moving green's
+   * hue from 142 to 135 left three `--swatch-accent-green` declarations
+   * behind at the old hue, and every guard in this file stayed green:
+   * the picker would have painted a dot in a colour no block installs,
+   * which is the one thing a colour chip cannot get wrong.
+   *
+   * HUE, not the whole colour. A swatch is allowed its own lightness —
+   * light green's dot sits at 0.48 while its `--primary` sits at 0.522,
+   * because a chip 12px across needs more weight than a button does.
+   * What it may not do is name a different colour.
+   */
+  it('and every swatch names the hue its pack actually installs', () => {
+    const { off, checked } = swatchesAgainstSeeds(CSS);
+    expect(checked, 'no swatch was parsed — this test measures nothing')
+      .toBeGreaterThanOrEqual(THEME_PACKS.length * 2);
+    expect(off, 'the picker paints a dot no block installs').toEqual([]);
+  });
+
+  /** The positive control. `off.toEqual([])` is satisfied by a
+   *  comparison that never fires, and there is no wrong swatch in the
+   *  file to prove otherwise — so one is fabricated here. */
+  it('and that check can actually fail', () => {
+    const wrong = swatchesAgainstSeeds(
+      `:root { --swatch-accent-green: oklch(0.48 0.15 142); }`);
+    expect(wrong.checked).toBe(1);
+    expect(wrong.off).toHaveLength(1);
+    expect(wrong.off[0]).toMatch(/hue 142/);
+
+    // And the right hue passes, so it is not reporting everything.
+    const right = swatchesAgainstSeeds(
+      `:root { --swatch-accent-green: oklch(0.48 0.14 135); }`);
+    expect(right.off).toEqual([]);
+    expect(right.checked).toBe(1);
+  });
+
+  it('and a pack is ONE hue in two modes', () => {
+    // The swatch check above measures every declaration against the
+    // LIGHT seed. That is only sound while a pack's two seeds agree —
+    // otherwise the dark dot would be judged against the wrong colour
+    // and the whole check would drift without saying so.
+    for (const pack of THEME_PACKS) {
+      const l = srgbToOklch(parseHex(pack.seed.light)!).H;
+      const d = srgbToOklch(parseHex(pack.seed.dark)!).H;
+      expect(Math.abs(l - d), `${pack.id}: its two seeds are different hues`).toBeLessThan(3);
     }
   });
 
