@@ -578,9 +578,6 @@ TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
     TIER_THINKING: [
         "gemini-3.1-pro-preview",
         "gemini-2.5-pro",
-        # Non-Gemini early, for the same quota-pool reason as FAST:
-        # Claude below it has never held quota on any project of ours.
-        "grok-4.6",
         "claude-sonnet-4.6",
         "gpt-oss-120b",
         "llama-4-maverick",
@@ -590,6 +587,13 @@ TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
         "glm-4.7",
         "minimax-m2",
         "qwen3-next",
+        # Last, not third: this project holds ONE request a minute and a
+        # thousand output tokens a minute for grok-4.6 (scripts/
+        # vertex_quotas.py, 2026-09-06).  As an early rung it would
+        # answer once, 429 on the next, and sit benched for ninety
+        # seconds while every Thinking request fell past it.  Move it up
+        # when the quota is raised — the picker still offers it.
+        "grok-4.6",
     ],
     TIER_REASONING: [
         "deepseek-r1",
