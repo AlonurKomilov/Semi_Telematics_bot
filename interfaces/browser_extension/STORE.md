@@ -20,15 +20,16 @@ working on — Google Maps, a load board, email, your TMS — so you never switc
 answer a question about your vehicles.
 
 What it shows today
-• Live map — every vehicle's position, status and fuel, moving as it moves. Pick one to
-  open its spot or directions in Google Maps with one click.
+• Live map — every vehicle's position, status, fuel and DEF, moving as it moves, each
+  reading stamped with how fresh it is and which system supplies it. Pick one to open its
+  spot or directions in Google Maps, or the truck itself in Samsara, with one click.
 
 More of 4truck reaches the panel over time; each addition appears in this list.
 
 Requires a 4truck account. The panel never asks for a password: press Connect, confirm
 once on 4truck.us, done. The panel can read what it shows and nothing else — it cannot
 change anything in your account, and you can disconnect it any time from your 4truck
-profile.
+profile. No account yet? The panel points you to sign-up on 4truck.us.
 
 **Single purpose:** A side panel for the signed-in user's 4truck vehicle-management account.
 
@@ -61,8 +62,8 @@ Google Maps beside the panel is the picture that explains the product — drop t
 go on a dark canvas), and strips alpha.
 
 **Privacy policy URL:** https://4truck.us/privacy
-**Visibility:** Unlisted (only people with the link can install) — right for a B2B tool.
-Published unlisted on 2026-09-06; the listing is
+**Visibility:** Public — owner's decision 2026-09-06, so the item turns up in store search
+(it was Unlisted for the first review). The listing is
 https://chromewebstore.google.com/detail/4truck/iihobedpipecckgmgegbhdpkmebabinn (the slug
 is decoration — `/detail/<id>` alone resolves, which is what the Profile card builds).
 Unlisted means NOT in store search or the catalog. To appear there: Distribution →
