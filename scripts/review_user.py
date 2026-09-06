@@ -13,9 +13,9 @@ the role with --role and this script tells the truth about it:
   * dispatcher: narrower (loads/geofence/inspections writes remain).
   * driver: the only role with can_view_location and not a single
     can_manage_*.  Needs --trucks (2-3 real units, assigned as NON-
-    primary rows): a driver with no assignment is NOT an empty map —
-    deps.filter_by_assigned_trucks keeps legacy behaviour and shows
-    every vehicle.  For driver the script REFUSES if the account's
+    primary rows): a driver with no assignment now sees NOTHING —
+    an empty scope admits no row (deps.get_user_vehicle_scope), so a
+    reviewer handed one would open an empty app and call it broken.  For driver the script REFUSES if the account's
     driver role has been widened to any write flag.
   * owner / admin: never — refused.
 
@@ -125,8 +125,9 @@ async def create(conn, *, email: str, account_id: int, company: str, role: str,
         print(f"REFUSING: role {role!r}.  A stranger gets one of {', '.join(ROLES_ALLOWED)} — never owner or admin.")
         return 2
     if role == "driver" and not trucks:
-        print("REFUSING: --trucks is required for driver.  A driver with no assignment sees EVERY "
-              "vehicle (legacy behaviour in deps.filter_by_assigned_trucks), not an empty map.")
+        print("REFUSING: --trucks is required for driver.  A driver with no assignment sees "
+              "NOTHING — an empty vehicle scope admits no row (deps.get_user_vehicle_scope) — "
+              "so the reviewer would open an empty app.")
         return 2
     if role != "driver" and trucks:
         print(f"NOTE: --trucks is ignored for {role}: assignment only narrows drivers; "

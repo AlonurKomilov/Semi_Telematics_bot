@@ -144,7 +144,7 @@ def test_documents_category_audience_is_permission_derived():
     assert cat is not None
     assert cat.audience("hr") and cat.audience("owner")
     # dispatcher holds neither can_manage_driver_docs nor
-    # can_driver_docs_own in the static defaults.
+    # can_view_driver_docs in the static defaults.
     assert not cat.audience("dispatcher")
 
 
@@ -229,7 +229,7 @@ async def test_personal_fanout_carries_vehicle_predicate(monkeypatch):
     rf = dispatch.calls[0].get("recipient_filter")
     assert rf is not None, "a populated vehicle gate must produce a predicate"
     assert rf(7, "driver") is False      # assigned truck 999, not 105
-    assert rf(8, "driver") is True       # unassigned driver: unrestricted
+    assert rf(8, "driver") is False      # unassigned driver: walled, not free
     assert rf(9, "dispatcher") is True   # not a driver: never narrowed
 
 

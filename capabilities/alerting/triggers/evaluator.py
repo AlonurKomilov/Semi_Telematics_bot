@@ -134,6 +134,11 @@ class _AllOf:
 async def _owner_scope(tenant, account_id: int, owner_user_id: int):
     """The trigger owner's vehicle scope, or None when unrestricted.
 
+    A DRIVER with no assignment at all gets ``_DENY_ALL``, matching
+    ``deps.get_user_vehicle_scope``: they own no truck the sweep could
+    speak for, and the alternative — sweeping the whole account on
+    their behalf — is the disclosure this function exists to prevent.
+
     A trigger is one person's, so it must see one person's fleet.  Without
     this a driver assigned to a single truck would be DM'd about all 102
     — vehicles they cannot open in the dashboard, which is a disclosure,
@@ -181,12 +186,15 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
             return _AllOf(walls) if walls else None
         trucks = await db.get_user_vehicle_nums(owner_user_id)
         if not trucks:
-            # Legacy behaviour, kept deliberately and matching
-            # deps.get_user_vehicle_scope: a driver with NO assignment at
-            # all is unrestricted rather than blind.
+            # The legacy single-truck column, which invite redemption
+            # still writes before the junction row exists.
             trucks = [getattr(user, "truck_num", "")] if getattr(user, "truck_num", "") else []
         if not trucks:
-            return _AllOf(walls) if walls else None
+            # No assignment at all: restricted to nothing, matching
+            # deps.get_user_vehicle_scope.  A driver-owned trigger has
+            # no vehicle it may speak for, so it stays silent rather
+            # than sweeping the whole account.
+            return _DENY_ALL
         from capabilities.permissions.vehicle_scope import build_vehicle_scope
         walls.append(await build_vehicle_scope(tenant, account_id, trucks))
         return _AllOf(walls)

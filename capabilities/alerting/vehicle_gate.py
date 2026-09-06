@@ -10,11 +10,13 @@ cannot open in the dashboard, which the board already refuses to show
 them.  This closes the gap on the DM side.
 
 WHO IS RESTRICTED is deliberately the same rule the dashboard applies —
-``interfaces/api/deps.get_user_vehicle_scope``: a DRIVER with at least one
-assignment.  Every other role, and a driver with no assignment at all, is
-unrestricted and this gate never touches them.  Keeping the two rules
-identical is the point; two definitions of "restricted" is how a wall
-grows a door nobody meant.
+``interfaces/api/deps.get_user_vehicle_scope``: a DRIVER.  Every other
+role is unrestricted and this gate never touches them.  A driver with no
+assignment at all is restricted to NOTHING, not unrestricted: that case
+used to pass through here, so the one person with no claim to any truck
+received alerts about all of them.  Keeping the two rules identical is
+the point; two definitions of "restricted" is how a wall grows a door
+nobody meant.
 
 MATCHING is the identity ladder (``capabilities/permissions/vehicle_scope``):
 registry id, then provider id, then exact name.  Never a substring — the
@@ -29,6 +31,12 @@ is the whole safety argument:
     cannot be read, nobody is known to be restricted, so nothing is
     tightened and delivery is exactly what it was before this module
     existed.  A database hiccup must never newly silence an alert.
+    ``load_vehicle_gate`` says which happened: ``None`` is "could not
+    read", an empty dict is "read fine, nobody in this account is
+    restricted".  They were one value while an assignment-less driver
+    was unrestricted, because both answers were then the same answer;
+    once such a driver is BLIND the two must not be confused, or one
+    unreadable table would blind every driver in the account.
 
   • MATCHING inside the gate fails CLOSED.  Once a user is known to be
     restricted, a vehicle their scope does not admit is not delivered.
@@ -47,7 +55,7 @@ from infra.platform import get_platform_db, get_tenant_db
 logger = logging.getLogger("bot")
 
 
-async def load_vehicle_gate(account_id: int) -> dict[int, VehicleScope]:
+async def load_vehicle_gate(account_id: int) -> "dict[int, VehicleScope] | None":
     """``user_id → VehicleScope`` for the account's RESTRICTED users only.
 
     Absent from the map means unrestricted — the map is a list of walls,
@@ -59,15 +67,16 @@ async def load_vehicle_gate(account_id: int) -> dict[int, VehicleScope]:
     would fire a registry query each, and this runs on the fan-out of
     every alert.
 
-    Returns ``{}`` on any failure — see the module docstring on why
-    loading fails open.
+    Returns ``None`` when the assignments could not be READ — the
+    fail-open case from the module docstring.  An empty dict is a
+    successful read of an account where nobody is restricted.
     """
     try:
         platform = get_platform_db()
         nums_map = await platform.get_account_vehicle_nums_map(account_id)
     except Exception as e:
         logger.debug("vehicle gate: assignments unavailable acct=%s: %s", account_id, e)
-        return {}
+        return None
 
     # The LEGACY column, unioned in — not an optimisation, a correctness
     # fix.  driver_trucks is the record, but invite redemption
@@ -131,7 +140,12 @@ async def load_vehicle_gate(account_id: int) -> dict[int, VehicleScope]:
     for user_id, names in nums_map.items():
         clean = sorted({n.strip().lower() for n in (names or []) if n and n.strip()})
         if not clean:
-            continue                       # no assignment = unrestricted
+            # No assignment resolves, so this person gets no entry — and
+            # ABSENT now reads as walled, the same as an empty scope
+            # (user_sees_vehicle).  It said "unrestricted" while that was
+            # true; anyone adding a ``user_id in gate`` fast-path on the
+            # old reading would reopen the disclosure this map closed.
+            continue
         registry_ids, external_ids = set(), set()
         for n in clean:
             rid, ext = by_name.get(n, (None, ""))
@@ -155,8 +169,8 @@ def user_sees_vehicle(user_id, role, vehicle: dict, gate: dict) -> bool:
     through an opaque predicate without importing alerting, exactly as
     ``company_scope.user_sees_company`` does.
     """
-    if not gate:
-        return True                                   # nobody restricted
+    if gate is None:
+        return True                    # the assignments could not be read
     role_str = role.value if hasattr(role, "value") else str(role or "")
     if role_str != Role.DRIVER.value:
         return True                                   # only drivers are scoped
@@ -169,7 +183,12 @@ def user_sees_vehicle(user_id, role, vehicle: dict, gate: dict) -> bool:
         # take the whole fan-out down.
         return True
     if scope is None or scope.empty:
-        return True                                   # unrestricted driver
+        # A driver absent from the map has no assignment, and the map
+        # was read successfully — so there is no truck this alert could
+        # be about on their behalf.  Only VEHICLE-bearing alerts reach
+        # here; everything else (documents, driver events, account
+        # notices) never consults the gate.
+        return False
     return scope.allows(
         registry_id=vehicle.get("registry_id"),
         external_id=vehicle.get("id") or vehicle.get("vehicle_id"),
@@ -189,11 +208,13 @@ async def filter_subscribers_by_vehicle(
     """Drop subscribers whose vehicle assignment excludes THIS vehicle.
 
     No-op when there are no subscribers, no vehicle identity to match on,
-    or nobody in the account is restricted.
+    or the assignments could not be read.  An account where nobody is
+    restricted still runs the filter — it is a successful read, and it
+    is what tells an assignment-less driver from a dispatcher.
     """
     if not subscribers or not vehicle:
         return subscribers
     gate = await load_vehicle_gate(account_id)
-    if not gate:
+    if gate is None:
         return subscribers
     return [s for s in subscribers if sees_vehicle(s, vehicle, gate)]

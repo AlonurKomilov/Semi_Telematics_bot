@@ -723,7 +723,11 @@ async def post_alert_to_topic(
                     from capabilities.alerting.vehicle_gate import (
                         load_vehicle_gate, user_sees_vehicle)
                     _gate = await load_vehicle_gate(account_id)
-                    if _gate:
+                    # ``is not None``, not truthiness: an empty gate is a
+                    # successful read of an account where nobody holds an
+                    # assignment, and the wall must still run — that is
+                    # the case where an assignment-less driver is denied.
+                    if _gate is not None:
                         _veh_pred = (lambda uid, role, _v=vehicle, _g=_gate:
                                      user_sees_vehicle(uid, role, _v, _g))
                 except Exception as _ve:

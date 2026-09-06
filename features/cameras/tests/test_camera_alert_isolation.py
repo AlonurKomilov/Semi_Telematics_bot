@@ -86,15 +86,30 @@ class TestCameraAlertIsolation:
         out = _issues_for_subscriber(sub, SAMPLE_ISSUES, _gate("107"))
         assert len(out) == len(SAMPLE_ISSUES)
 
-    def test_driver_with_no_truck_assignment_sees_every(self):
-        """A driver with no truck_num set falls back to the unfiltered
-        list — same behavior as today, prevents a NULL truck from
-        silently muting their entire alert stream."""
+    def test_driver_with_no_truck_assignment_sees_no_issue(self):
+        """A driver with no truck assigned has no claim to any camera.
+
+        This is the sharpest edge of the fail-open the wall used to
+        carry: camera issues are dashcam images, INWARD-facing views of
+        other drivers among them, and a NULL truck handed a person every
+        one of them.  It read as "prevents a NULL truck from silently
+        muting their alert stream" — but the mute is the correct answer
+        for somebody with no truck, and the alternative was showing them
+        their colleagues' cabs.
+
+        The gate is a map of walls, so such a driver is ABSENT from it;
+        the empty dict here is a SUCCESSFUL read of an account where
+        nobody holds an assignment, which is why it is not the same
+        value as a failed load (that one is None, and still opens)."""
         sub = _StubSub(role=Role.DRIVER, truck_num=None)
-        # An unassigned driver is ABSENT from the gate — the map lists
-        # walls, not people — so nothing narrows for them.  Legacy
-        # behaviour, kept deliberately and matching deps.get_user_vehicle_scope.
-        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, {})
+        assert _issues_for_subscriber(sub, SAMPLE_ISSUES, {}) == []
+
+    def test_an_unreadable_gate_still_shows_a_driver_their_issues(self):
+        """The fail-open direction, which must survive the change: a
+        database hiccup narrows nothing rather than newly blinding
+        every driver in the account."""
+        sub = _StubSub(role=Role.DRIVER, truck_num=None)
+        out = _issues_for_subscriber(sub, SAMPLE_ISSUES, None)
         assert len(out) == len(SAMPLE_ISSUES)
 
     def test_a_renamed_truck_still_matches_by_provider_id(self):

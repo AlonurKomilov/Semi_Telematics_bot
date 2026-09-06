@@ -518,15 +518,33 @@ async def vehicle_company_map(account_id: int, tenant_db) -> dict:
 async def get_user_vehicle_scope(user: dict) -> "VehicleScope | None":
     """The identity-aware visibility scope for a restricted user.
 
-    ``None`` means unrestricted (non-driver roles, and — legacy
-    behaviour kept deliberately — a driver with no assignments at all).
+    ``None`` means UNRESTRICTED — every role except driver.  A driver
+    gets a scope, and an EMPTY scope when they have no assignment at
+    all: restricted to nothing, which every consumer already reads as
+    "no rows" (``VehicleScope.empty``).
+
+    That last case used to return ``None`` — unrestricted — so a driver
+    with no truck saw every vehicle in the account: the whole roster,
+    positions, fuel, faults, and on the delivery side camera alerts,
+    which are dashcam images including inward-facing views of other
+    drivers.  It was called legacy behaviour and restated in three more
+    modules, but the repo had already decided the other way everywhere
+    it was written later — the AI scope resolver, the bot's unit-width
+    filter, the storage own-scope helpers and this router's own live
+    endpoint all deny an assignment-less driver.  This side was the
+    minority, and it was the open one.
+
+    An assignment can disappear after provisioning — the truck is
+    archived, or reassigned — so "refuse to create such a driver" does
+    not close it.  Wrong-hidden is an annoyance a person reports;
+    wrong-shown is a disclosure nobody reports.
     """
-    from capabilities.permissions.vehicle_scope import build_vehicle_scope
+    from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
     if user.get("role") != "driver":
         return None
     trucks = await get_user_vehicle_nums(user)
     if not trucks:
-        return None
+        return VehicleScope()
     tenant = await _get_router().get_tenant(user["account_id"])
     return await build_vehicle_scope(tenant, user["account_id"], trucks)
 
@@ -538,8 +556,9 @@ async def filter_by_assigned_trucks(
 ) -> list[dict]:
     """Filter vehicle list to only assigned trucks when user is a driver.
 
-    Non-driver roles get all data unfiltered.
-    Drivers with no truck assignments also get all data (legacy behavior).
+    Non-driver roles get all data unfiltered.  A driver with no
+    assignment gets NOTHING — ``get_user_vehicle_scope`` hands back an
+    empty scope, and an empty scope admits no row.
 
     Membership is decided by the identity ladder in
     ``capabilities/permissions/vehicle_scope.py`` — registry id first,

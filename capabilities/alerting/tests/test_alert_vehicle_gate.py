@@ -52,17 +52,24 @@ class TestWhoIsScoped:
                      Role.SAFETY, Role.HR):
             assert vg.user_sees_vehicle(1, role, truck, gate) is True, role
 
-    def test_a_driver_with_no_assignment_is_unrestricted(self):
-        """Legacy behaviour, kept deliberately and matching
-        deps.get_user_vehicle_scope: absent from the gate means no wall,
-        not a blindfold."""
-        assert vg.user_sees_vehicle(9, Role.DRIVER, {"name": "229"}, {}) is True
-        gate = {1: _scope(names=["229"])}          # someone ELSE is scoped
-        assert vg.user_sees_vehicle(9, Role.DRIVER, {"name": "229"}, gate) is True
+    def test_a_driver_with_no_assignment_hears_about_no_truck(self):
+        """Matching deps.get_user_vehicle_scope: a driver with nothing
+        assigned is restricted to nothing, not unrestricted.
 
-    def test_an_empty_scope_is_not_a_wall(self):
+        The gate is a map of walls, so such a driver is simply ABSENT
+        from it — which is why the empty dict below is not the same as
+        a failed load.  It used to mean "no wall"; a person with no
+        claim to any truck then received alerts about all of them,
+        camera images among them."""
+        assert vg.user_sees_vehicle(9, Role.DRIVER, {"name": "229"}, {}) is False
+        gate = {1: _scope(names=["229"])}          # someone ELSE is scoped
+        assert vg.user_sees_vehicle(9, Role.DRIVER, {"name": "229"}, gate) is False
+
+    def test_an_empty_scope_is_a_complete_wall(self):
+        """Restricted to nothing admits nothing — the same reading
+        ``filter_by_assigned_trucks`` gives ``VehicleScope.empty``."""
         assert vg.user_sees_vehicle(
-            1, Role.DRIVER, {"name": "229"}, {1: VehicleScope()}) is True
+            1, Role.DRIVER, {"name": "229"}, {1: VehicleScope()}) is False
 
 
 class TestMatchingFailsClosed:
@@ -96,25 +103,47 @@ class TestMatchingFailsClosed:
 
 
 class TestLoadingFailsOpen:
-    def test_an_empty_gate_narrows_nothing(self):
+    def test_an_unreadable_gate_narrows_nothing(self):
+        """``None`` is "could not read the assignments" — the one case
+        that must stay open, so a database hiccup never silences an
+        alert.  It is deliberately a different value from ``{}``: that
+        one is a SUCCESSFUL read of an account where nobody holds an
+        assignment, and there an unassigned driver is walled."""
         subs = [_Sub(1, Role.DRIVER, "229"), _Sub(2, Role.OWNER)]
         import asyncio
 
         async def go():
-            # load_vehicle_gate returning {} is what a failed load looks
-            # like; the filter must then be a no-op.
             orig = vg.load_vehicle_gate
             try:
-                vg.load_vehicle_gate = lambda a: _empty()
+                vg.load_vehicle_gate = lambda a: _unreadable()
                 return await vg.filter_subscribers_by_vehicle(
                     subs, {"name": "5585"}, 1)
             finally:
                 vg.load_vehicle_gate = orig
 
-        async def _empty():
-            return {}
+        async def _unreadable():
+            return None
 
         assert len(asyncio.run(go())) == 2
+
+    def test_a_read_gate_with_nobody_assigned_still_walls_the_drivers(self):
+        """The value that used to mean both things, now meaning one."""
+        subs = [_Sub(1, Role.DRIVER, "229"), _Sub(2, Role.OWNER)]
+        import asyncio
+
+        async def go():
+            orig = vg.load_vehicle_gate
+            try:
+                vg.load_vehicle_gate = lambda a: _read_but_empty()
+                return await vg.filter_subscribers_by_vehicle(
+                    subs, {"name": "5585"}, 1)
+            finally:
+                vg.load_vehicle_gate = orig
+
+        async def _read_but_empty():
+            return {}
+
+        assert [s.id for s in asyncio.run(go())] == [2]
 
     def test_no_vehicle_identity_means_no_filtering(self):
         import asyncio
@@ -137,7 +166,7 @@ class TestFilter:
                     _Sub(1, Role.DRIVER, "229"),     # not this truck
                     _Sub(2, Role.OWNER),             # unrestricted
                     _Sub(3, Role.DRIVER, "5585"),    # this truck
-                    _Sub(4, Role.DRIVER),            # unassigned
+                    _Sub(4, Role.DRIVER),            # unassigned → walled
                 ]
                 return await vg.filter_subscribers_by_vehicle(
                     subs, {"name": "5585"}, 1)
@@ -145,7 +174,7 @@ class TestFilter:
                 vg.load_vehicle_gate = orig
 
         kept = [s.id for s in asyncio.run(go())]
-        assert kept == [2, 3, 4]
+        assert kept == [2, 3]
 
 
 class TestLoadAtTheSource:
@@ -160,7 +189,9 @@ class TestLoadAtTheSource:
                 raise RuntimeError("pool exhausted")
 
         monkeypatch.setattr(vg, "get_platform_db", lambda: _Boom())
-        assert asyncio.run(vg.load_vehicle_gate(1)) == {}
+        # None, not {} — the two answers parted when an assignment-less
+        # driver became walled: {} is now "read fine, nobody restricted".
+        assert asyncio.run(vg.load_vehicle_gate(1)) is None
 
     def test_an_unreadable_registry_still_yields_name_scopes(self, monkeypatch):
         """The registry gives rungs 1 and 2.  Losing it costs rename
