@@ -225,6 +225,10 @@ export interface Mod {
    *  A look that changes the colour and not the lettering is half a
    *  look — this is the field that lets a mod be one. */
   readonly font?: ModFont;
+  /** The pattern on the chrome — a `WALLPAPERS` id. The axis a look is
+   *  most visibly a LOOK through: it changes the ground the whole app
+   *  sits on without touching a single surface the work happens on. */
+  readonly wallpaper?: string;
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
@@ -321,6 +325,7 @@ export const MOD_FIELD_APPLIER: Record<
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
+  wallpaper: 'theme',
   size: 'size', sound: 'sound',
 };
 

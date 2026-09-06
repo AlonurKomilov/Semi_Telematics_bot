@@ -111,6 +111,13 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // carry either or both.
       { id: 'icons',    title: 'Icons',    heading: 'Icons',
         axes: ['icons', 'iconPack'], modFields: ['icons', 'iconPack'] },
+      // Its own item and not part of Color, because it is not a colour:
+      // Color decides what everything is MADE of and every surface
+      // derives from it, while a wallpaper is one pattern on one
+      // surface. Folding it into Color would put a decision about the
+      // chrome inside the question that repaints the whole app.
+      { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
+        axes: ['wallpaper'], modFields: ['wallpaper'] },
     ],
   },
   {

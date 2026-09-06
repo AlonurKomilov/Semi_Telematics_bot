@@ -77,6 +77,7 @@ export function applyTheme(theme: Theme) {
   // agree with: a typeface changes the width of every word, so getting
   // it a frame late reflows the page rather than recolouring it.
   root.dataset.font = theme.font;
+  root.dataset.wallpaper = theme.wallpaper;
 }
 
 /**

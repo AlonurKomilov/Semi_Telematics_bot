@@ -61,7 +61,14 @@ describe('itemState', () => {
 describe('categoryTouched', () => {
   it('counts items, not axes', () => {
     const t = theme({ radius: 'pill', material: 'glass', accent: 'green' });
-    expect(categoryTouched(categoryById('interface')!, t, prefs())).toEqual({ changed: 3, total: 5 });
+    // Six items in Interface — Color, Corners, Material, Typeface,
+    // Icons, Wallpaper — and three of them moved. Read from the
+    // taxonomy rather than typed, so adding an item does not make this
+    // wrong in a way that says nothing about what it is testing.
+    const interfaceItems = categoryById('interface')!.items.length;
+    expect(categoryTouched(categoryById('interface')!, t, prefs()))
+      .toEqual({ changed: 3, total: interfaceItems });
+    expect(interfaceItems, 'Interface lost its items').toBeGreaterThan(4);
   });
 
   it('is zero at defaults', () => {

@@ -28,6 +28,7 @@ import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
+import { WALLPAPERS, wallpaperById } from '../wallpaper';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -359,6 +360,41 @@ export function TypefaceGroup({ label }: { label: LabelClass }) {
       </div>
       <p className="text-2xs text-muted-foreground mt-1.5">
         {FONT_PACKS.find((f) => f.id === theme.font)?.note ?? ''}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The ground the app sits on.
+ *
+ * Last in Interface, and deliberately: every group above it decides
+ * what the WORK is made of — its colour, its corners, its material, its
+ * lettering, its glyphs — and this one decides what is behind all of
+ * that. Reading down the list is reading inward to outward.
+ *
+ * Each chip carries the pattern's own reason rather than the panel
+ * explaining them all at once. A wallpaper is chosen by eye, and "Fine
+ * ruled lines, like engineering paper" is what a person is choosing
+ * between, not a name.
+ */
+export function WallpaperGroup({ label }: { label: LabelClass }) {
+  const { t } = useTranslation();
+  const { theme, setTheme } = useMods();
+  const current = theme.wallpaper ?? 'none';
+  return (
+    <div>
+      <p className={`${label} mb-1.5`}>
+        {t('mods.group_wallpaper', 'Wallpaper')}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {WALLPAPERS.map((w) => (
+          <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
+            onClick={(v) => setTheme({ wallpaper: v })} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {wallpaperById(current)?.why}
       </p>
     </div>
   );

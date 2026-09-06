@@ -65,6 +65,7 @@
         // React. `themeBoot.test.ts` runs this script and applyTheme
         // over the same inputs and fails when the two disagree.
         var font = pick(t.font, ['geist', 'system', 'serif', 'mono', 'rounded'], 'geist');
+        var wallpaper = pick(t.wallpaper, ['none', 'mesh', 'grid'], 'none');
 
         // Mode and accent, with the pre-split `color` as the fallback —
         // the same migration registry.ts's sanitiser does, written a
@@ -98,6 +99,7 @@
         root.dataset.material = material;
         root.dataset.motion = motion;
         root.dataset.font = font;
+        root.dataset.wallpaper = wallpaper;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts
         // — themeBoot.test.ts asserts that it does. 1 is "as designed".

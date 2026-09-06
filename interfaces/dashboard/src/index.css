@@ -974,6 +974,49 @@
    would blur and thin a page that is about to become paper. Print is
    always solid. */
 @media screen {
+  /* ── Wallpaper ────────────────────────────────────────────────
+     The ground the app sits on: a pattern on the CHROME ENVELOPE — the
+     sidebar, the header and the gutters — with the content card sitting
+     in it. Same relationship GX has, where the wallpaper is behind the
+     browser and the page is on top.
+
+     Built from TOKENS, never an image. `inject.ts` blocks every URL
+     scheme by excluding `:` from the values it will write, and its own
+     note says an image needs a reviewed path of its own rather than a
+     hole in that one — a pattern made of `color-mix` needs no path at
+     all, weighs nothing, and moves with the accent instead of clashing
+     with it.
+
+     Every stop is measured where it lands — the chrome mixed with that
+     token at that percentage — and the sidebar ink must clear AA over
+     it. `mods/wallpaper.test.ts` reads the percentages out of THIS file,
+     so a pattern that drifts fails here rather than against a copy of
+     the numbers that agrees with itself.
+
+     Screen only, like everything glass, for the same reason: print puts
+     the light palette back through specificity alone, and a gradient
+     that survived into paper would waste ink saying nothing. */
+  :root[data-wallpaper="mesh"] .chrome-ground {
+    background-image:
+      radial-gradient(60% 55% at 12% 8%,
+        color-mix(in oklab, var(--primary) 10%, transparent) 0%, transparent 100%),
+      radial-gradient(55% 50% at 92% 96%,
+        color-mix(in oklab, var(--primary) 8%, transparent) 0%, transparent 100%);
+  }
+
+  /* Fine ruled lines, in the border token rather than the accent: a grid
+     is structure, and structure is not a place for the brand. 24px is
+     the 4px spacing scale six steps up, so the lines land on the same
+     rhythm the layout already uses. */
+  :root[data-wallpaper="grid"] .chrome-ground {
+    background-image:
+      linear-gradient(to right,
+        color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom,
+        color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
   :root[data-material="glass"] {
     --surface-alpha: 0.72;
     --surface-blur: 14px;

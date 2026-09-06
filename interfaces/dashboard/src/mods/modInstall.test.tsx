@@ -54,7 +54,7 @@ const { EVERYTHING, THIN } = vi.hoisted(() => ({
     id: 'everything', label: 'Everything', why: 'carries every field a mod can',
     accent: 'green', radius: 'pill', material: 'glass', motion: 'calm',
     icons: 'bold', iconPack: 'phosphor', font: 'serif', entrance: true,
-    size: 1.25, sound: 'blip',
+    wallpaper: 'grid', size: 1.25, sound: 'blip',
   },
   THIN: { id: 'thin', label: 'Thin', accent: 'green', why: 'carries almost nothing' },
 }));

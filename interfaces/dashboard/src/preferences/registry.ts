@@ -34,6 +34,7 @@
  */
 
 import { ICON_PACKS, type IconPack } from '../lib/icons';
+import { WALLPAPER_IDS } from '../mods/wallpaper';
 import {
   THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
 } from '../mods/catalogue';
@@ -206,6 +207,14 @@ export interface ModSetting {
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
   /**
+   * The pattern on the chrome — a `WALLPAPERS` id.
+   *
+   * Not an image: it is built from `--sidebar` and the accent, so it
+   * costs nothing, moves with the palette, and its worst stop can be
+   * measured against the sidebar ink. See `mods/wallpaper.ts`.
+   */
+  wallpaper: string;
+  /**
    * The mod that is INSTALLED, if any.
    *
    * Identity, not a match. It used to be recomputed from the axes —
@@ -331,6 +340,7 @@ export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
+  wallpaper: 'none',
   color: 'dark-blue',
 };
 
@@ -366,11 +376,18 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * one frame would be VISIBLE — mode, accent, radius, material and
  * motion are all CSS.
  *
- * `icons` and `entrance` are not, and that is why they are absent rather
- * than forgotten. Both are React-level — an icon's stroke comes from a
- * context provider, an entrance from a component that does not exist
- * until React mounts — so there is no frame in which they could be
- * wrong. Stamping them pre-paint would be ceremony.
+ * `icons`, `iconPack` and `entrance` are not, and that is why they are
+ * absent rather than forgotten. All three are React-level — an icon's
+ * weight and its glyphs both come from a context provider, an entrance
+ * from a component that does not exist until React mounts — so there is
+ * no frame in which they could be wrong. Stamping them pre-paint would
+ * be ceremony, and the pack is the sharpest case: it is FETCHED, so no
+ * stamp on `<html>` could make it arrive sooner.
+ *
+ * `wallpaper` IS here. It paints the chrome envelope, which is most of
+ * the screen and is painted before any React state exists — a pattern
+ * arriving a frame late is a visible wash across the sidebar, the header
+ * and the gutters at once.
  *
  * `themeBoot.test.ts` reads this list, and also asserts that every key
  * of MOD_DEFAULT appears either here or in its own exclusion list — so
@@ -384,7 +401,7 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * whole page rather than a flash of the wrong shade.
  */
 export const PREPAINT_AXES = [
-  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'color',
+  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'color',
 ] as const;
 
 export const SIZE_REGIONS: SizeRegion[] = [
@@ -536,6 +553,10 @@ export const DEFS = {
       const font = MOD_FONTS.includes(o.font as string)
         ? o.font as string : MOD_DEFAULT.font;
       const entrance = typeof o.entrance === 'boolean' ? o.entrance : MOD_DEFAULT.entrance;
+      // A pattern that shipped and was later removed falls back to flat
+      // chrome, not to a stamp nothing in the stylesheet answers.
+      const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
+        ? o.wallpaper as string : MOD_DEFAULT.wallpaper;
       // A stored id for a mod that no longer exists is dropped rather
       // than kept: the catalogue is ours and can shrink between
       // releases, and an id nothing resolves would show an empty chip
@@ -605,6 +626,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance,
+        wallpaper,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.

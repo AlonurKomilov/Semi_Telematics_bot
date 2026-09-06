@@ -96,7 +96,11 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           the chrome colour; `pr-2 pb-2` leaves an 8px frame to the right
           and below, so the chrome wraps the content on every side — top
           from the header, left from the sidebar. */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-sidebar pr-2 pb-2">
+      {/* `chrome-ground` is where a wallpaper paints. A CLASS, not a
+          shape selector: the pattern must not start following whatever
+          div happens to be second in this file, the same reason
+          `data-ambient-recede` is a marker. */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-sidebar chrome-ground pr-2 pb-2">
         {/* Three zones: mobile-menu (left), hero (middle, flex-1), tools
             (right). The hero lives INSIDE the h-12 strip rather than in
             a row of its own, so content sits at the same Y whether or
