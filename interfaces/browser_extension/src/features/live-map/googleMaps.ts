@@ -5,6 +5,8 @@
  * we open one.  This is deliberately not "draw on Google's map" — the
  * pin is Google's, one truck at a time, and it does not move.
  */
+import { getFlag, setFlag } from '../../prefs';
+
 export function searchUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
@@ -42,9 +44,8 @@ export async function followInGoogleMaps(url: string): Promise<boolean> {
 const FOLLOW_KEY = 'followGoogleMaps';
 /** On until the person switches it off; the choice survives the panel closing. */
 export async function getFollowPref(): Promise<boolean> {
-  const got = await chrome.storage.local.get(FOLLOW_KEY);
-  return got[FOLLOW_KEY] !== false;
+  return getFlag(FOLLOW_KEY, true);
 }
 export async function setFollowPref(on: boolean): Promise<void> {
-  await chrome.storage.local.set({ [FOLLOW_KEY]: on });
+  await setFlag(FOLLOW_KEY, on);
 }

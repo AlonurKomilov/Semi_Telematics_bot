@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "4truck",
   "description": "4truck vehicle management in a side panel, beside whatever you are working on.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "action": {
     "default_title": "4truck",
     "default_icon": {
