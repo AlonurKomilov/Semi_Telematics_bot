@@ -15,8 +15,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-const { setTheme, undoableAction } = vi.hoisted(() => ({
+const { setTheme, undoableAction, seam } = vi.hoisted(() => ({
   setTheme: vi.fn(), undoableAction: vi.fn(),
+  /** What `selectableSurfaces` answers. The real one answers nothing
+   *  today; these tests open it so the control stays proven for the day
+   *  it does, and close it again to prove the row is then absent. */
+  seam: { open: true },
 }));
 
 let theme: Record<string, unknown> = {};
@@ -43,10 +47,14 @@ vi.mock('../preferences', async (orig) => ({
   usePreference: () => ({ value: 'chime', setValue: () => {} }),
 }));
 vi.mock('../components/banners/stagedAction', () => ({ undoableAction }));
+vi.mock('./surfaces', async (orig) => {
+  const real = await orig<typeof import('./surfaces')>();
+  return { ...real, selectableSurfaces: () => (seam.open ? real.SURFACES : real.selectableSurfaces()) };
+});
 
 import { ModControls } from './panel/ModControls';
 import { fitCanvas } from './theme/canvas';
-import { SURFACES } from './surfaces';
+import { SURFACES, selectableSurfaces } from './surfaces';
 
 const BASE = {
   mode: 'dark' as const, accent: 'blue', radius: 'md', material: 'solid',
@@ -70,7 +78,29 @@ const GREYS = Array.from({ length: 256 }, (_, i) => `#${i.toString(16).padStart(
 const WORN = GREYS.find((h) => fitCanvas(h, 'dark').rgb !== null);
 const REFUSED = GREYS.find((h) => fitCanvas(h, 'dark').rgb === null);
 
-beforeEach(() => { setTheme.mockClear(); undoableAction.mockClear(); cleanup(); });
+beforeEach(() => { setTheme.mockClear(); undoableAction.mockClear(); seam.open = true; cleanup(); });
+
+describe('until per-feature selection has its gate, nothing is offered', () => {
+  it('the real seam answers with no places', () => {
+    seam.open = false;
+    expect(selectableSurfaces()).toEqual([]);
+  });
+
+  it('so the row is absent — not present with one chip', () => {
+    seam.open = false;
+    mount();
+    expect(screen.queryByText(/background applies to/i), 'a question with one answer was asked').toBeNull();
+    expect(screen.queryByRole('button', { name: /^everywhere$/i })).toBeNull();
+  });
+
+  it('and every pick goes to the global canvas', () => {
+    seam.open = false;
+    mount({ surfaces: { loads: '#101010' } });
+    fireEvent.change(canvasInput(), { target: { value: WORN! } });
+    expect(setTheme).toHaveBeenCalledWith({ canvas: WORN });
+    expect(setTheme.mock.calls[0][0]).not.toHaveProperty('surfaces');
+  });
+});
 
 describe('the row offers everywhere plus the named places, and nothing else', () => {
   it('names each surface once, with Everywhere first', () => {

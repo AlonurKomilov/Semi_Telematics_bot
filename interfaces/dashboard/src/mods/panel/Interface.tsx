@@ -25,7 +25,7 @@ import { fitCanvas } from '../theme/canvas';
 import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
-import { SURFACES, surfaceById } from '../surfaces';
+import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -171,6 +171,10 @@ export function ColorGroup({ label }: { label: LabelClass }) {
    *  stored: it is a question about this moment, not a preference, and
    *  a remembered target is one a person returns to having forgotten. */
   const [target, setTarget] = useState('');
+  /** Nothing offered means the row is absent, not a row with one chip —
+   *  a question with a single answer is a decoration. Every pick then
+   *  goes to the global canvas, which is what `target === ''` means. */
+  const offered = selectableSurfaces();
   // Whether a picked colour is what is actually painting, in the mode
   // being worn — not merely whether one is stored. The pack chips read
   // their highlight off this, because a chip highlighted while its block
@@ -236,6 +240,7 @@ export function ColorGroup({ label }: { label: LabelClass }) {
         />
       </div>
 
+      {offered.length > 0 && (<>
       {/* WHERE the background applies. Each chip wears the background
           that place is painting, so which places carry one is legible
           without clicking through all four — state that can only be
@@ -260,7 +265,7 @@ export function ColorGroup({ label }: { label: LabelClass }) {
         <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
           dot={wornCanvas(theme.canvas, theme.mode)}
           onClick={() => setTarget('')} />
-        {SURFACES.map((s) => (
+        {offered.map((s) => (
           <Chip key={s.id} value={s.id} current={target} label={s.title}
             dot={wornCanvas(theme.surfaces?.[s.id], theme.mode)}
             onClick={(v) => setTarget(v)} />
@@ -274,6 +279,7 @@ export function ColorGroup({ label }: { label: LabelClass }) {
                 .replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
             : t('theme.scope_all_hint', 'One background for the whole app.')}
       </p>
+      </>)}
     </div>
   );
 }

@@ -43,6 +43,25 @@ export const SURFACES: readonly Surface[] = [
     why: 'read in a cab, in sunlight' },
 ];
 
+/**
+ * The places a person may AIM the picker at — today, none.
+ *
+ * The engine below is complete and stays live: the list, the resolver,
+ * the scoped stylesheet blocks, the sanitiser. What is withheld is the
+ * offer. Owner's call (2026-09-06): choosing a place is the first step
+ * of "per feature selections", and that arrives with its own gate —
+ * the permissions service says which features a person may manage and
+ * which they may only view, and the picker offers exactly those. Until
+ * that gate exists, offering every place to everyone would ship a
+ * decision this function is meant to make later.
+ *
+ * So this is the seam, not a switch: when the gate lands it reads the
+ * person's permissions here, and the row above it needs no change.
+ */
+export function selectableSurfaces(): readonly Surface[] {
+  return [];
+}
+
 export const surfaceById = (id: string): Surface | undefined =>
   SURFACES.find((s) => s.id === id);
 
