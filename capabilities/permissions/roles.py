@@ -476,6 +476,15 @@ def normalize_stored_perm_keys(perm_dict: dict) -> dict:
         view, manage = UNIT_FEATURES[noun]
         if manage and perm_dict.get(wide):
             out[view] = True
+    # Manage implies view — the seeds' rule, applied to STORED rows too.
+    # A row that grants Manage to a role whose seed lacks it (an owner's
+    # edit from before the view verb existed) would otherwise resolve
+    # Manage=True, View=False: the gates open (they accept either) but
+    # the nav hides the page and the matrix shows a Manage tick under
+    # an empty View — a state no one chose.
+    for view, manage in (*UNIT_FEATURES.values(), *PERSON_FEATURES.values()):
+        if manage and out.get(manage):
+            out[view] = True
     return out
 
 

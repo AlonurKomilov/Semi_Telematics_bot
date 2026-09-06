@@ -94,3 +94,31 @@ def test_seeds_speak_only_canonical():
     # the seeds importing at all proves it; make the claim explicit.
     for role, fs in ROLE_PERMISSIONS.items():
         assert isinstance(fs, FeatureSet), role
+
+
+class TestManageImpliesViewOnStoredRows:
+    """The seeds grant View wherever they grant Manage; a stored row
+    must resolve the same way, or an owner's pre-fold Manage grant
+    leaves a role with Manage and no View — gates open, page hidden."""
+
+    def test_a_stored_manage_grant_opens_the_view_verb(self):
+        from capabilities.permissions.roles import normalize_stored_perm_keys
+        out = normalize_stored_perm_keys({"can_manage_coaching": True})
+        assert out["can_view_coaching"] is True
+        out = normalize_stored_perm_keys({"can_manage_maintenance": True, "can_view_maintenance": False})
+        assert out["can_view_maintenance"] is True      # manage wins over a stale False
+
+    def test_a_stored_manage_revocation_adds_nothing(self):
+        from capabilities.permissions.roles import normalize_stored_perm_keys
+        out = normalize_stored_perm_keys({"can_manage_coaching": False})
+        assert "can_view_coaching" not in out            # the seed decides View
+        assert out["can_manage_coaching"] is False
+
+    def test_every_manage_verb_of_both_families_is_covered(self):
+        from capabilities.permissions.roles import (
+            PERSON_FEATURES, UNIT_FEATURES, normalize_stored_perm_keys,
+        )
+        pairs = [p for p in (*UNIT_FEATURES.values(), *PERSON_FEATURES.values()) if p[1]]
+        assert pairs, "no manage pairs?"
+        for view, manage in pairs:
+            assert normalize_stored_perm_keys({manage: True})[view] is True, (view, manage)
