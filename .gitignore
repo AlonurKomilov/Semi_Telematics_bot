@@ -110,6 +110,8 @@ interfaces/browser_extension/dist/
 # nothing can reach past them.  The pre-commit hook is the real guard
 # — it reads CONTENT, so a renamed key is caught too — and this is the
 # belt that keeps the file out of `git status` in the first place.
+.env.*
+!.env.example
 *service-account*.json
 *service_account*.json
 *credentials*.json
