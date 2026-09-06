@@ -430,7 +430,7 @@ export default function Permissions() {
                           <span className="text-2xs text-muted-foreground">{c.from} → {c.to}</span>
                         </div>
                         {c.keeps && (
-                          <div className="pl-[1.375rem] text-2xs text-muted-foreground">
+                          <div className="pl-6 text-2xs text-muted-foreground">
                             Still has {c.keeps} — this removes the write, not the read.
                           </div>
                         )}
