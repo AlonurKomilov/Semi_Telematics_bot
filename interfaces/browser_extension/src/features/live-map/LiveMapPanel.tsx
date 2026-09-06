@@ -35,6 +35,14 @@ export default function LiveMapPanel() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<MapVehicleFeature | null>(null);
   const [error, setError] = useState('');
+  /** Whether the vehicle list has been ANSWERED, not whether it has rows.
+   *  Without it an empty answer and a pending request draw the same
+   *  thing — six shimmering skeleton rows — so a person whose account
+   *  admits them no vehicle waits forever on a panel that is already
+   *  finished.  A driver holding no truck assignment is exactly that
+   *  person, and the vehicle wall now answers them with an empty list
+   *  rather than the whole account. */
+  const [answered, setAnswered] = useState(false);
   const [tileNotice, setTileNotice] = useState('');
   // The selected truck's provider links, fetched once per truck.
   const [links, setLinks] = useState<ProviderLink[]>([]);
@@ -159,6 +167,7 @@ export default function LiveMapPanel() {
       markers.current.forEach((m, id) => { if (!seen.has(id)) { m.remove(); markers.current.delete(id); latest.current.delete(id); } });
       setVehicles(data.features ?? []);
       setError('');
+      setAnswered(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not load vehicles';
       // A 403 here is the permission gate: this role has no live map,
@@ -414,7 +423,16 @@ export default function LiveMapPanel() {
         {/* Rows in the shape of the answer, not the word "Loading" —
             the panel is a strip, and a lone sentence in it reads as an
             empty account rather than a pending request. */}
-        {!vehicles.length && !error && Array.from({ length: 6 }, (_, i) => (
+        {!vehicles.length && !error && answered && (
+          <div style={{ padding: '20px 12px', display: 'grid', gap: 6, justifyItems: 'center', textAlign: 'center' }}>
+            <strong style={{ fontSize: 13 }}>No vehicles to show</strong>
+            <span className="muted small">
+              Your 4truck account has not given this sign-in any vehicles yet. Ask whoever
+              manages your account to assign one, then reopen the panel.
+            </span>
+          </div>
+        )}
+        {!vehicles.length && !error && !answered && Array.from({ length: 6 }, (_, i) => (
           <div key={i} style={{ padding: '10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}
                aria-hidden={i > 0} role={i === 0 ? 'status' : undefined}
                aria-label={i === 0 ? 'Loading vehicles' : undefined}>
