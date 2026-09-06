@@ -33,6 +33,7 @@
  * not "tidy" one without checking the surface that consumes it.
  */
 
+import { ICON_PACKS, type IconPack } from '../lib/icons';
 import {
   THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
 } from '../mods/catalogue';
@@ -187,10 +188,19 @@ export interface ModSetting {
   material: ModMaterial;
   /** How fast the app moves. */
   motion: ModMotion;
-  /** Icon stroke weight. Persisted like any axis, but MOD-ONLY: the
-   *  panel offers no control, so it only ever changes by taking a mod.
-   *  A mod that is only a bundle of chips is a shortcut, not a look. */
+  /** How heavily icons are drawn. `hairline · regular · bold` — lucide
+   *  reads it as a stroke width, Phosphor as one of its named weights. */
   icons: ModIcons;
+  /**
+   * WHICH glyphs, as opposed to how heavily they are drawn.
+   *
+   * One pack paints the whole app: a set half-swapped is two
+   * vocabularies on one screen, which is what the design rule forbids
+   * and what `lib/icons` is built to make impossible. Everything but
+   * the base pack arrives as its own chunk, so this preference is the
+   * only thing that fetches it.
+   */
+  iconPack: IconPack;
   /** The typeface the app is set in. A `FONT_PACKS` id. */
   font: string;
   /** Whether the routed page animates in. Mod-only, and off by default. */
@@ -320,7 +330,7 @@ export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
 export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
-  motion: 'default', icons: 'regular', font: 'geist', entrance: false,
+  motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
   color: 'dark-blue',
 };
 
@@ -515,6 +525,12 @@ export const DEFS = {
         ? o.motion as ModMotion : MOD_DEFAULT.motion;
       const icons = MOD_ICONS_LIST.includes(o.icons as ModIcons)
         ? o.icons as ModIcons : MOD_DEFAULT.icons;
+      // A pack that was removed falls back to the base one rather than
+      // to nothing: an unknown id would resolve no glyph at all, and an
+      // app drawn with no icons is worse than one drawn with the
+      // default set.
+      const iconPack = ICON_PACKS.includes(o.iconPack as IconPack)
+        ? o.iconPack as IconPack : MOD_DEFAULT.iconPack;
       // A pack that shipped and was later removed falls back to the one
       // this app was drawn with, not to whatever the browser guesses.
       const font = MOD_FONTS.includes(o.font as string)
@@ -588,7 +604,7 @@ export const DEFS = {
           ?? { mode: MOD_DEFAULT.mode, accent: MOD_DEFAULT.accent };
 
       return {
-        mode, accent, radius, material, motion, icons, font, entrance,
+        mode, accent, radius, material, motion, icons, iconPack, font, entrance,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.

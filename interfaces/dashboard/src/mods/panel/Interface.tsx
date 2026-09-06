@@ -27,6 +27,7 @@ import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import type { IconPack } from '../../lib/icons';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -102,16 +103,19 @@ const FONT_PREVIEW: Record<string, string> = {
 };
 
 /**
- * Icon stroke weight — the axis that had no control.
+ * Icons: the pack, then the weight.
  *
- * It was mod-only for a stated reason: "a mod whose every setting is
- * also a chip is a shortcut, not a look". The owner's call reverses
- * that, and the reason it is safe to reverse is that icons are not
- * really one axis. A pack decides WHICH glyphs; the weight decides how
- * heavy they are drawn. We ship one pack (lucide), so the weight is the
- * only part there is anything to choose about — and a second pack, when
- * it comes, becomes a row above this one rather than a redesign.
+ * Two rows because icons were never one axis — a pack decides WHICH
+ * glyphs, the weight decides how heavily they are drawn — and the file
+ * said so when only lucide shipped: "a second pack, when it comes,
+ * becomes a row above this one rather than a redesign". This is that
+ * row, and nothing below it changed.
  */
+const PACK_OPTIONS: { value: IconPack; key: string; label: string }[] = [
+  { value: 'lucide',   key: 'mods.icon_pack_lucide',   label: 'Lucide' },
+  { value: 'phosphor', key: 'mods.icon_pack_phosphor', label: 'Phosphor' },
+];
+
 const ICON_OPTIONS: { value: ModIcons; key: string; label: string }[] =
   MOD_ICONS.map((i) => ({
     value: i,
@@ -368,20 +372,34 @@ export function IconsGroup({ label }: { label: LabelClass }) {
       <p className={`${label} mb-1.5`}>
         {t('mods.group_icons', 'Icons')}
       </p>
+      {/* WHICH glyphs. Above the weight because it is the larger
+          decision: the weight changes how one set is drawn, the pack
+          changes the set. */}
       <div className="flex flex-wrap gap-1">
+        {PACK_OPTIONS.map((o) => (
+          <Chip key={o.value} value={o.value} current={theme.iconPack ?? 'lucide'}
+            label={t(o.key, o.label)}
+            onClick={(v) => setTheme({ iconPack: v })} />
+        ))}
+      </div>
+      {/* How heavily. Its own row rather than the same one, so the two
+          questions cannot re-flow into each other at any Size setting —
+          the same reason mode and accent are two rows in Color. */}
+      <div className="flex flex-wrap gap-1 mt-1">
         {ICON_OPTIONS.map((o) => (
           <Chip key={o.value} value={o.value} current={theme.icons} label={t(o.key, o.label)}
             onClick={(v) => setTheme({ icons: v })} />
         ))}
       </div>
-      {/* The pack is named rather than offered. One chip in a row is
-          not a choice, and this codebase already says so about the
-          catalogue — "four accents and two sound packs is not a
-          catalogue". When a second pack ships, it becomes a chip row
-          here and this line goes away. */}
-      <p className="text-2xs text-muted-foreground mt-1.5">
-        {t('mods.icons_pack', 'Lucide')}
-      </p>
+      {/* Said once, where a person is deciding. A pack that is not the
+          base one is FETCHED — everything else in this panel is a
+          stored value that costs nothing — and somebody on a tethered
+          phone should learn that before the tap, not after it. */}
+      {(theme.iconPack ?? 'lucide') !== 'lucide' && (
+        <p className="text-2xs text-muted-foreground mt-1.5">
+          {t('mods.icon_pack_fetched', 'This set is downloaded the first time you wear it.')}
+        </p>
+      )}
     </div>
   );
 }

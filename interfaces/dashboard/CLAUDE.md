@@ -96,7 +96,18 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   coloured by a token. **Inside a `<Button>` write no size at all** — the
   variant owns it. A wrapper taking a numeric size from its own callers
   translates via `iconSizeClass()` ([`lib/iconSize.ts`](src/lib/iconSize.ts)).
-  No off-step sizes, no second icon set, no emoji as UI icons.
+  No off-step sizes, no emoji as UI icons, and **ONE SET ON SCREEN AT A
+  TIME**: glyphs come from [`lib/icons`](src/lib/icons/index.tsx), never
+  from a library. A pack swaps the WHOLE set at once and is a Mods axis
+  (`iconPack`); mixing two sets — a hardcoded glyph beside a pack one,
+  or two libraries — is what the rule forbids, and
+  `test/iconLane.test.ts` refuses it. That door is also why `IconProps`
+  has no `size`: the prop writes an `<svg>` attribute no multiplier can
+  reach, so the ban is a compile error now rather than a convention.
+  A glyph rendered to a STRING (map markers, `renderToStaticMarkup`)
+  cannot be sized by class and takes `RasterIconProps` through
+  `rasterGlyph`, which resolves against the active pack — the one
+  documented exception.
   Full table + why: [design.md §7](design.md).
 - **Sizes & layers = scales too (design.md §7).** Controls on
   `h-7 · h-8 · h-9` (`size-7/8/9` icon-buttons); menus `w-44/56/64`, list

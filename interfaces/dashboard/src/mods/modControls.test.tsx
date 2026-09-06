@@ -196,28 +196,52 @@ describe('the Typeface control reaches the axis it names', () => {
 });
 
 describe('the Icons control reaches the axis it names', () => {
-  it('writes the weight, and writes nothing else', () => {
+  /** Found by label, not by position: the group is a sibling of Corners
+   *  and Material and could be reordered without this being wrong. */
+  const rows = () => {
+    const heading = screen.getByText('Icons');
+    const pack = heading.nextElementSibling as HTMLElement;
+    return { pack, weight: pack.nextElementSibling as HTMLElement };
+  };
+
+  it('offers the packs first, and a pack chip writes only the pack', () => {
     setTheme.mockClear();
     render(<ModControls />);
-    // Found by label, not by position: the row is a sibling of Corners
-    // and Material and could be reordered without this being wrong.
-    const heading = screen.getByText('Icons');
-    const row = heading.nextElementSibling as HTMLElement;
-    const chips = Array.from(row.querySelectorAll('button'));
-    expect(chips.length, 'the Icons row has no chips').toBe(3);
+    const chips = Array.from(rows().pack.querySelectorAll('button'));
+    // Two packs, so it is a choice. It was one line of text until
+    // Phosphor shipped — "one chip in a row is not a choice" — and the
+    // assertion that said so is what had to change deliberately here.
+    expect(chips.length, 'the pack row has no chips').toBe(2);
 
-    fireEvent.click(chips[0]);
-    expect(setTheme, 'the Icons chip wrote nothing').toHaveBeenCalled();
-    const wrote = setTheme.mock.calls.flatMap((c) => Object.keys(c[0] as object));
-    expect(wrote).toEqual(['icons']);
+    fireEvent.click(chips[1]);
+    expect(setTheme, 'the pack chip wrote nothing').toHaveBeenCalled();
+    expect(setTheme.mock.calls.flatMap((c) => Object.keys(c[0] as object)))
+      .toEqual(['iconPack']);
   });
 
-  it('names the pack the glyphs come from', () => {
-    // One chip in a row is not a choice, so the pack is stated rather
-    // than offered. When a second pack ships this becomes a chip row and
-    // this assertion is the thing that has to change deliberately.
+  it('and the weight is a SECOND row, writing only the weight', () => {
+    setTheme.mockClear();
     render(<ModControls />);
-    expect(screen.getByText('Lucide'), 'the icon pack is unnamed').toBeTruthy();
+    const chips = Array.from(rows().weight.querySelectorAll('button'));
+    expect(chips.length, 'the weight row has no chips').toBe(3);
+
+    fireEvent.click(chips[0]);
+    expect(setTheme.mock.calls.flatMap((c) => Object.keys(c[0] as object)))
+      .toEqual(['icons']);
+  });
+
+  /** Two questions, two rows — not one row of five chips. WHICH glyphs
+   *  and how heavily they are drawn are different sizes of decision, and
+   *  a single wrapping row would let them re-flow into each other at
+   *  some Size setting, which is the same reason mode and accent are
+   *  two rows in Color. */
+  it('keeps the two questions in separate rows', () => {
+    render(<ModControls />);
+    const { pack, weight } = rows();
+    expect(pack, 'the pack and weight chips share one row')
+      .not.toBe(weight);
+    expect(pack.querySelectorAll('button').length
+      + weight.querySelectorAll('button').length).toBe(5);
   });
 });
 

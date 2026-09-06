@@ -488,14 +488,16 @@ describe('theme-boot source', () => {
   });
 
   it('accounts for every axis, one way or the other', () => {
-    // The guard on the guard. `icons` and `entrance` are React-level —
-    // an icon's stroke comes from a context provider, an entrance from a
-    // component that does not exist until React mounts — so there is no
-    // frame in which either could be wrong and nothing for the boot
-    // script to do. Listing them here rather than letting the loop above
+    // The guard on the guard. `icons`, `iconPack` and `entrance` are
+    // React-level — an icon's weight and its glyphs both come from a
+    // context provider, an entrance from a component that does not
+    // exist until React mounts — so there is no frame in which any of
+    // them could be wrong and nothing for the boot script to do. The
+    // pack is the sharpest case: it is fetched, so no stamp on <html>
+    // could make it arrive sooner. Listing them here rather than letting the loop above
     // simply not reach them is what makes the NEXT axis a decision: add
     // it to PREPAINT_AXES, or add it here and say why.
-    const NOT_PREPAINT = ['icons', 'entrance'];
+    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance'];
     for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),

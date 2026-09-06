@@ -1,29 +1,35 @@
 import { type ReactNode } from 'react';
-import { LucideProvider } from '../../lib/icons';
+import { IconPackProvider, ICON_WEIGHTS, type IconWeightName } from '../../lib/icons';
 import { useMods } from '../context';
-import { ICON_STROKE } from '../catalogue';
 
 /**
- * Every icon's stroke weight, from one mount point.
+ * Every icon's pack and weight, from one mount point.
  *
- * There are 1,663 icon usages across 225 files and none of them change:
- * lucide reads its defaults from a context that the installed version
- * already ships and nothing here was using. This is the whole feature.
+ * There are 1,663 icon usages across 225 files and none of them name a
+ * pack or a weight: both arrive through the context `lib/icons` installs
+ * here. That is the whole feature.
  *
- * It is also the first property a MOD carries that the theme panel does
- * not offer, and that asymmetry is the point. A mod whose every setting
- * is also a chip is a shortcut, not a look — GX mods change things you
- * would never have thought to go and set.
+ * Weight was the first property a MOD carried that the theme panel did
+ * not offer, and that asymmetry was the point — a mod whose every
+ * setting is also a chip is a shortcut, not a look. The pack is the
+ * second half of the same axis: what the glyphs ARE, next to how
+ * heavily they are drawn.
  *
- * `absoluteStrokeWidth` is deliberately not enabled: it holds the stroke
- * at a fixed pixel width as the icon scales, which fights the Size axis.
- * Icons here are meant to grow with everything else.
+ * `absoluteStrokeWidth` stays off: it holds lucide's stroke at a fixed
+ * pixel width as the icon scales, which fights the Size axis. Icons
+ * here grow with everything else.
  */
+const isWeight = (v: unknown): v is IconWeightName =>
+  ICON_WEIGHTS.includes(v as IconWeightName);
+
 export function IconWeight({ children }: { children: ReactNode }) {
   const { theme } = useMods();
   return (
-    <LucideProvider strokeWidth={ICON_STROKE[theme.icons] ?? ICON_STROKE.regular}>
+    <IconPackProvider
+      pack={theme.iconPack ?? 'lucide'}
+      weight={isWeight(theme.icons) ? theme.icons : 'regular'}
+    >
       {children}
-    </LucideProvider>
+    </IconPackProvider>
   );
 }

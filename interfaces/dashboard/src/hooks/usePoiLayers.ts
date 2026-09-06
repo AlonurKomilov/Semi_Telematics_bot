@@ -1,3 +1,4 @@
+import { iconPackId, rasterGlyph } from '../lib/icons';
 /**
  * usePoiLayers — manages all POI map overlay layers.
  *
@@ -184,11 +185,20 @@ function poiIconHtml(icon: PoiIconSpec, sizePx: number): string {
   if (typeof icon === 'string') {
     return `<span style="font-size:${sizePx}px;line-height:1">${icon}</span>`;
   }
-  const key: string = `${icon.displayName ?? String(icon)}:${sizePx}`;
+  // The PACK is part of the key. A marker is cached by glyph and size,
+  // and a cache blind to the pack would keep serving the previous set's
+  // markers after a switch — two vocabularies on one screen, arriving
+  // through the cache.
+  const key: string = `${iconPackId()}:${icon.displayName ?? String(icon)}:${sizePx}`;
   let html = _iconHtmlCache.get(key);
   if (!html) {
+    // Resolved imperatively, not rendered as the wrapper:
+    // `renderToStaticMarkup` runs outside the tree, so the wrapper would
+    // read the default context and draw the base pack regardless.
+    const Glyph = rasterGlyph(icon);
+    if (!Glyph) return '';
     html = renderToStaticMarkup(
-      createElement(icon, { size: sizePx, color: MARKER_GLYPH, strokeWidth: 2.5, 'aria-hidden': true }),
+      createElement(Glyph, { size: sizePx, color: MARKER_GLYPH, strokeWidth: 2.5, 'aria-hidden': true }),
     );
     _iconHtmlCache.set(key, html);
   }

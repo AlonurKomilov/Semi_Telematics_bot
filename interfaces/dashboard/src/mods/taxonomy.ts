@@ -99,7 +99,13 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modField: 'radius' },
       { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modField: 'material' },
       { id: 'typeface', title: 'Typeface', heading: 'Typeface', axes: ['font'],     modField: 'font' },
-      { id: 'icons',    title: 'Icons',    heading: 'Icons',    axes: ['icons'],    modField: 'icons' },
+      // Two halves of one question — WHICH glyphs, and how heavily they
+      // are drawn — so one item, one reset, one tile. `modField` names
+      // the weight because that is what a look has always carried; a
+      // look that wants the pack too will need a second field, and the
+      // total-Record type below will say so.
+      { id: 'icons',    title: 'Icons',    heading: 'Icons',
+        axes: ['icons', 'iconPack'], modField: 'icons' },
     ],
   },
   {
