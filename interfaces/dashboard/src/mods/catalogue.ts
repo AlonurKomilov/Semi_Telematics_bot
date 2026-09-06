@@ -29,6 +29,7 @@
  * the delivery changes, from a committed CSS block to properties applied
  * at runtime.
  */
+import { ICON_WEIGHTS } from '../lib/icons/weight';
 import type { ThemeMode } from './theme/palette';
 // Type-only, so no runtime cycle: registry.ts imports THEME_PACKS as a
 // value, and this import is erased.
@@ -154,11 +155,21 @@ export const FONT_PACKS: readonly FontPack[] = [
 export const MOD_FONTS = FONT_PACKS.map((f) => f.id);
 export type ModFont = string;
 
-export const MOD_ICONS = ['hairline', 'regular', 'bold'] as const;
-/** The stroke widths those names mean. `regular` is lucide's own 2. */
-export const ICON_STROKE: Record<string, number> = {
-  hairline: 1.25, regular: 2, bold: 2.5,
-};
+/**
+ * How heavily icons are drawn — DERIVED, not restated.
+ *
+ * `lib/icons/weight.ts` is where both packs read these three words, and
+ * it has to be a leaf: `phosphor.tsx` is fetched on demand and must not
+ * drag the mods engine into its chunk to learn them. So the dependency
+ * runs this way and there is one list.
+ *
+ * The stroke NUMBERS are gone from here. They were lucide's — 1.25 / 2
+ * / 2.5 — and a second pack does not take a stroke at all, so they live
+ * with the pack that means them (`lucide.tsx`) beside Phosphor's own
+ * named weights. Keeping them here would have been a lucide detail in
+ * the file that is supposed to be pack-agnostic.
+ */
+export const MOD_ICONS = ICON_WEIGHTS;
 export type ModMaterial = (typeof MOD_MATERIALS)[number];
 export type ModMotion = (typeof MOD_MOTIONS)[number];
 export type ModIcons = (typeof MOD_ICONS)[number];

@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { ICON_NAMES } from '../lib/icons/names';
+import { ICON_WEIGHTS } from '../lib/icons/weight';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -180,12 +181,30 @@ describe('one set on screen at a time', () => {
     }
   });
 
-  /** And each carries a way to take the weight, since weight is not one
-   *  mechanism across packs — lucide strokes, Phosphor names. */
-  it('and every pack takes the weight its own way', async () => {
-    for (const mod of await Promise.all([
+  /**
+   * And each carries a way to take the weight, since weight is not one
+   * mechanism across packs — lucide strokes, Phosphor names its six.
+   *
+   * TOTAL over the axis, which is the half that matters. A missing
+   * entry resolves to `undefined`, the library falls back to its own
+   * default, and the weight silently stops working — the mod applies,
+   * the icons do not change, and it reads as the feature being broken
+   * rather than as a typo. This guard used to watch lucide's map alone
+   * from `catalogue.test.ts`; the concern is per-PACK now.
+   */
+  it('and every pack takes the weight its own way, for every weight', async () => {
+    const packs = await Promise.all([
       import('../lib/icons/lucide'), import('../lib/icons/phosphor'),
-    ])) expect(mod.Provider).toBeTypeOf('function');
+    ]);
+    expect(ICON_WEIGHTS.length, 'no weights — this test would pass on nothing').toBe(3);
+    for (const [id, mod] of [['lucide', packs[0]], ['phosphor', packs[1]]] as const) {
+      expect(mod.Provider, `${id} has no weight provider`).toBeTypeOf('function');
+      for (const w of ICON_WEIGHTS)
+        expect(mod.WEIGHT_MAP[w], `${id} names nothing for "${w}"`).toBeDefined();
+    }
+    // Lucide's own default, kept where the numbers are: `regular` must
+    // be 2 or the base pack is drawn unlike everything shipped before.
+    expect(packs[0].WEIGHT_MAP.regular, "regular must be lucide's own default").toBe(2);
   });
 
   /** The inventory is the contract both packs answer to, so it must be

@@ -24,7 +24,7 @@ import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
 import {
-  THEME_PACKS, MODS, MOD_ICONS, ICON_STROKE,
+  THEME_PACKS, MODS, MOD_ICONS,
   MOD_FIELD_SECTION, modFootprint,
   PACK_TOKENS, packById, modById, activeModId, modMatchesAxes,
 } from './catalogue';
@@ -323,15 +323,14 @@ describe('a look is on only while it adds up', () => {
 });
 
 describe('the properties a mod carries and the panel does not', () => {
-  it('names a stroke width for every icon setting', () => {
-    // A missing entry falls back to `regular`, silently — the mod would
-    // apply and the icons would not change, which reads as the feature
-    // not working rather than as a typo.
-    for (const w of MOD_ICONS) {
-      expect(ICON_STROKE[w], `no stroke width for "${w}"`).toBeGreaterThan(0);
-      expect(ICON_STROKE[w]).toBeLessThan(4);
-    }
-    expect(ICON_STROKE.regular, "regular must be lucide's own default").toBe(2);
+  /** The stroke widths moved to `lib/icons/lucide.tsx` with the pack
+   *  that means them — a second pack takes no stroke at all — and the
+   *  guard went with them, generalised over every pack:
+   *  `test/iconLane.test.ts` holds each pack's weight map total over
+   *  the axis. What stays here is that the axis itself is one list. */
+  it('takes its weight names from the icon layer, not a second copy', async () => {
+    const { ICON_WEIGHTS } = await import('../lib/icons/weight');
+    expect(MOD_ICONS).toBe(ICON_WEIGHTS);
   });
 
   it('reads the installed mod rather than recomputing it', () => {

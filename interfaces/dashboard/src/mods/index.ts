@@ -46,7 +46,7 @@ export { IconWeight } from './icons/IconWeight';
 // ── the catalogue ───────────────────────────────────────────────────
 export {
   THEME_PACKS, MODS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS,
-  ICON_STROKE, PACK_TOKENS,
+  PACK_TOKENS,
   packById, modById, modMatchesAxes, activeModId,
   type ThemePack, type Mod, type ModAxes,
   type ModMaterial, type ModMotion, type ModIcons,
