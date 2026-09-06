@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { FileText } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiFetch } from '../../api/client';
 import { DateRangePresets } from '../../components/shell';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';

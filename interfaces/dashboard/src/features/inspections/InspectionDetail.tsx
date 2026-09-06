@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useWorkOrderBridge } from '../work-orders/useWorkOrderBridge';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { X, BellRing, MapPin, FileDown } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneText } from '../../lib/status';

@@ -25,7 +25,7 @@
  * Group/forum routing is a separate admin surface under /alerts.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { AlertTriangle, Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';

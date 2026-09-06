@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import { apiJSON } from '../../../api/client';
 import { FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
 import { Switch } from '../../../components/ui/switch';

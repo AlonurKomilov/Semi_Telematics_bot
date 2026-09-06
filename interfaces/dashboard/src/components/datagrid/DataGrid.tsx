@@ -68,7 +68,7 @@ import {
 import { Button } from '../ui/button';
 import { ContextMenu, type MenuAction } from '../ui/context-menu';
 import { Tip } from '../tooltip';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import {
   exportRowsAsCsv, buildTsv, writeToClipboard, buildCsvFromRows, downloadCsv,
 } from '../../lib/csv';

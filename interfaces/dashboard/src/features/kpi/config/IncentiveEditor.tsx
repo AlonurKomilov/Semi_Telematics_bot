@@ -21,7 +21,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Check, Loader2, Plus, Wand2, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import {

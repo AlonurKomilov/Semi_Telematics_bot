@@ -5,7 +5,7 @@
 // logo/photo via authed blobs, then hands everything to PublicApply.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Monitor, Smartphone, ImagePlus, Sparkles, Loader2 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { Button } from '../../components/ui/button';

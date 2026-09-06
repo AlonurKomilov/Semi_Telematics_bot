@@ -16,7 +16,7 @@ import {
   Wrench, HeartPulse, Fuel, MapPin, ShieldAlert, Camera, CircleParking,
   AlertTriangle, Loader2, Users, Server, Bot, UserPlus, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiJSON } from '../../api/client';
 import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';

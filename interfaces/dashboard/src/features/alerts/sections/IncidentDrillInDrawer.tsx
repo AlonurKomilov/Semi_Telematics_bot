@@ -37,7 +37,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import {
   X, ExternalLink, Truck, BarChart3, GraduationCap, Video, CheckCircle2,
   Wrench,

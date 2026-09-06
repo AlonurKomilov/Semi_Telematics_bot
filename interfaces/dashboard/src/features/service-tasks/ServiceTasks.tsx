@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { undoableToast } from '../../lib/undoable';
 import { Check, ClipboardList, Plus } from 'lucide-react';
 import TaskPartsDialog from './TaskPartsDialog';

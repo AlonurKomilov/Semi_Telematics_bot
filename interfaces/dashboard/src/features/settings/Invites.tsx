@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { VehiclePicker, type VehicleSummary } from '@/features/maintenance/pickers';
 import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from 'lucide-react';
 import { ActionMenu } from '../../components/ui/context-menu';

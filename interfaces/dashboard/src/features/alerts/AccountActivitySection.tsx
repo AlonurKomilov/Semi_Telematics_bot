@@ -15,7 +15,7 @@
  * MATRIX, not a data list (the documented DataGrid exception).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Send, Mail, MonitorSmartphone, Check, Bell } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';

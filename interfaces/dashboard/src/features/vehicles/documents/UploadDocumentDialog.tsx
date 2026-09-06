@@ -18,7 +18,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Sparkles, Upload } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 
 import { apiFetch } from '../../../api/client';
 import { Button } from '../../../components/ui/button';

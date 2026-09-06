@@ -21,7 +21,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArchiveRestore, FileText, Trash2, Upload } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 
 import { apiFetch, apiJSON } from '../../../api/client';
 import { toneText } from '../../../lib/status';

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { AlertTriangle, CheckCircle2, Cloud, ExternalLink, HardDrive, Loader2, Star, Unlink } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';

@@ -29,7 +29,7 @@
  * IMMEDIATELY and offers Undo for N seconds — for actions where instant
  * effect matters and a reverse call exists.
  */
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { playUiCue } from '../../mods/sound/cue';
 import { showBanner } from './AppBanner';
 
@@ -97,8 +97,8 @@ export function stagedAction(opts: StagedActionOptions): void {
       _pendingFlushes.add(flush);
       showBanner({
         tone: 'danger',
-    // This file plays its own cues (see `playUiCue` below); the lane
-    // must not add a second one on top.
+    // This file plays the `undo` cue itself, just above; the banner
+    // lane must not add a second one on top.
     cue: false,
         title: `${opts.label} failed`,
         detail: e instanceof Error ? e.message : undefined,
@@ -135,8 +135,8 @@ export function stagedAction(opts: StagedActionOptions): void {
 
   showBanner({
     tone: 'info',
-    // This file plays its own cues (see `playUiCue` below); the lane
-    // must not add a second one on top.
+    // This file plays the `undo` cue itself, just above; the banner
+    // lane must not add a second one on top.
     cue: false,
     title: opts.label,
     detail: opts.detail,
@@ -160,19 +160,19 @@ export interface UndoableActionOptions {
  * time-boxed Undo.  (The action itself already ran — this only shows
  * the window.) */
 export function undoableAction(opts: UndoableActionOptions): void {
-  // The three cues this function was named for. `undo` marks the window
-  // OPENING — the sound means "that is reversible for a few seconds" —
-  // and the other two answer what happened when it was taken. All three
-  // were declared, packed and validated from the day the engine shipped
-  // and had no call site; this is the one.
+  // `undo` marks the window OPENING — the sound means "that is
+  // reversible for a few seconds". The other two, answering what
+  // happened when it was taken, are the toast lane's now: `lib/toast`
+  // sounds every success and error it raises, so calling them here as
+  // well would announce one undo twice.
   //
   // Imported by path, never through `../../mods`: that barrel exports
   // ModPanel, which imports this file.
   playUiCue('undo');
   showBanner({
     tone: 'ok',
-    // This file plays its own cues (see `playUiCue` below); the lane
-    // must not add a second one on top.
+    // This file plays the `undo` cue itself, just above; the banner
+    // lane must not add a second one on top.
     cue: false,
     title: opts.label,
     seconds: opts.seconds ?? DEFAULT_SECONDS,
@@ -182,10 +182,8 @@ export function undoableAction(opts: UndoableActionOptions): void {
       onClick: async () => {
         try {
           await opts.undo();
-          playUiCue('success');
           toast.success('Undone');
         } catch (e) {
-          playUiCue('error');
           toast.error(e instanceof Error ? e.message : 'Undo failed');
         }
       },

@@ -43,7 +43,15 @@ const ALLOWED_DEEP = [
   'preferences/registry.ts',
   'test/themeBoot.test.ts',
   'components/banners/stagedAction.tsx',
-  'lib/undoable.ts',
+  // The toast lane sounds the toast it is raising, and it is in the same
+  // ring: `mods/index` exports the panel, the panel imports
+  // `undoableAction`, and that file raises toasts. Reaching
+  // `mods/sound/cue` by path keeps the ring open.
+  'lib/toast.ts',
+  // Its test mocks the engine at the same path the wrapper imports —
+  // a mock registered against the barrel would replace a different
+  // module object and the spy would never see the call.
+  'lib/toast.test.ts',
   // The banner lane sounds the notification it is showing, and it is
   // the third file in the same ring as the two above: `mods/index`
   // exports the panel, the panel imports `undoableAction`, and

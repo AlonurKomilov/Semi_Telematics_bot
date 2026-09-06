@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArchiveRestore, ClipboardList, Layers } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import {

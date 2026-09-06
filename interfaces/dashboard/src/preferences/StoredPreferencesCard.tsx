@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Cloud, HardDrive, RotateCcw } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../lib/toast';
 
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';

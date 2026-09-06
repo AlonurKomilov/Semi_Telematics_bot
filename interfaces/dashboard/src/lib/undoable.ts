@@ -15,8 +15,7 @@
  *     onRestored: load,
  *   });
  */
-import { toast } from 'sonner';
-import { playUiCue } from '../mods/sound/cue';
+import { toast } from './toast';
 import { apiJSON } from '../api/client';
 
 /** Matches the acknowledge-undo window — one undo rhythm platform-wide. */
@@ -39,15 +38,18 @@ export function undoableToast({
   durationMs?: number;
 }): void {
   if (!groupId) {
-    // No group, no undo window — and therefore no `undo` cue. A sound
-    // that says "you can take this back" over a toast with no Undo
-    // button is the kind of small lie that teaches people to stop
-    // trusting the sound.
+    // No group, no undo window — so this one keeps the plain success
+    // cue. A sound that says "you can take this back" over a toast with
+    // no Undo button is the kind of small lie that teaches people to
+    // stop trusting the sound.
     toast.success(message);
     return;
   }
-  playUiCue('undo');
+  // The window is opening, so this toast says "you can take this back"
+  // rather than "saved" — the one case where the tone does not pick the
+  // cue, and the reason `lib/toast` takes the override at all.
   toast.success(message, {
+    cue: 'undo',
     duration: durationMs,
     action: {
       label: 'Undo',
@@ -66,7 +68,6 @@ async function runUndo(groupId: string, onRestored?: () => void) {
     // reads is the count that actually came back.
     const conflicts = res.conflicts?.length ?? 0;
     const noun = `record${res.restored === 1 ? '' : 's'}`;
-    playUiCue('success');
     toast.success(
       conflicts > 0
         ? `${res.restored} ${noun} restored · ${conflicts} already exist`
@@ -75,7 +76,6 @@ async function runUndo(groupId: string, onRestored?: () => void) {
     );
     onRestored?.();
   } catch (e) {
-    playUiCue('error');
     toast.error(
       e instanceof Error ? e.message : 'Could not restore',
       { id: pending },

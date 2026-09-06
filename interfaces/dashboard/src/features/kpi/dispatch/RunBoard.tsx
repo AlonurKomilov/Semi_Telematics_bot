@@ -18,7 +18,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, TriangleAlert } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import { Button } from '../../../components/ui/button';
 import { toneClasses, toneText } from '../../../lib/status';
 import { AnchoredMenu } from '../../../components/ui/context-menu';

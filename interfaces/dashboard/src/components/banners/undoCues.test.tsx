@@ -10,14 +10,21 @@
  * behaviour with two renderings: `undoableAction` shows a banner and
  * `undoableToast` shows a toast, and a person should not be able to tell
  * from the sound which one they got.
+ *
+ * Which PLAYER sounds them does differ, and that is the point of the
+ * choke point: the banner lane says `undo` itself when the window opens,
+ * and every success or error that follows is raised as a toast, so
+ * `lib/toast` sounds it once through `playToastCue`. The CUE NAMES are
+ * what a person hears, and those are what these tests read.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { playUiCue, playBannerCue } = vi.hoisted(() => ({
-  playUiCue: vi.fn(), playBannerCue: vi.fn(),
+const { playUiCue, playBannerCue, playToastCue } = vi.hoisted(() => ({
+  playUiCue: vi.fn(), playBannerCue: vi.fn(), playToastCue: vi.fn(),
 }));
 vi.mock('../../mods/sound/cue', () => ({
-  playUiCue, playBannerCue, armIfWanted: () => {}, installKeySound: () => {},
+  playUiCue, playBannerCue, playToastCue,
+  armIfWanted: () => {}, installKeySound: () => {},
 }));
 
 const { toast } = vi.hoisted(() => ({
@@ -49,7 +56,7 @@ const undoHandler = () => {
 };
 
 beforeEach(() => {
-  playUiCue.mockClear(); playBannerCue.mockClear();
+  playUiCue.mockClear(); playBannerCue.mockClear(); playToastCue.mockClear();
   toast.custom.mockClear(); toast.success.mockClear();
   toast.error.mockClear(); toast.loading.mockClear();
   apiJSON.mockReset();
@@ -72,56 +79,59 @@ describe('the banner wrapper', () => {
   it('sounds success when the undo lands', async () => {
     const undo = vi.fn(async () => {});
     undoableAction({ label: 'Reset', undo });
-    playUiCue.mockClear();
+    playToastCue.mockClear();
     await undoHandler()();
     expect(undo).toHaveBeenCalled();
-    expect(playUiCue).toHaveBeenCalledWith('success');
-    expect(playUiCue).not.toHaveBeenCalledWith('error');
+    expect(playToastCue).toHaveBeenCalledWith('success');
+    expect(playToastCue).not.toHaveBeenCalledWith('error');
   });
 
   it('sounds error when it does not', async () => {
     undoableAction({ label: 'Reset', undo: async () => { throw new Error('nope'); } });
-    playUiCue.mockClear();
+    playToastCue.mockClear();
     await undoHandler()();
-    expect(playUiCue).toHaveBeenCalledWith('error');
-    expect(playUiCue).not.toHaveBeenCalledWith('success');
+    expect(playToastCue).toHaveBeenCalledWith('error');
+    expect(playToastCue).not.toHaveBeenCalledWith('success');
   });
 });
 
 describe('the toast wrapper', () => {
   it('sounds the undo cue when there is something to undo', () => {
     undoableToast({ message: '3 records deleted', groupId: 'g1' });
-    expect(playUiCue).toHaveBeenCalledWith('undo');
+    expect(playToastCue).toHaveBeenCalledWith('undo');
   });
 
   it('stays silent when there is not', () => {
-    // The no-group path shows a plain toast with no Undo button. A cue
-    // that says "you can take this back" over it is a small lie, and
-    // small lies are how people learn to stop trusting the sound.
+    // The no-group path shows a plain toast with no Undo button. It
+    // still sounds — it is a success — but with the SUCCESS cue. A cue
+    // that says "you can take this back" over a toast with no Undo
+    // button is a small lie, and small lies are how people learn to
+    // stop trusting the sound.
     undoableToast({ message: 'Saved' });
-    expect(playUiCue, 'promised an undo that does not exist').not.toHaveBeenCalled();
+    expect(playToastCue, 'promised an undo that does not exist')
+      .not.toHaveBeenCalledWith('undo');
     expect(toast.success, 'the toast itself stopped being shown').toHaveBeenCalled();
   });
 
   it('sounds success when the restore comes back', async () => {
     apiJSON.mockResolvedValue({ restored: 3, conflicts: [] });
     undoableToast({ message: 'x', groupId: 'g1' });
-    playUiCue.mockClear();
+    playToastCue.mockClear();
     const calls = toast.success.mock.calls as unknown as unknown[][];
     const action = calls[calls.length - 1]?.[1] as
       { action: { onClick: () => void } };
     action.action.onClick();
-    await vi.waitFor(() => expect(playUiCue).toHaveBeenCalledWith('success'));
+    await vi.waitFor(() => expect(playToastCue).toHaveBeenCalledWith('success'));
   });
 
   it('sounds error when it does not', async () => {
     apiJSON.mockRejectedValue(new Error('gone'));
     undoableToast({ message: 'x', groupId: 'g1' });
-    playUiCue.mockClear();
+    playToastCue.mockClear();
     const calls = toast.success.mock.calls as unknown as unknown[][];
     const action = calls[calls.length - 1]?.[1] as
       { action: { onClick: () => void } };
     action.action.onClick();
-    await vi.waitFor(() => expect(playUiCue).toHaveBeenCalledWith('error'));
+    await vi.waitFor(() => expect(playToastCue).toHaveBeenCalledWith('error'));
   });
 });

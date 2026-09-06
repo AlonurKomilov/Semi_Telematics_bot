@@ -9,7 +9,7 @@
  * only manages the devices.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { MonitorSmartphone, Trash2 } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Button } from '@/components/ui/button';

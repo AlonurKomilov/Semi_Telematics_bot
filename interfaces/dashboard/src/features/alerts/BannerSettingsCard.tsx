@@ -9,7 +9,7 @@
  * (localStorage) — the position that suits a wall-mounted dispatch
  * screen isn't the one for a cab tablet.
  */
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { PanelTopClose } from 'lucide-react';
 import {
   setNotifPosition, useNotifPosition, type NotifPosition,

@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Check, Cog, Globe, Plus, Wand2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';

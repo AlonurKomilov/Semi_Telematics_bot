@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
 import { showBanner } from '../../components/banners';

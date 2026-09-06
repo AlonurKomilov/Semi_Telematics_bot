@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { X, AlertTriangle } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock, ChevronDown } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
 import ApplicationsConfigPanel from './config/ApplicationsConfigPanel';

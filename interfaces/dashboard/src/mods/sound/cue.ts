@@ -133,6 +133,46 @@ const TONE_CUE: Readonly<Record<BannerTone, CueName | null>> = {
 const isTone = (v: BannerCue): v is BannerTone => v in TONE_CUE;
 
 /**
+ * The floor between two toast cues, and its own clock.
+ *
+ * Separate from the banner floor because the two lanes have separate
+ * gates: somebody running with interface sound on and alert sound off
+ * must not have a toast swallowed by a banner they cannot hear.
+ *
+ * Same 400ms, same DROP-don't-queue, for the same reason — one bulk
+ * action raises a toast per failed row, and every cue connects its own
+ * gain straight to the destination, so ten would SUM into one loud
+ * noise instead of ten sounds. One action should announce itself once.
+ */
+const TOAST_GAP_MS = 400;
+let lastToastAt = -Infinity;
+
+/** Test seam — the floor is module state, like the audio context. */
+export function resetToastCueForTests(): void {
+  lastToastAt = -Infinity;
+}
+
+/**
+ * Sound one toast.
+ *
+ * The gate is `mods.sound.ui`, through `playUiCue` — a toast is the
+ * interface answering, not an alert arriving, and the two switches
+ * stay two questions.
+ *
+ * The floor lives HERE rather than in `playUiCue`, which has callers
+ * that are not a lane: `useCue` and the undo window each sound once per
+ * deliberate act, and a floor there would silently drop the second of
+ * two things a person actually did.
+ */
+export function playToastCue(name: CueName): void {
+  if (!preferences.get('mods.sound.ui')) return;
+  const now = performance.now();
+  if (now - lastToastAt < TOAST_GAP_MS) return;
+  lastToastAt = now;
+  playUiCue(name);
+}
+
+/**
  * The floor between two banner cues.
  *
  * `LiveAlertWatcher` raises up to three banners on one poll tick, and

@@ -15,7 +15,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Bell, CheckCheck, Settings, ArrowRight, Loader2, BellOff,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiJSON } from '@/api/client';
 import { PageHeader } from '@/components/shell';
 import { useViewPermissions } from '../../hooks/useViewPermissions';

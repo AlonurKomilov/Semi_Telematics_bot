@@ -36,7 +36,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { BellRing, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ApiError, apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';

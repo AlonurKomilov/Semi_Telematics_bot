@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Building2, Check, Ban } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiJSON } from '../../api/client';
 import PageHeader from '../../components/shell/PageHeader';
 import { Button } from '../../components/ui/button';

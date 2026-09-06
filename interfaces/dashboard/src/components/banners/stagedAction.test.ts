@@ -7,13 +7,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('./AppBanner', () => ({ showBanner: vi.fn() }));
-vi.mock('sonner', () => ({
+// Mocked at sonner, asserted at sonner. `lib/toast` is the real wrapper
+// in these tests on purpose — it is the thing that decides what reaches
+// the toaster, so a mock of it would be asserting our own stub.
+const { toast } = vi.hoisted(() => ({
   toast: Object.assign(vi.fn(), {
     success: vi.fn(), error: vi.fn(), dismiss: vi.fn(), custom: vi.fn(),
   }),
 }));
-
-import { toast } from 'sonner';
+vi.mock('sonner', () => ({ toast }));
 import { showBanner } from './AppBanner';
 import { pendingStagedCount, stagedAction, undoableAction } from './stagedAction';
 import type { BannerOptions } from './AppBanner';

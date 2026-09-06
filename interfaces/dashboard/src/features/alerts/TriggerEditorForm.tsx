@@ -50,7 +50,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Search } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { FEATURE_CATALOG } from '@/config/featureCatalog';

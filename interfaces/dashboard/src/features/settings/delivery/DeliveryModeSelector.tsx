@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import { apiJSON } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
 import { usePreference } from '../../../preferences';

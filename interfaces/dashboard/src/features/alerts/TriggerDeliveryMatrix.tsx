@@ -29,7 +29,7 @@
  * MATRIX (form UI), not a data list.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Link } from 'react-router-dom';
 import { ApiError, apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';

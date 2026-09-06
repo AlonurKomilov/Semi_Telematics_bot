@@ -55,7 +55,7 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery, buildAlertsFilterParams } from '../_shared/useAlertsQuery';
 import { apiFetch, apiJSON } from '../../../api/client';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import { useAckAlerts } from '../useRecentAlerts';
 import { useStagedAckIds } from '../stagedAcks';
 import { useAlertSegmentCounts } from '../_shared/useAlertSegmentCounts';

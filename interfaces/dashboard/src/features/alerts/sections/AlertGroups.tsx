@@ -19,7 +19,7 @@
  * was, and turning it off is one click rather than a deploy.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../../lib/toast';
 import { Layers } from 'lucide-react';
 
 import { apiJSON } from '@/api/client';

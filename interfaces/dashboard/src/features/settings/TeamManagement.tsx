@@ -24,7 +24,7 @@ import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { ActionMenu } from '../../components/ui/context-menu';
 import { ActivityTrailDialog, ActivityTrailTrigger } from '../../components/activity-trail/ActivityTrailDialog';

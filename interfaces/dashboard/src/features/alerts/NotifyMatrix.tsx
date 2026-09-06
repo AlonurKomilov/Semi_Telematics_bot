@@ -17,7 +17,7 @@
  * MATRIX (form UI), not a data list — the documented DataGrid exception.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Send, Mail, MonitorSmartphone } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';

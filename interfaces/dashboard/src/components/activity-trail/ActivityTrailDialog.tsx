@@ -9,7 +9,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { apiJSON } from '../../api/client';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,

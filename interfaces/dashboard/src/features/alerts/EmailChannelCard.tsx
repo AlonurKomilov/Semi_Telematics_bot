@@ -10,7 +10,7 @@
  * unusable.
  */
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { AlertTriangle, Mail, CheckCircle2, Clock } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Button } from '@/components/ui/button';

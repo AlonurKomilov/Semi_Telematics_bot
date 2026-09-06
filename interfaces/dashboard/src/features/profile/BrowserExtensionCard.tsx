@@ -14,7 +14,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Download, ExternalLink, Puzzle } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 
 import { apiFetch, apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
