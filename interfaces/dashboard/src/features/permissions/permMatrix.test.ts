@@ -8,7 +8,7 @@
  * silently rot back into implicit indentation.
  */
 import { describe, expect, it } from 'vitest';
-import { PERM_GROUPS } from './permRows';
+import { PERM_GROUPS, PARENT_KEY, PARENT_LABEL } from './permRows';
 
 type Row = {
   key?: string; allKey?: string; vehicleKey?: string; header?: string;
@@ -117,5 +117,33 @@ describe('family order', () => {
       expect(r.indented || r.parentKey, `${primaryKey(r)}`).toBeTruthy();
       expect(r.kind).toBe('action');
     }
+  });
+});
+
+describe('PARENT_KEY — what a revoked child leaves behind', () => {
+  it('every child row hangs under its parent by KEY, not only by label', () => {
+    // The confirm dialog reads this to say "Manage off — the read stays".
+    // Without the key it could only print a label and never ask whether
+    // the parent is still granted.
+    for (const [child, label] of Object.entries(PARENT_LABEL)) {
+      expect(PARENT_KEY[child], `${child} has a parent label but no parent key`).toBeTruthy();
+      const parentRow = tickable.find((r) => primaryKey(r) === PARENT_KEY[child]);
+      expect(parentRow, `${child} → ${PARENT_KEY[child]} is not a row`).toBeTruthy();
+      expect(parentRow!.label).toBe(label);
+    }
+  });
+
+  it('the Manage actions of the folded families hang under their view verb', () => {
+    // The person fold turned three write-level feature rows into
+    // View + Manage; the dialog's retained-read line depends on the tie.
+    expect(PARENT_KEY['can_manage_coaching']).toBe('can_view_coaching');
+    expect(PARENT_KEY['can_manage_driver_pay']).toBe('can_view_driver_pay');
+    expect(PARENT_KEY['can_manage_driver_docs']).toBe('can_view_driver_docs');
+    expect(PARENT_KEY['can_manage_loads']).toBe('can_view_loads');
+  });
+
+  it('a top-level feature row has no parent', () => {
+    expect(PARENT_KEY['can_view_coaching']).toBeUndefined();
+    expect(PARENT_KEY['can_view_loads']).toBeUndefined();
   });
 });

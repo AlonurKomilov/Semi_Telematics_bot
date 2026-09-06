@@ -296,10 +296,18 @@ export const GROUP_BLOCKS = PERM_GROUPS.map((g) => ({ title: g.title, blocks: to
 // ("Manage") is never ambiguous where rows are listed OUT of tree context
 // (cell tooltips, the confirm dialog's change list).
 export const PARENT_LABEL: Record<string, string> = {};
+/** primaryKey → the KEY of the row it hangs under.  A revoked child
+ *  ("Manage") whose parent stays granted leaves a real access behind:
+ *  the confirm dialog says so instead of leaving the owner to work it
+ *  out from a tree they cannot see in a flat change list. */
+export const PARENT_KEY: Record<string, string> = {};
 {
-  const walk = (bs: Block[], parentLabel?: string) => bs.forEach((b) => {
-    if (!isHeader(b.parent) && parentLabel) PARENT_LABEL[blockKey(b.parent)] = parentLabel;
-    walk(b.children, isHeader(b.parent) ? b.parent.header : b.parent.label);
+  const walk = (bs: Block[], parent?: PermFlag) => bs.forEach((b) => {
+    if (!isHeader(b.parent) && parent && !isHeader(parent)) {
+      PARENT_LABEL[blockKey(b.parent)] = parent.label;
+      PARENT_KEY[blockKey(b.parent)] = blockKey(parent);
+    }
+    walk(b.children, b.parent);
   });
   GROUP_BLOCKS.forEach((g) => walk(g.blocks));
 }

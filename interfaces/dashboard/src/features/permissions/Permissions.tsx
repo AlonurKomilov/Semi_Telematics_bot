@@ -29,7 +29,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 import {
   ALL_MATRIX_FLAGS, DEFAULT_SCOPED_FLAGS, DRIVER_PANEL_FLAGS,
-  GROUP_MODULE, OWNER_PROTECTED, contextLabel, isHeader, isScoped,
+  GROUP_MODULE, OWNER_PROTECTED, PARENT_KEY, PARENT_LABEL, blockKey,
+  contextLabel, isHeader, isScoped,
 } from './permRows';
 import type { ModulesData, PermFlag } from './permRows';
 import { DRIVER_KEY } from './verbGrid';
@@ -57,7 +58,10 @@ interface PermsData {
 // role -> flag -> pending boolean
 type Edits = Record<string, Record<string, boolean>>;
 
-interface Change { key: string; roleLabel: string; label: string; from: string; to: string; granted: boolean }
+interface Change { key: string; roleLabel: string; label: string; from: string; to: string; granted: boolean;
+  /** What the role KEEPS after this revocation — a parent row still
+   *  granted (revoking Manage leaves the read behind). */
+  keeps?: string }
 
 export default function Permissions() {
   const { t } = useTranslation();
@@ -205,7 +209,14 @@ export default function Permissions() {
         if (isHeader(f)) continue;
         const before = cellState(key, f, curFlagVal);
         const after = cellState(key, f, flagVal);
-        if (before !== after) out.push({ key, roleLabel: keyLabel[key] ?? key, label: contextLabel(f), from: before, to: after, granted: after !== 'No access' });
+        if (before === after) continue;
+        // A revoked child whose parent stays granted leaves the read
+        // behind — name it, or "Manage: No access" reads as "no access".
+        const parentKey = isHeader(f) ? undefined : PARENT_KEY[blockKey(f)];
+        const keeps = (after === 'No access' && parentKey && flagVal(key, parentKey))
+          ? PARENT_LABEL[blockKey(f)]
+          : undefined;
+        out.push({ key, roleLabel: keyLabel[key] ?? key, label: contextLabel(f), from: before, to: after, keeps, granted: after !== 'No access' });
       }
     }
     return out;
@@ -410,12 +421,19 @@ export default function Permissions() {
                   <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{changes.find((c) => c.key === key)?.roleLabel ?? key}</div>
                   <ul className="space-y-0.5">
                     {changes.filter((c) => c.key === key).map((c) => (
-                      <li key={c.label} className="flex items-center gap-2 text-sm">
-                        {c.granted
-                          ? <Check className="text-ok shrink-0 size-3.5" />
-                          : <X className="text-danger shrink-0 size-3.5" />}
-                        <span>{c.label}</span>
-                        <span className="text-2xs text-muted-foreground">{c.from} → {c.to}</span>
+                      <li key={c.label} className="text-sm">
+                        <div className="flex items-center gap-2">
+                          {c.granted
+                            ? <Check className="text-ok shrink-0 size-3.5" />
+                            : <X className="text-danger shrink-0 size-3.5" />}
+                          <span>{c.label}</span>
+                          <span className="text-2xs text-muted-foreground">{c.from} → {c.to}</span>
+                        </div>
+                        {c.keeps && (
+                          <div className="pl-[1.375rem] text-2xs text-muted-foreground">
+                            Still has {c.keeps} — this removes the write, not the read.
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
