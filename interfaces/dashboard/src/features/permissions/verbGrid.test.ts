@@ -71,8 +71,8 @@ describe('the Driver tab', () => {
   it('driver rows never appear in the staff verb grid', () => {
     const staff = new Set(placedRows(buildVerbGrid()));
     for (const f of DRIVER_PANEL_FLAGS) {
-      // can_loads_own / can_risk_report_own are the vehicleKey half of a
-      // staff scoped PAIR, never a staff ROW of their own.
+      // The driver's rows are their OWN objects even where the key is
+      // the staff matrix's verb (can_view_loads read at self width).
       expect(staff.has(f), (f as { label: string }).label).toBe(false);
     }
   });

@@ -53,7 +53,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Reports
   { label: 'Reports',       path: '/reports',               icon: FileText,   group: 'Reports', permission: null,
     description: 'Generate & download operational reports', keywords: ['csv','pdf','export'] },
-  { label: 'Risk Summary',  path: '/reports/risk-summary',  icon: FileText,   group: 'Reports', permission: ['can_view_risk_reports', 'can_risk_report_own'],
+  { label: 'Risk Summary',  path: '/reports/risk-summary',  icon: FileText,   group: 'Reports', permission: ['can_view_risk_reports'],
     description: 'Risk profile across drivers and vehicles', keywords: ['risk','insurance'] },
   { label: 'Cost Reports',  path: '/reports/cost-reports',  icon: TrendingUp, group: 'Reports', permission: ['can_view_cost_reports'],
     description: 'Maintenance cost rollups: per-vehicle, per-task, per-vendor', keywords: ['cost','spend','maintenance','rollup'] },
@@ -111,7 +111,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   //    routeRegistry.test.ts now fails the build when the catalog gains
   //    a route this list has not.
   { label: 'Loads', path: '/loads', icon: Package, group: 'Fleet',
-    permission: ['can_view_loads', 'can_loads_own'],
+    permission: ['can_view_loads'],
     description: 'Freight — entered by hand or synced from your TMS',
     keywords: ['load', 'freight', 'trip', 'dispatch', 'rate'] },
   { label: 'Work Orders', path: '/work-orders', icon: Receipt, group: 'Fleet',

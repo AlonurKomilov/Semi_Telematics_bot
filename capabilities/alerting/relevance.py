@@ -228,7 +228,7 @@ async def alert_types_for_user(
 # column — these types have none (their personal delivery is the
 # notification matrix only).  Same ANY-OF semantics.
 CATEGORY_EXTRA_PERMS: dict[str, Union[str, list[str]]] = {
-    "documents": ["can_manage_driver_docs", "can_driver_docs_own"],
+    "documents": ["can_manage_driver_docs", "can_view_driver_docs"],
     "scorecard": ["can_view_scorecards"],
 }
 

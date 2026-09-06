@@ -22,14 +22,12 @@ import json
 import re
 import subprocess
 
-from capabilities.permissions.roles import CANONICAL_TO_LEGACY, PAIRED_UNIT_FEATURES
+from capabilities.permissions.roles import LEGACY_TO_CANONICAL
 
-#: every dying name: the ten pairs AND the eighteen 1:1 renames — the
-#: alias layer serves both, and both go when it goes.
-_NAMES = sorted(
-    {n for pair in PAIRED_UNIT_FEATURES.values() for n in pair}
-    | set(CANONICAL_TO_LEGACY.values())
-)
+#: every dying name — the unit pairs, the person pairs, the 1:1
+#: renames: everything the alias layer serves, all of which goes when
+#: it goes.  The contract's alias map IS that list.
+_NAMES = sorted(LEGACY_TO_CANONICAL)
 _RX = re.compile(r"\b(" + "|".join(map(re.escape, _NAMES)) + r")\b")
 
 #: files where the names legitimately LIVE until the physical flip

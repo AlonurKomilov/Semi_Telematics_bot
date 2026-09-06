@@ -46,11 +46,15 @@ bijection both ways).  Fates:
     capabilities/config/docs/ARCHITECTURE.md) and OUT of this
     migration; a per-feature config split is its own future arc.
 
-``OWN_LATER``
+``PERSON_SPLIT``
     Person-scope ("my paystub", "my coaching", "my loads") — the same
-    disease as ``*_vehicle`` but the subject is a PERSON, not a truck,
-    so its scope home is different.  Deferred to its own pass with this
-    same grammar; listed here so nothing is silently forgotten.
+    disease as ``*_vehicle`` but the subject is a PERSON, not a truck.
+    The own flag dies into the feature's view verb; its width is the
+    ROLE's (driver → self, everyone else → all), a pure function with
+    no storage and no Team Management control —
+    ``capabilities/permissions/scope.person_width``.  The own risk
+    summary is not person width at all: its wall was "vehicle subject
+    in assigned trucks", i.e. unit width, so it is a SCOPE_SPLIT.
 """
 
 from __future__ import annotations
@@ -66,19 +70,19 @@ class Fate(str, Enum):
     SERVICE = "service"
     DERIVED = "derived"
     CONFIG = "config"
-    OWN_LATER = "own_later"
+    PERSON_SPLIT = "person_split"
 
 
 @dataclass(frozen=True)
 class Verdict:
     fate: Fate
     #: canonical post-migration name; None for fates that keep the flag
-    #: out of the verb grammar (DERIVED / CONFIG / OWN_LATER).
+    #: out of the verb grammar (DERIVED / CONFIG / SERVICE).
     target: str | None = None
     note: str = ""
 
 
-V, M, S = Fate.VERB_VIEW, Fate.VERB_MANAGE, Fate.SCOPE_SPLIT
+V, M, S, P = Fate.VERB_VIEW, Fate.VERB_MANAGE, Fate.SCOPE_SPLIT, Fate.PERSON_SPLIT
 
 TAXONOMY: dict[str, Verdict] = {
     # ── read-only report/tool pages: bare nouns become view verbs ──
@@ -204,9 +208,14 @@ TAXONOMY: dict[str, Verdict] = {
     # ── out of this migration, on the record ───────────────────────
     "can_manage_config_role": Verdict(Fate.CONFIG),
     "can_manage_config_all":  Verdict(Fate.CONFIG),
-    "can_loads_own":           Verdict(Fate.OWN_LATER),
-    "can_risk_report_own":     Verdict(Fate.OWN_LATER),
-    "can_driver_pay_view_own": Verdict(Fate.OWN_LATER),
-    "can_coaching_view_own":   Verdict(Fate.OWN_LATER),
-    "can_driver_docs_own":     Verdict(Fate.OWN_LATER),
+    # ── person pairs: the own half dies into the view verb, width is
+    #    the role's (scope.person_width) ─────────────────────────────
+    "can_loads_own":           Verdict(P, "can_view_loads"),
+    "can_driver_pay_view_own": Verdict(P, "can_view_driver_pay"),
+    "can_coaching_view_own":   Verdict(P, "can_view_coaching"),
+    "can_driver_docs_own":     Verdict(P, "can_view_driver_docs"),
+    # The own risk summary walled "a vehicle subject in the caller's
+    # assigned trucks" — unit width in disguise, so it joins the unit
+    # family: (can_risk_report_all, can_risk_report_own) → risk_reports.
+    "can_risk_report_own":     Verdict(S, "can_view_risk_reports"),
 }

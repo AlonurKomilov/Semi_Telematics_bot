@@ -81,10 +81,10 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # scorecard-rules PAGE still masks with safety/hr via featureCatalog.
 
     "can_manage_coaching": frozenset({"hr", "safety"}),
-    "can_coaching_view_own": frozenset({"hr", "safety"}),
+    "can_view_coaching": frozenset({"hr", "safety"}),
     # Drivers (documents) — hr + fleet + safety
     "can_manage_driver_docs": frozenset({"hr", "fleet", "safety"}),
-    "can_driver_docs_own": frozenset({"hr", "fleet", "safety"}),
+    "can_view_driver_docs": frozenset({"hr", "fleet", "safety"}),
     # Driver roster management (invite/assign/link) — hr + fleet.
     "can_manage_drivers": frozenset({"hr", "fleet"}),
     # Recruiting (driver-application intake) — hr.  Masking these with the
@@ -96,7 +96,7 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     "can_view_fuel_cost": frozenset({"accounting", "dispatch"}),
     "can_view_cost_per_mile": frozenset({"accounting", "fleet"}),
     "can_manage_driver_pay": frozenset({"accounting"}),
-    "can_driver_pay_view_own": frozenset({"accounting"}),
+    "can_view_driver_pay": frozenset({"accounting"}),
 }
 
 

@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
+from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, member_unit_scope, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
 from interfaces.api.deps import require_any_or_wide  # noqa: E402
 from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import can as _can
@@ -265,9 +265,7 @@ async def report_risk_summary(
     fmt: str = Query("pdf", pattern="^(pdf|csv)$"),
     days: int = Query(30, ge=1, le=90),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any(
-        "can_view_risk_reports", "can_risk_report_own",
-    )),
+    user: dict = Depends(require_permission("can_view_risk_reports")),
 ):
     """Universal Stakeholder Risk Summary — per-subject risk profile.
 
@@ -289,10 +287,11 @@ async def report_risk_summary(
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
 
-    # Defense-in-depth for own-only callers (driver / restricted roles):
-    # they may only target a *vehicle* subject in their assigned truck list.
-    own_perm = user.get("_matched_perm") == "can_risk_report_own"
-    if own_perm:
+    # An assigned-width caller (Team Management's answer — a driver by
+    # default) may only target a *vehicle* subject in their assigned
+    # truck list.  Width, not a grant: the own half of the old pair
+    # folded into the verb.
+    if await member_unit_scope(user, "risk_reports") == "assigned":
         if subject_type != "vehicle":
             raise HTTPException(
                 403,
@@ -354,9 +353,7 @@ async def report_risk_summary_me(
     audience: str = Query("payroll"),
     fmt: str = Query("pdf", pattern="^(pdf|csv)$"),
     days: int = Query(30, ge=1, le=90),
-    user: dict = Depends(require_permission_any(
-        "can_view_risk_reports", "can_risk_report_own",
-    )),
+    user: dict = Depends(require_permission("can_view_risk_reports")),
 ):
     """Self-service Risk Summary for the calling user (miniapp shortcut).
 

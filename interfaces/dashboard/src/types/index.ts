@@ -66,11 +66,14 @@ export interface Permissions {
   can_manage_poi_layers: boolean;
   can_driver_pay_admin: boolean;
   can_manage_driver_pay: boolean;
+  can_view_driver_pay: boolean;
   can_driver_pay_view_own: boolean;
   can_coaching_admin: boolean;
   can_manage_coaching: boolean;
+  can_view_coaching: boolean;
   can_coaching_view_own: boolean;
   can_manage_driver_docs: boolean;
+  can_view_driver_docs: boolean;
   can_manage_drivers: boolean;
   can_driver_docs_own: boolean;
   [key: string]: boolean;

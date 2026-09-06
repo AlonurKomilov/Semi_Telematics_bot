@@ -25,24 +25,23 @@ from adapters.storage import Role
 
 # ── Permissions ────────────────────────────────────────────────────
 
-def test_feature_set_has_risk_report_flags():
+def test_feature_set_has_the_risk_report_verb():
+    # One verb; the old all/own pair are aliases over it (the width —
+    # every subject, or the caller's own trucks — is Team Management's).
     fs = FeatureSet()
-    assert hasattr(fs, "can_risk_report_all")
-    assert hasattr(fs, "can_risk_report_own")
-    assert fs.can_risk_report_all is False
-    assert fs.can_risk_report_own is False
+    assert "can_view_risk_reports" in FeatureSet.__dataclass_fields__
+    assert fs.can_view_risk_reports is False
+    assert fs.can_risk_report_all is fs.can_view_risk_reports
+    assert fs.can_risk_report_own is fs.can_view_risk_reports
 
 
 def test_role_permissions_wired():
-    # Owner has both
-    assert can(Role.OWNER, "can_risk_report_all")
-    assert can(Role.OWNER, "can_risk_report_own")
-    # Driver has only own
-    assert not can(Role.DRIVER, "can_risk_report_all")
-    assert can(Role.DRIVER, "can_risk_report_own")
-    # Dispatcher has neither
-    assert not can(Role.DISPATCHER, "can_risk_report_all")
-    assert not can(Role.DISPATCHER, "can_risk_report_own")
+    # Owner, fleet and driver hold the verb; a driver's width is their
+    # assigned trucks (unit_width), a dispatcher holds nothing.
+    assert can(Role.OWNER, "can_view_risk_reports")
+    assert can(Role.FLEET, "can_view_risk_reports")
+    assert can(Role.DRIVER, "can_view_risk_reports")
+    assert not can(Role.DISPATCHER, "can_view_risk_reports")
 
 
 # ── Audiences ──────────────────────────────────────────────────────

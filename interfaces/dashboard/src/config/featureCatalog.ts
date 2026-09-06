@@ -116,7 +116,7 @@ const P_LOCATION = 'can_view_location';
 // derives own-shell vs account-wide placement from the pair.
 const P_VEHICLE = 'can_view_vehicles';
 const P_ALERTS = ['can_view_vehicles'];
-const P_REPORTS = ['can_view_faults', 'can_view_risk_reports', 'can_risk_report_own', 'can_view_cost_reports', 'can_digest'];
+const P_REPORTS = ['can_view_faults', 'can_view_risk_reports', 'can_view_cost_reports', 'can_digest'];
 
 /** Canonical verb-grammar flags live on the wire (both grammars are
  *  emitted, equal by construction) even where the catalog still holds
@@ -125,6 +125,7 @@ const P_REPORTS = ['can_view_faults', 'can_view_risk_reports', 'can_risk_report_
 export const CANONICAL_WIRE_FLAGS: readonly string[] = [
   'can_manage_maintenance', 'can_manage_work_orders',
   'can_manage_inspections', 'can_manage_geofence',
+  'can_view_driver_pay', 'can_view_coaching', 'can_view_driver_docs',
 ];
 
 /** The unit-feature VIEW verbs.  A member's WIDTH on these — all units
@@ -135,7 +136,16 @@ export const UNIT_VIEW_VERBS: readonly string[] = [
   'can_view_vehicles', 'can_view_maintenance', 'can_view_work_orders',
   'can_view_inspections', 'can_view_location', 'can_view_routes',
   'can_view_parking', 'can_view_geofence', 'can_view_events',
-  'can_view_scorecards',
+  'can_view_scorecards', 'can_view_risk_reports',
+];
+
+/** The person-feature VIEW verbs ("my loads", "my paystubs", "my
+ *  coaching", "my documents").  Their width is the ROLE's — a driver
+ *  reads their own rows, everyone else the account's — never stored
+ *  and never a flag (config/unitWidth.ts personWidthOf mirrors
+ *  capabilities/permissions/scope.person_width). */
+export const PERSON_VIEW_VERBS: readonly string[] = [
+  'can_view_loads', 'can_view_driver_pay', 'can_view_coaching', 'can_view_driver_docs',
 ];
 
 export const FEATURE_CATALOG: CatalogFeature[] = [
@@ -198,7 +208,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Loads — the canonical load/shipment list.  Dispatch owns entry; owners,
   // fleet and drivers read it (drivers see their own — scoped server-side),
   // so it's shared-tier like Vehicles.
-  { id: 'loads',   labelKey: 'nav.loads',   path: '/loads',   icon: Package,       modules: ['dispatch'], tier: 'shared', permission: ['can_view_loads', 'can_loads_own'], navGroup: 'operations' },
+  { id: 'loads',   labelKey: 'nav.loads',   path: '/loads',   icon: Package,       modules: ['dispatch'], tier: 'shared', permission: 'can_view_loads', navGroup: 'operations' },
   // Parking is a single-purpose feature (UNSAFE-parking events only — no
   // zones or general parking management), so it's role-tier like Safety
   // Events; the module list still lets dispatch + fleet surface it.
@@ -213,9 +223,9 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'scorecards', labelKey: 'nav.scorecards', path: '/scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: 'can_view_scorecards', navGroup: 'monitoring' },
 
   // ── HR (people) ───────────────────────────────────────────────────
-  { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_manage_coaching'], navGroup: 'people' },
+  { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_view_coaching'], navGroup: 'people' },
   // Drivers (documents/compliance) — HR owns it; fleet + safety read it.
-  { id: 'drivers', labelKey: 'nav.drivers', path: '/workforce/drivers', icon: IdCard, modules: ['hr', 'fleet', 'safety'], tier: 'shared', permission: ['can_manage_driver_docs'], navGroup: 'people' },
+  { id: 'drivers', labelKey: 'nav.drivers', path: '/workforce/drivers', icon: IdCard, modules: ['hr', 'fleet', 'safety'], tier: 'shared', permission: ['can_view_driver_docs'], navGroup: 'people' },
   // Recruiting intake — recruiter sends an apply.* link, prospects submit
   // FMCSA applications here; HR/recruiter triage + convert-to-driver.
   { id: 'applications', labelKey: 'nav.applications', path: '/workforce/applications', icon: UserPlus, modules: ['hr'], tier: 'role', permission: ['can_manage_applications'], navGroup: 'people' },
@@ -229,7 +239,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // redirect in router.tsx for any legacy bookmark.
 
   // ── ACCOUNTING (money) ────────────────────────────────────────────
-  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_manage_driver_pay'], navGroup: 'costs' },
+  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_view_driver_pay'], navGroup: 'costs' },
   // Costs — one accounting-leaning feature with two components (Fuel
   // Costs + Cost per Mile), so both are role-tier; the module lists let
   // dispatch (fuel) and fleet (CPM) surface their half.

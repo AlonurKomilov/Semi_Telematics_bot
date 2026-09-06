@@ -28,7 +28,7 @@ def test_the_contract_matches_the_flipped_featureset():
     its own name, and no legacy pair name is a field any more."""
     targets = {v.target for v in TAXONOMY.values() if v.target}
     survivors = {f for f, v in TAXONOMY.items()
-                 if v.fate in (Fate.DERIVED, Fate.SERVICE, Fate.CONFIG, Fate.OWN_LATER)}
+                 if v.fate in (Fate.DERIVED, Fate.SERVICE, Fate.CONFIG)}
     assert targets | survivors == FLAGS, (
         f"fields without a contract: {sorted(FLAGS - targets - survivors)}; "
         f"contract names that are not fields: {sorted((targets | survivors) - FLAGS)}")
@@ -58,7 +58,9 @@ def test_scope_splits_die_into_a_view_verb():
     flag that is dying."""
     for flag, v in TAXONOMY.items():
         if v.fate is Fate.SCOPE_SPLIT:
-            assert flag.endswith("_vehicle"), flag
+            # the ten *_vehicle halves, and the one own half whose wall was
+            # unit width all along (can_risk_report_own → risk_reports)
+            assert flag.endswith(("_vehicle", "_own")), flag
             assert v.target and v.target.startswith("can_view_"), (
                 f"{flag} splits into {v.target!r} — a split's verb half "
                 "must be a view verb")
@@ -106,26 +108,30 @@ def test_config_rows_are_exactly_the_config_pair():
     assert config == {"can_manage_config_role", "can_manage_config_all"}
 
 
-def test_own_family_is_marked_and_nothing_own_is_missed():
-    """Person-scope flags all sit in OWN_LATER — and every flag whose
-    name says "own" is in that set, so none is silently migrated with
-    vehicle-scope semantics."""
-    own = {f for f, v in TAXONOMY.items() if v.fate is Fate.OWN_LATER}
-    named_own = {f for f in FLAGS if f.endswith("_own")}
-    assert own == named_own, (
-        f"own-named flags not marked OWN_LATER: {sorted(named_own - own)}; "
-        f"OWN_LATER rows not own-named: {sorted(own - named_own)}")
+def test_own_family_died_into_view_verbs():
+    """Every flag whose name says "own" has a split fate — PERSON for
+    the four person-subject features, SCOPE for the risk summary whose
+    wall was really unit width — and none survives as a field."""
+    named_own = {f for f in TAXONOMY if f.endswith("_own")}
+    person = {f for f, v in TAXONOMY.items() if v.fate is Fate.PERSON_SPLIT}
+    assert person == {"can_loads_own", "can_driver_pay_view_own",
+                      "can_coaching_view_own", "can_driver_docs_own"}
+    assert TAXONOMY["can_risk_report_own"].fate is Fate.SCOPE_SPLIT
+    assert named_own == person | {"can_risk_report_own"}
+    for f in named_own:
+        assert f not in FLAGS, f"{f} is still a FeatureSet field"
+        assert TAXONOMY[f].target in FLAGS, (f, TAXONOMY[f].target)
+        assert TAXONOMY[f].target.startswith("can_view_"), f
 
 
 def test_non_verb_fates_carry_no_target():
-    """A DERIVED/CONFIG/SERVICE/OWN_LATER row has no canonical rename —
+    """A DERIVED/CONFIG/SERVICE row has no canonical rename —
     a target on one is almost always a positional-argument slip (a
     note landing in the target slot).  It happened: can_alerts_vehicle
     shipped with its NOTE as its target, and the bridge stage tried to
     install a property named by a full English sentence."""
     for flag, v in TAXONOMY.items():
-        if v.fate in (Fate.DERIVED, Fate.CONFIG, Fate.SERVICE,
-                      Fate.OWN_LATER):
+        if v.fate in (Fate.DERIVED, Fate.CONFIG, Fate.SERVICE):
             assert v.target is None, f"{flag}: {v.target!r}"
 
 

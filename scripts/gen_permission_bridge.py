@@ -63,8 +63,22 @@ def _dict_literal(name: str, kind: str, items: dict, comment: str) -> str:
     return "".join(lines)
 
 
+def _taxonomy():
+    """The contract, loaded from its file — NOT through the package,
+    whose ``__init__`` imports roles.py.  Regeneration is exactly the
+    moment roles.py may not import (a new map not written yet), and
+    the contract itself depends on nothing but the standard library."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(ROLES), "taxonomy.py")
+    spec = importlib.util.spec_from_file_location("_permission_taxonomy", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod   # dataclasses resolve the module by name
+    spec.loader.exec_module(mod)
+    return mod.TAXONOMY, mod.Fate
+
+
 def render() -> str:
-    from capabilities.permissions.taxonomy import TAXONOMY, Fate
+    TAXONOMY, Fate = _taxonomy()
 
     # A flag whose target is its own name was already canonical: it
     # needs no alias, and one would install a property over a live field.
@@ -90,9 +104,8 @@ def render() -> str:
         return out
 
     unit_pairs = _pairs(Fate.SCOPE_SPLIT)
-    person_pairs = _pairs(Fate.PERSON_SPLIT) if hasattr(Fate, "PERSON_SPLIT") else {}
 
-    def _features(pairs: dict) -> dict:
+    def _unit_features(pairs: dict) -> dict:
         out = {}
         for noun, (wide, _narrow) in pairs.items():
             wide_verdict = TAXONOMY[wide]
@@ -102,6 +115,21 @@ def render() -> str:
             )
             out[noun] = ("can_view_" + noun, manage)
         return out
+
+    # A person pair has no wide LEGACY half on its stem (the wide side
+    # was a manage flag under another name, or nothing at all): the
+    # own flag alone is the pair, and the manage verb — when the
+    # feature has one — is whatever the contract names can_manage_<noun>.
+    known = set(TAXONOMY) | {v.target for v in TAXONOMY.values() if v.target}
+    person_pairs, person_features = {}, {}
+    for flag, v in sorted(TAXONOMY.items()):
+        if v.fate is not getattr(Fate, "PERSON_SPLIT", None):
+            continue
+        noun = v.target.removeprefix("can_view_")
+        assert noun not in person_pairs, f"{noun}: two own halves"
+        person_pairs[noun] = flag
+        manage = "can_manage_" + noun
+        person_features[noun] = (v.target, manage if manage in known else None)
 
     parts = [
         _dict_literal(
@@ -114,22 +142,20 @@ def render() -> str:
             "\n#: (which reads pre-flip JSON) and as the registry of unit features.",
         ),
         _dict_literal(
-            "UNIT_FEATURES", "dict[str, tuple[str, str | None]]", _features(unit_pairs),
+            "UNIT_FEATURES", "dict[str, tuple[str, str | None]]", _unit_features(unit_pairs),
             "noun → (view field, manage field or None) — the canonical shape",
         ),
     ]
     if person_pairs:
         parts += [
             _dict_literal(
-                "PAIRED_PERSON_FEATURES", "dict[str, str]",
-                {n: own for n, (_w, own) in person_pairs.items()},
+                "PAIRED_PERSON_FEATURES", "dict[str, str]", person_pairs,
                 "the person pairs, noun → the LEGACY own flag.  Their width is"
                 "\n#: the role's (driver reads their own rows), never stored — see"
                 "\n#: capabilities/permissions/scope.person_width.",
             ),
             _dict_literal(
-                "PERSON_FEATURES", "dict[str, tuple[str, str | None]]",
-                _features(person_pairs),
+                "PERSON_FEATURES", "dict[str, tuple[str, str | None]]", person_features,
                 "noun → (view field, manage field or None) — the canonical shape",
             ),
         ]

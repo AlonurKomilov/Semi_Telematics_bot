@@ -95,3 +95,20 @@ def test_the_width_helper_is_the_migration_target_for_these_reads():
     assert "can_for_account(" not in core
     assert "scope_with_role_default(" in core
     assert "unit_width(" in inspect.getsource(deps.member_unit_scope)
+
+
+def test_no_reader_compares_a_matched_perm_to_a_dead_name():
+    """The five ``*_own`` flags and every other legacy name are alias
+    properties now: ``require_permission_any`` stores the literal that
+    MATCHED, and a canonical verb listed first matches first, so a
+    comparison against the dead name is a wall that never closes.
+    The person fold's readers moved to person_width / unit_width;
+    this keeps the next family from re-deriving the trap."""
+    from capabilities.permissions.roles import LEGACY_TO_CANONICAL
+    dead = set(LEGACY_TO_CANONICAL)
+    hits = []
+    for path in _SRC:
+        for flag in _READ.findall(path.read_text(encoding="utf-8", errors="ignore")):
+            if flag in dead:
+                hits.append(f"{path.relative_to(REPO)}: _matched_perm == {flag!r}")
+    assert not hits, "\n".join(hits)

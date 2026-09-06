@@ -9,3 +9,12 @@ runnable procedures: they reason about fields that no longer exist.
   reported zero rows, and the physical flip followed.  Both imported
   `classify_pairs` / `stale_narrow_crumbs` from
   `capabilities/permissions/fold.py`, which the flip retired.
+- `preflight_person_own_fold.py`, `strip_stale_own_crumbs.py` — the
+  person fold's pre-flight (2026-09-04).  The owner's report found 53
+  rows: nine fleet rows holding the risk-summary own flag the seed still
+  granted (a live default, decided ON), and forty-four recruiter rows
+  holding the four own flags 327bf160 had turned off in the seed — the
+  other half of the residue the pair sweep removed.  The sweep took
+  them, and the fold followed.  Both imported `plan_own_preflight` /
+  `stale_own_crumbs` from `capabilities/permissions/fold.py`, which
+  the fold retired.

@@ -68,8 +68,10 @@ class TestManagerTier:
     def test_department_tier_seed_grants(self):
         """Each team-lead tier seeds exactly the agreed delta (owners retune
         per-account afterward — these are only the defaults)."""
+        # Risk Summary left the fleet tier when the fold seeded it on the
+        # base fleet role (owner decision 2026-09-04: default ON).
         assert TIER_GRANTS[Role.FLEET].grants == frozenset(
-            {"can_invite", "can_manage_work_hours", "can_view_risk_reports",
+            {"can_invite", "can_manage_work_hours", 
              "can_manage_role_bot", "can_manage_config_role"})
         # Safety's scoring-config ownership rode can_manage_scorecard_rules
         # until that flag folded into the account-scope config permission

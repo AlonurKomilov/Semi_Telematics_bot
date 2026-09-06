@@ -131,13 +131,7 @@ async def unit_width(
 # pay and coaching → the bound driver id; documents → the member's own
 # row) exactly as unit features resolve their own assigned-truck list.
 
-#: noun → the `*_own` flag that folds into the noun's view verb.
-PAIRED_PERSON_FEATURES: dict[str, str] = {
-    "loads": "can_loads_own",
-    "driver_pay": "can_driver_pay_view_own",
-    "coaching": "can_coaching_view_own",
-    "driver_docs": "can_driver_docs_own",
-}
+from capabilities.permissions.roles import PAIRED_PERSON_FEATURES  # noqa: E402  (generated)
 
 
 def person_width(role, feature: str, is_manager: bool = False) -> str:

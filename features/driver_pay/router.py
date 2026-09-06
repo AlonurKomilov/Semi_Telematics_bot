@@ -98,11 +98,22 @@ async def upsert_settings(
 
 # ── Runs ───────────────────────────────────────────────────────────
 
+def _require_wide(user: dict) -> None:
+    """The account-wide reads: a self-width caller (a driver holding
+    the view verb) has ``/me``; here they would read every paystub."""
+    from capabilities.permissions.scope import person_width
+    if person_width(user["role"], "driver_pay") != "all":
+        raise HTTPException(403, "account-wide driver pay is outside your width; use /me")
+
+
 @router.get("/runs")
 async def list_runs(
     limit: int = Query(50, ge=1, le=500),
-    user: dict = Depends(require_permission("can_manage_driver_pay")),
+    user: dict = Depends(require_permission_any(
+        "can_manage_driver_pay", "can_view_driver_pay",
+    )),
 ):
+    _require_wide(user)
     try:
         return await svc.list_runs(user["account_id"], limit=limit)
     except DriverPayDisabledError as e:
@@ -131,8 +142,11 @@ async def create_run(
 @router.get("/runs/{run_id}")
 async def get_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_manage_driver_pay")),
+    user: dict = Depends(require_permission_any(
+        "can_manage_driver_pay", "can_view_driver_pay",
+    )),
 ):
+    _require_wide(user)
     detail = await svc.get_run_detail(user["account_id"], run_id)
     if detail is None:
         raise HTTPException(404, "run not found")
@@ -224,7 +238,7 @@ async def _resolve_caller_driver_id(user: dict) -> Optional[str]:
 async def my_paystubs(
     limit: int = Query(12, ge=1, le=60),
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_pay", "can_driver_pay_view_own",
+        "can_manage_driver_pay", "can_view_driver_pay",
     )),
 ):
     """Return paystub history for the calling driver."""

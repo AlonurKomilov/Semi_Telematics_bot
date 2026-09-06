@@ -27,3 +27,16 @@ export function hasWideScope(
 ): boolean {
   return isWideScope(scope) && has(...flags);
 }
+
+/** Person width — for the person-subject features ("my loads", "my
+ *  paystubs", "my coaching", "my documents").  A pure function of the
+ *  ROLE, mirroring capabilities/permissions/scope.person_width: a
+ *  driver reads their own rows, everyone else the account's.  No
+ *  storage, no Team Management control — "self" for anyone without a
+ *  driver row is nonsense, and a driver who reads everyone's paystubs
+ *  is a role change, not a width. */
+export type PersonWidth = 'self' | 'all';
+
+export function personWidthOf(role: string | undefined): PersonWidth {
+  return role === 'driver' ? 'self' : 'all';
+}

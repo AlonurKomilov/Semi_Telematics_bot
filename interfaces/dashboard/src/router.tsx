@@ -232,13 +232,13 @@ export default function AppRouter() {
           path="reports"
           element={L(
             <P perm={[
-              'can_view_faults', 'can_view_risk_reports', 'can_risk_report_own',
+              'can_view_faults', 'can_view_risk_reports',
               'can_view_cost_reports', 'can_digest', 'can_manage_maintenance',
             ]}><ReportsLayout /></P>
           )}
         >
           <Route index             element={L(<P perm="can_view_faults"><Reports /></P>)} />
-          <Route path="risk-summary"     element={L(<P perm={['can_view_risk_reports', 'can_risk_report_own']}><RiskSummary /></P>)} />
+          <Route path="risk-summary"     element={L(<P perm="can_view_risk_reports"><RiskSummary /></P>)} />
           <Route path="cost-reports"     element={L(<P perm="can_view_cost_reports"><CostReports /></P>)} />
           <Route path="dot-binder"        element={L(<P perm="can_manage_maintenance"><DotBinder /></P>)} />
           <Route path="scheduled-reports" element={L(<P perm="can_digest"><ScheduledReports /></P>)} />
@@ -263,7 +263,7 @@ export default function AppRouter() {
         {/* Work Orders — separate module from Maintenance.  Maintenance
             tracks "what needs doing"; Work Orders is "what was done"
             (shop visits, costs, parts, attachments). */}
-        <Route path="loads"               element={L(<P perm={['can_view_loads', 'can_loads_own']}><Loads /></P>)} />
+        <Route path="loads"               element={L(<P perm="can_view_loads"><Loads /></P>)} />
         {/* /kpi follows the active role view to its section; each
             section is its own page + backend package (per-role KPI
             isolation — sections cannot affect each other). */}

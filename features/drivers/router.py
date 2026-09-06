@@ -47,7 +47,7 @@ from interfaces.api.deps import (
 from adapters.storage import Role
 from adapters.storage.drivers import VALID_DOC_TYPES
 from capabilities.activity_trail import record_simple
-from capabilities.permissions.roles import can, role_rank
+from capabilities.permissions.roles import role_rank
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/drivers", tags=["drivers"])
@@ -101,6 +101,21 @@ async def _resolve_caller_user_id(caller: dict, platform_db) -> int:
     return db_user.id
 
 
+def _holds(caller: dict, flag: str) -> bool:
+    """Does the caller hold ``flag`` — as the GATE resolved it.
+
+    ``user["_perms"]`` is the account-aware FeatureSet the route's own
+    dependency already computed (matrix overrides, manager tier, module
+    masks); every route here is gated, and both gates stash it.  The
+    bare ``can(role, flag)`` is the role's built-in default — it is
+    account-aware only inside the bot, whose auth primes a contextvar —
+    so reading it here let an owner's revocation go unhonoured.  A
+    caller with no stash (an ungated path, which should not exist)
+    holds nothing.
+    """
+    return bool(getattr(caller.get("_perms"), flag, False))
+
+
 async def _require_driver_visibility(
     target_user_id: int, caller: dict, platform_db,
 ) -> dict:
@@ -108,13 +123,11 @@ async def _require_driver_visibility(
 
     Returns the target ``users`` row.  Raises 404 if the target
     doesn't exist, doesn't belong to the caller's account, or the
-    caller is a driver and the target isn't them.
+    caller's width is 'self' (a driver) and the target isn't them.
 
-    The admin check uses ``can(role, ...)`` rather than
-    ``caller["_matched_perm"]`` because the latter is only populated
-    by ``require_permission_any``; routes that use the singular
-    ``require_permission`` (the assign / upload / delete admin
-    paths) don't carry the hint.
+    Width is the ROLE's (``person_width``); the manage verb is read
+    from the gate's resolved FeatureSet (``_holds``), never from the
+    role's built-in default.
     """
     caller_id = await _resolve_caller_user_id(caller, platform_db)
     target = await platform_db.get_user_by_id(target_user_id)
@@ -123,8 +136,10 @@ async def _require_driver_visibility(
     if target.account_id != caller["account_id"]:
         # Don't reveal existence cross-account.
         raise HTTPException(status_code=404, detail="Driver not found")
-    is_admin = can(caller["role"], "can_manage_driver_docs")
-    if not is_admin and caller_id != target_user_id:
+    from capabilities.permissions.scope import person_width
+    wide = (_holds(caller, "can_manage_driver_docs")
+            or person_width(caller["role"], "driver_docs") == "all")
+    if not wide and caller_id != target_user_id:
         raise HTTPException(status_code=404, detail="Driver not found")
     # Company scope: a company-restricted admin can't reach a driver
     # outside their companies by guessing the id (the list already hides
@@ -292,7 +307,7 @@ async def list_samsara_drivers(
 @router.get("/me")
 async def get_my_driver(
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
 ):
@@ -320,7 +335,7 @@ async def get_my_driver(
 async def get_driver(
     user_id: int,
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
 ):
@@ -344,19 +359,23 @@ async def update_driver(
     user_id: int,
     body: ProfileUpdate,
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
 ):
-    """Update driver profile.  Admins (``can_manage_driver_docs``) can
-    edit any field; drivers (``can_driver_docs_own``) can only edit
-    their own contact info (phone + home_address).  Everything else
-    is silently ignored from a driver-self call."""
+    """Update driver profile.  Managers (``can_manage_driver_docs``)
+    edit any field of any driver; a view-only caller edits only their
+    OWN contact info (phone + home_address) — view is read, and the
+    self-service exception is for the person the row describes.
+    Everything else is silently ignored from a self call."""
     await _require_driver_visibility(user_id, user, platform_db)
 
-    is_admin = user.get("_matched_perm") == "can_manage_driver_docs"
+    is_admin = _holds(user, "can_manage_driver_docs")
     fields = body.model_dump(exclude_unset=True, exclude_none=True)
     if not is_admin:
+        caller_id = await _resolve_caller_user_id(user, platform_db)
+        if caller_id != user_id:
+            raise HTTPException(status_code=404, detail="Driver not found")
         # Driver-self: lock to contact fields only.
         fields = {
             k: v for k, v in fields.items()
@@ -385,7 +404,7 @@ async def list_assignments(
     user_id: int,
     history: bool = Query(False),
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
 ):
@@ -467,7 +486,7 @@ async def list_driver_documents(
     status: Optional[str] = Query(None, pattern="^(active|expired|archived)$"),
     doc_type: Optional[str] = Query(None),
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
 ):
@@ -622,7 +641,7 @@ async def upload_driver_document(
 async def download_driver_document(
     doc_id: int,
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
@@ -697,7 +716,7 @@ async def delete_driver_document(
 async def request_doc_reupload(
     doc_id: int,
     user: dict = Depends(require_permission_any(
-        "can_manage_driver_docs", "can_driver_docs_own",
+        "can_manage_driver_docs", "can_view_driver_docs",
     )),
     platform_db=Depends(get_platform_db),
 ):

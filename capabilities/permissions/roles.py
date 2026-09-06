@@ -97,7 +97,7 @@ class FeatureSet:
     # ARCHIVE trucks: filing a carrier's insurance certificate and
     # retiring a tractor are different risks, and a compliance officer
     # needs the first without the second.  Mirrors the driver-documents
-    # pair (``can_manage_driver_docs`` / ``can_driver_docs_own``).
+    # pair (``can_manage_driver_docs`` / ``can_view_driver_docs``).
     can_view_vehicle_docs: bool = False        # read + download a truck's papers
     can_manage_vehicle_docs: bool = False # upload / delete them
     can_view_vehicles: bool = False      # /vehicle <any>
@@ -126,7 +126,6 @@ class FeatureSet:
     # Loads (the load/shipment feature) — view-all vs own-scope vs manage,
     # the same split work orders / driver pay use.
     can_view_loads: bool = False       # view every load
-    can_loads_own: bool = False       # view own loads (driver scope)
     can_manage_loads: bool = False    # add/edit/remove ANY load.  The old
                                       # dispatcher own-scope write wall
                                       # (can_loads_manage_all) was removed
@@ -171,19 +170,17 @@ class FeatureSet:
     can_view_events: bool = False        # safety events (all trucks)
     can_manage_billing: bool = False    # the BILLING page (our charge to this account) — not Driver Pay
     can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
-    can_view_risk_reports: bool = False   # generate Stakeholder Risk Summary for any subject
-    can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
+    can_view_risk_reports: bool = False   # generate Stakeholder Risk Summary (width: unit_width — a driver, their trucks)
+    can_view_driver_pay: bool = False       # paystubs (width: person_width — a driver, their own)
     can_manage_driver_pay: bool = False     # configure rules / trigger runs / view all paystubs
-    can_driver_pay_view_own: bool = False  # view own paystub history (driver self-service)
+    can_view_coaching: bool = False      # coaching assignments (width: person_width — a driver, their own)
     can_manage_coaching: bool = False    # manage coaching rules + assign manually + view all
-    can_coaching_view_own: bool = False # see + acknowledge own coaching assignments
-    # Driver Module — profile + document management.
-    # Admin permission grants full CRUD on any driver in the account
-    # (used by Workforce → Drivers admin page).  "Own" permission
-    # lets a driver view their own profile + documents from the
-    # miniapp (read-only in MVP; re-upload requests go to admin).
+    # Driver Module — profile + document management.  View is read
+    # (width: person_width — a driver reads their own profile +
+    # documents from the miniapp; staff read the account's); Manage is
+    # full CRUD on any driver (Workforce → Drivers admin page).
+    can_view_driver_docs: bool = False     # read profiles + documents
     can_manage_driver_docs: bool = False   # create / update / upload / delete for any driver
-    can_driver_docs_own: bool = False      # read own profile + documents
     # Driver LIFECYCLE management — the Drivers feature's roster admin surface:
     # invite a driver, assign trucks, link Samsara/Datatruck/load identities,
     # provision-as-pending, activate/deactivate.  Distinct from
@@ -269,9 +266,12 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "can_cameras": "can_view_cameras",
     "can_carrier_directory": "can_view_carrier_directory",
     "can_coaching_admin": "can_manage_coaching",
+    "can_coaching_view_own": "can_view_coaching",
     "can_cost_per_mile": "can_view_cost_per_mile",
     "can_cost_reports": "can_view_cost_reports",
+    "can_driver_docs_own": "can_view_driver_docs",
     "can_driver_pay_admin": "can_manage_driver_pay",
+    "can_driver_pay_view_own": "can_view_driver_pay",
     "can_efficiency": "can_view_efficiency",
     "can_events_all": "can_view_events",
     "can_events_vehicle": "can_view_events",
@@ -285,6 +285,7 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "can_inspections_vehicle": "can_view_inspections",
     "can_kpi": "can_view_kpi",
     "can_loads_all": "can_view_loads",
+    "can_loads_own": "can_view_loads",
     "can_location_map": "can_view_location",
     "can_location_vehicle": "can_view_location",
     "can_maintenance_all": "can_manage_maintenance",
@@ -293,6 +294,7 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "can_parking_vehicle": "can_view_parking",
     "can_parts": "can_manage_parts",
     "can_risk_report_all": "can_view_risk_reports",
+    "can_risk_report_own": "can_view_risk_reports",
     "can_route_all": "can_view_routes",
     "can_route_vehicle": "can_view_routes",
     "can_scorecard_all": "can_view_scorecards",
@@ -332,6 +334,10 @@ PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
     "parking": (
         "can_parking_all",
         "can_parking_vehicle"
+    ),
+    "risk_reports": (
+        "can_risk_report_all",
+        "can_risk_report_own"
     ),
     "routes": (
         "can_route_all",
@@ -377,6 +383,10 @@ UNIT_FEATURES: dict[str, tuple[str, str | None]] = {
         "can_view_parking",
         None
     ),
+    "risk_reports": (
+        "can_view_risk_reports",
+        None
+    ),
     "routes": (
         "can_view_routes",
         None
@@ -395,10 +405,41 @@ UNIT_FEATURES: dict[str, tuple[str, str | None]] = {
     )
 }
 
+#: the person pairs, noun → the LEGACY own flag.  Their width is
+#: the role's (driver reads their own rows), never stored — see
+#: capabilities/permissions/scope.person_width.
+PAIRED_PERSON_FEATURES: dict[str, str] = {
+    "coaching": "can_coaching_view_own",
+    "driver_docs": "can_driver_docs_own",
+    "driver_pay": "can_driver_pay_view_own",
+    "loads": "can_loads_own"
+}
+
+#: noun → (view field, manage field or None) — the canonical shape
+PERSON_FEATURES: dict[str, tuple[str, str | None]] = {
+    "coaching": (
+        "can_view_coaching",
+        "can_manage_coaching"
+    ),
+    "driver_docs": (
+        "can_view_driver_docs",
+        "can_manage_driver_docs"
+    ),
+    "driver_pay": (
+        "can_view_driver_pay",
+        "can_manage_driver_pay"
+    ),
+    "loads": (
+        "can_view_loads",
+        "can_manage_loads"
+    )
+}
+
 #: 1:1 renames, canonical → legacy (the drift guard and the wire use it)
 CANONICAL_TO_LEGACY: dict[str, str] = {
     new: old for old, new in LEGACY_TO_CANONICAL.items()
     if not any(old in pair for pair in PAIRED_UNIT_FEATURES.values())
+    and old not in PAIRED_PERSON_FEATURES.values()
 }
 
 
@@ -459,7 +500,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_vehicles=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
-        can_view_loads=True, can_loads_own=True, can_manage_loads=True,
+        can_view_loads=True, can_manage_loads=True,
         can_view_kpi=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
@@ -479,14 +520,15 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_events=True,
         can_manage_billing=True,
         can_manage_poi_layers=True,
-        can_view_risk_reports=True, can_risk_report_own=True,
-        can_manage_driver_pay=True, can_driver_pay_view_own=True,
-        can_manage_coaching=True, can_coaching_view_own=True,
-        can_manage_driver_docs=True, can_driver_docs_own=True,
+        can_view_risk_reports=True,
+        can_manage_driver_pay=True,
+        can_manage_coaching=True,
+        can_manage_driver_docs=True,
         can_manage_drivers=True,
         can_manage_inspections=True, can_view_inspections=True,
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
+        can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
     ),
     Role.ADMIN: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
@@ -495,7 +537,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_vehicles=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
-        can_view_loads=True, can_loads_own=True, can_manage_loads=True,
+        can_view_loads=True, can_manage_loads=True,
         can_view_kpi=True,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
@@ -513,14 +555,15 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_events=True,
         can_manage_billing=True,
         can_manage_poi_layers=True,
-        can_view_risk_reports=True, can_risk_report_own=True,
-        can_manage_driver_pay=True, can_driver_pay_view_own=True,
-        can_manage_coaching=True, can_coaching_view_own=True,
-        can_manage_driver_docs=True, can_driver_docs_own=True,
+        can_view_risk_reports=True,
+        can_manage_driver_pay=True,
+        can_manage_coaching=True,
+        can_manage_driver_docs=True,
         can_manage_drivers=True,
         can_manage_inspections=True, can_view_inspections=True,
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
+        can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
     ),
     Role.FLEET: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
@@ -546,14 +589,15 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_cost_per_mile=True,
         can_view_events=True,
         can_manage_poi_layers=True,
-        can_view_risk_reports=False, can_risk_report_own=True,
-        can_manage_driver_pay=False, can_driver_pay_view_own=False,
-        can_manage_coaching=True, can_coaching_view_own=False,
+        can_view_risk_reports=True,
+        can_manage_driver_pay=False,
+        can_manage_coaching=True,
         # Fleet managers handle driver records day-to-day (assignments,
         # CDL renewals) so they get the admin permission too.
-        can_manage_driver_docs=True, can_driver_docs_own=False,
+        can_manage_driver_docs=True,
         can_manage_drivers=True,   # runs the driver roster (trucks, TMS links)
         can_manage_inspections=True, can_view_inspections=True,
+        can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
     ),
     Role.SAFETY: FeatureSet(
         can_view_vehicle_docs=True,
@@ -571,22 +615,23 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_routes=True,
         can_view_cost_per_mile=False,
         can_view_events=True,
-        can_view_risk_reports=True, can_risk_report_own=True,
-        can_manage_driver_pay=False, can_driver_pay_view_own=False,
-        can_manage_coaching=True, can_coaching_view_own=False,
+        can_view_risk_reports=True,
+        can_manage_driver_pay=False,
+        can_manage_coaching=True,
         # Safety needs read-only access for compliance checks (CDL /
         # medical card expirations) — read-only via the admin route
         # is fine for MVP; a future ``can_view_driver_docs`` could
         # split read from write if needed.
-        can_manage_driver_docs=True, can_driver_docs_own=False,
+        can_manage_driver_docs=True,
         can_manage_inspections=True, can_view_inspections=True,
+        can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
     ),
     Role.DISPATCHER: FeatureSet(
         can_view_vehicle_docs=True,
         can_view_faults=False, can_view_fuel=True,
         can_view_efficiency=False, can_view_health=False,
         can_view_vehicles=True,
-        can_view_loads=True, can_loads_own=True, can_manage_loads=True,
+        can_view_loads=True, can_manage_loads=True,
         # Dispatchers need the geofence and safety-event features (granted
         # below) to react to deviations mid-shift.  Those alerts surface in the
         # always-on Alerts inbox every role has — the features decide WHICH
@@ -601,10 +646,11 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_routes=True,
         can_view_cost_per_mile=False,
         can_view_events=True,
-        can_view_risk_reports=False, can_risk_report_own=False,
-        can_manage_driver_pay=False, can_driver_pay_view_own=False,
-        can_manage_coaching=False, can_coaching_view_own=False,
+        can_view_risk_reports=False,
+        can_manage_driver_pay=False,
+        can_manage_coaching=False,
         can_manage_inspections=True, can_view_inspections=True,
+        can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
     ),
     Role.HR: FeatureSet(
         # HR persona — people management.  Focus: driver compliance,
@@ -630,6 +676,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_scorecards=True,                # Driver behaviour insight
         can_view_risk_reports=True,              # Personnel risk reporting
         can_manage_geofence=True, can_view_geofence=True,                 # See geofence context for incidents
+        can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
@@ -649,13 +696,13 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Read-only context — accounting needs to see WHICH assets
         # generate WHICH costs:
         can_view_vehicles=True,                  # Vehicle list for asset accounting
+        can_view_driver_pay=True, can_view_coaching=False, can_view_driver_docs=False,
     ),
     Role.DRIVER: FeatureSet(
         can_view_vehicle_docs=True,
         can_view_faults=False, can_view_fuel=False,
         can_view_efficiency=False, can_view_health=False,
         can_view_vehicles=True,
-        can_loads_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_manage_geofence=False, can_view_geofence=True,
@@ -668,13 +715,15 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_routes=True,
         can_view_cost_per_mile=False,
         can_view_events=True,
-        can_view_risk_reports=False, can_risk_report_own=True,
-        can_manage_driver_pay=False, can_driver_pay_view_own=True,
-        can_manage_coaching=False, can_coaching_view_own=True,
+        can_view_risk_reports=True,
+        can_manage_driver_pay=False,
+        can_manage_coaching=False,
         # Drivers see their own profile + documents (read-only); they
         # never see other drivers' records.
-        can_manage_driver_docs=False, can_driver_docs_own=True,
+        can_manage_driver_docs=False,
         can_manage_inspections=False, can_view_inspections=True,
+        can_view_loads=True,
+        can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
     ),
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
@@ -708,10 +757,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_routes=False,
         can_view_cost_per_mile=False,
         can_view_events=False,
-        can_view_risk_reports=False, can_risk_report_own=False,
-        can_manage_driver_pay=False, can_driver_pay_view_own=False,
-        can_manage_coaching=False, can_coaching_view_own=False,
-        can_manage_driver_docs=False, can_driver_docs_own=False,
+        can_view_risk_reports=False,
+        can_manage_driver_pay=False,
+        can_manage_coaching=False,
+        can_manage_driver_docs=False,
         can_manage_inspections=False, can_view_inspections=False,
         # Recruiting IS the recruiter's defining function — the pipeline
         # is granted by default so the role is usable out of the box.
@@ -722,6 +771,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # recruiter on the Permissions page.
         can_manage_applications=True, can_onboard_drivers=False,
         can_view_carrier_directory=True,   # read the carrier directory (managers also edit)
+        can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
     ),
 }
 
@@ -774,7 +824,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
     Role.FLEET: RoleTier(
         senior_label="Manager", base_label="Employee",
         grants=frozenset({
-            "can_invite", "can_manage_work_hours", "can_view_risk_reports",
+            "can_invite", "can_manage_work_hours",
             "can_manage_role_bot", "can_manage_config_role",
         }),
     ),
@@ -1398,7 +1448,6 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_manage_companies": "manage companies",
     "can_manage_vehicles": "manage vehicles",
     "can_loads_all": "loads (all)",
-    "can_loads_own": "own loads",
     "can_manage_loads": "manage loads",
     "can_kpi": "KPI & performance",
     "can_manage_account": "account settings",
@@ -1438,11 +1487,10 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_events_vehicle": "safety events (assigned vehicle)",
     "can_manage_billing": "billing & subscription management",
     "can_risk_report_all": "stakeholder risk summary report (all subjects)",
-    "can_risk_report_own": "stakeholder risk summary report (own subject)",
     "can_driver_pay_admin": "driver pay: manage rules, trigger runs, view all paystubs",
-    "can_driver_pay_view_own": "driver pay: view own paystub history",
+    "can_view_driver_pay": "driver pay: view paystubs",
     "can_coaching_admin": "coaching: manage rules, assign coaching, view all",
-    "can_coaching_view_own": "coaching: see + acknowledge own assignments",
+    "can_view_coaching": "coaching: see assignments",
     "can_carrier_directory": "carrier directory (view)",
     "can_manage_carrier_directory": "carrier directory (manage)",
 }

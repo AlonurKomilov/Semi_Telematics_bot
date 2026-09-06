@@ -67,8 +67,8 @@ value inside the tier union would claim services sit on an axis they don't.
 - **Content gate**: which report **tabs** appear is gated per report **type** —
   and those types are genuine per-role **features** that live in the matrix
   under their **owning department**: **Risk Summary → Safety**
-  (`can_risk_report_all` / `can_risk_report_own`), **Cost Reports → Accounting**
-  (`can_cost_reports`); the per-vehicle reports (Faults / Health / Fuel /
+  (`can_view_risk_reports`, width Team Management's), **Cost Reports → Accounting**
+  (`can_view_cost_reports`); the per-vehicle reports (Faults / Health / Fuel /
   Efficiency) live under Vehicles. So the report **engine** is a service; the
   report **types** are features.
 - **Contribution pattern**: each feature component owns a `report.py`.

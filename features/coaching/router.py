@@ -57,7 +57,7 @@ def disabled_to_403(_exc: CoachingDisabledError) -> HTTPException:
 @router.get("/topics")
 async def list_topics(
     user: dict = Depends(require_permission_any(
-        "can_manage_coaching", "can_coaching_view_own",
+        "can_manage_coaching", "can_view_coaching",
     )),
 ):
     try:
@@ -72,14 +72,25 @@ async def list_topics(
 
 # ── Assignments (admin) ────────────────────────────────────────────
 
+def _require_wide(user: dict) -> None:
+    """The account-wide routes: a self-width caller (a driver holding
+    the view verb) has ``/me``; here they would read everyone's."""
+    from capabilities.permissions.scope import person_width
+    if person_width(user["role"], "coaching") != "all":
+        raise HTTPException(403, "account-wide coaching is outside your width; use /me")
+
+
 @router.get("/assignments")
 async def list_assignments(
     driver_id: Optional[str] = Query(default=None, max_length=128),
     status: Optional[str] = Query(default=None, max_length=32),
     limit: int = Query(default=200, ge=1, le=1000),
-    user: dict = Depends(require_permission("can_manage_coaching")),
+    user: dict = Depends(require_permission_any(
+        "can_manage_coaching", "can_view_coaching",
+    )),
     platform_db=Depends(get_platform_db),
 ):
+    _require_wide(user)
     try:
         rows = await svc.list_assignments(
             user["account_id"], driver_id=driver_id, status=status, limit=limit,
@@ -101,7 +112,9 @@ async def list_assignments(
 @router.get("/assignments/count")
 async def count_assignments(
     status: Optional[str] = Query(default=None, max_length=32),
-    user: dict = Depends(require_permission("can_manage_coaching")),
+    user: dict = Depends(require_permission_any(
+        "can_manage_coaching", "can_view_coaching",
+    )),
 ):
     """Bare count of coaching assignments matching a status filter.
 
@@ -110,6 +123,7 @@ async def count_assignments(
     need the number.  Uses the same service layer as /assignments so
     the count includes/excludes the same rows.
     """
+    _require_wide(user)
     try:
         rows = await svc.list_assignments(
             user["account_id"], driver_id=None, status=status, limit=1000,
@@ -213,7 +227,7 @@ async def my_assignments(
     status: Optional[str] = Query(default=None, max_length=32),
     limit: int = Query(default=50, ge=1, le=500),
     user: dict = Depends(require_permission_any(
-        "can_manage_coaching", "can_coaching_view_own",
+        "can_manage_coaching", "can_view_coaching",
     )),
 ):
     """Return coaching assignments for the calling driver."""
@@ -234,7 +248,7 @@ async def ack_my_assignment(
     assignment_id: int,
     body: AcknowledgeIn,
     user: dict = Depends(require_permission_any(
-        "can_manage_coaching", "can_coaching_view_own",
+        "can_manage_coaching", "can_view_coaching",
     )),
 ):
     """Driver acknowledges an assignment.  Must own the assignment."""

@@ -163,16 +163,18 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       // COMPENSATION, deliberately its own flag: can_kpi is shared
       // analytics (grades, viewable widely); payout amounts are money.
-      { key: 'can_manage_driver_docs', kind: 'feature', writeLevel: true, label: 'Drivers', description: 'Manage — driver list + document management' },
+      // View = read profiles + documents (a driver's width is themself —
+      // person width, the role's, never a flag); Manage = full CRUD.
+      { key: 'can_view_driver_docs', kind: 'feature', label: 'Drivers', description: 'Driver list + documents' },
+      { key: 'can_manage_driver_docs', kind: 'action', label: 'Manage', indented: true, description: 'Create, update, upload & delete for any driver' },
       // A sub-feature, not a component: features/drivers/onboarding/ has
       // its own home AND its own hub contribution (the stale-approval
       // alert).  Deliberately separate from Driver roster so hiring is
       // granted on purpose — Fleet administers drivers but does not hire.
       { key: 'can_onboard_drivers',    kind: 'subfeature', label: 'Onboarding', indented: true, description: 'Finish the hire a recruiter approved — creates the driver’s invite' },
       { key: 'can_manage_drivers',     kind: 'component', label: 'Driver roster', indented: true, description: 'Invite drivers, assign trucks, link Samsara/TMS, activate / deactivate' },
-      // NOTE: can_driver_docs_own (a driver viewing their OWN docs) is a
-      // driver self-service flag — it lives in the "Driver — self-service"
-      // panel, not this staff matrix.  Same for the other view-own flags.
+      // A driver's own documents are the same view verb at self width
+      // (the Driver panel edits the driver role's copy of it).
       { key: 'can_view_scorecards', kind: 'feature', label: 'Scorecards' },
       // Scorecard Rules editing has no row of its own anymore — it folded
       // into "Config — account-wide" (Settings group) with KPI thresholds.
@@ -199,14 +201,12 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Dispatch',
     flags: [
       { key: 'can_view_routes', kind: 'feature', label: 'Routes' },
-      // One scoped row like every other feature (owner decision 2026-07-29;
-      // the Risk Summary precedent): one tick grants view all + own
-      // (view-own = assigned as DRIVER, the Driver panel's toggle).
-      // The old own/all MANAGE split is GONE (same decision): any Manage
-      // holder edits any load, and the per-load accountability trail —
-      // actor + old→new diffs, the HISTORY block in the load dialog —
-      // replaced the wall.  can_loads_manage_all no longer exists.
-      { allKey: 'can_view_loads', vehicleKey: 'can_loads_own', kind: 'feature', label: 'Loads', scoped: true, description: 'See loads — every load in the account (drivers: their own, via the Driver panel)' },
+      // View opens the page; WIDTH is the role's (person width): a driver
+      // sees the loads they drive, everyone else the account's.  The old
+      // own/all halves — view AND manage — are gone (owner decisions
+      // 2026-07-29 and 2026-09-04): any Manage holder edits any load,
+      // and the per-load accountability trail replaced the wall.
+      { key: 'can_view_loads', kind: 'feature', label: 'Loads', description: 'See loads — the account’s for staff, their own for a driver' },
       { key: 'can_manage_loads', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove ANY load — every change is recorded in the load’s history (who, what, old → new)' },
     ],
   },
@@ -218,16 +218,18 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_parking', kind: 'feature', label: 'Parking', description: 'Unsafe-parking events' },
       // The Risk Summary report tab — a stakeholder/personnel risk deliverable.
       // It's a report TYPE (feature), surfaced inside the always-on Reports
-      // hub; it lives here because it's safety-owned data.
-      { allKey: 'can_view_risk_reports', vehicleKey: 'can_risk_report_own', kind: 'feature', label: 'Risk Summary', scoped: true, description: 'Stakeholder Risk Summary report (in the Reports hub)' },
+      // hub; it lives here because it's safety-owned data.  Width is Team
+      // Management's (unit width): a driver gets their own trucks' summary.
+      { key: 'can_view_risk_reports', kind: 'feature', label: 'Risk Summary', description: 'Stakeholder Risk Summary report (in the Reports hub)' },
     ],
   },
   {
     title: 'HR',
     flags: [
-      // can_coaching_view_own (a driver viewing their OWN coaching) is driver
-      // self-service — it lives in the Driver panel, not here.
-      { key: 'can_manage_coaching',    kind: 'feature', writeLevel: true, label: 'Coaching', description: 'Manage — coaching rules, assignments & review' },
+      // View = see assignments (a driver's width is themself — person
+      // width); Manage = rules, assign, review.
+      { key: 'can_view_coaching',      kind: 'feature', label: 'Coaching', description: 'Coaching assignments & review' },
+      { key: 'can_manage_coaching',    kind: 'action', label: 'Manage', indented: true, description: 'Coaching rules, assign & cancel, run now' },
     ],
   },
   {
@@ -253,9 +255,10 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_billing',   kind: 'feature', writeLevel: true, label: 'Billing', description: 'Manage — the account’s plan & payment. Not driver pay (that’s Driver Pay)' },
       // Driver Pay is an Accounting feature (docs/FEATURES.md), beside Costs /
       // Cost Reports / Billing — gated by the Accounting module.
-      // can_driver_pay_view_own (a driver viewing their OWN paystubs via the
-      // Telegram bot) is driver self-service — it lives in the Driver panel.
-      { key: 'can_manage_driver_pay',    kind: 'feature', writeLevel: true, label: 'Driver Pay', description: 'Manage — driver pay runs, statements & bonus rules' },
+      // View = paystubs and runs (a driver's width is themself — person
+      // width, via the Telegram bot); Manage = rules and runs.
+      { key: 'can_view_driver_pay',      kind: 'feature', label: 'Driver Pay', description: 'Paystubs & pay runs' },
+      { key: 'can_manage_driver_pay',    kind: 'action', label: 'Manage', indented: true, description: 'Pay rules, create, finalize & cancel runs' },
     ],
   },
 ];
@@ -339,14 +342,16 @@ export const DRIVER_TRUCK: (ScopedFlag | SimpleFlag)[] = [
   { key: 'can_view_work_orders', kind: 'feature', label: 'Work Orders',         description: 'View their truck’s work orders + upload shop invoices' },
   { key: 'can_manage_work_orders', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit & delete work orders and their invoices — also opens Vendors' },
 ];
-// The driver's OWN-record flags (view-own).  Kept out of the staff matrix for
-// the same reason — they only ever apply to the driver themself.
+// The driver's OWN-record grants: the same view verbs the staff matrix
+// carries, read at the driver's width — themself (person width, the
+// role's) or their trucks (unit width, Team Management's).  Kept out of
+// the staff matrix because they only ever describe the driver themself.
 export const DRIVER_RECORDS: SimpleFlag[] = [
-  { kind: 'feature', key: 'can_driver_docs_own',   label: 'Own Documents', description: 'View their own driver documents' },
-  { kind: 'feature', key: 'can_driver_pay_view_own',  label: 'Own Paystubs',  description: 'View their own paystubs (Telegram /driver-pay)' },
-  { kind: 'feature', key: 'can_coaching_view_own', label: 'Own Coaching',  description: 'View their own coaching notes' },
-  { kind: 'feature', key: 'can_loads_own',         label: 'Own Loads',     description: 'Loads assigned to them (dashboard Loads page, own scope)' },
-  { kind: 'feature', key: 'can_risk_report_own',   label: 'Own Risk Summary', description: 'Their own Stakeholder Risk Summary report' },
+  { kind: 'feature', key: 'can_view_driver_docs', label: 'Own Documents', description: 'View their own driver documents' },
+  { kind: 'feature', key: 'can_view_driver_pay',  label: 'Own Paystubs',  description: 'View their own paystubs (Telegram /driver-pay)' },
+  { kind: 'feature', key: 'can_view_coaching',    label: 'Own Coaching',  description: 'View their own coaching notes' },
+  { kind: 'feature', key: 'can_view_loads',       label: 'Own Loads',     description: 'Loads assigned to them (dashboard Loads page)' },
+  { kind: 'feature', key: 'can_view_risk_reports', label: 'Own Risk Summary', description: 'Their own trucks’ Stakeholder Risk Summary report' },
 ];
 // The flags the Driver panel edits.  The `driver` role is diffed against THIS
 // list (not PERM_GROUPS) because the view-own records here deliberately have

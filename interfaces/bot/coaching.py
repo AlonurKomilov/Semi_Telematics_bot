@@ -44,7 +44,7 @@ async def cmd_my_coaching(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not (can(user.role, "can_manage_coaching")
-            or can(user.role, "can_coaching_view_own")):
+            or can(user.role, "can_view_coaching")):
         await update.message.reply_text(t("access.no_access"))
         return
 

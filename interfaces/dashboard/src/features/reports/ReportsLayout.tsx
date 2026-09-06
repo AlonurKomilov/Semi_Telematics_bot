@@ -46,7 +46,7 @@ const SUB_NAV: SubNavEntry[] = [
   // default tab); fuel/health/efficiency tabs filter further at the
   // page level.  Hide the tab for personas without can_view_faults.
   { to: '',                 label: 'Reports',           icon: FileText,    perms: ['can_view_faults'] },
-  { to: 'risk-summary',     label: 'Risk Summary',      icon: AlertTriangle, perms: ['can_view_risk_reports', 'can_risk_report_own'] },
+  { to: 'risk-summary',     label: 'Risk Summary',      icon: AlertTriangle, perms: ['can_view_risk_reports'] },
   { to: 'cost-reports',     label: 'Cost Reports',      icon: TrendingUp,  perms: ['can_view_cost_reports'] },
   // DOT Binder — gated on can_manage_maintenance (managers only).
   // Moved here from the Maintenance page in 2026-06 because it's

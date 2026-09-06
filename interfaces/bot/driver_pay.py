@@ -41,7 +41,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not (can(user.role, "can_manage_driver_pay")
-            or can(user.role, "can_driver_pay_view_own")):
+            or can(user.role, "can_view_driver_pay")):
         await update.message.reply_text(t("access.no_access"))
         return
 

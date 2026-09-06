@@ -479,7 +479,7 @@ def test_payroll_is_an_accounting_feature_not_a_module():
     assert "payroll" not in TOGGLEABLE_MODULES
     # Disabling ACCOUNTING masks the payroll flags (they own only accounting).
     off = masked_off_flags("accounting")
-    assert {"can_manage_driver_pay", "can_driver_pay_view_own"} <= off
+    assert {"can_manage_driver_pay", "can_view_driver_pay"} <= off
     # A payroll flag is never masked by any OTHER department alone.
     for mod in ("fleet", "dispatch", "safety", "hr"):
         assert "can_manage_driver_pay" not in masked_off_flags(mod)

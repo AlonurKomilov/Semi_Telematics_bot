@@ -158,9 +158,9 @@ The frontend mirrors the backend:
 | `GET /api/admin/escalations` | Permission gate `can_alerts_all` (Owner / Admin) |
 | `GET /api/alerts/aggregate?days=N` | Same |
 | `GET /api/safety/events/summary?days=N` | Permission gate `can_events_*` |
-| `GET /api/coaching/assignments/count` | Permission gate `can_coaching_admin` |
-| `GET /api/maintenance/due-locations` | `has_maintenance_access` + `_own` truck scoping |
-| `GET /api/fleet/utilisation/heatmap?days=N` | Permission gate `can_vehicle_all` (Owner / Admin) |
+| `GET /api/coaching/assignments/count` | Permission gate `can_manage_coaching` / `can_view_coaching` at person width `all` |
+| `GET /api/maintenance/due-locations` | `has_maintenance_access` + assigned-width truck scoping |
+| `GET /api/fleet/utilisation/heatmap?days=N` | `require_wide("vehicles")` — `can_view_vehicles` at unit width `all` |
 | `GET /fleet/geofences` | Permission gate `can_geofence_*` |
 | `GET /parking/active` | Permission gate `can_alerts_*` / `can_vehicle_all` |
 

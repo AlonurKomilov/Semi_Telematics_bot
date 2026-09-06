@@ -39,7 +39,7 @@ const ALL_TABS: DriverDetailTab[] = [
  *  - Safety: compliance + behavior (docs, PTI, trainings, HOS fatigue).
  *    Vehicle assignment isn't theirs to action — omitted.
  *  - Dispatch: "who can I put where, and for how long" — assignment + HOS.
- *  - Driver: own profile + own documents (the can_driver_docs_own case).
+ *  - Driver: own profile + own documents (can_view_driver_docs at self width).
  *  - Accounting: identity only (pay lives in Driver Pay, not here).
  */
 export const TABS_FOR_PERSONA: Record<Persona, DriverDetailTab[]> = {

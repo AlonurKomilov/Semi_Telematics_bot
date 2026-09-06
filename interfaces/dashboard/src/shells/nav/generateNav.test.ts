@@ -108,4 +108,19 @@ describe('generateNav — role manager reaches Settings (parent-only group)', ()
     const nav = generateNav('fleet', grants('can_view_vehicles'), undefined);
     expect(nav.find((g) => g.collapsible)).toBeUndefined();
   });
+
+  it('a person view verb surfaces cross-department at person width all — never for a driver', () => {
+    // A driver holds can_view_coaching / can_view_driver_pay at SELF
+    // width (the role's): the staff pages must not appear in their
+    // sidebar.  A dispatcher holding the same verbs reads the account.
+    const held = grants('can_view_coaching', 'can_view_driver_pay', 'can_view_driver_docs', 'can_view_vehicles');
+    const driver = paths(generateNav('driver', held, undefined, 'assigned'));
+    expect(driver).not.toContain('/coaching');
+    expect(driver).not.toContain('/driver-pay');
+    expect(driver).not.toContain('/workforce/drivers');
+    const dispatcher = paths(generateNav('dispatcher', held, undefined));
+    expect(dispatcher).toContain('/coaching');
+    expect(dispatcher).toContain('/driver-pay');
+    expect(dispatcher).toContain('/workforce/drivers');
+  });
 });

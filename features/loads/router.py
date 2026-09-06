@@ -4,7 +4,8 @@ router.py is interface-layer code co-located with its domain
 (docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
 # import interfaces.api.deps; nothing else in the feature may.
 
-Visibility: ``can_view_loads`` sees the account's loads; ``can_loads_own``
+Visibility: ``can_view_loads`` opens the page; WIDTH is the role's —
+``person_width``: a driver sees the loads they drive, everyone else
 (drivers) sees only loads linked to the caller's user id.  Writes need the
 delegatable ``can_manage_loads``.
 """
@@ -14,7 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from capabilities.permissions.roles import Role, get_user_permissions
+
 from features.loads import service
 from features.loads.service import load_to_dict
 from infra.platform import get_tenant_db as _get_tenant_db
@@ -25,7 +26,7 @@ from interfaces.api.deps import (
 
 router = APIRouter(prefix="/loads", tags=["loads"])
 
-_view_loads = require_permission_any("can_view_loads", "can_loads_own")
+_view_loads = require_permission("can_view_loads")
 _manage_loads = require_permission("can_manage_loads")
 
 # Rows returned to the list screen per request.  The response carries a
@@ -41,18 +42,15 @@ _manage_loads = require_permission("can_manage_loads")
 LIST_CAP = 5000
 
 
-async def _user_perms(user: dict):
-    return await get_user_permissions(
-        Role(user["role"]), user["account_id"],
-        is_manager=bool(user.get("is_manager")),
-        is_primary_owner=bool(user.get("is_primary_owner")),
-    )
-
-
 async def _scope_driver_id(user: dict) -> int | None:
-    """None = account-wide; a user id = own-scope (driver) caller."""
-    perms = await _user_perms(user)
-    if getattr(perms, "can_view_loads", False):
+    """None = account-wide; a user id = a self-width caller (a driver).
+
+    Width is the ROLE's (``person_width``), not a grant's: the old
+    "holds the view verb = account-wide" proxy would have opened every
+    load to a driver the day the own flag folded into that verb.
+    """
+    from capabilities.permissions.scope import person_width
+    if person_width(user["role"], "loads") == "all":
         return None
     return await resolve_user_id(user)
 

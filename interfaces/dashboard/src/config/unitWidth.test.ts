@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isWideScope, hasWideScope } from './unitWidth';
+import { isWideScope, hasWideScope, personWidthOf } from './unitWidth';
 
 describe('unit width (Team Management\'s answer)', () => {
   it('only "assigned" is narrow — missing width is wide, as the nav rule', () => {
@@ -17,5 +17,15 @@ describe('unit width (Team Management\'s answer)', () => {
     expect(hasWideScope(has, 'assigned', 'can_view_vehicles')).toBe(false);
     // wide member without the verb: the width alone is not enough
     expect(hasWideScope(has, 'all', 'can_view_parking')).toBe(false);
+  });
+});
+
+describe('person width (the role\'s, never stored)', () => {
+  it('a driver reads their own rows; everyone else the account\'s', () => {
+    expect(personWidthOf('driver')).toBe('self');
+    for (const r of ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter']) {
+      expect(personWidthOf(r), r).toBe('all');
+    }
+    expect(personWidthOf(undefined)).toBe('all');
   });
 });

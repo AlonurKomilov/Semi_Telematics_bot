@@ -36,12 +36,14 @@ Every tier answers ONE question: **who is this for?**
 
 1. **Personal** — the individual, *about themselves*. The test is whose data
    it shows, not who it is assembled for: Profile (name / language / timezone
-   / DND) and the own-record surfaces (`can_driver_docs_own`,
-   `can_driver_pay_view_own`, `can_coaching_view_own`, `can_loads_own`,
-   `can_risk_report_own`).  Each own-record surface is the twin of a
-   department's admin one — Coaching (HR) ↔ Own Coaching, Driver Pay
-   (Accounting) ↔ Own Paystubs, Risk Summary (Safety) ↔ Own Risk Summary.
-   Naming the pattern is what stops the next pair being invented ad hoc.
+   / DND) and the own-record surfaces — the department feature's VIEW
+   verb read at the driver's width: `can_view_driver_docs`,
+   `can_view_driver_pay`, `can_view_coaching`, `can_view_loads` at person
+   width (the role's — a driver reads their own rows), and
+   `can_view_risk_reports` at unit width (Team Management's — their
+   trucks).  There is no separate own flag any more (the `*_own` family
+   folded 2026-09-04); the twin is the same verb, narrower.  Naming the
+   pattern is what stops the next pair being invented ad hoc.
    NOTE Profile lives in `src/pages/` with the app-shell pages: placement is
    not taxonomy (the same principle that kept Working Hours' classification
    when its router moved).
@@ -123,7 +125,7 @@ or the explicit exempt list.
 | Feature | Parts |
 |---|---|
 | **Profile** | personal prefs (name/language/timezone) · DND toggle.  Lives in `src/pages/` — placement isn't taxonomy.  "My Notifications" is Alerts', not Profile's |
-| **Own records** | the view-own twins of department features: Own Documents · Own Paystubs · Own Coaching · Own Loads · Own Risk Summary (edited on the Permissions page's **Driver** tab) |
+| **Own records** | the department features' view verbs at the driver's width: Own Documents · Own Paystubs · Own Coaching · Own Loads · Own Risk Summary (edited on the Permissions page's **Driver** tab) |
 
 ### 🟦 Administration
 | Feature | Home |

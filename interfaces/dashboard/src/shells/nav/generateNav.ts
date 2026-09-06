@@ -17,8 +17,9 @@ import {
   isPathModuleEnabled,
   type NavGroupKey,
   type CatalogFeature, UNIT_VIEW_VERBS,
+  PERSON_VIEW_VERBS,
 } from '../../config/featureCatalog';
-import { isWideScope } from '../../config/unitWidth';
+import { isWideScope, personWidthOf } from '../../config/unitWidth';
 
 // The shape the Sidebar renders (moved here from the old defaultNav.ts).
 export interface NavItem {
@@ -129,6 +130,14 @@ export function generateNav(
     const unitViews = flags.filter((k) => UNIT_VIEW_VERBS.includes(k));
     if (unitViews.length > 0) {
       return isWideScope(vehicleScope) && has(...unitViews);
+    }
+    // A PERSON view verb ("my paystubs") surfaces cross-department only
+    // for a persona whose person width is 'all' — the role's answer:
+    // a driver holds these verbs at self width and never gets the
+    // staff pages for them.
+    const personViews = flags.filter((k) => PERSON_VIEW_VERBS.includes(k));
+    if (personViews.length > 0) {
+      return personWidthOf(activeView) === 'all' && has(...personViews);
     }
     const accountWide = flags.filter((k) => !OWN_SCOPE_FLAG.test(k));
     return accountWide.length > 0 && has(...accountWide);
