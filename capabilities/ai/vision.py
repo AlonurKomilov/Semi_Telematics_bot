@@ -4,8 +4,40 @@ from __future__ import annotations
 
 import logging
 
-from capabilities.ai.registry import DEFAULT_VISION_MODEL, DEFAULT_VISION_LOCATION
-from capabilities.ai.models import _account_vision_models, _ensure_model
+from capabilities.ai.registry import (
+    DEFAULT_VISION_MODEL, DEFAULT_VISION_LOCATION, VISION_FALLBACK_CHAIN,
+)
+
+
+# A vision attempt must not change which model answers the NEXT chat.
+# Both ladders used to call ``_ensure_model(name, location)``, which
+# rebuilds and REPLACES the process-wide current model whenever the
+# name or region differs — so a camera frame that fell back to 2.5 Pro
+# left every chat request on this worker answering from 2.5 Pro until
+# something switched it back.  Callers are built once per
+# (model, region) here, through the pure builder, and kept.
+_vision_callers: dict[tuple[str, str], object] = {}
+
+
+def _vision_caller(model_name: str, location: str):
+    key = (model_name, location)
+    caller = _vision_callers.get(key)
+    if caller is None:
+        from capabilities.ai.models import _build_model
+        caller = _build_model(model_name, location)
+        _vision_callers[key] = caller
+    return caller
+
+
+def _vision_attempts(account_id: int | None) -> list[tuple[str, str]]:
+    """The account's pinned vision model first, then the ladder,
+    without repeating the pin."""
+    head = (DEFAULT_VISION_MODEL, DEFAULT_VISION_LOCATION)
+    if account_id is not None and account_id in _account_vision_models:
+        name, loc, _ = _account_vision_models[account_id]
+        head = (name, loc)
+    return [head] + [(n, l) for n, l in VISION_FALLBACK_CHAIN if n != head[0]]
+from capabilities.ai.models import _account_vision_models
 from capabilities.ai.generation import generate, _is_rate_limit_error, _capture_usage
 
 logger = logging.getLogger("bot.ai")
@@ -86,23 +118,8 @@ async def analyze_camera_image(
             "raw": "",
         }
 
-    model_name = DEFAULT_VISION_MODEL
-    location = DEFAULT_VISION_LOCATION
-
-    if account_id is not None and account_id in _account_vision_models:
-        model_name, location, _ = _account_vision_models[account_id]
-
-    _VISION_FALLBACK = [
-        ("gemini-2.5-flash", "us-central1"),
-        ("gemini-2.5-pro", "us-central1"),
-        ("gemini-3.1-flash-lite", "global"),
-        ("gemini-3.1-pro-preview", "global"),
-    ]
-
-    attempts = [(model_name, location)]
-    for fb_name, fb_loc in _VISION_FALLBACK:
-        if fb_name != model_name:
-            attempts.append((fb_name, fb_loc))
+    attempts = _vision_attempts(account_id)
+    model_name, location = attempts[0]
 
     from google.genai import types as _gtypes
 
@@ -147,7 +164,7 @@ async def analyze_camera_image(
         _call_timeout = min(_VISION_PER_CALL_TIMEOUT_S, _remaining)
         _attempt_started = _t.monotonic()
         try:
-            model_obj = _ensure_model(attempt_model, attempt_loc)
+            model_obj = _vision_caller(attempt_model, attempt_loc)
             response = await asyncio.wait_for(
                 asyncio.to_thread(
                     model_obj.generate_content, [prompt_part, image_part],
@@ -300,19 +317,8 @@ async def generate_with_file(
     if not file_bytes:
         return "", None
 
-    model_name = DEFAULT_VISION_MODEL
-    location = DEFAULT_VISION_LOCATION
-    if account_id is not None and account_id in _account_vision_models:
-        model_name, location, _ = _account_vision_models[account_id]
-
-    _VISION_FALLBACK = [
-        ("gemini-2.5-flash", "us-central1"),
-        ("gemini-2.5-pro", "us-central1"),
-    ]
-    attempts = [(model_name, location)]
-    for fb_name, fb_loc in _VISION_FALLBACK:
-        if fb_name != model_name:
-            attempts.append((fb_name, fb_loc))
+    attempts = _vision_attempts(account_id)
+    model_name, location = attempts[0]
 
     from google.genai import types as _gtypes
 
@@ -338,7 +344,7 @@ async def generate_with_file(
     for attempt_model, attempt_loc in attempts:
         _attempt_started = _t.monotonic()
         try:
-            model_obj = _ensure_model(attempt_model, attempt_loc)
+            model_obj = _vision_caller(attempt_model, attempt_loc)
             response = await asyncio.wait_for(
                 asyncio.to_thread(
                     model_obj.generate_content, [prompt_part, image_part],

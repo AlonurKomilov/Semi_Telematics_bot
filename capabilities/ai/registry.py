@@ -448,10 +448,33 @@ def estimate_request_cost(model: str) -> float:
 
 # ── Defaults ─────────────────────────────────────────────────────
 
-DEFAULT_MODEL = "gemini-2.5-flash"
-DEFAULT_LOCATION = "us-central1"
-DEFAULT_VISION_MODEL = "gemini-2.5-flash"
-DEFAULT_VISION_LOCATION = "us-central1"
+# The newest Flash generation heads everything: the owner's rule is
+# newest-first, falling back DOWN the generations, never up them.  It
+# serves from the global endpoint only, so the default location moves
+# with it; _ensure_model corrects a region a model does not serve from,
+# but a default that needs correcting is a default that is wrong.
+# Verified before it was written here: answers, calls tools, reads an
+# image (scripts/vertex_preflight.py --deep and the 2026-09-06 probes).
+DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_LOCATION = "global"
+DEFAULT_VISION_MODEL = "gemini-3.8-flash"
+DEFAULT_VISION_LOCATION = "global"
+
+#: The image ladder — camera snapshots, inspection photos, pasted
+#: photos in chat, invoice and document scans all walk it.  ONE list
+#: here; vision.py used to keep two private copies, both oldest-first
+#: (2.5 Flash, then 2.5 Pro), one of which still named a retired id.
+#: Newest first, DOWN the generations, and every entry was shown to
+#: read an image on the live project before it was written down.  Each
+#: carries the region it serves from: the 3.x family is global-only,
+#: 2.5 Flash is the widest-regioned and stays as the floor.
+VISION_FALLBACK_CHAIN: list[tuple[str, str]] = [
+    ("gemini-3.8-flash", "global"),
+    ("gemini-3.1-pro-preview", "global"),
+    ("gemini-3.1-flash-lite", "global"),
+    ("gemini-2.5-flash", "us-central1"),
+    ("gemini-2.5-pro", "us-central1"),
+]
 
 # ── Model tiers ─────────────────────────────────────────────────
 #
@@ -534,15 +557,18 @@ TIER_FOR_CATEGORY: dict[str, str] = {
 
 TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
     TIER_FAST: [
-        "gemini-2.5-flash",
+        "gemini-3.8-flash",
         # Non-Gemini #2 on purpose: when the Gemini flash family hits a
         # project quota storm (429 RESOURCE_EXHAUSTED benches the head),
         # the tier fails over to a DIFFERENT provider's quota pool with
         # tool-calling intact instead of the next Gemini in the same pool.
         "grok-4.1-fast",
-        "gemini-3.8-flash",
+        # Then DOWN the Gemini generations — never up.  2.5 Flash is the
+        # one the prompts were originally tuned against and still the
+        # widest-regioned; it stays as the floor of the Gemini run.
         "gemini-3.5-flash",
         "gemini-3.1-flash-lite",
+        "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gpt-oss-20b",
         "gemma-4-26b",

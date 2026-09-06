@@ -57,16 +57,57 @@ def test_non_gemini_models_declare_their_wire_id():
             assert info.get("anthropic_model_id"), f"{name}: anthropic without anthropic_model_id"
 
 
-def test_the_vision_fallback_ladder_names_registered_models():
-    """vision.py keeps its own fallback list rather than reading the
-    chains; it named the retired preview id longest of all."""
+def test_the_vision_ladder_names_registered_models_in_regions_they_serve():
+    """vision.py used to keep two private ladders; one named a retired id
+    for weeks.  The ladder is registry data now, and each rung must be a
+    model we have, at a region that model actually lists."""
+    for name, loc in reg.VISION_FALLBACK_CHAIN:
+        assert name in reg.MODEL_REGISTRY, f"vision ladder names unregistered {name}"
+        assert loc in reg.MODEL_REGISTRY[name]["locations"], (
+            f"{name} is asked at {loc}, which its registry entry does not list")
+
+
+def test_the_default_vision_model_heads_the_ladder():
+    assert reg.VISION_FALLBACK_CHAIN[0] == (reg.DEFAULT_VISION_MODEL, reg.DEFAULT_VISION_LOCATION)
+
+
+def test_vision_reads_its_ladder_from_the_registry_not_a_private_copy():
+    """A second list is how the retirement slipped through."""
     import inspect
     from capabilities.ai import vision
     src = inspect.getsource(vision)
-    named = set(re.findall(r'\("(gemini-[a-z0-9.\-]+)",\s*"[a-z0-9\-]+"\)', src))
-    assert named, "could not find the _VISION_FALLBACK ladder in vision.py"
-    unknown = named - set(reg.MODEL_REGISTRY)
-    assert not unknown, f"vision fallback names unregistered models: {sorted(unknown)}"
+    assert "_VISION_FALLBACK = [" not in src
+    assert "VISION_FALLBACK_CHAIN" in src
+
+
+def test_a_vision_attempt_does_not_switch_the_chat_model(monkeypatch):
+    """Both ladders used to call _ensure_model, which REPLACES the
+    process-wide current model whenever the name or region differs — a
+    camera frame that fell back to 2.5 Pro left every chat on the worker
+    answering from 2.5 Pro.  Vision builds and keeps its own callers."""
+    from capabilities.ai import models, vision
+
+    built = []
+    monkeypatch.setattr(models, "_build_model",
+                        lambda name, loc, info=None: built.append((name, loc)) or object())
+    monkeypatch.setattr(vision, "_vision_callers", {})
+    before = (models._current_model_name, models._model)
+    vision._vision_caller("gemini-3.1-pro-preview", "global")
+    vision._vision_caller("gemini-3.1-pro-preview", "global")      # cached, not rebuilt
+    assert built == [("gemini-3.1-pro-preview", "global")]
+    assert (models._current_model_name, models._model) == before
+
+
+def test_vision_attempts_put_the_account_pin_first_and_never_repeat_it():
+    from capabilities.ai import models, vision
+    models._account_vision_models[999_001] = ("gemini-2.5-flash", "us-central1", None)
+    try:
+        attempts = vision._vision_attempts(999_001)
+    finally:
+        models._account_vision_models.pop(999_001, None)
+    assert attempts[0] == ("gemini-2.5-flash", "us-central1")
+    assert [n for n, _ in attempts].count("gemini-2.5-flash") == 1
+    assert vision._vision_attempts(None)[0] == (reg.DEFAULT_VISION_MODEL, reg.DEFAULT_VISION_LOCATION)
 
 
 def test_the_default_model_heads_the_fast_chain():

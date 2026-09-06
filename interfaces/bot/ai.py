@@ -285,8 +285,9 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "\n"
             "  AI features are not configured.\n"
             "\n"
-            "  Set <code>GOOGLE_AI_API_KEY</code> in\n"
-            "  your environment to enable."
+            "  Set <code>GOOGLE_CLOUD_PROJECT</code> and\n"
+            "  <code>GOOGLE_APPLICATION_CREDENTIALS</code>\n"
+            "  in the environment to enable."
         )
         await _show(update, context, [text], keyboard=back_kb())
         return
