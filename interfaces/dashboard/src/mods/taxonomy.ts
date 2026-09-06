@@ -54,6 +54,21 @@ export interface TaxonomyItem {
   readonly prefs?: readonly string[];
   /** The Mod field a look uses to carry this, if a look can. */
   readonly modField?: ModField;
+  /**
+   * A look may switch this on; a person may not.
+   *
+   * It still belongs to its category — the reset clears it, a mod
+   * carries it, the category tile counts it as changed — but it has no
+   * control of its own, so it gets no tile and no page. Without the
+   * flag, `entrance` shipped a tile that opened a page headed
+   * "Entrance" showing Motion and Ambient: the page promises the thing
+   * it is named after, and the promise was empty.
+   *
+   * The rule this expresses was already written down — the catalogue
+   * shows only what a mod can SUPPLY — but it was written as a comment
+   * and comments do not remove tiles.
+   */
+  readonly modOnly?: boolean;
 }
 
 export interface TaxonomyCategory {
@@ -110,9 +125,10 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     panel: true,
     items: [
       { id: 'motion',   title: 'Motion',   heading: 'Motion', axes: ['motion'],   modField: 'motion' },
-      // Mod-only: a look may switch the page entrance on, the panel
-      // offers no control, and the effects reset still clears it.
-      { id: 'entrance', title: 'Entrance', axes: ['entrance'], modField: 'entrance' },
+      // A look may switch the page entrance on; the panel offers no
+      // control, and the effects reset still clears it.
+      { id: 'entrance', title: 'Entrance', axes: ['entrance'], modField: 'entrance',
+        modOnly: true },
       { id: 'ambient',  title: 'Ambient mode', axes: [], prefs: ['mods.ambient'] },
     ],
   },
@@ -176,3 +192,15 @@ export function headingsOf(id: CategoryId | 'mods'): readonly string[] {
 
 export const categoryById = (id: string): TaxonomyCategory | undefined =>
   TAXONOMY.find((c) => c.id === id);
+
+/**
+ * The items a person can open — everything a look supplies but nobody
+ * sets is left out.
+ *
+ * Only the PAGE uses this. Resets, mod fields and the category tile's
+ * changed-count all still walk `items` in full: a mod-only axis is part
+ * of its category in every way except having somewhere to be clicked.
+ */
+export function browsableItemsOf(id: CategoryId): readonly TaxonomyItem[] {
+  return (categoryById(id)?.items ?? []).filter((i) => !i.modOnly);
+}

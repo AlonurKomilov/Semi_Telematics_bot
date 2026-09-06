@@ -18,7 +18,7 @@ vi.mock('react-i18next', async (orig) => ({
 
 import ModsPage from './ModsPage';
 import { ModProvider } from '../context';
-import { TAXONOMY } from '../taxonomy';
+import { TAXONOMY, browsableItemsOf, resetAxesOf, MOD_FIELD_CATEGORY } from '../taxonomy';
 import { MODS } from '../catalogue';
 import { preferences, MOD_DEFAULT, SIZE_DEFAULT, DEFS } from '../../preferences';
 
@@ -152,5 +152,87 @@ describe('an item', () => {
   it('renders the sounds section for a sound item', () => {
     at('/mods/sounds/keyboard');
     expect(screen.getByTestId('mods-item').textContent).toContain('Keyboard');
+  });
+});
+
+describe('a tile promises a control, and the page keeps the promise', () => {
+  /**
+   * The one thing the level-2 route cannot fake.
+   *
+   * `ItemControl` renders the whole CATEGORY's section, so every item
+   * page has controls on it — its siblings'. Counting controls would
+   * pass for an item that has none of its own, which is exactly the
+   * case this describe block exists for. What cannot be borrowed from a
+   * sibling is the item's own NAME: if a page headed "Entrance" never
+   * says "entrance" anywhere in its controls, the tile sent somebody
+   * looking for something that is not there.
+   *
+   * The header is excluded on purpose — it prints `item.title` itself,
+   * so including it would make every case pass by construction.
+   */
+  for (const cat of TAXONOMY)
+    for (const item of browsableItemsOf(cat.id))
+      it(`${cat.id}/${item.id} — the page says "${item.title}"`, () => {
+        at(`/mods/${cat.id}/${item.id}`);
+        const control = screen.getByTestId('mods-item');
+        // The subject, asserted rather than assumed. Widen `control` to
+        // anything containing the header and every case below passes by
+        // construction, because the header prints the title.
+        expect(control.contains(screen.getByRole('heading', { name: item.title })),
+          'this is measuring the header, not the controls').toBe(false);
+        expect(control.textContent?.toLowerCase(),
+          `the tile opens a page with no ${item.title} on it`)
+          .toContain(item.title.toLowerCase());
+      });
+
+  /** The positive control, and the bug itself written down. If the
+   *  check above ever reads the header — which prints the title — every
+   *  case would pass by construction. This is the assertion that says
+   *  the panel text is a real measurement: the Effects controls contain
+   *  Motion and Ambient and NOT Entrance, which is why Entrance has no
+   *  tile any more. */
+  it('and that check is reading the controls, not the header', () => {
+    at('/mods/effects/motion');
+    const control = screen.getByTestId('mods-item').textContent?.toLowerCase();
+    expect(control).toContain('motion');
+    expect(control, 'the Effects controls grew an Entrance — give it a tile back')
+      .not.toContain('entrance');
+  });
+});
+
+describe('an item a look supplies but nobody sets', () => {
+  const modOnly = TAXONOMY.flatMap(
+    (c) => c.items.filter((i) => i.modOnly).map((i) => [c.id, i] as const));
+
+  it('exists to be tested at all', () => {
+    // Every assertion below is about `entrance`. If the flag is ever
+    // dropped they would pass by having nothing to check.
+    expect(modOnly.map(([c, i]) => `${c}/${i.id}`)).toEqual(['effects/entrance']);
+  });
+
+  it('gets no tile — the grid offers only what can be opened', () => {
+    at('/mods/effects');
+    const grid = screen.getByTestId('mods-category');
+    expect(grid.textContent, 'a tile for a control that does not exist')
+      .not.toContain('Entrance');
+    // Not simply an empty grid: the siblings are still there, one each.
+    expect(grid.querySelectorAll('a').length).toBe(browsableItemsOf('effects').length);
+    expect(grid.textContent).toContain('Motion');
+  });
+
+  it('and its address stops claiming a control it does not have', () => {
+    at('/mods/effects/entrance');
+    // It used to be headed "Entrance" and show Motion and Ambient.
+    expect(screen.queryByRole('heading', { name: /^Entrance$/ }),
+      'the page still promises Entrance').toBeNull();
+  });
+
+  it('but it is still part of its category in every other way', () => {
+    // The flag is about having somewhere to be clicked, nothing else: a
+    // mod still carries it and the category reset still clears it.
+    expect(resetAxesOf('effects'), 'the reset stopped clearing it')
+      .toContain('entrance');
+    expect(MOD_FIELD_CATEGORY.entrance, 'a look can no longer carry it')
+      .toBe('effects');
   });
 });

@@ -36,7 +36,9 @@ import { ModControls } from '../panel/ModControls';
 import { Section, SECTION_AXES } from '../Modifications';
 import SizeCard from '../SizeCard';
 import { modById } from '../catalogue';
-import { TAXONOMY, categoryById, type CategoryId, type TaxonomyItem } from '../taxonomy';
+import {
+  TAXONOMY, categoryById, browsableItemsOf, type CategoryId, type TaxonomyItem,
+} from '../taxonomy';
 import { MODS_PAGE_HREF, MODS_HREF } from '../href';
 import {
   itemState, itemSummary, categoryTouched, categoryIntensity, type TileState,
@@ -175,7 +177,7 @@ function CategoryGrid({ id }: { id: CategoryId }) {
       <Crumb to={MODS_PAGE_HREF}>Mods</Crumb>
       <PageHeader icon={iconFor(cat.id)} title={cat.title} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="mods-category">
-        {cat.items.map((item) => (
+        {browsableItemsOf(cat.id).map((item) => (
           <Tile
             key={item.id}
             to={`${MODS_PAGE_HREF}/${cat.id}/${item.id}`}
@@ -196,7 +198,7 @@ function CategoryGrid({ id }: { id: CategoryId }) {
 /** Level 2 — one item's control: the card's own Section, or SizeCard. */
 function ItemControl({ id, itemId }: { id: CategoryId; itemId: string }) {
   const cat = categoryById(id)!;
-  const item = cat.items.find((i) => i.id === itemId);
+  const item = browsableItemsOf(cat.id).find((i) => i.id === itemId);
   return (
     <div className="space-y-6">
       <Crumb to={`${MODS_PAGE_HREF}/${cat.id}`}>{cat.title}</Crumb>
