@@ -1,10 +1,10 @@
 """Where a signed-in person gets the browser extension.
 
-Until it is on the Chrome Web Store, the extension is a zip of the
-built package — and the place to get that is the product itself, not a
-file somebody was emailed.  This streams the current build from the
-server, zipped on the fly, so what people download is always what was
-last deployed.
+The Chrome Web Store is where people install it — the Profile card
+links there by the package id.  This ALSO streams the current build as
+a zip, on the fly, for loading unpacked a build the store does not have
+yet (a preview, a fix still under review): what people download is
+always what was last deployed, never a file somebody was emailed.
 
 Login-gated: the extension is for account users, and a public URL would
 be an anonymous copy of the package for anyone to poke at.  Any role —

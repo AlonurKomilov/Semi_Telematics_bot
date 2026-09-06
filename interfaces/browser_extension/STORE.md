@@ -62,6 +62,13 @@ go on a dark canvas), and strips alpha.
 
 **Privacy policy URL:** https://4truck.us/privacy
 **Visibility:** Unlisted (only people with the link can install) — right for a B2B tool.
+Published unlisted on 2026-09-06; the listing is
+https://chromewebstore.google.com/detail/4truck/iihobedpipecckgmgegbhdpkmebabinn (the slug
+is decoration — `/detail/<id>` alone resolves, which is what the Profile card builds).
+Unlisted means NOT in store search or the catalog. To appear there: Distribution →
+**Visibility → Public** → Save. The package does not change, so this is a listing edit,
+not a code review — but Google may re-check the listing, and everything on it becomes
+visible to anyone, screenshots included (they show real unit numbers and a real yard).
 
 ## The id
 
@@ -78,7 +85,10 @@ private key. (A `key.pem` inside the zip is the pre-2020 method — the store ig
 2. `npm run build`, then `python3 build_packages.py` → `versions/4truck-extension-store-<v>.zip`
    (manifest without `key`, for the store) and `versions/4truck-extension-sideload-<v>.zip`
    (with the key, for Load unpacked). Earlier packages move to `versions/_archive/`.
-3. Developer Dashboard → the item → **Package → Upload new package** → Submit for review.
+3. Load the sideload zip unpacked and check it first — what the store gets is what every
+   install gets, on its own, within hours of approval.
+4. Developer Dashboard → the item → **Package → Upload new package** → Submit for review.
+   The approved version replaces the one on the listing; nobody reinstalls.
 
 ## Review access
 
