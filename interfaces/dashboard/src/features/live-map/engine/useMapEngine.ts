@@ -1,112 +1,132 @@
 /**
- * Which map this account is drawn on, resolved once per surface.
+ * Which basemap this account is drawn on, resolved once per surface.
  *
  * The server decides (features/location/map_engine.py): an account
  * setting names an engine, and the answer falls back to the free one
  * whenever the platform cannot serve the paid one. This hook does not
- * re-decide any of that — it asks, loads what the answer needs, and
- * reports one of three states so a surface never has to guess:
+ * re-decide any of that — it asks, and reports one of three states so
+ * a surface never has to guess:
  *
- *   'loading'  — nothing drawn yet, and it is not an error
- *   'osm'      — Leaflet, the free engine, and what every failure ends as
- *   'google'   — the script is loaded and `window.google.maps` exists
+ *   loading  — nothing known yet, and it is not an error
+ *   'osm'    — OpenStreetMap under Leaflet, the free engine, and what
+ *              every failure ends as
+ *   'google' — Google's tiles under the SAME Leaflet, through the Map
+ *              Tiles API; every overlay stays where it is
  *
- * FAILING TO OSM IS THE WHOLE POINT. A refused key, a referrer the key
- * does not allow, an exhausted daily quota and an unreachable network
- * all land in the same place: the account keeps a working map. Google
- * refusing is a billing or configuration fact, never a reason for a
- * carrier to stare at a blank rectangle — so the hook reports the
- * reason for a log and hands back 'osm'.
+ * Google is tiles here, not a script. The Maps JavaScript API forbids
+ * its content inside a non-Google map; the Map Tiles API is sold for
+ * exactly this. So there is nothing to load — a tile layer asks the
+ * server for a session token (`tileSession`) and points Leaflet at
+ * Google's tile URL.
+ *
+ * FAILING TO OSM IS THE WHOLE POINT. A refused key, a spent daily quota,
+ * an unreachable network, a session Google would not open — all land
+ * in the same place: the account keeps a working map. Google refusing
+ * is a billing or configuration fact, never a reason for a carrier to
+ * stare at a blank rectangle.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { apiJSON } from '../../../api/client';
-import { isGoogleLoaded, loadGoogleMaps } from './googleLoader';
 
 export type MapEngine = 'osm' | 'google';
+/** Google's names for our Map Type picker's three choices. */
+export type TileType = 'roadmap' | 'satellite' | 'terrain';
 
-/** The shape `/map/engine` answers with. `key` rides only with the
- *  engine that needs one — an account on OSM is never handed a billable
- *  credential it might load anyway. */
-interface EngineWire {
+/** The shape `/map/engine` answers with. The key rides only with the
+ *  engine that needs one; this hook never reads it — the session
+ *  endpoint bakes it into the tile URL. */
+export interface EngineWire {
   engine: MapEngine;
   requested: MapEngine;
   engines: MapEngine[];
   google_available: boolean;
-  key?: string;
+}
+
+/** What `/map/tiles/session` answers with: the template Leaflet
+ *  expands, and what the attribution control must show. */
+export interface TileSession {
+  type: TileType;
+  tile_url: string;
+  viewport_url: string;
+  tile_size: number;
+  image_format: string;
+  expiry: number;
+  max_zoom: number;
 }
 
 export interface MapEngineState {
-  /** What to draw. Never 'google' until the script is really loaded. */
+  /** What to draw. Null until the first answer. */
   engine: MapEngine | null;
-  /** True until the first answer; a surface shows its skeleton. */
   loading: boolean;
+  /** Whether the platform CAN draw Google at all — a picker offers the
+   *  choice only when picking it would do something. */
+  googleAvailable: boolean;
   /** Set when the account ASKED for an engine it did not get, so a
-   *  settings page can explain rather than appear not to have saved. */
+   *  control can explain rather than appear not to have saved. */
   fellBackFrom: MapEngine | null;
   /** Why, in one sentence, for a log or a tooltip. */
   reason: string;
+  /** A Google session for one tile type. Rejects when the platform or
+   *  Google refuses; the caller falls back to OSM tiles. */
+  tileSession: (type: TileType) => Promise<TileSession>;
+  /** Re-ask the server — after the account's setting changed. */
+  refresh: () => void;
+  /** Report that Google tiles failed after resolution (a session the
+   *  server refused, tiles that 4xx): the surface drops to OSM and the
+   *  reason is kept. */
+  fallBack: (reason: string) => void;
 }
 
 const OSM: MapEngine = 'osm';
 const GOOGLE: MapEngine = 'google';
 
+export function providerFromWire(wire: EngineWire): Pick<MapEngineState, 'engine' | 'fellBackFrom' | 'reason' | 'googleAvailable'> {
+  const fellBack = wire.engine !== GOOGLE && wire.requested === GOOGLE;
+  return {
+    engine: wire.engine === GOOGLE ? GOOGLE : OSM,
+    googleAvailable: !!wire.google_available,
+    fellBackFrom: fellBack ? GOOGLE : null,
+    reason: fellBack ? 'This account asks for Google, but the platform has no Google Maps key configured.' : '',
+  };
+}
+
 export function useMapEngine(): MapEngineState {
-  const [state, setState] = useState<MapEngineState>({
-    engine: null, loading: true, fellBackFrom: null, reason: '',
+  const [state, setState] = useState<Omit<MapEngineState, 'tileSession' | 'refresh' | 'fallBack'>>({
+    engine: null, loading: true, googleAvailable: false, fellBackFrom: null, reason: '',
   });
-  // A surface can unmount while the script is still arriving; setting
-  // state then is a React warning and, worse, a map built into a
-  // detached node.
+  const [tick, setTick] = useState(0);
+  // A surface can unmount while the answer is in flight; setting state
+  // then is a React warning, and a map built into a detached node.
   const alive = useRef(true);
 
   useEffect(() => {
     alive.current = true;
-    const settle = (s: MapEngineState) => { if (alive.current) setState(s); };
-
+    const settle = (s: typeof state) => { if (alive.current) setState(s); };
     (async () => {
-      let wire: EngineWire;
       try {
-        wire = await apiJSON<EngineWire>('/map/engine');
+        const wire = await apiJSON<EngineWire>('/map/engine');
+        settle({ loading: false, ...providerFromWire(wire) });
       } catch {
         // The endpoint is part of drawing a map, not of deciding
-        // whether to draw one.  Unreachable means the free engine.
-        settle({ engine: OSM, loading: false, fellBackFrom: null,
+        // whether to draw one. Unreachable means the free engine.
+        settle({ engine: OSM, loading: false, googleAvailable: false, fellBackFrom: null,
                  reason: 'The map engine could not be read; using OpenStreetMap.' });
-        return;
-      }
-
-      if (wire.engine !== GOOGLE) {
-        settle({
-          engine: OSM, loading: false,
-          fellBackFrom: wire.requested === GOOGLE ? GOOGLE : null,
-          reason: wire.requested === GOOGLE
-            ? 'This account asks for Google, but the platform has no Google Maps key configured.'
-            : '',
-        });
-        return;
-      }
-
-      if (!wire.key) {
-        settle({ engine: OSM, loading: false, fellBackFrom: GOOGLE,
-                 reason: 'The server chose Google but sent no key.' });
-        return;
-      }
-
-      try {
-        await loadGoogleMaps(wire.key);
-        if (!isGoogleLoaded()) throw new Error('google.maps missing after load');
-        settle({ engine: GOOGLE, loading: false, fellBackFrom: null, reason: '' });
-      } catch (e) {
-        settle({
-          engine: OSM, loading: false, fellBackFrom: GOOGLE,
-          reason: `Google Maps did not load (${e instanceof Error ? e.message : 'unknown'}); using OpenStreetMap.`,
-        });
       }
     })();
-
     return () => { alive.current = false; };
+  }, [tick]);
+
+  const tileSession = useCallback(
+    (type: TileType) => apiJSON<TileSession>(`/map/tiles/session?type=${encodeURIComponent(type)}`),
+    [],
+  );
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const fallBack = useCallback((reason: string) => {
+    setState((s) => (s.engine === GOOGLE
+      ? { ...s, engine: OSM, fellBackFrom: GOOGLE, reason }
+      : s));
   }, []);
 
-  return state;
+  return { ...state, tileSession, refresh, fallBack };
 }

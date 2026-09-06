@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, FlaskConical, Fuel, TriangleAlert } from '../../
 import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
+import { useMapEngine } from './engine/useMapEngine';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
@@ -201,7 +202,16 @@ function makeIcon(
 }
 
 export default function LiveMap() {
-  const { mapRef, leafletMap, isReady, mapType, showLabels, setMapType, setShowLabels } = useLeafletMap();
+  const { mapRef, leafletMap, isReady, mapType, showLabels, setMapType, setShowLabels, provider, setProvider } = useLeafletMap();
+  // Whose tiles sit under everything: the server's decision per account,
+  // applied to the base layer only — every overlay below is engine-blind.
+  const mapEngine = useMapEngine();
+  useEffect(() => {
+    if (!mapEngine.engine) return;
+    setProvider(mapEngine.engine, { session: mapEngine.tileSession, onFail: mapEngine.fallBack });
+    // tileSession / fallBack / setProvider are stable callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapEngine.engine]);
   // Lift POI hook to this level so LiveMap can access allFeatures for nearest-POI
   const poiHook = usePoiLayers(leafletMap, isReady);
 
@@ -687,6 +697,8 @@ export default function LiveMap() {
           setMapType={setMapType}
           setShowLabels={setShowLabels}
           isReady={isReady}
+          provider={provider}
+          engine={mapEngine}
         />
         {/* Pattern B section host — mounts the active persona's
             overlay layout from LIVE_MAP_LAYOUTS.  Each overlay

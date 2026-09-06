@@ -24,6 +24,31 @@ const CLUSTER_CSS2_ID  = 'leaflet-cluster-default-css';
 /** Available base map tile types. */
 export type MapType = 'standard' | 'satellite' | 'terrain';
 
+/**
+ * Whose tiles sit under the overlays.  'osm' is the free set below
+ * (OpenStreetMap, Esri, OpenTopoMap); 'google' is Google's basemap
+ * through the Map Tiles API — the product Google sells for exactly
+ * this, tiles inside a third-party renderer.  Everything drawn ON the
+ * map is untouched either way; only the base layer differs.  Whether an
+ * account is on Google is the server's decision (features/live-map/
+ * engine/useMapEngine); this hook only knows how to draw it.
+ */
+export type MapProvider = 'osm' | 'google';
+
+/** One Google session, as the server hands it out.  Declared here rather
+ *  than imported so the hook stays free of the feature that owns the
+ *  engine — the feature depends on the hook, not the other way. */
+export interface GoogleTileSession {
+  tile_url: string;
+  viewport_url: string;
+  tile_size: number;
+  max_zoom: number;
+}
+export type GoogleSessionFetcher = (type: 'roadmap' | 'satellite' | 'terrain') => Promise<GoogleTileSession>;
+const GOOGLE_TYPE: Record<MapType, 'roadmap' | 'satellite' | 'terrain'> = {
+  standard: 'roadmap', satellite: 'satellite', terrain: 'terrain',
+};
+
 interface TileCfg { url: string; attr: string; maxZoom: number; }
 
 /** Base tile layer configurations — all free, no API key required. */
@@ -81,7 +106,21 @@ export interface UseLeafletMapResult {
   setMapType: (type: MapType) => void;
   /** Toggle road-name labels overlay. No-op for standard (labels already in tiles). */
   setShowLabels: (show: boolean) => void;
+  /** Whose tiles are under the overlays right now. */
+  provider: MapProvider;
+  /**
+   * Switch the base tiles to Google (with a way to get sessions and a
+   * way to report that Google is refusing) or back to the free set.
+   * Re-applies the current map type.  Safe before the map is ready.
+   */
+  setProvider: (p: MapProvider, opts?: { session?: GoogleSessionFetcher; onFail?: (reason: string) => void }) => void;
 }
+
+/** Google's policy asks for its name beside its copyright line, kept
+ *  apart from the renderer's own attribution.  A Leaflet control in the
+ *  opposite corner from Leaflet's is that separation. */
+const GOOGLE_LABEL = 'Google Maps';
+const GOOGLE_FALLBACK_AFTER_ERRORS = 4;
 
 function ensureLeafletCSS(): void {
   if (document.getElementById(LEAFLET_CSS_ID)) return;
@@ -182,55 +221,159 @@ export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMap
   const showLabelsRef = useRef(false);
   const tileLayerRef  = useRef<L.TileLayer | null>(null);
   const labelsLayerRef = useRef<L.TileLayer | null>(null);
+  // ── Provider state ────────────────────────────────────────────────────────
+  const [provider, setProviderState] = useState<MapProvider>('osm');
+  const providerRef = useRef<MapProvider>('osm');
+  const sessionRef  = useRef<GoogleSessionFetcher | null>(null);
+  const onFailRef   = useRef<((reason: string) => void) | null>(null);
+  const googleCtrlRef = useRef<L.Control | null>(null);
+  const viewportUrlRef = useRef<string>('');
+  // A base-layer swap is async under Google (a session is fetched); a
+  // newer swap must win over an older one that resolves late.
+  const swapSeq = useRef(0);
 
   const invalidateSize = useCallback(() => {
     leafletMap.current?.invalidateSize();
   }, []);
 
+  /** Labels overlay for satellite/terrain, on whichever base is under it. */
+  const applyLabels = (map: L.Map, type: MapType) => {
+    const Leaf = window.L as typeof L;
+    labelsLayerRef.current?.remove();
+    labelsLayerRef.current = null;
+    // Standard tiles carry their own labels — OSM's, and Google's roadmap.
+    if (showLabelsRef.current && type !== 'standard') {
+      labelsLayerRef.current = Leaf.tileLayer(LABELS_CFG.url, {
+        attribution: LABELS_CFG.attr,
+        maxZoom: LABELS_CFG.maxZoom,
+        // pane ensures labels render above base tile but below markers
+        pane: 'shadowPane',
+      }).addTo(map);
+    }
+  };
+
+  /** Google's name and copyright, in the corner opposite Leaflet's own
+   *  attribution so the two never overlap — what the policy asks. */
+  const ensureGoogleControl = (map: L.Map) => {
+    if (googleCtrlRef.current) return;
+    const Leaf = window.L as typeof L;
+    const Ctl = Leaf.Control.extend({
+      onAdd() {
+        const el = Leaf.DomUtil.create('div', 'leaflet-control-attribution leaflet-google-attribution');
+        el.setAttribute('aria-label', 'Google Maps');
+        el.innerHTML = `<strong>${GOOGLE_LABEL}</strong> <span data-copyright></span>`;
+        return el;
+      },
+    });
+    const ctl = new Ctl({ position: 'bottomleft' });
+    ctl.addTo(map);
+    googleCtrlRef.current = ctl;
+  };
+  const removeGoogleControl = () => {
+    googleCtrlRef.current?.remove();
+    googleCtrlRef.current = null;
+    viewportUrlRef.current = '';
+  };
+  /** Google's copyright line for THIS view, from its viewport service.
+   *  Free of quota, debounced by moveend.  Never blanks the line: a
+   *  failed lookup keeps the last words rather than showing none. */
+  const refreshCopyright = async (map: L.Map) => {
+    const url = viewportUrlRef.current;
+    const el = googleCtrlRef.current?.getContainer()?.querySelector('[data-copyright]');
+    if (!url || !el) return;
+    const b = map.getBounds();
+    const clamp = (v: number) => Math.max(-85, Math.min(85, v));
+    const q = new URLSearchParams({
+      zoom: String(Math.max(0, Math.min(22, Math.round(map.getZoom())))),
+      north: String(clamp(b.getNorth())), south: String(clamp(b.getSouth())),
+      east: String(b.getEast()), west: String(b.getWest()),
+    });
+    try {
+      const r = await fetch(`${url}&${q.toString()}`);
+      if (!r.ok) return;
+      const j = (await r.json()) as { copyright?: string };
+      if (j.copyright && viewportUrlRef.current === url) el.textContent = j.copyright;
+    } catch {
+      /* keep the previous line */
+    }
+  };
+
+  /** Replace the base tile layer for the current provider; re-apply labels. */
+  const applyBase = async (type: MapType) => {
+    const map = leafletMap.current;
+    if (!map) return;
+    const Leaf = window.L as typeof L;
+    const seq = ++swapSeq.current;
+    const useGoogle = providerRef.current === 'google' && !!sessionRef.current;
+
+    let layer: L.TileLayer | null = null;
+    if (useGoogle) {
+      try {
+        const sess = await sessionRef.current!(GOOGLE_TYPE[type]);
+        if (seq !== swapSeq.current || !leafletMap.current) return;     // superseded
+        viewportUrlRef.current = sess.viewport_url;
+        layer = Leaf.tileLayer(sess.tile_url, {
+          maxZoom: sess.max_zoom || 22,
+          tileSize: sess.tile_size || 256,
+          attribution: '',           // Google's line is its own control
+        });
+        // A spent daily quota answers every tile with an error.  Count
+        // them per view; several failures that also outnumber loads
+        // means Google is refusing, and the map drops to the free set
+        // rather than staying blank.
+        let errors = 0, loads = 0;
+        layer.on('load', () => { loads++; });
+        layer.on('tileload', () => { loads++; });
+        layer.on('tileerror', () => {
+          errors++;
+          if (errors >= GOOGLE_FALLBACK_AFTER_ERRORS && errors >= loads) {
+            onFailRef.current?.('Google tiles are not loading — daily quota spent, or the key refused.');
+          }
+        });
+        map.on('moveend', () => { void refreshCopyright(map); });
+        ensureGoogleControl(map);
+      } catch (e) {
+        if (seq !== swapSeq.current) return;
+        onFailRef.current?.(e instanceof Error ? e.message : 'Google tiles unavailable');
+        return;                        // the caller switches us back to osm
+      }
+    } else {
+      const cfg = TILES[type];
+      layer = Leaf.tileLayer(cfg.url, { attribution: cfg.attr, maxZoom: cfg.maxZoom });
+      removeGoogleControl();
+    }
+    tileLayerRef.current?.remove();
+    tileLayerRef.current = layer.addTo(map);
+    applyLabels(map, type);
+    if (useGoogle) void refreshCopyright(map);
+  };
+
   /** Replace the base tile layer; re-apply labels if currently enabled. */
   const setMapType = useCallback((type: MapType) => {
     mapTypeRef.current = type;
-    const map = leafletMap.current;
-    if (map) {
-      const Leaf = window.L as typeof L;
-      tileLayerRef.current?.remove();
-      labelsLayerRef.current?.remove();
-      labelsLayerRef.current = null;
-      const cfg = TILES[type];
-      tileLayerRef.current = Leaf.tileLayer(cfg.url, {
-        attribution: cfg.attr,
-        maxZoom: cfg.maxZoom,
-      }).addTo(map);
-      // Re-apply labels if they were on and the new tile type isn't standard
-      // (standard OSM tiles already include road labels)
-      if (showLabelsRef.current && type !== 'standard') {
-        labelsLayerRef.current = Leaf.tileLayer(LABELS_CFG.url, {
-          attribution: LABELS_CFG.attr,
-          maxZoom: LABELS_CFG.maxZoom,
-          // pane ensures labels render above base tile but below markers
-          pane: 'shadowPane',
-        }).addTo(map);
-      }
-    }
+    void applyBase(type);
     setMapTypeState(type);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setProvider = useCallback<UseLeafletMapResult['setProvider']>((p, opts) => {
+    if (opts?.session) sessionRef.current = opts.session;
+    if (opts?.onFail) onFailRef.current = opts.onFail;
+    if (providerRef.current === p && (p === 'osm' || tileLayerRef.current)) {
+      setProviderState(p);
+      return;
+    }
+    providerRef.current = p;
+    setProviderState(p);
+    void applyBase(mapTypeRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Show/hide the ESRI road-labels overlay on top of satellite/terrain tiles. */
   const setShowLabels = useCallback((show: boolean) => {
     showLabelsRef.current = show;
     const map = leafletMap.current;
-    if (map) {
-      const Leaf = window.L as typeof L;
-      labelsLayerRef.current?.remove();
-      labelsLayerRef.current = null;
-      if (show && mapTypeRef.current !== 'standard') {
-        labelsLayerRef.current = Leaf.tileLayer(LABELS_CFG.url, {
-          attribution: LABELS_CFG.attr,
-          maxZoom: LABELS_CFG.maxZoom,
-          pane: 'shadowPane',
-        }).addTo(map);
-      }
-    }
+    if (map) applyLabels(map, mapTypeRef.current);
     setShowLabelsState(show);
   }, []);
 
@@ -254,6 +397,9 @@ export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMap
         }).addTo(map);
         leafletMap.current = map;
         setIsReady(true);
+        // setProvider('google') may have arrived before the map existed
+        // (the engine answer races the Leaflet script); apply it now.
+        if (providerRef.current === 'google') void applyBase(mapTypeRef.current);
       });
 
     return () => {
@@ -264,11 +410,12 @@ export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMap
       }
       tileLayerRef.current  = null;
       labelsLayerRef.current = null;
+      googleCtrlRef.current = null;
       setIsReady(false);
     };
     // center/zoom are intentionally excluded — only applied on first mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { mapRef, leafletMap, isReady, invalidateSize, mapType, showLabels, setMapType, setShowLabels };
+  return { mapRef, leafletMap, isReady, invalidateSize, mapType, showLabels, setMapType, setShowLabels, provider, setProvider };
 }

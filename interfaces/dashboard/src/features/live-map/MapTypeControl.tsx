@@ -19,8 +19,14 @@
 import { useState } from 'react';
 import { MAP_TYPE_PREVIEW } from '../../config/mapColors';
 import { Check, ChevronDown, ChevronUp, Map as MapIcon, Mountain, Satellite, type LucideIcon } from '../../lib/icons';
-import type { MapType } from '@/hooks/useLeafletMap';
+import type { MapProvider, MapType } from '@/hooks/useLeafletMap';
 import { cn } from '@/lib/utils';
+import { toast } from '../../lib/toast';
+
+import { apiJSON } from '../../api/client';
+import { Tip } from '../../components/tooltip';
+import { usePermissions } from '../../hooks/usePermissions';
+import type { MapEngineState } from './engine/useMapEngine';
 
 interface MapTypeControlProps {
   mapType: MapType;
@@ -28,7 +34,20 @@ interface MapTypeControlProps {
   setMapType: (type: MapType) => void;
   setShowLabels: (show: boolean) => void;
   isReady: boolean;
+  /** Whose tiles are under the overlays, and whether Google is even on
+   *  offer.  The row is drawn only when choosing would do something. */
+  provider?: MapProvider;
+  engine?: Pick<MapEngineState, 'googleAvailable' | 'fellBackFrom' | 'reason' | 'refresh'>;
 }
+
+/** The two basemaps, in the order a picker should offer them: the one
+ *  that costs nothing first.  The label says whose map it is — a person
+ *  choosing "Google" is choosing a familiar map, and the copy says so
+ *  rather than naming an API. */
+const PROVIDERS: { id: MapProvider; label: string }[] = [
+  { id: 'osm',    label: 'OpenStreetMap' },
+  { id: 'google', label: 'Google' },
+];
 
 /** Visual thumbnail configs for each tile type. */
 const MAP_TYPES: {
@@ -65,11 +84,32 @@ export default function MapTypeControl({
   setMapType,
   setShowLabels,
   isReady,
+  provider = 'osm',
+  engine,
 }: MapTypeControlProps) {
   // Collapsed by default so the live-map opens with a clean overlay —
   // the user expands the picker only when they actually want to switch
   // map type / labels.
   const [collapsed, setCollapsed] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const { has } = usePermissions();
+  // The basemap is an ACCOUNT setting — one truth for everyone who looks
+  // at the map — so changing it is config, not a view preference, and
+  // rides the account-wide config flag.  Everyone else sees which is on.
+  const canChoose = has('can_manage_config_all');
+
+  const chooseProvider = async (id: MapProvider) => {
+    if (id === provider || saving) return;
+    setSaving(true);
+    try {
+      await apiJSON('/map/config', { method: 'PUT', body: JSON.stringify({ engine: id }) });
+      engine?.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not change the map');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!isReady) return null;
 
@@ -100,6 +140,44 @@ export default function MapTypeControl({
 
       {!collapsed && (
         <div className="border-t border-border px-3 pt-2.5 pb-3 space-y-3">
+          {/* Whose map — only when Google is on offer on this server */}
+          {engine?.googleAvailable && (
+            <div className="space-y-1">
+              <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Map</div>
+              <div className="flex gap-1" role="radiogroup" aria-label="Map provider">
+                {PROVIDERS.map(({ id, label }) => {
+                  const active = provider === id;
+                  const btn = (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      disabled={!canChoose || saving}
+                      onClick={() => void chooseProvider(id)}
+                      className={cn(
+                        'flex-1 min-h-tap rounded-md border px-2 py-1 text-xs transition',
+                        active
+                          ? 'border-primary bg-primary/10 text-foreground'
+                          : 'border-border text-muted-foreground hover:border-foreground/40',
+                        !canChoose && 'cursor-default',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                  return canChoose ? btn : (
+                    <Tip key={id} label="The map is an account-wide setting. Ask whoever manages configuration to change it.">
+                      {btn}
+                    </Tip>
+                  );
+                })}
+              </div>
+              {engine.fellBackFrom === 'google' && engine.reason && (
+                <p className="text-2xs text-muted-foreground">{engine.reason}</p>
+              )}
+            </div>
+          )}
           {/* Tile type card grid */}
           <div className="flex gap-2 justify-between">
             {MAP_TYPES.map(({ id, label, preview, icon: Icon }) => {

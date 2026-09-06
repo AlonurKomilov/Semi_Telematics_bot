@@ -3,86 +3,58 @@
  * carrier keeps a working map.
  *
  * Google can refuse for reasons that have nothing to do with the
- * person looking at the screen — a key the account was never given, a
- * referrer restriction that does not cover this host, a daily quota
- * spent by lunchtime, a blocked network. Each of those must end at
- * OpenStreetMap with a reason recorded, never at a blank rectangle.
+ * person looking at the screen — a key the platform was never given,
+ * a daily quota spent by lunchtime, a session it would not open, a
+ * blocked network. Each must end at OpenStreetMap with a reason
+ * recorded, never at a blank rectangle.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { useMapEngine } from './useMapEngine';
+import { providerFromWire, useMapEngine, type EngineWire } from './useMapEngine';
 
 const apiJSON = vi.hoisted(() => vi.fn());
 vi.mock('../../../api/client', () => ({ apiJSON }));
 
-const loader = vi.hoisted(() => ({ load: vi.fn(), loaded: vi.fn() }));
-vi.mock('./googleLoader', async (orig) => {
-  const real = await orig<typeof import('./googleLoader')>();
-  return { ...real, loadGoogleMaps: loader.load, isGoogleLoaded: loader.loaded };
+beforeEach(() => { apiJSON.mockReset(); });
+
+const wire = (over: Partial<EngineWire> = {}): EngineWire => ({
+  engine: 'osm', requested: 'osm', engines: ['osm', 'google'], google_available: false, ...over,
 });
 
-beforeEach(() => {
-  apiJSON.mockReset();
-  loader.load.mockReset().mockResolvedValue({ maps: {} });
-  loader.loaded.mockReset().mockReturnValue(true);
-});
-
-async function engineFor(wire: unknown) {
-  apiJSON.mockResolvedValue(wire);
-  const { result } = renderHook(() => useMapEngine());
-  await waitFor(() => expect(result.current.loading).toBe(false));
-  return result.current;
+async function settled(w: unknown) {
+  apiJSON.mockResolvedValue(w);
+  const hook = renderHook(() => useMapEngine());
+  await waitFor(() => expect(hook.result.current.loading).toBe(false));
+  return hook;
 }
 
-describe('which engine a surface draws', () => {
+describe('which basemap a surface draws', () => {
   it('starts as loading, so a skeleton is not mistaken for a chosen engine', () => {
-    apiJSON.mockReturnValue(new Promise(() => {}));   // never settles
+    apiJSON.mockReturnValue(new Promise(() => {}));
     const { result } = renderHook(() => useMapEngine());
     expect(result.current.loading).toBe(true);
     expect(result.current.engine).toBeNull();
   });
 
   it('draws the free engine when the account has not bought the other', async () => {
-    const s = await engineFor({ engine: 'osm', requested: 'osm', engines: ['osm', 'google'], google_available: false });
-    expect(s.engine).toBe('osm');
-    expect(s.fellBackFrom).toBeNull();
-    expect(loader.load).not.toHaveBeenCalled();       // no billable script fetched
+    const { result } = await settled(wire());
+    expect(result.current.engine).toBe('osm');
+    expect(result.current.fellBackFrom).toBeNull();
+    expect(result.current.googleAvailable).toBe(false);
   });
 
-  it('draws Google once its script is really loaded, not when the answer arrives', async () => {
-    const s = await engineFor({ engine: 'google', requested: 'google', engines: ['osm', 'google'], google_available: true, key: 'AIza-test' });
-    expect(s.engine).toBe('google');
-    expect(loader.load).toHaveBeenCalledWith('AIza-test');
-  });
-});
-
-describe('every way Google can refuse ends at a working map', () => {
-  it('the server chose Google but the platform has no key', async () => {
-    const s = await engineFor({ engine: 'osm', requested: 'google', engines: ['osm', 'google'], google_available: false });
-    expect(s.engine).toBe('osm');
-    expect(s.fellBackFrom).toBe('google');
-    expect(s.reason).toMatch(/no Google Maps key/i);
+  it('draws Google when the server resolved to it — tiles, so nothing to load', async () => {
+    const { result } = await settled(wire({ engine: 'google', requested: 'google', google_available: true }));
+    expect(result.current.engine).toBe('google');
+    expect(apiJSON).toHaveBeenCalledTimes(1);          // no script, no session yet
   });
 
-  it('the answer named Google and carried no key', async () => {
-    const s = await engineFor({ engine: 'google', requested: 'google', engines: ['osm', 'google'], google_available: true });
-    expect(s.engine).toBe('osm');
-    expect(s.fellBackFrom).toBe('google');
-  });
-
-  it('the script could not be fetched — a refused key, a referrer, a blocked network', async () => {
-    loader.load.mockRejectedValue(new Error('Could not reach the Google Maps script.'));
-    const s = await engineFor({ engine: 'google', requested: 'google', engines: ['osm', 'google'], google_available: true, key: 'AIza-test' });
-    expect(s.engine).toBe('osm');
-    expect(s.fellBackFrom).toBe('google');
-    expect(s.reason).toMatch(/did not load/i);
-  });
-
-  it('the script loaded but installed nothing — the half-load Google warns about', async () => {
-    loader.loaded.mockReturnValue(false);
-    const s = await engineFor({ engine: 'google', requested: 'google', engines: ['osm', 'google'], google_available: true, key: 'AIza-test' });
-    expect(s.engine).toBe('osm');
+  it('the account asked for Google and the platform has no key', async () => {
+    const { result } = await settled(wire({ requested: 'google' }));
+    expect(result.current.engine).toBe('osm');
+    expect(result.current.fellBackFrom).toBe('google');
+    expect(result.current.reason).toMatch(/no Google Maps key/i);
   });
 
   it('the endpoint itself is unreachable', async () => {
@@ -90,5 +62,44 @@ describe('every way Google can refuse ends at a working map', () => {
     const { result } = renderHook(() => useMapEngine());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.engine).toBe('osm');
+  });
+});
+
+describe('after resolution', () => {
+  it('a tile session is asked of the server per type', async () => {
+    const { result } = await settled(wire({ engine: 'google', requested: 'google', google_available: true }));
+    apiJSON.mockResolvedValueOnce({ type: 'satellite', tile_url: 'u', viewport_url: 'v', tile_size: 256, image_format: 'jpeg', expiry: 1, max_zoom: 22 });
+    const s = await result.current.tileSession('satellite');
+    expect(apiJSON).toHaveBeenLastCalledWith('/map/tiles/session?type=satellite');
+    expect(s.tile_url).toBe('u');
+  });
+
+  it('a Google failure after resolution drops to OSM and keeps the reason', async () => {
+    const { result } = await settled(wire({ engine: 'google', requested: 'google', google_available: true }));
+    act(() => result.current.fallBack('Google refused the session (quota).'));
+    expect(result.current.engine).toBe('osm');
+    expect(result.current.fellBackFrom).toBe('google');
+    expect(result.current.reason).toMatch(/quota/);
+  });
+
+  it('falling back when already on OSM changes nothing', async () => {
+    const { result } = await settled(wire());
+    const before = result.current;
+    act(() => result.current.fallBack('x'));
+    expect(result.current.engine).toBe('osm');
+    expect(result.current.reason).toBe(before.reason);
+  });
+
+  it('refresh asks the server again — after the setting changed', async () => {
+    const { result } = await settled(wire());
+    apiJSON.mockResolvedValue(wire({ engine: 'google', requested: 'google', google_available: true }));
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.engine).toBe('google'));
+  });
+});
+
+describe('providerFromWire', () => {
+  it('never reports google unless the server resolved to it', () => {
+    expect(providerFromWire(wire({ requested: 'google', google_available: true })).engine).toBe('osm');
   });
 });
