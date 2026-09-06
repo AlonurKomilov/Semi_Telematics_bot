@@ -15,6 +15,7 @@ Bypass, when you have a reason:
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 
@@ -236,8 +237,54 @@ for f in deleted_py:
 # ── Rule 3 — secrets never enter a commit ────────────────────────
 SECRET_NAMES = (".env", "id_rsa", "id_ed25519")
 SECRET_SUFFIX = (".pem", ".key", ".p12", ".keystore")
+#: The one .env.* the repo TRACKS: the template every deployment copies
+#: and fills in.  Blocking it blocked DOCUMENTING a new setting, which
+#: is the opposite of what this rule wants — an undocumented setting is
+#: how a real key ends up pasted somewhere worse.  So it passes on its
+#: content rather than its name: placeholders and plain defaults are
+#: what a template is for, a real-looking credential is not.
+TEMPLATE_ENV = ".env.example"
+SECRETISH_KEY = re.compile(
+    r"(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|_KEY|^KEY)", re.I)
+#: What a value looks like when it is standing IN for a credential
+#: rather than being one.  A URL and a bare number are ordinary
+#: defaults; the words are what a template writes instead of a token.
+PLACEHOLDER = re.compile(
+    r"your[_-]|changeme|change[_-]me|placeholder|example|<|xxx+|\.\.\.|_here$",
+    re.I)
+URLISH = re.compile(r"^[a-z][a-z0-9+.-]*://", re.I)
+
+
+def _template_secrets(blob: str) -> list[str]:
+    """Assignments that look like a REAL credential sitting in the
+    template.  Returns the offending KEY names."""
+    bad = []
+    for line in blob.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip('"\'')
+        if not value or not SECRETISH_KEY.search(key):
+            continue
+        if PLACEHOLDER.search(value) or URLISH.match(value) or value.isdigit():
+            continue
+        if len(value) < 16:
+            continue          # too short to be a token anybody issued
+        bad.append(key)
+    return bad
+
+
 for p in paths:
     base = p.rsplit("/", 1)[-1]
+    if base == TEMPLATE_ENV:
+        leaked = _template_secrets(staged_blob(p) or "")
+        if leaked:
+            problems.append(
+                f"{p}: real-looking credential in the template "
+                f"({', '.join(leaked[:5])}) — leave it empty or write a "
+                f"placeholder")
+        continue
     if base in SECRET_NAMES or base.startswith(".env.") or p.endswith(SECRET_SUFFIX):
         problems.append(f"{p}: secret-shaped file staged")
 
