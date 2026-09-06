@@ -12,7 +12,7 @@ Other map data lives in dedicated routers:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from interfaces.api.deps import (
     member_unit_scope,
@@ -147,6 +147,43 @@ async def map_engine(
         return {"engine": OSM, "requested": OSM, "engines": list(ENGINES),
                 "google_available": google_available()}
     return await for_account(account_id, tenant)
+
+
+@router.get("/tiles/session")
+async def map_tiles_session(
+    type: str = Query("roadmap"),
+    user: dict = Depends(require_permission("can_view_location")),
+):
+    """A Google Map Tiles session for one map type, for a browser that
+    is about to add the layer.
+
+    Refused for an account whose engine is not Google: a session is a
+    billable thing to hand out, and an account on the free engine has
+    no use for one.  When Google itself refuses — the key, the API not
+    enabled, the network — the answer is 503 with the reason, and the
+    map falls back to the free engine rather than staying blank.
+    """
+    from features.location import map_engine
+    from infra.platform import get_tenant_db
+
+    if type not in map_engine.TILE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown tile type {type!r}; one of {list(map_engine.TILE_TYPES)}")
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    engine = await map_engine.for_account(account_id, tenant)
+    if engine["engine"] != map_engine.GOOGLE:
+        raise HTTPException(
+            status_code=403,
+            detail="This account draws its map on OpenStreetMap.")
+    try:
+        entry = await map_engine.tile_session(type, engine["key"])
+    except map_engine.TileSessionError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return map_engine.tile_wire(type, entry, engine["key"])
 
 
 @router.get("/vehicles/live")

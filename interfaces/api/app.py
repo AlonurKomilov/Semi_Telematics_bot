@@ -40,6 +40,7 @@ from capabilities.preferences import router as preferences_routes
 from capabilities.tour import router as tour_routes
 from interfaces.api import page_layouts as page_layouts_routes
 from capabilities.reporting import router as reports_routes
+from capabilities.reporting.scheduled import router as scheduled_routes
 from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
 from features.scorecards import config as scorecard_rules_routes
@@ -52,6 +53,7 @@ from features.vehicles import router as vehicles_routes
 from features.vehicles.inventory import router as vehicle_inventory_routes
 from features.cameras import router as cameras_routes
 from features.location import router as maps
+from features.location import config as location_config
 from features.location import pois
 from features.geofencing import router as geofences
 from features.parking import router as parking_routes
@@ -461,6 +463,9 @@ def create_api() -> FastAPI:
         app.include_router(loads_routes.router, prefix=prefix)
         app.include_router(kpi_config.router, prefix=prefix)
         app.include_router(kpi_routes.router, prefix=prefix)
+        # Config first, by the same convention as vehicles — /map/config
+        # is the setting, /map/engine is the drawing read.
+        app.include_router(location_config.router, prefix=prefix)
         app.include_router(maps.router, prefix=prefix)
         app.include_router(pois.router, prefix=prefix)
         app.include_router(geofences.router, prefix=prefix)
@@ -478,7 +483,7 @@ def create_api() -> FastAPI:
         app.include_router(events_routes.router, prefix=prefix)
         app.include_router(cameras_routes.router, prefix=prefix)
         app.include_router(reports_routes.router, prefix=prefix)
-        app.include_router(reports_routes.user_router, prefix=prefix)
+        app.include_router(scheduled_routes.user_router, prefix=prefix)
         app.include_router(costs_routes.router, prefix=prefix)
         app.include_router(settings_routes.router, prefix=prefix)
         # Delivery-destination admin (team groups, Sub bots, topics) —
