@@ -109,7 +109,11 @@ export default function LiveAckPanel() {
     // dispatcher standing on this page used to hear both. The count is
     // still tracked — the panel reads it — it just no longer speaks.
     prevPendingRef.current = pending;
-  }, [pending, soundOn, isLoading, cue]);
+    // `soundOn` and `cue` were deps of the chime this effect used to
+    // play. They are not read here any more, and leaving them in makes
+    // the tracker re-run on a slider move — a dep list is a claim about
+    // what the body reads.
+  }, [pending, isLoading]);
 
   // Stamp last-ack each time the selection clears AFTER an ack-in-flight
   // (the bulk-ack flow in AlertsHeader sets acking=true → false + clears

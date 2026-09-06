@@ -1,6 +1,8 @@
 /**
  * Web-push service worker — receives pushes for a CLOSED dashboard and
- * shows the OS notification (notifications phase 6).
+ * shows the OS notification (notifications phase 6). "Closed" is now
+ * something it CHECKS rather than assumes: a visible tab is already
+ * announcing the alert itself, so the push arrives quietly.
  *
  * Lives in public/ so Vite serves it verbatim from the origin root (a
  * service worker's scope can't exceed its own path).  The payload is the
@@ -26,14 +28,31 @@ self.addEventListener('push', (event) => {
   // worth interrupting somebody for. Anything below a warning arrives
   // quietly and waits to be looked at.
   var loud = data.severity === 'critical' || data.severity === 'warning';
+  // AND WHETHER ANYBODY IS ALREADY LOOKING. The first line of this file
+  // says it shows the OS notification for a CLOSED dashboard, and until
+  // now nothing checked. An alert arriving while a dispatcher watches
+  // the board was announced twice: the in-app banner sounds it by
+  // severity through `playBannerCue`, and then the operating system
+  // sounded it again over the top — one event, two noises, and the
+  // second one going around the person's own alert-sound switch, which
+  // a service worker cannot read.
+  //
+  // Showing NOTHING is not the alternative. A push handler that ends
+  // without a notification gets the browser's own "this site has been
+  // updated in the background" instead, so the choice is loud or quiet,
+  // and quiet is right: the banner is the announcement, and this stays
+  // as the record of it in the notification tray.
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      tag: data.tag || 'notif',
-      icon: '/favicon-64.png',
-      badge: '/favicon-32.png',
-      silent: !loud,
-      data: { url: data.url || '/alerts' },
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (wins) {
+      var watched = wins.some(function (w) { return w.visibilityState === 'visible'; });
+      return self.registration.showNotification(title, {
+        body: data.body || '',
+        tag: data.tag || 'notif',
+        icon: '/favicon-64.png',
+        badge: '/favicon-32.png',
+        silent: !loud || watched,
+        data: { url: data.url || '/alerts' },
+      });
     })
   );
 });
