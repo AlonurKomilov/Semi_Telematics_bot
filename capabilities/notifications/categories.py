@@ -40,7 +40,26 @@ class NotificationCategory:
     kind: str = BROADCAST                        # BROADCAST | TARGETED
     mandatory: bool = False                      # can't be fully turned off
     # BROADCAST only: role -> eligible.  None = every role eligible.
+    #
+    # For genuinely ROLE-shaped rules only ("drivers get this").  A rule
+    # about ENTITLEMENT must not live here: a closure can only see the
+    # role string, so it ends up calling the hardcoded role defaults,
+    # which ignore this account's permission matrix and module masking.
+    # Use ``requires_permission`` instead — see below.
     audience: Callable[[str], bool] | None = None
+    # BROADCAST only: the FeatureSet flag a recipient must hold, e.g.
+    # "can_manage_billing".  Declared rather than computed, because the
+    # source cannot resolve it correctly and should not try: only the
+    # dispatcher knows the recipient's account and tier, and it resolves
+    # the EFFECTIVE set (matrix overrides + module masking + manager /
+    # co-owner tier) exactly as alert delivery already does.
+    #
+    # This exists because the closure form quietly read the wrong source
+    # of truth: billing notices resolved static role defaults, so
+    # revoking Billing in the matrix hid the pages and refused the API
+    # while the notices — registered mandatory, so unsilenceable — kept
+    # arriving.
+    requires_permission: str | None = None
     # Which source namespace this belongs to (derived from the key prefix)
     # — drives the UI section grouping in N4.
     @property

@@ -51,20 +51,18 @@ _BILLING_ADMIN_ROLES = (Role.OWNER, Role.ADMIN)
 # no preference row can silence a payment problem.
 
 
-def _billing_audience(role) -> bool:
-    """audience(role) for system.billing — can_manage_billing per the
-    permission SSOT.  Accepts a raw role string or a Role.
-
-    STATIC role defaults by design-for-now: per-account matrix overrides /
-    module masking are not consulted (capabilities/notifications/docs/ARCHITECTURE.md
-    §9d — fixed in one sweep with the alert audiences; don't copy this
-    pattern into an authorization context)."""
-    from capabilities.permissions.roles import get_permissions
-    try:
-        r = Role.from_str(role) if isinstance(role, str) else role
-        return bool(get_permissions(r).can_manage_billing)
-    except Exception:
-        return False
+# The billing audience is DECLARED, not computed.
+#
+# It used to be a closure over the role string, which could only reach
+# ``get_permissions`` — the hardcoded role defaults, whose own docstring
+# calls using them for access decisions "a silent authorization bypass".
+# So revoking Billing in an account's matrix, or switching the module
+# off, hid the pages and refused the API while these notices kept
+# arriving — and being ``mandatory`` they could not even be silenced.
+#
+# ``requires_permission`` hands the question to the dispatcher, which is
+# the only layer that knows the recipient's account and tier and can
+# resolve the EFFECTIVE set.
 
 
 def _register_billing_category() -> None:
@@ -75,7 +73,7 @@ def _register_billing_category() -> None:
         label="Billing & subscription",
         kind=BROADCAST,
         mandatory=True,
-        audience=_billing_audience,
+        requires_permission="can_manage_billing",
     ))
 
 

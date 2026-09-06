@@ -154,6 +154,29 @@ class NotificationPrefsMixin(_MixinBase):
             f"SELECT id, role FROM users WHERE id IN ({ph})", tuple(ids))
         return {row[0]: row[1] for row in await cur.fetchall()}
 
+    async def get_permission_tiers_for_users(
+        self, user_ids: list[int],
+    ) -> dict[int, tuple[str, bool, bool, int]]:
+        """``{user_id: (role, is_manager, is_primary_owner, account_id)}``.
+
+        The role ALONE is not enough to resolve what a person may do:
+        each tier reads its own editable row — a co-owner is not the
+        primary owner, a manager is not the plain base role — so an
+        audience resolved from the role string answers for a tier the
+        recipient may not be in.  Same one-query shape as
+        ``get_roles_for_users``, which stays for the callers that only
+        need the word.
+        """
+        ids = [int(i) for i in user_ids if str(i).lstrip("-").isdigit()]
+        if not ids:
+            return {}
+        ph = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"SELECT id, role, is_manager, is_primary_owner, account_id "
+            f"  FROM users WHERE id IN ({ph})", tuple(ids))
+        return {row[0]: (row[1], bool(row[2]), bool(row[3]), int(row[4] or 0))
+                for row in await cur.fetchall()}
+
     async def get_pref_categories(
         self, account_id: int, recipient_type: str, recipient_id: str,
         channel: str,

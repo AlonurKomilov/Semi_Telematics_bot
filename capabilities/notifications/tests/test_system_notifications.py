@@ -54,12 +54,22 @@ def test_billing_category_broadcast_mandatory_audience():
     cat = get_category("system.billing")
     assert cat is not None and cat.kind == BROADCAST and cat.mandatory
     assert cat.source == "system"
-    # Audience = permission SSOT: billing-capable roles only.
-    assert cat.audience("owner") is True
-    assert cat.audience("admin") is True
-    assert cat.audience("fleet") is False
-    assert cat.audience("driver") is False
-    assert cat.audience("not_a_role") is False      # fail-closed
+    # Eligibility is DECLARED, and resolved per recipient by the
+    # dispatcher against the ACCOUNT's effective permissions.  It used to
+    # be a closure over the role string, which could only reach the
+    # hardcoded defaults — so revoking Billing in an account's matrix, or
+    # switching the module off, left these mandatory notices arriving at
+    # people the account had removed from billing.
+    assert cat.requires_permission == "can_manage_billing"
+    assert cat.audience is None
+
+    # The role DEFAULTS the account starts from are still what you would
+    # expect; they are the seed the matrix edits, not the runtime answer.
+    from capabilities.permissions.roles import Role, get_permissions
+    assert get_permissions(Role.OWNER).can_manage_billing is True
+    assert get_permissions(Role.ADMIN).can_manage_billing is True
+    assert get_permissions(Role.FLEET).can_manage_billing is False
+    assert get_permissions(Role.DRIVER).can_manage_billing is False
 
 
 @pytest.mark.asyncio
