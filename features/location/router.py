@@ -166,15 +166,46 @@ async def map_vehicles_live(
     # of dependency ordering.  member_unit_scope asks it directly
     # and additionally honours a member-level override.
     if await member_unit_scope(user, "location") == "assigned":
-        from interfaces.api.deps import get_user_vehicle_nums, require_permission
+        from interfaces.api.deps import get_user_vehicle_nums
+        from infra.platform import get_router as _get_router
+        from capabilities.permissions.vehicle_scope import build_vehicle_scope
         trucks = await get_user_vehicle_nums(user)
         if not trucks:
             return {"positions": {}}
-        needles = [t.lower() for t in trucks]
-        id_to_name = {str(v.get("id")): (v.get("name") or "").lower() for v in location_raw}
-        positions = {
-            vid: pos for vid, pos in positions.items()
-            if any(n in id_to_name.get(vid, "") for n in needles)
+        # Membership by the identity ladder, never by substring.  This
+        # endpoint compared an assignment string against the display
+        # name with ``in``, so an assignment of "1" admitted 110, 128
+        # and 101, and "230" admitted 2303 — the exact over-match the
+        # ladder was written to end, still live here because the fix
+        # landed on the LIST endpoint next door and this one kept its
+        # own hand-rolled filter.  These are the rows a narrowed member
+        # is ALLOWED to see, so an over-match is a disclosure.
+        #
+        # The raw provider payload carries no registry id, so rung 1
+        # never fires here; rung 2 (the provider's own vehicle id,
+        # resolved from the registry's telematics_ref) decides.
+        #
+        # KNOWN SHARP EDGE, and it is the ladder's, not this call's: the
+        # rung is chosen from what the SCOPE carries in aggregate, not
+        # from what the row's own assigned truck carries.  A driver
+        # holding one linked truck and one not-yet-linked one has a
+        # non-empty external-id set, so rung 2 fires for the UNLINKED
+        # truck's row too, misses, and stops — the driver loses their
+        # own truck here while the list endpoint still shows it (that
+        # payload carries registry ids, so rung 1 answers).  It fails
+        # CLOSED, and the fix is not to fall through to the name: unit
+        # numbers are reused across companies, so a name match would
+        # admit somebody else's truck.  Pinned in
+        # features/location/tests/test_live_positions_scope.py.
+        account_id = int(user["account_id"])
+        tenant = await _get_router().get_tenant(account_id)
+        scope = await build_vehicle_scope(tenant, account_id, trucks)
+        if scope.empty:
+            return {"positions": {}}
+        allowed_ids = {
+            str(v.get("id")) for v in location_raw
+            if v.get("id") is not None and scope.allows_row(v)
         }
+        positions = {vid: pos for vid, pos in positions.items() if vid in allowed_ids}
 
     return {"positions": positions}
