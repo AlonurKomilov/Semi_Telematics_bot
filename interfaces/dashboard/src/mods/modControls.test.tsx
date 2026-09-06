@@ -62,6 +62,16 @@ vi.mock('../preferences', async (orig) => ({
   }),
 }));
 
+// The picker's scope row asks who this is: it offers only the places
+// this person may open. These tests are not about that gate, so they
+// wear an owner's view — every place reachable, permissions settled.
+vi.mock('../hooks/useViewPermissions', () => ({
+  useViewPermissions: () => ({
+    has: () => true, hasAny: () => true, hasWide: () => true,
+    vehicleScope: 'all', role: 'owner', ready: true,
+  }),
+}));
+
 import { ModControls } from './panel/ModControls';
 import { MODS } from './catalogue';
 import { headingsOf } from './taxonomy';

@@ -14,7 +14,7 @@
  * `Section` already does exactly this — a component takes what it uses
  * rather than being handed eleven props it mostly ignores.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
 import {
@@ -26,6 +26,7 @@ import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -171,10 +172,19 @@ export function ColorGroup({ label }: { label: LabelClass }) {
    *  stored: it is a question about this moment, not a preference, and
    *  a remembered target is one a person returns to having forgotten. */
   const [target, setTarget] = useState('');
-  /** Nothing offered means the row is absent, not a row with one chip —
-   *  a question with a single answer is a decoration. Every pick then
-   *  goes to the global canvas, which is what `target === ''` means. */
-  const offered = selectableSurfaces();
+  /** The places this person may aim at — the ones they can open, in the
+   *  view they are wearing. Nothing offered means the row is absent, not
+   *  a row with one chip: a question with a single answer is a
+   *  decoration, and every pick then goes to the global canvas, which is
+   *  what `target === ''` already means. */
+  const { hasAny, ready } = useViewPermissions();
+  const offered = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
+  /** A place whose permission was lost — a role change, a preview of a
+   *  narrower view — must not stay aimed at. The pick would land on a
+   *  screen this person cannot open and could not be found again. */
+  useEffect(() => {
+    if (target && !offered.some((s) => s.id === target)) setTarget('');
+  }, [offered, target]);
   // Whether a picked colour is what is actually painting, in the mode
   // being worn — not merely whether one is stored. The pack chips read
   // their highlight off this, because a chip highlighted while its block

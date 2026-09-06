@@ -15,12 +15,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-const { setTheme, undoableAction, seam } = vi.hoisted(() => ({
+const { setTheme, undoableAction, view } = vi.hoisted(() => ({
   setTheme: vi.fn(), undoableAction: vi.fn(),
-  /** What `selectableSurfaces` answers. The real one answers nothing
-   *  today; these tests open it so the control stays proven for the day
-   *  it does, and close it again to prove the row is then absent. */
-  seam: { open: true },
+  /** Who the picker thinks it is talking to. `allow` is the set of
+   *  permissions this view holds; `ready` is whether they have settled. */
+  view: { allow: new Set<string>(), ready: true },
 }));
 
 let theme: Record<string, unknown> = {};
@@ -47,14 +46,17 @@ vi.mock('../preferences', async (orig) => ({
   usePreference: () => ({ value: 'chime', setValue: () => {} }),
 }));
 vi.mock('../components/banners/stagedAction', () => ({ undoableAction }));
-vi.mock('./surfaces', async (orig) => {
-  const real = await orig<typeof import('./surfaces')>();
-  return { ...real, selectableSurfaces: () => (seam.open ? real.SURFACES : real.selectableSurfaces()) };
-});
+vi.mock('../hooks/useViewPermissions', () => ({
+  useViewPermissions: () => ({
+    has: (f: string) => view.allow.has(f),
+    hasAny: (...f: string[]) => f.some((x) => view.allow.has(x)),
+    hasWide: () => true, vehicleScope: 'all', role: 'fleet', ready: view.ready,
+  }),
+}));
 
 import { ModControls } from './panel/ModControls';
 import { fitCanvas } from './theme/canvas';
-import { SURFACES, selectableSurfaces } from './surfaces';
+import { SURFACES, selectableSurfaces, permissionFor } from './surfaces';
 
 const BASE = {
   mode: 'dark' as const, accent: 'blue', radius: 'md', material: 'solid',
@@ -63,7 +65,7 @@ const BASE = {
 
 const mount = (over: Record<string, unknown> = {}) => {
   theme = { ...BASE, ...over };
-  render(<ModControls />);
+  return render(<ModControls />);
 };
 const chip = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}$`, 'i') });
 const dotOf = (name: string) =>
@@ -78,27 +80,155 @@ const GREYS = Array.from({ length: 256 }, (_, i) => `#${i.toString(16).padStart(
 const WORN = GREYS.find((h) => fitCanvas(h, 'dark').rgb !== null);
 const REFUSED = GREYS.find((h) => fitCanvas(h, 'dark').rgb === null);
 
-beforeEach(() => { setTheme.mockClear(); undoableAction.mockClear(); seam.open = true; cleanup(); });
+/** Every permission the three surfaces need — an owner's view. */
+const ALL = new Set(SURFACES.flatMap((s) => permissionFor(s) ?? []));
 
-describe('until per-feature selection has its gate, nothing is offered', () => {
-  it('the real seam answers with no places', () => {
-    seam.open = false;
-    expect(selectableSurfaces()).toEqual([]);
+beforeEach(() => {
+  setTheme.mockClear(); undoableAction.mockClear(); cleanup();
+  view.allow = new Set(ALL); view.ready = true;
+});
+
+describe('the offer is what this person can open', () => {
+  const none = () => ({ ...(view.allow = new Set()), });
+
+  it('every surface names a permission the route registry really carries', () => {
+    // A surface the registry does not know gets `null` and is never
+    // offered — fail closed. That is only safe while it cannot happen
+    // silently, which is what this says.
+    for (const s of SURFACES)
+      expect(permissionFor(s), `${s.id} names a route the registry has no entry for`)
+        .not.toBeNull();
+    expect(ALL.size, 'no permissions collected — every test below is vacuous')
+      .toBeGreaterThan(0);
+  });
+
+  it('offers nothing to somebody who can open none of them', () => {
+    none();
+    expect(selectableSurfaces((...f) => f.some((x) => view.allow.has(x)))).toEqual([]);
   });
 
   it('so the row is absent — not present with one chip', () => {
-    seam.open = false;
+    none();
     mount();
-    expect(screen.queryByText(/background applies to/i), 'a question with one answer was asked').toBeNull();
+    expect(screen.queryByText(/background applies to/i),
+      'a question with one answer was asked').toBeNull();
     expect(screen.queryByRole('button', { name: /^everywhere$/i })).toBeNull();
   });
 
-  it('and every pick goes to the global canvas', () => {
-    seam.open = false;
+  it('and every pick still goes to the global canvas', () => {
+    none();
     mount({ surfaces: { loads: '#101010' } });
     fireEvent.change(canvasInput(), { target: { value: WORN! } });
     expect(setTheme).toHaveBeenCalledWith({ canvas: WORN });
     expect(setTheme.mock.calls[0][0]).not.toHaveProperty('surfaces');
+  });
+
+  /** The branch no shipped surface can reach. A surface naming a route
+   *  the registry has no entry for gets no permission, and the rule is
+   *  fail CLOSED — offering it would hand somebody a setting for a
+   *  screen nobody can describe the access to. */
+  it('refuses a surface whose route the registry does not carry', () => {
+    const ghost = { id: 'ghost', title: 'Ghost', route: '/nowhere', why: 'x' };
+    expect(permissionFor(ghost)).toBeNull();
+    expect(selectableSurfaces(() => true, true, [ghost]),
+      'a surface with no known permission was offered anyway').toEqual([]);
+    // And the control: the same call with a real surface does offer it.
+    expect(selectableSurfaces(() => true, true, [SURFACES[0]])).toHaveLength(1);
+  });
+
+  /** The other end of the same branch, and also unreachable from the
+   *  shipped list: a route the registry gates on NOTHING. `/` is one —
+   *  Overview adapts to your role and needs no verb — and a surface
+   *  pointing at such a route is offered to everybody, because there is
+   *  no permission to lack. Refusing it would be fail-closed applied to
+   *  a door that has no lock. */
+  it('offers a surface whose route needs no permission at all', () => {
+    const open = { id: 'overview', title: 'Overview', route: '/', why: 'x' };
+    expect(permissionFor(open), 'the registry started gating Overview')
+      .toEqual([]);
+    expect(selectableSurfaces(() => false, true, [open]),
+      'a route with no permission was refused anyway').toHaveLength(1);
+  });
+
+  /**
+   * A tripwire, not an assertion about behaviour.
+   *
+   * `selectableSurfaces` asks for ANY of a route's permissions. Today
+   * no route in the whole registry names more than one, so any and all
+   * are the same rule on every input that exists — a test claiming to
+   * tell them apart would be measuring nothing, and writing one meant
+   * fabricating a permission list the registry can never produce.
+   *
+   * So this says the reason out loud instead. The day a route becomes
+   * reachable through either of two verbs, this fails and the real test
+   * is worth writing.
+   */
+  it('cannot yet tell any-of from all-of, and says so', () => {
+    const withAtLeast = (n: number) =>
+      SURFACES.filter((s) => (permissionFor(s) ?? []).length > n).map((x) => x.id);
+    // The same expression, one threshold down, must find everything —
+    // otherwise the empty answer below is an empty pipeline, not a fact.
+    expect(withAtLeast(0), 'permissionFor stopped returning anything')
+      .toEqual(SURFACES.map((x) => x.id));
+    expect(withAtLeast(1),
+      'a surface now needs more than one permission — write the any-of test')
+      .toEqual([]);
+  });
+
+  it('offers exactly the ones this view can reach, and no more', () => {
+    const loads = SURFACES.find((s) => s.id === 'loads')!;
+    view.allow = new Set(permissionFor(loads)!);
+    mount();
+    expect(chip('Loads')).toBeTruthy();
+    for (const other of SURFACES.filter((s) => s.id !== 'loads'))
+      expect(screen.queryByRole('button', { name: new RegExp(`^${other.title}$`, 'i') }),
+        `${other.title} was offered to somebody who cannot open it`).toBeNull();
+  });
+
+  /** VIEW is the gate, not manage — the decision. A background is not
+   *  access: it is per-user and per-device and changes nothing for
+   *  anyone else. And Live Map has no `can_manage_*` verb at all, so a
+   *  manage gate would remove the one screen the feature was built for. */
+  it('and a view-only permission is enough — a background is not access', () => {
+    const map = SURFACES.find((s) => s.id === 'live-map')!;
+    const perms = permissionFor(map)!;
+    expect(perms.every((p) => p.startsWith('can_view_')),
+      'Live Map gained a manage verb — revisit the gate').toBe(true);
+    view.allow = new Set(perms);
+    mount();
+    expect(chip('Live Map')).toBeTruthy();
+  });
+
+  /** An unknown is not a denial. Until the view's permissions settle,
+   *  `hasAny` answers false for everything — so the row waits rather
+   *  than appearing empty and growing a second later. */
+  it('says nothing at all until the permissions have settled', () => {
+    view.ready = false;
+    mount();
+    expect(screen.queryByText(/background applies to/i)).toBeNull();
+  });
+
+  /** Aimed at Loads, and then the view narrows under it — a preview of
+   *  a narrower role, a permission revoked. Without the effect the
+   *  target survives: the chip disappears while the picker still writes
+   *  to `surfaces.loads`, so every pick lands on a screen this person
+   *  cannot open and cannot find again. Re-RENDERED rather than
+   *  remounted — a fresh mount starts at Everywhere anyway and would
+   *  prove nothing. */
+  it('and drops an aim it can no longer reach', () => {
+    const { rerender } = mount({ canvas: '#111111' });
+    fireEvent.click(chip('Loads'));
+    fireEvent.change(canvasInput(), { target: { value: WORN! } });
+    expect(setTheme).toHaveBeenCalledWith({ surfaces: { loads: WORN } });
+
+    setTheme.mockClear();
+    view.allow = new Set();
+    rerender(<ModControls />);
+    expect(screen.queryByRole('button', { name: /^loads$/i }),
+      'the chip survived the permission it needs').toBeNull();
+    fireEvent.change(canvasInput(), { target: { value: WORN! } });
+    expect(setTheme, 'a pick landed on a place this person cannot open')
+      .toHaveBeenCalledWith({ canvas: WORN });
   });
 });
 

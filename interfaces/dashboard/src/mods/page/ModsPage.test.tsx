@@ -16,6 +16,16 @@ vi.mock('react-i18next', async (orig) => ({
   useTranslation: () => ({ t: (_k: string, d?: string) => d ?? _k }),
 }));
 
+// The picker's scope row asks who this is: it offers only the places
+// this person may open. These tests are not about that gate, so they
+// wear an owner's view — every place reachable, permissions settled.
+vi.mock('../../hooks/useViewPermissions', () => ({
+  useViewPermissions: () => ({
+    has: () => true, hasAny: () => true, hasWide: () => true,
+    vehicleScope: 'all', role: 'owner', ready: true,
+  }),
+}));
+
 import ModsPage from './ModsPage';
 import { ModProvider } from '../context';
 import { TAXONOMY, browsableItemsOf, resetAxesOf, MOD_FIELD_CATEGORY } from '../taxonomy';

@@ -22,6 +22,8 @@
  * like several, which is the opposite of why mods exist here. The
  * viewing condition varies by screen; the identity does not.
  */
+import { ROUTE_ENTRIES } from '../components/shell/routeRegistry';
+
 export interface Surface {
   /** Stored key, and the value stamped as `data-surface`. */
   readonly id: string;
@@ -44,22 +46,63 @@ export const SURFACES: readonly Surface[] = [
 ];
 
 /**
- * The places a person may AIM the picker at — today, none.
+ * What each place costs to reach.
  *
- * The engine below is complete and stays live: the list, the resolver,
- * the scoped stylesheet blocks, the sanitiser. What is withheld is the
- * offer. Owner's call (2026-09-06): choosing a place is the first step
- * of "per feature selections", and that arrives with its own gate —
- * the permissions service says which features a person may manage and
- * which they may only view, and the picker offers exactly those. Until
- * that gate exists, offering every place to everyone would ship a
- * decision this function is meant to make later.
- *
- * So this is the seam, not a switch: when the gate lands it reads the
- * person's permissions here, and the row above it needs no change.
+ * Taken from `ROUTE_ENTRIES` rather than written again here: the
+ * registry already answers "who may open this page", and a second copy
+ * of that answer is a copy that will disagree. A surface whose route
+ * the registry does not carry gets no permission and is therefore never
+ * offered — fail closed, and `surfaces.test.ts` makes it loud.
  */
-export function selectableSurfaces(): readonly Surface[] {
-  return [];
+export function permissionFor(surface: Surface): readonly string[] | null {
+  const entry = ROUTE_ENTRIES.find((r) => r.path === surface.route);
+  if (!entry) return null;
+  if (entry.permission === null) return [];
+  return Array.isArray(entry.permission) ? entry.permission : [entry.permission];
+}
+
+/**
+ * The places THIS person may aim the picker at.
+ *
+ * VIEW is the gate, not manage — the decision behind "per feature
+ * selections", taken 2026-09-06.
+ *
+ * A background is not access. Choosing how Loads reads on your own
+ * screen changes nothing for anyone else: the preference is per-user
+ * and per-device, so there is no "manage" dimension for it to require.
+ * What permission genuinely decides is whether the place should be
+ * NAMED at all — offering "Work Orders" to somebody who cannot open
+ * Work Orders both leaks that it exists and hands them a setting for a
+ * screen they will never see.
+ *
+ * And requiring manage would have removed the surface the feature was
+ * built for: Live Map has no `can_manage_*` verb anywhere in the
+ * taxonomy — it is view-only by design — so a manage gate would make
+ * the wall display, the screen read from across a room, un-themeable by
+ * everybody including the owner.
+ *
+ * `ready` is not a permission. Until the active view's permissions have
+ * settled, `hasAny` answers false for everything, and an unknown is not
+ * a denial — so the picker offers nothing and says nothing rather than
+ * showing a list that grows a second later.
+ */
+export function selectableSurfaces(
+  hasAny: (...flags: string[]) => boolean,
+  ready = true,
+  /** The list to filter. Defaults to the shipped one; a test passes its
+   *  own so the fail-closed branch and the any-of rule are reachable —
+   *  today's three surfaces each name exactly one permission and each
+   *  name a route the registry carries, so neither branch could be
+   *  exercised by the real list, and a guard that cannot reach a branch
+   *  is not guarding it. */
+  from: readonly Surface[] = SURFACES,
+): readonly Surface[] {
+  if (!ready) return [];
+  return from.filter((s) => {
+    const perms = permissionFor(s);
+    if (perms === null) return false;
+    return perms.length === 0 || hasAny(...perms);
+  });
 }
 
 export const surfaceById = (id: string): Surface | undefined =>

@@ -44,6 +44,16 @@ vi.mock('../preferences', async (orig) => ({
 }));
 vi.mock('../components/banners/stagedAction', () => ({ undoableAction }));
 
+// The picker's scope row asks who this is: it offers only the places
+// this person may open. These tests are not about that gate, so they
+// wear an owner's view — every place reachable, permissions settled.
+vi.mock('../hooks/useViewPermissions', () => ({
+  useViewPermissions: () => ({
+    has: () => true, hasAny: () => true, hasWide: () => true,
+    vehicleScope: 'all', role: 'owner', ready: true,
+  }),
+}));
+
 import { ModControls } from './panel/ModControls';
 import { accentTokens, TONES, ACCENT_BAND } from './theme/accent';
 import { oklchToSrgb, toHex } from './theme/contrast';
