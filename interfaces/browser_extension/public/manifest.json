@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "4truck",
   "description": "4truck vehicle management in a side panel, beside whatever you are working on.",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "action": {
     "default_title": "4truck",
     "default_icon": {
@@ -57,7 +57,7 @@
         "icons/icon32.png"
       ],
       "matches": [
-        "https://www.google.com/maps/*"
+        "https://www.google.com/*"
       ]
     }
   ]

@@ -90,8 +90,10 @@ ABOUT 4TRUCK
   a sign-in token inside a page we do not control would be the wrong trade. Off in one click on the
   map itself or in the panel's Settings; it draws nothing at all in Street View, and a
   person who has not connected the extension sees nothing at all — not even the switch. The extension's own
-  icon is declared web-accessible for `google.com/maps` alone, so the switch can show
-  the same mark as the toolbar; no other packaged file is readable by the page.
+  icon is the one packaged file a page may read, so the switch can show the same mark as
+  the toolbar. It is declared for `https://www.google.com/*` because Chrome does not accept
+  a narrower path in `web_accessible_resources` — the content script itself still runs only
+  on `/maps/*`. Nothing else in the package is readable by any page.
 
 **Remote code:** No. All code is bundled in the package.
 
