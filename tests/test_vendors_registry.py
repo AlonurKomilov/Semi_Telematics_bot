@@ -118,7 +118,7 @@ async def test_resolve_enriches_empty_fields_only(db):
 
     # A DIFFERENT address later does NOT overwrite the learned one.
     v3 = await db.resolve_or_create_vendor(
-        a, "Learn Shop", address="1 Elm Ave", email="ls@x.com",
+        a, "Learn Shop", address="1 Elm Ave", email="ls@example.com",
     )
     assert v3["address"] == "9 Oak St"      # kept
-    assert v3["email"] == "ls@x.com"        # was empty → filled
+    assert v3["email"] == "ls@example.com"        # was empty → filled

@@ -288,10 +288,10 @@ class TestBillingMixinContracts:
         assert sub2["id"] == sub["id"]
 
         # Update
-        await db.update_subscription(acct.id, vehicle_count=15, billing_email="test@fleet.com")
+        await db.update_subscription(acct.id, vehicle_count=15, billing_email="test@fleet.example.com")
         sub3 = await db.get_subscription(acct.id)
         assert sub3["vehicle_count"] == 15
-        assert sub3["billing_email"] == "test@fleet.com"
+        assert sub3["billing_email"] == "test@fleet.example.com"
 
         # Usage snapshot
         snap_id = await db.record_usage_snapshot(

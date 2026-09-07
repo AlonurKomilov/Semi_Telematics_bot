@@ -206,7 +206,7 @@ async def resend_webhook(
 
     6. **Resend.email_id is the ONLY trusted lookup key.**  Recipient-
        address fallback is REFUSED — it opens cross-account hijack
-       (Account A's bounce on alice@x.com flips Account B's still-
+       (Account A's bounce on alice@example.com flips Account B's still-
        valid invite to the same address).
 
     7. **Hard vs soft bounce.**  ``data.bounce.type == 'Permanent'``

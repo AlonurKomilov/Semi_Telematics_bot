@@ -57,15 +57,15 @@ class TestPeopleCounts:
         app, db = api
         acct = await db.create_account("Counted Co")
         other = await db.create_account("Other Co")
-        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@x.com")
-        await _user(db, acct.id, Role.FLEET, f"f1.{acct.id}@x.com")
-        await _user(db, acct.id, Role.FLEET, f"f2.{acct.id}@x.com")
+        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@example.com")
+        await _user(db, acct.id, Role.FLEET, f"f1.{acct.id}@example.com")
+        await _user(db, acct.id, Role.FLEET, f"f2.{acct.id}@example.com")
         # Deactivated: holds no permissions today, so it must not inflate
         # the number an owner reads before flipping a switch.
-        await _user(db, acct.id, Role.FLEET, f"f3.{acct.id}@x.com", active=False)
+        await _user(db, acct.id, Role.FLEET, f"f3.{acct.id}@example.com", active=False)
         # A different tenant's fleet staff must never reach this count.
-        await _user(db, other.id, Role.FLEET, f"x1.{other.id}@x.com")
-        await _user(db, other.id, Role.FLEET, f"x2.{other.id}@x.com")
+        await _user(db, other.id, Role.FLEET, f"x1.{other.id}@example.com")
+        await _user(db, other.id, Role.FLEET, f"x2.{other.id}@example.com")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             body = (await c.get(PERMS, headers=_headers(owner, acct, "owner"))).json()
@@ -79,7 +79,7 @@ class TestPeopleCounts:
         loading' and 'nobody holds this' from rendering the same way."""
         app, db = api
         acct = await db.create_account("Sparse Co")
-        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@x.com")
+        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@example.com")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             body = (await c.get(PERMS, headers=_headers(owner, acct, "owner"))).json()
@@ -92,8 +92,8 @@ class TestPeopleCounts:
         it and cannot show it."""
         app, db = api
         acct = await db.create_account("Private Co")
-        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@x.com")
-        await _user(db, acct.id, Role.SAFETY, f"sam.smith.{acct.id}@x.com")
+        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@example.com")
+        await _user(db, acct.id, Role.SAFETY, f"sam.smith.{acct.id}@example.com")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             body = (await c.get(PERMS, headers=_headers(owner, acct, "owner"))).json()
@@ -111,7 +111,7 @@ class TestPeopleCounts:
         """
         app, db = api
         acct = await db.create_account("Fragile Co")
-        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@x.com")
+        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@example.com")
 
         async def boom(_account_id):
             raise RuntimeError("count query exploded")
@@ -132,7 +132,7 @@ class TestPeopleCounts:
         that aren't the real ones."""
         app, db = api
         acct = await db.create_account("Loud Co")
-        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@x.com")
+        owner = await _user(db, acct.id, Role.OWNER, f"o.{acct.id}@example.com")
 
         import capabilities.permissions.router as prouter
 

@@ -29,7 +29,7 @@ from capabilities.integrations.datatruck.sync import (
 def test_norm_driver_snake_case_and_fallbacks():
     rec = {
         "id": 8, "first_name": "Claude", "last_name": "Safari",
-        "phone": "+1 555 0100", "email": "c@x.com",
+        "phone": "+1 555 0100", "email": "c@example.com",
         "status": {"id": 1, "name": "active"},
         "cdl_class": "A",  # un-promoted — must survive in payload
     }
@@ -57,14 +57,14 @@ def test_norm_driver_account_nested_shape():
     out = _norm_driver({
         "id": 194,
         "account": {"first_name": "Jean", "last_name": "Bosco",
-                    "full_name": "Jean Bosco", "email": "jb@x.com"},
+                    "full_name": "Jean Bosco", "email": "jb@example.com"},
         "contact_number": "+1 555 0102",
         "status": "active",
         "assigned_truck": {"id": 7, "unit_number": "T-12"},
     })
     assert out["display_name"] == "Jean Bosco"
     assert out["first_name"] == "Jean" and out["last_name"] == "Bosco"
-    assert out["email"] == "jb@x.com"
+    assert out["email"] == "jb@example.com"
     assert out["phone"] == "+1 555 0102"
     assert out["payload"]["assigned_truck"]["unit_number"] == "T-12"
 

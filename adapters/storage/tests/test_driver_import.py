@@ -38,7 +38,7 @@ async def _seed(db, account_id: int) -> dict:
         _staged("D1", name="Linked ByCdl", license_number="CDL 100"),
         _staged("D2", name="Already Linked"),
         _staged("D3", name="Brand New", phone="+15551234",
-                email="new@x.com", license_number="CDL-300"),
+                email="new@example.com", license_number="CDL-300"),
         _staged("D4", name="Ex Driver", status="terminated"),
     ])
     return {"u1": u1.id, "u2": u2.id}
@@ -95,7 +95,7 @@ async def test_apply_creates_links_and_is_idempotent(db):
     )
     row = await cur.fetchone()
     assert row[0] is None and row[1] == "D3"
-    assert row[2] == "new@x.com" and row[3] == "driver"
+    assert row[2] == "new@example.com" and row[3] == "driver"
     # The CDL match got linked too.
     cur = await db._db.execute(
         "SELECT datatruck_driver_id FROM users WHERE id = ?", (seeded["u1"],),

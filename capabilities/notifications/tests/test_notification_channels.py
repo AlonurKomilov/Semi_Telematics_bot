@@ -290,7 +290,7 @@ def test_email_render_builds_subject_html_and_unsubscribe(monkeypatch):
     content = NotificationContent(
         title="Low fuel · Truck 22", body="Tank at 8% & dropping",
         severity="warning", alert_type="fuel")
-    p = EmailChannel().render(_rcpt(address="me@x.com"), content)
+    p = EmailChannel().render(_rcpt(address="me@example.com"), content)
 
     assert p.subject == "[Warning] Low fuel · Truck 22"     # severity prefix
     assert "Tank at 8% & dropping" in p.text                # text/plain raw
@@ -312,7 +312,7 @@ def test_email_render_draws_a_labelled_button_for_a_declared_action(monkeypatch)
         url="https://x.test/workforce/applications?app=77",
         meta={"action": {"label": "Review application",
                          "url": "/workforce/applications?app=77"}})
-    p = EmailChannel().render(_rcpt(address="me@x.com"), content)
+    p = EmailChannel().render(_rcpt(address="me@example.com"), content)
 
     html = p.extra["html"]
     assert "https://x.test/workforce/applications?app=77" in html
@@ -330,7 +330,7 @@ def test_email_render_refuses_an_offsite_action(monkeypatch):
     monkeypatch.setenv("AUTH_BASE_URL", "https://x.test")
     for bad in ("https://evil.test/steal", "//evil.test", "/\\evil.test"):
         p = EmailChannel().render(
-            _rcpt(address="me@x.com"),
+            _rcpt(address="me@example.com"),
             NotificationContent(title="T", url="https://x.test/ok",
                                 meta={"action": {"label": "Click", "url": bad}}))
         assert "Click" not in p.extra["html"], bad
@@ -342,7 +342,7 @@ def test_email_render_refuses_an_offsite_action(monkeypatch):
 
 def test_email_render_critical_prefix():
     p = EmailChannel().render(
-        _rcpt(address="a@b.com"),
+        _rcpt(address="a@example.net"),
         NotificationContent(title="Engine fault", severity="critical"))
     assert p.subject.startswith("[Critical]")
 
@@ -359,7 +359,7 @@ def test_email_send_unconfigured_fails_closed(monkeypatch):
     monkeypatch.delenv("SMTP_HOST", raising=False)
     monkeypatch.delenv("SMTP_FROM", raising=False)
     res = asyncio.run(EmailChannel().send(
-        _rcpt(address="me@x.com"), Payload(text="x", subject="s")))
+        _rcpt(address="me@example.com"), Payload(text="x", subject="s")))
     assert not res.ok and res.error == "email_not_configured"
 
 
@@ -380,10 +380,10 @@ def test_email_send_calls_transport_with_unsubscribe_header(monkeypatch):
         payload = Payload(text="body", subject="Subj",
                           extra={"html": "<p>body</p>",
                                  "list_unsubscribe": "<https://x.test/u>"})
-        res = asyncio.run(EmailChannel().send(_rcpt(address="me@x.com"), payload))
+        res = asyncio.run(EmailChannel().send(_rcpt(address="me@example.com"), payload))
 
     assert res.ok
-    assert captured["to"] == "me@x.com" and captured["subject"] == "Subj"
+    assert captured["to"] == "me@example.com" and captured["subject"] == "Subj"
     assert captured["html_body"] == "<p>body</p>"
     hdrs = captured["extra_headers"]
     assert hdrs["List-Unsubscribe"] == "<https://x.test/u>"

@@ -24,10 +24,10 @@ Always: one company only, email pre-verified (no inbox), a random
 for the role (seed + stored override for the company, else account-
 wide) resolved the way request auth resolves them.
 
-    python3 -m scripts.review_user --account 10000001 --company PTG --email you@yours.com
+    python3 -m scripts.review_user --account 10000001 --company PTG --email you@yours.example.com
     python3 -m scripts.review_user ... --role driver --trucks 142,143,220
     python3 -m scripts.review_user ... --apply
-    python3 -m scripts.review_user --account 10000001 --email you@yours.com --delete --apply
+    python3 -m scripts.review_user --account 10000001 --email you@yours.example.com --delete --apply
 
 Dry-run is the default and prints exactly what --apply would do.  Use
 an email YOU control: "forgot password" mails a reset link there.

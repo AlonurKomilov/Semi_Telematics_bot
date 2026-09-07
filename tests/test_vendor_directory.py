@@ -161,12 +161,12 @@ async def test_link_enriches_empty_vendor_fields(db):
     v = await db.resolve_or_create_vendor(a, "Enrich Shop", phone="555-me")
     e = await db.create_directory_entry(
         "Enrich Shop Global", address="77 Verified Rd", phone="555-dir",
-        email="global@shop.com", status="active",
+        email="global@shop.example.com", status="active",
     )
     assert await db.link_vendor_to_directory(a, v["id"], e["id"]) is True
     row = await db.get_vendor(v["id"], a)
     assert row["address"] == "77 Verified Rd"   # empty → filled from entry
-    assert row["email"] == "global@shop.com"    # empty → filled
+    assert row["email"] == "global@shop.example.com"    # empty → filled
     assert row["phone"] == "555-me"             # user-set → kept
 
 

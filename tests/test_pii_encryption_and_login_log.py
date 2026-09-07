@@ -174,7 +174,7 @@ class TestLoginAttemptLog:
         )
         for _ in range(5):
             await db.record_login_attempt(
-                user_id=user.id, email="x@x.com", success=True,
+                user_id=user.id, email="x@example.com", success=True,
             )
         rows = await db.list_my_login_attempts(user.id, limit=3)
         assert len(rows) == 3

@@ -198,7 +198,7 @@ class InvitesMixin:
         NOTE: this method is the ONLY supported invite-lookup path
         for webhook handlers.  Falling back to recipient-email
         search on miss is forbidden — it opens a cross-account
-        hijack where account A bouncing alice@x.com flips a flag on
+        hijack where account A bouncing alice@example.com flips a flag on
         account B's still-valid invite to the same address.
         """
         if not resend_email_id:

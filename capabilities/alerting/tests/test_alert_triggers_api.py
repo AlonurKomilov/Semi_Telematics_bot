@@ -50,7 +50,7 @@ class TestTriggerCrud:
     async def test_create_list_edit_delete(self, api):
         app, db = api
         acct = await db.create_account("Trigger Co")
-        me = await _user(db, acct.id, f"a.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"a.{acct.id}@example.com")
         h = _headers(me, acct)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             r = await c.post(API, headers=h, json={"metric": "def_pct", "threshold": 10})
@@ -78,7 +78,7 @@ class TestTriggerCrud:
         that stops someone setting a physically meaningless number."""
         app, db = api
         acct = await db.create_account("Menu Co")
-        me = await _user(db, acct.id, f"m.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"m.{acct.id}@example.com")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             body = (await c.get(f"{API}/metrics", headers=_headers(me, acct))).json()
         by_key = {m["key"]: m for m in body["metrics"]}
@@ -96,8 +96,8 @@ class TestWalls:
         exists as far as this person's list is concerned."""
         app, db = api
         acct = await db.create_account("Two Co")
-        mine = await _user(db, acct.id, f"one.{acct.id}@x.com")
-        theirs = await _user(db, acct.id, f"two.{acct.id}@x.com")
+        mine = await _user(db, acct.id, f"one.{acct.id}@example.com")
+        theirs = await _user(db, acct.id, f"two.{acct.id}@example.com")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             made = (await c.post(API, headers=_headers(mine, acct),
                                  json={"metric": "fuel_pct", "threshold": 26})).json()
@@ -114,7 +114,7 @@ class TestWalls:
         an arbitrary read of the warehouse."""
         app, db = api
         acct = await db.create_account("White Co")
-        me = await _user(db, acct.id, f"w.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"w.{acct.id}@example.com")
         h = _headers(me, acct)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             for bad in ("odometer_mi", "speed_mph", "rpm", "password"):
@@ -125,7 +125,7 @@ class TestWalls:
     async def test_a_threshold_nobody_could_cross_is_refused(self, api):
         app, db = api
         acct = await db.create_account("Range Co")
-        me = await _user(db, acct.id, f"r.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"r.{acct.id}@example.com")
         h = _headers(me, acct)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             r = await c.post(API, headers=h, json={"metric": "fuel_pct", "threshold": 1})
@@ -138,7 +138,7 @@ class TestWalls:
         by creating a sane trigger and then editing it."""
         app, db = api
         acct = await db.create_account("Edit Co")
-        me = await _user(db, acct.id, f"e.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"e.{acct.id}@example.com")
         h = _headers(me, acct)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             made = (await c.post(API, headers=h,
@@ -149,7 +149,7 @@ class TestWalls:
     async def test_the_cap_refuses_with_something_actionable(self, api):
         app, db = api
         acct = await db.create_account("Cap Co")
-        me = await _user(db, acct.id, f"c.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"c.{acct.id}@example.com")
         h = _headers(me, acct)
         from capabilities.alerting.triggers.models import MAX_TRIGGERS_PER_USER
         # Fill the quota through storage rather than the API: the POST
@@ -169,7 +169,7 @@ class TestWalls:
         that already carries thousands nobody has acknowledged."""
         app, db = api
         acct = await db.create_account("Board Co")
-        me = await _user(db, acct.id, f"b.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"b.{acct.id}@example.com")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             await c.post(API, headers=_headers(me, acct),
                          json={"metric": "fuel_pct", "threshold": 26})
@@ -195,7 +195,7 @@ class TestTheCompanyWallOnTriggers:
         acct = await db.create_account("Wall API Co")
         cft = await db.add_company(acct.id, "CFT", "k_cft", "Cargo Freight")
         await db.add_company(acct.id, "OSY", "k_osy", "Other Systems")
-        me = await _user(db, acct.id, f"w.{acct.id}@x.com")
+        me = await _user(db, acct.id, f"w.{acct.id}@example.com")
         await db.set_user_companies(me.id, acct.id, [cft.id])
         mine = await db.add_vehicle(
             acct.id, unit_number="201", company_code="CFT",

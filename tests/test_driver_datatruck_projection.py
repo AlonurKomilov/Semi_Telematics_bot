@@ -79,10 +79,10 @@ async def test_fills_empty_phone_and_cdl_with_provenance(db):
     acct = await db.create_account("DT Fleet 3")
     u = await db.create_user(1003, acct.id, role=Role.DRIVER,
                              display_name="Empty Fields")
-    await db.set_user_email_password(u.id, "empty@x.com", "x-hash")
+    await db.set_user_email_password(u.id, "empty@example.com", "x-hash")
 
     n = await db.project_datatruck_drivers(acct.id, [
-        _dt_row("99", email="empty@x.com", phone="+15550000",
+        _dt_row("99", email="empty@example.com", phone="+15550000",
                 license_number="CDL999"),
     ])
     assert n == 1
@@ -105,7 +105,7 @@ async def test_no_match_creates_nothing(db):
                          display_name="Only Driver")
 
     n = await db.project_datatruck_drivers(acct.id, [
-        _dt_row("55", name="Stranger", email="stranger@x.com",
+        _dt_row("55", name="Stranger", email="stranger@example.com",
                 license_number="ZZZ111"),
     ])
     assert n == 0
@@ -151,17 +151,17 @@ async def test_operator_edit_pins_field_against_resync(db):
     acct = await db.create_account("DT Fleet 7")
     u = await db.create_user(1008, acct.id, role=Role.DRIVER,
                              display_name="Pin Me")
-    await db.set_user_email_password(u.id, "pin@x.com", "x-hash")
+    await db.set_user_email_password(u.id, "pin@example.com", "x-hash")
 
     await db.project_datatruck_drivers(acct.id, [
-        _dt_row("22", email="pin@x.com", phone="+15550001"),
+        _dt_row("22", email="pin@example.com", phone="+15550001"),
     ])
     assert (await db.list_drivers(acct.id))[0].phone == "+15550001"
 
     # Operator corrects the phone → pinned manual.
     await db.update_driver_profile(u.id, phone="+15559999")
     await db.project_datatruck_drivers(acct.id, [
-        _dt_row("22", email="pin@x.com", phone="+15550001"),
+        _dt_row("22", email="pin@example.com", phone="+15550001"),
     ])
     assert (await db.list_drivers(acct.id))[0].phone == "+15559999"
 

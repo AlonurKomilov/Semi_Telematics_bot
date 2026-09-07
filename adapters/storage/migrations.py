@@ -3861,7 +3861,7 @@ async def migrate_invites_email_channel(conn) -> None:
       email_send_count INTEGER NOT NULL DEFAULT 0
         - Incremented on every successful send (initial + each resend).
           Surfaced in audit-log details so an auditor can spot abuse
-          ("HR resent 10 invites to alice@evil.com in an hour") without
+          ("HR resent 10 invites to alice@evil.example.com in an hour") without
           joining log rows.
 
     Default behaviour on upgrade: every existing invite row has

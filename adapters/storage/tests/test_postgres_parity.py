@@ -87,12 +87,12 @@ class TestAccountSettingsParity:
         await pg_db.set_account_setting(a, OBJECT_STORAGE_BACKEND_KEY, "gdrive")
         await pg_db.set_account_setting(a, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "tok-blob")
         await pg_db.set_account_setting(a, OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, "1Folder")
-        await pg_db.set_account_setting(a, OBJECT_STORAGE_GDRIVE_USER_EMAIL, "u@x.com")
+        await pg_db.set_account_setting(a, OBJECT_STORAGE_GDRIVE_USER_EMAIL, "u@example.com")
 
         assert await pg_db.get_account_setting(a, OBJECT_STORAGE_BACKEND_KEY) == "gdrive"
         assert await pg_db.get_account_setting(a, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN) == "tok-blob"
         assert await pg_db.get_account_setting(a, OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID) == "1Folder"
-        assert await pg_db.get_account_setting(a, OBJECT_STORAGE_GDRIVE_USER_EMAIL) == "u@x.com"
+        assert await pg_db.get_account_setting(a, OBJECT_STORAGE_GDRIVE_USER_EMAIL) == "u@example.com"
 
 
 class TestDriverDocumentBucketParity:

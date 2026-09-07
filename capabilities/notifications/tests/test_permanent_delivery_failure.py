@@ -189,10 +189,22 @@ class TestEmailGetsTheSameTreatment:
         assert not is_permanent_failure("email_not_configured")
         assert not is_permanent_failure("SMTPServerDisconnected: bye")
 
-    async def test_the_smtp_reason_survives_the_bool_wrapper(self):
+    async def test_the_smtp_reason_survives_the_bool_wrapper(self, monkeypatch):
         """``send_email`` returns a bare bool for ~20 existing callers,
         which is why the reason never reached the classifier. The
-        detailed sibling carries it; the wrapper keeps their contract."""
+        detailed sibling carries it; the wrapper keeps their contract.
+
+        SMTP is explicitly UNSET rather than merely assumed absent. This
+        test read ambient env, so in a full-suite run — where another
+        test had leaked a real host — it stopped asserting and started
+        SENDING: that is how ``nobody@example.invalid`` reached the live
+        Resend dashboard and sat there as "Delivery Delayed". A unit
+        test must not be one leaked variable away from posting mail to
+        the internet.
+        """
+        for var in ("SMTP_HOST", "SMTP_FROM", "MAIL_PROVIDER",
+                    "RESEND_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
         from capabilities.email import send_email, send_email_detailed
         ok, reason = send_email_detailed(
             to="nobody@example.invalid", subject="s", body="b")
@@ -250,7 +262,7 @@ class TestAsyncBounces:
         u = await pg_db.create_user(telegram_id=7901, account_id=acct.id,
                                     role=Role.FLEET)
         await pg_db.upsert_notification_channel(
-            acct.id, "user", u.id, "email", address="a@b.com", verified=True)
+            acct.id, "user", u.id, "email", address="a@example.net", verified=True)
         await pg_db.record_notification_delivery(
             acct.id, channel="email", recipient_type="user",
             recipient_id=str(u.id), category="alert.faults",

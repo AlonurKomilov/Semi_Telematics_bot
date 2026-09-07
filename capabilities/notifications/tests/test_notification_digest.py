@@ -77,7 +77,7 @@ async def _subscribe(pg_db, acct, uid, channel, atype, cadence):
     await pg_db.set_notification_pref(
         acct, "user", uid, channel, atype, enabled=True, cadence=cadence)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, channel, address="me@x.com", verified=True)
+        acct, "user", uid, channel, address="me@example.com", verified=True)
 
 
 # ── Queue store ──────────────────────────────────────────────────────
@@ -87,13 +87,13 @@ async def test_enqueue_fetch_clear_roundtrip(pg_db):
     for t in ("fuel", "faults"):
         await pg_db.enqueue_digest_item(
             acct, "user", uid, "email", "daily", t, f"{t} on Truck 22",
-            "me@x.com", severity="warning")
+            "me@example.com", severity="warning")
 
     assert await pg_db.fetch_due_digest_items("hourly") == []   # cadence-scoped
     items = await pg_db.fetch_due_digest_items("daily")
     assert len(items) == 2
     assert {i["category"] for i in items} == {"fuel", "faults"}
-    assert items[0]["address"] == "me@x.com"
+    assert items[0]["address"] == "me@example.com"
     assert items[0]["severity"] == "warning"
 
     assert await pg_db.clear_digest_items([i["id"] for i in items]) == 2
@@ -112,7 +112,7 @@ async def test_immediate_renders_and_sends_now(pg_db, fake_channel):
 
     assert [r.ok for r in res] == [True]
     rcpt, payload = fake_channel.sent[0]
-    assert rcpt.address == "me@x.com"
+    assert rcpt.address == "me@example.com"
     assert payload.text == "Low fuel · Truck 22"           # rendered from content
     assert payload.extra["content"].category == "fuel"   # channel saw raw content
     assert await pg_db.fetch_due_digest_items("daily") == []
@@ -205,7 +205,7 @@ async def test_flush_sends_one_message_per_recipient_and_clears(pg_db, fake_chan
 
     assert sent == 1                                   # 3 items → ONE message
     rcpt, payload = fake_channel.sent[0]
-    assert rcpt.id == str(uid) and rcpt.address == "me@x.com"
+    assert rcpt.id == str(uid) and rcpt.address == "me@example.com"
     body = payload.extra["content"].body
     assert "3 notifications" in payload.text
     for i in range(3):
@@ -284,7 +284,7 @@ async def test_revoked_consent_drops_the_backlog(pg_db, fake_channel):
     await dispatch(pg_db, acct, _content("alert"), channels=["fake_test"])
 
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="me@x.com",
+        acct, "user", uid, "fake_test", address="me@example.com",
         verified=True, enabled_master=False)
 
     assert await flush_digests(pg_db, "daily") == 0
@@ -297,10 +297,10 @@ async def test_flush_uses_current_address_not_the_enqueued_one(pg_db, fake_chann
     await _subscribe(pg_db, acct, uid, "fake_test", "*", "daily")
     await dispatch(pg_db, acct, _content("alert"), channels=["fake_test"])
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="corrected@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="corrected@example.com", verified=True)
 
     await flush_digests(pg_db, "daily")
-    assert fake_channel.sent[0][0].address == "corrected@x.com"
+    assert fake_channel.sent[0][0].address == "corrected@example.com"
 
 
 async def test_flush_never_merges_across_accounts(pg_db, fake_channel):
@@ -359,7 +359,7 @@ async def test_dispatch_audience_drops_ineligible_role(pg_db, fake_channel):
         await pg_db.set_notification_pref(acct, "user", uid, "fake_test",
                                           "test.fleetonly", enabled=True)
         await pg_db.upsert_notification_channel(
-            acct, "user", uid, "fake_test", address=f"{uid}@x.com", verified=True)
+            acct, "user", uid, "fake_test", address=f"{uid}@example.com", verified=True)
 
     await dispatch(pg_db, acct,
                    NotificationContent(title="hi", category="test.fleetonly"),
@@ -381,7 +381,7 @@ async def test_dispatch_recipient_filter_drops_user(pg_db, fake_channel):
         await pg_db.set_notification_pref(acct, "user", uid, "fake_test",
                                           "test.rf1", enabled=True)
         await pg_db.upsert_notification_channel(
-            acct, "user", uid, "fake_test", address=f"{uid}@x.com", verified=True)
+            acct, "user", uid, "fake_test", address=f"{uid}@example.com", verified=True)
 
     await dispatch(pg_db, acct,
                    NotificationContent(title="hi", category="test.rf1"),
@@ -401,7 +401,7 @@ async def test_dispatch_recipient_filter_fail_open_on_raise(pg_db, fake_channel)
     await pg_db.set_notification_pref(acct, "user", uid, "fake_test",
                                       "test.rf2", enabled=True)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="x@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="x@example.com", verified=True)
 
     def boom(_uid, _role):
         raise RuntimeError("scope lookup exploded")
@@ -432,7 +432,7 @@ async def test_notify_user_opt_out_delivers_without_a_pref_row(pg_db, fake_chann
     register_category(NotificationCategory("test.invite2", "Invite", TARGETED))
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="me@example.com", verified=True)
 
     res = await notify_user(
         pg_db, acct, uid,
@@ -448,7 +448,7 @@ async def test_notify_user_respects_an_explicit_mute(pg_db, fake_channel):
     register_category(NotificationCategory("test.invite3", "Invite", TARGETED))
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="me@example.com", verified=True)
     await pg_db.set_notification_pref(
         acct, "user", uid, "fake_test", "test.invite3", enabled=False)  # muted
 
@@ -467,7 +467,7 @@ async def test_notify_user_specific_optin_wins_over_star_mute(pg_db, fake_channe
     register_category(NotificationCategory("test.invite4", "Invite", TARGETED))
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="me@example.com", verified=True)
     await pg_db.set_notification_pref(acct, "user", uid, "fake_test", "*", enabled=False)
     await pg_db.set_notification_pref(
         acct, "user", uid, "fake_test", "test.invite4", enabled=True)  # re-enabled
@@ -486,7 +486,7 @@ async def test_notify_user_star_mute_suppresses_uncustomized_category(pg_db, fak
     register_category(NotificationCategory("test.invite5", "Invite", TARGETED))
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="me@example.com", verified=True)
     await pg_db.set_notification_pref(acct, "user", uid, "fake_test", "*", enabled=False)
 
     await notify_user(pg_db, acct, uid,
@@ -503,7 +503,7 @@ async def test_notify_user_mandatory_ignores_the_mute(pg_db, fake_channel):
         "test.security1", "Security", TARGETED, mandatory=True))
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+        acct, "user", uid, "fake_test", address="me@example.com", verified=True)
     await pg_db.set_notification_pref(
         acct, "user", uid, "fake_test", "test.security1", enabled=False)  # tries to mute
 

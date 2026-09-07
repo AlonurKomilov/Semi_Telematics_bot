@@ -44,6 +44,26 @@ os.environ["OBJECT_STORE_ROOT"] = os.path.join(
     tempfile.gettempdir(), "4truck-test-userdata",
 )
 
+# The suite may not send email.  Same class of bug as OBJECT_STORE_ROOT
+# above, and the same remedy: ASSIGNED, not setdefault, so an exported
+# or .env-loaded value pointing at the real relay cannot win.
+#
+# It had already happened.  SMTP_HOST is smtp.resend.com in this
+# project's .env, so any process that inherited it turned an email
+# assertion into an email SEND: the live Resend dashboard held
+# "nobody@example.invalid" — an address that exists only inside a unit
+# test written the same day — plus a run of fixture addresses on real
+# domains.  A test that reads ambient mail config is one leaked
+# variable away from posting to the internet, and from spending sender
+# reputation that belongs to real customer mail.
+#
+# Tests that exercise a CONFIGURED mailer monkeypatch these to fakes
+# (smtp.test), which overrides this and reverts on teardown.
+for _mail_var in ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
+                  "SMTP_FROM", "SMTP_FROM_INVITES", "SMTP_FROM_NAME",
+                  "MAIL_PROVIDER", "RESEND_API_KEY", "RESEND_WEBHOOK_SECRET"):
+    os.environ[_mail_var] = ""
+
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 

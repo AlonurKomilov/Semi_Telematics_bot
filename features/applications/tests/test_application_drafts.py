@@ -44,7 +44,7 @@ async def _link(db, name="Draft Co"):
     return acct, link
 
 
-def _save_body(link, email="jane@x.com", secret=None, **over):
+def _save_body(link, email="jane@example.com", secret=None, **over):
     base = {
         "link_token": link["token"], "email": email, "draft_secret": secret,
         "first_name": "Jane", "last_name": "Roe", "step": 2, "steps_total": 10,
@@ -77,10 +77,10 @@ class TestDraftSaveAndResume:
             cur = await db._db.execute("SELECT resume_token FROM application_drafts")
             rtoken = (await cur.fetchone())["resume_token"]
             bad = await c.post("/api/applications/draft/resume",
-                               json={"resume_token": rtoken, "email": "other@x.com"})
+                               json={"resume_token": rtoken, "email": "other@example.com"})
             assert bad.status_code == 404
             good = await c.post("/api/applications/draft/resume",
-                                json={"resume_token": rtoken, "email": "JANE@X.COM"})
+                                json={"resume_token": rtoken, "email": "JANE@EXAMPLE.COM"})
             assert good.status_code == 200
             j = good.json()
             assert j["link_token"] == link["token"] and j["step"] == 4
@@ -115,13 +115,13 @@ class TestDraftSaveAndResume:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             secret = (await c.post("/api/applications/draft", json=_save_body(link))).json()["draft_secret"]
             r = await c.post("/api/applications/draft/send-link",
-                             json={"link_token": link["token"], "email": "jane@x.com",
+                             json={"link_token": link["token"], "email": "jane@example.com",
                                    "draft_secret": "wrong"})
             assert r.status_code == 403
             # Correct secret: 200 (sent=false in tests — SMTP unconfigured) and
             # the draft body survives the ownership probe.
             r = await c.post("/api/applications/draft/send-link",
-                             json={"link_token": link["token"], "email": "jane@x.com",
+                             json={"link_token": link["token"], "email": "jane@example.com",
                                    "draft_secret": secret})
             assert r.status_code == 200
             cur = await db._db.execute("SELECT first_name, data_encrypted FROM application_drafts")
@@ -143,7 +143,7 @@ class TestRecruiterDraftsView:
             items = r.json()["items"]
             assert len(items) == 1
             it = items[0]
-            assert it["email_masked"] == "j***@x.com"
+            assert it["email_masked"] == "j***@example.com"
             assert it["first_name"] == "Jane" and it["step"] == 2
             # The draft body / tokens must never reach the recruiter list.
             blob = json.dumps(it)
@@ -195,7 +195,7 @@ class TestAutoReminder:
         _app, db = api
         _acct, link = await _link(db)
         await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="a@x.com",
+            link["account_id"], link_token=link["token"], email="a@example.com",
             draft_secret=None, data_encrypted="x")
         await self._age(db, updated_hours=100)
         assert await db.list_drafts_needing_reminder() == []
@@ -206,7 +206,7 @@ class TestAutoReminder:
         await db.update_application_link(acct.id, link["id"],
                                          remind_every_hours=24, remind_max=2)
         await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="a@x.com",
+            link["account_id"], link_token=link["token"], email="a@example.com",
             draft_secret=None, data_encrypted="x")
         # Fresh draft → not idle long enough.
         assert await db.list_drafts_needing_reminder() == []
@@ -231,13 +231,13 @@ class TestAutoReminder:
         acct, link = await _link(db)
         await db.update_application_link(acct.id, link["id"], remind_every_hours=24)
         r = await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="a@x.com",
+            link["account_id"], link_token=link["token"], email="a@example.com",
             draft_secret=None, data_encrypted="x")
         await self._age(db, updated_hours=30)
         assert len(await db.list_drafts_needing_reminder()) == 1
         # The applicant comes back (a save touches updated_at) → clock resets.
         await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="a@x.com",
+            link["account_id"], link_token=link["token"], email="a@example.com",
             draft_secret=r["draft_secret"], data_encrypted="y")
         assert await db.list_drafts_needing_reminder() == []
 
@@ -246,7 +246,7 @@ class TestAutoReminder:
         acct, link = await _link(db)
         await db.update_application_link(acct.id, link["id"], remind_every_hours=24)
         await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="a@x.com",
+            link["account_id"], link_token=link["token"], email="a@example.com",
             draft_secret=None, data_encrypted="x")
         await self._age(db, updated_hours=48)
         await db.set_application_link_active(acct.id, link["id"], False)
@@ -257,7 +257,7 @@ class TestAutoReminder:
         acct, link = await _link(db)
         await db.update_application_link(acct.id, link["id"], remind_every_hours=24)
         await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="a@x.com",
+            link["account_id"], link_token=link["token"], email="a@example.com",
             draft_secret=None, data_encrypted="x")
         await self._age(db, updated_hours=25)
 
@@ -286,7 +286,7 @@ class TestDraftLifecycle:
         _app, db = api
         _acct, link = await _link(db)
         await db.upsert_application_draft(
-            link["account_id"], link_token=link["token"], email="old@x.com",
+            link["account_id"], link_token=link["token"], email="old@example.com",
             draft_secret=None, data_encrypted="x",
         )
         await db._db.execute(

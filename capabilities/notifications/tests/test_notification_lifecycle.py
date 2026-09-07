@@ -33,10 +33,10 @@ from capabilities.permissions.roles import Role
 
 def test_token_roundtrip_and_expiry():
     t = make_token(VERIFY_PURPOSE, account_id=1, recipient_type="user",
-                   recipient_id="7", channel="email", address="a@b.com",
+                   recipient_id="7", channel="email", address="a@example.net",
                    ttl_seconds=3600)
     p = tokens.verify_token(VERIFY_PURPOSE, t)
-    assert p and p["a"] == 1 and p["ad"] == "a@b.com" and p["ch"] == "email"
+    assert p and p["a"] == 1 and p["ad"] == "a@example.net" and p["ch"] == "email"
 
     expired = make_token(VERIFY_PURPOSE, account_id=1, recipient_type="user",
                          recipient_id="7", channel="email", ttl_seconds=-1)
@@ -100,17 +100,17 @@ async def test_verify_is_address_guarded(pg_db):
     for an old address can't verify a changed one."""
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "email", address="new@x.com", verified=False)
+        acct, "user", uid, "email", address="new@example.com", verified=False)
 
     # A link issued for the OLD address does nothing now.
     assert await pg_db.verify_notification_channel(
-        acct, "user", uid, "email", "old@x.com") is False
+        acct, "user", uid, "email", "old@example.com") is False
     assert (await pg_db.get_notification_channel(
         acct, "user", uid, "email"))["verified"] is False
 
     # The link for the current address verifies it.
     assert await pg_db.verify_notification_channel(
-        acct, "user", uid, "email", "new@x.com") is True
+        acct, "user", uid, "email", "new@example.com") is True
     assert (await pg_db.get_notification_channel(
         acct, "user", uid, "email"))["verified"] is True
 
@@ -118,10 +118,10 @@ async def test_verify_is_address_guarded(pg_db):
 async def test_disable_keeps_address_and_prefs(pg_db):
     acct, uid = await _seed(pg_db)
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "email", address="me@x.com", verified=True)
+        acct, "user", uid, "email", address="me@example.com", verified=True)
     assert await pg_db.disable_notification_channel(acct, "user", uid, "email") is True
     ch = await pg_db.get_notification_channel(acct, "user", uid, "email")
-    assert ch["enabled_master"] is False and ch["address"] == "me@x.com"
+    assert ch["enabled_master"] is False and ch["address"] == "me@example.com"
 
 
 # ── End-to-end lifecycle through the delivery gate ───────────────────
@@ -134,18 +134,18 @@ async def test_connect_verify_subscribe_unsubscribe(pg_db):
 
     # Connect: stores the address UNVERIFIED (SMTP off in tests → sent False,
     # ok True) and still not a subscriber until proven.
-    res = await start_email_connection(pg_db, acct, uid, "me@x.com")
+    res = await start_email_connection(pg_db, acct, uid, "me@example.com")
     assert res["ok"] is True and res["sent"] is False
     assert await pg_db.get_notification_subscribers(acct, "fuel", "email") == []
 
     # Verify with the RIGHT address token → becomes a subscriber.
     good = make_token(VERIFY_PURPOSE, account_id=acct, recipient_type="user",
-                      recipient_id=uid, channel="email", address="me@x.com",
+                      recipient_id=uid, channel="email", address="me@example.com",
                       ttl_seconds=3600)
     assert await confirm_channel_verification(pg_db, good) is not None
     subs = await pg_db.get_notification_subscribers(acct, "fuel", "email")
     assert [s["recipient_id"] for s in subs] == [str(uid)]
-    assert subs[0]["address"] == "me@x.com"
+    assert subs[0]["address"] == "me@example.com"
 
     # Unsubscribe (one-click) → master off → drops out, address kept.
     unsub = make_token(UNSUB_PURPOSE, account_id=acct, recipient_type="user",
@@ -153,16 +153,16 @@ async def test_connect_verify_subscribe_unsubscribe(pg_db):
     assert await apply_unsubscribe(pg_db, unsub) is True
     assert await pg_db.get_notification_subscribers(acct, "fuel", "email") == []
     assert (await pg_db.get_notification_channel(
-        acct, "user", uid, "email"))["address"] == "me@x.com"
+        acct, "user", uid, "email"))["address"] == "me@example.com"
 
 
 async def test_confirm_rejects_wrong_address_token(pg_db):
     """A validly-signed token for a DIFFERENT address must not verify the
     connected one."""
     acct, uid = await _seed(pg_db)
-    await start_email_connection(pg_db, acct, uid, "real@x.com")
+    await start_email_connection(pg_db, acct, uid, "real@example.com")
     forged = make_token(VERIFY_PURPOSE, account_id=acct, recipient_type="user",
-                        recipient_id=uid, channel="email", address="attacker@x.com",
+                        recipient_id=uid, channel="email", address="attacker@example.com",
                         ttl_seconds=3600)
     assert await confirm_channel_verification(pg_db, forged) is None
     assert (await pg_db.get_notification_channel(
@@ -177,7 +177,7 @@ async def test_confirm_and_unsubscribe_reject_bad_tokens(pg_db):
 
 async def test_connect_rejects_bad_email(pg_db):
     acct, uid = await _seed(pg_db)
-    for bad in ("not-an-email", "a@b", "a@b.c\r\nBcc: x@evil.com", ""):
+    for bad in ("not-an-email", "a@b", "a@b.c\r\nBcc: x@evil.example.com", ""):
         res = await start_email_connection(pg_db, acct, uid, bad)
         assert res["ok"] is False and res["error"] == "bad_email", bad
     assert await pg_db.get_notification_channel(acct, "user", uid, "email") is None
@@ -187,13 +187,13 @@ async def test_reconnect_same_verified_address_is_noop(pg_db):
     """Re-saving the same, already-verified address must NOT un-verify it
     (a settings-form re-save can't silently drop delivery)."""
     acct, uid = await _seed(pg_db)
-    await start_email_connection(pg_db, acct, uid, "me@x.com")
+    await start_email_connection(pg_db, acct, uid, "me@example.com")
     good = make_token(VERIFY_PURPOSE, account_id=acct, recipient_type="user",
-                      recipient_id=uid, channel="email", address="me@x.com",
+                      recipient_id=uid, channel="email", address="me@example.com",
                       ttl_seconds=3600)
     assert await confirm_channel_verification(pg_db, good) is not None
 
-    res = await start_email_connection(pg_db, acct, uid, "me@x.com")
+    res = await start_email_connection(pg_db, acct, uid, "me@example.com")
     assert res.get("already_verified") is True and res["sent"] is False
     assert (await pg_db.get_notification_channel(
         acct, "user", uid, "email"))["verified"] is True    # still verified

@@ -52,7 +52,7 @@ _EMPLOYMENT = [
 
 def _payload():
     return json.dumps({
-        "personal": {"first": "Jane", "last": "Roe", "email": "jane@x.com",
+        "personal": {"first": "Jane", "last": "Roe", "email": "jane@example.com",
                      "phone": "555-1212", "city": "Austin", "state": "TX",
                      "dob": "1992-05-05", "ssn": "111-22-3333"},
         "cdl": {"state": "TX", "class": "A", "number": "X123"},
@@ -118,16 +118,16 @@ class TestVerificationFlow:
 
             # Send → row recorded, attempt 1, PDF attached to the email.
             r = await c.post(f"/api/applications/{app_id}/verifications/send", headers=h,
-                             json={"employer_index": 0, "email": "safety@acme.com"})
+                             json={"employer_index": 0, "email": "safety@acme.example.com"})
             assert r.status_code == 200, r.text
             v = r.json()["verification"]
             assert v["status"] == "sent" and v["attempts"] == 1
             assert sent[0]["pdf_bytes"][:4] == b"%PDF"
-            assert sent[0]["to"] == "safety@acme.com"
+            assert sent[0]["to"] == "safety@acme.example.com"
 
             # Re-send → same row, attempts 2 (the good-faith trail).
             r = await c.post(f"/api/applications/{app_id}/verifications/send", headers=h,
-                             json={"employer_index": 0, "email": "safety@acme.com"})
+                             json={"employer_index": 0, "email": "safety@acme.example.com"})
             assert r.json()["verification"]["attempts"] == 2
 
             # Outcome: mark received → status + responded_at.
@@ -141,7 +141,7 @@ class TestVerificationFlow:
 
             # Non-target employer index refuses.
             r = await c.post(f"/api/applications/{app_id}/verifications/send", headers=h,
-                             json={"employer_index": 2, "email": "x@y.com"})
+                             json={"employer_index": 2, "email": "x@example.net"})
             assert r.status_code == 422
 
             # The DQ packet renders with the investigation trail included.
@@ -157,4 +157,4 @@ class TestVerificationFlow:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             assert (await c.get(f"/api/applications/{app_id}/verifications", headers=hb)).status_code == 404
             assert (await c.post(f"/api/applications/{app_id}/verifications/send", headers=hb,
-                                 json={"employer_index": 0, "email": "x@y.com"})).status_code == 404
+                                 json={"employer_index": 0, "email": "x@example.net"})).status_code == 404

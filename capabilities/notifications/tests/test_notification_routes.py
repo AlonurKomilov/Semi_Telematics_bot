@@ -59,19 +59,19 @@ def _client(api):
 
 async def test_connect_requires_auth(api):
     async with _client(api) as c:
-        r = await c.post(f"{API}/channels/email", json={"address": "me@x.com"})
+        r = await c.post(f"{API}/channels/email", json={"address": "me@example.com"})
     assert r.status_code == 401
 
 
 async def test_connect_stores_unverified_and_reports(api):
     async with _client(api) as c:
-        r = await c.post(f"{API}/channels/email", json={"address": "me@x.com"},
+        r = await c.post(f"{API}/channels/email", json={"address": "me@example.com"},
                          headers=_h(api["token"]))
     assert r.status_code == 200
     # SMTP off in tests → ok True, sent False; address stored UNVERIFIED.
     assert r.json()["ok"] is True
     ch = await api["db"].get_notification_channel(api["acct"], "user", api["uid"], "email")
-    assert ch["address"] == "me@x.com" and ch["verified"] is False
+    assert ch["address"] == "me@example.com" and ch["verified"] is False
 
 
 async def test_connect_rejects_bad_email(api):
@@ -93,9 +93,9 @@ async def test_list_channels_shape(api):
 
 async def test_verify_confirms_valid_token(api):
     await api["db"].upsert_notification_channel(
-        api["acct"], "user", api["uid"], "email", address="me@x.com", verified=False)
+        api["acct"], "user", api["uid"], "email", address="me@example.com", verified=False)
     token = make_token(VERIFY_PURPOSE, account_id=api["acct"], recipient_type="user",
-                       recipient_id=api["uid"], channel="email", address="me@x.com",
+                       recipient_id=api["uid"], channel="email", address="me@example.com",
                        ttl_seconds=3600)
     async with _client(api) as c:
         r = await c.get(f"{API}/verify", params={"token": token})
@@ -114,7 +114,7 @@ async def test_verify_bad_token_is_uniform_page(api):
 
 async def test_unsubscribe_post_is_one_click(api):
     await api["db"].upsert_notification_channel(
-        api["acct"], "user", api["uid"], "email", address="me@x.com", verified=True)
+        api["acct"], "user", api["uid"], "email", address="me@example.com", verified=True)
     token = make_token(UNSUB_PURPOSE, account_id=api["acct"], recipient_type="user",
                        recipient_id=api["uid"], channel="email")
     async with _client(api) as c:
@@ -129,7 +129,7 @@ async def test_unsubscribe_get_does_not_mutate(api):
     page WITHOUT turning anything off — else Safe Links silently
     unsubscribes a fleet from its safety alerts."""
     await api["db"].upsert_notification_channel(
-        api["acct"], "user", api["uid"], "email", address="me@x.com", verified=True)
+        api["acct"], "user", api["uid"], "email", address="me@example.com", verified=True)
     token = make_token(UNSUB_PURPOSE, account_id=api["acct"], recipient_type="user",
                        recipient_id=api["uid"], channel="email")
     async with _client(api) as c:
@@ -142,7 +142,7 @@ async def test_unsubscribe_get_does_not_mutate(api):
 
 async def test_unsubscribe_confirmed_post_mutates(api):
     await api["db"].upsert_notification_channel(
-        api["acct"], "user", api["uid"], "email", address="me@x.com", verified=True)
+        api["acct"], "user", api["uid"], "email", address="me@example.com", verified=True)
     token = make_token(UNSUB_PURPOSE, account_id=api["acct"], recipient_type="user",
                        recipient_id=api["uid"], channel="email")
     async with _client(api) as c:

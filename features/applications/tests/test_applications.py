@@ -74,7 +74,7 @@ async def api(pg_db):
 
 def _app_payload(**over):
     base = {
-        "personal": {"first": "Jane", "last": "Roe", "email": "jane@x.com",
+        "personal": {"first": "Jane", "last": "Roe", "email": "jane@example.com",
                      "phone": "555-1212", "city": "Austin", "state": "TX",
                      "dob": "1992-05-05", "ssn": "111-22-3333"},
         "cdl": {"state": "TX", "class": "A"},
@@ -380,7 +380,7 @@ class TestHireLinkage:
         appl = await db.create_driver_application(
             acct.id, link_token=link["token"], reference="APP-HIRE",
             data={"personal": {"first": "Jane", "last": "Roe",
-                               "email": "jane@x.com", "ssn": "111-22-3333"},
+                               "email": "jane@example.com", "ssn": "111-22-3333"},
                   "cdl": {"state": "TX", "class": "A", "number": "X1234567"},
                   "consents": {"truthful": True}},
             docs={},
@@ -833,7 +833,7 @@ class TestDuplicateDetection:
             # Same SSN, DIFFERENT email/phone — proves it matched on the SSN,
             # and the public form MUST still accept it (never blocked).
             p2 = _app_payload(personal={"first": "Janet", "last": "Roe",
-                                        "email": "janet@x.com", "ssn": "111-22-3333"})
+                                        "email": "janet@example.com", "ssn": "111-22-3333"})
             r2 = await c.post("/api/applications/apply",
                               data={"link_token": link["token"], "application": p2},
                               files=_GOOD_FILES)
@@ -905,19 +905,19 @@ class TestStatusCheck:
                                 files=_GOOD_FILES)).json()["reference"]
 
             ok = await c.post("/api/applications/application-status",
-                              json={"reference": ref, "email": "jane@x.com"})
+                              json={"reference": ref, "email": "jane@example.com"})
             assert ok.status_code == 200
             assert ok.json()["found"] is True and ok.json()["status"] == "submitted"
 
             # Wrong email → uniform not-found (no oracle).
             assert (await c.post("/api/applications/application-status",
-                                 json={"reference": ref, "email": "nope@x.com"})).json()["found"] is False
+                                 json={"reference": ref, "email": "nope@example.com"})).json()["found"] is False
             # Unknown reference → not-found.
             assert (await c.post("/api/applications/application-status",
-                                 json={"reference": "APP-000000", "email": "jane@x.com"})).json()["found"] is False
+                                 json={"reference": "APP-000000", "email": "jane@example.com"})).json()["found"] is False
             # Case-insensitive on both factors.
             assert (await c.post("/api/applications/application-status",
-                                 json={"reference": ref.lower(), "email": "JANE@X.COM"})).json()["found"] is True
+                                 json={"reference": ref.lower(), "email": "JANE@EXAMPLE.COM"})).json()["found"] is True
 
 
 class TestBulkStatus:
@@ -1141,7 +1141,7 @@ class TestApplicationsAITool:
             a = await db.create_driver_application(
                 acct.id, link_token=link["token"], reference=ref,
                 data={"personal": {"first": "Jane", "last": "Roe",
-                                   "email": "j@x.com", "ssn": "111-22-3333",
+                                   "email": "j@example.com", "ssn": "111-22-3333",
                                    "city": "Austin", "state": "TX"},
                       "cdl": {"class": "A"},
                       "consents": {"truthful": True}},
@@ -1334,7 +1334,7 @@ class TestConsentDocuments:
             # Recruiter fills the legal/compliance blanks.
             r = await c.patch(f"/api/applications/companies/{co.id}/brand", headers=headers,
                               json={"legal_address": "1 Main St, Cincinnati, OH 45215",
-                                    "compliance_email": "safety@x.com", "cra_name": "TR Information Services",
+                                    "compliance_email": "safety@example.com", "cra_name": "TR Information Services",
                                     "cra_phone": "800-894-9141", "cra_address": "PO Box 780254, Orlando, FL",
                                     "cra_site": "fullsearch.com"})
             assert r.status_code == 200
@@ -1415,7 +1415,7 @@ class TestClosedLinkAndLegalIdentity:
                 await c.post("/api/applications/apply", data={
                     "link_token": token,
                     "application": _app_payload(personal={
-                        "first": f"A{i}", "last": "Roe", "email": f"a{i}@x.com",
+                        "first": f"A{i}", "last": "Roe", "email": f"a{i}@example.com",
                         "phone": "555-1212", "city": "Austin", "state": "TX",
                         "dob": "1992-05-05", "ssn": f"111-22-333{i}",
                     }),
@@ -1484,7 +1484,7 @@ class TestApplicantReceipt:
         monkeypatch.setattr(mod, "send_email", lambda **kw: sent.update(kw) or True)
 
         assert mod.send_application_received_email(
-            to="jane@x.com", applicant_name="Jane Roe",
+            to="jane@example.com", applicant_name="Jane Roe",
             carrier_name="Premier Trucking", reference="APP-ABC123",
             status_url="https://apply.example/status/APP-ABC123",
         )

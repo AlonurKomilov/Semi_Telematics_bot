@@ -41,7 +41,7 @@ class TestPermissionTiers:
         from interfaces.api.auth import _hash_password
         acct = await db.create_account("Tier Co")
         owner = await db.create_user_with_email(
-            email="o@x.com", password_hash=_hash_password("pw"),
+            email="o@example.com", password_hash=_hash_password("pw"),
             account_id=acct.id, role=Role.OWNER,
         )
         ho = _headers(owner, acct, "owner")
@@ -75,7 +75,7 @@ class TestPermissionTiers:
         from capabilities.permissions.roles import get_user_permissions
         acct = await db.create_account("Tier Co2")
         owner = await db.create_user_with_email(
-            email="o2@x.com", password_hash=_hash_password("pw"),
+            email="o2@example.com", password_hash=_hash_password("pw"),
             account_id=acct.id, role=Role.OWNER,
         )
         ho = _headers(owner, acct, "owner")
@@ -97,7 +97,7 @@ class TestPermissionTiers:
         from capabilities.permissions.roles import get_user_permissions
         acct = await db.create_account("Owner Split Co")
         owner = await db.create_user_with_email(
-            email="o4@x.com", password_hash=_hash_password("pw"),
+            email="o4@example.com", password_hash=_hash_password("pw"),
             account_id=acct.id, role=Role.OWNER,
         )
         ho = _headers(owner, acct, "owner")

@@ -27,7 +27,7 @@ async def _lifecycle(db, uid: int) -> str:
 async def test_provisioned_member_is_pending(db):
     acct = await db.create_account("Links Co")
     uid = await db.create_pending_user(
-        acct.id, Role.DISPATCHER, "Otabek Sobirov", email="ot@x.com",
+        acct.id, Role.DISPATCHER, "Otabek Sobirov", email="ot@example.com",
     )
     assert await _lifecycle(db, uid) == "pending"
     # Appears in the account roster with the right role.
@@ -35,7 +35,7 @@ async def test_provisioned_member_is_pending(db):
         "SELECT role, email FROM users WHERE id = ?", (uid,),
     )
     r = await cur.fetchone()
-    assert r[0] == "dispatcher" and r[1] == "ot@x.com"
+    assert r[0] == "dispatcher" and r[1] == "ot@example.com"
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,7 @@ async def test_datatruck_options_name_from_payload_account(db):
          "payload": {
              "id": 9,
              "account": {"first_name": "Eric", "last_name": "Gasabato",
-                         "full_name": "Eric Gasabato", "email": "eg@x.com"},
+                         "full_name": "Eric Gasabato", "email": "eg@example.com"},
              "contact_number": "+1 555",
          }},
     ])

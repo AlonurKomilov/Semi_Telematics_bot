@@ -46,11 +46,11 @@ async def _setup(db):
     from interfaces.api.auth import _hash_password
     acct = await db.create_account("Co Owner Co")
     owner = await db.create_user_with_email(
-        email="owner@x.com", password_hash=_hash_password(PW),
+        email="owner@example.com", password_hash=_hash_password(PW),
         account_id=acct.id, role=Role.OWNER, display_name="Prim",
     )
     admin = await db.create_user_with_email(
-        email="admin@x.com", password_hash=_hash_password(PW),
+        email="admin@example.com", password_hash=_hash_password(PW),
         account_id=acct.id, role=Role.ADMIN, display_name="Ada",
     )
     return acct, owner, admin

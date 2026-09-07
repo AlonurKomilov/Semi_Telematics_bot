@@ -18,7 +18,7 @@ async def _seed(pg_db):
     from interfaces.api.auth import _hash_password
     acct = await pg_db.create_account("Notif Co")
     u = await pg_db.create_user_with_email(
-        email=f"o.{acct.id}@x.com", password_hash=_hash_password("password12345"),
+        email=f"o.{acct.id}@example.com", password_hash=_hash_password("password12345"),
         account_id=acct.id, role=Role.OWNER, display_name="O",
     )
     return acct.id, (u.telegram_id or u.id)
@@ -48,12 +48,12 @@ async def test_channel_connection_roundtrip(pg_db):
     acct, uid = await _seed(pg_db)
     assert await pg_db.get_notification_channel(acct, "user", uid, "email") is None
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "email", address="me@x.com", verified=True)
+        acct, "user", uid, "email", address="me@example.com", verified=True)
     ch = await pg_db.get_notification_channel(acct, "user", uid, "email")
-    assert ch["address"] == "me@x.com" and ch["verified"] and ch["enabled_master"]
+    assert ch["address"] == "me@example.com" and ch["verified"] and ch["enabled_master"]
     # Master switch off, address kept.
     await pg_db.upsert_notification_channel(
-        acct, "user", uid, "email", address="me@x.com", verified=True, enabled_master=False)
+        acct, "user", uid, "email", address="me@example.com", verified=True, enabled_master=False)
     assert (await pg_db.get_notification_channel(acct, "user", uid, "email"))["enabled_master"] is False
 
 
@@ -102,7 +102,7 @@ async def test_subscribers_return_raw_rows_role_gate_moved_to_dispatch(pg_db):
     u = await pg_db.create_user(telegram_id=4242, account_id=acct, role=Role.DRIVER)
     await pg_db.set_notification_pref(acct, "user", u.id, "email", "alert.fuel", enabled=True)
     await pg_db.upsert_notification_channel(
-        acct, "user", u.id, "email", address="d@x.com", verified=True)
+        acct, "user", u.id, "email", address="d@example.com", verified=True)
 
     # The storage query now returns the RAW matrix match — it no longer
     # applies a role gate (that moved to dispatch's audience filter).  So a
@@ -240,7 +240,7 @@ async def test_matrix_excludes_users_without_telegram(pg_db):
     from interfaces.api.auth import _hash_password
     acct = (await pg_db.create_account("NoTg Co")).id
     email_user = await pg_db.create_user_with_email(
-        email=f"e.{acct}@x.com", password_hash=_hash_password("password12345"),
+        email=f"e.{acct}@example.com", password_hash=_hash_password("password12345"),
         account_id=acct, role=Role.FLEET,
     )
     await pg_db.update_user(email_user.id, alerts_on=True)   # no telegram_id
