@@ -110,6 +110,11 @@ export function Choices({ value, onChange, options, name }: {
             className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
               on ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-muted'
             }`}>
+            {/* eslint-disable-next-line no-restricted-syntax -- sr-only
+                input behind a custom-drawn circle: the native control
+                keeps keyboard + form semantics while the whole label
+                (px-3 py-2) is the hit target, so the primitive's
+                min-h-tap would size an invisible element. */}
             <input type="radio" name={name} checked={on} onChange={() => onChange(v)} className="sr-only" />
             <span className={`flex size-4 items-center justify-center rounded-full border ${on ? 'border-primary' : 'border-border'}`}>
               {on && <span className="size-2 rounded-full bg-primary" />}

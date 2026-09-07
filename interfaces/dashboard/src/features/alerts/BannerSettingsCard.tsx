@@ -59,7 +59,7 @@ export default function BannerSettingsCard() {
               key={value}
               onClick={() => pick(value)}
               aria-pressed={active}
-              className={`group rounded-lg border p-2 text-center transition-colors ${
+              className={`group rounded-lg border p-2 text-center transition-colors min-h-tap ${
                 active
                   ? 'border-primary ring-1 ring-primary bg-primary/5'
                   : 'border-border hover:border-muted-foreground/40'

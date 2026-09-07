@@ -1490,7 +1490,7 @@ describe('UI chrome', () => {
     // those were prose — `<input type="color">` in a doc block above the
     // control it describes, and seven like it. Nothing was fixed to
     // reach 237/21/16; the ratchet simply stopped counting sentences.
-    const BASELINE = { input: 237, textarea: 21, select: 16 };
+    const BASELINE = { input: 236, textarea: 21, select: 16 };
 
     const countBare = (tag: string) => {
       let n = 0;

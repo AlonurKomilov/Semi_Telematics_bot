@@ -79,6 +79,18 @@ export default [
         selector: "JSXOpeningElement[name.name=/^[a-z]/] > JSXAttribute[name.name='title']",
         message: 'Use <Tip label="…"> from components/tooltip instead of the native title= tooltip (unthemed, delayed, no touch support).',
       }, {
+        // Radio has a primitive now (components/ui/radio.tsx), and this
+        // rule exists to keep it at ONE instance instead of the thirty-
+        // five raw checkboxes across ten class strings the checkbox
+        // primitive's docstring records.  Deliberately RADIO ONLY: raw
+        // `type="checkbox"` still stands in ~20 feature files, and a rule
+        // that fires 20 times on day one is a warning people learn to
+        // scroll past — the checkbox backlog needs migrating before it
+        // can be gated.  Radio had two call-sites when this landed, so
+        // it is enforceable today.
+        selector: "JSXOpeningElement[name.name='input'] > JSXAttribute[name.name='type'][value.value='radio']",
+        message: 'Use <Radio> from components/ui/radio — a raw radio misses the min-h-tap floor (a native radio renders ~13px and no size class can grow it).',
+      }, {
         // Icon sizes are a scale (design.md §7): 12 · 14 · 16 · 18 · 20 · 24.
         // Off-step values fragment the visual rhythm one pixel at a time.
         // (Numeric equality — esquery regex only matches string values.)

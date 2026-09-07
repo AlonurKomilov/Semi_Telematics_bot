@@ -8,6 +8,7 @@ import {
   setBannerLevel, useBannerLevel, type BannerLevel,
 } from './bannerLevel';
 import { Card } from '@/components/ui/card';
+import { Radio } from '@/components/ui/radio';
 import { SectionHeader } from '@/components/shell';
 
 const OPTIONS: { value: BannerLevel; label: string; hint: string }[] = [
@@ -47,12 +48,11 @@ export default function BannerLevelCard() {
               key={value}
               className="flex items-start gap-3 py-1.5 cursor-pointer"
             >
-              <input
-                type="radio"
+              <Radio
                 name="banner-level"
                 checked={active}
                 onChange={() => setBannerLevel(value)}
-                className="accent-primary cursor-pointer mt-0.5"
+                className="mt-0.5"
               />
               <span className="flex-1 min-w-0">
                 <span className="text-sm">{label}</span>

@@ -83,3 +83,35 @@ NOT `actions` — "actions" already means other things in this codebase
 (DataGrid `bulkActions`, the column ⋮ menus, AI write actions). Tiny
 one-off menus on non-grid surfaces may stay inline until they grow; a
 `contextmenu/` FOLDER only when a feature accumulates several menu files.
+
+## Radio (`radio.tsx`)
+
+**One-of-many from a visible set.** The fourth member of the control
+family CLAUDE.md names — *Checkbox = membership · Switch = behaviour ·
+pressed button = a behaviour in a bar* — and the question none of those
+answers: *which ONE of these?* A row of checkboxes for exclusive options
+invites two ticks; a `<Select>` hides the alternatives behind a click,
+which is wrong precisely when the point is comparing them side by side.
+
+Like `Checkbox`, it is a plain `<input>` carrying `accent-primary` and
+`min-h-tap min-w-tap` — a native radio renders ~13px and the circle is
+drawn by the UA, so no size class can grow it. Group with a shared
+`name`; put the visible label in a wrapping `<label>` so the whole row
+is the hit target rather than the circle.
+
+**Built at instance one, on purpose.** `Checkbox`'s docstring records
+what waiting cost: thirty-five raw inputs across ten class strings, two
+of which carried the tap floor — a backlog still being paid down (~20
+files today). Radio had two call-sites when the primitive landed, so
+ESLint gates it (`no-restricted-syntax`) with zero legacy noise. The
+checkbox ban is deliberately NOT gated yet: a rule that fires twenty
+times on day one is a warning people learn to scroll past, so the
+migration comes first and the guard after.
+
+**The one sanctioned exception** is a visually-hidden input behind a
+custom-drawn control (`features/applications/public/controls.tsx`): the
+native element keeps keyboard and form semantics while a styled span is
+what you see, and the wrapping label is the hit target — so the
+primitive's floor would size something invisible. Mark it with an
+`eslint-disable-next-line` naming that reason.
+
