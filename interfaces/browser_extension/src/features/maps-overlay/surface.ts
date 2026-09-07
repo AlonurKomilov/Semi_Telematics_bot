@@ -30,16 +30,22 @@ const MIN_SIDE = 320;
  * if it is big enough to be a map" survives a rename, and returns null
  * — which means DRAW NOTHING — when the page is not what we expect.
  */
-export function findMapSurface(canvases: readonly { getBoundingClientRect(): DOMRectReadOnly }[]): Surface | null {
-  let best: Surface | null = null;
+export function findMapCanvas<T extends { getBoundingClientRect(): DOMRectReadOnly }>(
+  canvases: readonly T[],
+): { el: T; surface: Surface } | null {
+  let best: { el: T; surface: Surface } | null = null;
   for (const c of canvases) {
     const r = c.getBoundingClientRect();
     if (r.width < MIN_SIDE || r.height < MIN_SIDE) continue;
-    if (!best || r.width * r.height > best.width * best.height) {
-      best = { left: r.left, top: r.top, width: r.width, height: r.height };
+    if (!best || r.width * r.height > best.surface.width * best.surface.height) {
+      best = { el: c, surface: { left: r.left, top: r.top, width: r.width, height: r.height } };
     }
   }
   return best;
+}
+
+export function findMapSurface(canvases: readonly { getBoundingClientRect(): DOMRectReadOnly }[]): Surface | null {
+  return findMapCanvas(canvases)?.surface ?? null;
 }
 
 /** Two surfaces the same to the pixel — a resize observer fires for
