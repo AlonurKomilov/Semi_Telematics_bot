@@ -70,6 +70,17 @@ const markers = new Map<string, HTMLDivElement>();
  *  switch.  A person who has not connected did not ask for this. */
 let signedIn = false;
 let chip: HTMLButtonElement | null = null;
+/**
+ * What the switch may honestly claim.
+ *
+ *   'loading' — no answer yet, or Google has not written a camera into
+ *               its URL yet.  NOT zero: "none in view" for a state we
+ *               simply do not know reads as "your trucks are not here",
+ *               and a person who believes that stops looking.
+ *   'ready'   — the count is real.
+ *   'error'   — we asked and could not be told.
+ */
+let dataState: 'loading' | 'ready' | 'error' = 'loading';
 /** Where each marker was last drawn, in layer pixels — so a click can
  *  be matched to a vehicle without the markers taking pointer events,
  *  which would stop a drag that begins on a truck. */
@@ -153,8 +164,18 @@ function removeAll(): void {
 // on the same map, and one word meaning two things is how a person turns
 // off the wrong one.
 
+const STYLE_ID = '4truck-maps-style';
+function ensureStyle(): void {
+  if (document.getElementById(STYLE_ID)) return;
+  const st = document.createElement('style');
+  st.id = STYLE_ID;
+  st.textContent = '@keyframes fourtruck-spin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(st);
+}
+
 function ensureChip(): HTMLButtonElement {
   if (chip?.isConnected) return chip;
+  ensureStyle();
   const el = document.createElement('button');
   el.id = CHIP_ID;
   el.type = 'button';
@@ -166,6 +187,8 @@ function ensureChip(): HTMLButtonElement {
     'box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap';
   el.innerHTML =
     '<span style="display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;background:#3b82f6;font-size:11px">4</span>' +
+    '<span data-spin hidden style="width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.25);' +
+      'border-top-color:#fff;animation:fourtruck-spin .7s linear infinite"></span>' +
     '<span data-label></span>' +
     '<span data-track style="position:relative;width:28px;height:16px;border-radius:999px;background:#4b5563;transition:background .15s">' +
       '<span data-knob style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s"></span>' +
@@ -181,18 +204,31 @@ function hideChip(): void {
   chip = null;
 }
 
-/** The switch says what it governs and what is on the map right now. */
-function updateChip(inView: number): void {
+/** The switch says what it governs and what is on the map right now —
+ *  and says "still looking" rather than "none" while it does not know. */
+function updateChip(inView: number | null): void {
   const el = ensureChip();
   const label = el.querySelector<HTMLElement>('[data-label]')!;
+  const spin = el.querySelector<HTMLElement>('[data-spin]')!;
   const track = el.querySelector<HTMLElement>('[data-track]')!;
   const knob = el.querySelector<HTMLElement>('[data-knob]')!;
+  spin.hidden = true;
   if (enabled) {
-    // "in view", never a bare "N vehicles": the panel says how many the
-    // account has, this says how many are on this screen, and the same
-    // words for two numbers on one screen is how a person stops
-    // trusting either.
-    label.textContent = inView === 0 ? 'none in view' : `${inView} in view`;
+    if (dataState === 'error') {
+      label.textContent = 'can\u2019t reach 4truck';
+    } else if (inView === null || dataState === 'loading') {
+      // A spinner is a promise that something is coming; a zero is a
+      // statement that nothing is there.  Only one of those is true
+      // before the first answer.
+      spin.hidden = false;
+      label.textContent = 'loading\u2026';
+    } else {
+      // "in view", never a bare "N vehicles": the panel says how many the
+      // account has, this says how many are on this screen, and the same
+      // words for two numbers on one screen is how a person stops
+      // trusting either.
+      label.textContent = inView === 0 ? 'none in view' : `${inView} in view`;
+    }
     el.setAttribute('aria-checked', 'true');
     el.setAttribute('aria-label', 'Show 4truck vehicles on this map — on');
     track.style.background = '#22c55e';
@@ -234,7 +270,10 @@ function draw(): void {
   // Street View is a photograph and a page with no map canvas is not a
   // map: nothing of ours belongs on either, the switch included.
   if (!signedIn || isStreetView(location.href) || !surface) { removeAll(); hideChip(); return; }
-  if (!enabled || !camera) { removeAll(); updateChip(0); return; }
+  // No camera yet means Google has not written one — a place page, a
+  // fresh navigation.  That is "not known", never "none": the truck in
+  // the owner's screenshot WAS in view while the switch said none were.
+  if (!enabled || !camera) { removeAll(); updateChip(enabled ? null : 0); return; }
 
   const el = ensureRoot();
   const { fixed } = mountPoint();
@@ -313,6 +352,9 @@ async function refreshData(): Promise<void> {
   // Signed out, or the API said no.  Either way the honest thing is an
   // empty map rather than positions from ten minutes ago.
   signedIn = reply.ok || reply.reason !== 'signed-out';
+  // A failed request and an empty screen look identical and mean
+  // opposite things, so the switch says which one happened.
+  dataState = reply.ok ? 'ready' : reply.reason === 'signed-out' ? 'loading' : 'error';
   vehicles = reply.ok ? reply.vehicles : [];
   if (!settling) draw();
 }

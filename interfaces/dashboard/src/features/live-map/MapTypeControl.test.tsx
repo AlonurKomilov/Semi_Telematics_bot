@@ -18,7 +18,7 @@ vi.mock('../../hooks/usePermissions', () => ({ usePermissions: () => perms }));
 vi.mock('../../lib/toast', () => ({ toast: { error: vi.fn() } }));
 vi.mock('../../components/tooltip', () => ({ Tip: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
-const engine = { googleAvailable: true, fellBackFrom: null, reason: '', refresh: vi.fn() };
+const engine = { engine: 'osm' as const, loading: false, googleAvailable: true, fellBackFrom: null, reason: '', refresh: vi.fn() };
 const noop = () => {};
 
 function open() {
@@ -60,5 +60,18 @@ describe('choosing the basemap', () => {
                            isReady provider="osm" engine={{ ...engine, googleAvailable: false }} />);
     fireEvent.click(screen.getByText('Map Type'));
     expect(screen.queryByRole('radiogroup', { name: 'Map provider' })).toBeNull();
+  });
+});
+
+describe('before the server has said which map this account uses', () => {
+  it('shows that it is still reading, not OpenStreetMap selected', () => {
+    // The hook starts at 'osm'; an account on Google would otherwise be
+    // told the wrong thing for as long as the read takes.
+    perms.has.mockReturnValue(true);
+    render(<MapTypeControl mapType="standard" showLabels={false} setMapType={noop} setShowLabels={noop}
+                           isReady provider="osm" engine={{ ...engine, loading: true }} />);
+    fireEvent.click(screen.getByText('Map Type'));
+    expect(screen.queryByRole('radiogroup', { name: 'Map provider' })).toBeNull();
+    expect(screen.getByLabelText('Reading which map this account uses')).toBeTruthy();
   });
 });

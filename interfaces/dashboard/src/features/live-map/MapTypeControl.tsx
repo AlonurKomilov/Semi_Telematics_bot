@@ -37,7 +37,7 @@ interface MapTypeControlProps {
   /** Whose tiles are under the overlays, and whether Google is even on
    *  offer.  The row is drawn only when choosing would do something. */
   provider?: MapProvider;
-  engine?: Pick<MapEngineState, 'googleAvailable' | 'fellBackFrom' | 'reason' | 'refresh'>;
+  engine?: Pick<MapEngineState, 'engine' | 'loading' | 'googleAvailable' | 'fellBackFrom' | 'reason' | 'refresh'>;
 }
 
 /** The two basemaps, in the order a picker should offer them: the one
@@ -143,8 +143,17 @@ export default function MapTypeControl({
 
       {!collapsed && (
         <div className="border-t border-border px-3 pt-2.5 pb-3 space-y-3">
-          {/* Whose map — only when Google is on offer on this server */}
-          {engine?.googleAvailable && (
+          {/* Whose map.  While the server is still answering, the row
+              says so rather than showing OpenStreetMap selected — the
+              hook starts at 'osm' and an account on Google would be
+              told the wrong thing for as long as the read takes. */}
+          {engine?.loading && (
+            <div className="space-y-1">
+              <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Map</div>
+              <div className="h-7 rounded-md bg-muted/50 animate-pulse" aria-busy aria-label="Reading which map this account uses" />
+            </div>
+          )}
+          {!engine?.loading && engine?.googleAvailable && (
             <div className="space-y-1">
               <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Map</div>
               <div className="flex gap-1" role="radiogroup" aria-label="Map provider">
