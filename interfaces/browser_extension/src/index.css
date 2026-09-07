@@ -15,6 +15,9 @@ button, input { font: inherit; }
         padding:2px 8px; font-size:12px; cursor:pointer; min-height:24px; }
 .chip.on { background: var(--primary); border-color: var(--primary); color:#fff; }
 .row { display:flex; align-items:center; gap:8px; }
+/* `hidden` must beat a display a class or a style sets, or a folded
+   region that still carries `display:grid` is not folded at all. */
+[hidden] { display: none !important; }
 .avatar { width:28px; height:28px; border-radius:50%; border:1px solid var(--border); background: var(--primary);
           color:#fff; font-weight:600; font-size:12px; display:inline-flex; align-items:center; justify-content:center;
           cursor:pointer; padding:0; }

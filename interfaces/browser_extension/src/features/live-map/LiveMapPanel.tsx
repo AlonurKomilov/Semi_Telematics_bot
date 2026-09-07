@@ -23,6 +23,14 @@ import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, Vehi
 const REFRESH_MS = 30_000;
 const LIVE_REFRESH_MS = 5_000;
 const LIST_OPEN_KEY = 'liveMapListOpen';
+/** Whether the selected vehicle is shown in full or folded to one line.
+ *  Remembered, like the list's own fold: somebody who works from the
+ *  search box and the filters folded this away on purpose, and having
+ *  to fold it again every morning is how a panel starts feeling
+ *  disposable. */
+const CARD_OPEN_KEY = 'liveMapCardOpen';
+/** The folded part, named so the control that folds it can say so. */
+const CARD_BODY_ID = 'live-map-vehicle-detail';
 /** The filter is a working preference, not a fresh decision every time:
  *  a dispatcher who watches Moving watched it yesterday too. */
 const FILTER_KEY = 'liveMapFilter';
@@ -79,6 +87,7 @@ export default function LiveMapPanel() {
   // The map is the point of the panel; the list is the index to it.
   // Collapsing gives the map the whole strip, and the choice sticks.
   const [listOpen, setListOpen] = useState(true);
+  const [cardOpen, setCardOpen] = useState(true);
   // Keep the chosen truck in view as it drives.  Centring once was not
   // enough: a truck at highway speed leaves the frame in a couple of
   // minutes and the panel quietly becomes a map of where it USED to be.
@@ -339,6 +348,7 @@ export default function LiveMapPanel() {
     map.current = m;
     void getFollowPref().then((on) => { setFollow(on); followRef.current = on; });
     void getFlag(LIST_OPEN_KEY, true).then(setListOpen);
+    void getFlag(CARD_OPEN_KEY, true).then(setCardOpen);
     void chrome.storage.local.get(FILTER_KEY).then((got) => {
       const f = got[FILTER_KEY];
       if (f === 'all' || f === 'moving' || f === 'idle' || f === 'stopped') setFilter(f);
@@ -428,12 +438,17 @@ export default function LiveMapPanel() {
     }, 180);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listOpen, cardShown]);
+  }, [listOpen, cardShown, cardOpen]);
 
   const toggleList = () => {
     const open = !listOpen;
     setListOpen(open);
     void setFlag(LIST_OPEN_KEY, open);
+  };
+  const toggleCard = () => {
+    const open = !cardOpen;
+    setCardOpen(open);
+    void setFlag(CARD_OPEN_KEY, open);
   };
 
   return (
@@ -459,20 +474,84 @@ export default function LiveMapPanel() {
       {/* The selected vehicle sits BELOW the map, not over it: it grew
           from three lines to seven, and by then it was hiding more of
           the map than the map could spare — including, often, the very
-          truck it describes. */}
+          truck it describes.
+
+          And it FOLDS, from its own name.  Seven lines is the answer for
+          somebody reading one truck; it is rent for somebody working
+          from the search box and the filters, and they were paying it on
+          every selection with no way to stop.  Folded, the card keeps
+          the line that says which truck and what it is doing, and gives
+          the rest of its height to the list.  Selecting another truck
+          does NOT unfold it — a fold that any click undoes is not a
+          fold. */}
       {selected && (() => {
           const [lat, lng] = liveLatLng(selected);
           const levels = levelsOf(selected.properties);
+          const st = vehicleStatus(selected);
+          const stLabel = st[0].toUpperCase() + st.slice(1);
+          // What the card WARNS about, kept out of the fold.  Folding
+          // may take away detail; it may not take away a warning — and
+          // both of these are warnings the expanded card draws in
+          // colour: a position too old to act on, and a tank low
+          // enough to plan around.
+          const age = ageMs(selected.properties.updated_at, now);
+          const staleness = stalenessOf(age);
+          const positionOld = staleness === 'stale' || staleness === 'very_stale';
+          const lowLevels = levels.filter((l) => l.low);
           return (
             <div className="sheet">
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <span className="row" style={{ gap: 6, minWidth: 0 }}>
-                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {selected.properties.name}
-                    {multiCompany && selected.properties.company && (
-                      <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
+                  {/* The caret LEADS the thing it opens.  The list's own
+                      caret sits at the far right because its header is a
+                      bar whose only content is a label; this row ends in
+                      actions, and a caret beside Close would read as a
+                      third one.  The name is the target either way — it
+                      is what a person points at to open or close this.
+                      The source marks stay OUTSIDE the button: they can
+                      be links, and a link inside a button is neither. */}
+                  <button type="button" className="row rowbtn" onClick={toggleCard}
+                          aria-expanded={cardOpen} aria-controls={CARD_BODY_ID}
+                          title={cardOpen
+                            ? 'Fold this vehicle to one line'
+                            : 'Show this vehicle in full'}
+                          style={{ gap: 6, minWidth: 0, minHeight: 24, padding: '0 4px',
+                                   background: 'none', border: 0, color: 'var(--fg)',
+                                   font: 'inherit', cursor: 'pointer', borderRadius: 6 }}>
+                    <span className="muted" aria-hidden style={{ flexShrink: 0 }}>{cardOpen ? '▾' : '▴'}</span>
+                    <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {selected.properties.name}
+                      {multiCompany && selected.properties.company && (
+                        <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
+                      )}
+                    </strong>
+                    {/* Folded, this is the one thing worth keeping: a
+                        name and two buttons would say nothing about the
+                        truck they belong to.  Expanded, the line below
+                        carries it — it is never in both places at once. */}
+                    {!cardOpen && (
+                      <span className="row" style={{ gap: 4, flexShrink: 0, fontSize: 12 }}>
+                        <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
+                                                   background: statusColor(st), flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600 }}>{stLabel}</span>
+                        {/* An age worth reading is one that says "do not
+                            act on this".  A fresh one stays folded away
+                            with the rest of the detail. */}
+                        {positionOld && (
+                          <span style={{ color: 'var(--warn)' }} title={describeAge(age)}>
+                            {formatAge(age)} old
+                          </span>
+                        )}
+                        {lowLevels.length > 0 && (
+                          <span style={{ color: 'var(--danger)', fontWeight: 600 }}
+                                title={lowLevels.map((l) => `${l.label} ${l.pct}%`).join(' · ')
+                                       + ` — low below ${LOW_LEVEL_PCT}%`}>
+                            {lowLevels.map((l) => l.label).join(' · ')} low
+                          </span>
+                        )}
+                      </span>
                     )}
-                  </strong>
+                  </button>
                   {/* Who supplies this truck, next to what it is called. */}
                   <SourceMarks sources={selected.properties.sources} source={selected.properties.source} links={links} />
                 </span>
@@ -495,39 +574,40 @@ export default function LiveMapPanel() {
                           }}>
                     {keepInView ? 'Keeping in view' : 'Keep in view'}
                   </button>
-                  <button className="btn" onClick={() => { setKeep(false); setSelected(null); }}>Close</button>
+                  {/* Folding and closing both make the card go away and
+                      mean different things: this one CLEARS the choice,
+                      so the next truck opens a full card again.  The
+                      difference was legible only to whoever wrote it. */}
+                  <button className="btn" title="Clear the selection — the next vehicle you pick opens in full"
+                          onClick={() => { setKeep(false); setSelected(null); }}>Close</button>
                 </div>
               </div>
+              {/* Everything the fold takes away.  It stays in the DOM
+                  rather than being unmounted so the control above can
+                  name what it controls. */}
+              <div id={CARD_BODY_ID} hidden={!cardOpen} style={{ display: 'grid', gap: 6 }}>
               {/* The card said what a truck's fuel was and never whether
                   it was moving.  Status lived in the list's dot and the
                   map's marker; the surface that describes ONE vehicle
                   had it nowhere. */}
               {(() => {
-                const st = vehicleStatus(selected);
                 const mph = selected.properties.speed_mph;
                 const moving = st === 'moving' && typeof mph === 'number';
                 return (
                   <p className="row" style={{ margin: 0, gap: 6, fontSize: 12 }}>
                     <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
                                                background: statusColor(st), flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600 }}>{st[0].toUpperCase() + st.slice(1)}</span>
+                    <span style={{ fontWeight: 600 }}>{stLabel}</span>
                     {moving && <span className="muted">{Math.round(mph)} mph</span>}
                   </p>
                 );
               })()}
               <p className="muted" style={{ margin: 0 }}>{selected.properties.address || '—'}</p>
-              {(() => {
-                const age = ageMs(selected.properties.updated_at, now);
-                const s = stalenessOf(age);
-                const old = s === 'stale' || s === 'very_stale';
-                return (
-                  <p style={{ margin: 0, fontSize: 12, color: old ? 'var(--warn)' : 'var(--muted)' }}
-                     title={describeAge(age)}>
-                    {s === 'unknown' ? 'No position time reported' : `Updated ${formatAge(age)} ago`}
-                    {s === 'very_stale' && ' — this is not a live position'}
-                  </p>
-                );
-              })()}
+              <p style={{ margin: 0, fontSize: 12, color: positionOld ? 'var(--warn)' : 'var(--muted)' }}
+                 title={describeAge(age)}>
+                {staleness === 'unknown' ? 'No position time reported' : `Updated ${formatAge(age)} ago`}
+                {staleness === 'very_stale' && ' — this is not a live position'}
+              </p>
               {levels.map((l) => (
                 // The threshold exists in code and was signalled only by
                 // colour, and only once breached: at 60% nothing on the
@@ -543,6 +623,7 @@ export default function LiveMapPanel() {
               <div className="row">
                 <button className="btn primary" onClick={() => void openInGoogleMaps(searchUrl(lat, lng))}>Open in Google Maps</button>
                 <button className="btn" onClick={() => void openInGoogleMaps(directionsUrl(lat, lng))}>Directions</button>
+              </div>
               </div>
             </div>
           );
@@ -580,14 +661,19 @@ export default function LiveMapPanel() {
                     borderTop: '1px solid var(--border)' }}>
         <button type="button" onClick={toggleList} aria-expanded={listOpen}
                 className="row rowbtn"
-                style={{ width: '100%', justifyContent: 'space-between', padding: '6px 10px',
+                style={{ width: '100%', gap: 6, padding: '6px 10px',
                          background: 'var(--card)', border: 0, color: 'var(--fg)', cursor: 'pointer' }}>
+          {/* The caret LEADS what it opens — the same rule the card
+              above follows, and the one the browser's own <summary>
+              uses.  It sat at the far right until the card gained a
+              fold of its own; one panel with two folds pointing from
+              opposite sides is two things to learn for one behaviour. */}
+          <span className="muted" aria-hidden style={{ flexShrink: 0 }}>{listOpen ? '▾' : '▴'}</span>
           {/* A header that shares its rows' surface, padding and border
               reads as their first row.  A fill step says it owns them. */}
           <span style={{ fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>
             Vehicles <span className="muted" style={{ fontWeight: 400 }}>({filtered.length})</span>
           </span>
-          <span className="muted" aria-hidden>{listOpen ? '▾' : '▴'}</span>
         </button>
         <div hidden={!listOpen}
              style={{ flex: 1, minHeight: 80, overflowY: 'auto' }}
