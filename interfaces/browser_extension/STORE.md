@@ -31,6 +31,11 @@ LIVE MAP
 • Open a vehicle's spot or directions in Google Maps with one click — or the vehicle itself in Samsara
 • Follow in Google Maps: the vehicle you pick is placed in the Google Maps tab you already have open, so you never juggle tabs
 
+ON GOOGLE MAPS ITSELF
+• Your vehicles drawn on google.com/maps, so the route you are planning and the vehicles you are planning it around are one picture
+• They settle into place after you drag the map, rather than sliding with it — Google tells the page where it is once the hand lifts
+• Off in one click, in the panel's Settings
+
 More of 4truck reaches the panel over time. Each addition appears in this list.
 
 
@@ -73,8 +78,17 @@ ABOUT 4TRUCK
 - `storage` — keeps the sign-in token between browser sessions so the user is not asked to
   sign in every time the panel opens.
 - Host `https://api.4truck.us/*` — the 4truck API the panel reads its data from.
-- Host `https://www.google.com/maps/*` — to open a chosen vehicle's position or directions
-  in a Google Maps tab the user already has open, instead of opening a new tab each time.
+- Host `https://www.google.com/maps/*` — two uses, both on the user's own Google Maps tab:
+  opening a chosen vehicle's position or directions in the tab they already have open
+  instead of a new one each time, and the content script below.
+- Content script on `https://www.google.com/maps/*` — draws the user's own vehicles over
+  Google's map so a route and the vehicles are one picture. It READS nothing from the page
+  except the camera Google publishes in its own URL (`@lat,lng,zoom`) and the size of the
+  map canvas, and it sends nothing anywhere. Positions come from the 4truck API, fetched by
+  the extension's service worker: a content script cannot use host permissions, and holding
+  a sign-in token inside a page we do not control would be the wrong trade. Off in one
+  click in the panel's Settings, and it draws nothing at all when signed out or in Street
+  View.
 
 **Remote code:** No. All code is bundled in the package.
 
