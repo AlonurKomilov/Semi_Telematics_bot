@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { FEATURE_CATALOG } from '../../config/featureCatalog';
-import { DRIVER_PANEL_FLAGS, PERM_GROUPS, isHeader } from './permRows';
-import { buildVerbGrid, driverBands, placedRows, serviceRows } from './verbGrid';
+import { DRIVER_PANEL_FLAGS, PERM_GROUPS, isHeader , SERVICE_ROW_KEYS } from './permRows';
+import { buildVerbGrid, driverBands, placedRows } from './verbGrid';
 
 const grid = buildVerbGrid();
 
@@ -40,6 +40,9 @@ describe('verb grid completeness', () => {
         'can_manage_account',
         'can_manage_applications',
         'can_manage_storage',
+        // Alerts is a service ROW now; its Group delivery config rides
+        // the config family exactly as it did on the read-only band.
+        'can_view_alerts',
         'can_view_kpi',
         'can_view_scorecards',
         // Vehicle source policy (precedence + auto-pilot).  Moved off
@@ -79,45 +82,50 @@ describe('the Driver tab', () => {
 });
 
 describe('the Services band', () => {
-  it('is the catalog\u2019s services — never a second hand-written list', () => {
+  it('is the first band, and its rows are the catalog\u2019s services — one row each', () => {
+    const first = buildVerbGrid().bands[0];
+    expect(first.band).toBe('Services');
+    const keys = first.families.map((f) => ('allKey' in f.parent ? f.parent.allKey : (f.parent as { key: string }).key)).sort();
+    expect(keys).toEqual(Object.values(SERVICE_ROW_KEYS).sort());
     const fromCatalog = FEATURE_CATALOG.filter((e) => e.kind === 'service').map((e) => e.id).sort();
-    expect(serviceRows().map((s) => s.id).sort()).toEqual(fromCatalog);
+    expect(Object.keys(SERVICE_ROW_KEYS).sort()).toEqual(fromCatalog);
   });
 
-  it('every service carries copy — a blank row would explain nothing', () => {
-    for (const s of serviceRows()) {
-      expect(s.label, s.id).toBeTruthy();
-      expect(s.note.length, s.id).toBeGreaterThan(20);
+  it('every service row carries copy — a blank row would explain nothing', () => {
+    for (const fam of buildVerbGrid().bands[0].families) {
+      const p = fam.parent as { label: string; description?: string };
+      expect(p.label).toBeTruthy();
+      expect((p.description ?? '').length, p.label).toBeGreaterThan(20);
     }
   });
 
-  it('no service is also a grantable row', () => {
-    // Services are derived (derive_service_perms) and the save endpoint
-    // strips their flags; a tickable row would be a lying checkbox.
+  it('every service IS a grantable row now — the tick is the channel', () => {
+    // Until 2026-09-06 a service was derived and hidden; the owner
+    // decided a service is granted per role like a feature.
     const grantable = new Set(placedRows(buildVerbGrid()).map((f) =>
       ('allKey' in f ? f.allKey : (f as { key?: string }).key)));
-    for (const id of serviceRows().map((s) => s.id)) {
-      expect(grantable.has(`can_${id}`), id).toBe(false);
+    for (const key of Object.values(SERVICE_ROW_KEYS)) {
+      expect(grantable.has(key), key).toBe(true);
     }
   });
 });
 
 
 describe('services can own config', () => {
+  const serviceFamily = (key: string) =>
+    buildVerbGrid().bands[0].families.find((f) => (f.parent as { key?: string }).key === key);
+
   it('Alerts declares its Group delivery config', () => {
-    // A service row renders "always on, nothing to grant". That was true
-    // when Alerts was only an inbox; Group delivery writes account_settings
-    // behind can_manage_config_all, so the Config column had to stop
-    // saying "-" for a grant that really exists.
-    const alerts = serviceRows().find((s) => s.id === 'alerts');
-    expect(alerts?.configVia).toBe('can_manage_config_all');
+    // Group delivery writes account_settings behind can_manage_config_all,
+    // so the Config column must not say "-" for a grant that really exists.
+    expect(serviceFamily('can_view_alerts')?.configVia).toBe('can_manage_config_all');
   });
 
   it('services WITHOUT config still declare none', () => {
     // Guards the opposite error: a blanket tick on every service would
     // promise grants that do not exist for AI Assistant and Reports.
-    for (const id of ['ai_assistant', 'reports']) {
-      expect(serviceRows().find((s) => s.id === id)?.configVia).toBeUndefined();
+    for (const key of ['can_view_ai_assistant', 'can_view_reports']) {
+      expect(serviceFamily(key)?.configVia, key).toBeUndefined();
     }
   });
 });

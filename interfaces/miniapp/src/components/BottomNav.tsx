@@ -27,11 +27,11 @@ const ALL_TABS: { id: Page; labelKey: string; icon: React.ReactNode; permKeys?: 
   { id: 'vehicles',  labelKey: 'tabs.vehicles',  icon: <Icon24TruckOutline /> },
   // PTI tab visible to drivers (own scope) and fleet reviewers (all scope).
   { id: 'pti',       labelKey: 'tabs.pti',       icon: <Icon24CheckCircleOutline />,  permKeys: ['can_view_inspections'] },
-  { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_view_vehicles'] },
+  { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_view_alerts'] },
   { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_view_scorecards'] },
-  // AI uses the same own-vehicle gate as the dashboard sidebar so drivers
-  // (who hold can_view_vehicles at assigned width) get access to chat with the assistant.
-  { id: 'ai',        labelKey: 'tabs.ai',        icon: <Icon24MessageOutline />,      permKeys: ['can_view_vehicles'] },
+  // The AI assistant is a service granted per role (can_view_ai_assistant);
+  // what it answers about is still the driver's own truck.
+  { id: 'ai',        labelKey: 'tabs.ai',        icon: <Icon24MessageOutline />,      permKeys: ['can_view_ai_assistant'] },
   { id: 'profile',   labelKey: 'tabs.profile',   icon: <Icon24UserOutline /> },
 ];
 

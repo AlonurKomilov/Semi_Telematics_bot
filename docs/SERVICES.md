@@ -1,31 +1,36 @@
-# System Services — the always-on layer
+# System Services — the channels
 
-Decided 2026-06-22 (the "Option C" pass). This is the SSOT for the three
-always-on infrastructure **services** — **Alerts, the AI assistant, and
-Reports**. They are **not features**: every role has them, always. An owner
-never toggles a *service*; they only shape what *flows through* it by enabling
-or disabling the underlying **features**. For the toggleable feature taxonomy,
-see [`FEATURES.md`](FEATURES.md).
+Decided 2026-06-22 (the "Option C" pass), revised 2026-09-06. This is the
+SSOT for the three infrastructure **services** — **Alerts, the AI assistant,
+and Reports**. They are **not features**: a service owns no data of its own;
+it is a *channel* through which the role's features flow. Since 2026-09-06 a
+service is **granted per role** like a feature (one View row each in the
+matrix — `can_view_alerts`, `can_view_ai_assistant`, `can_view_reports`), so
+an owner can withhold a channel from a role (a future broker role denied AI).
+What flows *through* a granted channel is still decided by the role's
+**feature** grants. For the toggleable feature taxonomy, see
+[`FEATURES.md`](FEATURES.md).
 
 ## Service vs feature — two different architectures
 
 | | Feature ([`FEATURES.md`](FEATURES.md)) | System service (this doc) |
 |---|---|---|
 | **Unit** | a `features/<x>/` leaf surface | a *hub* that aggregates contributions from many features |
-| **Access** | owner-toggled per role (the Permissions page) | always-on, **derived** — never a grantable row |
+| **Access** | owner-toggled per role (the Permissions page) | owner-toggled per role too (one View row: the channel) — content still follows the features |
 | **Direction** | owns its own data + surface | consumes `alert.py` / `report.py` / `ai_tool.py` contributions **from** features |
 | **Reader question** | "what may role X open?" | "what infra is always running, and how does content flow into it?" |
 
-A service's access is **computed, not stored**:
-`capabilities/permissions/roles.derive_service_perms(fs)` runs as the **last**
-step of every permission resolve (after the module mask) and overwrites the
-service-surface flags. Nothing grants them; they lead the Permissions page's
-per-role grid as a read-only **Services band** — first, because the page reads
-top-down as the model: what every role always has, then what you grant, then
-what you configure. The band's membership is the catalog's `kind: 'service'`
-entries, pinned by `verbGrid.test.ts`.
+A service's access is a **stored grant** like any feature's — one View row
+per service in the Services band that leads the Permissions page (it reads
+top-down as the model: the channels, then what you grant, then what you
+configure). Until 2026-09-06 the four service flags were computed by a
+derivation step and hidden; that step is gone, the seeds carry what it
+computed (every role holds all three; the inbox seed follows vehicle
+visibility, so Recruiter starts without it — grantable, not hardcoded), and a
+revocation sticks. The band's membership is the catalog's `kind: 'service'`
+entries, pinned by `verbGrid.test.ts` against `SERVICE_ROW_KEYS`.
 
-Those catalog entries exist only because `featureCatalog.ts` doubles as the
+Those catalog entries exist because `featureCatalog.ts` doubles as the
 route + nav registry. A service carries **no `tier`** — the type makes that
 impossible (`CatalogEntry`'s service arm declares `tier?: never`), because a
 value inside the tier union would claim services sit on an axis they don't.
@@ -34,11 +39,10 @@ value inside the tier union would claim services sit on an axis they don't.
 
 ### 🔔 Alerts
 - **Surface**: the Alerts inbox (dashboard) · bot `/alerts` · *My Notifications*.
-- **Access (derived)**: every role **has** the inbox; only the **scope** is
-  derived from the role's vehicle scope — `can_vehicle_all` → fleet-wide
-  (`can_alerts_all`), otherwise own-vehicle (`can_alerts_vehicle`). The two are
-  mutually exclusive. A role with *no* vehicle visibility at all gets no inbox
-  (the unknown-role floor — every real role has vehicle scope).
+- **Access**: `can_view_alerts`, granted per role (seeded wherever the role
+  sees vehicles; Recruiter starts without it). Its **width** — every unit or
+  the member's assigned trucks — is Team Management's answer (`unit_width`,
+  the `alerts` pair), never a flag.
 - **Content gate**: which alert **types** a role actually receives is gated
   per-feature by `capabilities/alerting/relevance.ALERT_TYPE_REQUIRED_PERM`
   (faults → `can_faults`, health → `can_health`, fuel → `can_fuel`,
@@ -49,7 +53,7 @@ value inside the tier union would claim services sit on an axis they don't.
 
 ### 🤖 AI assistant
 - **Surface**: chat + fleet summary (dashboard + bot).
-- **Access (derived)**: always on for every role (`can_ai_chat = True`).
+- **Access**: `can_view_ai_assistant`, granted per role (seeded for every role).
 - **Content gate**: each tool is gated by `TOOL_PERMISSIONS` to the data the
   role can **already** see — **a tool's access *is* its feature's access**.
   There is no AI-only permission: e.g. the engine-state lookup
@@ -64,8 +68,9 @@ value inside the tier union would claim services sit on an axis they don't.
 - **Surface**: the Reports hub page (tabbed) + the scheduled-report subscription —
   a sub-feature with its own home, `capabilities/reporting/scheduled/` (API) and
   `features/reports/scheduled/` (dashboard); the bot's hourly sender is its Telegram adapter.
-- **Access (derived)**: the hub **and** its scheduled-report subscription
-  (`can_digest = True`) are always on for every role.
+- **Access**: `can_view_reports`, granted per role (seeded for every role) —
+  the hub **and** its scheduled-report subscription (the sub-feature in
+  `capabilities/reporting/scheduled/`) open on the one verb.
 - **Content gate**: which report **tabs** appear is gated per report **type** —
   and those types are genuine per-role **features** that live in the matrix
   under their **owning department**: **Risk Summary → Safety**
@@ -75,15 +80,16 @@ value inside the tier union would claim services sit on an axis they don't.
   report **types** are features.
 - **Contribution pattern**: each feature component owns a `report.py`.
 
-## The derived service flags (the only four)
+## The service verbs
 
 ```
-DERIVED_SERVICE_FIELDS = {can_alerts_all, can_alerts_vehicle, can_ai_chat, can_digest}
+can_view_alerts · can_view_ai_assistant · can_view_reports
 ```
 
-Never stored, never a matrix row. `PUT /admin/permissions/roles` strips them
-from the persisted override; migration 128 cleaned them from existing rows.
-`derive_service_perms` is the single place they're set.
+Plain grants, stored like any feature's, seeded for every role (the inbox
+only where the role sees vehicles). Their legacy names — `can_alerts_all`,
+`can_alerts_vehicle`, `can_ai_chat`, `can_digest` — are alias properties for
+one release and die with the alias layer.
 
 ## hub ≠ service (the important nuance)
 

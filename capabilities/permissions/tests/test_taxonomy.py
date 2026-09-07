@@ -23,12 +23,12 @@ FLAGS = {f.name for f in dataclasses.fields(FeatureSet)
 
 
 def test_the_contract_matches_the_flipped_featureset():
-    """Post-flip invariant: every verb TARGET is a physical field, every
-    non-verb flag (derived / service / config / parked) survives under
-    its own name, and no legacy pair name is a field any more."""
+    """Post-flip invariant: every verb TARGET is a physical field, the
+    config pair survives under its own name, and no legacy name is a
+    field any more."""
     targets = {v.target for v in TAXONOMY.values() if v.target}
     survivors = {f for f, v in TAXONOMY.items()
-                 if v.fate in (Fate.DERIVED, Fate.SERVICE, Fate.CONFIG)}
+                 if v.fate is Fate.CONFIG}
     assert targets | survivors == FLAGS, (
         f"fields without a contract: {sorted(FLAGS - targets - survivors)}; "
         f"contract names that are not fields: {sorted((targets | survivors) - FLAGS)}")
@@ -90,17 +90,22 @@ def test_no_two_verb_rows_share_a_target():
             seen[v.target] = flag
 
 
-def test_services_and_derived_are_distinct_and_pinned():
-    """The owner's split, pinned by name.  SERVICE = always on for
-    every role, nothing to grant (the matrix UI's SERVICES band) — it
-    rides whatever features the role is allowed.  DERIVED = computed
-    from OTHER grants (the alerts inbox follows vehicle visibility) —
-    also never stored, but not always-on.  Confusing the two buckets
-    would either grant a service or freeze a derivation."""
-    service = {f for f, v in TAXONOMY.items() if v.fate is Fate.SERVICE}
-    derived = {f for f, v in TAXONOMY.items() if v.fate is Fate.DERIVED}
-    assert service == {"can_ai_chat", "can_digest"}
-    assert derived == {"can_alerts_all", "can_alerts_vehicle"}
+def test_the_services_are_view_verbs_now():
+    """Alerts, AI and Reports were "always on, nothing to grant" — four
+    flags computed by derive_service_perms.  Since 2026-09-06 a service
+    is granted per role like a feature: each legacy flag has a view-verb
+    target, the alerts pair is a unit split (its width Team
+    Management's), and no fate is left that computes anything."""
+    assert not hasattr(Fate, "SERVICE") and not hasattr(Fate, "DERIVED")
+    assert TAXONOMY["can_ai_chat"].target == "can_view_ai_assistant"
+    assert TAXONOMY["can_digest"].target == "can_view_reports"
+    assert TAXONOMY["can_alerts_all"].target == "can_view_alerts"
+    assert TAXONOMY["can_alerts_vehicle"].fate is Fate.SCOPE_SPLIT
+    assert TAXONOMY["can_alerts_vehicle"].target == "can_view_alerts"
+    for f in ("can_view_alerts", "can_view_ai_assistant", "can_view_reports"):
+        assert f in FLAGS, f
+    for f in ("can_ai_chat", "can_digest", "can_alerts_all", "can_alerts_vehicle"):
+        assert f not in FLAGS, f
 
 
 def test_config_rows_are_exactly_the_config_pair():
@@ -125,13 +130,13 @@ def test_own_family_died_into_view_verbs():
 
 
 def test_non_verb_fates_carry_no_target():
-    """A DERIVED/CONFIG/SERVICE row has no canonical rename —
+    """A CONFIG row has no canonical rename —
     a target on one is almost always a positional-argument slip (a
     note landing in the target slot).  It happened: can_alerts_vehicle
     shipped with its NOTE as its target, and the bridge stage tried to
     install a property named by a full English sentence."""
     for flag, v in TAXONOMY.items():
-        if v.fate in (Fate.DERIVED, Fate.CONFIG, Fate.SERVICE):
+        if v.fate is Fate.CONFIG:
             assert v.target is None, f"{flag}: {v.target!r}"
 
 

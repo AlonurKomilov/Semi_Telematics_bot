@@ -1,10 +1,11 @@
-"""derive_service_perms after the verb/scope flip.
+"""Services are granted per role — nothing is derived any more.
 
-The alerts inbox is a vehicle-alerts surface: it exists iff the role
-opens Vehicles (can_view_vehicles).  Both derived flags now say that
-one thing — WIDTH (all units / assigned trucks) is per MEMBER, Team
-Management's answer, never a per-role flag — so the pair can no
-longer disagree.  AI chat and the digest are always on.
+Until 2026-09-06 four service flags were computed by
+``derive_service_perms`` (always on; the alerts inbox following vehicle
+visibility) and hidden from the matrix.  The owner decided a service is
+a channel granted per role like a feature: a future broker role may be
+denied AI.  These pin the seeds that replaced the derivation and the
+one thing the derivation could never do — a revocation that sticks.
 """
 
 from __future__ import annotations
@@ -16,56 +17,54 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 from dataclasses import replace
 
 from capabilities.permissions.roles import (
-    ROLE_PERMISSIONS, FeatureSet, Role, derive_service_perms, get_permissions,
+    ROLE_PERMISSIONS, FeatureSet, Role, normalize_stored_perm_keys,
 )
 
-
-class TestPerRoleDerivation:
-    def test_inbox_follows_vehicle_visibility_for_every_seed(self):
-        for role, seed in ROLE_PERMISSIONS.items():
-            fs = derive_service_perms(seed)
-            assert fs.can_alerts_all == fs.can_alerts_vehicle == seed.can_view_vehicles, role
-
-    def test_only_the_vehicle_less_role_has_no_inbox(self):
-        vehicle_less = {r for r, s in ROLE_PERMISSIONS.items() if not s.can_view_vehicles}
-        assert vehicle_less == {Role.RECRUITER}, vehicle_less
-        fs = derive_service_perms(ROLE_PERMISSIONS[Role.RECRUITER])
-        assert not fs.can_alerts_all and not fs.can_alerts_vehicle
-        assert fs.can_ai_chat is True and fs.can_digest is True
-
-    def test_the_pair_never_disagrees(self):
-        for role, seed in ROLE_PERMISSIONS.items():
-            fs = derive_service_perms(seed)
-            assert fs.can_alerts_all == fs.can_alerts_vehicle, role.value
-
-    def test_ai_assistant_and_digest_always_on(self):
-        for role in Role:
-            fs = derive_service_perms(ROLE_PERMISSIONS.get(role, FeatureSet()))
-            assert fs.can_ai_chat is True and fs.can_digest is True
+SERVICE_VERBS = ("can_view_alerts", "can_view_ai_assistant", "can_view_reports")
 
 
-class TestServiceIsNeverWithheld:
-    def test_inbox_present_without_any_alert_feature(self):
-        bare = FeatureSet(can_view_vehicles=True)   # no alert features at all
-        fs = derive_service_perms(bare)
-        assert fs.can_alerts_all is True and fs.can_alerts_vehicle is True
+class TestServiceSeeds:
+    def test_every_role_seeds_the_ai_assistant_and_reports(self):
+        for role, fs in ROLE_PERMISSIONS.items():
+            assert fs.can_view_ai_assistant is True, role
+            assert fs.can_view_reports is True, role
 
-    def test_masking_an_alert_feature_keeps_the_inbox(self):
-        fs = derive_service_perms(replace(ROLE_PERMISSIONS[Role.OWNER], can_view_events=False))
-        assert fs.can_alerts_all is True
+    def test_the_inbox_seed_follows_vehicle_visibility(self):
+        # What the derivation used to compute is a seed now — and only
+        # a seed: an owner may tick it on for a role without vehicles.
+        for role, fs in ROLE_PERMISSIONS.items():
+            assert fs.can_view_alerts is bool(fs.can_view_vehicles), role
+        assert ROLE_PERMISSIONS[Role.RECRUITER].can_view_alerts is False
 
-    def test_masking_vehicles_removes_the_inbox(self):
-        # There is no per-role "narrow" any more: a role that cannot
-        # open Vehicles has no vehicle-alerts inbox.  Width for a role
-        # that CAN is a Team Management matter.
-        fs = derive_service_perms(replace(ROLE_PERMISSIONS[Role.OWNER], can_view_vehicles=False))
-        assert fs.can_alerts_all is False and fs.can_alerts_vehicle is False
+    def test_the_legacy_names_are_aliases_of_the_verbs(self):
+        fs = ROLE_PERMISSIONS[Role.DRIVER]
+        assert fs.can_ai_chat is fs.can_view_ai_assistant
+        assert fs.can_digest is fs.can_view_reports
+        assert fs.can_alerts_all is fs.can_view_alerts
+        assert fs.can_alerts_vehicle is fs.can_view_alerts
+
+    def test_nothing_is_derived_any_more(self):
+        import capabilities.permissions.roles as roles
+        assert not hasattr(roles, "derive_service_perms")
+        assert not hasattr(roles, "DERIVED_SERVICE_FIELDS")
 
 
-class TestDerivationRules:
-    def test_get_permissions_applies_derivation(self):
-        for role in Role:
-            direct = derive_service_perms(ROLE_PERMISSIONS.get(role, FeatureSet()))
-            via = get_permissions(role)
-            assert (via.can_alerts_all, via.can_alerts_vehicle, via.can_ai_chat, via.can_digest) == \
-                   (direct.can_alerts_all, direct.can_alerts_vehicle, direct.can_ai_chat, direct.can_digest), role
+class TestARevocationSticks:
+    def test_a_stored_false_resolves_false(self):
+        # The point of the change: the derivation overwrote any stored
+        # value with True; a stored row now decides.
+        seed = ROLE_PERMISSIONS[Role.DISPATCHER]
+        stored = normalize_stored_perm_keys({"can_view_ai_assistant": False})
+        merged = replace(seed, **stored)
+        assert merged.can_view_ai_assistant is False
+        assert merged.can_ai_chat is False            # the alias follows
+
+    def test_a_legacy_key_in_a_stored_row_lands_on_the_verb(self):
+        stored = normalize_stored_perm_keys({"can_ai_chat": False, "can_digest": True})
+        assert stored == {"can_view_ai_assistant": False, "can_view_reports": True}
+
+    def test_the_bare_featureset_grants_no_service(self):
+        # No hidden always-on: a role built from nothing has no channel.
+        fs = FeatureSet()
+        for v in SERVICE_VERBS:
+            assert getattr(fs, v) is False, v

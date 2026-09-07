@@ -207,20 +207,20 @@ export default function AppRouter() {
         <Route path="routes" element={L(<P perm={['can_view_routes']}><RoutesPage /></P>)} />
         <Route path="geofences" element={L(<P perm={['can_view_geofence']}><Geofences /></P>)} />
         <Route path="parking" element={L(<P perm="can_view_vehicles"><Parking /></P>)} />
-        <Route path="alerts" element={L(<P perm="can_view_vehicles"><Alerts /></P>)} />
+        <Route path="alerts" element={L(<P perm="can_view_alerts"><Alerts /></P>)} />
         <Route path="scorecards" element={L(<P perm="can_view_scorecards"><Scorecards /></P>)} />
         <Route path="safety-events" element={L(<P perm={['can_view_events']}><Events /></P>)} />
         <Route path="cameras" element={L(<P perm="can_view_faults"><Cameras /></P>)} />
 
         {/* AI Assistant — gate on the SAME flag as the sidebar entry
-            (featureCatalog `ai_assistant` → can_ai_chat), so any persona
-            who sees the link can load the page.  can_ai_chat defaults True
+            (featureCatalog `ai_assistant` → can_view_ai_assistant), so any persona
+            who sees the link can load the page.  can_view_ai_assistant seeds True
             for every role; the AI's individual tools are permission-gated
             server-side, so a non-fleet persona (recruiter, HR, accounting)
             gets the assistant without inheriting fault/vehicle data.  The
             previous vehicle-centric guard bounced those personas to "/". */}
-        <Route path="ai/chat" element={L(<P perm="can_ai_chat"><AIChat /></P>)} />
-        <Route path="ai/summary" element={L(<P perm="can_ai_chat"><AISummary /></P>)} />
+        <Route path="ai/chat" element={L(<P perm="can_view_ai_assistant"><AIChat /></P>)} />
+        <Route path="ai/summary" element={L(<P perm="can_view_ai_assistant"><AISummary /></P>)} />
 
         {/* Reports module — the four sub-pages are nested under one
             ReportsLayout that owns the shared header + cross-page
@@ -231,17 +231,14 @@ export default function AppRouter() {
         <Route
           path="reports"
           element={L(
-            <P perm={[
-              'can_view_faults', 'can_view_risk_reports',
-              'can_view_cost_reports', 'can_digest', 'can_manage_maintenance',
-            ]}><ReportsLayout /></P>
+            <P perm="can_view_reports"><ReportsLayout /></P>
           )}
         >
           <Route index             element={L(<P perm="can_view_faults"><Reports /></P>)} />
           <Route path="risk-summary"     element={L(<P perm="can_view_risk_reports"><RiskSummary /></P>)} />
           <Route path="cost-reports"     element={L(<P perm="can_view_cost_reports"><CostReports /></P>)} />
           <Route path="dot-binder"        element={L(<P perm="can_manage_maintenance"><DotBinder /></P>)} />
-          <Route path="scheduled-reports" element={L(<P perm="can_digest"><ScheduledReports /></P>)} />
+          <Route path="scheduled-reports" element={L(<P perm="can_view_reports"><ScheduledReports /></P>)} />
         </Route>
         {/* Legacy paths — bookmarks/links from before the
             URL canonicalisation land here and redirect cleanly. */}

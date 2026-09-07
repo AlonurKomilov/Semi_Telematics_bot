@@ -54,7 +54,7 @@ const SUB_NAV: SubNavEntry[] = [
   // not an operational task editor; see
   // docs/architecture/reports-hierarchy-audit.md.
   { to: 'dot-binder',       label: 'DOT Binder',        icon: Shield,      perms: ['can_manage_maintenance'] },
-  { to: 'scheduled-reports', label: 'Scheduled Reports', icon: Mail,       perms: ['can_digest'] },
+  { to: 'scheduled-reports', label: 'Scheduled Reports', icon: Mail,       perms: ['can_view_reports'] },
 ];
 
 

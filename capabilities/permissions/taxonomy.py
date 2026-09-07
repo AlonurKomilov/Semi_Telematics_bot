@@ -24,21 +24,15 @@ bijection both ways).  Fates:
     link).  The pair's ``*_all`` sibling carries the wide grant and
     maps to its own verb row.
 
-``SERVICE``
-    A cross-cutting service, not a feature: always on for every role,
-    nothing to grant (the matrix UI's "SERVICES" band).  It works over
-    whatever FEATURES the role is allowed — AI answers only from data
-    the role can already see — so a service's access is simply its
-    features' access.  END-OF-MIGRATION NOTE (owner, 2026-09-01):
-    services should eventually leave ``FeatureSet`` entirely, so the
-    matrix and the stored grants never mention them — deferred to the
-    cleanup stage, recorded here so it cannot be forgotten.
-
-``DERIVED``
-    Computed by ``derive_service_perms`` from OTHER grants — never
-    stored, never granted, but not always-on either (the alerts inbox
-    scope follows vehicle visibility).  Untouched; the derivation
-    re-reads the new names when they land.
+``SERVICE`` (retired 2026-09-06)
+    Alerts, the AI assistant and Reports were "always on, nothing to
+    grant" — four flags computed by ``derive_service_perms`` and hidden
+    from the matrix.  The owner decided a service is granted per role
+    like a feature (a future broker role may be denied AI), so each
+    became a view verb: ``can_view_alerts`` (a unit pair — its width
+    is Team Management's), ``can_view_ai_assistant``,
+    ``can_view_reports``.  What flows THROUGH a service is still the
+    role's feature grants; the tick is the channel itself.
 
 ``CONFIG``
     The config family (role/account scope pair).  Shipped 2026-07 as a
@@ -67,8 +61,6 @@ class Fate(str, Enum):
     VERB_VIEW = "verb_view"
     VERB_MANAGE = "verb_manage"
     SCOPE_SPLIT = "scope_split"
-    SERVICE = "service"
-    DERIVED = "derived"
     CONFIG = "config"
     PERSON_SPLIT = "person_split"
 
@@ -77,7 +69,7 @@ class Fate(str, Enum):
 class Verdict:
     fate: Fate
     #: canonical post-migration name; None for fates that keep the flag
-    #: out of the verb grammar (DERIVED / CONFIG / SERVICE).
+    #: out of the verb grammar (CONFIG).
     target: str | None = None
     note: str = ""
 
@@ -190,20 +182,12 @@ TAXONOMY: dict[str, Verdict] = {
     "can_onboard_drivers": Verdict(M, "can_onboard_drivers",
                                    "deliberately narrower than both neighbours"),
 
-    # ── services: always on, nothing to grant ──────────────────────
-    "can_ai_chat":        Verdict(Fate.SERVICE),
-    "can_digest":         Verdict(Fate.SERVICE),
-
-    # ── computed from other grants, never stored ───────────────────
-    "can_alerts_all":     Verdict(Fate.DERIVED),
-    "can_alerts_vehicle": Verdict(
-        Fate.DERIVED,
-        note="derivation input moves from can_vehicle_all to the TM "
-             "scope when the enforcement stage reaches alerts.  Done in "
-             "stage E: alerts follow VEHICLE visibility, so every gate "
-             "asks can_view_vehicles and every width read asks the width "
-             "core for the vehicles feature; the derived pair now only "
-             "feeds the wire and the bot's menus"),
+    # ── services: granted per role like a feature (owner, 2026-09-06);
+    #    the alerts inbox is a unit pair, its width Team Management's ──
+    "can_ai_chat":        Verdict(V, "can_view_ai_assistant"),
+    "can_digest":         Verdict(V, "can_view_reports"),
+    "can_alerts_all":     Verdict(V, "can_view_alerts"),
+    "can_alerts_vehicle": Verdict(S, "can_view_alerts"),
 
     # ── out of this migration, on the record ───────────────────────
     "can_manage_config_role": Verdict(Fate.CONFIG),

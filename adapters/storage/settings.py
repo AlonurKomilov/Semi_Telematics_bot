@@ -48,7 +48,7 @@ class SettingsMixin:
 
         ``report_type=None`` (the default, pre-2026-06 behaviour)
         deactivates every schedule the user has — used when an admin
-        revokes ``can_digest`` or the user clicks "Stop all" in the bot
+        revokes ``can_view_reports`` or the user clicks "Stop all" in the bot
         wizard.
 
         ``report_type="faults"`` deactivates only the faults schedule —

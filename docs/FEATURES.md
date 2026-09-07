@@ -113,13 +113,12 @@ depth 2 via `parentKey`); a component may NOT — needing an action or config
 participation is the graduation signal.  Cross-feature rows never nest and
 never multiply per feature.
 
-**Derived service flags** — `can_alerts_all/_vehicle`, `can_ai_chat`,
-`can_digest` — exist in `FeatureSet` but are COMPUTED
-(`derive_service_perms`), never granted: live enforcement for the
-always-on services, deliberately without rows of their own. The drift-guard
-test (`tests/test_permission_surface.py`) holds every `FeatureSet` field
-to exactly one home: a permissions row, the Driver tab, the derived list,
-or the explicit exempt list.
+**Service verbs** — `can_view_alerts`, `can_view_ai_assistant`,
+`can_view_reports` — are grants like any feature's since 2026-09-06 (one
+View row each in the Services band; see SERVICES.md). The drift-guard test
+(`tests/test_permission_surface.py`) holds every `FeatureSet` field to
+exactly one home: a permissions row, the Driver tab, or the explicit exempt
+list.
 
 ## The feature → component tree
 

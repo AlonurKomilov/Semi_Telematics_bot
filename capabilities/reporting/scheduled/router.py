@@ -62,16 +62,15 @@ class ScheduledReportRequest(BaseModel):
 
 @user_router.get("/scheduled-reports")
 async def list_scheduled_reports(
-    user: dict = Depends(require_permission("can_digest")),
+    user: dict = Depends(require_permission("can_view_reports")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
     """Return every active scheduled-report row for the current user.
 
-    Gated on ``can_digest`` so toggling the flag OFF for a role in
-    RolePermissions actually disables the dashboard surface (not just
-    the bot delivery).  Without this guard the page kept loading and
-    accepting writes that the bot would silently never deliver.
+    Gated on ``can_view_reports`` — the Reports service's view verb, of
+    which this subscription is the sub-feature — so unticking Reports
+    for a role closes the dashboard surface, not just the bot delivery.
 
     Response envelope: ``{"scheduled_reports": [...]}``  (multi-schedule
     model added 2026-06).  Empty list when the user has no schedules.
@@ -86,7 +85,7 @@ async def list_scheduled_reports(
 @user_router.put("/scheduled-reports")
 async def upsert_scheduled_report(
     body: ScheduledReportRequest,
-    user: dict = Depends(require_permission("can_digest")),
+    user: dict = Depends(require_permission("can_view_reports")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -131,7 +130,7 @@ async def upsert_scheduled_report(
 @user_router.delete("/scheduled-reports")
 async def delete_scheduled_report(
     report_type: Optional[str] = None,
-    user: dict = Depends(require_permission("can_digest")),
+    user: dict = Depends(require_permission("can_view_reports")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):

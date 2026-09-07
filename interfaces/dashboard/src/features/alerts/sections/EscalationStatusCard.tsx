@@ -7,7 +7,7 @@
  * surfaces "which team is sitting on the backlog" so an owner can
  * triage by ping rather than scrolling.
  *
- * Permission-gated by ``can_alerts_all`` on the server.  Personas
+ * Permission-gated by ``can_view_alerts`` at unit width 'all' on the server.  Personas
  * that don't have it (driver, accounting) get 403 and we hide the
  * card silently — same pattern as SafetySummaryStrip's coaching
  * fallback.

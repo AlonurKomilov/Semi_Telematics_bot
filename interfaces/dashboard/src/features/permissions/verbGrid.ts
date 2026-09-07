@@ -17,7 +17,7 @@
  */
 import { FEATURE_CATALOG } from '../../config/featureCatalog';
 import {
-  DRIVER_RECORDS, DRIVER_TRUCK, GROUP_BLOCKS, isHeader, isScoped,
+  DRIVER_RECORDS, DRIVER_SERVICES, DRIVER_TRUCK, GROUP_BLOCKS, isHeader, isScoped,
 } from './permRows';
 import type { Block, PermFlag, ScopedFlag, SimpleFlag } from './permRows';
 
@@ -54,26 +54,14 @@ const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_r
   // Integrations while the panel did, and a tick must always point at
   // the surface the grant actually opens.
   can_view_vehicles: ['can_manage_config_all', 'source precedence + auto-pilot'],
+  // Alerts is a service row now; its Group delivery (forum topics,
+  // per-type AI) is account_settings behind the config family.
+  can_view_alerts: ['can_manage_config_all', 'group delivery — topics + per-type AI'],
   can_view_scorecards: ['can_manage_config_all', 'rules + pillar caps'],
   can_view_kpi: ['can_manage_config_all', 'grade thresholds'],
   can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
   can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],
   can_manage_account: ['can_manage_config_all', 'account-wide values'],
-};
-
-// Services can have config too, and the matrix could not say so.
-//
-// A service row renders "always on for every role, nothing to grant" and
-// four dashes, which was true when a service was only an inbox. Alerts
-// now has Group delivery — forum topics and per-type AI, written to
-// account_settings behind can_manage_config_all — so "nothing to grant"
-// was FALSE for the one column that mattered. An owner reading the matrix
-// could not discover that granting Config · account-wide changes how
-// alerts reach a Telegram group.
-//
-// Access to the service stays derived; only its CONFIG is grantable.
-const SERVICE_CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_role', string]> = {
-  alerts: ['can_manage_config_all', 'group delivery — topics + per-type AI'],
 };
 
 const rowKey = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as SimpleFlag).key);
@@ -183,47 +171,12 @@ export function driverBands(): DriverBand[] {
       note: 'the PERSONAL tier — their own documents and history, nobody else\u2019s',
       rows: DRIVER_RECORDS as TickRow[],
     },
+    {
+      title: 'Services',
+      note: 'The channels — the same rows the staff matrix carries, at the driver’s width.',
+      rows: DRIVER_SERVICES as TickRow[],
+    },
   ];
 }
 
 
-// ── Services — the band above everything grantable ─────────────────
-//
-// Alerts / AI / Reports are always-on and their access is DERIVED
-// (capabilities/permissions/roles.derive_service_perms; the save endpoint
-// strips those flags), so they have nothing to tick.  They lead the grid
-// anyway: the page then reads top-down as the model — what every role
-// always has, then what you grant, then what you configure.
-//
-// The membership comes from the CATALOG (entries whose kind is
-// 'service'), never a second hand-written list; verbGrid.test.ts fails if
-// a service ships without copy here.
-const SERVICE_COPY: Record<string, string> = {
-  alerts: 'The inbox every role has. It shows the alerts for whichever features the role can see — disable a feature and just its alerts drop out.',
-  ai_assistant: 'Available to every role. Each tool answers only from data the role can already see, so a tool\u2019s access is simply its feature\u2019s access.',
-  reports: 'The hub and its scheduled-report subscription are open to every role; which tabs appear follows the role\u2019s features. The report TYPES (Risk Summary, Cost Reports) stay grantable below.',
-};
-
-export interface ServiceRow {
-  id: string;
-  label: string;
-  note: string;
-  /** Set when the service has account/role config behind a family flag. */
-  configVia?: 'can_manage_config_all' | 'can_manage_config_role';
-  configNote?: string;
-}
-
-export function serviceRows(): ServiceRow[] {
-  return FEATURE_CATALOG
-    .filter((e) => e.kind === 'service')
-    .map((e) => ({
-      id: e.id,
-      // nav.<id> is the i18n key; the plain label is its tail, which is
-      // what this read-only band needs (no translation plumbing for a
-      // row nobody can act on).
-      label: e.id.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' '),
-      note: SERVICE_COPY[e.id] ?? '',
-      configVia: SERVICE_CONFIG_VIA[e.id]?.[0],
-      configNote: SERVICE_CONFIG_VIA[e.id]?.[1],
-    }));
-}

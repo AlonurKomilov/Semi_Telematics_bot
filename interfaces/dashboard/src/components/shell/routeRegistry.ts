@@ -23,7 +23,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Top
   { label: 'Overview',     path: '/',        icon: LayoutDashboard, group: 'Home',   permission: null,
     description: 'Status at a glance — adapts to your role', keywords: ['home','dashboard','start'] },
-  { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             group: 'Home',   permission: 'can_ai_chat',
+  { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             group: 'Home',   permission: 'can_view_ai_assistant',
     description: 'Ask AI about vehicles, faults, trips, and events', keywords: ['chat','assistant','gpt'] },
 
   // Fleet

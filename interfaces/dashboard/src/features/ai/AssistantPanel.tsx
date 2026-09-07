@@ -8,7 +8,7 @@
  *
  * Suppressed entirely on the `/ai/*` routes — the full page IS the
  * assistant there, so we don't stack a second instance on top of it.
- * Gated on `can_ai_chat` (view-scoped) so personas without the assistant
+ * Gated on `can_view_ai_assistant` (view-scoped) so personas without the assistant
  * never see the launcher.  ⌘/Ctrl-J toggles it from anywhere.
  */
 import { useEffect, lazy, Suspense } from 'react';
@@ -91,9 +91,9 @@ export default function AssistantPanel() {
 
   // The full-page assistant already occupies /ai/* — don't double-mount.
   const onAssistantPage = location.pathname.startsWith('/ai');
-  // can_ai_chat defaults true for every role; a persona that lacks it
+  // can_view_ai_assistant seeds true for every role; a persona that lacks it
   // (or a page that gates it off) never gets the copilot.
-  const allowed = hasAny('can_ai_chat');
+  const allowed = hasAny('can_view_ai_assistant');
 
   if (onAssistantPage || !allowed) return null;
 

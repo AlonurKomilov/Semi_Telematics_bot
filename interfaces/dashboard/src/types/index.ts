@@ -10,6 +10,7 @@ export interface Permissions {
   can_location_vehicle: boolean;
   can_alerts_all: boolean;
   can_alerts_vehicle: boolean;
+  can_view_alerts: boolean;
   can_geofence_all: boolean;
   can_geofence_vehicle: boolean;
   can_route_all: boolean;
@@ -63,6 +64,8 @@ export interface Permissions {
   can_efficiency: boolean;
   can_view_efficiency: boolean;
   can_digest: boolean;
+  can_view_reports: boolean;
+  can_view_ai_assistant: boolean;
   can_manage_poi_layers: boolean;
   can_driver_pay_admin: boolean;
   can_manage_driver_pay: boolean;

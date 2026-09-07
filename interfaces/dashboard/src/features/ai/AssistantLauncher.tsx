@@ -9,7 +9,7 @@
  * to show — a spinner while a turn runs and a check on completion — so
  * hiding the panel never hides that a run is in flight.
  *
- * Gated on `can_ai_chat` (view-scoped) like the panel, and hidden on
+ * Gated on `can_view_ai_assistant` (view-scoped) like the panel, and hidden on
  * the `/ai/*` full-page route (you're already in the assistant there).
  */
 import { useLocation } from 'react-router-dom';
@@ -25,7 +25,7 @@ export function AssistantLauncher() {
   const { hasAny } = useViewPermissions();
   const location = useLocation();
 
-  if (location.pathname.startsWith('/ai') || !hasAny('can_ai_chat')) return null;
+  if (location.pathname.startsWith('/ai') || !hasAny('can_view_ai_assistant')) return null;
 
   const Icon = runPhase === 'running' ? Loader2 : runPhase === 'done' ? Check : Bot;
 

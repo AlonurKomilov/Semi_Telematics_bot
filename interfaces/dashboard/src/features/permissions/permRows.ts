@@ -82,7 +82,30 @@ export const OWNER_PROTECTED = new Set([
 // `indented` under their parent feature (POI Layers under Live Map, the
 // reports under the Reports header, View-Own pairs under their admin row).
 // Exported for the drift-guard tests and the verb-grid derivation.
+/** catalog service id → the matrix row that grants the service. */
+export const SERVICE_ROW_KEYS: Record<string, string> = {
+  alerts: 'can_view_alerts',
+  ai_assistant: 'can_view_ai_assistant',
+  reports: 'can_view_reports',
+};
+
 export const PERM_GROUPS: PermGroup[] = [
+  {
+    // Services — the channels: Alerts (the inbox), the AI assistant,
+    // Reports (the hub + its scheduled subscription).  Granted per role
+    // like a feature since 2026-09-06 (owner decision — a future broker
+    // role may be denied AI); until then they were always on, derived
+    // and hidden.  What flows THROUGH a service is still the role's
+    // feature grants: untick Maintenance and its alerts, its report tab
+    // and its AI tools leave — the channel itself stays for whoever holds
+    // this row.  Width of the inbox is Team Management's (unit width).
+    title: 'Services',
+    flags: [
+      { key: 'can_view_alerts', kind: 'feature', label: 'Alerts', description: 'The inbox. Shows the alerts for whichever features the role can see; its width (all units or assigned trucks) is Team Management’s' },
+      { key: 'can_view_ai_assistant', kind: 'feature', label: 'AI Assistant', description: 'Chat + fleet summary. Each tool answers only from data the role can already see' },
+      { key: 'can_view_reports', kind: 'feature', label: 'Reports', description: 'The hub and its scheduled-report subscription; which tabs appear follows the role’s features' },
+    ],
+  },
   {
     // Administration — governing the ACCOUNT itself.  Not "System": that
     // word had drifted into "miscellaneous account-wide", and the three
@@ -93,11 +116,6 @@ export const PERM_GROUPS: PermGroup[] = [
     // the NAV; grouping was never ownership (docs/FEATURES.md).
     title: 'Administration',
     flags: [
-      // Alerts (the inbox) and Reports (the hub) are NOT rows here — both are
-      // always-on services EVERY role has.  Disabling a feature only drops
-      // that feature's alerts/report-tab out of the surface (Faults / Health /
-      // Fuel / Safety Events / Geofences / Maintenance), never the surface
-      // itself.  Both are shown read-only in the "System Services" panel below.
       // The individual report TYPES are genuine per-role features and live in
       // their owning department: Risk Summary → Safety, Cost Reports →
       // Accounting (mirrors how the per-vehicle reports moved under Vehicles).
@@ -365,7 +383,14 @@ export const DRIVER_RECORDS: SimpleFlag[] = [
 // list (not PERM_GROUPS) because the view-own records here deliberately have
 // no staff-matrix row — so a driver-panel edit still surfaces in the save bar
 // + confirm dialog.
-export const DRIVER_PANEL_FLAGS: PermFlag[] = [...DRIVER_TRUCK, ...DRIVER_RECORDS];
+// The channels a driver holds — the same service rows the staff matrix
+// carries, read at the driver's width (the inbox: their trucks).
+export const DRIVER_SERVICES: SimpleFlag[] = [
+  { kind: 'feature', key: 'can_view_alerts',       label: 'Alerts',       description: 'The inbox for their trucks (bot + mini app)' },
+  { kind: 'feature', key: 'can_view_ai_assistant', label: 'AI Assistant', description: 'Chat about their own truck (bot + mini app)' },
+  { kind: 'feature', key: 'can_view_reports',      label: 'Reports',      description: 'Scheduled reports for their truck (bot)' },
+];
+export const DRIVER_PANEL_FLAGS: PermFlag[] = [...DRIVER_TRUCK, ...DRIVER_RECORDS, ...DRIVER_SERVICES];
 // Static flag list for the change diff — PERM_GROUPS never changes at runtime.
 export const ALL_MATRIX_FLAGS: PermFlag[] = PERM_GROUPS.flatMap((g) => g.flags);
 

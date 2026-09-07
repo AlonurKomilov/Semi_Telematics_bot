@@ -108,9 +108,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"  · {item}")
 
     # Alerts & Digest
-    if perms.can_view_vehicles:
+    if perms.can_view_alerts:
         lines.append("\n  · 🔔 Alerts (auto-notifications)")
-    if perms.can_digest:
+    if perms.can_view_reports:
         lines.append("  · 📬 Daily/weekly digest")
 
     # Management

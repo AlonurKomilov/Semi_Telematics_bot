@@ -1,10 +1,10 @@
 """Every ``FeatureSet`` field has exactly ONE user-facing home.
 
 The 2026-07-29 matrix census found four flags that surfaced nowhere —
-they turned out to be the always-on services' DERIVED flags, absent by
+they turned out to be the then-derived service flags, absent by
 design, but nothing enforced the difference between "absent by design"
 and "someone forgot".  This guard does: a new permission flag must land
-in the staff matrix, the Driver panel, ``DERIVED_SERVICE_FIELDS``, or
+in the staff matrix, the Driver panel, or
 the explicit exempt list below — anything else fails here with a
 message saying where to put it.
 
@@ -18,7 +18,7 @@ import re
 import sys
 from dataclasses import fields
 
-from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS, FeatureSet
+from capabilities.permissions.roles import FeatureSet
 from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 _MATRIX_FILE = os.path.join(
@@ -54,11 +54,10 @@ class TestPermissionSurface:
         declared = {f.name for f in fields(FeatureSet)}
         surfaced = _matrix_keys()
 
-        missing = declared - surfaced - DERIVED_SERVICE_FIELDS - set(_EXEMPT)
+        missing = declared - surfaced - set(_EXEMPT)
         assert not missing, (
             f"FeatureSet fields with NO user-facing home: {sorted(missing)}. "
             "Add a matrix/driver-panel row in Permissions.tsx, or list the "
-            "flag in DERIVED_SERVICE_FIELDS (computed, never granted), or "
             "in _EXEMPT here with a pointer to its UI."
         )
 
@@ -71,10 +70,3 @@ class TestPermissionSurface:
             f"Permissions.tsx rows reference flags FeatureSet doesn't "
             f"declare: {sorted(ghosts)}"
         )
-        # Derived flags must never grow editable rows — the save endpoint
-        # strips them, so a row would be a lying checkbox.
-        leaked = surfaced & DERIVED_SERVICE_FIELDS
-        assert not leaked, f"Derived service flags offered as rows: {sorted(leaked)}"
-        # An exempt flag sprouting a matrix row means the exemption is stale.
-        stale = surfaced & set(_EXEMPT)
-        assert not stale, f"_EXEMPT flags now have matrix rows: {sorted(stale)}"

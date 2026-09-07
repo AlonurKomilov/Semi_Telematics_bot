@@ -149,9 +149,9 @@ export default function App() {
   }
 
   function canAccessPage(p: Page, perms: Record<string, boolean>): boolean {
-    if (p === 'alerts') return !!perms.can_view_vehicles;
+    if (p === 'alerts') return !!perms.can_view_alerts;
     if (p === 'scorecard') return !!perms.can_view_scorecards;
-    if (p === 'ai') return !!(perms.can_view_vehicles);
+    if (p === 'ai') return !!perms.can_view_ai_assistant;
     return true; // map, vehicles, profile always accessible
   }
 

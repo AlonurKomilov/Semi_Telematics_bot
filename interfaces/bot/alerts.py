@@ -24,7 +24,7 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     per-type settings keyboard so users can fine-tune categories.
     """
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_view_vehicles"):
+    if not can(user.role, "can_view_alerts"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -67,7 +67,7 @@ async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
                            alert_type: str):
     """Toggle a specific alert type on/off and refresh the settings menu."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_view_vehicles"):
+    if not can(user.role, "can_view_alerts"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -93,7 +93,7 @@ async def cmd_ai_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE
                               ai_type: str):
     """Toggle proactive AI for a specific alert type and refresh settings."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_view_vehicles"):
+    if not can(user.role, "can_view_alerts"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -140,7 +140,7 @@ async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TY
 async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show alert acknowledgment history for the account."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_view_vehicles"):
+    if not can(user.role, "can_view_alerts"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -198,7 +198,7 @@ async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show currently active (unacknowledged) alerts for the account."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_view_vehicles"):
+    if not can(user.role, "can_view_alerts"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return

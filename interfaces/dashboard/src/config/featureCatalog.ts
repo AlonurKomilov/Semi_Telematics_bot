@@ -115,8 +115,8 @@ const P_LOCATION = 'can_view_location';
 // Legacy pair, like maintenance/work_orders above: generateNav
 // derives own-shell vs account-wide placement from the pair.
 const P_VEHICLE = 'can_view_vehicles';
-const P_ALERTS = ['can_view_vehicles'];
-const P_REPORTS = ['can_view_faults', 'can_view_risk_reports', 'can_view_cost_reports', 'can_digest'];
+const P_ALERTS = ['can_view_alerts'];
+const P_REPORTS = ['can_view_reports'];
 
 /** Canonical verb-grammar flags live on the wire (both grammars are
  *  emitted, equal by construction) even where the catalog still holds
@@ -126,6 +126,7 @@ export const CANONICAL_WIRE_FLAGS: readonly string[] = [
   'can_manage_maintenance', 'can_manage_work_orders',
   'can_manage_inspections', 'can_manage_geofence',
   'can_view_driver_pay', 'can_view_coaching', 'can_view_driver_docs',
+  'can_view_alerts', 'can_view_ai_assistant', 'can_view_reports',
 ];
 
 /** The unit-feature VIEW verbs.  A member's WIDTH on these — all units
@@ -136,7 +137,7 @@ export const UNIT_VIEW_VERBS: readonly string[] = [
   'can_view_vehicles', 'can_view_maintenance', 'can_view_work_orders',
   'can_view_inspections', 'can_view_location', 'can_view_routes',
   'can_view_parking', 'can_view_geofence', 'can_view_events',
-  'can_view_scorecards', 'can_view_risk_reports',
+  'can_view_scorecards', 'can_view_risk_reports', 'can_view_alerts',
 ];
 
 /** The person-feature VIEW verbs ("my loads", "my paystubs", "my
@@ -153,8 +154,8 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'overview',       labelKey: 'nav.overview',       path: '/',          icon: LayoutDashboard, modules: ['core'], tier: 'shared', permission: null, navGroup: 'main' },
   // Route-only: the assistant launches from the topbar icon (beside the
   // avatar) + ⌘/Ctrl-J, not a sidebar row — navHidden keeps the route guard
-  // and can_ai_chat wiring while dropping the nav entry.
-  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], kind: 'service', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
+  // and can_view_ai_assistant wiring while dropping the nav entry.
+  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], kind: 'service', permission: ['can_view_ai_assistant'], navGroup: 'main', navHidden: true },
   // Alerts launches from the topbar bell (a monitoring SERVICE beside
   // the AI icon), not a sidebar row — navHidden keeps the /alerts route
   // guard + P_ALERTS wiring while dropping the nav entry.

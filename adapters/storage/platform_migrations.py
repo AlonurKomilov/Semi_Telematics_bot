@@ -224,6 +224,9 @@ async def run_all(conn) -> None:
     # alert type — without the column its subscriber query returned
     # nobody, so the alert fired into silence.
     await migrate_alert_vehicle_documents_column(conn)
+    # The Alerts inbox is a stored grant now; rows whose stored vehicle
+    # visibility diverged from the seed get what the derivation computed.
+    await migrate_backfill_alerts_grant(conn)
 
 
 async def migrate_alert_vehicle_documents_column(conn) -> None:
@@ -4755,3 +4758,75 @@ async def migrate_role_vehicle_scope(conn) -> None:
         except Exception:
             pass
         logger.error("role_vehicle_scope migration failed: %s", e)
+
+
+async def migrate_backfill_alerts_grant(conn) -> None:
+    """The Alerts inbox became a stored per-role grant (``can_view_alerts``,
+    2026-09-06).  Before, it was DERIVED at resolve time from the role's
+    EFFECTIVE vehicle visibility — the stored override when the owner had
+    set one, the seed otherwise.  The new seed carries the SEED's vehicle
+    visibility, so a stored row that set ``can_view_vehicles`` differently
+    from its seed would shift on deploy: an owner who took vehicles away
+    from Accounting would see its inbox reopen; a Recruiter granted
+    vehicles would lose the inbox it had.  This writes what the derivation
+    used to compute into every row that diverges, so nobody gains or
+    loses anything.
+
+    Per row: the two legacy alerts keys are dropped (ignored before,
+    they would OR-in as a grant now that the bridge maps them); a row
+    already holding ``can_view_alerts`` is left alone; a row storing none
+    of the three vehicle keys (``can_view_vehicles`` and its two legacy
+    spellings) resolves from the seed exactly as before — skipped; any
+    other row gets ``can_view_alerts`` = OR of the vehicle keys it stores,
+    the same fold ``normalize_stored_perm_keys`` applies on read.  The
+    three keys are spelled out here on purpose: the alias layer dies
+    after the extension release and this migration must not die with
+    it.  Idempotent: a second run finds ``can_view_alerts`` everywhere it
+    would write.  Tier keys (``admin__manager``) and company-scoped rows
+    are just rows — the resolver merges seed with ONE row, never across.
+    """
+    import json as _json
+    _VEHICLE_KEYS = ("can_view_vehicles", "can_vehicle_all", "can_vehicle_vehicle")
+    _DEAD_ALERTS_KEYS = ("can_alerts_all", "can_alerts_vehicle")
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        rows = await cur.fetchall()
+    except Exception as e:
+        logger.info("Migration: role_permissions not present — %s", e)
+        return
+    changed = 0
+    for row in rows:
+        row_id, raw = row[0], row[1]
+        try:
+            perms = _json.loads(raw or "{}")
+        except (ValueError, TypeError):
+            logger.warning(
+                "Migration: role_permissions row %s has unparseable JSON, skipped",
+                row_id,
+            )
+            continue
+        if not isinstance(perms, dict):
+            continue
+        touched = False
+        for k in _DEAD_ALERTS_KEYS:
+            if k in perms:
+                perms.pop(k)
+                touched = True
+        if "can_view_alerts" not in perms:
+            present = [k for k in _VEHICLE_KEYS if k in perms]
+            if present:
+                perms["can_view_alerts"] = any(bool(perms[k]) for k in present)
+                touched = True
+        if not touched:
+            continue
+        changed += 1
+        await conn.execute(
+            "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+            (_json.dumps(perms), row_id),
+        )
+    await conn.commit()
+    if changed:
+        logger.info(
+            "Migration: backfilled can_view_alerts from stored vehicle "
+            "visibility in %d role_permissions row(s)", changed,
+        )

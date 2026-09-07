@@ -30,7 +30,7 @@ export const REPORTS: readonly ReportSpec[] = [
   { key: 'fuel',       emoji: '⛽', labelShort: 'Fuel & DEF', labelFull: 'Fuel & DEF',     permission: 'can_view_fuel',       hasApiExport: true },
   { key: 'health',     emoji: '🏥', labelShort: 'Health',     labelFull: 'Vehicle Health', permission: 'can_view_health',     hasApiExport: true },
   { key: 'efficiency', emoji: '📊', labelShort: 'Efficiency', labelFull: 'Efficiency',     permission: 'can_view_efficiency', hasApiExport: true },
-  { key: 'camera',     emoji: '📷', labelShort: 'Cameras',    labelFull: 'Camera Check',   permission: 'can_digest',     hasApiExport: false },
+  { key: 'camera',     emoji: '📷', labelShort: 'Cameras',    labelFull: 'Camera Check',   permission: 'can_view_cameras',     hasApiExport: false },
 ] as const;
 
 export type ReportKey = ReportSpec['key'];

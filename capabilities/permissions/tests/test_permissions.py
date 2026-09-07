@@ -64,7 +64,7 @@ class TestRolePermissions:
 
     def test_owner_has_all_permissions(self):
         from capabilities.permissions.roles import (
-            DARK_FEATURE_FIELDS, DERIVED_SERVICE_FIELDS,
+            DARK_FEATURE_FIELDS,
             ROLE_PERMISSIONS, TIER_GRANTS,
         )
         # Tier-only flags are DELIBERATELY never a base-role seed
@@ -81,14 +81,8 @@ class TestRolePermissions:
             f for t in TIER_GRANTS.values() for f in t.grants
         } - base_seeded
         perms = get_permissions(Role.OWNER)
-        # The derived service surfaces (Alerts inbox, AI assistant): since
-        # the verb/scope flip both inbox flags say one thing — the inbox
-        # exists iff Vehicles is visible; WIDTH is per member — so the
-        # owner holds both.  Assert those explicitly; blanket-check
-        # every other field stays True for the owner.
         for field_name in FeatureSet.__dataclass_fields__:
-            if (field_name in DERIVED_SERVICE_FIELDS
-                    or field_name in tier_only
+            if (field_name in tier_only
                     or field_name in DARK_FEATURE_FIELDS):
                 continue
             assert getattr(perms, field_name) is True, (
@@ -337,7 +331,7 @@ class TestPrivilegeEscalation:
                 groups_src += panel.group(1)
 
         from capabilities.permissions.roles import (
-            DERIVED_SERVICE_FIELDS, ROLE_PERMISSIONS, TIER_GRANTS,
+            ROLE_PERMISSIONS, TIER_GRANTS,
         )
         base_seeded = {
             f for fs in ROLE_PERMISSIONS.values()
@@ -367,14 +361,11 @@ class TestPrivilegeEscalation:
             return any(f"'{a}'" in groups_src or f'"{a}"' in groups_src
                        for a in exposed_as.get(n, {n}))
 
-        # The derived service surfaces (Alerts inbox, AI assistant) are
-        # intentionally NOT matrix rows — they're always-on system services
-        # present for every role, shown read-only in the "System Services"
-        # panel.  See derive_service_perms; they must NOT be customizable.
+        # Services are matrix rows since 2026-09-06 (granted per role);
+        # nothing is exempt but the tier-only flags.
         missing = [
             n for n in flag_names
-            if n not in DERIVED_SERVICE_FIELDS
-            and n not in tier_only
+            if n not in tier_only
             and not _exposed(n)
         ]
 

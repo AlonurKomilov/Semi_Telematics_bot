@@ -102,21 +102,19 @@ class FeatureSet:
     can_manage_vehicle_docs: bool = False # upload / delete them
     can_view_vehicles: bool = False      # /vehicle <any>
 
-    # Alerts inbox — DERIVED, never stored/toggled.  Every role HAS the inbox
-    # (it's a system service); derive_service_perms() only sets the SCOPE from
-    # the role's vehicle scope.  The field defaults below are placeholders the
-    # resolver replaces.
-    can_alerts_all: bool = False     # account-wide Alerts inbox (derived)
-    can_alerts_vehicle: bool = False     # own-vehicle Alerts inbox (derived)
+    # Alerts — a SERVICE granted per role (owner, 2026-09-06): the inbox
+    # channel.  What it shows follows the role's feature grants
+    # (relevance.py); its WIDTH is Team Management's (unit_width).
+    can_view_alerts: bool = False        # the alerts inbox
     # Parking — own feature (NOT part of Alerts).  Defaults mirror the old
     # alerts/vehicle gate: everyone sees all, drivers see their assigned vehicle.
     can_view_parking: bool = True     # unsafe-parking events (all trucks)
     # Cameras — own feature (NOT part of Faults).  Defaults mirror can_faults.
     can_view_cameras: bool = False        # dashcam footage viewer
-    # AI assistant — DERIVED, never stored/toggled.  derive_service_perms()
-    # forces this True (always-on service); per-tool gating lives in
-    # TOOL_PERMISSIONS.  The default below is a placeholder.
-    can_ai_chat: bool = True         # AI assistant chat + summary (derived)
+    # AI assistant — a SERVICE granted per role: the chat channel.  Each
+    # tool still answers only from the role's own feature grants
+    # (TOOL_PERMISSIONS).
+    can_view_ai_assistant: bool = False  # AI assistant chat + summary
 
     # Management
     can_invite: bool = False         # /invite
@@ -150,7 +148,7 @@ class FeatureSet:
     # ── New features ──────────────────────────────────────────────
     can_manage_geofence: bool = False      # geofence alerts (all trucks)
     can_view_geofence: bool = False   # opens the feature; width is Team Management's
-    can_digest: bool = True             # scheduled-report subscription (DERIVED — always on; see derive_service_perms)
+    can_view_reports: bool = False     # the Reports hub + its scheduled subscription (a SERVICE, per role)
     can_manage_maintenance: bool = False   # maintenance scheduler (all trucks)
     can_view_maintenance: bool = False   # opens the feature; width is Team Management's
     can_manage_work_orders: bool = False   # shop-invoice work orders (all trucks)
@@ -227,8 +225,8 @@ class FeatureSet:
 # ``*_vehicle`` field that isn't registered here fails CI, and vice
 # versa.  ``can_location_vehicle`` pairs with ``can_location_map``
 # (naming predates the ``*_all`` convention); ``can_alerts_vehicle``
-# is DERIVED from the vehicle grant by ``derive_service_perms`` —
-# never seeded directly.
+# was derived from the vehicle grant until 2026-09-06; it is a
+# granted view verb (``can_view_alerts``) now.
 # OWN_VEHICLE_SCOPE_FLAGS is gone: the *_vehicle flags it registered
 # died in the verb/scope migration.  Width — all units or assigned
 # trucks — is Team Management's (User.resolved_vehicle_scope).
@@ -263,12 +261,16 @@ from capabilities.permissions.taxonomy import TAXONOMY, Fate as _Fate  # noqa: F
 
 #: legacy flag → canonical field (generated from the contract)
 LEGACY_TO_CANONICAL: dict[str, str] = {
+    "can_ai_chat": "can_view_ai_assistant",
+    "can_alerts_all": "can_view_alerts",
+    "can_alerts_vehicle": "can_view_alerts",
     "can_cameras": "can_view_cameras",
     "can_carrier_directory": "can_view_carrier_directory",
     "can_coaching_admin": "can_manage_coaching",
     "can_coaching_view_own": "can_view_coaching",
     "can_cost_per_mile": "can_view_cost_per_mile",
     "can_cost_reports": "can_view_cost_reports",
+    "can_digest": "can_view_reports",
     "can_driver_docs_own": "can_view_driver_docs",
     "can_driver_pay_admin": "can_manage_driver_pay",
     "can_driver_pay_view_own": "can_view_driver_pay",
@@ -311,6 +313,10 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
 #: the unit pairs, LEGACY names — kept for the stored-row sweep
 #: (which reads pre-flip JSON) and as the registry of unit features.
 PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
+    "alerts": (
+        "can_alerts_all",
+        "can_alerts_vehicle"
+    ),
     "events": (
         "can_events_all",
         "can_events_vehicle"
@@ -359,6 +365,10 @@ PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
 
 #: noun → (view field, manage field or None) — the canonical shape
 UNIT_FEATURES: dict[str, tuple[str, str | None]] = {
+    "alerts": (
+        "can_view_alerts",
+        None
+    ),
     "events": (
         "can_view_events",
         None
@@ -538,6 +548,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.ADMIN: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
@@ -573,6 +584,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.FLEET: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
@@ -607,6 +619,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_drivers=True,   # runs the driver roster (trucks, TMS links)
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.SAFETY: FeatureSet(
         can_view_vehicle_docs=True,
@@ -634,6 +647,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True,
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.DISPATCHER: FeatureSet(
         can_view_vehicle_docs=True,
@@ -660,6 +674,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_coaching=False,
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.HR: FeatureSet(
         # HR persona — people management.  Focus: driver compliance,
@@ -686,6 +701,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_risk_reports=True,              # Personnel risk reporting
         can_manage_geofence=True, can_view_geofence=True,                 # See geofence context for incidents
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
@@ -706,6 +722,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # generate WHICH costs:
         can_view_vehicles=True,                  # Vehicle list for asset accounting
         can_view_driver_pay=True, can_view_coaching=False, can_view_driver_docs=False,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     Role.DRIVER: FeatureSet(
         can_view_vehicle_docs=True,
@@ -733,6 +750,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_inspections=False, can_view_inspections=True,
         can_view_loads=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
     ),
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
@@ -781,6 +799,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=False,
         can_view_carrier_directory=True,   # read the carrier directory (managers also edit)
         can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
+        can_view_alerts=False, can_view_ai_assistant=True, can_view_reports=True,
     ),
 }
 
@@ -989,65 +1008,6 @@ def _protect_owner(role: Role, fs: FeatureSet) -> FeatureSet:
 # these flags are DERIVED, never stored or shown as a matrix row; they appear
 # read-only in a "System Services" panel instead.
 
-# Service-surface flags that are DERIVED, never persisted or owner-toggled.
-# The Permissions matrix must not offer these as editable rows (they live in a
-# read-only "System Services" panel instead) and the save endpoint strips them
-# from the stored override row.  Note: the report TYPES (can_risk_report_*,
-# can_cost_reports) are NOT here — they're genuine per-role features that gate
-# individual Reports tabs and live in the matrix under their owning department.
-DERIVED_SERVICE_FIELDS: frozenset[str] = frozenset({
-    "can_alerts_all", "can_alerts_vehicle", "can_ai_chat", "can_digest",
-})
-
-
-def derive_service_perms(fs: FeatureSet) -> FeatureSet:
-    """Compute the always-on service permissions for any role.
-
-    Returns a copy of *fs* with the derived service-surface flags overwritten:
-
-      * ``can_ai_chat`` — always True; the AI assistant is available to every
-        role (its per-tool gating lives in ``TOOL_PERMISSIONS``).
-      * ``can_digest`` — always True; every role can manage its scheduled-
-        report subscription.  The Reports hub is a system service; WHICH
-        report tabs/digests a role actually sees follows its per-report-type
-        feature flags (can_risk_report_*, can_cost_reports, etc.).
-      * Alerts inbox — every role HAS the inbox; it is a system service, not a
-        feature, so it is never withheld.  Only the *scope* is derived, from
-        the role's vehicle scope: account-wide visibility (``can_vehicle_all``)
-        → account-wide inbox (``can_alerts_all``); otherwise the own-vehicle
-        inbox (``can_alerts_vehicle``).  The two scopes are mutually exclusive,
-        and ``require_permission_any(can_alerts_all, can_alerts_vehicle)``
-        matches ``_all`` first, so an account-wide role never needs the vehicle
-        flag.  WHAT the inbox shows is gated per-feature downstream
-        (relevance.py); a role with no alert-bearing features simply sees an
-        empty inbox — the surface is still there.
-
-    Applied as the LAST step of every resolver (after module masking).  Note
-    the inbox scope tracks vehicle scope, so even disabling the Fleet/Vehicles
-    module (which masks ``can_vehicle_all``) only NARROWS the inbox to
-    own-vehicle scope — it never removes the inbox.
-
-    The inbox is a *vehicle*-alerts surface, so it requires SOME vehicle
-    visibility.  A role with none gets no inbox — today that is RECRUITER
-    (recruiting never looks at trucks) and any malformed/unknown role (the
-    ``ROLE_PERMISSIONS.get(role, FeatureSet())`` fallback), which preserves
-    the "unknown role grants nothing" contract.  A vehicle-less role has not
-    lost a door: the top-bar notifications bell is universal and carries the
-    buckets that DO concern them (Applications, Activity, System).
-    """
-    from dataclasses import replace
-    has_vehicle = bool(fs.can_view_vehicles)
-    return replace(
-        fs,
-        can_ai_chat=True, can_digest=True,
-        # Both derived flags now say one thing — the inbox exists iff
-        # vehicles are visible.  WIDTH is per member (Team Management),
-        # never a per-role flag, so the pair cannot disagree any more.
-        can_alerts_all=has_vehicle,
-        can_alerts_vehicle=has_vehicle,
-    )
-
-
 def get_permissions(role: Role) -> FeatureSet:
     """Get the hardcoded ROLE-DEFAULT permission set (sync, no DB).
 
@@ -1071,7 +1031,7 @@ def get_permissions(role: Role) -> FeatureSet:
     ``get_permissions(role).can_alerts_all`` sees the same value the
     account-aware resolver would produce for a default-configured account.
     """
-    return derive_service_perms(ROLE_PERMISSIONS.get(role, FeatureSet()))
+    return ROLE_PERMISSIONS.get(role, FeatureSet())
 
 
 async def _apply_module_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
@@ -1165,8 +1125,6 @@ async def _resolve_perms(
             merged = {**seed, **filtered}
             fs = _protect_owner(protect_role, FeatureSet(**merged))
             fs = await _apply_module_mask(fs, account_id)
-            # Derive always-on service surfaces LAST (after module mask).
-            fs = derive_service_perms(fs)
             _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
             return fs
     except Exception as e:
@@ -1174,7 +1132,6 @@ async def _resolve_perms(
 
     fs = _protect_owner(protect_role, default_fs)
     fs = await _apply_module_mask(fs, account_id)
-    fs = derive_service_perms(fs)
     _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
     return fs
 
@@ -1411,8 +1368,7 @@ BRIEFING_TOPICS: tuple[tuple[str, str], ...] = (
     ("can_view_efficiency",        "driver efficiency (MPG, idle time)"),
     ("can_view_fuel_cost",         "fuel spend"),
     ("can_view_cost_per_mile",     "cost per mile"),
-    ("can_alerts_all",             "open alerts"),
-    ("can_alerts_vehicle",         "open alerts"),
+    ("can_view_alerts",            "open alerts"),
     ("can_manage_applications",    "the driver-application (hiring) pipeline"),
 )
 
@@ -1450,8 +1406,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_health": "vehicle health",
     "can_vehicle_all": "all vehicles",
     "can_vehicle_vehicle": "assigned vehicle only",
-    "can_alerts_all": "alerts for all trucks",
-    "can_alerts_vehicle": "alerts for assigned vehicle",
+    "can_view_alerts": "alerts inbox (width: Team Management's)",
     "can_invite": "invite users",
     "can_manage_users": "manage users",
     "can_manage_companies": "manage companies",
@@ -1466,7 +1421,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_manage_work_hours": "working-hours schedules",
     "can_geofence_all": "geofence alerts (all)",
     "can_geofence_vehicle": "geofence alerts (assigned vehicle)",
-    "can_digest": "auto reports",
+    "can_view_reports": "reports hub + scheduled reports",
     "can_maintenance_all": "maintenance (all trucks)",
     "can_maintenance_vehicle": "maintenance (assigned vehicle)",
     "can_work_orders_all": "work orders (all trucks)",
@@ -1477,7 +1432,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_parking_all": "parking events (all trucks)",
     "can_parking_vehicle": "parking events (assigned vehicle)",
     "can_cameras": "dashcam cameras",
-    "can_ai_chat": "AI assistant chat",
+    "can_view_ai_assistant": "AI assistant chat",
     "can_cost_reports": "cost reports (executive rollups)",
     "can_inspections_all": "inspections (review all)",
     "can_inspections_vehicle": "inspections (assigned vehicle)",
@@ -1759,7 +1714,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_parked_vehicles":        ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
     "get_undriven_vehicles":      ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
     "get_driver_hos_status":    ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
-    "get_alert_history":        ["can_alerts_all", "can_alerts_vehicle"],         # owner/admin/fleet/safety/driver(own)
+    "get_alert_history":        ["can_view_alerts"],         # owner/admin/fleet/safety/driver(own)
     "get_recent_work_orders":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
     "get_recent_inspections":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
     "get_driver_applications":  ["can_manage_applications"],                          # owner/admin/hr/recruiter — applicant-pipeline triage, account-wide
@@ -1768,7 +1723,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     # the SAME flag is re-checked at the approve endpoint before the write.
     "create_maintenance_task":  ["can_manage_maintenance"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
     "create_work_order":        ["can_manage_work_orders"],                         # mirrors POST /work-orders — permission SSOT, no role hardcoding
-    "acknowledge_alerts":       ["can_alerts_all", "can_alerts_vehicle"],        # owner/admin/fleet/safety/driver(own)
+    "acknowledge_alerts":       ["can_view_alerts"],        # owner/admin/fleet/safety/driver(own)
     "file_vehicle_document":    ["can_manage_vehicle_docs"],                 # you may only file what you could upload
     "get_vehicle_documents_status": ["can_view_vehicle_docs"],                    # whoever may read the papers may ask about them
     "import_inventory_items":   ["can_manage_vehicles"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing

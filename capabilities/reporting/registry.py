@@ -103,7 +103,7 @@ REPORTS: tuple[ReportSpec, ...] = (
     ReportSpec(
         key="camera", emoji="📷",
         label_short="Cameras", label_full="Camera Check",
-        permission="can_digest",
+        permission="can_view_cameras",
         pdf_generator=generate_camera_check_pdf,
         csv_generator=generate_camera_check_csv,
         data_method=None,

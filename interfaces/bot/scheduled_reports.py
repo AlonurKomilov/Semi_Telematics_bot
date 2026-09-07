@@ -67,7 +67,7 @@ async def cmd_scheduled_reports(update: Update, context: ContextTypes.DEFAULT_TY
     frequency picker inline so the first-time experience is one tap.
     """
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_digest"):
+    if not can(user.role, "can_view_reports"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -107,7 +107,7 @@ async def cmd_scheduled_reports_add(update: Update, context: ContextTypes.DEFAUL
     frequency value.
     """
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_digest"):
+    if not can(user.role, "can_view_reports"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -137,7 +137,7 @@ async def cmd_scheduled_reports_stop(
     schedules can prune one without losing the others.
     """
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_digest"):
+    if not can(user.role, "can_view_reports"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -157,7 +157,7 @@ async def cmd_scheduled_reports_subscribe(update: Update, context: ContextTypes.
                                      frequency: str = "daily"):
     """Start subscription wizard — frequency chosen, now pick report type."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_digest"):
+    if not can(user.role, "can_view_reports"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return

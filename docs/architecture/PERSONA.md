@@ -155,7 +155,7 @@ The frontend mirrors the backend:
 | `GET /api/fleet/overview/stats` (`pending_alerts`) | `Depends(active_view)` → `alert_types_for_role` |
 | `GET /api/alerts/pending/count` | Same |
 | `GET /api/safety/events/heatmap?days=N` | Permission gate `can_events_*` (Safety + Owner/Admin) |
-| `GET /api/admin/escalations` | Permission gate `can_alerts_all` (Owner / Admin) |
+| `GET /api/admin/escalations` | `require_wide("alerts")` — `can_view_alerts` at every-unit width (Owner / Admin) |
 | `GET /api/alerts/aggregate?days=N` | Same |
 | `GET /api/safety/events/summary?days=N` | Permission gate `can_events_*` |
 | `GET /api/coaching/assignments/count` | Permission gate `can_manage_coaching` / `can_view_coaching` at person width `all` |

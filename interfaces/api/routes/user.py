@@ -66,8 +66,6 @@ async def user_me(
         if _manage is None:
             perm_dict[_wide] = opens and _my_scope == "all"
         perm_dict[_narrow] = opens and _my_scope != "all"
-    perm_dict["can_alerts_all"] = bool(perm_dict.get("can_view_vehicles")) and _my_scope == "all"
-    perm_dict["can_alerts_vehicle"] = bool(perm_dict.get("can_view_vehicles")) and _my_scope != "all"
 
     # Get multi-truck assignments
     trucks = await platform_db.get_user_vehicle_nums(db_user.id)

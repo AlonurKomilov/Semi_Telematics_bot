@@ -282,7 +282,7 @@ async def _attach_seen(tenant_db, account_id: int, rows: list[dict],
 @router.post("/seen")
 async def mark_alerts_seen(
     body: SeenRequest,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """These alerts were actually on my screen.
@@ -315,7 +315,7 @@ async def mark_all_alerts_seen(
     q: str | None = Query(None, description="Search vehicle name or location"),
     view: str | None = Query(None, description="new | all | mine_working"),
     days: int | None = Query(None, ge=1, le=90),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Mark everything the current tab is showing as seen — the backlog's
@@ -379,7 +379,7 @@ class WorkBatchRequest(BaseModel):
 @router.post("/work")
 async def work_on_alerts(
     body: WorkBatchRequest,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Claim a handful at once — the bulk bar's verb.
@@ -403,7 +403,7 @@ async def work_on_alerts(
 @router.post("/{history_id:int}/work")
 async def work_on_alert(
     history_id: int,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """I'm working on this — the voluntary claim that replaced
@@ -431,7 +431,7 @@ async def work_on_alert(
 @router.delete("/{history_id:int}/work")
 async def leave_alert(
     history_id: int,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Take my own name off this alert.
@@ -489,7 +489,7 @@ async def pending_alerts(
     # default stays 50 for backwards compat with any client that
     # doesn't pass page_size.
     page_size: int = Query(50, ge=1, le=2000, description="Items per page (max 2000)"),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get logical alerts for this account within the requested window.
@@ -581,7 +581,7 @@ class GroupAckRequest(BaseModel):
 @router.get("/grouped")
 async def grouped_alerts(
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """The board as SITUATIONS instead of deliveries.
@@ -625,7 +625,7 @@ async def grouped_alerts(
 @router.post("/grouped/work")
 async def work_on_group(
     body: GroupAckRequest,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Claim every delivery behind one grouped row.
@@ -665,7 +665,7 @@ async def work_on_group(
 @router.post("/grouped/acknowledge")
 async def acknowledge_group(
     body: GroupAckRequest,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge every delivery behind one grouped row.
@@ -716,7 +716,7 @@ async def acknowledge_group(
 @router.get("/active-among")
 async def alerts_active_among(
     ids: str = Query("", description="Comma-separated alert ids to check"),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Of the given alert ids, which are STILL active (and visible to the
@@ -792,7 +792,7 @@ async def pending_alerts_by_vehicle(
     days: int | None = Query(None, ge=1, le=90),
     page: int = Query(1, ge=1, description="Page number (over vehicles, not alerts)"),
     page_size: int = Query(50, ge=1, le=200, description="Vehicles per page (max 200)"),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Per-vehicle aggregated view of alerts within the window.
@@ -861,7 +861,7 @@ async def pending_alerts_by_vehicle(
 @router.get("/aggregate")
 async def alerts_aggregate(
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Histogram of alert counts by alert_type for the last N days.
@@ -916,7 +916,7 @@ async def alerts_aggregate(
 
 @router.get("/pending/count")
 async def pending_alerts_count(
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
     view_role: str = Depends(active_view),
 ):
@@ -990,7 +990,7 @@ async def export_pending_alerts(
     days: int | None = Query(None, ge=1, le=90),
     sort: str | None = Query(None),
     dir: str = Query("desc"),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """CSV of EVERY alert matching the current filters — not the page.
@@ -1074,7 +1074,7 @@ async def pending_alerts_segment_counts(
     severity: str | None = Query(None),
     q: str | None = Query(None, description="Search vehicle name or location"),
     days: int | None = Query(None, ge=1, le=90),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Row count per ack-state tab, under the board's CURRENT filters.
@@ -1145,7 +1145,7 @@ async def pending_alerts_segment_counts(
 
 @router.get("/pending/by-type")
 async def pending_alerts_by_type(
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
     view_role: str = Depends(active_view),
 ):
@@ -1235,7 +1235,7 @@ async def alert_history(
     # default stays 50 for backwards compat with any client that
     # doesn't pass page_size.
     page_size: int = Query(50, ge=1, le=2000, description="Items per page (max 2000)"),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get alert history for this account.
@@ -1271,7 +1271,7 @@ async def alert_history(
 @router.post("/{ack_id}/acknowledge")
 async def acknowledge_alert(
     ack_id: int,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge an alert from the web UI.
@@ -1315,7 +1315,7 @@ async def _ack_one(tenant_db, alert_id: int, telegram_id: int, account_id: int) 
 @router.post("/bulk-ack")
 async def bulk_acknowledge(
     body: BulkAckRequest,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge multiple alerts at once."""
@@ -1347,7 +1347,7 @@ class MuteRequest(BaseModel):
 async def mute_alert(
     history_id: int,
     body: MuteRequest,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Mute Telegram delivery for a specific alert (alert_history.id).
@@ -1372,7 +1372,7 @@ async def mute_alert(
 @router.delete("/{history_id}/mute")
 async def unmute_alert(
     history_id: int,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Drop every active mute on this alert — Telegram delivery resumes
@@ -1386,7 +1386,7 @@ async def unmute_alert(
 @router.get("/mutes")
 async def list_active_mutes(
     limit: int = Query(500, ge=1, le=2000),
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """List active (unexpired) mutes for this account so the dashboard
@@ -1403,7 +1403,7 @@ async def list_active_mutes(
 @router.post("/vehicle/{vehicle_id}/ack")
 async def acknowledge_vehicle_alerts(
     vehicle_id: str,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge every active alert for one vehicle in one click.
@@ -1717,7 +1717,7 @@ async def update_my_alerts(
 
 @router.get("/escalations")
 async def escalation_summary(
-    user: dict = Depends(require_wide("vehicles")),
+    user: dict = Depends(require_wide("alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Owner/admin oversight: how many active alerts are past their
@@ -1806,7 +1806,7 @@ async def escalation_summary(
 @router.get("/by-id/{alert_id}")
 async def alert_by_id(
     alert_id: int,
-    user: dict = Depends(require_permission("can_view_vehicles")),
+    user: dict = Depends(require_permission("can_view_alerts")),
     tenant_db=Depends(get_tenant_db),
 ):
     """One alert by id — what the ``?alertId=`` deep link (from the

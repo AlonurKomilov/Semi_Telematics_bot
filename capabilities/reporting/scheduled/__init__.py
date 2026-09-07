@@ -7,10 +7,8 @@ the Telegram adapter (``interfaces/bot/scheduled_reports.py``); the
 rows are ``digest_subscriptions`` (``adapters/storage/settings.py`` —
 the table kept its old name to avoid a migration).
 
-Why a home of its own: a permission on Reports must cover this too.
-Today the door is ``can_digest``; when the services take matrix rows
-that flag dies into the Reports service's view verb, and this folder
-is the one place that needs to know.
+Why a home of its own: a permission on Reports covers this too — the
+door is ``can_view_reports``, the Reports service's own view verb.
 """
 
 from .router import user_router  # noqa: F401

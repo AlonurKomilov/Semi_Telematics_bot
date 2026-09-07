@@ -12,7 +12,7 @@ import { Check, Eye, Link2, Lock } from '../../lib/icons';
 import { InfoTip, Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
-import { DRIVER_KEY, buildVerbGrid, driverBands, serviceRows } from './verbGrid';
+import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
 import type { TickRow, VerbFamily } from './verbGrid';
 import { isScoped } from './permRows';
 import type { PermFlag } from './permRows';
@@ -22,7 +22,6 @@ const GRID = buildVerbGrid();
 const HEAD_COLS = 'grid grid-cols-[1fr_84px_84px_76px_84px]';
 type ConfigScope = 'can_manage_config_role' | 'can_manage_config_all';
 const DRIVER_BANDS = driverBands();
-const SERVICES = serviceRows();
 
 export interface RoleLensApi {
   roles: readonly string[];
@@ -409,38 +408,6 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             ))}
           </div>
         ))}
-        {!isDriver && (
-          <>
-            <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1 w-[calc(100%+2rem)]">
-              Services
-              <span className="normal-case tracking-normal text-muted-foreground/70">— always on for every role, nothing to grant</span>
-              <InfoTip size={12} label="Infrastructure, not permissions: access is DERIVED from the role's feature grants (derive_service_perms), so disable a feature and its slice stops — the service itself never does." />
-            </div>
-            {SERVICES.map((sv) => (
-              <div key={sv.id} className={rowCls()}>
-                <div className="min-w-0">
-                  <span className="text-sm font-medium">{sv.label}</span>
-                  <div className="text-2xs text-muted-foreground/70">{sv.note}</div>
-                </div>
-                <div className="text-center">
-                  <span
-                    className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-foreground"
-                    aria-label={`${sv.label} — always on for this role`}
-                  >
-                    <CheckMark />
-                  </span>
-                </div>
-                {emptyCell}
-                {/* A service has no Manage, but it CAN have config —
-                    Alerts owns Group delivery. Three dashes here told the
-                    owner there was nothing to grant, which is true of the
-                    inbox and false of the delivery setup behind it. */}
-                {configCellFor(sv.configVia, sv.configNote, 'can_manage_config_role')}
-                {configCellFor(sv.configVia, sv.configNote, 'can_manage_config_all')}
-              </div>
-            ))}
-          </>
-        )}
         {!isDriver && GRID.bands.map((b) => (
           <div key={b.band}>
             <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">

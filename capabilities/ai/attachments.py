@@ -463,7 +463,7 @@ async def parse_attachments_for_request(
       permission of at least one registered ``ImportTarget`` — a role
       that could never execute an import gets no free parse.  ("Any
       write-tool permission" was considered and rejected: derived
-      always-on flags like ``can_alerts_vehicle`` give every role SOME
+      service grants like ``can_view_alerts`` give every role SOME
       write tool, making that gate vacuous.)  Fail-closed when no
       targets are registered.
     * **docs** (``kind="text"``): extracted text documents (PDF/TXT) the

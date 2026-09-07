@@ -18,7 +18,7 @@ import capabilities.ai as ai
 from capabilities.ai.registry import DEFAULT_LOCATION
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
 from capabilities.permissions.roles import is_management_role
-from interfaces.api.deps import require_permission, require_permission_any, get_current_user, get_platform_db, get_tenant_db, active_view
+from interfaces.api.deps import require_permission, get_current_user, get_platform_db, get_tenant_db, active_view
 from interfaces.api.rate_limit import limiter
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -250,7 +250,7 @@ async def ai_chat(
     body: ChatRequest,
     request: Request,
     user: dict = Depends(
-        require_permission_any("can_ai_chat")
+        require_permission("can_view_ai_assistant")
     ),
     view: str = Depends(active_view),
     platform_db=Depends(get_platform_db),
@@ -258,13 +258,10 @@ async def ai_chat(
 ):
     """Send a message to the AI fleet assistant (agent mode with tools).
 
-    Gated on ``can_ai_chat`` — a SERVICE flag, always on for every
-    role (capabilities/permissions/taxonomy.py): the assistant answers
-    only from data the caller's own feature grants already expose, so
-    its access IS its features' access.  (This docstring described an
-    older gate — can_view_faults / can_vehicle_* — for long enough that the
-    verb migration's sweep is what noticed; the code has gated on
-    can_ai_chat since the service split.)
+    Gated on ``can_view_ai_assistant`` — the AI service's own view verb,
+    granted per role in the matrix (owner, 2026-09-06).  The assistant
+    still answers only from data the caller's own feature grants expose,
+    so the tick is the channel; the content is the features'.
     """
     if not ai.is_configured():
         raise HTTPException(status_code=503, detail="AI not configured")
@@ -424,7 +421,7 @@ async def ai_chat_stream(
     body: ChatRequest,
     request: Request,
     user: dict = Depends(
-        require_permission_any("can_ai_chat")
+        require_permission("can_view_ai_assistant")
     ),
     view: str = Depends(active_view),
     platform_db=Depends(get_platform_db),
@@ -432,7 +429,7 @@ async def ai_chat_stream(
 ):
     """Send a message to the AI fleet assistant; streams SSE tool events then the reply.
 
-    Gated identically to ``/chat`` (``can_ai_chat``).  The streaming
+    Gated identically to ``/chat`` (``can_view_ai_assistant``).  The streaming
     and non-streaming variants must
     stay aligned — clients fall back to ``/chat`` when SSE isn't
     available, so a permission mismatch would make the fallback work
@@ -659,7 +656,7 @@ async def ai_chat_stream(
 async def ai_summary(
     request: Request,
     user: dict = Depends(
-        require_permission_any("can_ai_chat")
+        require_permission("can_view_ai_assistant")
     ),
     view: str = Depends(active_view),
     platform_db=Depends(get_platform_db),

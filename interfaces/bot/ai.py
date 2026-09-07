@@ -23,6 +23,29 @@ import capabilities.ai as ai
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
 
 
+def _require_ai_assistant(func):
+    """Decorator, placed UNDER ``_require_registered``: the AI assistant
+    is a per-role grant (``can_view_ai_assistant``) since 2026-09-06, so
+    every handler under the AI menu asks it before doing anything — the
+    typed question included, because a keyboard the menu hides is still
+    reachable by a stale button or a typed command.  Denied: the same
+    no-access answer the Alerts handlers give.
+    """
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user = context.user_data.get("_db_user")
+        if user is None or not can(user.role, "can_view_ai_assistant"):
+            if update.callback_query:
+                await update.callback_query.answer(t("access.no_access"), show_alert=True)
+            else:
+                await _show(update, context, [t("access.no_access")], keyboard=back_kb())
+            return
+        return await func(update, context, *args, **kwargs)
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    wrapper.__wrapped__ = func
+    return wrapper
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 def _sanitize_ai_html(text: str) -> str:
@@ -275,6 +298,7 @@ def _build_chat_kb(suggestions: list[str] | None = None) -> InlineKeyboardMarkup
 # ── Commands ─────────────────────────────────────────────────────
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the AI assistant menu."""
     if not ai.is_configured():
@@ -320,6 +344,7 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_ask_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prompt the user to type their question."""
     if not ai.is_configured():
@@ -367,6 +392,7 @@ def _format_ai_progress(steps: list[str]) -> str:
 
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         question: str):
     """Process the user's AI question and return the answer.
@@ -517,6 +543,7 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate an AI fleet summary/briefing."""
     if not ai.is_configured():
@@ -573,6 +600,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           vehicle_name: str, company: str | None = None,
                           alert_context: str = "fault",
@@ -807,6 +835,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # ── AI Suggestion Follow-up ─────────────────────────────────────
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_suggest(update: Update, context: ContextTypes.DEFAULT_TYPE,
                          index: int = -1):
     """Handle an AI suggestion button press (ai_sug_{index})."""
@@ -828,6 +857,7 @@ async def cmd_ai_suggest(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # ── New Chat ─────────────────────────────────────────────────────
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_newchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Clear conversation context and start fresh."""
     context.user_data.pop("_ai_suggestions", None)
@@ -840,6 +870,7 @@ async def cmd_ai_newchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Model Selection ──────────────────────────────────────────────
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         mode: str = "text"):
     """Show available AI models for selection.
@@ -937,6 +968,7 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
                            model_name: str):
     """Pin the AI text model. SYSTEM OWNER ONLY — see the guard below."""
@@ -992,6 +1024,7 @@ async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_set_vision_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                   model_name: str):
     """Pin the AI vision model. SYSTEM OWNER ONLY — see the guard below."""
@@ -1049,6 +1082,7 @@ async def cmd_ai_set_vision_model(update: Update, context: ContextTypes.DEFAULT_
 # ── AI Alert Preferences ────────────────────────────────────────
 
 @_require_registered
+@_require_ai_assistant
 async def cmd_ai_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show AI-enhanced alert toggle screen."""
     user = context.user_data["_db_user"]
