@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Eye, Link2, Lock, Search } from '../../lib/icons';
 import { InfoTip, Tip } from '../../components/tooltip';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
 import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
@@ -274,7 +275,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           // eye reads "belongs to Vehicles" before it reads a word.
           // The block keeps the full grid width, so every tick stays in
           // its column; only the name cell indents.
-          <div className="relative bg-muted/20">
+          <div className="relative bg-muted/30">
             <span aria-hidden className="absolute left-1 top-1 bottom-1 w-0.5 rounded-full bg-border" />
             {fam.children.map((c) => {
               const cDelta = seniorView && rowDelta(c.row);
@@ -412,8 +413,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           granted here, but what flows THROUGH it follows the feature
           grants below.  Same columns as the table so a tick lands where
           the eye already expects it. */}
-      <div className="mx-4 mt-3 rounded-lg border border-border overflow-hidden">
-        <div className={`${HEAD_COLS} gap-x-2 px-4 pt-2 pb-1.5 bg-muted/40 items-end`}>
+      <div className={`mx-4 mt-3 ${BAND_CARD}`}>
+        <div className={`${HEAD_COLS} gap-x-2 px-4 pt-2 pb-1.5 bg-muted/50 items-end`}>
           <div className="min-w-0">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
               Services
@@ -423,7 +424,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </div>
           <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
           <span /><span />
-          <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
+          <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config · account-wide</span>
         </div>
         <div className="px-4 pb-1">
           {isDriver
@@ -468,7 +469,10 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             what the link mark used to carry by itself.  The scope
             descriptions live on these headers because the column is the
             flag. */}
-        <div className="sticky top-0 bg-card z-30 border-b border-border pt-1 pb-1.5">
+        {/* px-4 + a transparent 1px border: the same inset the band
+            cards give their rows, so every column label sits over its
+            column. */}
+        <div className="sticky top-0 bg-card z-30 border-b border-border pt-1 pb-1.5 px-4 border-x border-transparent">
           <div className={`${HEAD_COLS} gap-x-2`}>
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Feature</span>
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
@@ -494,10 +498,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </p>
         )}
         {isDriver && DRIVER_FEATURE_BANDS.map((b) => (
-          <div key={b.title}>
+          <div key={b.title} className={`mt-3 ${BAND_CARD}`}>
             <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
               {b.title} <span className="normal-case tracking-normal text-muted-foreground/70">— {b.note}</span>
             </div>
+            <div className="px-4 pb-1">
             {b.rows.map((r) => (
               <div key={rowId(r)} className={rowCls()}>
                 <div className="min-w-0">
@@ -512,6 +517,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 {emptyCell}
               </div>
             ))}
+            </div>
           </div>
         ))}
         {!isDriver && FEATURE_BANDS.map((b) => {
@@ -526,8 +532,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           return (
             // scroll-mt keeps a band scrolled to from the top bar clear of
             // the sticky column header.
-            <div key={b.band} id={bandAnchor(b.band)} className="scroll-mt-16">
-              <div className={`${BAND_STRIP} flex items-center gap-x-3 gap-y-0.5 flex-wrap`}>
+            <div key={b.band} id={bandAnchor(b.band)} className={`scroll-mt-16 mt-3 ${BAND_CARD}`}>
+              <div className={`${BAND_STRIP} flex items-center gap-x-3 gap-y-1 flex-wrap`}>
                 <button
                   type="button"
                   onClick={() => toggleBand(b.band)}
@@ -555,26 +561,17 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 )}
                 <span className="flex-1" />
                 {!closed && open && (
-                  <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-                    <button
-                      type="button"
-                      onClick={() => setBand(fams, true)}
-                      className="underline decoration-dotted hover:text-foreground min-h-tap"
-                    >
-                      grant all views
-                    </button>
-                    <span aria-hidden>·</span>
-                    <button
-                      type="button"
-                      onClick={() => setBand(fams, false)}
-                      className="underline decoration-dotted hover:text-foreground min-h-tap"
-                    >
-                      revoke all
-                    </button>
+                  <span className="inline-flex items-center gap-1">
+                    <Button type="button" variant="ghost" size="xs" onClick={() => setBand(fams, true)}>
+                      Grant all views
+                    </Button>
+                    <Button type="button" variant="ghost" size="xs" onClick={() => setBand(fams, false)}>
+                      Revoke all
+                    </Button>
                   </span>
                 )}
               </div>
-              <div id={`${bandAnchor(b.band)}-rows`} hidden={!open}>
+              <div id={`${bandAnchor(b.band)}-rows`} hidden={!open} className="px-4 pb-1">
                 {open && fams.map((fam) => famRow(fam, closed))}
               </div>
             </div>
@@ -589,10 +586,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             ONLY real difference between Primary and Co-owner, so an owner
             weighing how much to trust a co-owner has to see them. */}
         {role === 'owner' && !q && (
-          <div id={bandAnchor('Owner powers')}>
+          <div id={bandAnchor('Owner powers')} className={`mt-3 ${BAND_CARD}`}>
             <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
               Owner powers <span className="normal-case tracking-normal text-muted-foreground/70">— primary owner only · not editable</span>
             </div>
+            <div className="px-4 pb-1">
             {api.ownerPowers.map((op) => (
               <div key={op.key} className={rowCls()}>
                 <div className="min-w-0">
@@ -609,30 +607,33 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 {emptyCell}
               </div>
             ))}
+            </div>
           </div>
         )}
         {!isDriver && !q && (
-          <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
-            Configuration
-          </div>
-        )}
-        {/* The flags themselves — ONE row, because they are not features:
-            the label spans the verb columns (no empty cells on rows that
-            were never about View or Manage) and each tick sits under its
-            own scope, in the same column as every feature that rides it.
-            They still need a row of their own: can_manage_config_role
-            governs page layouts, and the only page with layouts today is
-            Alerts — a service whose row carries no config of its own. */}
-        {!isDriver && !q && (
-          <div className={rowCls()}>
-            <div className="min-w-0 col-span-3">
-              <span className="text-sm font-medium">Who may configure</span>
-              <div className="text-2xs text-muted-foreground/70">
-                the two flags above — one covers page layouts for their own role, the other a feature's shared settings
+          <div className={`mt-3 ${BAND_CARD}`}>
+            <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
+              Configuration
+            </div>
+            <div className="px-4 pb-1">
+            {/* The flags themselves — ONE row, because they are not features:
+                the label spans the verb columns (no empty cells on rows that
+                were never about View or Manage) and each tick sits under its
+                own scope, in the same column as every feature that rides it.
+                They still need a row of their own: can_manage_config_role
+                governs page layouts, and the only page with layouts today is
+                Alerts — a service whose row carries no config of its own. */}
+              <div className={rowCls()}>
+                <div className="min-w-0 col-span-3">
+                  <span className="text-sm font-medium">Who may configure</span>
+                  <div className="text-2xs text-muted-foreground/70">
+                    the two flags above — one covers page layouts for their own role, the other a feature's shared settings
+                  </div>
+                </div>
+                {verbCell(capRow('can_manage_config_role'), 'config — own role')}
+                {verbCell(capRow('can_manage_config_all'), 'config — account-wide')}
               </div>
             </div>
-            {verbCell(capRow('can_manage_config_role'), 'config — own role')}
-            {verbCell(capRow('can_manage_config_all'), 'config — account-wide')}
           </div>
         )}
         <p className="text-2xs text-muted-foreground mt-3">
@@ -658,9 +659,12 @@ const rowCls = (): string =>
 // that lives inside the nested block, never a full-width one.
 const childRowCls = (): string =>
   'grid grid-cols-[1fr_84px_84px_76px_84px] gap-x-2 items-center py-1 border-t border-border/40';
-// A band's title strip: air above it, a fill, a heavier label — the
-// section title of the page, not a caption between rows.
-const BAND_STRIP = '-mx-4 px-4 mt-4 py-1.5 bg-muted/40';
+// Every group is a card — the Services card, each feature band, Owner
+// powers, Configuration — one enclosure grammar for "this is a group";
+// the strip is its header: a fill and a heavier label, the section
+// title of the page rather than a caption between rows.
+const BAND_CARD = 'rounded-lg border border-border overflow-hidden';
+const BAND_STRIP = 'px-4 py-2 bg-muted/50';
 
 function DeltaChip() {
   return (
