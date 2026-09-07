@@ -166,20 +166,25 @@ role and prints every write flag the reviewer will hold before anything is writt
 - Before handing it over, sign in as that user and walk every sidebar item, the Alerts
   inbox and the AI assistant — whatever you see, the reviewer sees.
 
-Retire it the day the item is approved — this also denylists every token it was issued,
+Retire it the day the item is approved — and NOT before: every upload that changes the
+permissions or adds a content script starts a fresh review, and a reviewer with no way in
+is a rejection. This deletion also denylists every token the account was issued,
 which deactivation alone would not:
 
     python3 -m scripts.review_user --account <id> --email <yours> --delete --apply
 
-**Additional instructions** (492 of the 500 characters allowed):
+**Additional instructions** (466 of the 500 characters allowed) — step 5 is there
+because the content script is the one thing a reviewer must be able to SEE; a permission
+whose feature never appears in the walkthrough is a permission that gets questioned:
 
 ```
-LIVE account: the vehicles and positions are real, and a change would affect a real company. Please look only — do not edit or delete anything.
+LIVE account: real vehicles, real positions. Please look only — do not edit or delete anything.
 
 1. Click the 4truck icon in the toolbar to open the side panel.
 2. Press "Connect to 4truck" — a 4truck.us tab opens.
-3. Sign in with the credentials above, then press Connect to confirm.
-4. The panel lists the vehicles and shows them live on the map. Click one, then "Open in Google Maps".
+3. Sign in with the credentials above, then Connect to confirm.
+4. The panel lists the vehicles and maps them live.
+5. Open google.com/maps: the same vehicles are drawn on it, and the 4truck switch top right turns them off.
 
-The panel is read-only and sees vehicle positions only.
+Read-only, positions only.
 ```
