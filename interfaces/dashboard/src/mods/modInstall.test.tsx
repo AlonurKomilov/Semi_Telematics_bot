@@ -58,13 +58,14 @@ const { EVERYTHING, THIN } = vi.hoisted(() => ({
   },
   THIN: { id: 'thin', label: 'Thin', accent: 'green', why: 'carries almost nothing' },
 }));
-vi.mock('./catalogue', async (orig) => {
-  const real = await orig<typeof import('./catalogue')>();
+vi.mock('./packs/mods', async (orig) => {
+  const real = await orig<typeof import('./packs/mods')>();
   return { ...real, MODS: [...real.MODS, EVERYTHING, THIN] };
 });
 
 import { ModsRow } from './panel/ModsRow';
-import { MOD_FIELD_APPLIER, MOD_THEME_FIELDS, MODS } from './catalogue';
+import { MOD_FIELD_APPLIER, MOD_THEME_FIELDS } from './catalogue';
+import { MODS } from './packs/mods';
 
 const SHIPPED = MODS.filter((m) => m.id !== 'everything' && m.id !== 'thin');
 const field = (m: unknown, f: string) => (m as Record<string, unknown>)[f];

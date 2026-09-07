@@ -29,7 +29,7 @@ vi.mock('../../hooks/useViewPermissions', () => ({
 import ModsPage from './ModsPage';
 import { ModProvider } from '../context';
 import { TAXONOMY, browsableItemsOf, resetAxesOf, MOD_FIELD_CATEGORY } from '../taxonomy';
-import { MODS } from '../catalogue';
+import { MODS } from '../packs/mods';
 import { preferences, MOD_DEFAULT, SIZE_DEFAULT, DEFS } from '../../preferences';
 
 const at = (path: string) => render(

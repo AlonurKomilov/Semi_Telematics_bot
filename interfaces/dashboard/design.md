@@ -260,10 +260,11 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
 `mods/sound`.
 
     mods/index.ts      the one import surface
-    mods/catalogue.ts  MODS, the axes, and the pack CONTRACTS (ThemePack, FontPack)
+    mods/catalogue.ts  the axes, and the pack CONTRACTS (Mod, ThemePack, FontPack)
     mods/packs/        the resources — one file per pack, an index per axis:
-                       sound · keys (cue tables) · wallpaper · cursor · shader ·
-                       theme · font (CSS). The engine never lists what exists.
+                       mods (the looks: cab, wall) · sound · keys (cue tables) ·
+                       wallpaper · cursor · shader · theme · font (CSS).
+                       The engine never lists what exists.
     mods/context.tsx   useMods, applyTheme
     mods/ModPanel.tsx  ModPanel (top-bar popover) + ModControls
     mods/taxonomy.ts   THE declaration: categories → items → axes

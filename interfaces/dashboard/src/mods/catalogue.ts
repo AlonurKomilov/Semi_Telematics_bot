@@ -242,21 +242,9 @@ export interface Mod {
   readonly why: string;
 }
 
-/**
- * Deliberately NOT carrying `mode`. Dark or light is the one axis that
- * is about the room a person is sitting in — a bright yard office at
- * noon, a cab at 2am — and a look that seizes it makes the screen
- * unreadable for exactly the reason they chose the other one. A mod
- * dresses the app; it does not decide where you are.
- */
-export const MODS: readonly Mod[] = [
-  { id: 'cab',  label: 'Cab',  accent: 'azure', radius: 'pill',    size: 1.25,
-    icons: 'bold', sound: 'blip',
-    why: 'Tablet in a moving truck — bigger targets, gloved hands' },
-  { id: 'wall', label: 'Wall', accent: 'blue',  radius: 'rounded', size: 1.45,
-    icons: 'bold', entrance: true,
-    why: 'A display read from across the room' },
-] as const;
+// The bundles themselves — Cab, Wall — live in `mods/packs/mods/`, one
+// file each. This file says what a mod IS and how each field it carries
+// is placed and installed; it does not know which mods exist.
 
 /**
  * Which category each thing a mod carries lands in — GX shows an
@@ -328,9 +316,6 @@ export const MOD_FIELD_APPLIER: Record<
 export const MOD_THEME_FIELDS = (Object.keys(MOD_FIELD_APPLIER) as (keyof typeof MOD_FIELD_APPLIER)[])
   .filter((k) => MOD_FIELD_APPLIER[k] === 'theme');
 
-export const modById = (id: string): Mod | undefined =>
-  MODS.find((m) => m.id === id);
-
 /**
  * Everything a mod can set. One object rather than a parameter list:
  * `activeModId` had reached five positional arguments and every new axis
@@ -377,13 +362,3 @@ export const modMatchesAxes = (m: Mod, a: ModAxes): boolean =>
   // Float compare: the size arrives from a slider and a stored JSON
   // round-trip, so `===` against 1.25 is a coin toss.
   && (m.size === undefined || Math.abs(m.size - a.size) < 1e-6);
-
-/**
- * @deprecated Identity now lives in `theme.mod`. Kept for one release so
- *   a caller that still asks "which mod do these axes add up to" gets a
- *   sensible answer instead of a type error — but it cannot see a mod
- *   whose assets are installed and whose axes have been edited, which is
- *   the whole reason identity moved.
- */
-export const activeModId = (a: ModAxes): string =>
-  MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';

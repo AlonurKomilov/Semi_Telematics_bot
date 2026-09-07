@@ -31,6 +31,7 @@ import { CURSOR_PACKS } from './cursor';
 import { SHADER_PACKS } from './shader';
 import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
+import { MODS as MOD_PACKS } from './mods';
 import { engineCss } from '../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../sound/engine';
 import { KEY_LIMITS, KEY_CLASSES } from '../sound/keys';
@@ -57,11 +58,14 @@ describe('an engine file holds no pack content', () => {
 
   it('no cue table, no pack literal, no catalogue of what exists', () => {
     for (const f of ENGINE_FILES) {
-      const code = src(f);
+      // Comments stripped: a docstring that says "MODS used to live
+      // here" is not a list, and a guard that trips on prose gets its
+      // pattern loosened until it trips on nothing.
+      const code = src(f).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
       expect(code, `${f} carries a cue table — a pack is growing back inside the engine`)
         .not.toMatch(/\bcues:\s*\{/);
       expect(code, `${f} lists packs — the engine knows what exists again`)
-        .not.toMatch(/\b(SOUND_PACKS|KEY_PACKS|THEME_PACKS|FONT_PACKS)\s*[:=]/);
+        .not.toMatch(/\b(SOUND_PACKS|KEY_PACKS|THEME_PACKS|FONT_PACKS|MODS)\s*[:=]/);
       // A seed VALUE, not the `seed:` slot in the ThemePack type — the
       // contract says a pack has one; the engine must not say which.
       expect(code, `${f} carries a seed — an accent pack is growing back inside the engine`)
@@ -77,7 +81,7 @@ describe('an engine file holds no pack content', () => {
 });
 
 describe('a pack is a file, and the index is exactly the files', () => {
-  for (const [folder, packs] of [['sound', SOUND_PACKS], ['keys', KEY_PACKS]] as const) {
+  for (const [folder, packs] of [['sound', SOUND_PACKS], ['keys', KEY_PACKS], ['mods', MOD_PACKS]] as const) {
     it(`${folder}: every file is listed and every entry has a file`, () => {
       const files = packFiles(folder);
       const ids = [...packs].map((p) => p.id).sort();
@@ -93,7 +97,7 @@ describe('a pack file imports only types', () => {
     const imports = [...code.matchAll(/^import\s+(?!type\s)[^;]*;/gm)].map((m) => m[0]);
     expect(imports, `packs/${rel} has a runtime import: ${imports[0] ?? ''}`).toEqual([]);
   };
-  for (const folder of ['sound', 'keys'] as const) {
+  for (const folder of ['sound', 'keys', 'mods'] as const) {
     it(`${folder}: no runtime import — the registry would be one hop from itself`, () => {
       for (const f of packFiles(folder)) onlyTypes(`${folder}/${f}.ts`);
     });

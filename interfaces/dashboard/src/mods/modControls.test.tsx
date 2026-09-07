@@ -73,7 +73,7 @@ vi.mock('../hooks/useViewPermissions', () => ({
 }));
 
 import { ModControls } from './panel/ModControls';
-import { MODS } from './catalogue';
+import { MODS } from './packs/mods';
 import { headingsOf } from './taxonomy';
 
 /** Sections every surface carries — the two questions asked most often. */

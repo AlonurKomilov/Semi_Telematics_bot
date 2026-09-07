@@ -11,8 +11,9 @@ import { usePreference } from '../../preferences';
 import { undoableAction } from '../../components/banners/stagedAction';
 import { useMods, type Accent } from '../context';
 import {
-  MODS, MOD_THEME_FIELDS, modById, modMatchesAxes, modFootprint, type Mod,
+  MOD_THEME_FIELDS, modMatchesAxes, modFootprint, type Mod,
 } from '../catalogue';
+import { MODS, modById } from '../packs/mods';
 import type { ModSetting } from '../../preferences/registry';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';

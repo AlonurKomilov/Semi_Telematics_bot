@@ -25,10 +25,17 @@ import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
 import {
-  MODS, MOD_ICONS,
+  MOD_ICONS,
   MOD_FIELD_SECTION, modFootprint,
-  PACK_TOKENS, modById, activeModId, modMatchesAxes,
+  PACK_TOKENS, modMatchesAxes, type ModAxes,
 } from './catalogue';
+import { MODS, modById } from './packs/mods';
+
+/** Which shipped look these axes add up to — `modMatchesAxes` over the
+ *  list. The engine used to offer this by name (`activeModId`, deprecated
+ *  once identity moved to `theme.mod`); the list is the packs' now, so
+ *  the question is asked here, where both halves are in hand. */
+const activeModId = (a: ModAxes): string => MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';
 import { THEME_PACKS, packById } from './packs/theme';
 import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
 import { derivePalette } from './theme/palette';
