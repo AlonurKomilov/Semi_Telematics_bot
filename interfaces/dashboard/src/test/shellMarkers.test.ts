@@ -89,13 +89,20 @@ const HTML_AXES = new Set([
 /**
  * Styled, carried by nothing, and NOT a mistake to fix here.
  *
- * `surface-opaque` is an escape hatch for a problem that cannot happen.
+ * `surface-opaque` is an escape hatch for a problem that cannot happen,
+ * and the reason took two passes to state correctly.
+ *
  * Its comment says 21 sticky and pinned elements "opt out explicitly"
- * because a translucent fill would let the table scroll through them —
- * but glass only thins `.surface`, exactly ONE element carries that
- * (the select popover), and the grid's frozen columns and pinned
- * headers paint `bg-muted` / `bg-card`, which glass never touches. So
- * the hatch guards a door that was never open, and
+ * because a translucent fill would let the table scroll through them.
+ * The first version of this note said `.surface` was carried by one
+ * element — that was wrong, and wrong in the way a grep is: `Card`
+ * carries it through `cva`, not through a `className` string, so 110
+ * files have it and every card IS translucent under glass.
+ *
+ * The hatch is still unused, for the other reason. The elements it
+ * names do not carry `.surface` at all: the grid's frozen columns and
+ * pinned headers paint `bg-card` / `bg-muted` directly, which are
+ * opaque utilities glass never thins. So they need no opting out, and
  * `material.test.ts` defends the rule's existence rather than its use.
  *
  * Recorded rather than deleted: it is not this change's to remove, and

@@ -1097,15 +1097,41 @@
      changing. `flat` declares nothing on purpose: every fallback in
      that scale is 1, so the absence of a rule IS the shipped light —
      the same reason wallpaper's `none` has no block. */
+  /* The card rung of the elevation ladder, said in LIGHT as well as in
+     colour.
+
+     design.md's ladder — background, sidebar, card, popover — is real
+     and was expressed entirely as planes of colour, so the light had
+     nothing to act on where a person actually looks: it reached
+     popovers and menus, which is 54 of the app's 78 shadows and none of
+     the surface every page is made of.
+
+     `--light-elevate` is 0 at Flat, and at 0 every term below collapses
+     to zero — offset, blur and alpha alike — so the rule is present and
+     draws nothing. That is what keeps "flat" pixel-identical to the app
+     as shipped while giving the other two presets something to lift.
+
+     It MULTIPLIES the other three rather than replacing them, so a
+     raised card is lit by the same sun as every popover above it. */
+  .surface {
+    box-shadow:
+      0 calc(2px * var(--light-lift, 1) * var(--light-elevate, 0))
+        calc(10px * var(--light-spread, 1) * var(--light-elevate, 0))
+        calc(-2px * var(--light-elevate, 0))
+        rgb(0 0 0 / calc(0.10 * var(--light-strength, 1) * var(--light-elevate, 0)));
+  }
+
   :root[data-shader="soft"] {
     --light-lift: 1.7;
     --light-spread: 1.9;
     --light-strength: 0.75;
+    --light-elevate: 1;
   }
   :root[data-shader="studio"] {
     --light-lift: 0.6;
     --light-spread: 0.5;
     --light-strength: 1.7;
+    --light-elevate: 1;
   }
 
   /* The chrome steps aside so the ground can be seen.

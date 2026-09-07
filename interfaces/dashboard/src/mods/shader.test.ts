@@ -22,6 +22,8 @@ const CSS = readFileSync(join(ROOT, 'src', 'index.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 const VARS = ['--light-lift', '--light-spread', '--light-strength'] as const;
+/** Plus the one that decides whether a card leaves the ground. */
+const ALL_VARS = [...VARS, '--light-elevate'] as const;
 
 /** Tailwind's shadow scale, as the config declares it. */
 function shadowScale(): Record<string, string> {
@@ -63,7 +65,7 @@ describe('the axis actually drives the shadow scale', () => {
 });
 
 describe('every preset says what it does, and only that', () => {
-  it('declares all three multipliers, or none at all', () => {
+  it('declares every light, or none at all', () => {
     for (const p of SHADER_PACKS) {
       const block = blockOf(p.id);
       if (p.id === 'flat') {
@@ -74,7 +76,7 @@ describe('every preset says what it does, and only that', () => {
         expect(block, '"flat" declares a light; it should declare none').toBe('');
         continue;
       }
-      for (const v of VARS)
+      for (const v of ALL_VARS)
         expect(block, `${p.id} does not set ${v}`).toContain(`${v}:`);
     }
   });
@@ -86,7 +88,8 @@ describe('every preset says what it does, and only that', () => {
     for (const p of SHADER_PACKS.filter((x) => x.id !== 'flat')) {
       const block = blockOf(p.id);
       for (const [v, want] of [
-        ['--light-lift', p.lift], ['--light-spread', p.spread], ['--light-strength', p.strength],
+        ['--light-lift', p.lift], ['--light-spread', p.spread],
+        ['--light-strength', p.strength], ['--light-elevate', p.elevate],
       ] as const) {
         const got = new RegExp(`${v}:\\s*([\\d.]+)`).exec(block)?.[1];
         expect(got, `${p.id} declares no ${v}`).toBeDefined();
@@ -94,7 +97,7 @@ describe('every preset says what it does, and only that', () => {
         checked++;
       }
     }
-    expect(checked, 'nothing compared').toBe((SHADER_PACKS.length - 1) * VARS.length);
+    expect(checked, 'nothing compared').toBe((SHADER_PACKS.length - 1) * ALL_VARS.length);
   });
 
   it('and no block for a preset the list does not offer', () => {
@@ -144,6 +147,40 @@ describe('the light stays light', () => {
   it('flat is the shipped light, unmodified', () => {
     const flat = shaderPackById('flat')!;
     expect([flat.lift, flat.spread, flat.strength]).toEqual([1, 1, 1]);
+    // And cards stay ON the ground. `flat` is the only preset that may
+    // say so; it is what keeps the default pixel-identical.
+    expect(flat.elevate, 'flat lifts the cards — the default is no longer today').toBe(0);
+  });
+
+  /**
+   * The card rung of the ladder answers to the light.
+   *
+   * The axis reached popovers and menus — 54 of 78 shadows — and none
+   * of the surface every page is made of, so a person choosing a preset
+   * saw nothing on the page they were standing on. `.surface` is what
+   * `Card` carries, through `cva` rather than a `className` string,
+   * which is the reason a grep for it once said one file and the answer
+   * is 110.
+   */
+  it('the card surface is lit, and collapses to nothing at flat', () => {
+    const rule = /\n  \.surface \{([^}]*)\}/.exec(CSS)?.[1];
+    expect(rule, 'the card surface has no light of its own').toBeDefined();
+    expect(rule!, '.surface does not answer to the light').toContain('--light-elevate');
+    // Every term multiplied by it — offset, blur, spread and alpha — so
+    // at 0 the rule is present and draws nothing at all.
+    const terms = rule!.split(/\bcalc\(/).slice(1);
+    expect(terms.length, 'no calc terms parsed').toBeGreaterThanOrEqual(4);
+    for (const t of terms)
+      expect(t, `a term of .surface does not collapse at flat: calc(${t.split(')')[0]})`)
+        .toContain('--light-elevate');
+  });
+
+  it('and at least one preset actually lifts them', () => {
+    // Otherwise the variable exists, the rule exists, and nothing on any
+    // page ever leaves the ground.
+    expect(SHADER_PACKS.filter((p) => p.elevate === 1).length,
+      'no preset lifts a card — the axis is invisible on every page again')
+      .toBeGreaterThan(0);
   });
 
   /**
@@ -181,7 +218,7 @@ describe('the light stays light', () => {
       expect(block, `${p.id} sets a colour — this axis moves light, not meaning`)
         .not.toMatch(/oklch|#[0-9a-f]{3}|rgb|hsl|--primary|--danger|--ok|--warn|--info/i);
       for (const decl of block.matchAll(/(--[a-z-]+):/g))
-        expect(VARS as readonly string[], `${p.id} sets ${decl[1]}, which is not a light`)
+        expect(ALL_VARS as readonly string[], `${p.id} sets ${decl[1]}, which is not a light`)
           .toContain(decl[1]);
     }
   });

@@ -34,6 +34,22 @@ export interface ShaderPack {
   readonly spread: number;
   /** How much of the light the surface blocks — the shadow's alpha. */
   readonly strength: number;
+  /**
+   * Whether a CARD leaves the ground.
+   *
+   * The design system's elevation ladder — background, sidebar, card,
+   * popover — is real, and it is said entirely in COLOUR: a card is a
+   * lighter plane, not a raised one. So the light had nothing to act on
+   * where a person actually looks. It reached popovers and menus, which
+   * is 54 of the 78 shadows in the app and none of the surface every
+   * page is made of.
+   *
+   * 0 at Flat, which is what "flat" means and what keeps today
+   * pixel-identical; 1 where a preset is meant to lift things. It
+   * multiplies the other three rather than replacing them, so a raised
+   * card is lit by the same sun as everything else.
+   */
+  readonly elevate: 0 | 1;
 }
 
 /**
@@ -48,11 +64,11 @@ export interface ShaderPack {
  */
 export const SHADER_PACKS: readonly ShaderPack[] = [
   { id: 'flat', label: 'Flat', why: 'The light this app was drawn in',
-    lift: 1, spread: 1, strength: 1 },
+    lift: 1, spread: 1, strength: 1, elevate: 0 },
   { id: 'soft', label: 'Soft', why: 'A lower sun — longer shadows, softer edges',
-    lift: 1.7, spread: 1.9, strength: 0.75 },
+    lift: 1.7, spread: 1.9, strength: 0.75, elevate: 1 },
   { id: 'studio', label: 'Studio', why: 'Overhead and close — short shadows, crisp edges',
-    lift: 0.6, spread: 0.5, strength: 1.7 },
+    lift: 0.6, spread: 0.5, strength: 1.7, elevate: 1 },
 ];
 
 export const SHADER_IDS = SHADER_PACKS.map((s) => s.id);
