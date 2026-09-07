@@ -37,11 +37,12 @@ import { OVERLAY_VEHICLES, type OverlayReply, type OverlayVehicle } from '../fea
 import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
-import { OVERLAY_PREF_KEY } from '../features/maps-overlay/pref';
+import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraFromUrl, isStreetView, isVisible, project, sameCamera, type Camera } from '../features/maps-overlay/projection';
 import { colourFor, findMapCanvas, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
+const CHIP_ID = '4truck-maps-chip';
 /** Positions are 30s fresh on the server; asking faster spends quota
  *  for numbers that have not changed. */
 const POLL_MS = 30_000;
@@ -60,6 +61,11 @@ let vehicles: OverlayVehicle[] = [];
 let enabled = true;
 let root: HTMLDivElement | null = null;
 const markers = new Map<string, HTMLDivElement>();
+/** Whether the worker had a token the last time we asked.  Signed out,
+ *  nothing of ours appears on Google's page at all — not even the
+ *  switch.  A person who has not connected did not ask for this. */
+let signedIn = false;
+let chip: HTMLButtonElement | null = null;
 
 // ── gesture state ──────────────────────────────────────────────────────
 let drag: Drag | null = null;
@@ -125,6 +131,67 @@ function removeAll(): void {
   markers.clear();
 }
 
+// ── the switch on the map ──────────────────────────────────────────────
+//
+// Not everyone opens Google Maps to see trucks.  The switch lives where
+// the trucks appear, so turning them off is one click there — not a
+// trip to the panel's Settings.  It is NOT inside the layer: the layer
+// translates with a drag, and a control that slides off with the map is
+// a control nobody can hit.  Its own fixed element, top-right under
+// Google's account button, where Google draws nothing.  Named by what it
+// toggles — "vehicles" — never "Layer": Google's own Layers button sits
+// on the same map, and one word meaning two things is how a person turns
+// off the wrong one.
+
+function ensureChip(): HTMLButtonElement {
+  if (chip?.isConnected) return chip;
+  const el = document.createElement('button');
+  el.id = CHIP_ID;
+  el.type = 'button';
+  el.setAttribute('role', 'switch');
+  el.style.cssText =
+    'position:fixed;top:112px;right:12px;z-index:2147483000;display:flex;align-items:center;gap:8px;' +
+    'padding:6px 8px 6px 10px;border:0;border-radius:999px;cursor:pointer;' +
+    'background:rgba(17,20,26,.92);color:#fff;font:600 12px/1 system-ui,sans-serif;' +
+    'box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap';
+  el.innerHTML =
+    '<span style="display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;background:#3b82f6;font-size:11px">4</span>' +
+    '<span data-label></span>' +
+    '<span data-track style="position:relative;width:28px;height:16px;border-radius:999px;background:#4b5563;transition:background .15s">' +
+      '<span data-knob style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s"></span>' +
+    '</span>';
+  el.addEventListener('click', () => { void setOverlayPref(!enabled); });
+  document.documentElement.appendChild(el);
+  chip = el;
+  return el;
+}
+
+function hideChip(): void {
+  chip?.remove();
+  chip = null;
+}
+
+/** The switch says what it governs and what is on the map right now. */
+function updateChip(inView: number): void {
+  const el = ensureChip();
+  const label = el.querySelector<HTMLElement>('[data-label]')!;
+  const track = el.querySelector<HTMLElement>('[data-track]')!;
+  const knob = el.querySelector<HTMLElement>('[data-knob]')!;
+  if (enabled) {
+    label.textContent = inView === 0 ? 'no vehicles in view' : `${inView} vehicle${inView === 1 ? '' : 's'}`;
+    el.setAttribute('aria-checked', 'true');
+    el.setAttribute('aria-label', 'Show 4truck vehicles on this map — on');
+    track.style.background = '#22c55e';
+    knob.style.transform = 'translateX(12px)';
+  } else {
+    label.textContent = 'vehicles off';
+    el.setAttribute('aria-checked', 'false');
+    el.setAttribute('aria-label', 'Show 4truck vehicles on this map — off');
+    track.style.background = '#4b5563';
+    knob.style.transform = '';
+  }
+}
+
 function markerFor(v: OverlayVehicle): HTMLDivElement {
   let el = markers.get(v.id);
   if (!el) {
@@ -146,7 +213,10 @@ function markerFor(v: OverlayVehicle): HTMLDivElement {
 }
 
 function draw(): void {
-  if (!enabled || isStreetView(location.href) || !camera || !surface) { removeAll(); return; }
+  // Street View is a photograph and a page with no map canvas is not a
+  // map: nothing of ours belongs on either, the switch included.
+  if (!signedIn || isStreetView(location.href) || !surface) { removeAll(); hideChip(); return; }
+  if (!enabled || !camera) { removeAll(); updateChip(0); return; }
 
   const el = ensureRoot();
   const { fixed } = mountPoint();
@@ -171,6 +241,7 @@ function draw(): void {
   for (const [id, m] of markers) {
     if (!seen.has(id)) { m.remove(); markers.delete(id); }
   }
+  updateChip(seen.size);
 }
 
 /** The camera settled: markers are re-projected and, in the SAME frame,
@@ -221,6 +292,7 @@ async function refreshData(): Promise<void> {
   const reply = await loadVehicles();
   // Signed out, or the API said no.  Either way the honest thing is an
   // empty map rather than positions from ten minutes ago.
+  signedIn = reply.ok || reply.reason !== 'signed-out';
   vehicles = reply.ok ? reply.vehicles : [];
   if (!settling) draw();
 }
@@ -244,6 +316,7 @@ function onMapControl(target: EventTarget | null): boolean {
 }
 
 function onPointerDown(e: PointerEvent): void {
+  if (chip && e.target instanceof Node && chip.contains(e.target)) return;
   if (!root) return;
   if (onMap(e.target)) {
     pointersDown++;
@@ -330,7 +403,7 @@ function start(): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !(OVERLAY_PREF_KEY in changes)) return;
     enabled = changes[OVERLAY_PREF_KEY].newValue !== false;
-    if (enabled) { refreshView(); void refreshData(); } else removeAll();
+    if (enabled) { refreshView(); void refreshData(); } else draw();
   });
 }
 
@@ -338,4 +411,5 @@ function start(): void {
 // re-injection after an extension update, when the old layer is still
 // in the DOM and a second one would double every marker.
 document.getElementById(ROOT_ID)?.remove();
+document.getElementById(CHIP_ID)?.remove();
 start();

@@ -44,8 +44,8 @@ export default function Settings({ onBack }: { onBack: () => void }) {
             Show my vehicles on Google Maps
             <span className="muted" style={{ display: 'block', fontSize: 12 }}>
               Draws them on google.com/maps itself, so a route and your vehicles are one
-              picture. They settle after a drag rather than moving with it — Google only
-              tells the page where it is once the hand lifts.
+              picture. The same switch sits on the map, top right, for turning them off
+              where you see them.
             </span>
           </span>
           <input type="checkbox" checked={!!overlay} disabled={overlay === null}

@@ -34,7 +34,7 @@ LIVE MAP
 ON GOOGLE MAPS ITSELF
 • Your vehicles drawn on google.com/maps, so the route you are planning and the vehicles you are planning it around are one picture
 • They settle into place after you drag the map, rather than sliding with it — Google tells the page where it is once the hand lifts
-• Off in one click, in the panel's Settings
+• A small 4truck switch on the map itself turns them off — or back on — where you see them
 
 More of 4truck reaches the panel over time. Each addition appears in this list.
 
@@ -86,9 +86,9 @@ ABOUT 4TRUCK
   except the camera Google publishes in its own URL (`@lat,lng,zoom`) and the size of the
   map canvas, and it sends nothing anywhere. Positions come from the 4truck API, fetched by
   the extension's service worker: a content script cannot use host permissions, and holding
-  a sign-in token inside a page we do not control would be the wrong trade. Off in one
-  click in the panel's Settings, and it draws nothing at all when signed out or in Street
-  View.
+  a sign-in token inside a page we do not control would be the wrong trade. Off in one click on the
+  map itself or in the panel's Settings; it draws nothing at all in Street View, and a
+  person who has not connected the extension sees nothing at all — not even the switch.
 
 **Remote code:** No. All code is bundled in the package.
 
