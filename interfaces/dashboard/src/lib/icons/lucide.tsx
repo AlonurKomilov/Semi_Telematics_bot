@@ -8,18 +8,12 @@
  */
 import type { ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
+import { WEIGHT_MAP } from './lucide.weights';
 import type { IconWeightName } from './weight';
 
 export * from './lucide.icons';
+export { WEIGHT_MAP } from './lucide.weights';
 
-/** Lucide's own 2 is `regular`; the other two bracket it.
- *  Exported so `iconLane.test.ts` can hold it TOTAL over the axis: a
- *  missing entry resolves to `undefined`, lucide falls back to its
- *  default, and the weight silently stops working — which reads as the
- *  feature being broken rather than as a typo. */
-export const WEIGHT_MAP: Record<IconWeightName, number> = {
-  hairline: 1.25, regular: 2, bold: 2.5,
-};
 
 export function Provider({ weight, children }: { weight: IconWeightName; children: ReactNode }) {
   return <LucideProvider strokeWidth={WEIGHT_MAP[weight]}>{children}</LucideProvider>;

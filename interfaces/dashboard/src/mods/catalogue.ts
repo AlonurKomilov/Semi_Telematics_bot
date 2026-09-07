@@ -225,6 +225,11 @@ export interface Mod {
    *  A look that changes the colour and not the lettering is half a
    *  look — this is the field that lets a mod be one. */
   readonly font?: ModFont;
+  /** The pointer set — a `CURSOR_PACKS` id. A look may carry it, and a
+   *  look is the only thing that should: it is per-device by nature and
+   *  replaces an operating-system setting, so nothing account-wide may
+   *  reach it. */
+  readonly cursor?: string;
   /** The pattern on the chrome — a `WALLPAPERS` id. The axis a look is
    *  most visibly a LOOK through: it changes the ground the whole app
    *  sits on without touching a single surface the work happens on. */
@@ -325,7 +330,7 @@ export const MOD_FIELD_APPLIER: Record<
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
-  wallpaper: 'theme',
+  wallpaper: 'theme', cursor: 'theme',
   size: 'size', sound: 'sound',
 };
 

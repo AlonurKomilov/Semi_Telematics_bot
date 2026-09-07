@@ -66,6 +66,7 @@
         // over the same inputs and fails when the two disagree.
         var font = pick(t.font, ['geist', 'system', 'serif', 'mono', 'rounded'], 'geist');
         var wallpaper = pick(t.wallpaper, ['none', 'mesh', 'grid'], 'none');
+        var cursor = pick(t.cursor, ['system', 'sharp'], 'system');
 
         // Mode and accent, with the pre-split `color` as the fallback —
         // the same migration registry.ts's sanitiser does, written a
@@ -100,6 +101,7 @@
         root.dataset.motion = motion;
         root.dataset.font = font;
         root.dataset.wallpaper = wallpaper;
+        root.dataset.cursor = cursor;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts
         // — themeBoot.test.ts asserts that it does. 1 is "as designed".

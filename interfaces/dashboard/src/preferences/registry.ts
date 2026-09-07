@@ -35,6 +35,7 @@
 
 import { ICON_PACKS, type IconPack } from '../lib/icons';
 import { WALLPAPER_IDS } from '../mods/wallpaper';
+import { CURSOR_IDS } from '../mods/cursor';
 import {
   THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
 } from '../mods/catalogue';
@@ -207,6 +208,16 @@ export interface ModSetting {
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
   /**
+   * The pointer set — a `CURSOR_PACKS` id.
+   *
+   * The one axis that REPLACES something rather than adding to it: a
+   * CSS cursor overrides the one the operating system draws, which is
+   * where people set a larger or higher-contrast pointer. Per-user,
+   * per-device and off by default for exactly that reason — see
+   * `mods/cursor.ts`.
+   */
+  cursor: string;
+  /**
    * The pattern on the chrome — a `WALLPAPERS` id.
    *
    * Not an image: it is built from `--sidebar` and the accent, so it
@@ -340,7 +351,7 @@ export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
-  wallpaper: 'none',
+  wallpaper: 'none', cursor: 'system',
   color: 'dark-blue',
 };
 
@@ -389,6 +400,11 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * arriving a frame late is a visible wash across the sidebar, the header
  * and the gutters at once.
  *
+ * `cursor` is here too, and for a sharper version of the same reason:
+ * the pointer is under the person's hand from the first frame, and one
+ * that changes shape after hydration is a flicker they are looking
+ * directly at.
+ *
  * `themeBoot.test.ts` reads this list, and also asserts that every key
  * of MOD_DEFAULT appears either here or in its own exclusion list — so
  * a new axis forces the decision instead of quietly skipping the guard.
@@ -401,7 +417,8 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * whole page rather than a flash of the wrong shade.
  */
 export const PREPAINT_AXES = [
-  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'color',
+  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'cursor',
+  'color',
 ] as const;
 
 export const SIZE_REGIONS: SizeRegion[] = [
@@ -557,6 +574,11 @@ export const DEFS = {
       // chrome, not to a stamp nothing in the stylesheet answers.
       const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
         ? o.wallpaper as string : MOD_DEFAULT.wallpaper;
+      // A pack that was removed falls back to the OS pointer, which is
+      // the one thing always available — an unanswered stamp would
+      // leave the app with whatever the last rule happened to set.
+      const cursor = CURSOR_IDS.includes(o.cursor as string)
+        ? o.cursor as string : MOD_DEFAULT.cursor;
       // A stored id for a mod that no longer exists is dropped rather
       // than kept: the catalogue is ours and can shrink between
       // releases, and an id nothing resolves would show an empty chip
@@ -626,7 +648,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance,
-        wallpaper,
+        wallpaper, cursor,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.

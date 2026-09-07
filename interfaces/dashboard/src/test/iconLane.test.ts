@@ -164,20 +164,35 @@ describe('one set on screen at a time', () => {
    * So this is not a completeness nicety. It is what makes the missing
    * case unreachable.
    */
-  it('every pack carries every name the app draws', async () => {
-    const [lucide, phosphor] = await Promise.all([
-      import('../lib/icons/lucide'), import('../lib/icons/phosphor'),
-    ]);
+  /**
+   * Read from the pack SOURCES, not by importing them.
+   *
+   * The import version made the suite flaky: pulling Phosphor's 3045
+   * exports through the transform takes 15 to 23 seconds, over the 20s
+   * timeout under load, and it had been that way since the pack landed.
+   * Nothing is lost. Each pack file is a static re-export list, so the
+   * names it carries are exactly what it declares — and whether those
+   * names EXIST in the library is `tsc`'s answer, not a test's:
+   * `export { NotAThing } from '@phosphor-icons/react'` does not
+   * compile. Source here, compiler there, both fast.
+   */
+  const carriedBy = (pack: string): Set<string> => {
+    const src = readFileSync(join(SRC, `lib/icons/${pack}.icons.ts`), 'utf8');
+    const block = /export\s*\{([\s\S]*?)\}\s*from/.exec(src)?.[1] ?? '';
+    return new Set(block.split(',')
+      .map((e) => e.trim().split(/\s+as\s+/).pop()!.trim())
+      .filter(Boolean));
+  };
+
+  it('every pack carries every name the app draws', () => {
     expect(ICON_NAMES.length, 'no names — this test would pass on nothing')
       .toBeGreaterThan(200);
-    for (const [id, pack] of [['lucide', lucide], ['phosphor', phosphor]] as const) {
-      const carried = ICON_NAMES.filter((n) => n in pack);
-      const missing = ICON_NAMES.filter((n) => !(n in pack));
-      expect(missing, `${id} is missing ${missing.length} glyph(s)`).toEqual([]);
-      // Counted, not just found empty: `[].filter(...)` is also empty,
-      // and a check that walks nothing reports nothing missing.
-      expect(carried.length, `${id} carried nothing — this checked no names`)
+    for (const pack of ['lucide', 'phosphor']) {
+      const carried = carriedBy(pack);
+      expect(carried.size, `${pack} declares nothing — this checked no names`)
         .toBe(ICON_NAMES.length);
+      const missing = ICON_NAMES.filter((n) => !carried.has(n));
+      expect(missing, `${pack} is missing ${missing.length} glyph(s)`).toEqual([]);
     }
   });
 
@@ -189,22 +204,29 @@ describe('one set on screen at a time', () => {
    * entry resolves to `undefined`, the library falls back to its own
    * default, and the weight silently stops working — the mod applies,
    * the icons do not change, and it reads as the feature being broken
-   * rather than as a typo. This guard used to watch lucide's map alone
-   * from `catalogue.test.ts`; the concern is per-PACK now.
+   * rather than as a typo. The maps live in their own leaves so this
+   * costs an import of two small objects rather than of two libraries.
    */
   it('and every pack takes the weight its own way, for every weight', async () => {
-    const packs = await Promise.all([
-      import('../lib/icons/lucide'), import('../lib/icons/phosphor'),
+    const maps = await Promise.all([
+      import('../lib/icons/lucide.weights'), import('../lib/icons/phosphor.weights'),
     ]);
     expect(ICON_WEIGHTS.length, 'no weights — this test would pass on nothing').toBe(3);
-    for (const [id, mod] of [['lucide', packs[0]], ['phosphor', packs[1]]] as const) {
-      expect(mod.Provider, `${id} has no weight provider`).toBeTypeOf('function');
+    for (const [id, mod] of [['lucide', maps[0]], ['phosphor', maps[1]]] as const)
       for (const w of ICON_WEIGHTS)
         expect(mod.WEIGHT_MAP[w], `${id} names nothing for "${w}"`).toBeDefined();
-    }
     // Lucide's own default, kept where the numbers are: `regular` must
     // be 2 or the base pack is drawn unlike everything shipped before.
-    expect(packs[0].WEIGHT_MAP.regular, "regular must be lucide's own default").toBe(2);
+    expect(maps[0].WEIGHT_MAP.regular, "regular must be lucide's own default").toBe(2);
+  });
+
+  /** The providers are still the thing that installs a weight, and a
+   *  pack without one cannot be worn. Asserted on the source, for the
+   *  same reason as above. */
+  it('and every pack ships a provider', () => {
+    for (const pack of ['lucide', 'phosphor'])
+      expect(readFileSync(join(SRC, `lib/icons/${pack}.tsx`), 'utf8'),
+        `${pack} has no weight provider`).toMatch(/export function Provider/);
   });
 
   /** The inventory is the contract both packs answer to, so it must be

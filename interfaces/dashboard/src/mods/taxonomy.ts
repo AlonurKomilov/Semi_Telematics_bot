@@ -118,6 +118,8 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // chrome inside the question that repaints the whole app.
       { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
         axes: ['wallpaper'], modFields: ['wallpaper'] },
+      { id: 'cursor', title: 'Cursor', heading: 'Cursor',
+        axes: ['cursor'], modFields: ['cursor'] },
     ],
   },
   {

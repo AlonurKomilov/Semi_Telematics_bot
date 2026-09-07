@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PREPAINT_AXES } from '../preferences/registry';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CSS = readFileSync(join(SRC, 'index.css'), 'utf8')
@@ -55,12 +56,25 @@ const code = (src: string) =>
 
 const rendered = walk(SRC).map((f) => code(readFileSync(f, 'utf8'))).join('\n');
 
-/** Class and attribute markers this app invented — not Tailwind's, and
- *  not the token-driven `[data-*]` axes stamped on `<html>`. */
+/**
+ * The `[data-*]` stamps that go on `<html>`, which are axes rather than
+ * shell markers — no component "carries" them, `applyTheme` writes
+ * them.
+ *
+ * DERIVED from the axis list wherever it can be. A hand-written set is
+ * what this was, and adding `cursor` broke it: a new axis was styled,
+ * stamped, stored — and reported here as a marker nobody carried,
+ * which is a true statement about the wrong thing. The four that are
+ * not axes are listed with what they are.
+ */
 const HTML_AXES = new Set([
-  'data-accent', 'data-theme', 'data-radius', 'data-material', 'data-motion',
-  'data-font', 'data-wallpaper', 'data-mod-accent', 'data-ambient', 'data-surface',
-  'data-size', 'data-density', 'data-corners',
+  ...PREPAINT_AXES.map((a) => `data-${a}`),
+  'data-icons', 'data-iconpack', 'data-entrance',
+  'data-theme',       // the deprecated mode+accent alias
+  'data-mod-accent',  // the stand-down flag an injected accent stamps
+  'data-ambient',     // the mode, written by useAmbient
+  'data-surface',     // the route, written by AppShell for per-place canvases
+  'data-size',
 ]);
 
 /**

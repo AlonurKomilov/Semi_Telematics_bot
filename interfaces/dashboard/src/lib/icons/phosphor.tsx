@@ -10,17 +10,12 @@
  */
 import type { ReactNode } from 'react';
 import { IconContext } from '@phosphor-icons/react';
+import { WEIGHT_MAP } from './phosphor.weights';
 import type { IconWeightName } from './weight';
 
 export * from './phosphor.icons';
+export { WEIGHT_MAP } from './phosphor.weights';
 
-/** Ours are three; Phosphor's are six. `thin` is a hair too fine at
- *  small sizes, so `hairline` takes `light`. Exported, and held TOTAL
- *  over the axis by `iconLane.test.ts` for the same reason lucide's is:
- *  a missing entry leaves the weight silently unchanged. */
-export const WEIGHT_MAP: Record<IconWeightName, 'light' | 'regular' | 'bold'> = {
-  hairline: 'light', regular: 'regular', bold: 'bold',
-};
 
 export function Provider({ weight, children }: { weight: IconWeightName; children: ReactNode }) {
   return (

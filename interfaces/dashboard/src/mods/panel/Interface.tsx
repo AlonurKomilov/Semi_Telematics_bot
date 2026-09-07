@@ -29,6 +29,7 @@ import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
 import { WALLPAPERS, wallpaperById } from '../wallpaper';
+import { CURSOR_PACKS, cursorPackById } from '../cursor';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -378,6 +379,41 @@ export function TypefaceGroup({ label }: { label: LabelClass }) {
  * ruled lines, like engineering paper" is what a person is choosing
  * between, not a name.
  */
+/**
+ * The pointer.
+ *
+ * After Wallpaper, and last of all, because it is the only axis that
+ * leaves the app: everything above changes what is on the screen, this
+ * changes what is under the hand. The line under the chips says so
+ * plainly — a person choosing here is giving up the pointer their
+ * operating system draws, and that is worth one sentence rather than a
+ * discovery later.
+ */
+export function CursorGroup({ label }: { label: LabelClass }) {
+  const { t } = useTranslation();
+  const { theme, setTheme } = useMods();
+  const current = theme.cursor ?? 'system';
+  return (
+    <div>
+      <p className={`${label} mb-1.5`}>
+        {t('mods.group_cursor', 'Cursor')}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {CURSOR_PACKS.map((c) => (
+          <Chip key={c.id} value={c.id} current={current} label={t(`mods.cursor_${c.id}`, c.label)}
+            onClick={(v) => setTheme({ cursor: v })} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {current === 'system'
+          ? cursorPackById(current)?.why
+          : `${cursorPackById(current)?.why}. ${t('mods.cursor_replaces',
+              'Replaces the pointer your system draws, on this device only.')}`}
+      </p>
+    </div>
+  );
+}
+
 export function WallpaperGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
