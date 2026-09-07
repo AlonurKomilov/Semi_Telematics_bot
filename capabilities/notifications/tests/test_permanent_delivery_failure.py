@@ -228,3 +228,106 @@ class TestEmailGetsTheSameTreatment:
         h2 = await channel_health(pg_db, acct.id, u.id, "web_push",
                                   {"enabled_master": 0})
         assert h2["state"] == "ok"
+
+
+class TestAsyncBounces:
+    """The half SMTP can never report.
+
+    ``smtplib`` returns when the RELAY accepts — a promise to try. A
+    mailbox that is full, gone, or silently discarding answers an hour
+    later, to nobody. Resend's per-send id is what lets that late answer
+    find its way back to (account, user, channel), and from there to the
+    same retire-the-channel path a synchronous hard failure takes.
+
+    Ships dark: nothing routes through Resend until MAIL_PROVIDER and
+    RESEND_API_KEY are set, so these test the wiring, not a live
+    provider.
+    """
+
+    async def _delivered(self, pg_db, email_id: str):
+        """One notification email recorded as sent via Resend."""
+        acct = await pg_db.create_account(f"Bounce {email_id} Co")
+        u = await pg_db.create_user(telegram_id=7901, account_id=acct.id,
+                                    role=Role.FLEET)
+        await pg_db.upsert_notification_channel(
+            acct.id, "user", u.id, "email", address="a@b.com", verified=True)
+        await pg_db.record_notification_delivery(
+            acct.id, channel="email", recipient_type="user",
+            recipient_id=str(u.id), category="alert.faults",
+            correlation_key="alert:1",
+            handle={"resend_email_id": email_id})
+        return acct, u
+
+    async def test_the_event_resolves_by_id_not_by_address(self, pg_db):
+        """The id is the ONLY trusted key — matching on the recipient
+        address would let anyone who knows an email aim an event at
+        another account's channel."""
+        acct, _u = await self._delivered(pg_db, "re_abc123")
+        row = await pg_db.find_delivery_by_resend_email_id("re_abc123")
+        assert row and int(row["account_id"]) == acct.id
+        assert row["handle"]["resend_email_id"] == "re_abc123"
+        # A near-miss must not resolve: the LIKE is only a prefilter.
+        assert await pg_db.find_delivery_by_resend_email_id("re_abc") is None
+        assert await pg_db.find_delivery_by_resend_email_id("") is None
+
+    async def test_a_hard_bounce_retires_the_channel(self, pg_db):
+        from interfaces.api.routes.webhooks import (
+            _handle_notification_email_event as handle)
+        acct, u = await self._delivered(pg_db, "re_hard")
+        assert await handle(pg_db, "email.bounced", "re_hard",
+                            {"bounce": {"type": "Permanent"}}) is True
+        conn = await pg_db.get_notification_channel(
+            acct.id, "user", u.id, "email")
+        assert not conn["enabled_master"]
+        notices = await pg_db.list_inbox_notices(acct.id, u.id, limit=10)
+        assert [n for n in notices if n["category"] == "system.channel_broken"]
+
+    async def test_a_soft_bounce_changes_nothing(self, pg_db):
+        """Mailbox full, greylisting, a server having a bad afternoon —
+        the transient case, where retrying IS the right response.  An
+        unrecognised bounce class is treated as soft for the same reason
+        the synchronous classifier is conservative."""
+        from interfaces.api.routes.webhooks import (
+            _handle_notification_email_event as handle)
+        acct, u = await self._delivered(pg_db, "re_soft")
+        assert await handle(pg_db, "email.bounced", "re_soft",
+                            {"bounce": {"type": "Transient"}}) is True
+        conn = await pg_db.get_notification_channel(
+            acct.id, "user", u.id, "email")
+        assert conn["enabled_master"]                     # untouched
+        assert not [n for n in await pg_db.list_inbox_notices(acct.id, u.id)
+                    if n["category"] == "system.channel_broken"]
+
+    async def test_a_complaint_stops_sending_but_does_not_beg(self, pg_db):
+        """Someone marking us as spam made a deliberate choice. We stop
+        — continuing is how a sender gets blocklisted for everyone — but
+        "reconnect your email" would ask them to undo it."""
+        from interfaces.api.routes.webhooks import (
+            _handle_notification_email_event as handle)
+        acct, u = await self._delivered(pg_db, "re_spam")
+        assert await handle(pg_db, "email.complained", "re_spam", {}) is True
+        conn = await pg_db.get_notification_channel(
+            acct.id, "user", u.id, "email")
+        assert not conn["enabled_master"]                 # stopped
+        notice = [n for n in await pg_db.list_inbox_notices(acct.id, u.id)
+                  if n["category"] == "system.channel_broken"][0]
+        assert "spam report" in notice["title"]
+        assert "Reconnect it" not in notice["body"]       # never begs
+
+    async def test_an_event_for_somebody_elses_mail_is_declined(self, pg_db):
+        from interfaces.api.routes.webhooks import (
+            _handle_notification_email_event as handle)
+        await self._delivered(pg_db, "re_mine")
+        assert await handle(pg_db, "email.bounced", "re_not_mine",
+                            {"bounce": {"type": "Permanent"}}) is False
+
+    async def test_delivered_is_claimed_and_ignored(self, pg_db):
+        """Matched so it stays out of the unknown-event log, which would
+        otherwise fill with successes."""
+        from interfaces.api.routes.webhooks import (
+            _handle_notification_email_event as handle)
+        acct, u = await self._delivered(pg_db, "re_ok")
+        assert await handle(pg_db, "email.delivered", "re_ok", {}) is True
+        conn = await pg_db.get_notification_channel(
+            acct.id, "user", u.id, "email")
+        assert conn["enabled_master"]

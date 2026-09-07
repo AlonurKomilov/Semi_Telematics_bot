@@ -51,6 +51,44 @@ class NotificationDeliveriesMixin(_MixinBase):
         )
         await self._db.commit()
 
+    async def find_delivery_by_resend_email_id(
+        self, resend_email_id: str,
+    ) -> dict | None:
+        """The delivery a Resend webhook event belongs to, or None.
+
+        Resend's per-send id is the ONLY trusted key — the same rule the
+        invite webhook already follows.  Matching on the recipient
+        ADDRESS instead would let anyone who knows an email address
+        aim a forged-looking event at another account's channel, which
+        is why the address is not in this query at all.
+
+        The id lives in the ledger's ``handle`` — the column that
+        already stores per-send addresses for every channel (Telegram
+        keeps ``{chat_id, message_id}`` there), so an async bounce
+        resolves back to (account, user, channel) with no second table.
+        """
+        if not resend_email_id:
+            return None
+        cur = await self._db.execute(
+            "SELECT * FROM notification_deliveries "
+            " WHERE channel = 'email' AND handle LIKE ? "
+            " ORDER BY id DESC LIMIT 1",
+            (f'%"{resend_email_id}"%',),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        try:
+            out["handle"] = json.loads(out.get("handle") or "{}")
+        except Exception:
+            out["handle"] = {}
+        # LIKE is a prefilter, not the match: confirm the parsed id is
+        # exactly ours before anything acts on this row.
+        if (out["handle"] or {}).get("resend_email_id") != resend_email_id:
+            return None
+        return out
+
     async def get_notification_deliveries(
         self, account_id: int, correlation_key: str, *, channel: str = "",
     ) -> list[dict]:

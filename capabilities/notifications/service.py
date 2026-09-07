@@ -620,7 +620,8 @@ async def _retire_dead_channel(db, account_id: int, rtype: str, rid,
     try:
         await db.disable_notification_channel(
             account_id, rtype, str(rid), chan_key)
-        await _warn_channel_dead(db, account_id, rtype, rid, chan_key)
+        await _warn_channel_dead(db, account_id, rtype, rid, chan_key,
+                                 error=error)
     except Exception:
         # The drop already happened and is the important half; a failed
         # notice must not resurrect the loop.
@@ -629,7 +630,7 @@ async def _retire_dead_channel(db, account_id: int, rtype: str, rid,
 
 
 async def _warn_channel_dead(db, account_id: int, rtype: str, rid,
-                             chan_key: str) -> None:
+                             chan_key: str, error: str = "") -> None:
     """Tell the person their channel stopped working, in the ONE place
     that cannot itself fail: the in-app inbox.
 
@@ -641,13 +642,29 @@ async def _warn_channel_dead(db, account_id: int, rtype: str, rid,
     """
     if rtype != "user" or not str(rid).lstrip("-").isdigit():
         return
+    # A COMPLAINT is not a failure, and must not be worded like one.
+    # Someone marking our mail as spam made a deliberate choice; asking
+    # them to "reconnect" invites them to undo it, and a sender that
+    # keeps mailing after a complaint is a sender that gets blocklisted
+    # for everyone.  So we stop the same way and say a different thing.
+    complained = "complaint" in (error or "").lower()
+    name = channel_label(chan_key)
+    if complained:
+        title = f"{name} turned off after a spam report"
+        body = ("You marked our email as spam, so we stopped sending "
+                "there. Nothing else changed — alerts still reach you "
+                "in the bell. Turn it back on in Notification "
+                "preferences if that was not intended.")
+    else:
+        title = f"{name} is disconnected"
+        body = ("We could not deliver your notifications there, so it "
+                "has been switched off. Reconnect it in Notification "
+                "preferences to start receiving them again.")
     await db.add_inbox_notice(
         account_id, int(rid),
         category="system.channel_broken",
-        title=f"{channel_label(chan_key)} is disconnected",
-        body=("We could not deliver your notifications there, so it has "
-              "been switched off. Reconnect it in Notification "
-              "preferences to start receiving them again."),
+        title=title,
+        body=body,
         severity="warning",
         url="/notifications/preferences",
         # The channel key, so a reader can MATCH on it instead of parsing

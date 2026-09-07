@@ -109,6 +109,60 @@ async def _track_bad_sig(client_ip: str) -> bool:
     )
 
 
+async def _handle_notification_email_event(
+    db, event_type: str, resend_email_id: str, event_data: dict,
+) -> bool:
+    """A Resend event about NOTIFICATION mail. True when it was ours.
+
+    Only two outcomes act, and they are deliberately different:
+
+      hard bounce  the address will never accept mail, so the channel
+                   retires exactly as a synchronous "no such user"
+                   does — dropped, switched off, one notice in the bell
+                   with the way to reconnect.
+      complaint    the person marked us as spam.  We also stop, because
+                   continuing after that is how a sender ends up
+                   blocklisted for everyone — but the notice must NOT
+                   read "reconnect your email", which would ask them to
+                   undo a choice they just made on purpose.
+
+    A SOFT bounce (mailbox full, greylisting, a server having a bad
+    afternoon) is left alone: it is the transient case, and retrying is
+    the correct response.  ``email.delivered`` is matched and ignored —
+    returning True keeps it out of the "unknown event" log, which would
+    otherwise fill with successes.
+    """
+    if event_type not in ("email.bounced", "email.complained",
+                          "email.delivered"):
+        return False
+    row = await db.find_delivery_by_resend_email_id(resend_email_id)
+    if not row:
+        return False
+    if event_type == "email.delivered":
+        return True                      # ours, and nothing to do
+
+    if event_type == "email.bounced":
+        # Resend reports bounce class; only "hard" is permanent.  An
+        # unrecognised class is treated as SOFT — the same conservative
+        # default the synchronous classifier uses, because dropping mail
+        # that would have arrived is the worse mistake.
+        b = (event_data.get("bounce") or {}) if isinstance(
+            event_data.get("bounce"), dict) else {}
+        kind = str(b.get("type") or event_data.get("bounce_type") or "").lower()
+        if "hard" not in kind and "permanent" not in kind:
+            logger.info("resend_webhook: soft bounce for %s — leaving it alone",
+                        resend_email_id[:12])
+            return True
+
+    from capabilities.notifications.service import _retire_dead_channel
+    reason = ("hard bounce" if event_type == "email.bounced"
+              else "spam complaint")
+    await _retire_dead_channel(
+        db, int(row["account_id"]), row["recipient_type"],
+        row["recipient_id"], "email", [], reason, "resend_webhook")
+    return True
+
+
 @router.post("/webhooks/resend")
 async def resend_webhook(
     request: Request,
@@ -299,6 +353,21 @@ async def resend_webhook(
                 invite = candidate
 
     if not invite:
+        # Not an invite — try the NOTIFICATION ledger before giving up.
+        #
+        # This is the half SMTP can never do.  smtplib returns when the
+        # RELAY accepts, which is a promise to try; a mailbox that is
+        # full, gone, or silently discarding answers an hour later to
+        # nobody.  Resend's per-send id lets that late answer find its
+        # way back to (account, user, channel) — and from there to the
+        # same retire-the-channel path a synchronous hard failure takes,
+        # so the person is told once, in the bell, either way.
+        handled = await _handle_notification_email_event(
+            db, event_type, resend_email_id, event_data)
+        if handled:
+            await db.mark_email_webhook_event_seen(svix_id, event_type)
+            _record(event_type, "notification")
+            return {"ok": True, "matched": True}
         logger.info(
             "resend_webhook: %s for unknown email_id=%s rcp=%s@%s (no invite match)",
             event_type, resend_email_id[:12], rcp_hash, rcp_domain,

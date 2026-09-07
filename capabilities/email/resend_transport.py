@@ -75,7 +75,7 @@ def is_resend_api_enabled() -> bool:
     )
 
 
-async def send_invite_via_resend(
+async def send_via_resend(
     *,
     to: str,
     subject: str,
@@ -87,7 +87,12 @@ async def send_invite_via_resend(
     headers: Optional[Mapping[str, str]] = None,
     tags: Optional[Mapping[str, str]] = None,
 ) -> Optional[str]:
-    """POST a single invite email via Resend's HTTPS API.
+    """POST a single email via Resend's HTTPS API.
+
+    Named for the TRANSPORT, not the first feature to use it: invites
+    were the only caller when this landed, and ``send_invite_via_resend``
+    would have made every later caller read as a misuse.  Notification
+    email is the second caller.
 
     Returns Resend's ``email_id`` on success (the per-send identifier
     we persist on the invite row for webhook-event lookup).  Returns
@@ -108,10 +113,10 @@ async def send_invite_via_resend(
     if not api_key:
         # is_resend_api_enabled() should have prevented this; log
         # loudly and return None so caller falls back.
-        logger.warning("send_invite_via_resend called without RESEND_API_KEY")
+        logger.warning("send_via_resend called without RESEND_API_KEY")
         return None
     if not to or "@" not in to:
-        logger.debug("send_invite_via_resend: invalid 'to' %r", to)
+        logger.debug("send_via_resend: invalid 'to' %r", to)
         return None
 
     # Construct From in the same display-name + address shape the
@@ -186,3 +191,8 @@ async def send_invite_via_resend(
     except Exception as e:
         logger.warning("Resend API call failed: %s", e)
         return None
+
+
+# The old name, kept so a caller written before notifications adopted
+# this transport keeps working.  Prefer ``send_via_resend``.
+send_invite_via_resend = send_via_resend

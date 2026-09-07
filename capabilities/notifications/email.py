@@ -182,6 +182,41 @@ class EmailChannel:
             headers["List-Unsubscribe"] = lu
             headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
+        # Resend FIRST when the account is configured for it, because it
+        # is the only path that can report what happened AFTER the
+        # handshake.  SMTP returns when the RELAY accepts — a promise to
+        # try — and a mailbox that is full, gone, or bouncing answers an
+        # hour later to nobody.  Resend hands back a per-send id and
+        # posts the outcome to /webhooks/resend, which is what lets a
+        # dead address retire its own channel instead of failing
+        # silently forever.
+        #
+        # Falls back to SMTP when unconfigured, so this ships dark and
+        # costs nothing until MAIL_PROVIDER=resend + RESEND_API_KEY.
+        try:
+            from capabilities.email.resend_transport import (
+                is_resend_api_enabled, send_via_resend)
+        except Exception:
+            is_resend_api_enabled, send_via_resend = (lambda: False), None
+        if send_via_resend is not None and is_resend_api_enabled():
+            email_id = await send_via_resend(
+                to=to, subject=payload.subject or "Notification",
+                text_body=payload.text,
+                html_body=payload.extra.get("html") or payload.text,
+                from_address=os.getenv('SMTP_FROM', ''),
+                headers=headers,
+            )
+            if email_id:
+                # The id IS the handle: the delivery ledger already
+                # stores per-send addresses this way (Telegram keeps
+                # {chat_id, message_id} here), so the webhook can resolve
+                # an event back to this account/user/channel without a
+                # second table — and without matching on the address,
+                # which would be a cross-account hijack vector.
+                return DeliveryResult(ok=True, handle={"resend_email_id": email_id})
+            logger.warning("resend send failed for %s — falling back to SMTP",
+                           recipient.id)
+
         try:
             # The DETAILED sender: a bare bool cannot tell "the relay is
             # busy" from "that mailbox does not exist", and the two need
