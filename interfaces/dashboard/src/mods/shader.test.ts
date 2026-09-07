@@ -104,6 +104,39 @@ describe('every preset says what it does, and only that', () => {
   });
 });
 
+describe('the light can be seen where it is chosen', () => {
+  /**
+   * The failure this catches is the one the owner hit: three chips, a
+   * stored value, a stamped attribute — and nothing moving on the page
+   * you are standing on.
+   *
+   * `Card` is a bordered surface and draws no shadow at all. The scale
+   * lives on popovers, menus and map controls, so every visible effect
+   * of this axis is somewhere else. A preset is chosen by eye, and an
+   * eye needs something to look at.
+   */
+  const PANEL = readFileSync(join(ROOT, 'src', 'mods', 'panel', 'Effects.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+
+  it('the panel shows a specimen, and it wears a real step of the scale', () => {
+    const specimen = /data-shader-specimen[^>]*/.exec(PANEL)?.[0]
+      ?? /className="[^"]*"[^>]*data-shader-specimen/.exec(PANEL)?.[0];
+    expect(specimen, 'no specimen — the light is invisible from its own page')
+      .toBeDefined();
+    const tag = /<span[\s\S]{0,400}?data-shader-specimen[\s\S]{0,400}?\/>/.exec(PANEL)?.[0] ?? '';
+    expect(tag, 'the specimen carries no shadow — it samples nothing')
+      .toMatch(/\bshadow-(sm|md|lg|xl|2xl)\b/);
+  });
+
+  it('and the step it samples is one the app actually uses', () => {
+    const tag = /<span[\s\S]{0,400}?data-shader-specimen[\s\S]{0,400}?\/>/.exec(PANEL)?.[0] ?? '';
+    const step = /\bshadow-(sm|md|lg|xl|2xl)\b/.exec(tag)?.[1];
+    expect(step, 'no step parsed').toBeDefined();
+    expect(Object.keys(shadowScale()), `shadow-${step} is not in the scale`)
+      .toContain(step!);
+  });
+});
+
 describe('the light stays light', () => {
   /** `flat` is TODAY, exactly. Every multiplier 1, so an unstamped
    *  document and a `flat` one are the same document — which is what

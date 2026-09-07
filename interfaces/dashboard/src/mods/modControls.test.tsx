@@ -380,7 +380,18 @@ describe('each section renders its own controls and only its own', () => {
       const { container } = render(<ModControls section={section} />);
 
       for (const label of SECTIONS[section]) {
-        expect(screen.getByText(label), `${section} is missing "${label}"`).toBeTruthy();
+        const el = screen.getByText(label);
+        expect(el, `${section} is missing "${label}"`).toBeTruthy();
+        // AND it is a group, not a line of text that says the same
+        // word. The check above passes on either, and the census below
+        // only walks what already wears the caps class — so a heading
+        // rendered as a sub-label is filed nowhere, asserted about
+        // nothing, and reads as a child of the group above it. That is
+        // what happened to Shaders: it shipped looking like a member of
+        // Motion.
+        expect(el.className, `"${label}" renders without the group class — `
+          + 'it will read as part of whatever group is above it')
+          .toMatch(/uppercase/);
       }
       for (const [other, labels] of Object.entries(SECTIONS)) {
         if (other === section) continue;

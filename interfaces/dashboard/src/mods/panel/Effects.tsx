@@ -32,7 +32,7 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
           time. Motion happens when something moves and Ambient when
           nobody touches anything; the light is simply how the room is
           lit while the work is being done. */}
-      <p className="text-xs text-foreground mt-0.5 mb-1.5">
+      <p className={`${label} mb-1.5`}>
         {t('mods.group_shader', 'Shaders')}
       </p>
       <div className="flex flex-wrap gap-1">
@@ -42,9 +42,23 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
             onClick={(v) => setTheme({ shader: v })} />
         ))}
       </div>
-      <p className="text-2xs text-muted-foreground mt-1.5 mb-2.5">
-        {shaderPackById(theme.shader ?? 'flat')?.why}
-      </p>
+      {/* A SPECIMEN, because the light cannot be seen from here without
+          one. `Card` is a bordered surface and draws no shadow at all —
+          the scale lives on popovers, menus and map controls — so a
+          person picking a preset on this page would change the light
+          across the app and watch nothing move in front of them.
+          `shadow-lg` is the step 37 of those overlays use, so this tile
+          is a real sample rather than a decoration of one. */}
+      <div className="flex items-center gap-2 mt-2 mb-2.5">
+        <span
+          aria-hidden
+          data-shader-specimen
+          className="shrink-0 w-10 h-6 rounded-md bg-card border border-border shadow-lg"
+        />
+        <p className="text-2xs text-muted-foreground">
+          {shaderPackById(theme.shader ?? 'flat')?.why}
+        </p>
+      </div>
 
       {/* The header carries the intensity, exactly as Sound's does.
           GX gives every mods category a percentage; ours had one for
