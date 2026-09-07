@@ -7,9 +7,9 @@
  *                             categories with how far each is dialled
  *   /mods/:category           a grid of the category's items, each tile
  *                             saying whether it has been touched
- *   /mods/:category/:item     the item's control — the SAME `Section`
- *                             the profile card renders, so the page and
- *                             the card cannot answer differently
+ *   /mods/:category/:item     ONE item's control — the same component
+ *                             the panel and the card compose into their
+ *                             category block, rendered on its own
  *
  * It renders FROM THE TAXONOMY. Every tile, heading and route segment
  * comes from `mods/taxonomy.ts`; adding an item there adds it here with
@@ -33,9 +33,12 @@ import { cn } from '../../lib/utils';
 import { usePreference, preferences } from '../../preferences';
 import { useMods } from '../context';
 import { ModControls } from '../panel/ModControls';
-import { Section, SECTION_AXES } from '../Modifications';
+import { ITEM_GROUPS, CATEGORY_CONTROLS } from '../panel/items';
 import SizeCard from '../SizeCard';
 import { modById } from '../catalogue';
+import { RotateCcw } from '../../lib/icons';
+import { undoableAction } from '../../components/banners/stagedAction';
+import { MOD_DEFAULT, DEFS } from '../../preferences/registry';
 import {
   TAXONOMY, categoryById, browsableItemsOf, type CategoryId, type TaxonomyItem,
 } from '../taxonomy';
@@ -168,14 +171,27 @@ function Hub() {
   );
 }
 
-/** Level 1 — a category's items. */
+/** The caps label an item wears on its own page — §4's canonical step. */
+const PAGE_LABEL = 'text-xs font-medium uppercase tracking-wide text-muted-foreground';
+
+/** Level 1 — a category's items, under the category's own control. */
 function CategoryGrid({ id }: { id: CategoryId }) {
   const cat = categoryById(id)!;
   const { theme } = useMods();
+  const Own = CATEGORY_CONTROLS[cat.id];
   return (
     <div className="space-y-6">
       <Crumb to={MODS_PAGE_HREF}>Mods</Crumb>
       <PageHeader icon={iconFor(cat.id)} title={cat.title} />
+      {/* What the category owns and every item under it shares — the
+          sound level and cue set. Above the tiles rather than repeated
+          on each item page: a person setting the volume is not setting
+          the keyboard. */}
+      {Own && (
+        <Card render={<section />} data-testid="mods-category-own">
+          <Own label={PAGE_LABEL} />
+        </Card>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="mods-category">
         {browsableItemsOf(cat.id).map((item) => (
           <Tile
@@ -195,28 +211,83 @@ function CategoryGrid({ id }: { id: CategoryId }) {
   );
 }
 
-/** Level 2 — one item's control: the card's own Section, or SizeCard. */
+/**
+ * "Reset <item>", for one item.
+ *
+ * The category reset on the profile card restores every axis of the
+ * category at once; a page about one thing offers to put back that one
+ * thing. Its targets are the item's own declaration — `axes` minus
+ * `keep` to the registry default, `prefs` to theirs — so an item that
+ * gains an axis gains a reset for it without anyone editing this.
+ */
+function ItemReset({ item }: { item: TaxonomyItem }) {
+  const { theme, setTheme } = useMods();
+  const axes = item.axes.filter((a) => !(item.keep ?? []).includes(a));
+  const prefs = item.prefs ?? [];
+  const axisDefault = (a: string) => (MOD_DEFAULT as unknown as Record<string, unknown>)[a];
+  const prefDefault = (k: string) => (DEFS as unknown as Record<string, { default: unknown }>)[k].default;
+  const readAxis = (a: string) => (theme as unknown as Record<string, unknown>)[a];
+
+  const atDefault = axes.every((a) => readAxis(a) === axisDefault(a))
+    && prefs.every((k) => read(k) === prefDefault(k));
+  if (atDefault) return null;
+
+  const reset = () => {
+    // Snapshot before the write — this is the person's own configuration.
+    const wasAxes = Object.fromEntries(axes.map((a) => [a, readAxis(a)]));
+    const wasPrefs = Object.fromEntries(prefs.map((k) => [k, read(k)]));
+    setTheme(Object.fromEntries(axes.map((a) => [a, axisDefault(a)])));
+    for (const k of prefs) preferences.set(k as never, prefDefault(k) as never);
+    undoableAction({
+      label: `${item.title} reset`,
+      undo: async () => {
+        setTheme(wasAxes);
+        for (const k of prefs) preferences.set(k as never, wasPrefs[k] as never);
+      },
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={reset}
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground shrink-0 min-h-tap"
+    >
+      <RotateCcw className="size-3.5" />
+      Reset {item.title.toLowerCase()}
+    </button>
+  );
+}
+
+/** Level 2 — ONE item's control, or SizeCard for either half of Size. */
 function ItemControl({ id, itemId }: { id: CategoryId; itemId: string }) {
   const cat = categoryById(id)!;
   const item = browsableItemsOf(cat.id).find((i) => i.id === itemId);
+  if (!item) return <NotHere what={`${cat.id}/${itemId}`} />;
+  const Item = ITEM_GROUPS[`${cat.id}/${item.id}`];
   return (
     <div className="space-y-6">
       <Crumb to={`${MODS_PAGE_HREF}/${cat.id}`}>{cat.title}</Crumb>
-      <PageHeader icon={iconFor(cat.id, item)} title={item?.title ?? cat.title} />
+      <PageHeader
+        icon={iconFor(cat.id, item)}
+        title={item.title}
+        actions={cat.id === 'size' ? undefined : <ItemReset item={item} />}
+      />
       {/* SizeCard is already a Card of its own (it owns #interface-size
           and its pinned styles); wrapping it again would enclose a box
-          in a box and mount that anchor id twice. The other categories
-          render the profile card's Section, standalone, inside one Card. */}
+          in a box and mount that anchor id twice. Its two items are the
+          two halves of that one card, so either address renders it
+          whole — the one place on this page a tile does not open on a
+          single thing, and `panel: false` in the taxonomy says why. */}
       {cat.id === 'size'
         ? <div data-testid="mods-item"><SizeCard /></div>
-        : (
-          <Card render={<section />} data-testid="mods-item">
-            {cat.id === 'sounds'
-              ? <Section id="sounds" title="Sounds" label="Reset sounds" axes={{}} standalone />
-              : <Section id={cat.id} title={cat.title} label={`Reset ${cat.title.toLowerCase()}`}
-                  axes={SECTION_AXES[cat.id]} standalone />}
-          </Card>
-        )}
+        : Item
+          ? (
+            <Card render={<section />} data-testid="mods-item">
+              <Item label={PAGE_LABEL} />
+            </Card>
+          )
+          : <NotHere what={`${cat.id}/${itemId}`} />}
     </div>
   );
 }

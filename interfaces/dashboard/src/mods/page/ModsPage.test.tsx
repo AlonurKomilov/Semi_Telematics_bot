@@ -8,7 +8,7 @@
  * instead of rendering an empty hub.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 vi.mock('react-i18next', async (orig) => ({
@@ -130,14 +130,24 @@ describe('a category', () => {
 });
 
 describe('an item', () => {
-  it('renders the card\'s own section — the same controls, not a copy', () => {
+  /**
+   * The depth the URL promises, kept.
+   *
+   * This block used to assert the OPPOSITE — that `/mods/interface/corners`
+   * showed Color, Material, Typeface and Icons, "the same controls, not a
+   * copy". It did, and that was the defect: the last path segment changed
+   * the heading and nothing under it, so `/mods/sounds/keyboard` and
+   * `/mods/sounds/interface` were one view with two names. The owner
+   * noticed before any test did, with GX's own page as the reference —
+   * every item there is its own view.
+   */
+  it('renders ONE item — its own control, and none of its siblings', () => {
     at('/mods/interface/corners');
-    const box = screen.getByTestId('mods-item');
-    // The Interface section's headings, exactly as the profile card
-    // renders them. A page-side reimplementation would have to
-    // reproduce all of these to pass.
-    for (const label of ['Color', 'Corners', 'Material', 'Typeface', 'Icons'])
-      expect(box.textContent, `${label} missing — the item level is not the card's Section`).toContain(label);
+    const box = screen.getByTestId('mods-item').textContent ?? '';
+    expect(box).toContain('Corners');
+    for (const sibling of ['Color', 'Material', 'Typeface', 'Icons', 'Wallpaper', 'Cursor'])
+      expect(box, `${sibling} is on the Corners page — the item level is the whole category again`)
+        .not.toContain(sibling);
   });
 
   it('renders SizeCard for the size category — once, and not inside another card', () => {
@@ -151,17 +161,87 @@ describe('an item', () => {
     expect(box.querySelectorAll('section section').length, 'a card inside a card').toBe(0);
   });
 
-  it('renders a section standalone — no stray rule above its heading', () => {
+  it('renders an item standalone — no stray rule above it', () => {
     at('/mods/interface/corners');
     const box = screen.getByTestId('mods-item');
-    // On the profile card a Section stacks under the mod row and carries
+    // On the profile card a section stacks under the mod row and carries
     // a top rule; alone in its own card that rule has nothing above it.
-    expect(box.querySelector('.border-t'), 'the section brought its stacking rule with it').toBeNull();
+    expect(box.querySelector('.border-t'), 'the item brought a stacking rule with it').toBeNull();
   });
 
-  it('renders the sounds section for a sound item', () => {
+  it('renders a sound item without the category\'s volume — that moved up a level', () => {
     at('/mods/sounds/keyboard');
-    expect(screen.getByTestId('mods-item').textContent).toContain('Keyboard');
+    const box = screen.getByTestId('mods-item');
+    expect(box.textContent).toContain('Keyboard');
+    expect(box.textContent, 'a sibling switch is on the Keyboard page').not.toContain('Live alerts');
+    expect(box.textContent, 'a sibling switch is on the Keyboard page').not.toContain('Interface sounds');
+    expect(box.querySelector('input,[role="slider"]'), 'the volume slider is on an item page')
+      .toBeNull();
+  });
+
+  it('and an address naming no item says so, rather than showing the category', () => {
+    at('/mods/sounds/nonsense');
+    // The title, not the description: `PageHeader description` renders
+    // as a learn-once ⓘ, so the sentence is in a tooltip rather than in
+    // the text — same reason the category-level test reads the title.
+    expect(screen.getByText('Not a category')).toBeTruthy();
+    expect(screen.queryByTestId('mods-item')).toBeNull();
+  });
+});
+
+describe('a category', () => {
+  /**
+   * What the category OWNS renders on its page, above its tiles — the
+   * sound level and cue set, shared by every lane that makes a noise.
+   * It is why the item pages could stop being the whole category:
+   * what was shared moved up rather than being repeated on each item.
+   */
+  it('shows its own control above its tiles — sounds has one', () => {
+    at('/mods/sounds');
+    const own = screen.getByTestId('mods-category-own');
+    // The slider's own selector (slider.tsx:71): base-ui's thumb is an
+    // <input>, and jsdom does not always surface the role.
+    expect(own.querySelector('input,[role="slider"]'), 'the volume is not on the category page').toBeTruthy();
+    expect(own.textContent).toContain('Chime');
+    // The tiles are still there, under it.
+    expect(screen.getByTestId('mods-category').querySelectorAll('a').length).toBe(3);
+  });
+
+  it('and a category with nothing of its own shows only its tiles', () => {
+    at('/mods/interface');
+    expect(screen.queryByTestId('mods-category-own'),
+      'Interface grew a category-level control nobody declared').toBeNull();
+  });
+});
+
+describe('an item can be put back on its own', () => {
+  it('offers a reset only once something moved, and the reset restores the default', () => {
+    at('/mods/interface/corners');
+    expect(screen.queryByRole('button', { name: /reset corners/i }),
+      'a reset offered at default — there is nothing to put back').toBeNull();
+
+    // Move the axis the way a person would.
+    fireEvent.click(screen.getByRole('button', { name: /^pill$/i }));
+    expect(preferences.get('mods.theme').radius).toBe('pill');
+    const reset = screen.getByRole('button', { name: /reset corners/i });
+
+    fireEvent.click(reset);
+    expect(preferences.get('mods.theme').radius, 'the reset did not restore the default')
+      .toBe(MOD_DEFAULT.radius);
+    expect(screen.queryByRole('button', { name: /reset corners/i })).toBeNull();
+  });
+
+  it('resets a preference-backed item too, and nothing beside it', () => {
+    at('/mods/sounds/keyboard');
+    fireEvent.click(screen.getByRole('switch', { name: /keyboard/i }));
+    expect(preferences.get('mods.sound.keyboard')).toBe(true);
+    // A neighbour, left on deliberately, must survive this item's reset.
+    preferences.set('dispatch.soundOn', true);
+
+    fireEvent.click(screen.getByRole('button', { name: /reset keyboard/i }));
+    expect(preferences.get('mods.sound.keyboard')).toBe(false);
+    expect(preferences.get('dispatch.soundOn'), 'resetting Keyboard reset Live alerts')
+      .toBe(true);
   });
 });
 
@@ -182,7 +262,7 @@ describe('a tile promises a control, and the page keeps the promise', () => {
    */
   for (const cat of TAXONOMY)
     for (const item of browsableItemsOf(cat.id))
-      it(`${cat.id}/${item.id} — the page says "${item.title}"`, () => {
+      it(`${cat.id}/${item.id} — the page says "${item.title}" and names no sibling`, () => {
         at(`/mods/${cat.id}/${item.id}`);
         const control = screen.getByTestId('mods-item');
         // The subject, asserted rather than assumed. Widen `control` to
@@ -190,22 +270,28 @@ describe('a tile promises a control, and the page keeps the promise', () => {
         // construction, because the header prints the title.
         expect(control.contains(screen.getByRole('heading', { name: item.title })),
           'this is measuring the header, not the controls').toBe(false);
-        expect(control.textContent?.toLowerCase(),
-          `the tile opens a page with no ${item.title} on it`)
+        const text = control.textContent?.toLowerCase() ?? '';
+        expect(text, `the tile opens a page with no ${item.title} on it`)
           .toContain(item.title.toLowerCase());
+        // And ONLY that. Size is the declared exception: `panel: false`
+        // in the taxonomy because it is one card, and its two items are
+        // that card's two halves — either address renders it whole.
+        if (cat.id === 'size') return;
+        for (const sibling of browsableItemsOf(cat.id).filter((i) => i.id !== item.id))
+          expect(text, `${sibling.title} is on the ${item.title} page — the item level is the whole category again`)
+            .not.toContain(sibling.title.toLowerCase());
       });
 
-  /** The positive control, and the bug itself written down. If the
-   *  check above ever reads the header — which prints the title — every
-   *  case would pass by construction. This is the assertion that says
-   *  the panel text is a real measurement: the Effects controls contain
-   *  Motion and Ambient and NOT Entrance, which is why Entrance has no
-   *  tile any more. */
+  /** The positive control. If the check above ever reads the header —
+   *  which prints the title — every case would pass by construction.
+   *  This is the assertion that says the item text is a real
+   *  measurement: the Motion page says motion and does NOT say
+   *  entrance, which has no page and no tile. */
   it('and that check is reading the controls, not the header', () => {
     at('/mods/effects/motion');
     const control = screen.getByTestId('mods-item').textContent?.toLowerCase();
     expect(control).toContain('motion');
-    expect(control, 'the Effects controls grew an Entrance — give it a tile back')
+    expect(control, 'the Motion page grew an Entrance — give it a tile back')
       .not.toContain('entrance');
   });
 });

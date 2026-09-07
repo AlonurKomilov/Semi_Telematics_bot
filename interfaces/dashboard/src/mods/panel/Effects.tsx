@@ -1,10 +1,11 @@
 /**
- * The Effects category — how the app moves, and what it does when
- * nobody is watching it move.
+ * The Effects category — the light the app sits in, how it moves, and
+ * what it does when nobody is watching it move.
  *
- * One group rather than two exported pieces: Motion and Ambient always
- * render together, on the page only, and splitting them would be a file
- * boundary that no surface asks for.
+ * Three items and one composition, for the same reason Sounds has
+ * them: a tile on the /mods page opens a page about ONE thing, while
+ * the panel and the profile card show the category whole. The
+ * composition is the DOM those two surfaces always rendered.
  */
 import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
@@ -22,16 +23,17 @@ const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
     label: m === 'default' ? 'Normal' : m === 'calm' ? 'Calm' : 'Snappy',
   }));
 
-export function EffectsGroup({ label }: { label: LabelClass }) {
+/**
+ * The light. First in the composition because it is the one effect
+ * that is on all the time: Motion happens when something moves and
+ * Ambient when nobody touches anything; the light is simply how the
+ * room is lit while the work is being done.
+ */
+export function ShadersItem({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
-  const { value: ambient, setValue: setAmbient } = usePreference('mods.ambient');
   return (
     <div>
-      {/* Light first, because it is the one effect that is on all the
-          time. Motion happens when something moves and Ambient when
-          nobody touches anything; the light is simply how the room is
-          lit while the work is being done. */}
       <p className={`${label} mb-1.5`}>
         {t('mods.group_shader', 'Shaders')}
       </p>
@@ -49,7 +51,7 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
           across the app and watch nothing move in front of them.
           `shadow-lg` is the step 37 of those overlays use, so this tile
           is a real sample rather than a decoration of one. */}
-      <div className="flex items-center gap-2 mt-2 mb-2.5">
+      <div className="flex items-center gap-2 mt-2">
         <span
           aria-hidden
           data-shader-specimen
@@ -59,16 +61,26 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
           {shaderPackById(theme.shader ?? 'flat')?.why}
         </p>
       </div>
+    </div>
+  );
+}
 
-      {/* The header carries the intensity, exactly as Sound's does.
-          GX gives every mods category a percentage; ours had one for
-          Sound and one for Size and nothing here, even though motion
-          has been a multiplier all along.
-
-          It is INVERTED on the way out — see `motionPercent`. The
-          stored scale multiplies duration, so calm is 1.6; every other
-          percentage on this card means more of the thing named, and a
-          "Motion 160%" that moves least would be the only one lying. */}
+/**
+ * The header carries the intensity, exactly as Sound's does. GX gives
+ * every mods category a percentage; ours had one for Sound and one for
+ * Size and nothing here, even though motion has been a multiplier all
+ * along.
+ *
+ * It is INVERTED on the way out — see `motionPercent`. The stored
+ * scale multiplies duration, so calm is 1.6; every other percentage on
+ * this card means more of the thing named, and a "Motion 160%" that
+ * moves least would be the only one lying.
+ */
+export function MotionItem({ label }: { label: LabelClass }) {
+  const { t } = useTranslation();
+  const { theme, setTheme } = useMods();
+  return (
+    <div>
       <div className="flex items-center justify-between gap-2 mb-1.5">
         <p className={label}>
           {t('mods.group_motion', 'Motion')}
@@ -85,13 +97,23 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
             onClick={(v) => setTheme({ motion: v })} />
         ))}
       </div>
+    </div>
+  );
+}
 
-      {/* Ambient is an effect in the literal sense — it is a thing the
-          app does on its own, over time, without being asked. It sits
-          beside Motion rather than in Interface for that reason: a
-          person looking for "what does this screen do while I am not
-          here" is not looking under colours and corners. */}
-      <div className="flex items-center justify-between gap-2 mt-2.5">
+/**
+ * Ambient is an effect in the literal sense — it is a thing the app
+ * does on its own, over time, without being asked. It sits beside
+ * Motion rather than in Interface for that reason: a person looking for
+ * "what does this screen do while I am not here" is not looking under
+ * colours and corners.
+ */
+export function AmbientItem() {
+  const { t } = useTranslation();
+  const { value: ambient, setValue: setAmbient } = usePreference('mods.ambient');
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-foreground">
           {t('mods.ambient_label', 'Ambient mode')}
         </span>
@@ -108,6 +130,17 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
           'After a few untouched minutes the page grows and the menus fade, so it reads from across the room. Alerts stay their own size.',
         )}
       </p>
+    </div>
+  );
+}
+
+/** The whole category in one block — the panel's and the card's DOM. */
+export function EffectsGroup({ label }: { label: LabelClass }) {
+  return (
+    <div>
+      <ShadersItem label={label} />
+      <div className="mt-2.5"><MotionItem label={label} /></div>
+      <div className="mt-2.5"><AmbientItem /></div>
     </div>
   );
 }

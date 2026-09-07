@@ -129,10 +129,10 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     heading: 'Sound',
     // One volume above every item — engine.test.ts holds the line that
     // Sounds has exactly one intensity.
-    prefs: ['mods.sound.volume'],
+    prefs: ['mods.sound.volume', 'mods.sound.pack'],
     items: [
       { id: 'interface', title: 'Interface sounds',
-        axes: [], prefs: ['mods.sound.ui', 'mods.sound.pack'], modFields: ['sound'] },
+        axes: [], prefs: ['mods.sound.ui'], modFields: ['sound'] },
       { id: 'keyboard',  title: 'Keyboard',
         axes: [], prefs: ['mods.sound.keyboard', 'mods.sound.keyboard.pack'] },
       { id: 'alerts',    title: 'Live alerts',
