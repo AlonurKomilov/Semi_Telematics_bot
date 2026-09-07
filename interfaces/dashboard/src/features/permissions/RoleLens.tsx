@@ -271,22 +271,20 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           {configCells(fam)}
         </div>
         {fam.children.length > 0 && (
-          // The sub-features are a region INSIDE the feature: a tinted
-          // block with one tree bar down its side, rows denser and one
-          // line each, the divider lighter and inside the block — so the
-          // eye reads "belongs to Vehicles" before it reads a word.
-          // The block keeps the full grid width, so every tick stays in
-          // its column; only the name cell indents.
-          <div className="relative bg-muted/30">
-            <span aria-hidden className="absolute left-1 top-1 bottom-1 w-0.5 rounded-full bg-border" />
+          // The sub-features are a region INSIDE the feature: the whole
+          // block steps in from the left, wears a tinted fill and a bar
+          // on its left edge, and a little air separates it from the
+          // next feature — so the eye reads "belongs to Vehicles" before
+          // it reads a word.  The grid's fixed columns hang off the
+          // RIGHT edge, so the indent is absorbed by the name column
+          // alone: every tick stays exactly in its column.
+          <div className="ml-6 mb-1.5 rounded-r-md border-l-2 border-border bg-muted/30">
             {fam.children.map((c) => {
               const cDelta = seniorView && rowDelta(c.row);
               return (
             <div key={rowId(c.row)} className={childRowCls()}>
-              <div className="relative min-w-0 pl-5">
-                {/* the elbow from the tree bar to the name */}
-                <span aria-hidden className="absolute left-1.5 top-1/2 h-px w-3 bg-border" />
-                <span className="text-xs font-medium text-foreground/80">
+              <div className="min-w-0 pl-3">
+                <span className="text-xs text-foreground/80">
                   {c.row.label}{cDelta && <DeltaChip />}{alsoChip(c.row)}
                 </span>
                 {c.row.description && (
