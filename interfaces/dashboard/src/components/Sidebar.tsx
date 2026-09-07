@@ -111,7 +111,7 @@ export default function Sidebar({ forceExpanded = false }: {
       // the ENTIRE content area every frame for the whole duration —
       // measured at ~39 dropped frames (~400ms of stutter) per toggle
       // with a large board open.  An instant snap costs one relayout.
-      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar text-sidebar-foreground flex flex-col shrink-0 h-screen`}
+      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar chrome-pane text-sidebar-foreground flex flex-col shrink-0 h-screen`}
     >
       {/* Logo row + collapse toggle.  Expanded: one h-12 row carries the
           brand text, persona selector, and collapse button — plenty of

@@ -79,10 +79,17 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground chrome-ground">
       {/* Recedes in ambient mode — see the [data-ambient] block in
           index.css. Marked rather than selected by shape, so a shell
           refactor cannot silently take the mode's meaning with it. */}
+      {/* `chrome-ground` above is where a wallpaper paints, and every
+          chrome surface — this sidebar, the header, the envelope — is a
+          `chrome-pane` that steps aside for it. Both are CLASSES rather
+          than shape selectors: the pattern must not start following
+          whatever div happens to be first in this file, the same reason
+          `data-ambient-recede` is a marker. `shellMarkers.test.ts`
+          holds both. */}
       <div className="hidden lg:block" data-ambient-recede>
         <Sidebar />
       </div>
@@ -96,11 +103,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           the chrome colour; `pr-2 pb-2` leaves an 8px frame to the right
           and below, so the chrome wraps the content on every side — top
           from the header, left from the sidebar. */}
-      {/* `chrome-ground` is where a wallpaper paints. A CLASS, not a
-          shape selector: the pattern must not start following whatever
-          div happens to be second in this file, the same reason
-          `data-ambient-recede` is a marker. */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-sidebar chrome-ground pr-2 pb-2">
+      <div className="flex-1 flex flex-col overflow-hidden bg-sidebar chrome-pane pr-2 pb-2">
         {/* Three zones: mobile-menu (left), hero (middle, flex-1), tools
             (right). The hero lives INSIDE the h-12 strip rather than in
             a row of its own, so content sits at the same Y whether or
@@ -109,7 +112,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
         <header
           data-ambient-recede
           style={sizeRegion('controls')}
-          className="h-12 bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
+          className="h-12 bg-sidebar chrome-pane text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
         >
           <div className="flex items-center gap-3 shrink-0">
             <button

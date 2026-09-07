@@ -72,7 +72,32 @@ const HTML_AXES = new Set([
  * than a refactor of ours — so they are named here with the reason
  * instead of widening the rule until it stops meaning anything.
  */
+/**
+ * Styled, carried by nothing, and NOT a mistake to fix here.
+ *
+ * `surface-opaque` is an escape hatch for a problem that cannot happen.
+ * Its comment says 21 sticky and pinned elements "opt out explicitly"
+ * because a translucent fill would let the table scroll through them —
+ * but glass only thins `.surface`, exactly ONE element carries that
+ * (the select popover), and the grid's frozen columns and pinned
+ * headers paint `bg-muted` / `bg-card`, which glass never touches. So
+ * the hatch guards a door that was never open, and
+ * `material.test.ts` defends the rule's existence rather than its use.
+ *
+ * Recorded rather than deleted: it is not this change's to remove, and
+ * a finding written down outlives one that was quietly swept up.
+ */
+const KNOWN_DEAD: Record<string, string> = {
+  'surface-opaque': 'escape hatch for a translucency the sites it names never had',
+};
+
+/** Classes the framework owns. `dark` is Tailwind's mode class and
+ *  `surface` is this app's own material layer, both styled through the
+ *  axes and neither a shell marker. */
+const TAILWIND = new Set(['dark', 'surface', 'surface-popover', 'surface-sidebar']);
+
 const FOREIGN: Record<string, string> = {
+  'sonner-loading-bar': 'sonner renders it inside its own loading toast',
   'data-sonner-toaster': 'sonner renders it on its own container',
   'data-sonner-toast': 'sonner renders it on each toast',
   'data-styled': 'sonner marks its own styled toasts with it',
@@ -83,9 +108,15 @@ function markersInCss(): { attrs: string[]; classes: string[] } {
   const attrs = [...new Set(
     [...CSS.matchAll(/\[(data-[a-z-]+)(?:[\]=])/g)].map((m) => m[1]),
   )].filter((a) => !HTML_AXES.has(a) && !(a in FOREIGN));
+  // Any class a rule reaches for THROUGH one of the html axes — not
+  // just one selector shape. The first version matched only
+  // `[data-wallpaper="x"] .class`, so `.chrome-pane` (reached through
+  // `:not([data-wallpaper="none"])`) was styled by name and guarded by
+  // nothing, which is the exact hole this file exists to close.
   const classes = [...new Set(
-    [...CSS.matchAll(/\[data-wallpaper="[^"]*"\]\s+\.([a-z][a-z0-9-]*)/g)].map((m) => m[1]),
-  )];
+    [...CSS.matchAll(/([^{}]*\[data-[a-z-]+[^{}]*)\{/g)]
+      .flatMap((m) => [...m[1].matchAll(/\.([a-z][a-z0-9-]*)/g)].map((c) => c[1])),
+  )].filter((c) => !TAILWIND.has(c) && !(c in FOREIGN) && !(c in KNOWN_DEAD));
   return { attrs, classes };
 }
 
@@ -99,6 +130,8 @@ describe('every marker the stylesheet selects on exists in the shell', () => {
       .toBeGreaterThan(1);
     expect(classes, 'the wallpaper surface stopped being styled by name')
       .toContain('chrome-ground');
+    expect(classes, 'the chrome panes stopped stepping aside for the ground')
+      .toContain('chrome-pane');
     expect(attrs, 'ambient stopped marking the chrome that recedes')
       .toContain('data-ambient-recede');
   });
@@ -129,8 +162,10 @@ describe('every marker the stylesheet selects on exists in the shell', () => {
     // An exception for an attribute nobody styles any more is a hole
     // kept open for nothing — and the next one added under the same
     // name would be waved through.
-    for (const [attr, why] of Object.entries(FOREIGN))
-      expect(CSS.includes(`[${attr}`), `${attr} is exempt (${why}) but no longer styled`)
-        .toBe(true);
+    for (const [name, why] of Object.entries({ ...FOREIGN, ...KNOWN_DEAD })) {
+      const styled = name.startsWith('data-')
+        ? CSS.includes(`[${name}`) : CSS.includes(`.${name}`);
+      expect(styled, `${name} is exempt (${why}) but no longer styled`).toBe(true);
+    }
   });
 });

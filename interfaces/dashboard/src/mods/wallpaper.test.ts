@@ -126,6 +126,67 @@ describe('the stylesheet answers for every pattern the list offers', () => {
   });
 });
 
+describe('the ground is where it can be seen', () => {
+  /**
+   * The three surfaces of the chrome envelope, which AppShell's own
+   * comment names: "Sidebar, header and gutters are all `bg-sidebar` —
+   * one continuous chrome surface". Each paints the chrome colour flat,
+   * so each has to step aside for a pattern or it covers it.
+   *
+   * A NAMED THREE rather than "everything that uses bg-sidebar": the
+   * assistant panel and the mobile drawer wear the same colour as
+   * panels OVER content, and making those transparent would make them
+   * see-through. The envelope is a concept, not a colour.
+   *
+   * This is the shape of the bug it exists for. The first version put
+   * the ground UNDER the header and outside the sidebar entirely, so it
+   * painted only into the 8px gutter and reached the owner as "how do I
+   * see the wallpaper?".
+   */
+  const CHROME = {
+    'shells/AppShell.tsx': 'the envelope and the header',
+    'components/Sidebar.tsx': 'the sidebar',
+  };
+
+  it('every chrome surface steps aside for it', () => {
+    let checked = 0;
+    for (const [file, what] of Object.entries(CHROME)) {
+      const src = readFileSync(join(__dirname, '..', file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      // Each className that paints the chrome colour, on its own. The
+      // three delimiters are matched separately because only the
+      // delimiter ends its own value: the sidebar's class is a template
+      // literal with `'w-14'` inside it, and a pattern that stopped at
+      // any quote read it as two values and found neither.
+      const CLASSNAME = new RegExp(
+        [
+          'className="[^"]*"',
+          'className=\\{`[^`]*`\\}',
+          "className=\\{'[^']*'\\}",
+        ].join('|'), 'g',
+      );
+      for (const m of src.match(CLASSNAME)?.filter((c) => /\bbg-sidebar\b/.test(c)) ?? []) {
+        checked++;
+        expect(m, `${what}: a chrome surface paints bg-sidebar and never steps aside`)
+          .toMatch(/\bchrome-pane\b/);
+      }
+    }
+    expect(checked, 'no chrome surfaces found — this test measures nothing')
+      .toBeGreaterThanOrEqual(3);
+  });
+
+  it('and the ground carries the chrome colour itself', () => {
+    // Without it the panes go transparent onto `bg-background` and the
+    // whole chrome turns the content card's colour — the pattern would
+    // arrive and the app would look broken around it.
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
+      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      expect(block, `${w.id} paints a pattern on no ground`)
+        .toMatch(/background-color:\s*var\(--sidebar\)/);
+    }
+  });
+});
+
 describe('the sidebar stays readable over any of them', () => {
   /**
    * Every stop, where it actually lands.

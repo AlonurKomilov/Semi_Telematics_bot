@@ -996,7 +996,28 @@
      Screen only, like everything glass, for the same reason: print puts
      the light palette back through specificity alone, and a gradient
      that survived into paper would waste ink saying nothing. */
+  /* The chrome steps aside so the ground can be seen.
+     Every chrome surface — the sidebar, the header, the envelope —
+     paints `bg-sidebar` flat, and three opaque layers over a pattern is
+     a pattern nobody sees: the first version of this shipped with the
+     ground UNDER all of them and visible only in the 8px gutter, which
+     is how it reached the owner as "how do I see the wallpaper?".
+
+     `background-color` and not `display` or opacity: the panes keep
+     their size, their text and their own hover states, and only stop
+     painting their own flat colour. The ground carries that colour
+     instead, so the chrome looks identical at `none` and gains the
+     pattern otherwise.
+
+     The content card is deliberately NOT a pane. It stays opaque, which
+     is the whole shape of the feature — the ground is around the work,
+     never under the words. */
+  :root:not([data-wallpaper="none"]) .chrome-pane {
+    background-color: transparent;
+  }
+
   :root[data-wallpaper="mesh"] .chrome-ground {
+    background-color: var(--sidebar);
     background-image:
       radial-gradient(60% 55% at 12% 8%,
         color-mix(in oklab, var(--primary) 10%, transparent) 0%, transparent 100%),
@@ -1009,6 +1030,7 @@
      the 4px spacing scale six steps up, so the lines land on the same
      rhythm the layout already uses. */
   :root[data-wallpaper="grid"] .chrome-ground {
+    background-color: var(--sidebar);
     background-image:
       linear-gradient(to right,
         color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px),
