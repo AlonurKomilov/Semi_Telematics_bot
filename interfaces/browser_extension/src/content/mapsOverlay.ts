@@ -51,7 +51,7 @@ import {
 } from '../features/maps-overlay/gesture';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
-import { colourFor, findMapCanvas, markerAt, sameSurface, type Surface } from '../features/maps-overlay/surface';
+import { colourFor, findMapCanvas, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
 const CHIP_ID = '4truck-maps-chip';
@@ -72,6 +72,11 @@ const URL_POLL_MS = 120;
 /** A zoom or a fling that never changes the URL (it can happen at the
  *  zoom limits) must not leave the layer faded for ever. */
 const QUIET_RESTORE_MS = 900;
+/** How stale the measured box may get before it is re-read even though
+ *  nothing reported a change.  Google's markup is unversioned, so this
+ *  is the slack that keeps a missed resize from lasting; see
+ *  ``needsRemeasure``. */
+const GEOMETRY_RECHECK_MS = 2_000;
 
 let camera: Camera | null = null;
 let surface: Surface | null = null;
@@ -108,6 +113,28 @@ let animFrame: number | null = null;
 // ── gesture state ──────────────────────────────────────────────────────
 let drag: Drag | null = null;
 let pointersDown = 0;
+
+// ── what this injection owns ───────────────────────────────────────────
+//
+// An extension update does not reload the pages the old copy is running
+// in: it INVALIDATES the copy.  Its timers keep firing, its listeners
+// keep running, and every message it sends throws — for as long as the
+// tab stays open.  A person who leaves Google Maps open all day and
+// updates the extension was left with one orphan per update, each still
+// measuring the page eight times a second.  So the timers and listeners
+// are held, and the first tick that finds the context gone takes them
+// all with it.
+const timers: ReturnType<typeof setInterval>[] = [];
+const listeners = new AbortController();
+type PrefListener = Parameters<typeof chrome.storage.onChanged.addListener>[0];
+let onPrefChanged: PrefListener | null = null;
+let canvasWatch: ResizeObserver | null = null;
+
+/** Set when something that can move or resize the map's box happened.
+ *  Until one does, the box measured last time is still the box. */
+let geometryDirty = true;
+let measuredUrl = '';
+let measuredAt = -Infinity;
 /** Waiting for Google to write the camera after an interaction. */
 let settling = false;
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -298,9 +325,15 @@ function markerFor(v: OverlayVehicle): MarkerParts {
     const el = document.createElement('div');
     // Markers take no pointer events: a drag that starts on a truck must
     // still drag the map, so the click is hit-tested by us instead.
+    // left/top are fixed at zero and the position rides in a transform:
+    // writing left/top puts every marker through layout on every frame,
+    // while a transform is handed to the compositor.  With a hundred
+    // trucks in view that is the difference between a moving map and a
+    // stuttering one.  ``placeAt`` is the only writer.
     el.style.cssText =
-      'position:absolute;transform:translate(-50%,-50%);pointer-events:none;' +
-      'display:flex;align-items:center;gap:4px;font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
+      'position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:none;' +
+      'will-change:transform;display:flex;align-items:center;gap:4px;' +
+      'font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
     el.innerHTML = `<span data-glyphwrap style="display:flex">${glyphHtml(moving, colourFor(v.status))}</span>`
       + '<span data-name style="background:rgba(17,20,26,.86);color:#fff;padding:2px 5px;border-radius:4px"></span>';
     ensureRoot().appendChild(el);
@@ -320,6 +353,13 @@ function markerFor(v: OverlayVehicle): MarkerParts {
   m.name.hidden = !showsLabels(camera?.zoom ?? 0);
   if (moving && p) aimArrow(m, p.headingDeg);
   return m;
+}
+
+/** The marker's centre, in layer pixels.  The trailing translate keeps
+ *  the glyph centred on the point, which is what the base style used to
+ *  say on its own. */
+function placeAt(m: MarkerParts, x: number, y: number): void {
+  m.el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
 }
 
 /** The arrow turns; the marker itself must not, or the name pill would
@@ -356,9 +396,7 @@ function draw(): void {
     if (!isVisible(p, surface)) continue;
     seen.add(v.id);
     drawnAt.set(v.id, p);
-    const m = markerFor(v);
-    m.el.style.left = `${p.x}px`;
-    m.el.style.top = `${p.y}px`;
+    placeAt(markerFor(v), p.x, p.y);
   }
   // A marker for a vehicle that has left the view is removed, not
   // hidden: a hundred hidden nodes on every Google Maps tab is a cost
@@ -432,8 +470,7 @@ function pump(): void {
     if (!m) continue;                    // off screen; the next draw places it
     const pt = project(at, camera, surface);
     drawnAt.set(v.id, pt);
-    m.el.style.left = `${pt.x}px`;
-    m.el.style.top = `${pt.y}px`;
+    placeAt(m, pt.x, pt.y);
     aimArrow(m, p.headingDeg);
   }
   if (moving) animFrame = requestAnimationFrame(pump);
@@ -443,13 +480,41 @@ function ensurePump(): void {
   if (animFrame === null) animFrame = requestAnimationFrame(pump);
 }
 
-/** The camera and the canvas, re-read.  True when either changed. */
+/** Watch the canvas's own box.  Google's panel opening, a sidebar, a
+ *  zoom of the browser: all of them resize the map without a window
+ *  resize, and this is how that arrives as an event rather than as a
+ *  measurement taken eight times a second on the chance it happened. */
+function watchCanvas(): void {
+  canvasWatch?.disconnect();
+  canvasWatch = null;
+  if (!canvasEl || typeof ResizeObserver === 'undefined') return;
+  canvasWatch = new ResizeObserver(() => { geometryDirty = true; });
+  canvasWatch.observe(canvasEl);
+}
+
+/** The camera and the canvas, re-read.  True when either changed.
+ *
+ *  Reading the canvas means reading rectangles, and a rectangle is a
+ *  forced layout.  ``needsRemeasure`` is the rule for when that is
+ *  worth doing; on a still page the answer is no, and this costs one
+ *  string comparison. */
 function refreshView(): boolean {
-  const nextCamera = cameraFromUrl(location.href);
+  const url = location.href;
+  const now = performance.now();
+  if (!needsRemeasure({
+    url, measuredUrl, connected: !!canvasEl?.isConnected,
+    geometryDirty, measuredAt, now, recheckMs: GEOMETRY_RECHECK_MS,
+  })) return false;
+  measuredUrl = url;
+  measuredAt = now;
+  geometryDirty = false;
+
+  const nextCamera = cameraFromUrl(url);
   const found = findMapCanvas(Array.from(document.querySelectorAll('canvas')));
   const nextSurface = found?.surface ?? null;
   const canvasChanged = (found?.el ?? null) !== canvasEl;
   canvasEl = found?.el ?? null;
+  if (canvasChanged) watchCanvas();
   const changed = canvasChanged || !sameCamera(camera, nextCamera) || !sameSurface(surface, nextSurface);
   camera = nextCamera;
   surface = nextSurface;
@@ -602,6 +667,58 @@ function onKeyDown(e: KeyboardEvent): void {
 
 // ── lifecycle ──────────────────────────────────────────────────────────
 
+/** True while this injection can still reach its extension.  An update
+ *  or a reload leaves the page's copy running with no way back: the id
+ *  goes undefined and every message throws. */
+function contextAlive(): boolean {
+  try { return !!chrome.runtime?.id; } catch { return false; }
+}
+
+/** Give the page back exactly as we found it.
+ *
+ *  Two ticks can both find the context gone before either has cleared
+ *  the other's timer, so this says so once and means it. */
+let torn = false;
+function teardown(): void {
+  if (torn) return;
+  torn = true;
+  for (const t of timers) clearInterval(t);
+  timers.length = 0;
+  listeners.abort();
+  // chrome.storage.onChanged takes no AbortSignal, so it is the one
+  // listener that must be removed by hand — and it is the one that
+  // could undo all of this: left registered, an orphan still hears the
+  // panel's switch, and its handler puts the layer it had just removed
+  // back into the page.
+  if (onPrefChanged) {
+    try { chrome.storage.onChanged.removeListener(onPrefChanged); } catch { /* context gone */ }
+    onPrefChanged = null;
+  }
+  canvasWatch?.disconnect();
+  canvasWatch = null;
+  removeAll();
+  hideChip();
+}
+
+/**
+ * Every repeating job runs through here, and so meets the two questions
+ * that decide whether it should run at all:
+ *
+ *   Is the extension still there?  If not this copy is an orphan, and
+ *   the only useful thing left to do is remove itself.
+ *
+ *   Is anybody looking?  A tab in the background has no map on screen,
+ *   so measuring it, drawing on it and polling for it are all spent on
+ *   nobody.  Five open route tabs used to poll as five.
+ */
+function repeat(job: () => void, everyMs: number): void {
+  timers.push(setInterval(() => {
+    if (!contextAlive()) { teardown(); return; }
+    if (document.hidden) return;
+    job();
+  }, everyMs));
+}
+
 function start(): void {
   chrome.storage.local.get(OVERLAY_PREF_KEY, (got) => {
     enabled = got[OVERLAY_PREF_KEY] !== false;
@@ -609,7 +726,7 @@ function start(): void {
     void refreshData().then(() => refreshFixes());
   });
 
-  setInterval(() => {
+  repeat(() => {
     const changed = refreshView();
     if (!changed) return;
     // A camera write while we are following or fading is the settle
@@ -618,26 +735,41 @@ function start(): void {
     if (settling && location.href !== lastInteractionUrl) settle();
     else if (!drag) draw();
   }, URL_POLL_MS);
-  setInterval(() => { void refreshData(); }, POLL_MS);
-  setInterval(() => { void refreshFixes(); }, LIVE_POLL_MS);
-  window.addEventListener('resize', () => { if (refreshView() && !drag) draw(); }, { passive: true });
+  repeat(() => { void refreshData(); }, POLL_MS);
+  repeat(() => { void refreshFixes(); }, LIVE_POLL_MS);
+
+  const signal = listeners.signal;
+  // A tab that was hidden asked for nothing while it was away, so what
+  // it holds is as old as the time it spent there.  Coming back is a
+  // refresh, not a resume.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !contextAlive()) return;
+    geometryDirty = true;
+    refreshView();
+    void refreshData().then(() => refreshFixes());
+  }, { signal });
+  window.addEventListener('resize', () => {
+    geometryDirty = true;
+    if (refreshView() && !drag) draw();
+  }, { passive: true, signal });
 
   // Capture on window: we see the gesture before Google's own handlers
   // and never interfere with them — every listener is passive.
-  const opts: AddEventListenerOptions = { capture: true, passive: true };
+  const opts: AddEventListenerOptions = { capture: true, passive: true, signal };
   window.addEventListener('pointerdown', onPointerDown, opts);
   window.addEventListener('pointermove', onPointerMove, opts);
   window.addEventListener('pointerup', onPointerUp, opts);
   window.addEventListener('pointercancel', onPointerUp, opts);
   window.addEventListener('wheel', onWheel, opts);
-  window.addEventListener('keydown', onKeyDown, { capture: true });
+  window.addEventListener('keydown', onKeyDown, { capture: true, signal });
 
   // The panel's own switch reaches here without a reload.
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !(OVERLAY_PREF_KEY in changes)) return;
+  onPrefChanged = (changes, area) => {
+    if (torn || area !== 'local' || !(OVERLAY_PREF_KEY in changes)) return;
     enabled = changes[OVERLAY_PREF_KEY].newValue !== false;
-    if (enabled) { refreshView(); void refreshData(); } else draw();
-  });
+    if (enabled) { geometryDirty = true; refreshView(); void refreshData(); } else draw();
+  };
+  chrome.storage.onChanged.addListener(onPrefChanged);
 }
 
 // `document_idle` already means the page has parsed; the guard is for a

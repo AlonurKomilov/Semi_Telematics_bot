@@ -48,6 +48,36 @@ export function findMapSurface(canvases: readonly { getBoundingClientRect(): DOM
   return findMapCanvas(canvases)?.surface ?? null;
 }
 
+/**
+ * Whether the map's box has to be measured again this tick.
+ *
+ * Measuring means asking the DOM for rectangles, and a rectangle is a
+ * forced layout — the browser stops and re-computes the page to answer.
+ * The overlay watches Google's URL eight times a second, and it used to
+ * measure on every one of those ticks: eight forced layouts a second,
+ * for the life of the tab, on a page that was usually not moving at all.
+ *
+ * Nothing needs measuring while all four of these hold: the URL is the
+ * one we measured against, the canvas we measured is still in the page,
+ * nothing has reported a resize, and the measurement is not older than
+ * the recheck interval.  The last one is deliberate slack: Google's
+ * markup is unversioned, so rather than trust that a resize always
+ * reaches us, the box is re-read on a slow beat regardless.
+ */
+export function needsRemeasure(state: {
+  url: string;
+  measuredUrl: string;
+  connected: boolean;
+  geometryDirty: boolean;
+  measuredAt: number;
+  now: number;
+  recheckMs: number;
+}): boolean {
+  if (state.geometryDirty || !state.connected) return true;
+  if (state.url !== state.measuredUrl) return true;
+  return state.now - state.measuredAt >= state.recheckMs;
+}
+
 /** Two surfaces the same to the pixel — a resize observer fires for
  *  sub-pixel changes a person cannot see. */
 export function sameSurface(a: Surface | null, b: Surface | null): boolean {

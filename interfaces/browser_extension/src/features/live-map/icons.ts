@@ -3,6 +3,25 @@ import { MAP_STATUS } from './physics';
 
 const HALO = '#fff', SHADOW = 'rgba(0,0,0,.45)';
 
+/**
+ * What an icon actually depends on — and what it does NOT.
+ *
+ * Leaflet's ``setIcon`` throws the marker's element away and builds a
+ * new one.  The panel called it for every truck on every thirty-second
+ * refresh, so a hundred trucks meant a hundred elements destroyed and
+ * rebuilt twice a minute for pictures that were, almost always,
+ * identical.  Comparing this signature first turns that into "only the
+ * ones that changed".
+ *
+ * Heading is deliberately absent.  A moving truck's arrow is turned in
+ * place, by writing one attribute on the polygon that is already there;
+ * folding the heading in here would rebuild the element every frame,
+ * which is the opposite of the point.
+ */
+export function iconSignature(colour: string, warn: boolean, moving: boolean): string {
+  return moving ? `arrow:${colour}` : `dot:${colour}:${warn ? 'warn' : 'plain'}`;
+}
+
 /** The dashboard's markers: an arrow while moving, a dot when not. */
 export function makeIcon(Leaf: typeof L, color: string, warn: boolean, speedMph: number, heading?: number | null) {
   if (speedMph > 0) {

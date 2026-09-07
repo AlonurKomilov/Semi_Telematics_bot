@@ -8,8 +8,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { apiJSON } from '../../api/client';
-import { makeIcon } from './icons';
-import { applyFix, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, MAP_STATUS, type Phys } from './physics';
+import { iconSignature, makeIcon } from './icons';
+import { applyFix, faceOf, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, MAP_STATUS, type Phys } from './physics';
 import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
@@ -36,7 +36,17 @@ export default function LiveMapPanel() {
   const map = useRef<L.Map | null>(null);
   const markers = useRef<Map<string, L.Marker>>(new Map());
   const phys = useRef<Map<string, Phys>>(new Map());
-  const frames = useRef<Map<string, number>>(new Map());
+  /** ONE loop for every moving truck.  This used to be one loop per
+   *  truck: thirty moving vehicles scheduled thirty callbacks a frame,
+   *  each of them asking the DOM for its own arrow again. */
+  const frame = useRef<number | null>(null);
+  /** The picture each marker is currently wearing, so an unchanged one
+   *  is left alone instead of being rebuilt. */
+  const iconKeys = useRef<Map<string, string>>(new Map());
+  /** Each marker's arrow, found once per element rather than once per
+   *  frame.  ``setIcon`` replaces the element, so the element it was
+   *  read from is part of the entry. */
+  const arrows = useRef<Map<string, { host: HTMLElement; poly: Element | null }>>(new Map());
   const [vehicles, setVehicles] = useState<MapVehicleFeature[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
@@ -78,6 +88,10 @@ export default function LiveMapPanel() {
   // The latest feature per id — a marker's click handler was attached
   // when the marker was born and must not hand out that first fix.
   const latest = useRef<Map<string, MapVehicleFeature>>(new Map());
+  /** Whether each truck is low on fuel or DEF — from the list, which is
+   *  the only feed that carries levels, so the fast poll can keep the
+   *  warning ring instead of dropping it until the next refresh. */
+  const warns = useRef<Map<string, boolean>>(new Map());
 
   const idOf = (f: MapVehicleFeature) => String(f.properties.id ?? f.properties.name);
   // The live poll runs from an interval closed over the first render, so
@@ -140,24 +154,56 @@ export default function LiveMapPanel() {
     });
   };
 
-  // ── physics loop: one rAF per moving truck ──
-  function startLoop(vid: string) {
-    const prev = frames.current.get(vid);
-    if (prev !== undefined) cancelAnimationFrame(prev);
-    const frame = (ts: number) => {
-      const p = phys.current.get(vid), m = markers.current.get(vid);
-      if (!p || !m || !p.isMoving) { frames.current.delete(vid); return; }
+  // ── physics loop: ONE rAF for the whole fleet ──
+
+  /** Turn a truck's arrow without asking the DOM to find it again. */
+  function aimArrow(vid: string, m: L.Marker, deg: number) {
+    const host = m.getElement();
+    if (!host) return;
+    let cached = arrows.current.get(vid);
+    if (!cached || cached.host !== host) {
+      cached = { host, poly: host.querySelector('polygon') };
+      arrows.current.set(vid, cached);
+    }
+    cached.poly?.setAttribute('transform', `rotate(${deg},9,9)`);
+  }
+
+  /** Give a marker a picture only when the picture actually changes.
+   *  Leaflet's setIcon destroys and rebuilds the element, so calling it
+   *  on every refresh rebuilt the whole fleet twice a minute. */
+  function applyIcon(vid: string, m: L.Marker, colour: string, warn: boolean,
+                     moving: boolean, heading: number | null) {
+    const key = iconSignature(colour, warn, moving);
+    if (iconKeys.current.get(vid) === key) return;
+    iconKeys.current.set(vid, key);
+    m.setIcon(makeIcon(L, colour, warn, moving ? 1 : 0, heading));
+    arrows.current.delete(vid);                 // the element is a new one
+    if (moving && heading != null) aimArrow(vid, m, heading);
+  }
+
+  function pump(ts: number) {
+    frame.current = null;
+    let moving = false;
+    for (const [vid, p] of phys.current) {
+      if (!p.isMoving) continue;
+      const m = markers.current.get(vid);
+      if (!m) continue;
+      moving = true;
       const at = positionAt(p, ts);
       p.lat = at.lat; p.lng = at.lng;
       m.setLatLng([p.lat, p.lng]);
       const diff = shortestAngleDiff(p.headingDeg, p.targetHeading);
       if (Math.abs(diff) > 0.2) {
         p.headingDeg += diff * 0.06;
-        m.getElement()?.querySelector('polygon')?.setAttribute('transform', `rotate(${p.headingDeg},9,9)`);
+        aimArrow(vid, m, p.headingDeg);
       }
-      frames.current.set(vid, requestAnimationFrame(frame));
-    };
-    frames.current.set(vid, requestAnimationFrame(frame));
+    }
+    // Stops the moment nothing is moving, so a parked fleet costs
+    // nothing at all until the next fix says otherwise.
+    if (moving) frame.current = requestAnimationFrame(pump);
+  }
+  function ensurePump() {
+    if (frame.current === null) frame.current = requestAnimationFrame(pump);
   }
 
   async function loadVehicles() {
@@ -170,18 +216,28 @@ export default function LiveMapPanel() {
         const [lng, lat] = f.geometry.coordinates;
         const p = phys.current.get(id);
         if (p) p.engineState = f.properties.engine_state ?? 'Off';
-        const icon = makeIcon(L, statusColor(vehicleStatus(f)), hasLowLevelWarning(f.properties),
-                              f.properties.speed_mph ?? 0, p?.headingDeg ?? f.properties.heading);
+        const warn = hasLowLevelWarning(f.properties);
+        warns.current.set(id, warn);
+        const { colour, moving } = faceOf(vehicleStatus(f), p);
+        const heading = p?.headingDeg ?? f.properties.heading ?? null;
         const existing = markers.current.get(id);
         if (existing) {
           if (!p?.isMoving) existing.setLatLng([lat, lng]);
-          existing.setIcon(icon);
+          applyIcon(id, existing, colour, warn, moving, heading);
         } else if (map.current) {
+          const icon = makeIcon(L, colour, warn, moving ? 1 : 0, heading);
           const m = L.marker([lat, lng], { icon }).addTo(map.current).on('click', () => selectRef.current(f, false));
           markers.current.set(id, m);
+          iconKeys.current.set(id, iconSignature(colour, warn, moving));
         }
       }
-      markers.current.forEach((m, id) => { if (!seen.has(id)) { m.remove(); markers.current.delete(id); latest.current.delete(id); } });
+      markers.current.forEach((m, id) => {
+        if (seen.has(id)) return;
+        m.remove();
+        markers.current.delete(id); latest.current.delete(id);
+        iconKeys.current.delete(id); arrows.current.delete(id); warns.current.delete(id);
+        phys.current.delete(id);
+      });
       setVehicles(data.features ?? []);
       setError('');
       setAnswered(true);
@@ -206,15 +262,14 @@ export default function LiveMapPanel() {
         const { phys: next, started, stopped } = applyFix(
           phys.current.get(vid), pos.lat, pos.lng, pos.speed_mph, pos.heading, now);
         phys.current.set(vid, next);
-        if (started) {
-          m.setIcon(makeIcon(L, MAP_STATUS.ok, false, pos.speed_mph, next.headingDeg));
-          startLoop(vid);
-        } else if (stopped) {
-          const f = frames.current.get(vid);
-          if (f !== undefined) { cancelAnimationFrame(f); frames.current.delete(vid); }
-          m.setLatLng([pos.lat, pos.lng]);
-          const idle = next.engineState === 'On' || next.engineState === 'Idle';
-          m.setIcon(makeIcon(L, idle ? MAP_STATUS.warn : MAP_STATUS.danger, false, 0, null));
+        const warn = warns.current.get(vid) ?? false;
+        if (started || stopped) {
+          // The face is derived from the same rule the list uses, so
+          // the two feeds cannot draw two different trucks.
+          const listed = latest.current.get(vid);
+          const { colour, moving } = faceOf(listed ? vehicleStatus(listed) : 'stopped', next);
+          if (stopped) m.setLatLng([pos.lat, pos.lng]);
+          applyIcon(vid, m, colour, warn, moving, moving ? next.headingDeg : null);
         } else if (!next.isMoving) {
           m.setLatLng([pos.lat, pos.lng]);
         }
@@ -225,6 +280,8 @@ export default function LiveMapPanel() {
           centreOn(pos.lat, pos.lng, { animate: true });
         }
       }
+      // One loop, started once, for whatever is moving now.
+      ensurePump();
     } catch { /* the 30s poll surfaces errors; the fast one stays quiet */ }
   }
 
@@ -262,14 +319,16 @@ export default function LiveMapPanel() {
     });
     // The cleanup reads the SAME maps this effect created, so hold them
     // in locals — React warns that a ref may point elsewhere by then.
-    const framesMap = frames.current, physMap = phys.current, markerMap = markers.current, latestMap = latest.current;
+    const physMap = phys.current, markerMap = markers.current, latestMap = latest.current;
+    const keyMap = iconKeys.current, arrowMap = arrows.current, warnMap = warns.current;
     void loadVehicles();
     const a = setInterval(loadVehicles, REFRESH_MS);
     const b = setInterval(livePoll, LIVE_REFRESH_MS);
     return () => {
       clearInterval(a); clearInterval(b);
-      framesMap.forEach((id) => cancelAnimationFrame(id));
-      framesMap.clear(); physMap.clear(); markerMap.clear(); latestMap.clear();
+      if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null; }
+      physMap.clear(); markerMap.clear(); latestMap.clear();
+      keyMap.clear(); arrowMap.clear(); warnMap.clear();
       m.remove(); map.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

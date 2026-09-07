@@ -14,10 +14,23 @@
  * permission; and handing it a bearer token would leave a live
  * credential inside a page we do not control.  The worker holds the
  * token, answers one question, and returns positions — never the token.
+ *
+ * Being the one door is also what lets it answer ONCE for every tab
+ * that asks.  The overlay runs per tab and polls on its own clock, so
+ * three route tabs were three times the traffic for one identical
+ * answer; dedupe.ts turns that back into one request.
  */
 import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
 import { OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, toOverlayFixes, toOverlayVehicles, type LiveReply, type OverlayReply } from './features/maps-overlay/bridge';
+import { makeShared } from './features/maps-overlay/dedupe';
+
+/** Both windows sit just under the poll they serve, so one tab alone
+ *  keeps exactly the cadence it had; they exist for the second tab.
+ *  Each ask carries the token it is asking with, so an answer can never
+ *  outlive the connection that earned it — see dedupe.ts. */
+const sharedLive = makeShared<{ positions?: Record<string, never> }>(4_000);
+const sharedList = makeShared<{ features?: unknown[] }>(25_000);
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -38,9 +51,11 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
   }
   if (m?.type === OVERLAY_LIVE) {
     (async () => {
-      if (!(await getToken())) { sendResponse({ ok: false } satisfies LiveReply); return; }
+      const token = await getToken();
+      if (!token) { sendResponse({ ok: false } satisfies LiveReply); return; }
       try {
-        const data = await apiJSON<{ positions?: Record<string, never> }>('/map/vehicles/live');
+        const data = await sharedLive('live', token,
+          () => apiJSON<{ positions?: Record<string, never> }>('/map/vehicles/live'));
         sendResponse({ ok: true, fixes: toOverlayFixes(data) } satisfies LiveReply);
       } catch {
         // The fast poll stays quiet, exactly as the panel's does: the
@@ -55,14 +70,16 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
   // content script; nothing else in this extension sends this type.
   if (!sender.tab?.id) { sendResponse({ ok: false, reason: 'error', detail: 'no tab' } satisfies OverlayReply); return true; }
   (async () => {
-    if (!(await getToken())) {
+    const token = await getToken();
+    if (!token) {
       // Signed out is not an error to shout about: an extension that
       // nags on a page the person did not open for it gets uninstalled.
       sendResponse({ ok: false, reason: 'signed-out' } satisfies OverlayReply);
       return;
     }
     try {
-      const data = await apiJSON<{ features?: unknown[] }>('/map/vehicles');
+      const data = await sharedList('list', token,
+        () => apiJSON<{ features?: unknown[] }>('/map/vehicles'));
       sendResponse({ ok: true, vehicles: toOverlayVehicles((data.features ?? []) as never) } satisfies OverlayReply);
     } catch (e) {
       sendResponse({ ok: false, reason: 'error', detail: e instanceof Error ? e.message : 'failed' } satisfies OverlayReply);

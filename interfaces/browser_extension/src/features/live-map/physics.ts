@@ -81,6 +81,28 @@ export function applyFix(
   return { phys: p, started: nowMoving && !wasMoving, stopped: !nowMoving && wasMoving };
 }
 
+/**
+ * The face a truck should be wearing right now: its colour, and whether
+ * it is an arrow or a dot.
+ *
+ * Two feeds disagree about this, and they disagree at different ages.
+ * The list is thirty seconds old and carries a status word; the physics
+ * are five seconds old and carry motion.  The fresher one wins — the
+ * list used to stamp a parked dot back over a truck the fast poll had
+ * already set moving, once every thirty seconds, for as long as it drove.
+ *
+ * With no physics yet (a truck the fast poll has not reached) the list
+ * is all there is, and it decides.
+ */
+export function faceOf(
+  status: VehicleStatus, p: Pick<Phys, 'isMoving' | 'engineState'> | undefined,
+): { colour: string; moving: boolean } {
+  if (!p) return { colour: statusColor(status), moving: status === 'moving' };
+  if (p.isMoving) return { colour: MAP_STATUS.ok, moving: true };
+  const idling = p.engineState === 'On' || p.engineState === 'Idle';
+  return { colour: idling ? MAP_STATUS.warn : MAP_STATUS.danger, moving: false };
+}
+
 /** Where the marker should be drawn at time ``ts`` — the tween. */
 export function positionAt(p: Phys, ts: number): { lat: number; lng: number; done: boolean } {
   const t = p.duration > 0 ? Math.min(1, (ts - p.startMs) / p.duration) : 1;

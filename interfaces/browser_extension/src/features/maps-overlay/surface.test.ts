@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { HIT_RADIUS, colourFor, findMapSurface, markerAt, sameSurface } from './surface';
+import { HIT_RADIUS, colourFor, findMapSurface, markerAt, needsRemeasure, sameSurface } from './surface';
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   getBoundingClientRect: () => ({ left, top, width, height }) as DOMRectReadOnly,
@@ -79,5 +79,39 @@ describe('which truck a click landed on', () => {
 
   it('nothing drawn, nothing hit', () => {
     expect(markerAt(new Map(), 100, 100)).toBeNull();
+  });
+});
+
+describe('needsRemeasure', () => {
+  const settled = {
+    url: 'https://www.google.com/maps/@41,-87,12z',
+    measuredUrl: 'https://www.google.com/maps/@41,-87,12z',
+    connected: true,
+    geometryDirty: false,
+    measuredAt: 1000,
+    now: 1120,
+    recheckMs: 2000,
+  };
+
+  it('measures nothing while the page is holding still', () => {
+    expect(needsRemeasure(settled)).toBe(false);
+  });
+
+  it('measures when the camera moved', () => {
+    expect(needsRemeasure({ ...settled, url: 'https://www.google.com/maps/@41,-87,13z' })).toBe(true);
+  });
+
+  it('measures when the canvas we measured has left the page', () => {
+    expect(needsRemeasure({ ...settled, connected: false })).toBe(true);
+  });
+
+  it('measures when something reported a resize', () => {
+    expect(needsRemeasure({ ...settled, geometryDirty: true })).toBe(true);
+  });
+
+  it('measures again on the slow beat, resize or not', () => {
+    // Google's markup is unversioned; a resize that never reaches us
+    // must not leave the box wrong for ever.
+    expect(needsRemeasure({ ...settled, now: 3000 })).toBe(true);
   });
 });
