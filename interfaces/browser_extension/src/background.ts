@@ -17,7 +17,7 @@
  */
 import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
-import { OVERLAY_VEHICLES, toOverlayVehicles, type OverlayReply } from './features/maps-overlay/bridge';
+import { OPEN_PANEL, OVERLAY_VEHICLES, toOverlayVehicles, type OverlayReply } from './features/maps-overlay/bridge';
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -27,6 +27,15 @@ chrome.runtime.onInstalled.addListener(() => {
  *  because the sender is our own content script, not a web page. */
 chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
   const m = msg as { type?: unknown } | null;
+  if (m?.type === OPEN_PANEL) {
+    // Opening a side panel needs a user gesture, and the click that
+    // sent this is one.  If Chrome disagrees the choice is already in
+    // storage, so the panel shows it the next time it is opened.
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) void chrome.sidePanel.open({ tabId }).catch(() => {});
+    sendResponse({ ok: true });
+    return true;
+  }
   if (m?.type !== OVERLAY_VEHICLES) return false;
   // Only from a tab we injected into.  A message with no tab is not a
   // content script; nothing else in this extension sends this type.

@@ -16,6 +16,10 @@
  */
 
 export const OVERLAY_VEHICLES = '4truck:overlay-vehicles';
+/** "A truck was clicked on Google's map — show it."  The worker opens
+ *  the side panel; the choice itself travels through storage, so the
+ *  panel finds it whether it was already open or opens because of this. */
+export const OPEN_PANEL = '4truck:open-panel';
 
 /** One vehicle, trimmed to what a marker on somebody else's map needs.
  *  Deliberately not the full map payload: less to hand a page we do

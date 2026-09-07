@@ -24,7 +24,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
       </div>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Live Map</span>
+        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>In this panel</span>
         <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}>
           <span>
             Follow in Google Maps
@@ -38,7 +38,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Google Maps</span>
+        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>On google.com/maps</span>
         <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}>
           <span>
             Show my vehicles on Google Maps

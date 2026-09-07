@@ -34,6 +34,7 @@ LIVE MAP
 ON GOOGLE MAPS ITSELF
 • Your vehicles drawn on google.com/maps, so the route you are planning and the vehicles you are planning it around are one picture
 • They settle into place after you drag the map, rather than sliding with it — Google tells the page where it is once the hand lifts
+• Click a vehicle on Google's map to open it in the panel
 • A small 4truck switch on the map itself turns them off — or back on — where you see them
 
 More of 4truck reaches the panel over time. Each addition appears in this list.

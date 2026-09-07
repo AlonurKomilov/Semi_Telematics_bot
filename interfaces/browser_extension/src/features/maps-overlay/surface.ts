@@ -70,3 +70,35 @@ export const STATUS_COLOUR: Record<string, string> = {
 export function colourFor(status: string): string {
   return STATUS_COLOUR[status] ?? STATUS_COLOUR.stopped;
 }
+
+
+/** How near a click must land to count as hitting a marker.  The dot is
+ *  12px across; this is its radius plus a thumb's worth of forgiveness. */
+export const HIT_RADIUS = 16;
+
+/**
+ * The marker under a point, or null.
+ *
+ * NEAREST within the radius, not first-found: trucks parked at one yard
+ * overlap, and "whichever the loop reached first" would hand back a
+ * different one each time the list re-ordered.  Nearest is stable and is
+ * what the person aimed at.
+ *
+ * The markers themselves never take pointer events — taking the click
+ * would take the DRAG too, and a drag that begins on a truck must still
+ * move Google's map — so the hit test is ours to do.
+ */
+export function markerAt(
+  drawn: ReadonlyMap<string, { x: number; y: number }>,
+  x: number,
+  y: number,
+  radius = HIT_RADIUS,
+): string | null {
+  let best: string | null = null;
+  let bestD = radius;
+  for (const [id, p] of drawn) {
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d <= bestD) { bestD = d; best = id; }
+  }
+  return best;
+}

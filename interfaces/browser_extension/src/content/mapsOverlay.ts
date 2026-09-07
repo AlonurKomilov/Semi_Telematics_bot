@@ -33,16 +33,20 @@
  * unversioned: each of those is a state we will meet without warning,
  * and the right answer to each is to disappear rather than draw wrong.
  */
-import { OVERLAY_VEHICLES, type OverlayReply, type OverlayVehicle } from '../features/maps-overlay/bridge';
+import { OPEN_PANEL, OVERLAY_VEHICLES, type OverlayReply, type OverlayVehicle } from '../features/maps-overlay/bridge';
 import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraFromUrl, isStreetView, isVisible, project, sameCamera, type Camera } from '../features/maps-overlay/projection';
-import { colourFor, findMapCanvas, sameSurface, type Surface } from '../features/maps-overlay/surface';
+import { colourFor, findMapCanvas, markerAt, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
 const CHIP_ID = '4truck-maps-chip';
+/** A vehicle picked here, for the panel to open on.  Storage rather than
+ *  a message: the panel may be closed at the moment of the click and
+ *  would never receive one. */
+const PENDING_SELECT_KEY = 'pendingSelectVehicle';
 /** Positions are 30s fresh on the server; asking faster spends quota
  *  for numbers that have not changed. */
 const POLL_MS = 30_000;
@@ -66,6 +70,10 @@ const markers = new Map<string, HTMLDivElement>();
  *  switch.  A person who has not connected did not ask for this. */
 let signedIn = false;
 let chip: HTMLButtonElement | null = null;
+/** Where each marker was last drawn, in layer pixels — so a click can
+ *  be matched to a vehicle without the markers taking pointer events,
+ *  which would stop a drag that begins on a truck. */
+const drawnAt = new Map<string, { x: number; y: number }>();
 
 // ── gesture state ──────────────────────────────────────────────────────
 let drag: Drag | null = null;
@@ -178,7 +186,11 @@ function updateChip(inView: number): void {
   const track = el.querySelector<HTMLElement>('[data-track]')!;
   const knob = el.querySelector<HTMLElement>('[data-knob]')!;
   if (enabled) {
-    label.textContent = inView === 0 ? 'no vehicles in view' : `${inView} vehicle${inView === 1 ? '' : 's'}`;
+    // "in view", never a bare "N vehicles": the panel says how many the
+    // account has, this says how many are on this screen, and the same
+    // words for two numbers on one screen is how a person stops
+    // trusting either.
+    label.textContent = inView === 0 ? 'none in view' : `${inView} in view`;
     el.setAttribute('aria-checked', 'true');
     el.setAttribute('aria-label', 'Show 4truck vehicles on this map — on');
     track.style.background = '#22c55e';
@@ -199,7 +211,7 @@ function markerFor(v: OverlayVehicle): HTMLDivElement {
     // Markers take no pointer events either: a drag that starts on a
     // truck must drag the map, and nothing here answers a click yet.
     el.style.cssText =
-      'position:absolute;transform:translate(-50%,-50%);pointer-events:none;' +
+      'position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:pointer;' +
       'display:flex;align-items:center;gap:4px;font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
     el.innerHTML =
       '<span data-dot style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)"></span>' +
@@ -227,10 +239,12 @@ function draw(): void {
   el.style.height = `${surface.height}px`;
 
   const seen = new Set<string>();
+  drawnAt.clear();
   for (const v of vehicles) {
     const p = project(v, camera, surface);
     if (!isVisible(p, surface)) continue;
     seen.add(v.id);
+    drawnAt.set(v.id, p);
     const m = markerFor(v);
     m.style.left = `${p.x}px`;
     m.style.top = `${p.y}px`;
@@ -339,7 +353,22 @@ function onPointerMove(e: PointerEvent): void {
   root.style.transform = dragTransform(drag);
 }
 
-function onPointerUp(): void {
+/** A press that did not move, landing on a truck: open the panel on it.
+ *  The markers themselves stay pointer-events:none — taking the click
+ *  would take the DRAG too, and a drag that starts on a truck must
+ *  still move Google's map. */
+function selectAt(clientX: number, clientY: number): void {
+  if (!enabled || !signedIn) return;
+  if (!surface) return;
+  const id = markerAt(drawnAt, clientX - surface.left, clientY - surface.top);
+  if (!id) return;
+  // Written first, then the panel is asked to open: whichever arrives
+  // first, the panel finds the choice waiting for it.
+  void chrome.storage.local.set({ [PENDING_SELECT_KEY]: id });
+  try { chrome.runtime.sendMessage({ type: OPEN_PANEL }); } catch { /* worker asleep; storage still carries it */ }
+}
+
+function onPointerUp(e?: PointerEvent): void {
   pointersDown = Math.max(0, pointersDown - 1);
   if (!drag) return;
   const release = endDrag(drag);
@@ -348,6 +377,7 @@ function onPointerUp(): void {
   if (!root) return;
   if (release.kind === 'still') {
     root.style.transform = '';
+    if (e) selectAt(e.clientX, e.clientY);
     return;
   }
   // Keep following through the settle; the map is where the hand left

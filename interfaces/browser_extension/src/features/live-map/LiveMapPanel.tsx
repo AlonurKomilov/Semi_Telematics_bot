@@ -16,12 +16,19 @@ import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
 import { getFlag, setFlag } from '../../prefs';
-import { directionsUrl, followInGoogleMaps, getFollowPref, openInGoogleMaps, searchUrl, setFollowPref } from './googleMaps';
+import { directionsUrl, followInGoogleMaps, getFollowPref, markFollowWarned, openInGoogleMaps, searchUrl, setFollowPref, wasFollowWarned } from './googleMaps';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
 const REFRESH_MS = 30_000;
 const LIVE_REFRESH_MS = 5_000;
 const LIST_OPEN_KEY = 'liveMapListOpen';
+/** The filter is a working preference, not a fresh decision every time:
+ *  a dispatcher who watches Moving watched it yesterday too. */
+const FILTER_KEY = 'liveMapFilter';
+/** A vehicle chosen on google.com/maps, waiting for the panel to open.
+ *  Storage rather than a message, so it works whether the panel was
+ *  already open or is opening because of that very click. */
+const PENDING_SELECT_KEY = 'pendingSelectVehicle';
 type Filter = 'all' | VehicleStatus;
 
 export default function LiveMapPanel() {
@@ -52,8 +59,12 @@ export default function LiveMapPanel() {
   const now = Date.now();
   // "Follow in Google Maps": a ref as well as state, because marker click
   // handlers are attached once and must read the CURRENT choice.
-  const [follow, setFollow] = useState(true);
-  const followRef = useRef(true);
+  const [follow, setFollow] = useState(false);
+  const followRef = useRef(false);
+  /** Shown once, the first time following is switched on: it replaces
+   *  what is open in the person's Google Maps tab, and that is worth
+   *  one sentence before it happens rather than an apology after. */
+  const [followNotice, setFollowNotice] = useState('');
   // The map is the point of the panel; the list is the index to it.
   // Collapsing gives the map the whole strip, and the choice sticks.
   const [listOpen, setListOpen] = useState(true);
@@ -121,6 +132,12 @@ export default function LiveMapPanel() {
     const on = !follow;
     setFollow(on); followRef.current = on;
     void setFollowPref(on);
+    if (!on) { setFollowNotice(''); return; }
+    void wasFollowWarned().then((warned) => {
+      if (warned) return;
+      setFollowNotice('Selecting a vehicle will replace whatever is open in your Google Maps tab.');
+      void markFollowWarned();
+    });
   };
 
   // ── physics loop: one rAF per moving truck ──
@@ -239,6 +256,10 @@ export default function LiveMapPanel() {
     map.current = m;
     void getFollowPref().then((on) => { setFollow(on); followRef.current = on; });
     void getFlag(LIST_OPEN_KEY, true).then(setListOpen);
+    void chrome.storage.local.get(FILTER_KEY).then((got) => {
+      const f = got[FILTER_KEY];
+      if (f === 'all' || f === 'moving' || f === 'idle' || f === 'stopped') setFilter(f);
+    });
     // The cleanup reads the SAME maps this effect created, so hold them
     // in locals — React warns that a ref may point elsewhere by then.
     const framesMap = frames.current, physMap = phys.current, markerMap = markers.current, latestMap = latest.current;
@@ -254,13 +275,44 @@ export default function LiveMapPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => vehicles.filter((f) =>
-    (filter === 'all' || vehicleStatus(f) === filter) &&
-    (!search || f.properties.name.toLowerCase().includes(search.toLowerCase()))),
-  [vehicles, filter, search]);
-  const count = (s: Filter) => s === 'all' ? vehicles.length : vehicles.filter((f) => vehicleStatus(f) === s).length;
+  // The search narrows the SET; the status chips slice what the search
+  // left.  Counting them off different sets put "All (100)" above a list
+  // of three — two numbers for one thing, on one screen.
+  const searched = useMemo(() => vehicles.filter((f) =>
+    !search || f.properties.name.toLowerCase().includes(search.toLowerCase())),
+  [vehicles, search]);
+  const filtered = useMemo(() => searched.filter((f) =>
+    filter === 'all' || vehicleStatus(f) === filter),
+  [searched, filter]);
+  const count = (s: Filter) => s === 'all' ? searched.length : searched.filter((f) => vehicleStatus(f) === s).length;
+
+  const chooseFilter = (s: Filter) => {
+    setFilter(s);
+    void chrome.storage.local.set({ [FILTER_KEY]: s });
+  };
 
   const focus = (f: MapVehicleFeature) => select(f, true);
+
+  // A marker clicked on google.com/maps: the overlay writes the id and
+  // the panel opens on it.  Through storage rather than a message so it
+  // works either way round — the panel already open, or opening because
+  // of that very click and mounting after the message would have gone.
+  useEffect(() => {
+    const take = (id: unknown) => {
+      if (typeof id !== 'string' || !id) return;
+      const f = vehicles.find((v) => idOf(v) === id);
+      if (!f) return;
+      void chrome.storage.local.remove(PENDING_SELECT_KEY);
+      select(f, true);
+    };
+    void chrome.storage.local.get(PENDING_SELECT_KEY).then((got) => take(got[PENDING_SELECT_KEY]));
+    const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && PENDING_SELECT_KEY in changes) take(changes[PENDING_SELECT_KEY].newValue);
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles]);
 
   // Leaflet caches its container size, and TWO things change it: the
   // list opening or closing, and a vehicle being selected — the card
@@ -365,17 +417,25 @@ export default function LiveMapPanel() {
         })()}
       <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}>
         <input className="input" placeholder="Search vehicles…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+        {/* Two different kinds of control, so two different shapes.  One
+            row of identical pills made a status FILTER and a behaviour
+            SWITCH look like siblings: picking "Moving" narrows a list,
+            pressing "Follow" changes what a Google Maps tab does, and
+            the eye could not tell which was which. */}
+        <div className="row" role="radiogroup" aria-label="Filter by status" style={{ flexWrap: 'wrap', gap: 6 }}>
           {(['all', 'moving', 'idle', 'stopped'] as Filter[]).map((s) => (
-            <button key={s} className={`chip ${filter === s ? 'on' : ''}`} onClick={() => setFilter(s)}>
+            <button key={s} className={`chip ${filter === s ? 'on' : ''}`} role="radio" aria-checked={filter === s}
+                    onClick={() => chooseFilter(s)}>
               {s[0].toUpperCase() + s.slice(1)} ({count(s)})
             </button>
           ))}
-          <button className={`chip ${follow ? 'on' : ''}`} onClick={toggleFollow} aria-pressed={follow}
-                  title="With Google Maps in front, selecting a vehicle moves Google's pin to it">
-            Follow in Google Maps
-          </button>
         </div>
+        <label className="row" style={{ gap: 8, cursor: 'pointer' }}
+               title="With Google Maps in front, selecting a vehicle replaces what is open in that tab">
+          <input type="checkbox" role="switch" checked={follow} onChange={toggleFollow} />
+          <span className="small">Follow in Google Maps</span>
+        </label>
+        {followNotice && <p className="muted small" style={{ margin: 0 }}>{followNotice}</p>}
         {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
         {tileNotice && <p className="muted" style={{ margin: 0 }}>{tileNotice}</p>}
       </div>
@@ -423,6 +483,23 @@ export default function LiveMapPanel() {
         {/* Rows in the shape of the answer, not the word "Loading" —
             the panel is a strip, and a lone sentence in it reads as an
             empty account rather than a pending request. */}
+        {/* A filter or a search emptied the list — which is NOT "you have
+            no vehicles".  Saying nothing here sent people away believing
+            their account was empty, so the constraint is named and the
+            way out is one press. */}
+        {!filtered.length && !!vehicles.length && (
+          <div style={{ padding: '20px 12px', display: 'grid', gap: 6, justifyItems: 'center', textAlign: 'center' }}>
+            <strong style={{ fontSize: 13 }}>No vehicles match</strong>
+            <span className="muted small">
+              {[filter !== 'all' ? `Status: ${filter}` : '', search ? `Search: “${search}”` : '']
+                .filter(Boolean).join(' · ')}
+            </span>
+            <button className="btn" style={{ marginTop: 4 }}
+                    onClick={() => { chooseFilter('all'); setSearch(''); }}>
+              Clear filters
+            </button>
+          </div>
+        )}
         {!vehicles.length && !error && answered && (
           <div style={{ padding: '20px 12px', display: 'grid', gap: 6, justifyItems: 'center', textAlign: 'center' }}>
             <strong style={{ fontSize: 13 }}>No vehicles to show</strong>

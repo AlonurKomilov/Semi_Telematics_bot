@@ -36,6 +36,10 @@ export default function Connect({ onDone, disconnected = false }: { onDone: () =
   return (
     <div style={{ padding: 16, display: 'grid', gap: 10 }}>
       <h1 style={{ fontSize: 16, margin: 0 }}>Connect to 4truck</h1>
+      {/* Three steps, and the first is already done by being here — a
+          flow that shows where you are is finished more often than one
+          that just says "waiting". */}
+      <p className="muted small" style={{ margin: 0 }}>{waiting ? 'Step 2 of 3' : 'Step 1 of 3'}</p>
       {disconnected && (
         <p style={{ margin: 0, color: 'var(--warn)' }}>
           This connection was ended — from your 4truck profile, or it expired. Connect again to continue.
@@ -56,7 +60,13 @@ export default function Connect({ onDone, disconnected = false }: { onDone: () =
         </>
       ) : (
         <>
-          <p className="muted" style={{ margin: 0 }}>Waiting for you to confirm in the 4truck tab…</p>
+          {/* The tab may open on the sign-in page first, and a person
+              looking for a Connect button that is one screen away
+              concludes the extension is broken. */}
+          <p className="muted" style={{ margin: 0 }}>
+            Waiting for you in the 4truck tab — sign in first if it asks, then press
+            <strong> Connect</strong> there.
+          </p>
           <div className="row">
             <button className="btn" type="button" onClick={() => void start()}>Open it again</button>
             <button className="btn" type="button" onClick={() => void cancel()}>Cancel</button>

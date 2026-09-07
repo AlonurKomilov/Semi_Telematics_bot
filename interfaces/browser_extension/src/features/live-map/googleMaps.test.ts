@@ -16,9 +16,12 @@ describe('following — Google\'s pin moves with the selection, only while Googl
     expect(tabCalls.create).toHaveLength(0);
   });
   it('is on until switched off, and the choice sticks', async () => {
-    expect(await getFollowPref()).toBe(true);
-    await setFollowPref(false);
+    // OFF by default: following REPLACES what is open in the person's
+    // Google Maps tab, and a setting that can throw away a route they
+    // were planning is not one to switch on for them.
     expect(await getFollowPref()).toBe(false);
+    await setFollowPref(true);
+    expect(await getFollowPref()).toBe(true);
   });
 });
 

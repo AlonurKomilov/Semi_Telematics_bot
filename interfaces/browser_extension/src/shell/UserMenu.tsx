@@ -54,9 +54,18 @@ export default function UserMenu({ me, onSettings, onDisconnect }: {
             Settings
           </button>
           <div className="menu-sep" />
+          {/* "Disconnect" alone reads as signing out of 4truck itself.
+              It ends THIS panel's connection and nothing else — and
+              getting it back means a trip to the dashboard, which is
+              worth one line before the click rather than a surprise
+              after it. */}
           <button type="button" role="menuitem" className="menu-item danger" onClick={pick(onDisconnect)}>
-            Disconnect
+            Disconnect this panel
           </button>
+          <p className="muted" style={{ margin: 0, padding: '0 10px 8px', fontSize: 11, lineHeight: 1.35 }}>
+            You stay signed in to 4truck. To use the panel again you connect it from your
+            dashboard.
+          </p>
         </div>
       )}
     </div>

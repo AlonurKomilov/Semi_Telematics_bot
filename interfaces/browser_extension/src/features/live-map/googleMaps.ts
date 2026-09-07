@@ -42,9 +42,22 @@ export async function followInGoogleMaps(url: string): Promise<boolean> {
 }
 
 const FOLLOW_KEY = 'followGoogleMaps';
+/** The one-time notice shown the first time following is switched on. */
+export const FOLLOW_WARNED_KEY = 'followGoogleMapsWarned';
 /** On until the person switches it off; the choice survives the panel closing. */
+/** OFF by default, and deliberately so.  Following REPLACES what is in
+ *  the person's open Google Maps tab — a route they were planning is
+ *  gone, with no undo.  A setting that can destroy somebody's work is
+ *  not one to switch on for them; they turn it on knowing what it does,
+ *  which is what the first-time notice is for. */
 export async function getFollowPref(): Promise<boolean> {
-  return getFlag(FOLLOW_KEY, true);
+  return getFlag(FOLLOW_KEY, false);
+}
+export async function wasFollowWarned(): Promise<boolean> {
+  return getFlag(FOLLOW_WARNED_KEY, false);
+}
+export async function markFollowWarned(): Promise<void> {
+  await setFlag(FOLLOW_WARNED_KEY, true);
 }
 export async function setFollowPref(on: boolean): Promise<void> {
   await setFlag(FOLLOW_KEY, on);
