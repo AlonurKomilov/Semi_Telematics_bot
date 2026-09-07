@@ -54,6 +54,7 @@ PRIVACY AND CONTROL
 ✓ Never asks for a password — you sign in on 4truck.us, with the address bar in view
 ✓ Read-only — the panel sees what it shows and cannot change anything in your account
 ✓ Shows only the vehicles you are allowed to see, the same as your 4truck Live Map
+✓ On Google Maps it only draws: it reads where the map is pointing and nothing else on the page, sends nothing anywhere, and the switch on the map turns it off
 ✓ Every connection sends you a sign-in notice with a "Disconnect this session" button
 ✓ Disconnect any time from your 4truck profile — the panel signs out on its own
 ✓ Nothing sold, no ads, no third parties: your data is shown to you and to nobody else
