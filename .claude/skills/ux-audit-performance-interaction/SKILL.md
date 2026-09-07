@@ -1,6 +1,6 @@
 ---
 name: ux-audit-performance-interaction
-version: 1.6.0
+version: 1.6.1
 family: abc
 domain: ux
 kind: audit
@@ -55,6 +55,20 @@ identical (the working tree is truth, git only locates scope):
   product. **The deep pass requires Mode D**; the static pass works in
   any mode from code alone. Mode D combines with A/B/C. Evidence tags
   extend the family notation: `[code]`, `[ui]`, `[trace]`.
+  **Instrument discovery:** at Mode D start, scan the session's OWN
+  tool list for a browser-control MCP (trace, heap-compare,
+  CPU-throttle, input tools — e.g. chrome-devtools MCP). MCP tools
+  self-describe: map whatever is present onto the protocol steps it
+  closes (throttle → Step 1.2, trace → Step 3.1, heap pair →
+  Step 3.7) instead of expecting fixed tool names. When such an MCP
+  is connected, the deep pass may lead without asking the user to
+  drive DevTools manually.
+  **Topology honesty:** a measurement inherits the machine of the
+  CHROME, never of the AI. An MCP driving a headless/server browser
+  is rig-class — relative-only numbers (the seeded-rig rule applies).
+  Absolute budget verdicts require the MCP attached to the user's
+  real browser on their hardware. Every reported number names its
+  topology.
   **Mode D safety:** never trigger gestures that write to real data
   (submit / finalize / delete / export / send) — list them in the report
   as deliberately-not-touched; instrumentation must be temporary and
