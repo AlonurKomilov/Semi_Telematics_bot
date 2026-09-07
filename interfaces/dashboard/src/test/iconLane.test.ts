@@ -255,3 +255,28 @@ describe('one set on screen at a time', () => {
       'in names.ts but drawn nowhere — dead weight in every pack').toEqual([]);
   });
 });
+
+/**
+ * The pack NAMES stay behind the door too. `ICON_PACKS` is the list; a
+ * component that spells `'phosphor'` itself is a second list, and the
+ * panel had one — two chips written by hand beside a `map` over
+ * everything else, which is how a third pack would ship with a door
+ * that knew it and a panel that did not. The base pack's name is not
+ * held: `'lucide'` is the default value, the way `'blue'` is.
+ *
+ * Tests are exempt — a fixture that wears Phosphor has to say so.
+ */
+describe('nothing outside the door names a pack', () => {
+  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const NAMES = /['"`]phosphor['"`]/;
+  it('finds none', () => {
+    const offenders = walk(SRC)
+      .filter((f) => !f.startsWith('lib/icons/') && f !== SELF && !/\.test\.tsx?$/.test(f))
+      .filter((f) => NAMES.test(strip(readFileSync(join(SRC, f), 'utf8'))));
+    expect(offenders).toEqual([]);
+  });
+  it('and the detector can fail, and does not fail on prose', () => {
+    expect(NAMES.test(strip("const x = 'phosphor';"))).toBe(true);
+    expect(NAMES.test(strip("// was 'phosphor'\n/* 'phosphor' */"))).toBe(false);
+  });
+});

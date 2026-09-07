@@ -31,6 +31,7 @@ import { CURSOR_PACKS } from './cursor';
 import { SHADER_PACKS } from './shader';
 import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
+import { MATERIAL_PACKS } from './material';
 import { MODS as MOD_PACKS } from './mods';
 import { engineCss } from '../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../sound/engine';
@@ -65,7 +66,7 @@ describe('an engine file holds no pack content', () => {
       expect(code, `${f} carries a cue table — a pack is growing back inside the engine`)
         .not.toMatch(/\bcues:\s*\{/);
       expect(code, `${f} lists packs — the engine knows what exists again`)
-        .not.toMatch(/\b(SOUND_PACKS|KEY_PACKS|THEME_PACKS|FONT_PACKS|MODS)\s*[:=]/);
+        .not.toMatch(/\b(SOUND_PACKS|KEY_PACKS|THEME_PACKS|FONT_PACKS|MATERIAL_PACKS|MODS)\s*[:=]/);
       // A seed VALUE, not the `seed:` slot in the ThemePack type — the
       // contract says a pack has one; the engine must not say which.
       expect(code, `${f} carries a seed — an accent pack is growing back inside the engine`)
@@ -151,6 +152,7 @@ const CSS_AXES = [
   // defaults under a stamp nothing needs.
   ['accent', THEME_PACKS, 'blue', 'theme'],
   ['font', FONT_PACKS, 'geist'],
+  ['material', MATERIAL_PACKS, 'solid'],
 ] as const;
 
 describe('a CSS pack is a file, and the index is exactly the files', () => {
@@ -173,7 +175,7 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
         // nothing. An accent or a face is NOT — a printed page keeps
         // its accent and its typeface — and those blocks came out of
         // `@layer base`, not the screen block.
-        if (['wallpaper', 'cursor', 'shader'].includes(axis))
+        if (['wallpaper', 'cursor', 'shader', 'material'].includes(axis))
           expect(code.trim(), `packs/${folder}/${id}.css is not wrapped in @media screen`)
             .toMatch(/^@media screen\s*\{[\s\S]*\}\s*$/);
         // One file, one pack: a rule for a sibling in here is the old

@@ -19,6 +19,7 @@
 @import './mods/packs/font/serif.css';
 @import './mods/packs/font/mono.css';
 @import './mods/packs/font/rounded.css';
+@import './mods/packs/material/glass.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -67,7 +68,6 @@
   *::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
   }
-
 
   /* Font tokens live on :root — they were authored under `.theme`,
      a class NOTHING applies (theming drives `.dark` + data-attrs),
@@ -359,8 +359,6 @@
 
     --sidebar-foreground: oklch(0.145 0 0);
 
-
-
     --sidebar-accent: oklch(0.935 0.006 240);
 
     --sidebar-accent-foreground: oklch(0.205 0 0);
@@ -466,7 +464,6 @@
     --pin-shadow-right:  4px 0 6px 0 rgb(0 0 0 / 0.35);
     --pin-shadow-left:  -4px 0 6px 0 rgb(0 0 0 / 0.35);
 
-
     /* Dark-mode status hues — lifted to a ~400-weight lightness so
        they stay legible as solid text on the deep-black canvas,
        mirroring the light-on-dark / dark-on-light flip the rest of
@@ -515,8 +512,6 @@
     --sidebar: oklch(0.215 0.022 240);
 
     --sidebar-foreground: oklch(0.985 0 0);
-
-
 
     --sidebar-accent: oklch(0.30 0.025 240);
 
@@ -952,9 +947,6 @@
      cursor axis remains in this file but this note, and
      `packs/packs.test.ts` keeps it that way. */
 
-
-
-
   /* ── Shader (the light) ───────────────────────────────────────
      A LIGHTING model, which is what a Minecraft shader pack is: it
      moves the sun and leaves every object's own colour alone. Nothing
@@ -997,7 +989,6 @@
         rgb(0 0 0 / calc(0.10 * var(--light-strength, 1) * var(--light-elevate, 0)));
   }
 
-
   /* The chrome steps aside so the ground can be seen.
      Every chrome surface — the sidebar, the header, the envelope —
      paints `bg-sidebar` flat, and three opaque layers over a pattern is
@@ -1018,54 +1009,10 @@
     background-color: transparent;
   }
 
-
-
-  :root[data-material="glass"] {
-    --surface-alpha: 0.72;
-    --surface-blur: 14px;
-    /* Glass without a saturation boost reads as fog. */
-    --surface-saturate: 1.5;
-    --surface-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 12px 32px -16px rgb(0 0 0 / 18%);
-  }
-  .dark[data-material="glass"] {
-    /* Lower, because a dark surface has to let more of the ground
-       through before the eye reads it as translucent at all. */
-    --surface-alpha: 0.62;
-    --surface-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 12px 32px -14px rgb(0 0 0 / 55%);
-  }
-
-  /* `backdrop-filter` is applied ONLY under glass. At blur 0 it would
-     still promote every one of 178 cards to its own compositing layer
-     for no visual effect — the solid path must cost exactly nothing. */
-  :root[data-material="glass"] .surface {
-    background-color: color-mix(
-      in oklab,
-      var(--surface-base, var(--card)) calc(var(--surface-alpha) * 100%),
-      transparent
-    );
-    -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
-    backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
-    /* Only here, never on `.surface` itself. This rule is unlayered and
-       so outranks a utility — putting the shadow on the base class would
-       beat the `shadow-lg` that dialogs, sheets and menus already carry
-       and silently flatten every one of them. */
-    box-shadow: var(--surface-shadow);
-  }
-}
-
-/* The escape hatch, and it is not optional.
-   21 sticky and pinned elements use their fill to OCCLUDE the content
-   scrolling underneath — the grid's frozen columns, pinned headers, the
-   pivot's left rail. A translucent surface makes them see-through and
-   the table becomes unreadable. Those sites opt out explicitly. */
-/* Only under glass. In the solid path there is no translucency to
-   cancel, so a bare `.surface-opaque` rule would be a no-op — and a
-   no-op rule is one a mutation can delete without any guard noticing,
-   which is how it was found. */
-:root[data-material="glass"] .surface-opaque {
-  background-color: var(--surface-base, var(--card));
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  /* GLASS IS NOT HERE. `mods/packs/material/glass.css` carries the
+     translucent surface — its tokens, the backdrop filter, and the
+     `.surface-opaque` escape hatch — imported at the top of this sheet.
+     Solid has no file: it IS `.surface` above, and costs nothing. */
 }
 
 /* ─── MOTION AXIS ──────────────────────────────────────────────────────

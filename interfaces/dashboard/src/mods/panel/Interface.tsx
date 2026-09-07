@@ -17,7 +17,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
-import { MOD_MATERIALS, MOD_ICONS, type ModIcons } from '../catalogue';
+import { MOD_ICONS, type ModIcons } from '../catalogue';
+import { MATERIAL_PACKS } from '../packs/material';
 import { THEME_PACKS, packById } from '../packs/theme';
 import { FONT_PACKS } from '../packs/font';
 import { accentTokens } from '../theme/accent';
@@ -27,7 +28,7 @@ import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import type { IconPack } from '../../lib/icons';
+import { ICON_PACKS, type IconPack } from '../../lib/icons';
 import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
 
@@ -81,10 +82,10 @@ const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }
 /** What surfaces are made of. An axis, so it sits beside Corners rather
  *  than inside a look — a mod may set it, and so may the person. */
 const MATERIAL_OPTIONS: { value: Material; key: string; label: string }[] =
-  MOD_MATERIALS.map((m) => ({
-    value: m,
-    key: `mods.material_${m}`,
-    label: m === 'solid' ? 'Solid' : 'Glass',
+  MATERIAL_PACKS.map((m) => ({
+    value: m.id,
+    key: `mods.material_${m.id}`,
+    label: m.label,
   }));
 
 /**
@@ -113,10 +114,15 @@ const FONT_PREVIEW: Record<string, string> = {
  * becomes a row above this one rather than a redesign". This is that
  * row, and nothing below it changed.
  */
-const PACK_OPTIONS: { value: IconPack; key: string; label: string }[] = [
-  { value: 'lucide',   key: 'mods.icon_pack_lucide',   label: 'Lucide' },
-  { value: 'phosphor', key: 'mods.icon_pack_phosphor', label: 'Phosphor' },
-];
+const PACK_OPTIONS: { value: IconPack; key: string; label: string }[] =
+  // From the door's own list, never spelled here: two chips written by
+  // hand beside a `map` over everything else were a second list, and
+  // `iconLane.test.ts` now holds every pack name behind the door.
+  ICON_PACKS.map((id) => ({
+    value: id,
+    key: `mods.icon_pack_${id}`,
+    label: id.charAt(0).toUpperCase() + id.slice(1),
+  }));
 
 const ICON_OPTIONS: { value: ModIcons; key: string; label: string }[] =
   MOD_ICONS.map((i) => ({

@@ -37,7 +37,8 @@ import { ICON_PACKS, type IconPack } from '../lib/icons';
 import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
 import { CURSOR_IDS } from '../mods/packs/cursor';
 import { SHADER_IDS } from '../mods/packs/shader';
-import { MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
+import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
+import { MATERIAL_IDS } from '../mods/packs/material';
 import { MODS } from '../mods/packs/mods';
 import { THEME_PACKS } from '../mods/packs/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
@@ -385,7 +386,7 @@ const LEGACY_COLOR: Record<ThemeColor, { mode: ThemeMode; accent: ThemeAccent }>
   'light':       { mode: 'light', accent: 'blue' },
 };
 export const MOD_RADII: ModRadius[] = ['sharp', 'rounded', 'pill'];
-export const MOD_MATERIAL_LIST: ModMaterial[] = [...MOD_MATERIALS];
+export const MOD_MATERIAL_LIST: ModMaterial[] = [...MATERIAL_IDS];
 export const MOD_MOTION_LIST: ModMotion[] = [...MOD_MOTIONS];
 export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
 

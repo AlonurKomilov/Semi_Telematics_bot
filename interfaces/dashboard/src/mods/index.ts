@@ -45,7 +45,7 @@ export { IconWeight } from './icons/IconWeight';
 
 // ── the catalogue ───────────────────────────────────────────────────
 export {
-  MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS,
+  MOD_MOTIONS, MOD_ICONS,
   PACK_TOKENS,
   modMatchesAxes,
   type ThemePack, type Mod, type ModAxes,
@@ -78,3 +78,5 @@ export { useCue } from './sound/useCue';
 export { THEME_PACKS, packById } from './packs/theme';
 export { FONT_PACKS, MOD_FONTS } from './packs/font';
 export { MODS, modById } from './packs/mods';
+export { MATERIAL_PACKS, MATERIAL_IDS, materialPackById } from './packs/material';
+export type { MaterialPack } from './material';

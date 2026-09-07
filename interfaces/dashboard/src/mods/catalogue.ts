@@ -57,17 +57,7 @@ export interface ThemePack {
  *  separation, which is a property of all five slots together. */
 export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as const;
 
-/**
- * What a surface is MADE OF, as opposed to what colour it is.
- *
- * An axis, not a pack field — it belongs beside corners in the panel,
- * because it is a property of the whole app rather than of one look. A
- * mod may set it, the same way a mod sets corners.
- *
- * Kept here rather than in the preferences registry for the same reason
- * the accent set is: one list, and the registry derives from it.
- */
-export const MOD_MATERIALS = ['solid', 'glass'] as const;
+// Materials live in `mods/packs/material/`; the contract is `mods/material.ts`.
 /** How fast the app moves. A multiplier on every transition — see the
  *  motion tokens in index.css for why the infinite loops are excluded. */
 export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
@@ -160,7 +150,9 @@ export type ModFont = string;
  * the file that is supposed to be pack-agnostic.
  */
 export const MOD_ICONS = ICON_WEIGHTS;
-export type ModMaterial = (typeof MOD_MATERIALS)[number];
+/** A `MATERIAL_PACKS` id. A string, like the other pack-backed axes:
+ *  the registry sanitises against the pack index. */
+export type ModMaterial = string;
 export type ModMotion = (typeof MOD_MOTIONS)[number];
 export type ModIcons = (typeof MOD_ICONS)[number];
 

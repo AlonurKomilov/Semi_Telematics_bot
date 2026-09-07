@@ -1,0 +1,55 @@
+/* Glass — surfaces you can see the ground through.
+   A PACK: the tokens, the one place `backdrop-filter` is applied, and
+   the escape hatch the pinned columns take. Solid has no file — it IS
+   the base `.surface`, and the whole point of the solid path is that it
+   costs nothing (`material.test.ts` holds it to that). Screen-only: the
+   print reset restores the light palette by specificity alone, and a
+   page about to become paper must not be blurred and thinned first. */
+@media screen {
+  :root[data-material="glass"] {
+    --surface-alpha: 0.72;
+    --surface-blur: 14px;
+    /* Glass without a saturation boost reads as fog. */
+    --surface-saturate: 1.5;
+    --surface-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 12px 32px -16px rgb(0 0 0 / 18%);
+  }
+  .dark[data-material="glass"] {
+    /* Lower, because a dark surface has to let more of the ground
+       through before the eye reads it as translucent at all. */
+    --surface-alpha: 0.62;
+    --surface-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 12px 32px -14px rgb(0 0 0 / 55%);
+  }
+
+  /* `backdrop-filter` is applied ONLY under glass. At blur 0 it would
+     still promote every one of 178 cards to its own compositing layer
+     for no visual effect — the solid path must cost exactly nothing. */
+  :root[data-material="glass"] .surface {
+    background-color: color-mix(
+      in oklab,
+      var(--surface-base, var(--card)) calc(var(--surface-alpha) * 100%),
+      transparent
+    );
+    -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    /* Only here, never on `.surface` itself. This rule is unlayered and
+       so outranks a utility — putting the shadow on the base class would
+       beat the `shadow-lg` that dialogs, sheets and menus already carry
+       and silently flatten every one of them. */
+    box-shadow: var(--surface-shadow);
+  }
+
+  /* The escape hatch, and it is not optional.
+     21 sticky and pinned elements use their fill to OCCLUDE the content
+     scrolling underneath — the grid's frozen columns, pinned headers, the
+     pivot's left rail. A translucent surface makes them see-through and
+     the table becomes unreadable. Those sites opt out explicitly. */
+  /* Only under glass. In the solid path there is no translucency to
+     cancel, so a bare `.surface-opaque` rule would be a no-op — and a
+     no-op rule is one a mutation can delete without any guard noticing,
+     which is how it was found. */
+  :root[data-material="glass"] .surface-opaque {
+    background-color: var(--surface-base, var(--card));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

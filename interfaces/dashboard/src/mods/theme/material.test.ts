@@ -6,9 +6,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { assembledCss, engineCss } from '../../test/stylesheet';
 
 const SRC = join(__dirname, '..', '..');
-const CSS = readFileSync(join(SRC, 'index.css'), 'utf8');
+// Assembled: glass is a pack file now, inlined the way Vite inlines it.
+const CSS = assembledCss();
 /** Comments blanked in place, so line numbers survive. */
 const CODE = CSS.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
 
@@ -76,11 +78,16 @@ describe('what the solid path costs', () => {
   });
 
   it('ships solid defaults that reproduce today exactly', () => {
+    // The ENGINE sheet, by name: the first declaration of each token is
+    // the base, and in the assembled sheet the glass pack — imported at
+    // the top — declares them first. A default read from there would be
+    // glass's, and this test would be asserting the wrong material.
+    const ENGINE = engineCss().replace(/\/\*[\s\S]*?\*\//g, '');
     for (const [name, want] of [
       ['--surface-alpha', '1'], ['--surface-blur', '0px'],
       ['--surface-saturate', '1'], ['--surface-shadow', 'none'],
     ] as const) {
-      const m = new RegExp(`${name}:\\s*([^;]+);`).exec(CODE);
+      const m = new RegExp(`${name}:\\s*([^;]+);`).exec(ENGINE);
       expect(m, `${name} is not declared`).not.toBeNull();
       expect(m![1].trim(), `${name} default`).toBe(want);
     }
