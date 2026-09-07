@@ -34,7 +34,8 @@ import { Link } from 'react-router-dom';
 import { ApiError, apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';
 import { CardSkeleton } from '@/components/shell';
-import { MatrixCell, MatrixTh } from './_shared/matrixCells';
+import { Bell } from '../../lib/icons';
+import { AlwaysCell, ChannelPill, MatrixTh } from './_shared/matrixCells';
 import { CHANNEL_META } from './_shared/channels';
 
 interface Trigger {
@@ -229,6 +230,7 @@ export default function TriggerDeliveryMatrix({
             <thead>
               <tr className="text-xs text-muted-foreground">
                 <th className="text-left font-medium pb-2">Trigger</th>
+                <MatrixTh icon={Bell} label="In-app" hint="" />
                 {columns.map((c) => (
                   <MatrixTh key={c.key} icon={c.icon} label={c.label}
                             hint={colHint[c.key]} />
@@ -250,8 +252,9 @@ export default function TriggerDeliveryMatrix({
                       <span className="text-2xs text-muted-foreground"> · off</span>
                     )}
                   </td>
+                  <AlwaysCell label="Every trigger appears in the bell — this cannot be turned off." />
                   {columns.map((c) => (
-                    <MatrixCell
+                    <ChannelPill
                       key={c.key}
                       checked={t.channels.includes(c.key)}
                       disabled={!colOn[c.key]}
@@ -280,8 +283,7 @@ export default function TriggerDeliveryMatrix({
       )}
 
       <p className="text-2xs text-muted-foreground mt-2">
-        A trigger always appears in the bell — these channels are the extra
-        places it can reach you. What each one watches is set on the{' '}
+        What each trigger watches is set on the{' '}
         <Link to="/alerts/triggers" className="text-primary hover:underline">
           Alerts page
         </Link>.

@@ -127,6 +127,13 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
   const { email } = prefs;
   const showForm = editing || !email.connected;
   const broken = email.health?.state === 'needs_attention';
+  // Verified, a delivery cadence chosen — and not one alert type ticked,
+  // so the channel is set up and silent.  The card looked FINISHED while
+  // delivering nothing: the person did the work and got no value from
+  // it, and nothing said a second step existed two sections below.
+  const verifiedButSilent =
+    email.connected && email.verified && !broken
+    && Object.values(email.types || {}).every((on) => !on);
 
   return (
     <Card render={<section />}>
@@ -153,6 +160,21 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
               </span>
         )}
       </div>
+      {verifiedButSilent && (
+        <div className="mb-3 rounded-md border border-border bg-muted/40 p-3">
+          <p className="text-xs text-foreground">
+            Verified — but no alerts are sending here yet.
+          </p>
+          <p className="text-2xs text-muted-foreground mt-1">
+            Choose which ones in{' '}
+            <a href="#alerts-where-they-reach-you"
+               className="text-primary hover:underline">
+              Alerts — where they reach you
+            </a>{' '}
+            below.
+          </p>
+        </div>
+      )}
       {broken && (
         <div className="mb-3 rounded-md border border-warn-bd bg-warn-bg p-3">
           <p className="text-xs text-warn inline-flex items-start gap-1.5">

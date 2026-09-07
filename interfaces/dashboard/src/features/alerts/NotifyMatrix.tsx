@@ -18,10 +18,10 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from '../../lib/toast';
-import { Send, Mail, MonitorSmartphone } from '../../lib/icons';
+import { Bell, Check, Send, Mail, MonitorSmartphone } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Card } from '@/components/ui/card';
-import { MatrixCell, MatrixTh } from './_shared/matrixCells';
+import { AlwaysCell, ChannelPill, MatrixTh } from './_shared/matrixCells';
 
 // Every alert type the registry can hand us needs a row label here —
 // the fallback renders the RAW key ("maintenance"), which reads as a bug
@@ -125,11 +125,25 @@ export default function NotifyMatrix({
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
         Notify me when
       </p>
+      {/* The defaults, in words.  Without this the blank Email column
+          reads as a mistake rather than a choice — the shape alone no
+          longer says which way a grid leans, now that this grid and
+          Account activity share one control. */}
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground mb-3">
+        <Check className="size-3" aria-hidden />
+        Telegram is on by default — Email and Push are yours to switch on
+      </span>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-xs text-muted-foreground">
               <th className="text-left font-medium pb-2">Alert type</th>
+              {/* The bell is a COLUMN, not a footnote.  It answers the
+                  same question as the others and always answers "yes",
+                  and the table below (Account activity) already asks it
+                  this way — two adjacent grids asking one question must
+                  not disagree about their columns. */}
+              <MatrixTh icon={Bell} label="In-app" hint="" />
               <MatrixTh icon={Send} label="Telegram" hint={colHint.telegram} />
               <MatrixTh icon={Mail} label="Email" hint={colHint.email} />
               <MatrixTh icon={MonitorSmartphone} label="Push" hint={colHint.push} />
@@ -139,7 +153,8 @@ export default function NotifyMatrix({
             {relevantTypes.map((type) => (
               <tr key={type}>
                 <td className="py-2.5 pr-3">{TYPE_LABEL[type] || type}</td>
-                <MatrixCell
+                <AlwaysCell label="Every alert appears in the bell — this cannot be turned off." />
+                <ChannelPill
                   checked={!!telegramToggles[`alert_${type}`]}
                   disabled={!telegramMasterOn || saving === `tg:${type}`}
                   hint={colHint.telegram}
@@ -153,14 +168,14 @@ export default function NotifyMatrix({
                     finally { setSaving(null); }
                   }}
                 />
-                <MatrixCell
+                <ChannelPill
                   checked={!!email?.types[type]}
                   disabled={!emailOn || saving === `email:${type}`}
                   hint={colHint.email}
                   label={`Email — ${TYPE_LABEL[type] || type}`}
                   onChange={(v) => setMatrixType('email', type, v)}
                 />
-                <MatrixCell
+                <ChannelPill
                   checked={!!push?.types[type]}
                   disabled={!pushOn || saving === `web_push:${type}`}
                   hint={colHint.push}
@@ -188,13 +203,6 @@ export default function NotifyMatrix({
           ].filter(Boolean).join(' · ')}
         </p>
       )}
-      {/* Why this grid has three channels while Account activity below has
-          four: alerts have their own feed (the bell reads them from the
-          alert board), so there's no In-app column to opt into here. */}
-      <p className="text-2xs text-muted-foreground mt-2">
-        Alerts always appear in the bell — these channels are the extra
-        places they can reach you.
-      </p>
     </Card>
   );
 }

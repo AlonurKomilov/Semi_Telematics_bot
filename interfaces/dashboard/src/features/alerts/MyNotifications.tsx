@@ -41,9 +41,14 @@ import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
 /** Small uppercase source divider — the per-source rhythm of the page. */
-function SourceLabel({ children }: { children: React.ReactNode }) {
+function SourceLabel({ children, id }: {
+  children: React.ReactNode;
+  /** Anchor target, so a card elsewhere on the page can send someone to
+   *  the section that finishes its job. */
+  id?: string;
+}) {
   return (
-    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 mt-6 first:mt-0">
+    <p id={id} className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 mt-6 first:mt-0">
       {children}
     </p>
   );
@@ -91,6 +96,19 @@ export default function MyNotifications() {
   const setField = async (field: string, value: boolean) => {
     if (!prefs) return;
     const prev = prefs;
+    // Switching the master off silences every Telegram row in BOTH grids
+    // below, and nothing on screen said so — the rows simply grey out
+    // after the fact.  Name the loss where the decision is made; a real
+    // consequence stated plainly is not a nag.
+    if (field === 'alerts_on' && !value) {
+      const n = Object.entries(prev.toggles)
+        .filter(([k, on]) => k.startsWith('alert_') && on).length;
+      if (n) {
+        toast.warning(
+          `${n} alert type${n === 1 ? '' : 's'} will stop reaching your Telegram.`,
+          { id: 'tg-master-off' });
+      }
+    }
     setPrefs({ ...prefs, [field]: value, toggles: { ...prefs.toggles, [field]: value } });
     setSaving(field);
     try {
@@ -205,11 +223,12 @@ export default function MyNotifications() {
             <span className="flex-1 min-w-0">
               <span className="text-sm inline-flex items-center gap-1.5">
                 {prefs.alerts_on ? <Bell className="size-3.5" /> : <BellOff className="size-3.5" />}
-                Personal alerts enabled
+                Telegram DM alerts
               </span>
-              <span className="block text-xs text-muted-foreground mt-0.5">
-                Master switch for your Telegram DM alerts.
-              </span>
+              {/* Named for what it governs.  "Personal alerts enabled" read
+                  as the page-wide master switch on a page with three
+                  channels — and the sub-line that corrected it was doing
+                  work the label should do itself. */}
             </span>
           </label>
           <label className="flex items-start gap-3 cursor-pointer mt-3 pt-3 border-t border-border/60">
@@ -243,7 +262,9 @@ export default function MyNotifications() {
           as one object — and the matrix, which answers WHERE, was the
           first thing a person met when their question was WHETHER.
           SourceLabel's mt-6 is also what puts air between the cards. */}
-      <SourceLabel>Alerts — where they reach you</SourceLabel>
+      <SourceLabel id="alerts-where-they-reach-you">
+        Alerts — where they reach you
+      </SourceLabel>
       <NotifyMatrix
         onSaved={flashSaved}
         relevantTypes={prefs.relevant_types}

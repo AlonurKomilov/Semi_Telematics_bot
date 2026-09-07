@@ -37,7 +37,10 @@ export default function BannerSettingsCard() {
     if (pos === position) return;
     setNotifPosition(pos);
     // Instant proof — the confirmation toast arrives AT the new position.
-    toast.success('Notification position updated');
+    // A STABLE id, because this control is meant to be tried: without one
+    // every click stacks another copy, and four of them cover the very
+    // cards being clicked (owner's screenshot).  Same id = replace.
+    toast.success('Notification position updated', { id: 'notif-position' });
   };
 
   return (

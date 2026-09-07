@@ -19,6 +19,7 @@ import { toast } from '../../lib/toast';
 import { Send, Mail, MonitorSmartphone, Check, Bell } from '../../lib/icons';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
+import { ChannelPill } from './_shared/matrixCells';
 import { Card } from '@/components/ui/card';
 
 type ChannelKey = 'telegram_dm' | 'email' | 'web_push' | 'in_app';
@@ -128,10 +129,15 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
 
   return (
     <Card render={<section />}>
-      {/* Opt-OUT, unlike the opt-IN Alerts grid above.  Two signals carry
-          the inverted polarity: the cells are On/Off SWITCHES (not
-          checkboxes — see Cell), and this badge names the default in words.
-          System rows are mostly MANDATORY (locked), so it says that instead. */}
+      {/* Opt-OUT, unlike the Alerts grid above.  This badge is now the
+          ONLY signal carrying that: the cells used to be switches while
+          the grid above drew checkboxes, and the shape difference was
+          doing half the explaining — but it was also making one question
+          wear two controls, so the shape is shared now and the WORDS have
+          to carry the polarity alone.  Which is why the grid above grew
+          a badge of its own rather than staying silent about its
+          defaults.  System rows are mostly MANDATORY (locked), so it
+          says that instead. */}
       <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground mb-3">
         <Check className="size-3" aria-hidden />
         {section === 'system'
@@ -203,34 +209,22 @@ function Th({ icon: Icon, label, hint }: { icon: typeof Send; label: string; hin
  *  the resting state as a filled "On" pill makes that polarity legible
  *  BEFORE reading any helper text, which two identical checkbox grids with
  *  opposite defaults never could. */
-function Cell({ checked, disabled, hint, onChange }: {
-  checked: boolean; disabled: boolean; hint: string;
+function Cell({ checked, disabled, hint, label, onChange }: {
+  checked: boolean; disabled: boolean; hint: string; label?: string;
   onChange: (v: boolean) => void | Promise<void>;
 }) {
-  const pill = (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={hint || undefined}
-      disabled={disabled}
-      onClick={() => void onChange(!checked)}
-      className={`inline-flex h-7 min-w-14 items-center justify-center rounded-md px-2 text-2xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-        checked
-          ? 'bg-primary/15 text-foreground hover:bg-primary/25 ring-1 ring-primary'
-          : 'bg-muted text-muted-foreground hover:bg-muted/80'
-      } min-h-tap`}
-    >
-      {/* A disabled chip must not claim the channel is on. Push is
-          unavailable until a device registers, and the row said "On" at
-          0.6 opacity — the tooltip explained it, but the chip label is
-          the thing being read. */}
-      {disabled ? 'N/A' : checked ? 'On' : 'Off'}
-    </button>
-  );
+  // The pill lives in _shared/matrixCells now.  Three tables on this page
+  // ask "does this reach me on this channel?", and they used to answer in
+  // two shapes — checkboxes in the two matrices above, this pill here.
+  // One question, one control; the pill won because it says N/A in a
+  // word instead of dimming an empty box the reader must interpret.
   return (
-    <td className="py-2 px-2 text-center">
-      {disabled && hint ? <Tip label={hint}><span>{pill}</span></Tip> : pill}
-    </td>
+    <ChannelPill
+      checked={checked}
+      disabled={disabled}
+      hint={hint}
+      label={label || hint || 'Channel'}
+      onChange={onChange}
+    />
   );
 }

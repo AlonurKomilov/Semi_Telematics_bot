@@ -73,3 +73,84 @@ export function MatrixCell({ checked, disabled, busy, hint, label, onChange }: {
     </td>
   );
 }
+
+/**
+ * The ONE control that answers "does this reach me on this channel?".
+ *
+ * Three tables on the preferences page ask that identical question, and
+ * they used to answer it in two shapes: the Alerts and Trigger matrices
+ * drew checkboxes, Account Activity drew this pill.  Nothing about the
+ * questions differed, so the split was pure learning cost — and the pill
+ * wins on information, because it says ``N/A`` in a word instead of
+ * dimming an empty box the reader must interpret.
+ *
+ * ``role="switch"`` rather than a checkbox: this is a BEHAVIOUR being
+ * turned on, not membership in a set — the project's own
+ * checkbox-vs-switch rule.
+ */
+export function ChannelPill({ checked, disabled, busy, hint, label, onChange }: {
+  checked: boolean;
+  /** Greyed because the CHANNEL can't deliver — a durable reason the
+   *  person can act on, not a transient one. */
+  disabled: boolean;
+  /** A write for this cell is in flight.  Deliberately NOT folded into
+   *  `disabled`: disabling the control a keyboard user just pressed
+   *  blurs it, and focus falls to <body> for the length of a request. */
+  busy?: boolean;
+  hint: string;
+  /** The cell's accessible name, e.g. "Telegram — Engine Faults". */
+  label: string;
+  onChange: (v: boolean) => void | Promise<void>;
+}) {
+  const pill = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={disabled && hint ? `${label} — ${hint}` : label}
+      aria-busy={busy || undefined}
+      disabled={disabled}
+      onClick={() => void onChange(!checked)}
+      className={`inline-flex h-7 min-w-14 items-center justify-center rounded-md
+                  px-2 text-2xs font-medium transition-colors min-h-tap
+                  disabled:cursor-not-allowed disabled:opacity-60 ${
+        checked
+          ? 'bg-primary/15 text-foreground hover:bg-primary/25 ring-1 ring-primary'
+          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+      }`}
+    >
+      {/* A disabled cell must not claim the channel is on: it says so in
+          a WORD, because the label is the thing being read. */}
+      {disabled ? 'N/A' : checked ? 'On' : 'Off'}
+    </button>
+  );
+  return (
+    <td className={`py-2.5 px-2 text-center ${busy ? 'opacity-60' : ''}`}>
+      {/* Disabled buttons swallow pointer events, so the Tip needs a
+          wrapper to hover — without it the reason never shows. */}
+      {disabled && hint ? <Tip label={hint}><span>{pill}</span></Tip> : pill}
+    </td>
+  );
+}
+
+/**
+ * A channel that ALWAYS delivers, stated structurally.
+ *
+ * The bell receives every alert and cannot be switched off, which the
+ * Alerts matrix used to say in a footnote under the table — prose a
+ * scanner skips, in a column position the eye never checks.  A cell in
+ * the row says it where the question is asked.
+ */
+export function AlwaysCell({ label }: { label: string }) {
+  return (
+    <td className="py-2.5 px-2 text-center">
+      <Tip label={label}>
+        <span className="inline-flex h-7 min-w-14 items-center justify-center
+                         rounded-md px-2 text-2xs font-medium
+                         bg-muted/60 text-muted-foreground">
+          Always
+        </span>
+      </Tip>
+    </td>
+  );
+}
