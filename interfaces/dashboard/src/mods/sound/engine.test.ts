@@ -11,9 +11,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  SOUND_PACKS, CUE_NAMES, CUE_LIMITS, WAVES,
-  isSafeCue, playCue, soundPackById, armAudio, resetAudioForTests, type Cue,
+  CUE_NAMES, CUE_LIMITS, WAVES, isSafeCue, playCue, armAudio, resetAudioForTests, type Cue,
 } from './engine';
+import { SOUND_PACKS, soundPackById } from '../packs/sound';
 
 beforeEach(() => { resetAudioForTests(); });
 

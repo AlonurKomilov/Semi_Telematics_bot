@@ -43,8 +43,8 @@ import {
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
 import { parseHex } from '../mods/theme/contrast';
-import { SOUND_PACKS } from '../mods/sound/engine';
-import { KEY_PACKS } from '../mods/sound/keys';
+import { SOUND_PACKS } from '../mods/packs/sound';
+import { KEY_PACKS } from '../mods/packs/keys';
 import { MOD_FONTS } from '../mods/catalogue';
 import { SURFACES } from '../mods/surfaces';
 

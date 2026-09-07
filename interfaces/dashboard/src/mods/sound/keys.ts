@@ -41,43 +41,11 @@ export interface KeyPack {
   readonly cues: Readonly<Record<KeyClass, Cue>>;
 }
 
-/**
- * Two packs, and deliberately not more.
- *
- * `click` is a dry board — a short square blip with the pitch dropping
- * on the wider keys, which is what a real keyboard does: a spacebar is
- * bigger, so it sounds lower. `soft` is the same shape with the edge
- * taken off, for somebody who wants to know the key registered without
- * announcing it to the room.
- *
- * Backspace is the one class that moves DOWN in both — a correction
- * should not sound like progress.
- */
-export const KEY_PACKS: readonly KeyPack[] = [
-  {
-    id: 'click',
-    label: 'Click',
-    cues: {
-      letter:    { wave: 'square',   from: 2200, to: 1700, dur: 0.012, gain: 0.045 },
-      space:     { wave: 'square',   from: 1500, to: 1100, dur: 0.016, gain: 0.05 },
-      enter:     { wave: 'triangle', from: 1800, to: 2400, dur: 0.018, gain: 0.05 },
-      backspace: { wave: 'square',   from: 1600, to: 1000, dur: 0.014, gain: 0.042 },
-    },
-  },
-  {
-    id: 'soft',
-    label: 'Soft',
-    cues: {
-      letter:    { wave: 'sine',     from: 1400, to: 1150, dur: 0.014, gain: 0.035 },
-      space:     { wave: 'sine',     from: 1000, to: 820,  dur: 0.018, gain: 0.038 },
-      enter:     { wave: 'triangle', from: 1200, to: 1600, dur: 0.020, gain: 0.038 },
-      backspace: { wave: 'sine',     from: 1100, to: 780,  dur: 0.016, gain: 0.032 },
-    },
-  },
-];
-
-export const keyPackById = (id: string): KeyPack | undefined =>
-  KEY_PACKS.find((p) => p.id === id);
+// The packs live in `mods/packs/keys/`, one file each. This file is the
+// keyboard as a MECHANISM — what counts as typing, which fields stay
+// silent, how fast a click may repeat — and it takes the pack it plays
+// from as an argument rather than looking one up, so it never has to
+// know what packs exist.
 
 /**
  * Which of the four a key press is, or null for keys that make no sound.
@@ -160,18 +128,19 @@ export function resetKeySoundForTests(): void {
 /**
  * The cue one key press earns, or null.
  *
- * PURE of preferences on purpose. This file is a leaf: the registry
- * imports `KEY_PACKS` to sanitise the pack name, so a `preferences`
- * import here would close the ring registry → keys → preferences →
- * registry. The gate and the volume are read one layer up, in `cue.ts`,
- * which is already the preferences-aware layer.
+ * PURE of preferences AND of the pack catalogue on purpose. The gate,
+ * the volume and the pack are all read one layer up in `cue.ts`, which
+ * is already the preferences-aware layer; this takes the resolved pack
+ * and answers with a cue. The leaf rule that used to live here — no
+ * `preferences` import, or the registry ring closes — now applies to
+ * the pack files instead, since the registry imports those.
  *
  * The rate limit lives here rather than there because it is a property
  * of the keyboard, not of the person: it is what stops eight keystrokes
  * a second summing into a buzz, and it must count every press that got
  * this far whether or not a pack resolves.
  */
-export function pickKeyCue(e: KeyboardEvent, packId: string): Cue | null {
+export function pickKeyCue(e: KeyboardEvent, pack: KeyPack | undefined): Cue | null {
   const cls = classify(e);
   if (!cls) return null;
   if (isSensitiveTarget(e.target)) return null;
@@ -180,5 +149,5 @@ export function pickKeyCue(e: KeyboardEvent, packId: string): Cue | null {
   if (now - lastAt < MIN_GAP_MS) return null;
   lastAt = now;
 
-  return keyPackById(packId)?.cues[cls] ?? null;
+  return pack?.cues[cls] ?? null;
 }

@@ -69,8 +69,9 @@ export {
 
 // ── sound ───────────────────────────────────────────────────────────
 export {
-  SOUND_PACKS, CUE_NAMES, CUE_LIMITS, WAVES,
-  soundPackById, isSafeCue, playCue, armAudio,
+  CUE_NAMES, CUE_LIMITS, WAVES,
+  isSafeCue, playCue, armAudio,
   type SoundPack, type Cue, type CueName, type Wave,
 } from './sound/engine';
+export { SOUND_PACKS, soundPackById } from './packs/sound';
 export { useCue } from './sound/useCue';

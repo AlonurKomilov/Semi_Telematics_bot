@@ -12,9 +12,10 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  KEY_CLASSES, KEY_PACKS, KEY_LIMITS, keyPackById,
+  KEY_CLASSES, KEY_LIMITS,
   classify, isSensitiveTarget, pickKeyCue, resetKeySoundForTests,
 } from './keys';
+import { KEY_PACKS, keyPackById } from '../packs/keys';
 import { isCueWithin, CUE_LIMITS } from './engine';
 
 const press = (init: Partial<KeyboardEvent> & { key: string }, target?: Element) => {
@@ -108,7 +109,7 @@ describe('the fields that stay silent', () => {
   it('no cue is produced for a silenced field, whatever was typed', () => {
     const input = el('<input type="password" />');
     for (const key of ['a', ' ', 'Enter', 'Backspace'])
-      expect(pickKeyCue(press({ key }, input), 'click'), key).toBeNull();
+      expect(pickKeyCue(press({ key }, input), keyPackById('click')), key).toBeNull();
   });
 });
 
@@ -120,8 +121,8 @@ describe('eight keystrokes a second do not sum into a buzz', () => {
 
   it('drops a press that lands inside the floor rather than queueing it', () => {
     const t = target();
-    expect(pickKeyCue(press({ key: 'a' }, t), 'click'), 'the first press was dropped').not.toBeNull();
-    expect(pickKeyCue(press({ key: 'b' }, t), 'click'), 'two clicks inside 30ms would overlap').toBeNull();
+    expect(pickKeyCue(press({ key: 'a' }, t), keyPackById('click')), 'the first press was dropped').not.toBeNull();
+    expect(pickKeyCue(press({ key: 'b' }, t), keyPackById('click')), 'two clicks inside 30ms would overlap').toBeNull();
   });
 
   it('the floor is longer than the longest cue, so two can never overlap', () => {
@@ -133,15 +134,15 @@ describe('eight keystrokes a second do not sum into a buzz', () => {
   });
 
   it('an unknown pack yields nothing and does not throw', () => {
-    expect(() => pickKeyCue(press({ key: 'a' }, target()), 'a-pack-that-left')).not.toThrow();
+    expect(() => pickKeyCue(press({ key: 'a' }, target()), keyPackById('a-pack-that-left'))).not.toThrow();
     resetKeySoundForTests();
-    expect(pickKeyCue(press({ key: 'a' }, target()), 'a-pack-that-left')).toBeNull();
+    expect(pickKeyCue(press({ key: 'a' }, target()), keyPackById('a-pack-that-left'))).toBeNull();
   });
 
   it('resolves the pack a person chose', () => {
     const t = target();
-    expect(pickKeyCue(press({ key: 'a' }, t), 'click')).toEqual(keyPackById('click')!.cues.letter);
+    expect(pickKeyCue(press({ key: 'a' }, t), keyPackById('click'))).toEqual(keyPackById('click')!.cues.letter);
     resetKeySoundForTests();
-    expect(pickKeyCue(press({ key: ' ' }, t), 'soft')).toEqual(keyPackById('soft')!.cues.space);
+    expect(pickKeyCue(press({ key: ' ' }, t), keyPackById('soft'))).toEqual(keyPackById('soft')!.cues.space);
   });
 });

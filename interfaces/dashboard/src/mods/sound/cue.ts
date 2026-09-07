@@ -20,8 +20,10 @@
  * `preferences/registry.ts`.
  */
 import { preferences } from '../../preferences';
-import { armAudio, playCue, soundPackById, type CueName } from './engine';
+import { armAudio, playCue, type CueName } from './engine';
 import { pickKeyCue, KEY_LIMITS } from './keys';
+import { soundPackById } from '../packs/sound';
+import { keyPackById } from '../packs/keys';
 
 /**
  * Play an interface cue, if this screen has asked for interface sound.
@@ -76,7 +78,7 @@ export function playKeyCue(e: KeyboardEvent): void {
   if (!preferences.get('mods.sound.keyboard')) return;
   const volume = preferences.get('mods.sound.volume');
   if (volume <= 0) return;
-  const cue = pickKeyCue(e, preferences.get('mods.sound.keyboard.pack'));
+  const cue = pickKeyCue(e, keyPackById(preferences.get('mods.sound.keyboard.pack')));
   if (cue) playCue(cue, volume, KEY_LIMITS);
 }
 

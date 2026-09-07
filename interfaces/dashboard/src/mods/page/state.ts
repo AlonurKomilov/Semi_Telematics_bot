@@ -11,8 +11,8 @@
  */
 import { MOD_DEFAULT, DEFS, type ModSetting, type SizeSetting } from '../../preferences';
 import { motionPercent, THEME_PACKS, FONT_PACKS } from '../catalogue';
-import { SOUND_PACKS } from '../sound/engine';
-import { KEY_PACKS } from '../sound/keys';
+import { SOUND_PACKS } from '../packs/sound';
+import { KEY_PACKS } from '../packs/keys';
 import type { TaxonomyCategory, TaxonomyItem } from '../taxonomy';
 
 /** How preference keys outside the theme blob are read. */

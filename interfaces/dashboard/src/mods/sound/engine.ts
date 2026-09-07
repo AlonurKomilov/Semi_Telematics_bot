@@ -99,51 +99,12 @@ export function isSafeCue(c: unknown): c is Cue {
   return isCueWithin(c, CUE_LIMITS);
 }
 
-// ── the packs ────────────────────────────────────────────────────────
-
-/**
- * `chime` is not a new sound. Its `alert` cue is the one this app has
- * always played — 880 Hz gliding to 440 over 0.35s at gain 0.18, a sine
- * — reproduced exactly, so turning the engine on changes nothing anybody
- * would notice. The other four are the same voice answering different
- * questions.
- */
-export const SOUND_PACKS: readonly SoundPack[] = [
-  {
-    id: 'chime',
-    label: 'Chime',
-    cues: {
-      alert:    { wave: 'sine', from: 880,  to: 440,  dur: 0.35, gain: 0.18 },
-      // Two things separate critical from alert without being louder:
-      // it starts higher and falls further. Loudness is the listener's
-      // setting, not ours to spend on urgency.
-      critical: { wave: 'sine', from: 1320, to: 330,  dur: 0.45, gain: 0.20 },
-      // Rising, because everything that went right rises.
-      success:  { wave: 'sine', from: 660,  to: 990,  dur: 0.16, gain: 0.14 },
-      error:    { wave: 'triangle', from: 320, to: 190, dur: 0.28, gain: 0.16 },
-      // Short and neutral: it marks that a window opened, and the window
-      // is the message.
-      undo:     { wave: 'sine', from: 520,  to: 520,  dur: 0.10, gain: 0.12 },
-    },
-  },
-  {
-    id: 'blip',
-    label: 'Blip',
-    // Square waves, short. Reads as instrumentation rather than
-    // notification — for a yard terminal where a chime sounds like a
-    // phone somebody left on a desk.
-    cues: {
-      alert:    { wave: 'square', from: 1000, to: 1000, dur: 0.06, gain: 0.10 },
-      critical: { wave: 'square', from: 1400, to: 700,  dur: 0.14, gain: 0.13 },
-      success:  { wave: 'square', from: 1200, to: 1600, dur: 0.05, gain: 0.08 },
-      error:    { wave: 'sawtooth', from: 240, to: 160, dur: 0.16, gain: 0.12 },
-      undo:     { wave: 'square', from: 800,  to: 800,  dur: 0.04, gain: 0.08 },
-    },
-  },
-];
-
-export const soundPackById = (id: string): SoundPack | undefined =>
-  SOUND_PACKS.find((p) => p.id === id);
+// ── the packs live elsewhere ─────────────────────────────────────────
+// `mods/packs/sound/` holds the cue sets, one file each. This file
+// defines what a pack MUST BE — the shape above, the bounds, and the
+// player below — and does not know which ones exist. An engine that
+// listed its own content is an engine somebody has to open to add a
+// sound; `packs/packs.test.ts` holds the line that this one never does.
 
 // ── the engine ───────────────────────────────────────────────────────
 

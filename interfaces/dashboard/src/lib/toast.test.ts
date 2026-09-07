@@ -29,7 +29,7 @@ vi.mock('sonner', () => ({ toast: sonner, Toaster: () => null }));
 
 import { toast } from './toast';
 import { resetToastCueForTests } from '../mods/sound/cue';
-import { SOUND_PACKS } from '../mods/sound/engine';
+import { SOUND_PACKS } from '../mods/packs/sound';
 import { preferences } from '../preferences';
 
 const pack = () => SOUND_PACKS.find((p) => p.id === 'chime')!;
