@@ -1,0 +1,16 @@
+/* Grid — fine ruled lines, like engineering paper. */
+@media screen {
+  /* Fine ruled lines, in the border token rather than the accent: a grid
+     is structure, and structure is not a place for the brand. 24px is
+     the 4px spacing scale six steps up, so the lines land on the same
+     rhythm the layout already uses. */
+  :root[data-wallpaper="grid"] .chrome-ground {
+    background-color: var(--sidebar);
+    background-image:
+      linear-gradient(to right,
+        color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom,
+        color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}

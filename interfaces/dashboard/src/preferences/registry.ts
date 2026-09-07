@@ -34,9 +34,9 @@
  */
 
 import { ICON_PACKS, type IconPack } from '../lib/icons';
-import { WALLPAPER_IDS } from '../mods/wallpaper';
-import { CURSOR_IDS } from '../mods/cursor';
-import { SHADER_IDS } from '../mods/shader';
+import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
+import { CURSOR_IDS } from '../mods/packs/cursor';
+import { SHADER_IDS } from '../mods/packs/shader';
 import {
   THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
 } from '../mods/catalogue';

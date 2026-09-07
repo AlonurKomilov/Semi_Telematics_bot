@@ -28,8 +28,8 @@ import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
-import { WALLPAPERS, wallpaperById } from '../wallpaper';
-import { CURSOR_PACKS, cursorPackById } from '../cursor';
+import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
+import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */

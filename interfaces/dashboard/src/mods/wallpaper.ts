@@ -55,19 +55,9 @@ export interface Wallpaper {
   readonly why: string;
 }
 
-export const WALLPAPERS: readonly Wallpaper[] = [
-  { id: 'none',  label: 'None',  why: 'Flat chrome, the way it has always been' },
-  { id: 'mesh',  label: 'Mesh',  why: 'Two soft pools of the accent, low in the corners' },
-  { id: 'grid',  label: 'Grid',  why: 'Fine ruled lines, like engineering paper' },
-  { id: 'grain', label: 'Grain', why: 'A fine tooth, the way paper stock has one' },
-  { id: 'paper', label: 'Paper', why: 'Drawn fibres, as if the chrome were pressed sheet' },
-  { id: 'plasma', label: 'Plasma', why: 'Slow accent clouds under a fine tooth' },
-];
-
-export const WALLPAPER_IDS = WALLPAPERS.map((w) => w.id);
-
-export const wallpaperById = (id: string): Wallpaper | undefined =>
-  WALLPAPERS.find((w) => w.id === id);
+// The patterns themselves — the list and the CSS — live in
+// `mods/packs/wallpaper/`. This file is the mechanism: what a wallpaper
+// IS, where it paints, and what it must not make unreadable.
 
 /** The base every pattern tints. Named here so the guard measures the
  *  same ground the stylesheet paints. */

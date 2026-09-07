@@ -1,0 +1,9 @@
+/* Soft — a lower sun: longer shadows, softer edges. */
+@media screen {
+  :root[data-shader="soft"] {
+    --light-lift: 1.7;
+    --light-spread: 1.9;
+    --light-strength: 0.75;
+    --light-elevate: 1;
+  }
+}

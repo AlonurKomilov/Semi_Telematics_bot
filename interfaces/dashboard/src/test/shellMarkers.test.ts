@@ -24,9 +24,10 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PREPAINT_AXES } from '../preferences/registry';
+import { assembledCss } from './stylesheet';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CSS = readFileSync(join(SRC, 'index.css'), 'utf8')
+const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**

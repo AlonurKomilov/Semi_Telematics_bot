@@ -13,7 +13,7 @@ import { usePreference } from '../../preferences';
 import { useMods, type Motion } from '../context';
 import { MOD_MOTIONS, motionPercent } from '../catalogue';
 import { Chip } from './Chip';
-import { SHADER_PACKS, shaderPackById } from '../shader';
+import { SHADER_PACKS, shaderPackById } from '../packs/shader';
 import type { LabelClass } from './Interface';
 
 const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =

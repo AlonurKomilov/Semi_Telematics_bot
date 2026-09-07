@@ -23,9 +23,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { applyTheme, applySize } from '../mods/context';
 import { MOD_FONTS } from '../mods/catalogue';
-import { WALLPAPER_IDS } from '../mods/wallpaper';
-import { CURSOR_IDS } from '../mods/cursor';
-import { SHADER_IDS } from '../mods/shader';
+import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
+import { CURSOR_IDS } from '../mods/packs/cursor';
+import { SHADER_IDS } from '../mods/packs/shader';
 import {
   MOD_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, MOD_RADII,
   MOD_MATERIAL_LIST,

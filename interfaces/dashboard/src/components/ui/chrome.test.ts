@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { assembledCss } from '../../test/stylesheet';
 
 const SRC = join(__dirname, '..', '..');
 
@@ -1649,11 +1650,15 @@ describe('UI chrome', () => {
       if (name) emitted.add(name);
       i = j;
     }
-    // …plus the ones we write ourselves.
-    // Comments stripped first — index.css's prose mentions `.md`, `.ts`
+    // …plus the ones we write ourselves — from the sheet AS THE BROWSER
+    // SEES IT. index.css `@import`s one file per mod pack and Vite
+    // inlines them; `.chrome-ground` is defined in those files, and a
+    // harvest of index.css alone reported it as "no such utility" the
+    // day the packs moved out.
+    // Comments stripped first — the sheet's prose mentions `.md`, `.ts`
     // and `.config`, and harvesting those would bless a dead class that
     // happened to share the name.
-    for (const m of readFileSync(join(SRC, 'index.css'), 'utf8')
+    for (const m of assembledCss()
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .matchAll(/\.([a-z][a-z0-9-]*)\b/g)) emitted.add(m[1]);
     // …and CSS injected from TS. LiveMap builds a <style> holding

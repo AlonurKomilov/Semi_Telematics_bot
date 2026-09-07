@@ -26,6 +26,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { SOUND_PACKS } from './sound';
 import { KEY_PACKS } from './keys';
+import { WALLPAPERS } from './wallpaper';
+import { CURSOR_PACKS } from './cursor';
+import { SHADER_PACKS } from './shader';
+import { engineCss } from '../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../sound/engine';
 import { KEY_LIMITS, KEY_CLASSES } from '../sound/keys';
 
@@ -34,11 +38,12 @@ const src = (rel: string) =>
   readFileSync(join(MODS, rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 /** The files in a pack folder that ARE packs — everything but the
- *  index and the tests. */
-const packFiles = (folder: string) =>
+ *  index and the tests. `ext` is what a pack of that axis is made of:
+ *  a cue table is TypeScript, a pattern is CSS. */
+const packFiles = (folder: string, ext: 'ts' | 'css' = 'ts') =>
   readdirSync(join(__dirname, folder))
-    .filter((f) => /\.ts$/.test(f) && !/^index\.ts$|\.test\.ts$/.test(f))
-    .map((f) => f.replace(/\.ts$/, ''))
+    .filter((f) => f.endsWith(`.${ext}`) && !/^index\.ts$|\.test\.ts$/.test(f))
+    .map((f) => f.replace(new RegExp(`\\.${ext}$`), ''))
     .sort();
 
 const ENGINE_FILES = ['sound/engine.ts', 'sound/keys.ts', 'sound/cue.ts', 'sound/useCue.ts'];
@@ -111,5 +116,70 @@ describe('every pack keeps the engine\'s contract', () => {
       expect(new Set(ids).size).toBe(ids.length);
       for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9-]*$/);
     }
+  });
+});
+
+/**
+ * The CSS-backed axes — wallpaper, cursor, shader — keep the same
+ * shape with a different material: a pack is a `.css` file, the index
+ * lists the ids, and the DEFAULT of each axis has no file on purpose.
+ * `none`, `system` and `flat` are the absence of a rule — flat chrome,
+ * the OS pointer, the shipped light — and a file for them would have to
+ * out-rank whatever a later pack declares, for no gain.
+ */
+const CSS_AXES = [
+  ['wallpaper', WALLPAPERS, 'none'],
+  ['cursor', CURSOR_PACKS, 'system'],
+  ['shader', SHADER_PACKS, 'flat'],
+] as const;
+
+describe('a CSS pack is a file, and the index is exactly the files', () => {
+  for (const [axis, packs, dflt] of CSS_AXES) {
+    it(`${axis}: every non-default id has a file, and every file an id`, () => {
+      const files = packFiles(axis, 'css');
+      const ids = packs.map((p) => p.id).filter((id) => id !== dflt).sort();
+      expect(files.length, `no pack files in packs/${axis}`).toBeGreaterThan(0);
+      expect(ids, `packs/${axis}: the index and the folder disagree`).toEqual(files);
+      expect(packs.some((p) => p.id === dflt), `${axis} lost its default "${dflt}"`).toBe(true);
+    });
+
+    it(`${axis}: every pack file is screen-only and addresses only itself`, () => {
+      for (const id of packFiles(axis, 'css')) {
+        const code = src(`packs/${axis}/${id}.css`);
+        // Print puts the light palette back through specificity alone;
+        // a pattern or a pointer that survived into paper would be ink
+        // saying nothing. The wrapper used to be index.css's; a pack
+        // that leaves it carries it.
+        expect(code.trim(), `packs/${axis}/${id}.css is not wrapped in @media screen`)
+          .toMatch(/^@media screen\s*\{[\s\S]*\}\s*$/);
+        // One file, one pack: a rule for a sibling in here is the old
+        // shared block reassembling itself.
+        for (const m of code.matchAll(new RegExp(`\\[data-${axis}="([^"]+)"\\]`, 'g')))
+          expect(m[1], `packs/${axis}/${id}.css addresses "${m[1]}"`).toBe(id);
+        expect(code, `packs/${axis}/${id}.css reaches for !important`).not.toMatch(/!important/);
+      }
+    });
+  }
+
+  it('and the engine sheet carries none of them', () => {
+    // index.css keeps the MECHANISM — the pane that steps aside, the
+    // card rung of the light — and may name the axis for that. It may
+    // not name a pack. `[data-wallpaper="none"]` is allowed: it is the
+    // mechanism referring to the absence of one.
+    const engine = engineCss().replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const [axis, packs, dflt] of CSS_AXES)
+      for (const p of packs) {
+        if (p.id === dflt) continue;
+        expect(engine, `index.css still carries [data-${axis}="${p.id}"] — a pack moved back in`)
+          .not.toContain(`[data-${axis}="${p.id}"]`);
+      }
+  });
+
+  it('and the engine sheet imports every pack file', () => {
+    const engine = engineCss();
+    for (const [axis] of CSS_AXES)
+      for (const id of packFiles(axis, 'css'))
+        expect(engine, `packs/${axis}/${id}.css exists and is never imported — a pack nobody can wear`)
+          .toContain(`@import './mods/packs/${axis}/${id}.css';`);
   });
 });

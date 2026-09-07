@@ -1,0 +1,9 @@
+/* Studio — overhead and close: short shadows, crisp edges. */
+@media screen {
+  :root[data-shader="studio"] {
+    --light-lift: 0.6;
+    --light-spread: 0.5;
+    --light-strength: 1.7;
+    --light-elevate: 1;
+  }
+}

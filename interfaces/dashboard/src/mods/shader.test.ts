@@ -14,11 +14,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SHADER_PACKS, SHADER_IDS, SHADER_BAND, shaderPackById } from './shader';
+import { SHADER_BAND } from './shader';
+import { SHADER_PACKS, SHADER_IDS, shaderPackById } from './packs/shader';
+import { assembledCss } from '../test/stylesheet';
 
 const ROOT = join(__dirname, '..', '..');
 const CONFIG = readFileSync(join(ROOT, 'tailwind.config.js'), 'utf8');
-const CSS = readFileSync(join(ROOT, 'src', 'index.css'), 'utf8')
+const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 const VARS = ['--light-lift', '--light-spread', '--light-strength'] as const;

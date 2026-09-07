@@ -30,15 +30,8 @@ export interface CursorPack {
   readonly why: string;
 }
 
-export const CURSOR_PACKS: readonly CursorPack[] = [
-  { id: 'system', label: 'System', why: 'Your operating system’s own pointer' },
-  { id: 'sharp', label: 'Sharp', why: 'Squared geometry, drawn to stay visible on any ground' },
-];
-
-export const CURSOR_IDS = CURSOR_PACKS.map((c) => c.id);
-
-export const cursorPackById = (id: string): CursorPack | undefined =>
-  CURSOR_PACKS.find((c) => c.id === id);
+// The packs — the list and the CSS — live in `mods/packs/cursor/`.
+// This file is the contract a pack has to keep.
 
 /**
  * Every cursor this app asks for, measured rather than guessed: these

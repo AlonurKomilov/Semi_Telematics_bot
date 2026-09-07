@@ -15,13 +15,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  WALLPAPERS, WALLPAPER_IDS, WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK,
-} from './wallpaper';
+import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
+import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
+import { assembledCss } from '../test/stylesheet';
 import { THEME_PACKS } from './catalogue';
 import { oklchToSrgb, contrastRatio, type RGB } from './theme/contrast';
 
-const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
+const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 function body(selector: string): string {

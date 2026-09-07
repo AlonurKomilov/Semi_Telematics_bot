@@ -15,10 +15,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { CURSOR_PACKS, CURSOR_KINDS, CURSOR_MAX_PX, CURSOR_IDS } from './cursor';
+import { CURSOR_KINDS, CURSOR_MAX_PX } from './cursor';
+import { CURSOR_PACKS, CURSOR_IDS } from './packs/cursor';
+import { assembledCss } from '../test/stylesheet';
 
 const SRC = join(__dirname, '..');
-const CSS = readFileSync(join(SRC, 'index.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const CSS = assembledCss().replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** Every `cursor:` declaration a pack's block makes, by kind. */
 function rulesOf(pack: string): Record<string, string> {

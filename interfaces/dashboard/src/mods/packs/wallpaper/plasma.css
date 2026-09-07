@@ -1,0 +1,16 @@
+/* Plasma — slow accent clouds under a fine tooth. */
+@media screen {
+  /* The accent, in clouds, under a tooth. Two layers rather than one:
+     the colour comes from `color-mix` where the gate can read it, and
+     the texture stays greyscale on top — a coloured turbulence would be
+     prettier and would have no knowable extremes. */
+  :root[data-wallpaper="plasma"] .chrome-ground {
+    background-color: var(--sidebar);
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23q)' opacity='0.04'/%3E%3C/svg%3E"),
+      radial-gradient(70% 60% at 20% 15%,
+        color-mix(in oklab, var(--primary) 9%, transparent) 0%, transparent 100%),
+      radial-gradient(65% 55% at 85% 80%,
+        color-mix(in oklab, var(--primary) 7%, transparent) 0%, transparent 100%);
+  }
+}
