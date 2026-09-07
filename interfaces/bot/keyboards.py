@@ -576,20 +576,18 @@ def scheduled_reports_menu_kb(subs: list[dict] | dict | None = None) -> InlineKe
     return InlineKeyboardMarkup(rows)
 
 
-def scheduled_reports_type_kb() -> InlineKeyboardMarkup:
-    """Report type picker for Auto Reports."""
-    rows = [
-        [
-            InlineKeyboardButton("🔧 Faults", callback_data="ar_type_faults"),
-            InlineKeyboardButton("⛽ Fuel & DEF", callback_data="ar_type_fuel"),
-        ],
-        [
-            InlineKeyboardButton("🏥 Health", callback_data="ar_type_health"),
-            InlineKeyboardButton("📊 Efficiency", callback_data="ar_type_efficiency"),
-        ],
-        [InlineKeyboardButton("📷 Camera Check", callback_data="ar_type_camera")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_auto_reports")],
+def scheduled_reports_type_kb(role) -> InlineKeyboardMarkup:
+    """Report type picker for Scheduled Reports — the registry's types,
+    only those whose own view verb the role holds (the API refuses the
+    rest; the button must not offer what the save would refuse)."""
+    from capabilities.permissions.roles import can
+    from capabilities.reporting.registry import REPORTS as _R
+    buttons = [
+        InlineKeyboardButton(r.label_with_emoji, callback_data=f"ar_type_{r.key}")
+        for r in _R if can(role, r.permission)
     ]
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data="cmd_auto_reports")])
     return InlineKeyboardMarkup(rows)
 
 

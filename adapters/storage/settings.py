@@ -161,7 +161,8 @@ class SettingsMixin:
         cur = await self._db.execute(
             """SELECT ds.*,
                       u.telegram_id, u.account_id, u.role, u.truck_num,
-                      u.email, u.email_verified, u.display_name
+                      u.email, u.email_verified, u.display_name,
+                      u.is_manager, u.is_primary_owner
                FROM digest_subscriptions ds
                JOIN users u ON u.id = ds.user_id
                WHERE ds.is_active = 1 AND u.is_active = 1""",

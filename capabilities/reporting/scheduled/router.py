@@ -8,8 +8,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from capabilities.reporting.registry import get_report
+from capabilities.reporting.scheduled.access import report_permission
 from interfaces.api.deps import (
-    get_current_db_user, get_platform_db, get_tenant_db, require_permission,
+    get_current_db_user, get_platform_db, get_tenant_db, holds, require_permission,
 )
 
 #: the historical prefix — every client calls ``/user/scheduled-reports``
@@ -89,7 +91,19 @@ async def upsert_scheduled_report(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Create or update the user's scheduled report delivery."""
+    """Create or update the user's scheduled report delivery.
+
+    Two grants: the Reports service (the route gate) and the report
+    TYPE's own view verb — a role that cannot open Cameras cannot
+    schedule the camera check either (capabilities/reporting/scheduled/access.py).
+    """
+    flag = report_permission(body.report_type)
+    if flag is None or not await holds(user, flag):
+        spec = get_report(body.report_type)
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your role cannot view the {spec.label_full if spec else body.report_type} report",
+        )
     db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")

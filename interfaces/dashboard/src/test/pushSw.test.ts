@@ -32,6 +32,7 @@ function load(wins: Client[]) {
   const shown: Shown[] = [];
   const listeners: Record<string, (e: unknown) => void> = {};
   const self = {
+    location: { origin: ORIGIN },
     addEventListener: (name: string, fn: (e: unknown) => void) => { listeners[name] = fn; },
     registration: {
       showNotification: (title: string, opts: Record<string, unknown>) => {
@@ -60,6 +61,8 @@ function load(wins: Client[]) {
     },
   };
 }
+
+const ORIGIN = 'https://dash.4truck.test';
 
 const CLOSED: Client[] = [];
 const HIDDEN: Client[] = [{ visibilityState: 'hidden' }];
@@ -145,5 +148,44 @@ describe('everything the payload carries still arrives', () => {
     });
     await waited;
     expect(shown[0].opts.body).toBe('raw text');
+  });
+});
+
+describe('a click goes only to one of our own paths', () => {
+  /** Click a notification carrying `url`; return where the open tab was sent. */
+  async function clickedTo(url: unknown): Promise<string> {
+    const sent: string[] = [];
+    const tab = {
+      visibilityState: 'visible',
+      focus: () => Promise.resolve(),
+      navigate: (u: string) => { sent.push(u); },
+    };
+    const w = load([tab as unknown as Client]);
+    let waited: Promise<unknown> = Promise.resolve();
+    w.listeners.notificationclick({
+      notification: { close: () => undefined, data: { url } },
+      waitUntil: (p: Promise<unknown>) => { waited = p; },
+    });
+    await waited;
+    return sent[0];
+  }
+
+  it('keeps a path, with its query and hash', async () => {
+    expect(await clickedTo('/vehicles/12?tab=faults#top')).toBe('/vehicles/12?tab=faults#top');
+  });
+
+  it('falls back when the payload carries nothing', async () => {
+    expect(await clickedTo(undefined)).toBe('/alerts');
+  });
+
+  it('refuses an absolute URL, even to our own host', async () => {
+    expect(await clickedTo(`${ORIGIN}/alerts`)).toBe('/alerts');
+    expect(await clickedTo('https://evil.example/x')).toBe('/alerts');
+  });
+
+  it('refuses the protocol-relative forms — the slash pair and the one the parser reads as a pair', async () => {
+    expect(await clickedTo('//evil.example/x')).toBe('/alerts');
+    expect(await clickedTo('/\\evil.example/x')).toBe('/alerts');
+    expect(await clickedTo('/\\/evil.example')).toBe('/alerts');
   });
 });

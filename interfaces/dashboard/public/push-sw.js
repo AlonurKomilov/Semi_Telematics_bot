@@ -59,13 +59,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  let url = (event.notification.data && event.notification.data.url) || '/alerts';
-  // Same-origin boundary: only relative paths may be navigated to —
-  // enforced in the backend render too; this is the belt-and-suspenders
-  // in case a future payload source slips an absolute URL through.
-  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) {
-    url = '/alerts';
-  }
+  const url = sameOriginPath(event.notification.data && event.notification.data.url);
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       // Focus an existing dashboard tab if one is open; else open a new one.
@@ -79,3 +73,21 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+
+// Same-origin boundary: a notification may only send the dashboard to
+// one of its own paths — enforced in the backend render too; this is
+// the belt in case a future payload source slips a foreign URL through.
+// Resolved the way the browser will resolve it, because a string test
+// misses what the parser accepts: '/\\evil.com' is not '//evil.com' to
+// startsWith, and is exactly that to the navigation.
+function sameOriginPath(raw) {
+  if (typeof raw !== 'string' || !raw.startsWith('/')) return '/alerts';
+  try {
+    const u = new URL(raw, self.location.origin);
+    if (u.origin !== self.location.origin) return '/alerts';
+    return u.pathname + u.search + u.hash;
+  } catch (_e) {
+    return '/alerts';
+  }
+}

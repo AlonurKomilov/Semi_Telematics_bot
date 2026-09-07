@@ -58,6 +58,14 @@ _tz_utc = _tz_mod.utc
 REPORT_TYPES = {r.key: r.label_with_emoji for r in _REPORT_REGISTRY}
 
 
+def _role_holds_type(role, report_type: str) -> bool:
+    """The wizard's gate: the Reports service AND the type's own verb,
+    through the bot's account-aware ``can``."""
+    from capabilities.reporting.scheduled.access import report_permission
+    flag = report_permission(report_type)
+    return flag is not None and can(role, "can_view_reports") and can(role, flag)
+
+
 @_require_registered
 async def cmd_scheduled_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the Scheduled Reports menu — list view with multi-schedule.
@@ -168,7 +176,7 @@ async def cmd_scheduled_reports_subscribe(update: Update, context: ContextTypes.
     await _show(update, context, [
         f"{t('scheduled_reports.subscribe_title').format(freq=frequency.title())}\n\n"
         f"  {t('scheduled_reports.choose_type')}\n"
-    ], keyboard=scheduled_reports_type_kb())
+    ], keyboard=scheduled_reports_type_kb(user.role))
 
 
 @_require_registered
@@ -176,6 +184,12 @@ async def cmd_scheduled_reports_set_type(update: Update, context: ContextTypes.D
                                     report_type: str = "faults"):
     """Report type chosen, now pick delivery hour."""
     user = context.user_data["_db_user"]
+    # The keyboard only offers the types the role holds; a button baked
+    # into an older message may still name one it does not.
+    if not _role_holds_type(user.role, report_type):
+        if update.callback_query:
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
+        return
     context.user_data["_ar_type"] = report_type
 
     from interfaces.bot.keyboards import scheduled_reports_hour_kb
@@ -206,8 +220,16 @@ async def cmd_scheduled_reports_set_tz(update: Update, context: ContextTypes.DEF
                                   tz: str = "America/New_York"):
     """Finalize subscription with timezone — all wizard data collected."""
     user = context.user_data["_db_user"]
+    # Ask before consuming the wizard state: a refused save leaves the
+    # choices in place, so a retap of the keyboard still on screen does
+    # not silently save the defaults instead of what was chosen.
+    rtype = context.user_data.get("_ar_type", "faults")
+    if not _role_holds_type(user.role, rtype):
+        if update.callback_query:
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
+        return
     freq = context.user_data.pop("_ar_freq", "daily")
-    rtype = context.user_data.pop("_ar_type", "faults")
+    context.user_data.pop("_ar_type", None)
     hour = context.user_data.pop("_ar_hour", 7)
 
     tenant = await get_tenant_db(user.account_id)
@@ -281,6 +303,16 @@ async def _generate_report_pdf(account_id: int, report_type: str):
 # SCHEDULED JOB
 # ══════════════════════════════════════════════════════════════════
 
+async def _still_allowed(sub: dict, report_type: str) -> bool:
+    """The delivery-time gate (capabilities/reporting/scheduled/access.py)."""
+    from capabilities.reporting.scheduled.access import may_receive
+    return await may_receive(
+        sub["account_id"], sub.get("role"), report_type,
+        is_manager=bool(sub.get("is_manager")),
+        is_primary_owner=bool(sub.get("is_primary_owner")),
+    )
+
+
 async def send_scheduled_reports(app: Application):
     """Scheduled job: send PDF reports to subscribers at their chosen local hour.
 
@@ -334,8 +366,33 @@ async def send_scheduled_reports(app: Application):
                 if freq == "monthly" and not is_first:
                     continue
 
+                report_type = sub.get("report_type", "faults")
+                # Two grants, asked NOW for this account and tier: the
+                # Reports service and the type's own verb.  A grant
+                # taken away after the subscription stops the report
+                # here and retires the row, so it is not asked again.
+                # A question that cannot be answered (the resolver
+                # raised) skips THIS row, sends nothing, retires nothing
+                # — and leaves the rest of the account's batch alone.
                 try:
-                    report_type = sub.get("report_type", "faults")
+                    allowed = await _still_allowed(sub, report_type)
+                except Exception as e:
+                    logger.warning("Scheduled %s report for user %s skipped — "
+                                   "permission could not be resolved: %s",
+                                   report_type, sub.get("user_id"), e)
+                    continue
+                if not allowed:
+                    try:
+                        await tenant.unsubscribe_digest(sub["user_id"], report_type=report_type)
+                    except Exception as e:
+                        logger.warning("Could not retire schedule user=%s type=%s: %s",
+                                       sub.get("user_id"), report_type, e)
+                    logger.info("Scheduled %s report retired for user %s (account %s): "
+                                "the role no longer holds it", report_type,
+                                sub.get("user_id"), sub.get("account_id"))
+                    continue
+
+                try:
                     result = await _generate_report_pdf(sub["account_id"], report_type)
 
                     # Parse delivery channels.  Default to "telegram"

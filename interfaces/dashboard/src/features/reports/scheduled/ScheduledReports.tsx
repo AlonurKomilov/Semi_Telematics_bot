@@ -7,6 +7,7 @@ import type { ScheduledReport } from '../../../types';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../../utils/timezones';
 import { useNow } from '../../../hooks/useNow';
 import { useAuth } from '../../../context/AuthContext';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { REPORTS, type ReportKey } from '../../../data/reports';
 import { Card } from '@/components/ui/card';
 
@@ -143,8 +144,12 @@ function ScheduleEditor({
   // saving a duplicate would silently overwrite the existing one (the
   // backend ON CONFLICT clause).  Edit mode keeps the current type
   // visible (it's the user's current row).
+  const { hasAny } = useViewPermissions();
   const availableTypes = REPORTS.filter((r) => {
     if (initial.reportTypeLocked) return r.key === reportType;
+    // A type the role cannot view is not offered — the server refuses
+    // the save with 403, and the delivery job retires such a row.
+    if (!hasAny(r.permission)) return false;
     return !existingTypes.has(r.key) || r.key === reportType;
   });
 
@@ -319,13 +324,21 @@ export default function ScheduledReports() {
     [rows],
   );
 
+  // The types this view may schedule: the type's own view verb, the
+  // same rule the server applies on save.
+  const { hasAny } = useViewPermissions();
+  const schedulable = useMemo(
+    () => REPORTS.filter((r) => hasAny(r.permission)),
+    [hasAny],
+  );
+
   // First available report type to pre-select when opening Add mode.
   const firstAvailableType = useMemo(() => {
-    const first = REPORTS.find((r) => !existingTypes.has(r.key));
+    const first = schedulable.find((r) => !existingTypes.has(r.key));
     return first?.key ?? 'faults';
-  }, [existingTypes]);
+  }, [existingTypes, schedulable]);
 
-  const canAddMore = REPORTS.some((r) => !existingTypes.has(r.key));
+  const canAddMore = schedulable.some((r) => !existingTypes.has(r.key));
 
   async function load() {
     setLoading(true);

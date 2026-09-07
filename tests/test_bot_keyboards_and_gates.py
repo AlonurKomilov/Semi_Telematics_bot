@@ -52,7 +52,7 @@ class TestNewKeyboards:
 
     def test_scheduled_reports_type_kb(self):
         from interfaces.bot.keyboards import scheduled_reports_type_kb
-        kb = scheduled_reports_type_kb()
+        kb = scheduled_reports_type_kb("owner")
         callbacks = self._callbacks(kb)
         assert "ar_type_faults" in callbacks
         assert "ar_type_fuel" in callbacks
