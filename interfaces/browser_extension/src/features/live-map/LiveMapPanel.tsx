@@ -502,56 +502,62 @@ export default function LiveMapPanel() {
             <div className="sheet">
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <span className="row" style={{ gap: 6, minWidth: 0 }}>
-                  {/* The caret LEADS the thing it opens.  The list's own
-                      caret sits at the far right because its header is a
-                      bar whose only content is a label; this row ends in
-                      actions, and a caret beside Close would read as a
-                      third one.  The name is the target either way — it
-                      is what a person points at to open or close this.
-                      The source marks stay OUTSIDE the button: they can
-                      be links, and a link inside a button is neither. */}
-                  <button type="button" className="row rowbtn" onClick={toggleCard}
+                  {/* The caret LEADS the thing it opens, and it WEARS
+                      what a control wears here.
+
+                      It began as a bare muted glyph against a bold name,
+                      with the name itself as the target: a big target,
+                      and nobody could find it.  A row that is not itself
+                      a button has to carry the affordance in the control
+                      — so this is a button of the same cloth as Close
+                      beside it, with its own 24px square and its own
+                      space.  The list's header can stay a bare glyph
+                      because the whole bar there IS the button and says
+                      so with its own fill. */}
+                  <button type="button" className="btn" onClick={toggleCard}
                           aria-expanded={cardOpen} aria-controls={CARD_BODY_ID}
+                          aria-label={cardOpen
+                            ? 'Fold this vehicle to one line'
+                            : 'Show this vehicle in full'}
                           title={cardOpen
                             ? 'Fold this vehicle to one line'
                             : 'Show this vehicle in full'}
-                          style={{ gap: 6, minWidth: 0, minHeight: 24, padding: '0 4px',
-                                   background: 'none', border: 0, color: 'var(--fg)',
-                                   font: 'inherit', cursor: 'pointer', borderRadius: 6 }}>
-                    <span className="muted" aria-hidden style={{ flexShrink: 0 }}>{cardOpen ? '▾' : '▴'}</span>
-                    <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {selected.properties.name}
-                      {multiCompany && selected.properties.company && (
-                        <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
-                      )}
-                    </strong>
-                    {/* Folded, this is the one thing worth keeping: a
-                        name and two buttons would say nothing about the
-                        truck they belong to.  Expanded, the line below
-                        carries it — it is never in both places at once. */}
-                    {!cardOpen && (
-                      <span className="row" style={{ gap: 4, flexShrink: 0, fontSize: 12 }}>
-                        <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
-                                                   background: statusColor(st), flexShrink: 0 }} />
-                        <span style={{ fontWeight: 600 }}>{stLabel}</span>
-                        {/* An age worth reading is one that says "do not
-                            act on this".  A fresh one stays folded away
-                            with the rest of the detail. */}
-                        {positionOld && (
-                          <span style={{ color: 'var(--warn)' }} title={describeAge(age)}>
-                            {formatAge(age)} old
-                          </span>
-                        )}
-                        {lowLevels.length > 0 && (
-                          <span style={{ color: 'var(--danger)', fontWeight: 600 }}
-                                title={lowLevels.map((l) => `${l.label} ${l.pct}%`).join(' · ')
-                                       + ` — low below ${LOW_LEVEL_PCT}%`}>
-                            {lowLevels.map((l) => l.label).join(' · ')} low
-                          </span>
-                        )}
-                      </span>
-                    )}
+                          style={{ width: 24, height: 24, minWidth: 24, padding: 0, flexShrink: 0,
+                                   display: 'grid', placeItems: 'center', lineHeight: 1 }}>
+                    <span aria-hidden>{cardOpen ? '▾' : '▴'}</span>
                   </button>
+                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selected.properties.name}
+                    {multiCompany && selected.properties.company && (
+                      <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
+                    )}
+                  </strong>
+                  {/* Folded, this is the one thing worth keeping: a name
+                      and three buttons would say nothing about the truck
+                      they belong to.  Expanded, the line below carries
+                      it — it is never in both places at once. */}
+                  {!cardOpen && (
+                    <span className="row" style={{ gap: 4, flexShrink: 0, fontSize: 12 }}>
+                      <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
+                                                 background: statusColor(st), flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600 }}>{stLabel}</span>
+                      {/* An age worth reading is one that says "do not
+                          act on this".  A fresh one stays folded away
+                          with the rest of the detail. */}
+                      {positionOld && (
+                        <span style={{ color: 'var(--warn)' }} title={describeAge(age)}>
+                          {formatAge(age)} old
+                        </span>
+                      )}
+                      {lowLevels.length > 0 && (
+                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}
+                              title={lowLevels.map((l) => `${l.label} ${l.pct}%`).join(' · ')
+                                     + ` — low below ${LOW_LEVEL_PCT}%`}>
+                          {lowLevels.map((l) => l.label).join(' · ')} low
+                        </span>
+                      )}
+                    </span>
+                  )}
                   {/* Who supplies this truck, next to what it is called. */}
                   <SourceMarks sources={selected.properties.sources} source={selected.properties.source} links={links} />
                 </span>
