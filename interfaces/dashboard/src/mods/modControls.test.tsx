@@ -201,7 +201,12 @@ describe('the Icons control reaches the axis it names', () => {
   const rows = () => {
     const heading = screen.getByText('Icons');
     const pack = heading.nextElementSibling as HTMLElement;
-    return { pack, weight: pack.nextElementSibling as HTMLElement };
+    // The pack's own description line sits under its chips, the way
+    // every axis has one; the weight row is the next sibling that
+    // holds chips, not the next sibling.
+    let weight = pack.nextElementSibling as HTMLElement;
+    while (weight && !weight.querySelector('button')) weight = weight.nextElementSibling as HTMLElement;
+    return { pack, weight };
   };
 
   it('offers the packs first, and a pack chip writes only the pack', () => {

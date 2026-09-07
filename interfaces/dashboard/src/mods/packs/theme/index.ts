@@ -19,7 +19,7 @@ export const THEME_PACKS: readonly ThemePack[] = [
     seed: { light: '#2a5cda', dark: '#427bff' } },
   { id: 'purple', label: 'Purple', description: 'Violet — warmer than blue, just as calm',
     seed: { light: '#7d40c8', dark: '#9b61ea' } },
-  { id: 'green',  label: 'Green',  description: 'A green seven degrees off the colour of "done", so it never reads as one',
+  { id: 'green',  label: 'Green',  description: 'A green kept apart from the green that means "done"',
     seed: { light: '#3f7b04', dark: '#56a700' } },
   { id: 'azure',  label: 'Azure',  description: 'Sea-blue — cooler than blue, easier on a long shift',
     seed: { light: '#027689', dark: '#0796ae' } },

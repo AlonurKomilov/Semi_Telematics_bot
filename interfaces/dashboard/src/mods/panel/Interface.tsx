@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
 import { MOD_ICONS, type ModIcons } from '../catalogue';
-import { MATERIAL_PACKS } from '../packs/material';
+import { MATERIAL_PACKS, materialPackById } from '../packs/material';
 import { THEME_PACKS, packById, accentSeed } from '../packs/theme';
 import { FONT_PACKS } from '../packs/font';
 import { accentTokens } from '../theme/accent';
@@ -29,7 +29,7 @@ import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
-import { ICON_PACKS } from '../packs/icons';
+import { ICON_PACKS, iconPackById, BASE_PACK } from '../packs/icons';
 import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
 
@@ -249,6 +249,13 @@ export function ColorGroup({ label }: { label: LabelClass }) {
           onClear={() => setTheme({ brand: undefined })}
         />
       </div>
+      {/* What the worn pack is, in its own words — the same line every
+          other axis has under its chips. Empty while a picked colour
+          paints: no pack is on, and describing one would be describing
+          a colour that is not on the screen. */}
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {brandWorn ? '' : packById(theme.accent)?.description ?? ''}
+      </p>
       {/* The other half of a palette. Its own row, because it claims
           far more than the accent does — a background repaints every
           surface in the app, and putting it in the accent row would
@@ -341,6 +348,9 @@ export function MaterialGroup({ label }: { label: LabelClass }) {
             onClick={(v) => setTheme({ material: v })} />
         ))}
       </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {materialPackById(theme.material)?.description ?? ''}
+      </p>
     </div>
   );
 }
@@ -455,11 +465,14 @@ export function IconsGroup({ label }: { label: LabelClass }) {
           changes the set. */}
       <div className="flex flex-wrap gap-1">
         {PACK_OPTIONS.map((o) => (
-          <Chip key={o.value} value={o.value} current={theme.iconPack ?? 'lucide'}
+          <Chip key={o.value} value={o.value} current={theme.iconPack ?? BASE_PACK.id}
             label={t(o.key, o.label)}
             onClick={(v) => setTheme({ iconPack: v })} />
         ))}
       </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {iconPackById(theme.iconPack ?? BASE_PACK.id)?.description ?? ''}
+      </p>
       {/* How heavily. Its own row rather than the same one, so the two
           questions cannot re-flow into each other at any Size setting —
           the same reason mode and accent are two rows in Color. */}
@@ -473,7 +486,7 @@ export function IconsGroup({ label }: { label: LabelClass }) {
           base one is FETCHED — everything else in this panel is a
           stored value that costs nothing — and somebody on a tethered
           phone should learn that before the tap, not after it. */}
-      {(theme.iconPack ?? 'lucide') !== 'lucide' && (
+      {(theme.iconPack ?? BASE_PACK.id) !== BASE_PACK.id && (
         <p className="text-2xs text-muted-foreground mt-1.5">
           {t('mods.icon_pack_fetched', 'This set is downloaded the first time you wear it.')}
         </p>

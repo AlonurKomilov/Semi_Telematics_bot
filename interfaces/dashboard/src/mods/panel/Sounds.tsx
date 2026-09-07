@@ -124,6 +124,9 @@ export function SoundVolume({ label: groupLabel }: { label: LabelClass }) {
             }} />
         ))}
       </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {SOUND_PACKS.find((p) => p.id === soundPack)?.description ?? ''}
+      </p>
     </div>
   );
 }
@@ -213,6 +216,11 @@ export function KeyboardItem() {
               }} />
           ))}
         </div>
+      )}
+      {keySound && (
+        <p className="text-2xs text-muted-foreground mt-1.5">
+          {keyPackById(keyPack)?.description ?? ''}
+        </p>
       )}
     </div>
   );

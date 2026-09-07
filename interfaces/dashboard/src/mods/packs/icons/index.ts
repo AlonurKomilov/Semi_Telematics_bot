@@ -29,7 +29,7 @@ export const BASE_PACK = { id: 'lucide', module: lucide as unknown as IconPackMo
 export const ICON_PACKS: readonly IconPackDef[] = [
   { id: 'lucide',   label: 'Lucide',   description: 'Stroked glyphs — the set this app was drawn with',
     load: () => Promise.resolve(BASE_PACK.module) },
-  { id: 'phosphor', label: 'Phosphor', description: 'A second vocabulary with six named weights, fetched when worn',
+  { id: 'phosphor', label: 'Phosphor', description: 'A different set of glyphs, drawn in six weights',
     load: () => import('./phosphor').then((m) => m as unknown as IconPackModule) },
 ];
 export const ICON_PACK_IDS = ICON_PACKS.map((p) => p.id);

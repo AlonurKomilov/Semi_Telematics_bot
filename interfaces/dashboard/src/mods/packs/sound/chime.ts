@@ -10,7 +10,7 @@ import type { SoundPack } from '../../sound/engine';
 export const chime: SoundPack = {
   id: 'chime',
   label: 'Chime',
-  description: 'The bell this app has always rung — one voice, five questions',
+  description: 'The bell this app has always rung',
   cues: {
     alert:    { wave: 'sine', from: 880,  to: 440,  dur: 0.35, gain: 0.18 },
     // Two things separate critical from alert without being louder: it
