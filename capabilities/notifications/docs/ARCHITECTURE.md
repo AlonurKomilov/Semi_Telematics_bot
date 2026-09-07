@@ -446,11 +446,23 @@ importing `capabilities.alerting` or `features`.
   no `co`, no per-user scoping, a scope-load error, or a predicate that
   raises all deliver — exactly like the Telegram path. This replaced an
   earlier account-wide fail-closed hold-back (advisor decision, Option A).
-- **Known gap (deferred):** even within a single company, recipient
-  selection is role/audience-scoped via the category `audience` but NOT yet
-  per-driver-truck scoped the way the Telegram DM path is — a driver opting
-  email into `alert.faults` would hear all trucks. Per-vehicle scoping is a
-  follow-up (same vehicle-scope contract as the AI copilot write tools).
+- **Closed 2026-09-04 (was: "not per-driver-truck scoped").** Per-vehicle
+  scoping reaches EVERY channel, not just Telegram: the alerting side
+  builds a vehicle predicate (`vehicle_gate.user_sees_vehicle`) and passes
+  it into `dispatch()` as `recipient_filter`, and `_filter_recipients`
+  runs inside the per-channel loop BEFORE any fan-out — so email, web_push
+  and in_app are gated by the same predicate the Telegram path uses. The
+  doc outlived the fix by long enough to read as an open disclosure, which
+  is its own hazard: a stale "known gap" is how a reviewer reports a hole
+  that is not there, and how someone later "simplifies away" a filter that
+  is load-bearing.
+- **Also closed:** category eligibility no longer resolves a STATIC role.
+  A category declares `requires_permission` and the dispatcher resolves
+  the account's EFFECTIVE FeatureSet per (account, role, manager,
+  primary-owner) tier — matrix overrides and module masking included —
+  memoized per tier per dispatch. Role-shaped audiences ("drivers get
+  this") remain closures, because those are about role rather than
+  entitlement.
 
 ### 9b. In-app inbox — the bell as a multi-source feed (N5)
 
