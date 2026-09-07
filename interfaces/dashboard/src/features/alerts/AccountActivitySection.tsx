@@ -115,7 +115,11 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
   if (loaded && (!data || visible.length === 0)) {
     return (
       <Card render={<section />}>
-        <p className="text-sm text-muted-foreground">
+        {/* A region keeps a REGION's area while empty, not a sentence's.
+            One muted line between two mt-6 gaps read as a spacer, so the
+            section vanished from the page's rhythm exactly when it had
+            something to say about why it was empty. */}
+        <p className="min-h-16 flex items-center text-sm text-muted-foreground">
           {section === 'system'
             ? 'No system notices apply to your role yet.'
             : 'No account-activity notifications yet. As new ones arrive (like when someone accepts your invite), you\u2019ll be able to choose where they reach you here.'}

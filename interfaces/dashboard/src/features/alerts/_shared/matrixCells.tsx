@@ -1,5 +1,5 @@
 /**
- * The two cells every notification matrix is built from.
+ * The cells every notification matrix is built from.
  *
  * There are two of those matrices now — alert TYPES ("Engine Faults ×
  * Telegram") and a person's own TRIGGERS ("Fuel level below 30% ×
@@ -20,7 +20,6 @@
  */
 import type { LucideIcon } from '../../../lib/icons';
 
-import { Checkbox } from '@/components/ui/checkbox';
 import { Tip } from '@/components/tooltip';
 
 export function MatrixTh({ icon: Icon, label, hint }: {
@@ -37,40 +36,6 @@ export function MatrixTh({ icon: Icon, label, hint }: {
     <th className="pb-2 px-2 text-center font-medium w-24">
       {hint ? <Tip label={hint}>{head}</Tip> : head}
     </th>
-  );
-}
-
-export function MatrixCell({ checked, disabled, busy, hint, label, onChange }: {
-  checked: boolean;
-  /** Greyed because the CHANNEL can't deliver — a durable reason the
-   *  person can act on, not a transient one. */
-  disabled: boolean;
-  /** A write for this cell is in flight.  Deliberately NOT folded into
-   *  `disabled`: disabling the control a keyboard user just pressed Space
-   *  on blurs it, and focus falls to <body> for the length of a request.
-   *  `aria-busy` says the same thing without moving anybody. */
-  busy?: boolean;
-  /** Why this column is greyed — shown on hover when disabled. */
-  hint: string;
-  /** The cell's accessible name, e.g. "Telegram — Engine Faults". */
-  label: string;
-  onChange: (v: boolean) => void | Promise<void>;
-}) {
-  const box = (
-    <Checkbox
-      checked={checked}
-      disabled={disabled}
-      onChange={(e) => void onChange(e.target.checked)}
-      aria-label={disabled && hint ? `${label} — ${hint}` : label}
-      aria-busy={busy || undefined}
-    />
-  );
-  return (
-    <td className={`py-2.5 px-2 text-center ${busy ? 'opacity-60' : ''}`}>
-      {/* Disabled inputs swallow pointer events, so the Tip needs a
-          wrapper element to hover — without it the reason never shows. */}
-      {disabled && hint ? <Tip label={hint}><span>{box}</span></Tip> : box}
-    </td>
   );
 }
 

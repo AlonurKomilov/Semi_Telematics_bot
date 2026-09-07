@@ -175,7 +175,14 @@ export default function MyNotifications() {
       </p>
 
       <SourceLabel>Channels</SourceLabel>
-      <div className="grid gap-4 lg:grid-cols-3 items-start">
+      {/* items-STRETCH, not items-start.  The Email card can mount two
+          notice bands (verified-but-silent, not-delivering); with the
+          cards free to take their natural height, one band pushed that
+          card's address and Change link down while its neighbours stayed
+          put — the row desynchronised and a control moved under the
+          cursor aiming at it.  Equal heights also settle the three
+          same-class cards on one bounding box. */}
+      <div className="grid gap-4 lg:grid-cols-3 items-stretch">
         {/* Telegram — master switch + resolve receipts */}
         <Card render={<section />}>
           <SectionHeader size="card" icon={<Send className="size-4" />} className="mb-1">
