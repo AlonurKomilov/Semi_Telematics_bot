@@ -206,8 +206,15 @@ function ensureChip(): HTMLButtonElement {
     'padding:6px 8px 6px 10px;border:0;border-radius:999px;cursor:pointer;' +
     'background:rgba(17,20,26,.92);color:#fff;font:600 12px/1 system-ui,sans-serif;' +
     'box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap';
+  // The extension's OWN icon, not a square drawn to look like it: the
+  // hand-made one had the wrong ground (a brighter blue than the real
+  // asset), so the mark on Google's map was not the mark in the
+  // toolbar.  One asset, one truth — declared web-accessible for this
+  // host alone, since a content script cannot read a packaged file
+  // without that.
   el.innerHTML =
-    '<span style="display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;background:#3b82f6;font-size:11px">4</span>' +
+    `<img src="${chrome.runtime.getURL('icons/icon32.png')}" alt="" width="16" height="16" ` +
+      'style="display:block;border-radius:4px">' +
     '<span data-spin hidden style="width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.25);' +
       'border-top-color:#fff;animation:fourtruck-spin .7s linear infinite"></span>' +
     '<span data-label></span>' +

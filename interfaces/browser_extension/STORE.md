@@ -89,7 +89,9 @@ ABOUT 4TRUCK
   the extension's service worker: a content script cannot use host permissions, and holding
   a sign-in token inside a page we do not control would be the wrong trade. Off in one click on the
   map itself or in the panel's Settings; it draws nothing at all in Street View, and a
-  person who has not connected the extension sees nothing at all — not even the switch.
+  person who has not connected the extension sees nothing at all — not even the switch. The extension's own
+  icon is declared web-accessible for `google.com/maps` alone, so the switch can show
+  the same mark as the toolbar; no other packaged file is readable by the page.
 
 **Remote code:** No. All code is bundled in the package.
 
