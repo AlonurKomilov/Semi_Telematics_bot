@@ -231,6 +231,18 @@ always means the platform family — the customer→broker feature is named
 > in `capabilities/reporting/` — a pay-by-score evidence report, unrelated to
 > the Driver Pay feature.
 
+**Account feature switches.** Beside the department switches an account
+can carry a per-feature switch — a column on `accounts` an operator sets,
+with no owner UI. Coaching is the one today (`accounts.coaching_enabled`,
+default off). The switch is read in exactly one place,
+`capabilities/permissions/modules.py` (`ACCOUNT_FEATURE_SWITCHES`), and it
+works like a disabled department: the resolver forces the feature's flags
+off for the account, so nav, API, bot and AI tools all close through the
+permission. A service or a job with no user in hand asks
+`feature_available(acct, feature_id)` — the same answer. Nothing else
+reads the column; `capabilities/permissions/tests/test_account_mask.py`
+holds that.
+
 ### The platform sub-family — audience split inside capabilities/
 
 `capabilities/` holds two audiences, made structural on 2026-07-10:

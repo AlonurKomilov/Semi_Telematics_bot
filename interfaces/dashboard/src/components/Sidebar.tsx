@@ -89,13 +89,6 @@ export default function Sidebar({ forceExpanded = false }: {
   // the active pill is never hidden.
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({});
 
-  const filterItems = (items: NavItem[]) =>
-    items.filter((item) => {
-      if (item.path === '/driver-pay') return user?.payroll_enabled !== false;
-      if (item.path === '/coaching') return user?.coaching_enabled !== false;
-      return true;
-    });
-
   return (
     <aside
       style={sizeRegion('navigation')}
@@ -185,7 +178,7 @@ export default function Sidebar({ forceExpanded = false }: {
             ? [...(group.parentItem ? [group.parentItem] : []),
                ...group.items.flatMap((i) => [i, ...(i.children ?? [])])]
             : group.items;
-          const items = filterItems(baseItems);
+          const items = baseItems;
           // A collapsible group whose PARENT is visible must render even
           // with zero children — a role manager holds only the parent
           // (/settings); dropping the group hid Settings from them.
@@ -286,7 +279,7 @@ export default function Sidebar({ forceExpanded = false }: {
               {items.map((item) => {
                 const Icon = item.icon;
                 const label = t(item.labelKey);
-                const kids = collapsed ? [] : filterItems(item.children ?? []);
+                const kids = collapsed ? [] : (item.children ?? []);
                 if (kids.length) {
                   // Parent with indented children — same look and rules as
                   // the Settings expander: the row navigates, the chevron

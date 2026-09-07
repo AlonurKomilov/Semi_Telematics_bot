@@ -59,6 +59,7 @@ def _patch_services(monkeypatch, tenant_db, *, coaching_enabled: bool = True,
 
     fake_account = SimpleNamespace(
         id=ACCOUNT_ID, name="Test", coaching_enabled=coaching_enabled,
+        disabled_modules="",
     )
 
     class _FakePlatformDB:

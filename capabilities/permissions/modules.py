@@ -17,7 +17,7 @@ mirrors both, and tests/test_feature_registry_drift.py holds them together.
 """
 from __future__ import annotations
 
-from capabilities.permissions.registry import TOGGLEABLE_MODULES, derive_flag_modules
+from capabilities.permissions.registry import REGISTRY, TOGGLEABLE_MODULES, derive_flag_modules
 
 
 def parse_disabled(csv: str | None) -> set[str]:
@@ -56,9 +56,50 @@ FLAG_MODULES: dict[str, frozenset[str]] = derive_flag_modules()
 
 
 def module_enabled(disabled_csv: str | None, module: str) -> bool:
-    """Whether one module is on for the account — the check the driver-pay
-    service/bot/API gates use (replaces the legacy payroll_enabled flag)."""
+    """Whether one module is on for the account."""
     return module not in parse_disabled(disabled_csv)
+
+
+# ── Account feature switches ─────────────────────────────
+# A per-account on/off that is NOT a department: a column on ``accounts``
+# an operator sets (no owner UI), read here and nowhere else.  Coaching
+# is the one today — ``accounts.coaching_enabled``, default off.  Until
+# 2026-09-07 seven places read that column directly (the service, the
+# nightly job, the bot, /me, the nav twice, the page), each a path
+# around the resolver; now the switch masks the feature's flags exactly
+# as a disabled department does, and every reader asks permissions.
+# Billing's plan mask (a table of what a tier includes) slots in beside
+# this: same shape, same place, fail-closed instead of fail-open.
+ACCOUNT_FEATURE_SWITCHES: dict[str, str] = {
+    "coaching": "coaching_enabled",
+}
+
+
+def switched_off_flags(acct) -> set[str]:
+    """The flags forced off by the account's feature switches."""
+    off: set[str] = set()
+    for feature_id, column in ACCOUNT_FEATURE_SWITCHES.items():
+        if not getattr(acct, column, False):
+            off.update(REGISTRY[feature_id].flags)
+    return off
+
+
+def feature_available(acct, feature_id: str) -> bool:
+    """Whether a feature is open for the ACCOUNT — the department(s) it
+    belongs to on (any of them) and its switch, if it has one, on.  The
+    one question a service or a job asks before working for an account
+    with no user in hand; a user's access is the permission, which the
+    resolver masks with this same answer."""
+    if acct is None:
+        return False
+    entry = REGISTRY[feature_id]
+    disabled = parse_disabled(getattr(acct, "disabled_modules", ""))
+    if entry.modules and entry.modules <= disabled:
+        return False
+    column = ACCOUNT_FEATURE_SWITCHES.get(feature_id)
+    if column is not None and not getattr(acct, column, False):
+        return False
+    return True
 
 
 def masked_off_flags(disabled_csv: str | None) -> set[str]:
@@ -69,13 +110,21 @@ def masked_off_flags(disabled_csv: str | None) -> set[str]:
     return {flag for flag, modules in FLAG_MODULES.items() if modules <= disabled}
 
 
-def mask_disabled_modules(fs, disabled_csv: str | None):
-    """Return *fs* with every fully-disabled-module flag forced off.
+def account_mask(fs, acct):
+    """The account-level mask, whole: department switches and feature
+    switches, applied to a role's FeatureSet.  The resolver's one call;
+    nothing else masks — there is deliberately no department-only
+    variant to reach for.  Duck-typed on the FeatureSet dataclass
+    (``dataclasses.replace``) so this module stays import-free of the
+    permissions module."""
+    if acct is None:
+        return fs
+    off = masked_off_flags(getattr(acct, "disabled_modules", ""))
+    off |= switched_off_flags(acct)
+    return _force_off(fs, off)
 
-    Duck-typed on the FeatureSet dataclass (uses ``dataclasses.replace``)
-    so this module stays import-free of the permissions module.
-    """
-    off = masked_off_flags(disabled_csv)
+
+def _force_off(fs, off: set[str]):
     if not off:
         return fs
     from dataclasses import replace

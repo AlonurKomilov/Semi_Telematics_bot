@@ -33,15 +33,13 @@ class DriverPayDisabledError(RuntimeError):
 
 
 async def _assert_enabled(account_id: int) -> None:
-    from capabilities.permissions.modules import module_enabled
+    from capabilities.permissions.modules import feature_available
     pdb = get_db()
     acct = await pdb.get_account(account_id)
     # Driver Pay is an Accounting feature (docs/FEATURES.md): available when
     # the Accounting module is on; who may use it is the can_manage_driver_pay
     # permission (masked off with the module).  No standalone switch.
-    if acct is None or not module_enabled(
-        getattr(acct, "disabled_modules", ""), "accounting",
-    ):
+    if not feature_available(acct, "driver_pay"):
         raise DriverPayDisabledError(
             f"accounting module is disabled for account {account_id}"
         )

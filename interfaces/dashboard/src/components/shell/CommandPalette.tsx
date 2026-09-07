@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight } from '../../lib/icons';
-import { useAuth } from '../../context/AuthContext';
 import { useRoleView } from '../../context/RoleViewContext';
 import { ROUTE_ENTRIES, type RouteEntry } from './routeRegistry';
 import { shortcut } from '../../utils/platform';
@@ -27,7 +26,6 @@ function score(entry: RouteEntry, q: string): number {
 
 export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
   // Persona-aware: a command is offered only if the ACTIVE VIEW can run
   // it (viewHasAny), so an Owner/Admin previewing another persona doesn't
   // get ⌘K shortcuts that persona lacks.  Falls back to the real user's
@@ -49,14 +47,16 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const keyboardNav = useRef(false);
 
   const visibleEntries = useMemo(() => {
+    // Driver Pay and Coaching used to be filtered here on two /me
+    // booleans as well — a second path beside the permission.  The
+    // resolver masks their flags off for the account now, so the one
+    // check below is the whole answer.
     return ROUTE_ENTRIES.filter((e) => {
-      if (e.path === '/driver-pay' && user?.payroll_enabled === false) return false;
-      if (e.path === '/coaching' && user?.coaching_enabled === false) return false;
       if (!e.permission) return true;
       const flags = Array.isArray(e.permission) ? e.permission : [e.permission];
       return viewHasAny(...flags);
     });
-  }, [viewHasAny, user]);
+  }, [viewHasAny]);
 
   const matches = useMemo(() => {
     if (!query.trim()) return visibleEntries.slice(0, 12);

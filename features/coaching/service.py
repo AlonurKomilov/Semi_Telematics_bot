@@ -1,7 +1,8 @@
 """Coaching service — orchestrates rule CRUD, manual assignment,
 acknowledgement, and engine.evaluate persistence.
 
-Respects the per-account ``coaching_enabled`` kill-switch.
+Works only for an account where Coaching is available — its department
+on and its account switch on (capabilities/permissions/modules.feature_available).
 """
 
 from __future__ import annotations
@@ -28,15 +29,19 @@ log = logging.getLogger(__name__)
 
 class CoachingDisabledError(RuntimeError):
     """Raised when coaching operations are attempted on an account where
-    the ``coaching_enabled`` kill-switch is OFF."""
+    Coaching is not available (department off, or its switch off)."""
 
 
 async def _assert_enabled(account_id: int) -> None:
+    from capabilities.permissions.modules import feature_available
     pdb = get_db()
     acct = await pdb.get_account(account_id)
-    if acct is None or not getattr(acct, "coaching_enabled", False):
+    # The same answer the resolver masks the coaching flags with: a
+    # user never holds the permission on an account where this is
+    # False.  Asked here too because the nightly job has no user.
+    if not feature_available(acct, "coaching"):
         raise CoachingDisabledError(
-            f"coaching feature is disabled for account {account_id}"
+            f"coaching is not available for account {account_id}"
         )
 
 

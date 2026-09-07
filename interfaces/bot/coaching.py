@@ -13,7 +13,6 @@ from features.coaching import service as svc
 from features.coaching.service import CoachingDisabledError
 from capabilities.permissions.roles import can
 from capabilities.localization.i18n import t
-from infra.platform import get_platform_db
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +47,25 @@ async def cmd_my_coaching(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t("access.no_access"))
         return
 
-    pdb = get_platform_db()
-    acct = await pdb.get_account(user.account_id)
-    if acct is None or not getattr(acct, "coaching_enabled", False):
-        await update.message.reply_text(t("coaching.disabled_for_account"))
-        return
+    # No account-switch check here: the bot's ``can`` resolves the
+    # account's permissions, and the resolver already masked the
+    # coaching flags off wherever Coaching is not available.
 
     driver_id = await _resolve_driver_id_for_user(user.account_id, user)
     if not driver_id:
         await update.message.reply_text(t("coaching.my.no_driver_mapping"))
         return
 
-    items = await svc.list_assignments(
-        user.account_id, driver_id=driver_id, status="pending", limit=20,
-    )
+    try:
+        items = await svc.list_assignments(
+            user.account_id, driver_id=driver_id, status="pending", limit=20,
+        )
+    except CoachingDisabledError:
+        # The mask normally closes the door above; the service's own
+        # answer is the belt for the window where the bot's ``can``
+        # fell back to seeds (account priming failed).
+        await update.message.reply_text(t("coaching.disabled_for_account"))
+        return
     if not items:
         await update.message.reply_text(t("coaching.my.no_pending"))
         return

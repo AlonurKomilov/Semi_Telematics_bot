@@ -17,7 +17,7 @@ from interfaces.api.deps import (
 )
 from capabilities.permissions.roles import get_account_permissions, get_user_permissions
 from capabilities.permissions.modules import enabled_modules as _enabled_modules
-from capabilities.permissions.modules import parse_disabled as _parse_disabled
+from capabilities.permissions.modules import feature_available as _feature_available
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
 
@@ -170,10 +170,10 @@ async def user_me(
         # Driver Pay is an Accounting feature now — "available" == Accounting
         # module on (per-user access is the can_manage_driver_pay permission).
         # Field name kept for frontend compat.
-        "payroll_enabled": "accounting" not in _parse_disabled(
-            getattr(acct, "disabled_modules", ""),
-        ),
-        "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),
+        "payroll_enabled": _feature_available(acct, "driver_pay"),
+        # Coaching: its department on and its account switch on — the
+        # same answer the resolver masks the coaching flags with.
+        "coaching_enabled": _feature_available(acct, "coaching"),
         # Enabled department modules (Fleet/Dispatch/Safety/HR/Accounting).
         # Drives module-aware sidebar filtering; Core + Account admin are
         # always on and not listed.  See capabilities/permissions/modules.py.

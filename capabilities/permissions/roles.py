@@ -1034,23 +1034,24 @@ def get_permissions(role: Role) -> FeatureSet:
     return ROLE_PERMISSIONS.get(role, FeatureSet())
 
 
-async def _apply_module_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
-    """Force a disabled department's flags off (one hiding mechanism).
+async def _apply_account_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
+    """The account-level mask (one hiding mechanism).
 
-    Reads the account's ``disabled_modules`` and masks every flag whose
-    owning module(s) are all turned off — so a disabled module hides its
-    features *through* the permission system (nav + API), not via a
-    separate filter.  Fail-open: on any error returns *fs* unmasked, so a
-    transient DB hiccup never silently strips access.
+    Reads the account row once and forces off every flag the account
+    has switched off: a department's flags when every module that owns
+    them is off, a feature's flags when its account switch is off
+    (capabilities/permissions/modules.account_mask).  A switch therefore
+    hides *through* the permission system — nav, API, bot, AI tools —
+    never via a second filter beside it.  Fail-open: on any error returns
+    *fs* unmasked, so a transient DB hiccup never silently strips access.
     """
     try:
         from infra.platform import get_platform_db
-        from capabilities.permissions.modules import mask_disabled_modules
+        from capabilities.permissions.modules import account_mask
         acct = await get_platform_db().get_account(account_id)
-        disabled = getattr(acct, "disabled_modules", "") if acct else ""
-        return mask_disabled_modules(fs, disabled)
+        return account_mask(fs, acct)
     except Exception as e:
-        logger.debug("Module mask skipped (using unmasked perms): %s", e)
+        logger.debug("Account mask skipped (using unmasked perms): %s", e)
         return fs
 
 
@@ -1124,14 +1125,14 @@ async def _resolve_perms(
             filtered = {k: v for k, v in perm_dict.items() if k in known_fields}
             merged = {**seed, **filtered}
             fs = _protect_owner(protect_role, FeatureSet(**merged))
-            fs = await _apply_module_mask(fs, account_id)
+            fs = await _apply_account_mask(fs, account_id)
             _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
             return fs
     except Exception as e:
         logger.debug("Could not load permissions from DB (using defaults): %s", e)
 
     fs = _protect_owner(protect_role, default_fs)
-    fs = await _apply_module_mask(fs, account_id)
+    fs = await _apply_account_mask(fs, account_id)
     _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
     return fs
 

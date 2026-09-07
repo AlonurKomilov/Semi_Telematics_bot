@@ -119,8 +119,9 @@ class TestAuth:
             # frontend compat (interfaces/api/routes/user.py).
             assert data["payroll_enabled"] is True
             assert "accounting" in data["enabled_modules"]
-            # coaching_enabled is still a real per-account column, and
-            # still defaults off.
+            # Coaching's account switch (accounts.coaching_enabled, an
+            # operator-set column) defaults off; the field is derived
+            # through the same helper the resolver masks with.
             assert data["coaching_enabled"] is False
 
     async def test_refresh_token(self, db_and_app):

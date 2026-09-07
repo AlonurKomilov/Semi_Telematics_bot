@@ -40,7 +40,10 @@ value inside the tier union would claim services sit on an axis they don't.
 ### 🔔 Alerts
 - **Surface**: the Alerts inbox (dashboard) · bot `/alerts` · *My Notifications*.
 - **Access**: `can_view_alerts`, granted per role (seeded wherever the role
-  sees vehicles; Recruiter starts without it). Its **width** — every unit or
+  sees vehicles; Recruiter starts without it). A department switch never closes
+  the inbox itself (it is `core`); it closes that department's alert
+  TYPES, which the delivery and listing gates read from the resolved,
+  masked permissions. Its **width** — every unit or
   the member's assigned trucks — is Team Management's answer (`unit_width`,
   the `alerts` pair), never a flag.
 - **Content gate**: which alert **types** a role actually receives is gated

@@ -1,6 +1,6 @@
 """Coaching scheduled jobs — nightly evaluation pass.
 
-Runs every night and, for each account with ``coaching_enabled = 1``,
+Runs every night and, for each account where Coaching is available,
 calls :func:`features.coaching.service.run_evaluation` to persist
 proposed assignments based on the last 7 days of scorecards / events.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from capabilities.permissions.modules import feature_available
 from infra.platform import get_platform_db
 
 from . import service as svc
@@ -36,7 +37,7 @@ async def run_nightly_coaching_job(_app=None) -> None:
     for acc in accounts:
         if not await _is_local_hour(acc.id, _TARGET_HOUR):
             continue
-        if not getattr(acc, "coaching_enabled", False):
+        if not feature_available(acc, "coaching"):
             skipped += 1
             continue
         try:
