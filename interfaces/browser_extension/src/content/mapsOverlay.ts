@@ -38,7 +38,7 @@ import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
-import { cameraFromUrl, isStreetView, isVisible, project, sameCamera, type Camera } from '../features/maps-overlay/projection';
+import { cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
 import { colourFor, findMapCanvas, markerAt, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
@@ -137,6 +137,8 @@ function removeAll(): void {
   root?.remove();
   root = null;
   markers.clear();
+  drawnAt.clear();
+  setHoverCursor(false);
 }
 
 // ── the switch on the map ──────────────────────────────────────────────
@@ -211,7 +213,7 @@ function markerFor(v: OverlayVehicle): HTMLDivElement {
     // Markers take no pointer events either: a drag that starts on a
     // truck must drag the map, and nothing here answers a click yet.
     el.style.cssText =
-      'position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:pointer;' +
+      'position:absolute;transform:translate(-50%,-50%);pointer-events:none;' +
       'display:flex;align-items:center;gap:4px;font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
     el.innerHTML =
       '<span data-dot style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)"></span>' +
@@ -220,7 +222,11 @@ function markerFor(v: OverlayVehicle): HTMLDivElement {
     markers.set(v.id, el);
   }
   el.querySelector<HTMLElement>('[data-dot]')!.style.background = colourFor(v.status);
-  el.querySelector<HTMLElement>('[data-name]')!.textContent = v.name || v.id;
+  const name = el.querySelector<HTMLElement>('[data-name]')!;
+  name.textContent = v.name || v.id;
+  // The dot alone below the label zoom: at national scale a hundred
+  // name pills overlap into a block that says less than the dots do.
+  name.hidden = !showsLabels(camera?.zoom ?? 0);
   return el;
 }
 
@@ -347,8 +353,25 @@ function onPointerDown(e: PointerEvent): void {
   if (onMapControl(e.target)) fadeUntilSettled();
 }
 
+/** Google's canvas carries the cursor, because our layer cannot: it
+ *  takes no pointer events, so a `cursor` on a marker never applies.
+ *  The rule is ours and is removed again the moment the pointer leaves
+ *  a truck, so the page is left as we found it. */
+function setHoverCursor(hit: boolean): void {
+  if (!canvasEl) return;
+  const want = hit ? 'pointer' : '';
+  if (canvasEl.style.cursor !== want) canvasEl.style.cursor = want;
+}
+
 function onPointerMove(e: PointerEvent): void {
-  if (!drag || !root) return;
+  if (!root) return;
+  if (!drag) {
+    // Not dragging: say whether there is a truck under the pointer.
+    if (enabled && signedIn && surface) {
+      setHoverCursor(!!markerAt(drawnAt, e.clientX - surface.left, e.clientY - surface.top));
+    }
+    return;
+  }
   drag = moveDrag(drag, e.clientX, e.clientY, e.timeStamp);
   root.style.transform = dragTransform(drag);
 }

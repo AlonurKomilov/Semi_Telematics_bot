@@ -29,14 +29,24 @@ button, input { font: inherit; }
 .menu-item { display:block; width:100%; text-align:left; background:none; border:0; color: var(--fg);
              padding:7px 10px; border-radius:6px; cursor:pointer; min-height:24px; }
 .menu-item:hover { background: rgba(255,255,255,.06); }
+/* Everything clickable answers the pointer.  Only .menu-item and
+   .mark-link did, so the list rows — the panel's main interaction —
+   gave no sign at rest OR on hover that they were buttons at all. */
+.btn:hover:not(:disabled), .chip:hover, .rowbtn:hover { background: rgba(255,255,255,.06); }
+.btn.primary:hover, .chip.on:hover { background: #2f6fd0; }
+/* A pressed STATE reads as bordered-and-tinted; a filled primary stays
+   the one ACTION a surface is for. */
+.btn[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); }
+.btn[aria-pressed="true"]:hover { background: rgba(59,130,246,.12); }
 .menu-item.danger { color: var(--danger); }
 .menu-sep { height:1px; background: var(--border); margin:4px 0; }
 
 /* The selected vehicle, under the map.  It floated over the map while
    it was three lines long; at seven it was hiding more than it showed —
    often the very truck it describes. */
-.sheet { background: var(--card); border-bottom:1px solid var(--border);
-         padding:8px 10px; display:grid; gap:6px; }
+/* Its own fill IS its boundary now that the column carries air between
+   regions; the hairline underneath was a second edge for one object. */
+.sheet { background: var(--card); padding:8px 10px; display:grid; gap:6px; }
 /* Fuel / DEF, the dashboard's level bars at panel scale. */
 .bar { height:6px; border-radius:999px; background: rgba(255,255,255,.10); overflow:hidden; }
 .bar > i { display:block; height:100%; background: var(--ok); }

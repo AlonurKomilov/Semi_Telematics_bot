@@ -126,3 +126,21 @@ export function sameCamera(a: Camera | null, b: Camera | null): boolean {
     && Math.abs(a.lat - b.lat) < 1e-7
     && Math.abs(a.lng - b.lng) < 1e-7;
 }
+
+
+/**
+ * Below this zoom a name beside every truck stops being information.
+ *
+ * The marker is one size at every zoom, but the density is not: a
+ * national view puts a hundred name pills into a few hundred pixels and
+ * the eastern half of the map becomes an unreadable block. Past this
+ * point the dot alone says "a vehicle is here", which is all a map at
+ * that scale can honestly say; the name comes back when there is room
+ * for it. Chosen at 8 — roughly a metro area, where a handful of trucks
+ * are in view rather than a fleet.
+ */
+export const LABEL_MIN_ZOOM = 8;
+
+export function showsLabels(zoom: number): boolean {
+  return zoom >= LABEL_MIN_ZOOM;
+}

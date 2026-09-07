@@ -342,14 +342,23 @@ export default function LiveMapPanel() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    // Regions are separated by AIR, not by a hairline: the column had no
+    // gap at all while the search block had 6px inside it, so the space
+    // within a group exceeded the space between groups and the whole
+    // panel read as one flat run.  8 between, 6 within, 1 between rows.
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
       {/* The map and the list SHARE what the fixed rows leave, and the
           map takes the larger share.  With a flex-basis of auto the map
           was the only thing that could give, so selecting a vehicle
           squeezed it to its floor: the card, the search row, the chips
           and the list header are all fixed-height, and the list was
           holding 45%.  Now both give, in proportion. */}
-      <div style={{ position: 'relative', flex: '3 1 45%', minHeight: 220 }}>
+      {/* ONE region absorbs change, and it is the map.  Both the map and
+          the list used to be elastic, so a vehicle being selected — the
+          card is ~140px — pushed the search box, the chips, the switch,
+          the list header and every row downward.  Selecting is a rapid
+          sequence; a layout that walks under it compounds. */}
+      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 220 }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew
@@ -372,7 +381,12 @@ export default function LiveMapPanel() {
                 <div className="row" style={{ gap: 6 }}>
                   {/* On: the map rides along. Off (you panned away): the
                       same control brings it back and re-engages. */}
-                  <button className={`chip ${keepInView ? 'on' : ''}`} aria-pressed={keepInView}
+                  {/* A pressed STATE, not an action: filled primary is
+                      reserved for the one thing this card is for, and
+                      two filled-blue controls with opposite roles side
+                      by side made neither legible.  Same .btn size as
+                      Close beside it. */}
+                  <button className="btn" aria-pressed={keepInView}
                           title={keepInView
                             ? 'The map follows this vehicle — drag the map to stop'
                             : 'Bring this vehicle back into view and follow it again'}
@@ -415,7 +429,7 @@ export default function LiveMapPanel() {
             </div>
           );
         })()}
-      <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}>
+      <div style={{ padding: '0 10px', display: 'grid', gap: 6 }}>
         <input className="input" placeholder="Search vehicles…" value={search} onChange={(e) => setSearch(e.target.value)} />
         {/* Two different kinds of control, so two different shapes.  One
             row of identical pills made a status FILTER and a behaviour
@@ -430,7 +444,7 @@ export default function LiveMapPanel() {
             </button>
           ))}
         </div>
-        <label className="row" style={{ gap: 8, cursor: 'pointer' }}
+        <label className="row" style={{ gap: 8, cursor: 'pointer', minHeight: 24, padding: '2px 0' }}
                title="With Google Maps in front, selecting a vehicle replaces what is open in that tab">
           <input type="checkbox" role="switch" checked={follow} onChange={toggleFollow} />
           <span className="small">Follow in Google Maps</span>
@@ -439,22 +453,31 @@ export default function LiveMapPanel() {
         {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
         {tileNotice && <p className="muted" style={{ margin: 0 }}>{tileNotice}</p>}
       </div>
-      <button type="button" onClick={toggleList} aria-expanded={listOpen}
-              className="row"
-              style={{ width: '100%', justifyContent: 'space-between', padding: '6px 10px', background: 'none',
-                       border: 0, borderBottom: '1px solid var(--border)', color: 'var(--fg)', cursor: 'pointer' }}>
-        <span style={{ fontWeight: 600 }}>
-          Vehicles <span className="muted" style={{ fontWeight: 400 }}>({filtered.length})</span>
-        </span>
-        <span className="muted" aria-hidden>{listOpen ? '▾' : '▴'}</span>
-      </button>
-      <div hidden={!listOpen}
-           style={{ flex: '2 1 25%', minHeight: 80, overflowY: 'auto' }}
-           role="region" aria-label="Vehicles" tabIndex={0}>
+      {/* Header and rows are ONE region — one border, one fold — so the
+          column's gap never lands between a group's name and its
+          members.  The list gives no space when the card appears: it is
+          the only thing here that already scrolls. */}
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
+                    flex: listOpen ? '0 1 240px' : '0 0 auto',
+                    borderTop: '1px solid var(--border)' }}>
+        <button type="button" onClick={toggleList} aria-expanded={listOpen}
+                className="row rowbtn"
+                style={{ width: '100%', justifyContent: 'space-between', padding: '6px 10px',
+                         background: 'var(--card)', border: 0, color: 'var(--fg)', cursor: 'pointer' }}>
+          {/* A header that shares its rows' surface, padding and border
+              reads as their first row.  A fill step says it owns them. */}
+          <span style={{ fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Vehicles <span className="muted" style={{ fontWeight: 400 }}>({filtered.length})</span>
+          </span>
+          <span className="muted" aria-hidden>{listOpen ? '▾' : '▴'}</span>
+        </button>
+        <div hidden={!listOpen}
+             style={{ flex: 1, minHeight: 80, overflowY: 'auto' }}
+             role="region" aria-label="Vehicles" tabIndex={0}>
         {filtered.map((f) => {
           const p = f.properties, status = vehicleStatus(f), warn = hasLowLevelWarning(p);
           return (
-            <button key={idOf(f)} onClick={() => focus(f)}
+            <button key={idOf(f)} onClick={() => focus(f)} className="rowbtn"
               style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 0,
                        borderBottom: '1px solid var(--border)', color: 'var(--fg)', cursor: 'pointer', minHeight: 24 }}>
               <div className="row">
@@ -517,6 +540,7 @@ export default function LiveMapPanel() {
             <div className="skel" style={{ width: `${80 - i * 5}%`, marginLeft: 18 }} />
           </div>
         ))}
+        </div>
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   cameraFromUrl, isStreetView, isVisible, latToWorldY, lngToWorldX,
-  project, sameCamera, worldSize, MAX_LAT,
+  project, sameCamera, showsLabels, worldSize, LABEL_MIN_ZOOM, MAX_LAT,
 } from './projection';
 
 describe('Web Mercator, the arithmetic every slippy map shares', () => {
@@ -124,5 +124,16 @@ describe('when a redraw is worth doing', () => {
   it('treats absence as a change worth acting on', () => {
     expect(sameCamera(a, null)).toBe(false);
     expect(sameCamera(null, null)).toBe(true);
+  });
+});
+
+describe('a name beside every truck stops being information', () => {
+  it('drops the labels on a national view, where a hundred pills overlap into a block', () => {
+    expect(showsLabels(5)).toBe(false);
+    expect(showsLabels(LABEL_MIN_ZOOM - 0.5)).toBe(false);
+  });
+  it('brings them back once there is room', () => {
+    expect(showsLabels(LABEL_MIN_ZOOM)).toBe(true);
+    expect(showsLabels(14)).toBe(true);
   });
 });
