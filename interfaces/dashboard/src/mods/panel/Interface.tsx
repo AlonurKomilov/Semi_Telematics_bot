@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
 import { MOD_ICONS, type ModIcons } from '../catalogue';
 import { MATERIAL_PACKS } from '../packs/material';
-import { THEME_PACKS, packById } from '../packs/theme';
+import { THEME_PACKS, packById, accentSeed } from '../packs/theme';
 import { FONT_PACKS } from '../packs/font';
 import { accentTokens } from '../theme/accent';
 import { fitCanvas } from '../theme/canvas';
@@ -71,12 +71,11 @@ const MODE_OPTIONS: { value: Mode; key: string; label: string; dot: string }[] =
  * its English name in every locale — which is the rule for feature and
  * theme names here anyway.
  */
-const ACCENT_OPTIONS: { value: Accent; key: string; label: string; dot: string }[] =
+const ACCENT_OPTIONS: { value: Accent; key: string; label: string }[] =
   THEME_PACKS.map((p) => ({
     value: p.id as Accent,
     key: `theme.accent_${p.id}`,
     label: p.label,
-    dot: `var(--swatch-accent-${p.id})`,
   }));
 
 /** What surfaces are made of. An axis, so it sits beside Corners rather
@@ -238,7 +237,7 @@ export function ColorGroup({ label }: { label: LabelClass }) {
       <div className="flex flex-wrap gap-1 mt-1">
         {ACCENT_OPTIONS.map((o) => (
           <Chip key={o.value} value={o.value} current={brandWorn ? ('' as Accent) : theme.accent}
-            label={t(o.key, o.label)} dot={o.dot}
+            label={t(o.key, o.label)} dot={accentSeed(o.value, theme.mode)}
             onClick={(v) => setTheme({ accent: v })} />
         ))}
         <BrandChip

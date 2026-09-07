@@ -193,7 +193,6 @@ describe('what the seed is not allowed to touch', () => {
       '--danger-bg', '--danger-bd', '--info-bg', '--info-bd',
       '--destructive', '--destructive-text', '--destructive-foreground',
       '--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5',
-      '--swatch-accent-blue', '--swatch-accent-purple', '--swatch-accent-green',
       '--swatch-mode-dark', '--swatch-mode-light',
       '--radius', '--sidebar-w', '--font-sans', '--font-heading',
       '--size-text', '--size-control', '--size-layout', '--size-panel',

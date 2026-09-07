@@ -23,3 +23,15 @@ export const THEME_PACKS: readonly ThemePack[] = [
 
 export const packById = (id: string): ThemePack | undefined =>
   THEME_PACKS.find((p) => p.id === id);
+
+/**
+ * The colour a picker paints an accent's dot in — the seed itself, per
+ * mode. This used to be twelve `--swatch-accent-*` tokens in the engine
+ * sheet (`:root`, `.dark`, and again in the print reset) held to the
+ * seeds by a hue test; the seed IS the colour, so the tokens were a
+ * copy with a guard on it. Per mode because the accent is orthogonal
+ * to the mode: choosing green while in Light previews the green Light
+ * paints, not the green Dark does.
+ */
+export const accentSeed = (id: string, mode: 'light' | 'dark'): string | undefined =>
+  packById(id)?.seed[mode];

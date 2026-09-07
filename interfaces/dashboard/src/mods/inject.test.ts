@@ -166,7 +166,7 @@ describe('what a mod may name', () => {
       '--destructive', '--destructive-text', '--destructive-foreground',
       '--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5',
       '--radius', '--size-text', '--size-control', '--font-sans',
-      '--swatch-accent-blue', '--sidebar-w',
+      '--swatch-mode-dark', '--sidebar-w',
     ];
     for (const t of forbidden)
       expect(MOD_TOKENS, `${t} is reachable by a mod`).not.toContain(t);

@@ -14,6 +14,7 @@ import {
   MOD_THEME_FIELDS, modMatchesAxes, modFootprint, type Mod,
 } from '../catalogue';
 import { MODS, modById } from '../packs/mods';
+import { accentSeed } from '../packs/theme';
 import type { ModSetting } from '../../preferences/registry';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';
@@ -28,7 +29,6 @@ const MOD_OPTIONS = MODS.map((m) => ({
   value: m.id,
   label: m.label,
   why: m.why,
-  dot: `var(--swatch-accent-${m.accent})`,
   mod: m,
 }));
 
@@ -113,7 +113,7 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
       </p>
       <div className="flex flex-wrap gap-1">
         {MOD_OPTIONS.map((o) => (
-          <Chip key={o.value} value={o.value} current={activeMod} label={o.label} dot={o.dot}
+          <Chip key={o.value} value={o.value} current={activeMod} label={o.label} dot={accentSeed(o.mod.accent, theme.mode)}
             onClick={() => applyMod(o.mod)} />
         ))}
       </div>

@@ -294,14 +294,6 @@
     --danger-foreground: oklch(1 0 0);
     --info-foreground:   oklch(1 0 0);
 
-    /* The accent dots in the picker. Per mode, because the accent is
-       now orthogonal to the mode: choosing `green` while in Light
-       must preview the green Light paints, not the green Dark does. */
-    --swatch-accent-blue:   oklch(0.52 0.20 264);
-    --swatch-accent-purple: oklch(0.52 0.20 300);
-    --swatch-accent-green:  oklch(0.48 0.14 135);
-    --swatch-accent-azure:  oklch(0.52 0.091 214);
-
     /* Derived soft-pill surfaces — same hue, fixed alpha for the
        `bg /15 + border /30` pill treatment.  Defined ONCE here (not
        repeated in .dark) because they reference var(--ok) etc., which
@@ -483,11 +475,6 @@
     --warn-foreground:   oklch(0.145 0 0);
     --danger-foreground: oklch(0.145 0 0);
     --info-foreground:   oklch(0.145 0 0);
-
-    --swatch-accent-blue:   oklch(0.62 0.21 264);
-    --swatch-accent-purple: oklch(0.62 0.20 300);
-    --swatch-accent-green:  oklch(0.65 0.189 135);
-    --swatch-accent-azure:  oklch(0.62 0.108 214);
 
     --chart-1: oklch(0.62 0.21 264);
 
@@ -775,10 +762,6 @@
     --warn-foreground:            oklch(1 0 0);
     --danger-foreground:          oklch(1 0 0);
     --info-foreground:            oklch(1 0 0);
-    --swatch-accent-blue:         oklch(0.52 0.20 264);
-    --swatch-accent-purple:       oklch(0.52 0.20 300);
-    --swatch-accent-green:        oklch(0.48 0.14 135);
-    --swatch-accent-azure:        oklch(0.52 0.091 214);
     --chart-1:                    oklch(0.55 0.20 264);
     --chart-2:                    oklch(0.55 0.15 142);
     --chart-3:                    oklch(0.65 0.14 95);

@@ -298,22 +298,18 @@ const KNOWN_GAMUT: Record<string, number> = {
   'light azure | --destructive': 0.0096,
   'light azure | --warn': 0.0017,
   'light azure | --chart-3': 0.0065,
-  'dark azure | --swatch-accent-blue': 0.0057,
   'dark azure | --chart-3': 0.0055,
   // dark blue
   'dark blue | --chart-1': 0.0057,
   'dark blue | --chart-3': 0.0055,
   'dark blue | --chart-5': 0.0176,
   'dark blue | --primary': 0.0057,
-  'dark blue | --swatch-accent-blue': 0.0057,
   // dark green
   'dark green | --chart-3': 0.0055,
   'dark green | --chart-5': 0.0176,
-  'dark green | --swatch-accent-blue': 0.0057,
   // dark purple
   'dark purple | --chart-3': 0.0055,
   'dark purple | --chart-5': 0.0176,
-  'dark purple | --swatch-accent-blue': 0.0057,
   // light blue
   'light blue | --chart-3': 0.0065,
   'light blue | --chart-5': 0.0265,

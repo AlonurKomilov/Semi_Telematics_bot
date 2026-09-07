@@ -211,26 +211,3 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
     }
   });
 });
-
-/**
- * The one piece of pack data still held by the engine sheet, by name.
- *
- * `--swatch-accent-*` — the colour the picker paints a chip dot from —
- * is declared in `:root`, `.dark` and the print block, because print
- * restates every light token and a swatch moved into a pack file would
- * either be restated in three places or vanish from paper. It stays,
- * and `catalogue.test.ts` holds each swatch to its pack's hue. Named
- * here so it is a known seam and not a forgotten one; the honest end
- * state is a dot painted from the seed itself, with no token at all.
- */
-describe('the known seam', () => {
-  it('the engine sheet still carries the accent swatches, and nothing else of a pack', () => {
-    const engine = engineCss().replace(/\/\*[\s\S]*?\*\//g, '');
-    // Three declarations, by name: `:root`, `.dark`, and the print
-    // reset — one of them gone and paper or dark loses the dot.
-    for (const p of THEME_PACKS)
-      expect(engine.match(new RegExp(`--swatch-accent-${p.id}:`, 'g'))?.length,
-        `--swatch-accent-${p.id} is not in all three engine root blocks — update this seam note`)
-        .toBe(3);
-  });
-});

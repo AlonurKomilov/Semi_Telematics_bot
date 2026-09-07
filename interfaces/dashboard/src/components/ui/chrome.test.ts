@@ -1764,22 +1764,8 @@ describe('UI chrome', () => {
         .map((t) => `${m[1]} re-points --primary without ${t}`));
     expect(lagging).toEqual([]);
 
-    // The swatch the picker paints has to exist for every accent, in both
-    // modes, or the chip renders a dot with no colour.
-    // index.css splits `:root` across several blocks (fonts, colour,
-    // swatches, size). Merge them the way the cascade does — reading only
-    // the first finds the font block and no colour at all.
-    const merged = (sel: RegExp) =>
-      [...css.matchAll(sel)].map((m) => m[1]).join('\n');
-    const lightBlock = merged(/^ {2}:root \{$([\s\S]*?)^ {2}\}$/gm);
-    const darkBlock = merged(/^ {2}\.dark \{$([\s\S]*?)^ {2}\}$/gm);
-    const dots = accents.flatMap((a) =>
-      ([['light', lightBlock], ['dark', darkBlock]] as const)
-        .filter(([, block]) => !block.includes(`--swatch-accent-${a}:`))
-        .map(([mode]) => `--swatch-accent-${a} missing from ${mode}`),
-    );
-    expect(dots, 'a chip whose swatch token does not exist renders a colourless dot')
-      .toEqual([]);
+    // The dot the picker paints comes from the pack's seed now, not from
+    // a token — see `accentSeed` in mods/packs/theme.
   });
 
   // ── Guard 35 ────────────────────────────────────────────────────────
