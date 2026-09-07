@@ -29,6 +29,21 @@ export const OPEN_PANEL = '4truck:open-panel';
  *  instead of teleporting twice a minute. */
 export const OVERLAY_LIVE = '4truck:overlay-live';
 
+/** The same question, asked by the PANEL rather than by a page.
+ *
+ *  The panel could fetch this itself — it is our own context and it
+ *  holds the token — and it did.  But then a person with the panel open
+ *  beside a Google Maps tab was asking for one fleet's positions twice
+ *  every five seconds, on two clocks, and seeing two slightly different
+ *  instants.  Going through the worker means one answer, shared, and
+ *  both surfaces showing the same moment.
+ *
+ *  The reply is the payload as it arrived, not the trimmed one: the
+ *  panel needs the reading's age, which a marker on somebody else's map
+ *  does not.  That is safe here and would not be there — this answer
+ *  never leaves the extension. */
+export const PANEL_LIVE = '4truck:panel-live';
+
 /** One vehicle, trimmed to what a marker on somebody else's map needs.
  *  Deliberately not the full map payload: less to hand a page we do
  *  not control, and less to keep in sync. */
@@ -54,6 +69,27 @@ export interface OverlayFix {
 export type LiveReply =
   | { ok: true; fixes: OverlayFix[] }
   | { ok: false };
+
+/** The panel's reply: the wire as it came.  ``ok: false`` means the
+ *  worker could not answer, and the panel asks the API itself — the
+ *  shared answer is an economy, never a dependency. */
+export type PanelLiveReply<T> =
+  | { ok: true; wire: T }
+  | { ok: false };
+
+/** Take the shared answer when there is one, ask for your own when
+ *  there is not.
+ *
+ *  The rule this pins: sharing is an ECONOMY, never a dependency.  A
+ *  worker that is asleep, updating, or simply unable to answer must
+ *  cost a caller one extra request — never its data. */
+export async function sharedOrOwn<T>(
+  askShared: () => Promise<PanelLiveReply<T>>,
+  askDirectly: () => Promise<T>,
+): Promise<T> {
+  const shared = await askShared();
+  return shared.ok ? shared.wire : askDirectly();
+}
 
 interface LiveWire { positions?: Record<string, { lat?: unknown; lng?: unknown; speed_mph?: unknown; heading?: unknown }> }
 

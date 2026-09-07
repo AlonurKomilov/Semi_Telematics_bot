@@ -14,6 +14,7 @@ import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
+import { PANEL_LIVE, sharedOrOwn, type PanelLiveReply } from '../maps-overlay/bridge';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
 import { getFlag, setFlag } from '../../prefs';
 import { directionsUrl, followInGoogleMaps, getFollowPref, markFollowWarned, openInGoogleMaps, searchUrl, setFollowPref, wasFollowWarned } from './googleMaps';
@@ -252,9 +253,34 @@ export default function LiveMapPanel() {
     }
   }
 
+  /** The positions, through the worker when it can answer and straight
+   *  from the API when it cannot.
+   *
+   *  Through the worker because the overlay on google.com/maps asks the
+   *  same question on its own clock: one answer serves both, and both
+   *  then show the same instant.  Straight from the API otherwise —
+   *  sharing is an economy, and an economy must never be the reason a
+   *  map stops moving. */
+  async function livePositions(): Promise<LiveVehiclesResponse> {
+    return sharedOrOwn<LiveVehiclesResponse>(
+      () => new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: PANEL_LIVE }, (reply: PanelLiveReply<LiveVehiclesResponse>) => {
+            // A worker that was asleep and failed to wake leaves
+            // lastError set and reply undefined: a quiet no.
+            resolve(chrome.runtime.lastError || !reply ? { ok: false } : reply);
+          });
+        } catch {
+          resolve({ ok: false });
+        }
+      }),
+      () => apiJSON<LiveVehiclesResponse>('/map/vehicles/live'),
+    );
+  }
+
   async function livePoll() {
     try {
-      const data = await apiJSON<LiveVehiclesResponse>('/map/vehicles/live');
+      const data = await livePositions();
       const now = performance.now();
       for (const [vid, pos] of Object.entries(data.positions ?? {})) {
         const m = markers.current.get(vid);

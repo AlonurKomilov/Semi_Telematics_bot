@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { toOverlayFixes, toOverlayVehicles } from './bridge';
+import { sharedOrOwn, toOverlayFixes, toOverlayVehicles } from './bridge';
 
 describe('what crosses into a page we do not own', () => {
   it('carries a marker\'s worth and nothing else', () => {
@@ -75,5 +75,30 @@ describe('the live feed, trimmed', () => {
   it('survives an empty or malformed payload', () => {
     expect(toOverlayFixes({})).toEqual([]);
     expect(toOverlayFixes(undefined as never)).toEqual([]);
+  });
+});
+
+describe('sharedOrOwn', () => {
+  it('takes the shared answer when the worker has one', async () => {
+    const direct = vi.fn(async () => 'own');
+    expect(await sharedOrOwn(async () => ({ ok: true, wire: 'shared' }), direct)).toBe('shared');
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  it('asks for its own when the worker cannot answer', async () => {
+    // Asleep, updating, signed out at that moment — the caller does not
+    // need to know which, only that sharing bought nothing this time.
+    const direct = vi.fn(async () => 'own');
+    expect(await sharedOrOwn(async () => ({ ok: false }), direct)).toBe('own');
+    expect(direct).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a failure of its own reach the caller', async () => {
+    // The panel's poll swallows errors on purpose; that decision lives
+    // at the call site, not in here.
+    await expect(sharedOrOwn(
+      async () => ({ ok: false }),
+      async () => { throw new Error('offline'); },
+    )).rejects.toThrow('offline');
   });
 });

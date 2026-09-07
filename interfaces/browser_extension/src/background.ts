@@ -22,15 +22,23 @@
  */
 import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
-import { OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, toOverlayFixes, toOverlayVehicles, type LiveReply, type OverlayReply } from './features/maps-overlay/bridge';
+import { OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
 import { makeShared } from './features/maps-overlay/dedupe';
+import type { LiveVehiclesResponse } from './features/live-map/types';
 
 /** Both windows sit just under the poll they serve, so one tab alone
  *  keeps exactly the cadence it had; they exist for the second tab.
  *  Each ask carries the token it is asking with, so an answer can never
  *  outlive the connection that earned it — see dedupe.ts. */
-const sharedLive = makeShared<{ positions?: Record<string, never> }>(4_000);
+const sharedLive = makeShared<LiveVehiclesResponse>(4_000);
 const sharedList = makeShared<{ features?: unknown[] }>(25_000);
+
+/** The one fetcher both askers share, typed as the API really answers.
+ *  The panel is handed this payload whole and reads each reading's AGE
+ *  from it, so the shape is a contract between the two — declared once
+ *  here, where the compiler can hold both sides to it, rather than
+ *  written out at each call and trusted to stay the same. */
+const askLive = () => apiJSON<LiveVehiclesResponse>('/map/vehicles/live');
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -49,13 +57,29 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+  if (m?.type === PANEL_LIVE) {
+    // The panel's own poll, answered from the same memory the overlay's
+    // is — so two open surfaces cost one request, not two.
+    (async () => {
+      const token = await getToken();
+      if (!token) { sendResponse({ ok: false } satisfies PanelLiveReply<never> ); return; }
+      try {
+        const wire = await sharedLive('live', token, askLive);
+        sendResponse({ ok: true, wire } satisfies PanelLiveReply<LiveVehiclesResponse>);
+      } catch {
+        // The panel falls back to asking the API itself; saying so is
+        // cheaper than making it wait for a retry here.
+        sendResponse({ ok: false } satisfies PanelLiveReply<never>);
+      }
+    })();
+    return true;
+  }
   if (m?.type === OVERLAY_LIVE) {
     (async () => {
       const token = await getToken();
       if (!token) { sendResponse({ ok: false } satisfies LiveReply); return; }
       try {
-        const data = await sharedLive('live', token,
-          () => apiJSON<{ positions?: Record<string, never> }>('/map/vehicles/live'));
+        const data = await sharedLive('live', token, askLive);
         sendResponse({ ok: true, fixes: toOverlayFixes(data) } satisfies LiveReply);
       } catch {
         // The fast poll stays quiet, exactly as the panel's does: the
