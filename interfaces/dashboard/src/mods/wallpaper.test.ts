@@ -48,6 +48,9 @@ function token(src: string, name: string): { rgb: RGB; alpha: number } | null {
   const alpha = m[4] === undefined ? 1 : (+m[4] / (m[5] === '%' ? 100 : 1));
   return { rgb: oklchToSrgb(+m[1], +m[2], +m[3]).rgb, alpha };
 }
+const hex = (h: string): RGB =>
+  [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as unknown as RGB;
+
 const mix = (a: RGB, b: RGB, pct: number): RGB =>
   a.map((v, i) => v * (1 - pct / 100) + b[i] * (pct / 100)) as RGB;
 
@@ -61,8 +64,19 @@ const mix = (a: RGB, b: RGB, pct: number): RGB =>
  */
 function stopsOf(id: string): { token: string; pct: number }[] {
   const block = body(`:root[data-wallpaper="${id}"] .chrome-ground`);
-  return [...block.matchAll(/var\((--[a-z-]+)\)\s+(\d+(?:\.\d+)?)%/g)]
+  const mixes = [...block.matchAll(/var\((--[a-z-]+)\)\s+(\d+(?:\.\d+)?)%/g)]
     .map((m) => ({ token: m[1], pct: +m[2] }));
+  // A generated texture is greyscale by construction (`saturate 0`), so
+  // it spans BLACK to WHITE at the opacity its URI states. Both ends are
+  // stops, and measuring both is what makes a turbulence as answerable
+  // as a `color-mix` — there is no token to name, so the extremes stand
+  // in for one.
+  const svg = [...block.matchAll(/opacity='(\d*\.?\d+)'/g)]
+    .flatMap((m) => [
+      { token: '#000000', pct: +m[1] * 100 },
+      { token: '#ffffff', pct: +m[1] * 100 },
+    ]);
+  return [...mixes, ...svg];
 }
 
 const MODE_CELL = { light: ':root', dark: '.dark' } as const;
@@ -108,21 +122,68 @@ describe('the stylesheet answers for every pattern the list offers', () => {
     expect([...new Set(orphans)], 'CSS paints a pattern nobody can choose').toEqual([]);
   });
 
-  it('every pattern is made of token mixes, never an image', () => {
-    // The property that keeps the whole thing measurable. A `url()`
-    // here would be a background nothing below can reason about — and
-    // would need the reviewed path `inject.ts` says an image needs.
+  it('nothing is fetched — every pattern is generated here', () => {
+    // The property that keeps the whole thing measurable. A NETWORK url
+    // would be a picture nobody here has seen, and would need the
+    // reviewed path `inject.ts` says an image needs. An inline
+    // `feTurbulence` is not that: it is generated in the browser from a
+    // few hundred bytes, and being greyscale it has knowable extremes.
     let counted = 0;
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
       const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
-      expect(block, `${w.id} reaches for a URL`).not.toMatch(/url\(/);
+      for (const m of block.matchAll(/url\((['"]?)([^'")]*)/g)) {
+        // `url(%23g)` inside the SVG is a filter REFERENCE — a pointer
+        // to an element in the same document, not a fetch. Only the
+        // outer, quoted one names something to load.
+        if (m[2].startsWith('%23')) continue;
+        expect(m[2], `${w.id} fetches its background`).toMatch(/^data:image\/svg\+xml,/);
+      }
       const stops = stopsOf(w.id);
-      expect(stops.length, `${w.id} declares no token mix — what is it painting?`)
+      expect(stops.length, `${w.id} declares nothing measurable — what is it painting?`)
         .toBeGreaterThan(0);
       counted += stops.length;
     }
     expect(counted, 'no stops parsed — every measurement below is vacuous')
       .toBeGreaterThan(2);
+  });
+
+  /** A texture that does not tile seamlessly shows a grid of seams
+   *  across the chrome — the one artefact that reads as a rendering bug
+   *  rather than as a pattern. `feTurbulence` needs telling. */
+  it('and every generated texture stitches its tiles', () => {
+    let seen = 0;
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
+      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      for (const m of block.matchAll(/feTurbulence[^%]*?%3E/g)) {
+        seen++;
+        expect(m[0], `${w.id} tiles its noise without stitching`)
+          .toMatch(/stitchTiles='stitch'/);
+      }
+    }
+    expect(seen, 'no turbulence found — this checked nothing').toBeGreaterThan(2);
+  });
+
+  /**
+   * And drains it of colour, which is the whole reason a turbulence can
+   * be measured at all.
+   *
+   * `feTurbulence` renders COLOURED noise. Greyscale, its extremes are
+   * black and white at the stated opacity and the gate below holds the
+   * ink over both. Without the matrix the extremes are arbitrary RGB,
+   * the two stops this file measures are the wrong two, and every
+   * reading under them is about a texture that is not on screen.
+   */
+  it('and drains it of colour, so its extremes are knowable', () => {
+    let seen = 0;
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
+      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      for (const m of block.matchAll(/%3Cfilter[\s\S]*?%3C\/filter%3E/g)) {
+        seen++;
+        expect(m[0], `${w.id} generates coloured noise — its extremes are unknown`)
+          .toMatch(/feColorMatrix type='saturate' values='0'/);
+      }
+    }
+    expect(seen, 'no filters found — this checked nothing').toBeGreaterThan(2);
   });
 });
 
@@ -209,7 +270,12 @@ describe('the sidebar stays readable over any of them', () => {
           const packs = stop.token === '--primary'
             ? THEME_PACKS.map((p) => [p.id, token(body(packCell(p.id, mode)), '--primary')
                 ?? token(body(MODE_CELL[mode]), '--primary')!] as const)
-            : [['—', token(body(MODE_CELL[mode]), stop.token)!] as const];
+            : stop.token.startsWith('#')
+              // A greyscale texture's extreme, which is a colour rather
+              // than a token — there is nothing in the stylesheet to
+              // look up, and that is the point of standing in for one.
+              ? [['—', { rgb: hex(stop.token), alpha: 1 }] as const]
+              : [['—', token(body(MODE_CELL[mode]), stop.token)!] as const];
           for (const [pack, colour] of packs) {
             expect(colour, `${stop.token} is not declared in ${mode}`).not.toBeNull();
             // The stop's own percentage times the token's alpha — what

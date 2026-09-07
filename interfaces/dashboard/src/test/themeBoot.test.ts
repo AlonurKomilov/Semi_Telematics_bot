@@ -22,6 +22,9 @@ import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { applyTheme, applySize } from '../mods/context';
+import { MOD_FONTS } from '../mods/catalogue';
+import { WALLPAPER_IDS } from '../mods/wallpaper';
+import { CURSOR_IDS } from '../mods/cursor';
 import {
   MOD_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, MOD_RADII,
   MOD_MATERIAL_LIST,
@@ -64,17 +67,25 @@ function bootScriptSource(): string {
 
 interface Stamp {
   dark: boolean;
-  theme?: string;
-  accent?: string;
-  radius?: string;
-  material?: string;
-  motion?: string;
+  /** EVERY `data-*` on `<html>`, not a named few. */
+  data: Record<string, string>;
   vars: Record<string, string>;
 }
 
-/** Everything the two implementations are allowed to touch. Read as one
- *  object so a value one of them sets and the other does not shows up as
- *  a difference rather than going unnoticed. */
+/**
+ * Everything the two implementations are allowed to touch.
+ *
+ * READ WHOLESALE, and it did not used to be. This listed six dataset
+ * keys by name, under a comment claiming it was everything — and by
+ * then `font` was stamped by both and captured by neither, so the axis
+ * shipped with a pre-paint promise nothing had ever verified.
+ * `wallpaper` and `cursor` joined it. A named list is a second
+ * inventory of the axes, and it fell behind the first one three times.
+ *
+ * So it takes whatever is there. An axis one implementation stamps and
+ * the other does not is now a difference in this object rather than a
+ * key nobody thought to add.
+ */
 function stamp(): Stamp {
   const root = document.documentElement;
   const vars: Record<string, string> = {};
@@ -86,16 +97,7 @@ function stamp(): Stamp {
   }
   return {
     dark: root.classList.contains('dark'),
-    theme: root.dataset.theme,
-    accent: root.dataset.accent,
-    radius: root.dataset.radius,
-    // Every axis the two implementations stamp has to be COMPARED, not
-    // merely enumerated. `material` and `motion` were added to the sweep
-    // above as inputs while this object still listed four fields, so the
-    // two could have disagreed on either and the suite stayed green —
-    // exactly the silent drift this file exists to prevent.
-    material: root.dataset.material,
-    motion: root.dataset.motion,
+    data: { ...root.dataset } as Record<string, string>,
     vars,
   };
 }
@@ -126,11 +128,10 @@ function runApply(theme: ModSetting, size: SizeSetting = SIZE_DEFAULT): Stamp {
 function resetRoot() {
   const root = document.documentElement;
   root.classList.remove('dark');
-  delete root.dataset.theme;
-  delete root.dataset.accent;
-  delete root.dataset.radius;
-  delete root.dataset.material;
-  delete root.dataset.motion;
+  // Every key, for the same reason `stamp` reads every key: a leftover
+  // from the previous run is a value neither implementation set, and it
+  // would read as agreement.
+  for (const k of Object.keys(root.dataset)) delete root.dataset[k];
   root.removeAttribute('style');
 }
 
@@ -183,6 +184,83 @@ const storeLegacySize = (s: Partial<SizeSetting>) =>
   localStorage.setItem(`${LS_PREFIX}size`, JSON.stringify(s));
 
 describe('theme-boot ↔ applyTheme', () => {
+  /**
+   * Every pre-paint axis, over its WHOLE value list.
+   *
+   * The product sweep below varies five axes and the comment inside it
+   * says the rule out loud — "every axis the boot script stamps has to
+   * be enumerated here, or the two implementations can disagree". Three
+   * were not: `font`, `wallpaper` and `cursor` only ever appeared at
+   * their default, so the script's option lists for them were never
+   * exercised and a shortened one agreed with everything.
+   *
+   * One axis at a time rather than another nesting level: the product
+   * of eight lists is thousands of runs for interactions nobody
+   * suspects, while the thing that actually drifts is one list falling
+   * behind its registry. `AXIS_VALUES` is held total over
+   * `PREPAINT_AXES`, so the next axis is a decision rather than an
+   * omission.
+   */
+  const AXIS_VALUES: Record<string, readonly string[]> = {
+    mode: THEME_MODES, accent: THEME_ACCENTS, radius: MOD_RADII,
+    material: MOD_MATERIAL_LIST, motion: MOD_MOTION_LIST,
+    font: MOD_FONTS, wallpaper: WALLPAPER_IDS, cursor: CURSOR_IDS,
+    // Derived from mode+accent rather than stored on its own; the
+    // legacy migration is swept by its own test.
+    color: THEME_COLORS,
+  };
+
+  /**
+   * The guard on the guard.
+   *
+   * Every comparison below asks whether two stamps AGREE, and two
+   * stamps that both drop the same key agree perfectly about nothing —
+   * which is exactly how `font` went three releases with a pre-paint
+   * promise nobody had checked. So this asks the other question: does
+   * the stamp capture what is actually on the element?
+   */
+  it('captures every stamp on the element, not a chosen few', () => {
+    resetRoot();
+    runApply({
+      ...MOD_DEFAULT,
+      font: MOD_FONTS[MOD_FONTS.length - 1],
+      wallpaper: WALLPAPER_IDS[WALLPAPER_IDS.length - 1],
+      cursor: CURSOR_IDS[CURSOR_IDS.length - 1],
+    } as ModSetting);
+    const captured = Object.keys(stamp().data).sort();
+    const present = Object.keys(document.documentElement.dataset).sort();
+    expect(captured, 'the stamp drops a value the element carries').toEqual(present);
+    // And the three that were invisible are named, so a regression reads
+    // as what it is rather than as a set difference.
+    for (const axis of ['font', 'wallpaper', 'cursor'])
+      expect(captured, `${axis} is stamped and not captured`).toContain(axis);
+  });
+
+  it('names a value list for every pre-paint axis', () => {
+    const missing = (PREPAINT_AXES as readonly string[]).filter((a) => !(a in AXIS_VALUES));
+    expect(missing, 'a pre-paint axis whose values are never swept').toEqual([]);
+    for (const [axis, values] of Object.entries(AXIS_VALUES))
+      expect(values.length, `${axis} has no values`).toBeGreaterThan(0);
+  });
+
+  it('agrees on every value of every pre-paint axis', () => {
+    let runs = 0;
+    for (const axis of PREPAINT_AXES) {
+      for (const value of AXIS_VALUES[axis]) {
+        const theme: ModSetting = { ...MOD_DEFAULT, [axis]: value } as ModSetting;
+        if (axis === 'mode' || axis === 'accent')
+          theme.color = themeColorAlias(theme.mode, theme.accent);
+        resetRoot(); storeTheme(theme);
+        const booted = runBoot();
+        resetRoot();
+        const applied = runApply(theme);
+        runs++;
+        expect(booted, `boot disagrees on ${axis}=${value}`).toEqual(applied);
+      }
+    }
+    expect(runs, 'nothing was swept').toBeGreaterThan(20);
+  });
+
   it('agrees on every valid stored theme', () => {
     for (const mode of THEME_MODES) {
       for (const accent of THEME_ACCENTS) {
@@ -255,7 +333,7 @@ describe('theme-boot ↔ applyTheme', () => {
 
         expect(booted, `boot mis-migrates the stored value ${color}/${radius}`).toEqual(applied);
         expect(booted.dark, `${color} lost its mode`).toBe(mode === 'dark');
-        expect(booted.accent, `${color} lost its accent`).toBe(accent);
+        expect(booted.data.accent, `${color} lost its accent`).toBe(accent);
       }
     }
   });
@@ -450,8 +528,8 @@ describe('theme-boot invariants', () => {
     const booted = runBoot();
     // Untouched: applyPublicFormTheme owns that document.
     expect(booted.dark).toBe(false);
-    expect(booted.theme).toBeUndefined();
-    expect(booted.radius).toBeUndefined();
+    expect(booted.data.theme).toBeUndefined();
+    expect(booted.data.radius).toBeUndefined();
     expect(booted.vars['--size-layout']).toBe('');
   });
 
@@ -466,7 +544,7 @@ describe('theme-boot invariants', () => {
   ])('hostname %s → stands down: %s', (hostname, shouldSkip) => {
     storeTheme({ color: 'dark-green', radius: 'pill' });
     const booted = runBootOnHost(hostname);
-    expect(booted.theme, `hostname ${hostname}`)
+    expect(booted.data.theme, `hostname ${hostname}`)
       .toBe(shouldSkip ? undefined : 'dark-green');
   });
 });

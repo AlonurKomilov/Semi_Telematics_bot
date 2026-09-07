@@ -32,6 +32,19 @@
  * A custom image is a later, separate decision — the way `brand`
  * followed `accent`. It needs storage, a tenancy path, a CSP change and
  * a readability answer, and none of those are this.
+ *
+ * SOME PATTERNS ARE `data:` SVG, and that is not a hole in the rule
+ * above. What the rule refuses is a background nothing can reason
+ * about; an inline `feTurbulence` is generated, tiles, weighs a few
+ * hundred bytes and — the part that matters — renders GREYSCALE, so its
+ * extremes are black and white at a stated opacity. The gate measures
+ * both, which is the same guarantee a `color-mix` stop gives. A network
+ * URL is still refused: that is a picture nobody here has seen.
+ *
+ * And none of them MOVES. "Live" is the word for a background that
+ * keeps running, and nothing here does — calling a still texture live
+ * would be a promise the thing does not keep, and it would spend the
+ * name the moving one will need.
  */
 export interface Wallpaper {
   /** Stored value, and what `data-wallpaper` is stamped with. */
@@ -43,9 +56,12 @@ export interface Wallpaper {
 }
 
 export const WALLPAPERS: readonly Wallpaper[] = [
-  { id: 'none', label: 'None', why: 'Flat chrome, the way it has always been' },
-  { id: 'mesh', label: 'Mesh', why: 'Two soft pools of the accent, low in the corners' },
-  { id: 'grid', label: 'Grid', why: 'Fine ruled lines, like engineering paper' },
+  { id: 'none',  label: 'None',  why: 'Flat chrome, the way it has always been' },
+  { id: 'mesh',  label: 'Mesh',  why: 'Two soft pools of the accent, low in the corners' },
+  { id: 'grid',  label: 'Grid',  why: 'Fine ruled lines, like engineering paper' },
+  { id: 'grain', label: 'Grain', why: 'A fine tooth, the way paper stock has one' },
+  { id: 'paper', label: 'Paper', why: 'Drawn fibres, as if the chrome were pressed sheet' },
+  { id: 'plasma', label: 'Plasma', why: 'Slow accent clouds under a fine tooth' },
 ];
 
 export const WALLPAPER_IDS = WALLPAPERS.map((w) => w.id);
