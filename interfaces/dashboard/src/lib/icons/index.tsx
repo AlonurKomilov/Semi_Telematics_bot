@@ -22,19 +22,23 @@
  */
 import {
   createContext, useContext, useEffect, useState,
-  type ComponentType, type ReactNode, type CSSProperties, type MouseEventHandler, type JSX,
+  type ComponentType, type ReactNode, type CSSProperties, type MouseEventHandler,
 } from 'react';
-import * as lucide from './lucide';
+import { BASE_PACK, loadIconPack } from '../../mods/packs/icons';
 import type { IconName } from './names';
 import type { IconWeightName } from './weight';
+import type { IconPackModule } from './pack';
 
 export { ICON_NAMES, type IconName } from './names';
 export { ICON_WEIGHTS, type IconWeightName } from './weight';
 
-/** The packs a person may wear. `lucide` is the base and is static; the
- *  rest arrive as their own chunk. */
-export const ICON_PACKS = ['lucide', 'phosphor'] as const;
-export type IconPack = (typeof ICON_PACKS)[number];
+export type { IconPackModule, IconPackDef } from './pack';
+
+/** A pack id — one of `ICON_PACK_IDS` in `mods/packs/icons`. A string,
+ *  like every other pack-backed axis: the packs are a resource this door
+ *  consumes by contract, not a list it keeps, and the registry
+ *  sanitises a stored id against the packs' own index. */
+export type IconPack = string;
 
 /**
  * What an icon takes.
@@ -65,11 +69,9 @@ export type LucideIcon = IconComponent;
 /** @deprecated Say `IconProps`. */
 export type LucideProps = IconProps;
 
-type PackModule = Record<string, unknown> & {
-  Provider: (p: { weight: IconWeightName; children: ReactNode }) => JSX.Element;
-};
+type PackModule = IconPackModule;
 
-const BASE = lucide as unknown as PackModule;
+const BASE: PackModule = BASE_PACK.module;
 const PackContext = createContext<PackModule>(BASE);
 
 /**
@@ -85,13 +87,16 @@ export function IconPackProvider(
 ) {
   const [impl, setImpl] = useState<PackModule>(BASE);
   useEffect(() => {
-    if (pack === 'lucide') {
-      activePack = BASE; activePackId = 'lucide'; setImpl(BASE); return;
+    if (pack === BASE_PACK.id) {
+      activePack = BASE; activePackId = BASE_PACK.id; setImpl(BASE); return;
     }
     let live = true;
-    void import('./phosphor').then((m) => {
-      if (!live) return;
-      activePack = m as unknown as PackModule; activePackId = pack; setImpl(activePack);
+    void loadIconPack(pack).then((m) => {
+      // A name that is not a pack resolves to nothing, and the pack in
+      // hand keeps painting — the registry should have refused the id,
+      // and blanking the screen for a stale preference is worse.
+      if (!live || !m) return;
+      activePack = m; activePackId = pack; setImpl(m);
     });
     return () => { live = false; };
   }, [pack]);
@@ -134,7 +139,7 @@ export interface RasterIconProps extends IconProps {
  * serving the previous set's markers forever.
  */
 let activePack: PackModule = BASE;
-let activePackId: IconPack = 'lucide';
+let activePackId: IconPack = BASE_PACK.id;
 export const iconPackId = (): IconPack => activePackId;
 
 export function rasterGlyph(icon: IconComponent): ComponentType<RasterIconProps> | undefined {

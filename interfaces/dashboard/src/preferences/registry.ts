@@ -33,7 +33,8 @@
  * not "tidy" one without checking the surface that consumes it.
  */
 
-import { ICON_PACKS, type IconPack } from '../lib/icons';
+import type { IconPack } from '../lib/icons';
+import { ICON_PACK_IDS } from '../mods/packs/icons';
 import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
 import { CURSOR_IDS } from '../mods/packs/cursor';
 import { SHADER_IDS } from '../mods/packs/shader';
@@ -577,7 +578,7 @@ export const DEFS = {
       // to nothing: an unknown id would resolve no glyph at all, and an
       // app drawn with no icons is worse than one drawn with the
       // default set.
-      const iconPack = ICON_PACKS.includes(o.iconPack as IconPack)
+      const iconPack = ICON_PACK_IDS.includes(o.iconPack as IconPack)
         ? o.iconPack as IconPack : MOD_DEFAULT.iconPack;
       // A pack that shipped and was later removed falls back to the one
       // this app was drawn with, not to whatever the browser guesses.

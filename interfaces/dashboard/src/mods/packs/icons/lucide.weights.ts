@@ -1,4 +1,4 @@
-import type { IconWeightName } from './weight';
+import type { IconWeightName } from '../../../lib/icons/weight';
 
 /**
  * How this pack takes a weight.

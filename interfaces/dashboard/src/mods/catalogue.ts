@@ -139,13 +139,13 @@ export type ModFont = string;
  * How heavily icons are drawn — DERIVED, not restated.
  *
  * `lib/icons/weight.ts` is where both packs read these three words, and
- * it has to be a leaf: `phosphor.tsx` is fetched on demand and must not
+ * it has to be a leaf: `packs/icons/phosphor.tsx` is fetched on demand and must not
  * drag the mods engine into its chunk to learn them. So the dependency
  * runs this way and there is one list.
  *
  * The stroke NUMBERS are gone from here. They were lucide's — 1.25 / 2
  * / 2.5 — and a second pack does not take a stroke at all, so they live
- * with the pack that means them (`lucide.tsx`) beside Phosphor's own
+ * with the pack that means them (`packs/icons/lucide.tsx`) beside Phosphor's own
  * named weights. Keeping them here would have been a lucide detail in
  * the file that is supposed to be pack-agnostic.
  */

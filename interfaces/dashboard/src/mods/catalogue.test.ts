@@ -266,7 +266,7 @@ describe('a look is on only while it adds up', () => {
 });
 
 describe('the properties a mod carries and the panel does not', () => {
-  /** The stroke widths moved to `lib/icons/lucide.tsx` with the pack
+  /** The stroke widths moved to `mods/packs/icons/lucide.tsx` with the pack
    *  that means them — a second pack takes no stroke at all — and the
    *  guard went with them, generalised over every pack:
    *  `test/iconLane.test.ts` holds each pack's weight map total over

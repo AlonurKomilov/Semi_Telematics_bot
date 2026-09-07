@@ -99,7 +99,10 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   No off-step sizes, no emoji as UI icons, and **ONE SET ON SCREEN AT A
   TIME**: glyphs come from [`lib/icons`](src/lib/icons/index.tsx), never
   from a library. A pack swaps the WHOLE set at once and is a Mods axis
-  (`iconPack`); mixing two sets — a hardcoded glyph beside a pack one,
+  (`iconPack`); the packs themselves live in
+  [`mods/packs/icons/`](src/mods/packs/icons/index.ts) — three files
+  each, the door names none of them. Mixing two sets — a hardcoded
+  glyph beside a pack one,
   or two libraries — is what the rule forbids, and
   `test/iconLane.test.ts` refuses it. That door is also why `IconProps`
   has no `size`: the prop writes an `<svg>` attribute no multiplier can

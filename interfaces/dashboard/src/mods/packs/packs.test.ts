@@ -32,6 +32,7 @@ import { SHADER_PACKS } from './shader';
 import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
 import { MATERIAL_PACKS } from './material';
+import { ICON_PACK_IDS } from './icons';
 import { MODS as MOD_PACKS } from './mods';
 import { engineCss } from '../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../sound/engine';
@@ -209,5 +210,40 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
         expect(engine, `packs/${folder}/${id}.css exists and is never imported — a pack nobody can wear`)
           .toContain(`@import './mods/packs/${folder}/${id}.css';`);
     }
+  });
+});
+
+/**
+ * Icons: a pack is THREE files — `<id>.tsx` (the provider), `<id>.icons.ts`
+ * (the glyphs under our names), `<id>.weights.ts` (how it takes a
+ * weight) — flat rather than a folder each so the fetched pack's chunk
+ * keeps the pack's name. The index is exactly the packs, and a pack
+ * file imports only its library, React, its own siblings, and types.
+ * `iconLane.test.ts` holds the rest: every pack carries every name, no
+ * library import outside the packs and the door, the door names none.
+ */
+describe('icons: a pack is three files, and the index is exactly the packs', () => {
+  const files = readdirSync(join(__dirname, 'icons')).filter((f) => !/^index\.ts$/.test(f)).sort();
+  const PARTS = ['.tsx', '.icons.ts', '.weights.ts'];
+
+  it('every pack has its three files, and every file belongs to a listed pack', () => {
+    expect(ICON_PACK_IDS.length, 'no icon packs').toBeGreaterThan(0);
+    const expected = ICON_PACK_IDS.flatMap((id) => PARTS.map((p) => `${id}${p}`)).sort();
+    expect(files, 'packs/icons: the index and the folder disagree').toEqual(expected);
+  });
+
+  it('a pack file imports only its library, React, its siblings, and types', () => {
+    for (const f of files) {
+      const imports = [...src(`packs/icons/${f}`).matchAll(/^(?:import|export)\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)]
+        .map((m) => m[1]);
+      for (const from of imports)
+        expect(from, `packs/icons/${f} imports ${from}`)
+          .toMatch(/^(react|lucide-react|@phosphor-icons\/react|\.\/)/);
+    }
+  });
+
+  it('the index imports only the contract by type and its own packs', () => {
+    const imports = [...src('packs/icons/index.ts').matchAll(/^import\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)].map((m) => m[1]);
+    for (const from of imports) expect(from, `packs/icons/index.ts imports ${from}`).toMatch(/^\.\//);
   });
 });

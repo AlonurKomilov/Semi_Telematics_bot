@@ -28,7 +28,8 @@ import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import { ICON_PACKS, type IconPack } from '../../lib/icons';
+import type { IconPack } from '../../lib/icons';
+import { ICON_PACKS } from '../packs/icons';
 import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
 
@@ -114,13 +115,13 @@ const FONT_PREVIEW: Record<string, string> = {
  * row, and nothing below it changed.
  */
 const PACK_OPTIONS: { value: IconPack; key: string; label: string }[] =
-  // From the door's own list, never spelled here: two chips written by
+  // From the packs' own index, never spelled here: two chips written by
   // hand beside a `map` over everything else were a second list, and
-  // `iconLane.test.ts` now holds every pack name behind the door.
-  ICON_PACKS.map((id) => ({
-    value: id,
-    key: `mods.icon_pack_${id}`,
-    label: id.charAt(0).toUpperCase() + id.slice(1),
+  // `iconLane.test.ts` holds every pack name inside `mods/packs/icons`.
+  ICON_PACKS.map((p) => ({
+    value: p.id,
+    key: `mods.icon_pack_${p.id}`,
+    label: p.label,
   }));
 
 const ICON_OPTIONS: { value: ModIcons; key: string; label: string }[] =

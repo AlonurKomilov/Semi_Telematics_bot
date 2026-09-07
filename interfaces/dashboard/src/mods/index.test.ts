@@ -59,6 +59,16 @@ const ALLOWED_DEEP = [
   // keeps that ring open — the barrel would close it, with no error,
   // just an `undefined` binding at module-init.
   'components/banners/AppBanner.tsx',
+  // The icon door consumes the icon PACKS — a resource under
+  // `mods/packs/icons`, reached by path for the same reason the sound
+  // lanes reach `mods/sound/cue`: the barrel exports the panel, the
+  // panel draws icons through the door, and the door importing the
+  // barrel would close that ring at module-init. The door is not part
+  // of the mods engine; it is what the engine's pack plugs into.
+  'lib/icons/index.tsx',
+  // Its guard reads the packs' index for the ids it checks the files
+  // against, and would inherit the same ring through the barrel.
+  'test/iconLane.test.ts',
 ];
 
 describe('everything outside mods/ comes through the barrel', () => {

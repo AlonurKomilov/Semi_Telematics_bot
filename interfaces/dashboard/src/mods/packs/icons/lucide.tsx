@@ -9,7 +9,7 @@
 import type { ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
 import { WEIGHT_MAP } from './lucide.weights';
-import type { IconWeightName } from './weight';
+import type { IconWeightName } from '../../../lib/icons/weight';
 
 export * from './lucide.icons';
 export { WEIGHT_MAP } from './lucide.weights';
