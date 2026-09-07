@@ -115,7 +115,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     }
   };
 
-  const chk = (f: TickRow, ariaSuffix: string, soft = false, closed = false) => {
+  const chk = (f: TickRow, ariaSuffix: string, soft = false, closed = false, dense = false) => {
     const on = api.granted(col.key, f);
     const lock = api.locked(col.key, f);
     const changed = api.changed(col.key, f);
@@ -134,7 +134,12 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       >
         <span
           aria-hidden
-          className={`inline-flex items-center justify-center w-5 h-5 rounded border transition ${
+          className={`inline-flex items-center justify-center rounded border transition ${
+            // A sub-feature's tick is drawn one step smaller than its
+            // feature's — the paint says "a level down", the button
+            // around it keeps the same 24px target.
+            dense ? 'w-4 h-4 ' : 'w-5 h-5 '
+          }${
             changed ? 'ring-2 ring-primary/30 ' : ''
           }${lock
             // `text-foreground`, not `text-primary-foreground`: the note
@@ -173,12 +178,13 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // not claim the tier "adds" it just because its Manage differs.
   const verbCell = (
     f: TickRow | null, ariaSuffix: string, extra?: ReactNode, soft = false, closed = false,
+    dense = false,
   ): ReactNode => {
     if (!f) return emptyCell;
     const delta = seniorView && rowDelta(f);
     return (
       <div className={`text-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`}>
-        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft, closed)}{extra}</span>
+        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft, closed, dense)}{extra}</span>
       </div>
     );
   };
@@ -190,7 +196,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // softer and carries the link glyph — the same "this control isn't
   // local" mark the shared config cells use — because either tick toggles
   // the one flag.
-  const linkedCell = (f: TickRow, closed = false): ReactNode => verbCell(
+  const linkedCell = (f: TickRow, closed = false, dense = false): ReactNode => verbCell(
     f, 'manage — the same flag as view',
     (
       <Tip label="One flag covers View and Manage for this feature — toggling either changes both.">
@@ -199,6 +205,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     ),
     true,
     closed,
+    dense,
   );
 
   // The config cell edits a flag SHARED with other features — a link
@@ -292,11 +299,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 )}
               </div>
               {c.verb === 'merged' ? (
-                <>{verbCell(c.row, 'view', undefined, false, closed)}{linkedCell(c.row, closed)}</>
+                <>{verbCell(c.row, 'view', undefined, false, closed, true)}{linkedCell(c.row, closed, true)}</>
               ) : (
                 <>
-                  {verbCell(c.verb === 'view' ? c.row : null, 'view', undefined, false, closed)}
-                  {verbCell(c.verb === 'manage' ? c.row : null, 'manage', undefined, false, closed)}
+                  {verbCell(c.verb === 'view' ? c.row : null, 'view', undefined, false, closed, true)}
+                  {verbCell(c.verb === 'manage' ? c.row : null, 'manage', undefined, false, closed, true)}
                 </>
               )}
               {emptyCell}
@@ -421,17 +428,32 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           grants below.  Same columns as the table so a tick lands where
           the eye already expects it. */}
       <div className={`mt-3 ${BAND_CARD}`}>
-        <div className={`${HEAD_COLS} gap-x-2 px-4 pt-2 pb-1.5 bg-muted/50 items-end`}>
+        <div className={`${BAND_STRIP} pb-1.5`}>
           <div className="min-w-0">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-foreground inline-flex items-center gap-1">
               Services
               <InfoTip size={12} label="The channels — the inbox, the assistant, the report hub. Granted per role like a feature; what flows through each one follows the feature grants below (untick Maintenance and its alerts, its report tab and its AI tools leave — the channel stays). The inbox's width — every unit or assigned trucks — is Team Management's." />
             </span>
             <div className="text-2xs text-muted-foreground/70">The channels. What flows through each one follows the feature grants below.</div>
           </div>
-          <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
-          <span /><span />
-          <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config · account-wide</span>
+        </div>
+        {/* The same column head the features table carries, in the same
+            columns — a service is granted with the same verbs, it simply
+            has fewer of them. */}
+        <div className="px-4 pt-1.5 pb-1 border-b border-border">
+          <div className={`${HEAD_COLS} gap-x-2`}>
+            <span />
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">View</span>
+            <span /><span />
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">
+              <span className="block">Config</span>
+              <span aria-hidden className="mt-0.5 block h-px bg-border/70" />
+            </span>
+          </div>
+          <div className={`${HEAD_COLS} gap-x-2`}>
+            <span /><span /><span /><span />
+            <span className="text-2xs text-muted-foreground/70 text-center">account-wide</span>
+          </div>
         </div>
         <div className="px-4 pb-1">
           {isDriver
@@ -487,7 +509,10 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             features sharing a flag line up under it — position carries
             what the link mark used to carry by itself. */}
           <div className={`${HEAD_COLS} gap-x-2 border-t border-border pt-1.5`}>
-            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Feature</span>
+            {/* No label here: the card is already named FEATURES above,
+                and the columns name VERBS — a second "Feature" made the
+                head read as two headings for one table. */}
+            <span />
             <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">View</span>
             <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">Manage</span>
             {/* The two config scopes are one column pair: a shared label
