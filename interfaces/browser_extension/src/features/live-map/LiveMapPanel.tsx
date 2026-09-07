@@ -11,7 +11,7 @@ import { apiJSON } from '../../api/client';
 import { makeIcon } from './icons';
 import { applyFix, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, MAP_STATUS, type Phys } from './physics';
 import { FALLBACK, TILES, shouldFallBack } from './tiles';
-import { levelsOf } from './levels';
+import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
@@ -286,6 +286,16 @@ export default function LiveMapPanel() {
   [searched, filter]);
   const count = (s: Filter) => s === 'all' ? searched.length : searched.filter((f) => vehicleStatus(f) === s).length;
 
+  // A name is only an identifier while it is unique, and on this account
+  // it is not: two trucks called 001 and two called 103 sit in the list
+  // at once.  The company tells them apart, and it has been arriving in
+  // the payload all along.  Shown only when the account HAS more than
+  // one — a single-company fleet would get the same word on every row,
+  // which is noise, not identity.
+  const multiCompany = useMemo(
+    () => new Set(vehicles.map((f) => f.properties.company).filter(Boolean)).size > 1,
+    [vehicles]);
+
   const chooseFilter = (s: Filter) => {
     setFilter(s);
     void chrome.storage.local.set({ [FILTER_KEY]: s });
@@ -374,6 +384,9 @@ export default function LiveMapPanel() {
                 <span className="row" style={{ gap: 6, minWidth: 0 }}>
                   <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {selected.properties.name}
+                    {multiCompany && selected.properties.company && (
+                      <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
+                    )}
                   </strong>
                   {/* Who supplies this truck, next to what it is called. */}
                   <SourceMarks sources={selected.properties.sources} source={selected.properties.source} links={links} />
@@ -400,6 +413,23 @@ export default function LiveMapPanel() {
                   <button className="btn" onClick={() => { setKeep(false); setSelected(null); }}>Close</button>
                 </div>
               </div>
+              {/* The card said what a truck's fuel was and never whether
+                  it was moving.  Status lived in the list's dot and the
+                  map's marker; the surface that describes ONE vehicle
+                  had it nowhere. */}
+              {(() => {
+                const st = vehicleStatus(selected);
+                const mph = selected.properties.speed_mph;
+                const moving = st === 'moving' && typeof mph === 'number';
+                return (
+                  <p className="row" style={{ margin: 0, gap: 6, fontSize: 12 }}>
+                    <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
+                                               background: statusColor(st), flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600 }}>{st[0].toUpperCase() + st.slice(1)}</span>
+                    {moving && <span className="muted">{Math.round(mph)} mph</span>}
+                  </p>
+                );
+              })()}
               <p className="muted" style={{ margin: 0 }}>{selected.properties.address || '—'}</p>
               {(() => {
                 const age = ageMs(selected.properties.updated_at, now);
@@ -414,7 +444,10 @@ export default function LiveMapPanel() {
                 );
               })()}
               {levels.map((l) => (
-                <div key={l.key}>
+                // The threshold exists in code and was signalled only by
+                // colour, and only once breached: at 60% nothing on the
+                // surface said what "normal" was.
+                <div key={l.key} title={`${l.label} ${l.pct}% — low below ${LOW_LEVEL_PCT}%`}>
                   <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
                     <span className={l.low ? '' : 'muted'} style={l.low ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{l.label}</span>
                     <span className={l.low ? '' : 'muted'} style={l.low ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{l.pct}%</span>
@@ -481,9 +514,16 @@ export default function LiveMapPanel() {
               style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 0,
                        borderBottom: '1px solid var(--border)', color: 'var(--fg)', cursor: 'pointer', minHeight: 24 }}>
               <div className="row">
-                <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: statusColor(status),
+                <span title={warn ? `${status} — fuel or DEF below ${LOW_LEVEL_PCT}%` : status}
+                      aria-label={status}
+                      style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: statusColor(status),
                                boxShadow: warn ? `0 0 0 2px ${MAP_STATUS.danger}` : undefined }} />
-                <span style={{ fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontWeight: 600 }}>{p.name}</span>
+                  {multiCompany && p.company && (
+                    <span className="muted" style={{ fontWeight: 400 }}> · {p.company}</span>
+                  )}
+                </span>
                 {(() => {
                   // A stale fix says so in the row, so the list can be
                   // scanned for "what is actually reporting" without

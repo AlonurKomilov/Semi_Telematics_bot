@@ -13,18 +13,19 @@
 import type { ProviderLink } from './links';
 import { orderedSources, positionSources, providerLogo, sourceLabel } from './providerLogos';
 
-const MAX_VISIBLE = 3;
 
 export default function SourceMarks({ sources, source, links = [] }: {
   sources?: string[] | null;
   source?: string | null;
   links?: ProviderLink[];
 }) {
-  // A panel is a map: it speaks only for who supplies the position.
-  const all = positionSources(orderedSources(sources, source));
-  if (!all.length) return null;
-  const shown = all.slice(0, MAX_VISIBLE);
-  const rest = all.slice(MAX_VISIBLE);
+  // A panel is a map: it speaks only for who supplies the POSITION —
+  // which is why there is no "+N" overflow here as there is on the
+  // dashboard.  positionSources keeps telematics providers only and a
+  // vehicle has one of those, so the overflow was a path that could
+  // never open, kept for a state this filter makes impossible.
+  const shown = positionSources(orderedSources(sources, source));
+  if (!shown.length) return null;
 
   return (
     <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
@@ -54,11 +55,6 @@ export default function SourceMarks({ sources, source, links = [] }: {
           <span key={s} className="mark" title={why}>{body}</span>
         );
       })}
-      {rest.length > 0 && (
-        <span className="mark" title={`Also enriched by ${rest.map(sourceLabel).join(', ')}`}>
-          +{rest.length}
-        </span>
-      )}
     </span>
   );
 }
