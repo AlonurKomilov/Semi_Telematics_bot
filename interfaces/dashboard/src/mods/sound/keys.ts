@@ -18,6 +18,7 @@
  * that problem does not exist for us.
  */
 import { type Cue, type CueLimits } from './engine';
+import type { PackMeta } from '../packs/meta';
 
 export const KEY_CLASSES = ['letter', 'space', 'enter', 'backspace'] as const;
 export type KeyClass = (typeof KEY_CLASSES)[number];
@@ -35,9 +36,7 @@ export const KEY_LIMITS: CueLimits = {
   gain: { min: 0, max: 0.08 },
 };
 
-export interface KeyPack {
-  readonly id: string;
-  readonly label: string;
+export interface KeyPack extends PackMeta {
   readonly cues: Readonly<Record<KeyClass, Cue>>;
 }
 

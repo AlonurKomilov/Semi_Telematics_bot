@@ -232,7 +232,7 @@ describe('mods are combinations, not new colours', () => {
       expect(m.label.trim(), `mod "${m.id}" has no label`).not.toBe('');
       // The one line the panel shows under the applied mod. Without it
       // the chip is a word with no explanation of who it is for.
-      expect(m.why.trim(), `mod "${m.id}" has no "why"`).not.toBe('');
+      expect(m.description.trim(), `mod "${m.id}" has no description`).not.toBe('');
       expect(modById(m.id)).toBe(m);
     }
   });
@@ -384,7 +384,7 @@ describe('installed is not the same question as matching', () => {
  * answer in our vocabulary.
  *
  * The totality of MOD_FIELD_SECTION is enforced by the COMPILER, not
- * here: it is typed as a Record over `keyof Omit<Mod, 'id'|'label'|'why'>`,
+ * here: it is typed as a Record over `keyof Omit<Mod, keyof PackMeta>`,
  * so adding a field to Mod fails the build until someone places it. A
  * runtime test for that would be weaker and later.
  */

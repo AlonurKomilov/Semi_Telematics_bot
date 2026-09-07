@@ -1,3 +1,4 @@
+import type { PackMeta } from './packs/meta';
 /**
  * The ground the app sits on.
  *
@@ -46,13 +47,7 @@
  * would be a promise the thing does not keep, and it would spend the
  * name the moving one will need.
  */
-export interface Wallpaper {
-  /** Stored value, and what `data-wallpaper` is stamped with. */
-  readonly id: string;
-  /** What a person reads on the chip. */
-  readonly label: string;
-  /** One line, in the panel's own voice. */
-  readonly why: string;
+export interface Wallpaper extends PackMeta {
 }
 
 // The patterns themselves — the list and the CSS — live in

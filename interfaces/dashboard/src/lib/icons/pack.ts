@@ -1,6 +1,7 @@
 /**
- * What an icon pack IS — the contract the door consumes and every pack
- * in `mods/packs/icons/` answers to. A type-only leaf: the packs are
+ * What an icon pack MODULE is — the shape the door consumes. The pack's
+ * meta and loader (`IconPackDef`) sit beside the packs in
+ * `mods/packs/icons/index.ts`, on top of `packs/meta.ts` like every axis. A type-only leaf: the packs are
  * fetched on demand and must not drag the door into their chunk to
  * learn what shape to be.
  */
@@ -13,11 +14,3 @@ import type { IconWeightName } from './weight';
 export type IconPackModule = Record<string, unknown> & {
   Provider: (p: { weight: IconWeightName; children: ReactNode }) => JSX.Element;
 };
-
-export interface IconPackDef {
-  readonly id: string;
-  readonly label: string;
-  /** Fetches the module. The base pack resolves at once; the rest are
-   *  their own chunk, paid for by the people who asked for them. */
-  readonly load: () => Promise<IconPackModule>;
-}

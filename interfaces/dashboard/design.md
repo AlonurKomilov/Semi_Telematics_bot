@@ -264,7 +264,9 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
     mods/packs/        the resources — one file per pack, an index per axis:
                        mods (the looks: cab, wall) · sound · keys (cue tables) ·
                        wallpaper · cursor · shader · material · theme · font (CSS).
-                       The engine never lists what exists.
+                       The engine never lists what exists. Every pack carries
+                       `PackMeta` (id · label · description, `packs/meta.ts`);
+                       `packs/index.ts` gathers every axis — a store's catalogue.
     mods/context.tsx   useMods, applyTheme
     mods/ModPanel.tsx  ModPanel (top-bar popover) + ModControls
     mods/taxonomy.ts   THE declaration: categories → items → axes

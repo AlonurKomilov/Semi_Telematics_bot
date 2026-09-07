@@ -1,3 +1,4 @@
+import type { PackMeta } from './packs/meta';
 /**
  * The light the interface sits in.
  *
@@ -24,10 +25,7 @@
  * the same thing `--radius` did for `rounded-*` and `--size-*` did for
  * every length — and not one of those call sites changed.
  */
-export interface ShaderPack {
-  readonly id: string;
-  readonly label: string;
-  readonly why: string;
+export interface ShaderPack extends PackMeta {
   /** How far a surface lifts off the ground — the shadow's offset. */
   readonly lift: number;
   /** How far the light spreads before it stops — the blur. */

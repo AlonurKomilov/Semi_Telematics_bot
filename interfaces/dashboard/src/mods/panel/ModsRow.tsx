@@ -28,7 +28,7 @@ import type { LabelClass } from './Interface';
 const MOD_OPTIONS = MODS.map((m) => ({
   value: m.id,
   label: m.label,
-  why: m.why,
+  why: m.description,
   mod: m,
 }));
 
@@ -43,7 +43,7 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
   // cannot be read back off the DOM to re-derive identity from.
   const activeMod = theme.mod ?? '';
   const installed = modById(activeMod);
-  const activeWhy = installed?.why ?? '';
+  const activeWhy = installed?.description ?? '';
   // What it CARRIES, by category — GX shows an installed mod's footprint
   // as a checklist, and "what will this change?" had no answer here at
   // all. Only for the installed one: a footprint under every chip would

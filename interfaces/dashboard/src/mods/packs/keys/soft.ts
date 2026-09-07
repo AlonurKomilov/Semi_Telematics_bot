@@ -7,6 +7,7 @@ import type { KeyPack } from '../../sound/keys';
 export const soft: KeyPack = {
   id: 'soft',
   label: 'Soft',
+  description: 'A quiet thock, for a shared room',
   cues: {
     letter:    { wave: 'sine',     from: 1400, to: 1150, dur: 0.014, gain: 0.035 },
     space:     { wave: 'sine',     from: 1000, to: 820,  dur: 0.018, gain: 0.038 },

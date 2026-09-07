@@ -1,3 +1,4 @@
+import type { PackMeta } from './packs/meta';
 /**
  * What a surface is MADE OF, as opposed to what colour it is.
  *
@@ -8,7 +9,5 @@
  * The materials themselves — and the CSS that makes one — live in
  * `mods/packs/material/`. This file is the contract.
  */
-export interface MaterialPack {
-  readonly id: string;
-  readonly label: string;
+export interface MaterialPack extends PackMeta {
 }

@@ -1,3 +1,4 @@
+import type { PackMeta } from '../packs/meta';
 /**
  * Cues, as synthesis parameters — not as files.
  *
@@ -51,9 +52,7 @@ export interface Cue {
   readonly gain: number;
 }
 
-export interface SoundPack {
-  readonly id: string;
-  readonly label: string;
+export interface SoundPack extends PackMeta {
   readonly cues: Readonly<Record<CueName, Cue>>;
 }
 

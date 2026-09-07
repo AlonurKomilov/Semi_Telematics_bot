@@ -8,6 +8,7 @@ import type { SoundPack } from '../../sound/engine';
 export const blip: SoundPack = {
   id: 'blip',
   label: 'Blip',
+  description: 'Shorter and drier — for a floor that hears many of them',
   cues: {
     alert:    { wave: 'square', from: 1000, to: 1000, dur: 0.06, gain: 0.10 },
     critical: { wave: 'square', from: 1400, to: 700,  dur: 0.14, gain: 0.13 },

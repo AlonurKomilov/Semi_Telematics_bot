@@ -14,14 +14,23 @@
  * its own chunk that is paid by the people who asked for it. Flat files
  * rather than a folder per pack so the chunk keeps the pack's name.
  */
-import type { IconPackDef, IconPackModule } from '../../../lib/icons/pack';
+import type { IconPackModule } from '../../../lib/icons/pack';
+import type { PackMeta } from '../meta';
 import * as lucide from './lucide';
+
+export interface IconPackDef extends PackMeta {
+  /** Fetches the module. The base pack resolves at once; the rest are
+   *  their own chunk, paid for by the people who asked for them. */
+  readonly load: () => Promise<IconPackModule>;
+}
 
 export const BASE_PACK = { id: 'lucide', module: lucide as unknown as IconPackModule } as const;
 
 export const ICON_PACKS: readonly IconPackDef[] = [
-  { id: 'lucide',   label: 'Lucide',   load: () => Promise.resolve(BASE_PACK.module) },
-  { id: 'phosphor', label: 'Phosphor', load: () => import('./phosphor').then((m) => m as unknown as IconPackModule) },
+  { id: 'lucide',   label: 'Lucide',   description: 'Stroked glyphs — the set this app was drawn with',
+    load: () => Promise.resolve(BASE_PACK.module) },
+  { id: 'phosphor', label: 'Phosphor', description: 'A second vocabulary with six named weights, fetched when worn',
+    load: () => import('./phosphor').then((m) => m as unknown as IconPackModule) },
 ];
 export const ICON_PACK_IDS = ICON_PACKS.map((p) => p.id);
 

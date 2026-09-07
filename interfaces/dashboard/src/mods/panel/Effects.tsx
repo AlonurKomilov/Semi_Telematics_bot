@@ -58,7 +58,7 @@ export function ShadersItem({ label }: { label: LabelClass }) {
           className="shrink-0 w-10 h-6 rounded-md bg-card border border-border shadow-lg"
         />
         <p className="text-2xs text-muted-foreground">
-          {shaderPackById(theme.shader ?? 'flat')?.why}
+          {shaderPackById(theme.shader ?? 'flat')?.description}
         </p>
       </div>
     </div>

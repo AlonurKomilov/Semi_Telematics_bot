@@ -36,12 +36,9 @@ import type { ThemeMode } from './theme/palette';
 // value, and this import is erased.
 import type { ModRadius } from '../preferences/registry';
 import { MOD_FIELD_CATEGORY, CATEGORY_IDS } from './taxonomy';
+import type { PackMeta } from './packs/meta';
 
-export interface ThemePack {
-  /** The stored value, and the `data-accent` attribute. */
-  readonly id: string;
-  /** Shown in the picker. Not translated — see the theme panel's rule. */
-  readonly label: string;
+export interface ThemePack extends PackMeta {
   /** `--primary` per mode. The canvas comes from the mode, not the pack;
    *  a pack that carried its own canvas would be taking the light/dark
    *  choice away from the person using it. */
@@ -126,11 +123,7 @@ export const motionPercent = (m: (typeof MOD_MOTIONS)[number]): number =>
  * webfont later is one `@import` in index.css, one block beside the
  * others, and one entry here. Nothing else in this file has to move.
  */
-export interface FontPack {
-  readonly id: string;
-  readonly label: string;
-  /** What a person is actually looking at, for the panel to say. */
-  readonly note: string;
+export interface FontPack extends PackMeta {
 }
 // The faces live in `mods/packs/font/`, one file each.
 export type ModFont = string;
@@ -178,9 +171,7 @@ export type ModIcons = (typeof MOD_ICONS)[number];
  * on `<html>` — `data-radius` and the `--size-*` multipliers — so a mod
  * can simply carry them.
  */
-export interface Mod {
-  readonly id: string;
-  readonly label: string;
+export interface Mod extends PackMeta {
   /** The colour pack this look wears. Must be a `THEME_PACKS` id. */
   readonly accent: string;
   readonly radius?: ModRadius;
@@ -230,8 +221,6 @@ export interface Mod {
    * office.
    */
   readonly sound?: string;
-  /** One line, shown under the label. Says who the look is FOR. */
-  readonly why: string;
 }
 
 // The bundles themselves — Cab, Wall — live in `mods/packs/mods/`, one
@@ -248,11 +237,11 @@ export interface Mod {
  * than a test: it cannot be skipped, and it fails at the moment the
  * field is written rather than the moment the suite runs.
  *
- * `id`, `label` and `why` are metadata about the mod, not things it
- * changes about the app, so they are the excluded three.
+ * The `PackMeta` fields are metadata about the mod, not things it
+ * changes about the app, so they are the excluded ones.
  */
 export const MOD_FIELD_SECTION: Record<
-  keyof Omit<Mod, 'id' | 'label' | 'why'>,
+  keyof Omit<Mod, keyof PackMeta>,
   'interface' | 'effects' | 'sounds' | 'size'
 > = MOD_FIELD_CATEGORY;
 
@@ -296,7 +285,7 @@ export const modFootprint = (m: Mod): readonly string[] => {
  * construction.
  */
 export const MOD_FIELD_APPLIER: Record<
-  keyof Omit<Mod, 'id' | 'label' | 'why'>, 'theme' | 'size' | 'sound'
+  keyof Omit<Mod, keyof PackMeta>, 'theme' | 'size' | 'sound'
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',

@@ -62,7 +62,7 @@ function walk(dir: string, acc: string[] = []): string[] {
 const NOT_A_GLYPH = new Set([
   'LucideIcon', 'LucideProps', 'IconProps', 'IconComponent', 'IconPackProvider',
   'ICON_NAMES', 'ICON_WEIGHTS', 'IconName', 'IconWeightName',
-  'IconPack', 'IconPackModule', 'IconPackDef', 'RasterIconProps',
+  'IconPack', 'IconPackModule', 'RasterIconProps',
 ]);
 
 const PACKS = 'mods/packs/icons/';

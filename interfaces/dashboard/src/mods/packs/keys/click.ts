@@ -9,6 +9,7 @@ import type { KeyPack } from '../../sound/keys';
 export const click: KeyPack = {
   id: 'click',
   label: 'Click',
+  description: 'A crisp click on every key',
   cues: {
     letter:    { wave: 'square',   from: 2200, to: 1700, dur: 0.012, gain: 0.045 },
     space:     { wave: 'square',   from: 1500, to: 1100, dur: 0.016, gain: 0.05 },

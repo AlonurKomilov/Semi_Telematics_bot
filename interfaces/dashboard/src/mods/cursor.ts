@@ -1,3 +1,4 @@
+import type { PackMeta } from './packs/meta';
 /**
  * The pointer itself.
  *
@@ -24,10 +25,7 @@
  * the icon rule forbids, and more obvious here, since the arrow and the
  * hand are seen within a second of each other.
  */
-export interface CursorPack {
-  readonly id: string;
-  readonly label: string;
-  readonly why: string;
+export interface CursorPack extends PackMeta {
 }
 
 // The packs — the list and the CSS — live in `mods/packs/cursor/`.

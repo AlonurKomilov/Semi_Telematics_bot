@@ -32,7 +32,7 @@ import type { IconPackModule } from './pack';
 export { ICON_NAMES, type IconName } from './names';
 export { ICON_WEIGHTS, type IconWeightName } from './weight';
 
-export type { IconPackModule, IconPackDef } from './pack';
+export type { IconPackModule } from './pack';
 
 /** A pack id — one of `ICON_PACK_IDS` in `mods/packs/icons`. A string,
  *  like every other pack-backed axis: the packs are a resource this door

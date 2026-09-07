@@ -8,5 +8,5 @@ import type { Mod } from '../../catalogue';
 export const cab: Mod = {
   id: 'cab',  label: 'Cab',  accent: 'azure', radius: 'pill',    size: 1.25,
   icons: 'bold', sound: 'blip',
-  why: 'Tablet in a moving truck — bigger targets, gloved hands'
+  description: 'Tablet in a moving truck — bigger targets, gloved hands'
 };

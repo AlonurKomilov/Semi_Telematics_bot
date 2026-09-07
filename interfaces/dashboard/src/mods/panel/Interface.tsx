@@ -366,7 +366,7 @@ export function TypefaceGroup({ label }: { label: LabelClass }) {
         ))}
       </div>
       <p className="text-2xs text-muted-foreground mt-1.5">
-        {FONT_PACKS.find((f) => f.id === theme.font)?.note ?? ''}
+        {FONT_PACKS.find((f) => f.id === theme.font)?.description ?? ''}
       </p>
     </div>
   );
@@ -412,8 +412,8 @@ export function CursorGroup({ label }: { label: LabelClass }) {
       </div>
       <p className="text-2xs text-muted-foreground mt-1.5">
         {current === 'system'
-          ? cursorPackById(current)?.why
-          : `${cursorPackById(current)?.why}. ${t('mods.cursor_replaces',
+          ? cursorPackById(current)?.description
+          : `${cursorPackById(current)?.description}. ${t('mods.cursor_replaces',
               'Replaces the pointer your system draws, on this device only.')}`}
       </p>
     </div>
@@ -436,7 +436,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
         ))}
       </div>
       <p className="text-2xs text-muted-foreground mt-1.5">
-        {wallpaperById(current)?.why}
+        {wallpaperById(current)?.description}
       </p>
     </div>
   );

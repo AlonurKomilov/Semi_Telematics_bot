@@ -87,7 +87,7 @@ describe('the hub', () => {
     at('/mods');
     // `ModControls` already prints `why` under the chip in force; the
     // hub header repeating it put the same sentence on screen twice.
-    const hits = screen.queryAllByText(cab.why);
+    const hits = screen.queryAllByText(cab.description);
     expect(hits.length, 'the mod\'s reason appears more than once').toBe(1);
   });
 

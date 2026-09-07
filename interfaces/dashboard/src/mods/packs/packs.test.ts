@@ -22,7 +22,7 @@
  *      the rule moved with it.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { SOUND_PACKS } from './sound';
 import { KEY_PACKS } from './keys';
@@ -34,6 +34,8 @@ import { FONT_PACKS } from './font';
 import { MATERIAL_PACKS } from './material';
 import { ICON_PACK_IDS } from './icons';
 import { MODS as MOD_PACKS } from './mods';
+import { PACK_AXES } from './index';
+import type { PackMeta } from './meta';
 import { engineCss } from '../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../sound/engine';
 import { KEY_LIMITS, KEY_CLASSES } from '../sound/keys';
@@ -245,5 +247,65 @@ describe('icons: a pack is three files, and the index is exactly the packs', () 
   it('the index imports only the contract by type and its own packs', () => {
     const imports = [...src('packs/icons/index.ts').matchAll(/^import\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)].map((m) => m[1]);
     for (const from of imports) expect(from, `packs/icons/index.ts imports ${from}`).toMatch(/^\.\//);
+  });
+});
+
+/**
+ * Every pack on every axis carries the same three things a person reads
+ * before choosing it — `PackMeta` — and the registry that gathers the
+ * axes is exactly the folders beside it, so a new axis cannot ship
+ * outside the list a store would read.
+ */
+const metaFaults = (axis: string, packs: readonly PackMeta[]): string[] => {
+  const faults: string[] = [];
+  const seen = new Set<string>();
+  for (const p of packs) {
+    const at = `${axis}/${p.id}`;
+    if (!/^[a-z][a-z0-9-]*$/.test(p.id)) faults.push(`${at}: id is not a safe stored value`);
+    if (seen.has(p.id)) faults.push(`${at}: duplicate id`);
+    seen.add(p.id);
+    if (!p.label?.trim()) faults.push(`${at}: no label`);
+    else if (p.label.trim() === p.id) faults.push(`${at}: label just repeats the id — name it for a person`);
+    const d = (p.description ?? '').trim();
+    if (!d) faults.push(`${at}: no description`);
+    else if (d.length < 10) faults.push(`${at}: description "${d}" says nothing`);
+    else if (d.length > 120) faults.push(`${at}: description is ${d.length} chars — a line, not a paragraph`);
+  }
+  return faults;
+};
+
+describe('every pack on every axis carries its meta', () => {
+  it('the registry is exactly the axis folders', () => {
+    const folders = readdirSync(__dirname)
+      .filter((f) => statSync(join(__dirname, f)).isDirectory()).sort();
+    expect(folders.length, 'no axis folders').toBeGreaterThan(5);
+    expect(PACK_AXES.map((a) => a.axis).sort(), 'packs/index.ts and the folders disagree').toEqual(folders);
+  });
+
+  it('id, label, description — present, safe, one line', () => {
+    let checked = 0;
+    for (const { axis, packs } of PACK_AXES) {
+      expect(packs.length, `${axis} lists no packs`).toBeGreaterThan(0);
+      checked += packs.length;
+      expect(metaFaults(axis, packs)).toEqual([]);
+    }
+    expect(checked, 'fewer packs than the folders hold — the sweep skipped some').toBeGreaterThan(25);
+  });
+
+  it('and the sweep can fail', () => {
+    expect(metaFaults('x', [{ id: 'ok', label: 'Ok', description: 'A description long enough to pass' }])).toEqual([]);
+    expect(metaFaults('x', [
+      { id: 'Bad Id', label: '', description: '' },
+      { id: 'dup', label: 'dup', description: 'short' },
+      { id: 'dup', label: 'Dup', description: 'x'.repeat(121) },
+    ])).toEqual([
+      'x/Bad Id: id is not a safe stored value',
+      'x/Bad Id: no label',
+      'x/Bad Id: no description',
+      'x/dup: label just repeats the id — name it for a person',
+      'x/dup: description "short" says nothing',
+      'x/dup: duplicate id',
+      'x/dup: description is 121 chars — a line, not a paragraph',
+    ]);
   });
 });

@@ -9,12 +9,12 @@
 import type { Wallpaper } from '../../wallpaper';
 
 export const WALLPAPERS: readonly Wallpaper[] = [
-  { id: 'none',   label: 'None',   why: 'Flat chrome, the way it has always been' },
-  { id: 'mesh',   label: 'Mesh',   why: 'Two soft pools of the accent, low in the corners' },
-  { id: 'grid',   label: 'Grid',   why: 'Fine ruled lines, like engineering paper' },
-  { id: 'grain',  label: 'Grain',  why: 'A fine tooth, the way paper stock has one' },
-  { id: 'paper',  label: 'Paper',  why: 'Drawn fibres, as if the chrome were pressed sheet' },
-  { id: 'plasma', label: 'Plasma', why: 'Slow accent clouds under a fine tooth' },
+  { id: 'none',   label: 'None',   description: 'Flat chrome, the way it has always been' },
+  { id: 'mesh',   label: 'Mesh',   description: 'Two soft pools of the accent, low in the corners' },
+  { id: 'grid',   label: 'Grid',   description: 'Fine ruled lines, like engineering paper' },
+  { id: 'grain',  label: 'Grain',  description: 'A fine tooth, the way paper stock has one' },
+  { id: 'paper',  label: 'Paper',  description: 'Drawn fibres, as if the chrome were pressed sheet' },
+  { id: 'plasma', label: 'Plasma', description: 'Slow accent clouds under a fine tooth' },
 ];
 
 export const WALLPAPER_IDS = WALLPAPERS.map((w) => w.id);

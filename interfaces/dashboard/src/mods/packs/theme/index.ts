@@ -15,10 +15,14 @@
 import type { ThemePack } from '../../catalogue';
 
 export const THEME_PACKS: readonly ThemePack[] = [
-  { id: 'blue',   label: 'Blue',   seed: { light: '#2a5cda', dark: '#427bff' } },
-  { id: 'purple', label: 'Purple', seed: { light: '#7d40c8', dark: '#9b61ea' } },
-  { id: 'green',  label: 'Green',  seed: { light: '#3f7b04', dark: '#56a700' } },
-  { id: 'azure',  label: 'Azure',  seed: { light: '#027689', dark: '#0796ae' } },
+  { id: 'blue',   label: 'Blue',   description: 'The blue this app was drawn in',
+    seed: { light: '#2a5cda', dark: '#427bff' } },
+  { id: 'purple', label: 'Purple', description: 'Violet — warmer than blue, just as calm',
+    seed: { light: '#7d40c8', dark: '#9b61ea' } },
+  { id: 'green',  label: 'Green',  description: 'A green seven degrees off the colour of "done", so it never reads as one',
+    seed: { light: '#3f7b04', dark: '#56a700' } },
+  { id: 'azure',  label: 'Azure',  description: 'Sea-blue — cooler than blue, easier on a long shift',
+    seed: { light: '#027689', dark: '#0796ae' } },
 ] as const;
 
 export const packById = (id: string): ThemePack | undefined =>

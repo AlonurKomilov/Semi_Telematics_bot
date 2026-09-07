@@ -9,5 +9,5 @@ import type { Mod } from '../../catalogue';
 export const wall: Mod = {
   id: 'wall', label: 'Wall', accent: 'blue',  radius: 'rounded', size: 1.45,
   icons: 'bold', entrance: true,
-  why: 'A display read from across the room'
+  description: 'A display read from across the room'
 };

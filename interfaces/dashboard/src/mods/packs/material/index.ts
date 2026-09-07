@@ -7,8 +7,8 @@
 import type { MaterialPack } from '../../material';
 
 export const MATERIAL_PACKS: readonly MaterialPack[] = [
-  { id: 'solid', label: 'Solid' },
-  { id: 'glass', label: 'Glass' },
+  { id: 'solid', label: 'Solid', description: 'Opaque surfaces — the way it has always been, at no cost' },
+  { id: 'glass', label: 'Glass', description: 'Surfaces you can see the ground through' },
 ];
 export const MATERIAL_IDS = MATERIAL_PACKS.map((p) => p.id);
 export const materialPackById = (id: string): MaterialPack | undefined =>

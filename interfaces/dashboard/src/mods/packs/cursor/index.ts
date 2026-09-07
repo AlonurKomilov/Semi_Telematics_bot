@@ -9,8 +9,8 @@
 import type { CursorPack } from '../../cursor';
 
 export const CURSOR_PACKS: readonly CursorPack[] = [
-  { id: 'system', label: 'System', why: 'Your operating system’s own pointer' },
-  { id: 'sharp',  label: 'Sharp',  why: 'Squared geometry, drawn to stay visible on any ground' },
+  { id: 'system', label: 'System', description: 'Your operating system’s own pointer' },
+  { id: 'sharp',  label: 'Sharp',  description: 'Squared geometry, drawn to stay visible on any ground' },
 ];
 
 export const CURSOR_IDS = CURSOR_PACKS.map((c) => c.id);
