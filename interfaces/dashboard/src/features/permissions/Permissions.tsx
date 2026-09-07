@@ -36,7 +36,6 @@ import {
 import type { ModulesData, PermFlag } from './permRows';
 import { DRIVER_KEY } from './verbGrid';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
-import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 
 
@@ -388,9 +387,10 @@ export default function Permissions() {
               </div>
             </div>
           )}
-          <Card padding="none">
-            <RoleLens api={roleLensApi} />
-          </Card>
+          {/* No card wrapper: the lens draws a card per group, and the
+              wrapper's `overflow-hidden` was what stopped its column
+              header from sticking. */}
+          <RoleLens api={roleLensApi} />
 
         </>
       )}

@@ -12,6 +12,8 @@ import { Check, ChevronDown, ChevronRight, Eye, Link2, Lock, Search } from '../.
 import { InfoTip, Tip } from '../../components/tooltip';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { cardVariants } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
 import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
@@ -251,7 +253,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       <div key={rowId(fam.parent)}>
         <div className={rowCls()}>
           <div className="min-w-0">
-            <span className="text-sm font-medium">
+            <span className="text-sm font-semibold">
               {fam.parent.label}
               {isScoped(fam.parent) && <span className="text-2xs text-muted-foreground ml-1">*</span>}
               {ownDelta && <DeltaChip />}
@@ -281,7 +283,9 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               const cDelta = seniorView && rowDelta(c.row);
               return (
             <div key={rowId(c.row)} className={childRowCls()}>
-              <div className="min-w-0 pl-5">
+              <div className="relative min-w-0 pl-5">
+                {/* the elbow from the tree bar to the name */}
+                <span aria-hidden className="absolute left-1.5 top-1/2 h-px w-3 bg-border" />
                 <span className="text-xs font-medium text-foreground/80">
                   {c.row.label}{cDelta && <DeltaChip />}{alsoChip(c.row)}
                 </span>
@@ -309,9 +313,13 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   };
 
   return (
+    // No outer card: every group below is its own card, and a card of
+    // cards is a box around boxes — it also carried `overflow-hidden`,
+    // which is what kept the column header from ever sticking.
     <div>
-      {/* Role tabs + preview */}
-      <div className="flex items-center gap-1.5 flex-wrap px-4 pt-3">
+      {/* Role tabs + tier — the page's controls, their own card */}
+      <div className={cn(cardVariants({ padding: 'none' }), 'px-4 py-2.5')}>
+      <div className="flex items-center gap-1.5 flex-wrap">
         {[...api.roles, DRIVER_KEY].map((r) => {
           // The blast radius of everything below: a toggle on a role
           // seven people hold is a different act from the same toggle on
@@ -366,7 +374,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           tinted in the same green.  Long lists truncate into the tooltip
           so this row can never wrap and shove the grid down. */}
       {cols.length > 1 && !isDriver && (
-        <div className="flex items-center gap-2 px-4 pt-2.5 min-w-0">
+        <div className="flex items-center gap-2 pt-2.5 min-w-0">
           <span className="text-xs text-muted-foreground shrink-0">Tier</span>
           <div className="inline-flex bg-muted border border-border rounded-md p-0.5 shrink-0">
             {cols.map((c, i) => (
@@ -407,13 +415,14 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </Badge>
         </div>
       )}
+      </div>
 
       {/* ── Services: the channels, a card of their own ──────────────
           A channel is a different kind of thing from a feature: it is
           granted here, but what flows THROUGH it follows the feature
           grants below.  Same columns as the table so a tick lands where
           the eye already expects it. */}
-      <div className={`mx-4 mt-3 ${BAND_CARD}`}>
+      <div className={`mt-3 ${BAND_CARD}`}>
         <div className={`${HEAD_COLS} gap-x-2 px-4 pt-2 pb-1.5 bg-muted/50 items-end`}>
           <div className="min-w-0">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
@@ -447,9 +456,15 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       </div>
 
       {/* ── Features ────────────────────────────────────────────── */}
-      <div className="px-4 pb-4">
-        <div className="flex items-center justify-between gap-3 pt-4 pb-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Features</span>
+      <div className="pb-4">
+        {/* The table head — one sticky bar that carries the section name,
+            the search and the column labels.  It has to be a sibling of
+            the band cards (not inside one) for `sticky` to answer to the
+            page's scroller: this is the header a reader forty rows down
+            needs to know which column a tick is in. */}
+        <div className={cn(cardVariants({ padding: 'none' }), 'sticky top-0 z-30 mt-3 px-4 pt-2.5 pb-2 shadow-sm')}>
+        <div className="flex items-center justify-between gap-3 pb-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-foreground">Features</span>
           {!isDriver && (
             <div className="relative w-64">
               <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" aria-hidden />
@@ -469,15 +484,20 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             what the link mark used to carry by itself.  The scope
             descriptions live on these headers because the column is the
             flag. */}
-        {/* px-4 + a transparent 1px border: the same inset the band
-            cards give their rows, so every column label sits over its
-            column. */}
-        <div className="sticky top-0 bg-card z-30 border-b border-border pt-1 pb-1.5 px-4 border-x border-transparent">
-          <div className={`${HEAD_COLS} gap-x-2`}>
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Feature</span>
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Manage</span>
-            <span className="col-span-2 text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
+        {/* Two-level header for CONFIG alone: its two columns ARE the two
+            config flags, so a tick's COLUMN says which scope it is and
+            features sharing a flag line up under it — position carries
+            what the link mark used to carry by itself. */}
+          <div className={`${HEAD_COLS} gap-x-2 border-t border-border pt-1.5`}>
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Feature</span>
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">View</span>
+            <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">Manage</span>
+            {/* The two config scopes are one column pair: a shared label
+                over a hairline that spans exactly the pair says so. */}
+            <span className="col-span-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground text-center">
+              <span className="block">Config</span>
+              <span aria-hidden className="mt-0.5 block h-px bg-border/70" />
+            </span>
           </div>
           <div className={`${HEAD_COLS} gap-x-2`}>
             <span /><span /><span />
@@ -532,7 +552,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           return (
             // scroll-mt keeps a band scrolled to from the top bar clear of
             // the sticky column header.
-            <div key={b.band} id={bandAnchor(b.band)} className={`scroll-mt-16 mt-3 ${BAND_CARD}`}>
+            <div key={b.band} id={bandAnchor(b.band)} className={`scroll-mt-24 mt-3 ${BAND_CARD}`}>
               <div className={`${BAND_STRIP} flex items-center gap-x-3 gap-y-1 flex-wrap`}>
                 <button
                   type="button"
@@ -663,7 +683,7 @@ const childRowCls = (): string =>
 // powers, Configuration — one enclosure grammar for "this is a group";
 // the strip is its header: a fill and a heavier label, the section
 // title of the page rather than a caption between rows.
-const BAND_CARD = 'rounded-lg border border-border overflow-hidden';
+const BAND_CARD = cardVariants({ padding: 'none' });
 const BAND_STRIP = 'px-4 py-2 bg-muted/50';
 
 function DeltaChip() {
