@@ -1,0 +1,6 @@
+/* Serif — an OS face, zero bytes. `ui-*` first so the platform's own
+   optical-quality face is used where it exists. Geist has no file: it IS
+   the base `--font-sans`. */
+  :root[data-font="serif"] {
+    --font-sans: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+  }

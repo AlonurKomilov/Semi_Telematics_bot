@@ -12,6 +12,13 @@
 @import './mods/packs/cursor/sharp.css';
 @import './mods/packs/shader/soft.css';
 @import './mods/packs/shader/studio.css';
+@import './mods/packs/theme/purple.css';
+@import './mods/packs/theme/green.css';
+@import './mods/packs/theme/azure.css';
+@import './mods/packs/font/system.css';
+@import './mods/packs/font/serif.css';
+@import './mods/packs/font/mono.css';
+@import './mods/packs/font/rounded.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -607,102 +614,17 @@
      the accent it was chosen with. `--chart-1` goes back to the base
      ramp when the block stands down, which is deliberate: slot 1 is a
      property of series SEPARATION, and a colour nobody checked against
-     the other four slots does not get to join the ramp. */
-  :root:not(.dark)[data-accent="purple"]:not([data-mod-accent]) {
-    --primary: oklch(0.52 0.20 300);
-    --primary-hover: oklch(0.47 0.20 300);
-    --primary-text: oklch(0.48 0.20 300);
-    --chart-1: oklch(0.52 0.20 300);
-  }
-  :root:not(.dark)[data-accent="green"]:not([data-mod-accent]) {
-    /* HUE 135, not 142, and the seven degrees are the whole point.
-       `--ok` is at 150 and means "this happened" — so a green accent
-       near it makes every primary button read as a thing already done.
-       At 142 the light seed sat dE2000 6.1 from `--ok`, under the
-       TONE_FLOOR of 10 that `fitAccent` imposes on a colour a person
-       picks; packs never pass through that gate, so nothing enforced it
-       and the one pack that failed it was ours. 135 clears it at 10.1
-       light and 14.9 dark, with no nudge in either mode — the only one
-       of the candidates that does. 130 was measured too and is worse:
-       9.0 on light, still under.
-       Lightness stays on the band (0.52 light / 0.65 dark); only the
-       hue moved, because no lightness on the band clears the floor
-       between 135 and 170. */
-    --primary: oklch(0.522 0.15 135);
-    /* 0.137, not 0.138: hue 135 holds a hair less chroma than 142
-       did at this lightness, and an out-of-gamut authored value is a
-       number the display never shows. */
-    --primary-hover: oklch(0.472 0.137 135);
-    --primary-text: oklch(0.447 0.13 135);
-    --chart-1: oklch(0.522 0.15 135);
-    /* The ramp rotates with the accent, and only here.
-       Slot 1 IS the accent — that is the rule, and the accent blocks
-       above already do it.  Slots 2-5 then have to drop whichever base
-       hue the accent has just duplicated: slot 2 is hue 142, which the
-       green accent sat exactly on and now sits seven degrees from —
-       close enough that the collision is unchanged. It put two adjacent
-       series at dE2000 6.70 on dark and 7.79 on light, while every
-       other pair in every theme is >= 26.9.  Two chart lines the same colour, and two role badges
-       beside each other in settings/WorkHours and
-       scorecards/DriverInsights.
-       Blue is the hue that leaves — it is slot 1 in the base ramp, and a
-       green accent has already taken slot 1 — so it comes back here.
-       Blue and purple accents need no swap: the base ramp's slot 1 is
-       the hue they displace, and nothing else is near either of them.
-       Chroma is the SLOT's, clipped to what sRGB holds at the slot's
-       lightness for the new hue — never the accent's.  Light keeps 0.15
-       outright (the ceiling there is 0.2484, so it never binds); dark's
-       0.18 does not fit under 0.1449 and comes down to 0.142. */
-    --chart-2: oklch(0.55 0.15 264);
-  }
-  /* Azure swaps slot 5 for the same reason green swaps slot 2: the
-     accent has walked slot 1 onto a hue another series already holds.
-     Hue 214 sits 13 degrees off slot 5's 201, which is dE2000 8.8 — two
-     lines the same colour. Slot 5 moves to 316, at the SLOT's own
-     lightness and whatever chroma sRGB holds there for that hue.
-     NOT the blue the accent displaced, which is what green does and
-     what this tried first: blue 264 is only 50 degrees from azure and
-     lands at dE2000 18.8, still under the floor. 316 is the far side of
-     the wheel from everything left in the ramp — 32.8 light, 36.9 dark.
-     Why 214 and not something roomier: there is nothing roomier. Every
-     hue that clears the ramp untouched fails somewhere worse — 352-2
-     sit at dE2000 1.6-3.0 from --danger under simulated colour
-     blindness, and 66-68 at 1.4-2.7 from --warn. The palette is full;
-     this is the least crowded corner left, and it beats two of the three
-     packs we already ship on separation from the tones. */
-  :root:not(.dark)[data-accent="azure"]:not([data-mod-accent]) {
-    --primary: oklch(0.52 0.091 214);
-    --primary-hover: oklch(0.469 0.082 214);
-    --primary-text: oklch(0.450 0.079 214);
-    --chart-1: oklch(0.52 0.091 214);
-    --chart-5: oklch(0.559 0.095 316);
-  }
-  .dark[data-accent="purple"]:not([data-mod-accent]) {
-    --primary: oklch(0.62 0.2 300);
-    --primary-hover: oklch(0.68 0.195 300);
-    --primary-text: oklch(0.72 0.169 300);
-    --chart-1: oklch(0.62 0.2 300);
-  }
-  .dark[data-accent="green"]:not([data-mod-accent]) {
-    /* See the light block for why 135. Dark was never the failing half
-       — it measured 11.8 from `--ok` at 142 — but a pack is one colour
-       in two modes, and a hue that changed on one side only would be
-       two greens wearing one name. */
-    --primary: oklch(0.650 0.189 135);
-    --primary-hover: oklch(0.713 0.19 135);
-    --primary-text: oklch(0.688 0.191 135);
-    --chart-1: oklch(0.650 0.189 135);
-    /* See the light block above for why only green swaps slot 2. */
-    --chart-2: oklch(0.72 0.142 264);
-  }
-  .dark[data-accent="azure"]:not([data-mod-accent]) {
-    --primary: oklch(0.62 0.108 214);
-    --primary-hover: oklch(0.681 0.108 215);
-    --primary-text: oklch(0.693 0.108 214);
-    --chart-1: oklch(0.62 0.108 214);
-    /* See the light block above for why slot 5 moves. */
-    --chart-5: oklch(0.728 0.124 316);
-  }
+     the other four slots does not get to join the ramp.
+
+     THE PACKS ARE NOT HERE. `mods/packs/theme/*.css` holds one file per
+     accent, imported at the top of this sheet, and blue has none — it IS
+     the base `:root` / `.dark` above. What stays in this file is the
+     mechanism the packs plug into: the stand-down, the base ramp, and
+     the swatches the picker paints its dots from. The swatches are the
+     one piece of pack data still held here, because the print block
+     restates every light token and a swatch moved out would have to be
+     restated in three places or vanish from paper — a seam left open
+     on purpose and named in `packs/packs.test.ts`. */
 
   /* ── Ambient ────────────────────────────────────────────────
      What a screen does when nobody has touched it for a while. The
@@ -751,20 +673,11 @@
      block here, and nothing in the panel or the registry has to move.
      `ui-*` first in each stack, because those resolve to the platform's
      own optical-quality face where it exists and fall through where it
-     does not. */
-  :root[data-font="system"] {
-    --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  }
-  :root[data-font="serif"] {
-    --font-sans: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
-  }
-  :root[data-font="mono"] {
-    --font-sans: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-  :root[data-font="rounded"] {
-    --font-sans: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN',
-                 'Varela Round', system-ui, sans-serif;
-  }
+     does not.
+
+     THE STACKS ARE NOT HERE. `mods/packs/font/*.css` holds one file per
+     face, imported at the top of this sheet; Geist has none. A bundled
+     webfont later is its own `@import` plus one pack file. */
 
   /* ── Size axes ──────────────────────────────────────────────
      The four multipliers every length in tailwind.config.js rides.

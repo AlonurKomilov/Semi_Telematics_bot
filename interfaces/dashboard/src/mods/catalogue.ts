@@ -48,12 +48,8 @@ export interface ThemePack {
   readonly seed: Readonly<Record<ThemeMode, string>>;
 }
 
-export const THEME_PACKS: readonly ThemePack[] = [
-  { id: 'blue',   label: 'Blue',   seed: { light: '#2a5cda', dark: '#427bff' } },
-  { id: 'purple', label: 'Purple', seed: { light: '#7d40c8', dark: '#9b61ea' } },
-  { id: 'green',  label: 'Green',  seed: { light: '#3f7b04', dark: '#56a700' } },
-  { id: 'azure',  label: 'Azure',  seed: { light: '#027689', dark: '#0796ae' } },
-] as const;
+// The packs — seeds and CSS — live in `mods/packs/theme/`. This file is
+// the contract: what a pack is, and which tokens its seed answers for.
 
 /** The three tokens an accent block re-points, and therefore the three a
  *  pack's seed is responsible for. `--chart-1` moves with the accent too
@@ -146,14 +142,7 @@ export interface FontPack {
   /** What a person is actually looking at, for the panel to say. */
   readonly note: string;
 }
-export const FONT_PACKS: readonly FontPack[] = [
-  { id: 'geist',   label: 'Geist',   note: 'The one this app was drawn with' },
-  { id: 'system',  label: 'System',  note: 'Whatever your computer uses' },
-  { id: 'serif',   label: 'Serif',   note: 'Book-like, with strokes on the letters' },
-  { id: 'mono',    label: 'Mono',    note: 'Every letter the same width' },
-  { id: 'rounded', label: 'Rounded', note: 'Softer corners on the letters' },
-];
-export const MOD_FONTS = FONT_PACKS.map((f) => f.id);
+// The faces live in `mods/packs/font/`, one file each.
 export type ModFont = string;
 
 /**
@@ -175,8 +164,6 @@ export type ModMaterial = (typeof MOD_MATERIALS)[number];
 export type ModMotion = (typeof MOD_MOTIONS)[number];
 export type ModIcons = (typeof MOD_ICONS)[number];
 
-export const packById = (id: string): ThemePack | undefined =>
-  THEME_PACKS.find((p) => p.id === id);
 
 /**
  * A MOD is a named combination of axes we already have — not a new

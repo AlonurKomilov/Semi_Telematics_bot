@@ -37,15 +37,14 @@ import { ICON_PACKS, type IconPack } from '../lib/icons';
 import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
 import { CURSOR_IDS } from '../mods/packs/cursor';
 import { SHADER_IDS } from '../mods/packs/shader';
-import {
-  THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
-} from '../mods/catalogue';
+import { MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS } from '../mods/catalogue';
+import { THEME_PACKS } from '../mods/packs/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
 import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/packs/sound';
 import { KEY_PACKS } from '../mods/packs/keys';
-import { MOD_FONTS } from '../mods/catalogue';
+import { MOD_FONTS } from '../mods/packs/font';
 import { SURFACES } from '../mods/surfaces';
 
 /** Where a preference is allowed to live.

@@ -40,7 +40,7 @@ import { ModProvider, useMods } from './context';
 import { modStyleText } from './inject';
 import { accentTokens } from './theme/accent';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
-import { packById } from './catalogue';
+import { packById } from './packs/theme';
 
 const THEME_KEY = 'mods.theme';
 const SIZE_KEY = 'mods.size';

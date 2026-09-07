@@ -43,11 +43,11 @@
  *      it is still there. That list is the work queue: delete an entry
  *      when you fix the pair, never add one to quiet a new regression.
  */
+import { assembledCss } from '../test/stylesheet';
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
+const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 // ── colour maths ────────────────────────────────────────────────────

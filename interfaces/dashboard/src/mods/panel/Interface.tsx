@@ -17,9 +17,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
-import {
-  THEME_PACKS, MOD_MATERIALS, MOD_ICONS, FONT_PACKS, packById, type ModIcons,
-} from '../catalogue';
+import { MOD_MATERIALS, MOD_ICONS, type ModIcons } from '../catalogue';
+import { THEME_PACKS, packById } from '../packs/theme';
+import { FONT_PACKS } from '../packs/font';
 import { accentTokens } from '../theme/accent';
 import { fitCanvas } from '../theme/canvas';
 import { Chip } from './Chip';

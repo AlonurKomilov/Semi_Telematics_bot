@@ -11,10 +11,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FONT_PACKS, MOD_FONTS } from '../catalogue';
+import { FONT_PACKS, MOD_FONTS } from '../packs/font';
+import { assembledCss } from '../../test/stylesheet';
 import { MOD_DEFAULT } from '../../preferences';
 
-const CSS = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8');
+const CSS = assembledCss();
 const PANEL = readFileSync(join(__dirname, '..', 'panel', 'Interface.tsx'), 'utf8');
 const BOOT = readFileSync(join(__dirname, '..', '..', '..', 'index.html'), 'utf8');
 

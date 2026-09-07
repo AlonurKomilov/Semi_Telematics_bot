@@ -22,7 +22,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { applyTheme, applySize } from '../mods/context';
-import { MOD_FONTS } from '../mods/catalogue';
+import { MOD_FONTS } from '../mods/packs/font';
 import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
 import { CURSOR_IDS } from '../mods/packs/cursor';
 import { SHADER_IDS } from '../mods/packs/shader';

@@ -7,8 +7,6 @@
  * so the guards here sweep the wheel instead of listing examples.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   ACCENT_BAND, TONES, TONE_FLOOR, STATEFUL_TONES, fitAccent, accentTokens,
   type AccentMode,
@@ -17,9 +15,10 @@ import {
   oklchToSrgb, srgbToOklch, parseHex, toHex, distance, contrastRatio,
   AA_TEXT, AA_LARGE, type RGB,
 } from './contrast';
-import { THEME_PACKS } from '../catalogue';
+import { THEME_PACKS } from '../packs/theme';
+import { assembledCss } from '../../test/stylesheet';
 
-const CSS = readFileSync(resolve(__dirname, '../../index.css'), 'utf8');
+const CSS = assembledCss();
 const MODES: AccentMode[] = ['light', 'dark'];
 const tone = (mode: AccentMode, name: string): RGB => {
   const [L, C, H] = TONES[mode][name];

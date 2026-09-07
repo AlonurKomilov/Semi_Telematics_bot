@@ -18,21 +18,23 @@
  * guards read index.css off disk. A pack that exists only at runtime is
  * invisible to all of them.
  */
+import { assembledCss } from '../test/stylesheet';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
 import {
-  THEME_PACKS, MODS, MOD_ICONS,
+  MODS, MOD_ICONS,
   MOD_FIELD_SECTION, modFootprint,
-  PACK_TOKENS, packById, modById, activeModId, modMatchesAxes,
+  PACK_TOKENS, modById, activeModId, modMatchesAxes,
 } from './catalogue';
+import { THEME_PACKS, packById } from './packs/theme';
 import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
 
-const CSS = readFileSync(join(__dirname, '..', 'index.css'), 'utf8')
+const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** `:root` is several blocks in this file; merge in source order. */

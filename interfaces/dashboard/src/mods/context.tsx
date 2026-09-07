@@ -6,7 +6,7 @@ import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
-import { packById, THEME_PACKS } from './catalogue';
+import { packById, THEME_PACKS } from './packs/theme';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { useAmbient } from './ambient/useAmbient';
 import { AMBIENT_SCALE } from './ambient/ambient';

@@ -1,0 +1,17 @@
+/* Purple */
+/* A PACK: the seed in `index.ts`, the derived tokens here. The two are
+   held together by `mods/catalogue.test.ts` — every token within ΔE 3 of
+   `derivePalette(seed)` — so this file cannot drift from the seed that
+   describes it. Blue has no file: it IS the base `:root` / `.dark`. */
+  :root:not(.dark)[data-accent="purple"]:not([data-mod-accent]) {
+    --primary: oklch(0.52 0.20 300);
+    --primary-hover: oklch(0.47 0.20 300);
+    --primary-text: oklch(0.48 0.20 300);
+    --chart-1: oklch(0.52 0.20 300);
+  }
+  .dark[data-accent="purple"]:not([data-mod-accent]) {
+    --primary: oklch(0.62 0.2 300);
+    --primary-hover: oklch(0.68 0.195 300);
+    --primary-text: oklch(0.72 0.169 300);
+    --chart-1: oklch(0.62 0.2 300);
+  }

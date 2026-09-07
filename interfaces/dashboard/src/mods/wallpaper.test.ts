@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
 import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
 import { assembledCss } from '../test/stylesheet';
-import { THEME_PACKS } from './catalogue';
+import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, type RGB } from './theme/contrast';
 
 const CSS = assembledCss()

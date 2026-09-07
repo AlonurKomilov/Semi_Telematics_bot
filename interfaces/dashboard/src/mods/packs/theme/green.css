@@ -1,0 +1,58 @@
+/* Green — hue 135, seven degrees off `--ok`, and that is the whole reason it is not 142. */
+/* A PACK: the seed in `index.ts`, the derived tokens here. The two are
+   held together by `mods/catalogue.test.ts` — every token within ΔE 3 of
+   `derivePalette(seed)` — so this file cannot drift from the seed that
+   describes it. Blue has no file: it IS the base `:root` / `.dark`. */
+  :root:not(.dark)[data-accent="green"]:not([data-mod-accent]) {
+    /* HUE 135, not 142, and the seven degrees are the whole point.
+       `--ok` is at 150 and means "this happened" — so a green accent
+       near it makes every primary button read as a thing already done.
+       At 142 the light seed sat dE2000 6.1 from `--ok`, under the
+       TONE_FLOOR of 10 that `fitAccent` imposes on a colour a person
+       picks; packs never pass through that gate, so nothing enforced it
+       and the one pack that failed it was ours. 135 clears it at 10.1
+       light and 14.9 dark, with no nudge in either mode — the only one
+       of the candidates that does. 130 was measured too and is worse:
+       9.0 on light, still under.
+       Lightness stays on the band (0.52 light / 0.65 dark); only the
+       hue moved, because no lightness on the band clears the floor
+       between 135 and 170. */
+    --primary: oklch(0.522 0.15 135);
+    /* 0.137, not 0.138: hue 135 holds a hair less chroma than 142
+       did at this lightness, and an out-of-gamut authored value is a
+       number the display never shows. */
+    --primary-hover: oklch(0.472 0.137 135);
+    --primary-text: oklch(0.447 0.13 135);
+    --chart-1: oklch(0.522 0.15 135);
+    /* The ramp rotates with the accent, and only here.
+       Slot 1 IS the accent — that is the rule, and purple.css and the
+       base ramp already do it.  Slots 2-5 then have to drop whichever base
+       hue the accent has just duplicated: slot 2 is hue 142, which the
+       green accent sat exactly on and now sits seven degrees from —
+       close enough that the collision is unchanged. It put two adjacent
+       series at dE2000 6.70 on dark and 7.79 on light, while every
+       other pair in every theme is >= 26.9.  Two chart lines the same colour, and two role badges
+       beside each other in settings/WorkHours and
+       scorecards/DriverInsights.
+       Blue is the hue that leaves — it is slot 1 in the base ramp, and a
+       green accent has already taken slot 1 — so it comes back here.
+       Blue and purple accents need no swap: the base ramp's slot 1 is
+       the hue they displace, and nothing else is near either of them.
+       Chroma is the SLOT's, clipped to what sRGB holds at the slot's
+       lightness for the new hue — never the accent's.  Light keeps 0.15
+       outright (the ceiling there is 0.2484, so it never binds); dark's
+       0.18 does not fit under 0.1449 and comes down to 0.142. */
+    --chart-2: oklch(0.55 0.15 264);
+  }
+  .dark[data-accent="green"]:not([data-mod-accent]) {
+    /* See the light block for why 135. Dark was never the failing half
+       — it measured 11.8 from `--ok` at 142 — but a pack is one colour
+       in two modes, and a hue that changed on one side only would be
+       two greens wearing one name. */
+    --primary: oklch(0.650 0.189 135);
+    --primary-hover: oklch(0.713 0.19 135);
+    --primary-text: oklch(0.688 0.191 135);
+    --chart-1: oklch(0.650 0.189 135);
+    /* See the light block above for why only green swaps slot 2. */
+    --chart-2: oklch(0.72 0.142 264);
+  }

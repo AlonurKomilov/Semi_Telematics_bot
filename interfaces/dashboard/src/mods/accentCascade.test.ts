@@ -19,19 +19,21 @@
  * renamed itself into silence.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { applyModTokens, seedTokens } from './inject';
 import { derivePalette } from './theme/palette';
-import { THEME_PACKS } from './catalogue';
+import { THEME_PACKS } from './packs/theme';
+import { assembledCss } from '../test/stylesheet';
 
-/** The accent presets, exactly as they ship. */
+/** The accent presets, exactly as they ship — one pack file each, in
+ *  `mods/packs/theme/`. Read from the assembled sheet rather than the
+ *  folder so what this fixture wears is what the app imports. */
 const ACCENT_CSS = (() => {
-  const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
-  const start = css.indexOf('/* ── Accent presets');
-  const end = css.indexOf('/* ── Size axes');
-  if (start < 0 || end < 0) throw new Error('accent section markers moved — fix this reader');
-  return css.slice(start, end);
+  const css = assembledCss();
+  const blocks = css.match(
+    /(?::root(?::not\(\.dark\))?|\.dark)\[data-accent="[a-z]+"\]:not\(\[data-mod-accent\]\)\s*\{[^}]*\}/g,
+  );
+  if (!blocks) throw new Error('no accent blocks in the assembled sheet — fix this reader');
+  return blocks.join('\n');
 })();
 
 /** A base layer, so `--primary` has somewhere to fall back to and the

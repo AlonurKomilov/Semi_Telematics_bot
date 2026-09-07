@@ -29,6 +29,8 @@ import { KEY_PACKS } from './keys';
 import { WALLPAPERS } from './wallpaper';
 import { CURSOR_PACKS } from './cursor';
 import { SHADER_PACKS } from './shader';
+import { THEME_PACKS } from './theme';
+import { FONT_PACKS } from './font';
 import { engineCss } from '../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../sound/engine';
 import { KEY_LIMITS, KEY_CLASSES } from '../sound/keys';
@@ -46,7 +48,7 @@ const packFiles = (folder: string, ext: 'ts' | 'css' = 'ts') =>
     .map((f) => f.replace(new RegExp(`\\.${ext}$`), ''))
     .sort();
 
-const ENGINE_FILES = ['sound/engine.ts', 'sound/keys.ts', 'sound/cue.ts', 'sound/useCue.ts'];
+const ENGINE_FILES = ['sound/engine.ts', 'sound/keys.ts', 'sound/cue.ts', 'sound/useCue.ts', 'catalogue.ts'];
 
 describe('an engine file holds no pack content', () => {
   it('finds engine files to check', () => {
@@ -59,7 +61,11 @@ describe('an engine file holds no pack content', () => {
       expect(code, `${f} carries a cue table — a pack is growing back inside the engine`)
         .not.toMatch(/\bcues:\s*\{/);
       expect(code, `${f} lists packs — the engine knows what exists again`)
-        .not.toMatch(/\b(SOUND_PACKS|KEY_PACKS)\s*[:=]/);
+        .not.toMatch(/\b(SOUND_PACKS|KEY_PACKS|THEME_PACKS|FONT_PACKS)\s*[:=]/);
+      // A seed VALUE, not the `seed:` slot in the ThemePack type — the
+      // contract says a pack has one; the engine must not say which.
+      expect(code, `${f} carries a seed — an accent pack is growing back inside the engine`)
+        .not.toMatch(/\bseed:\s*\{\s*light:\s*['"]#/);
     }
   });
 
@@ -82,15 +88,20 @@ describe('a pack is a file, and the index is exactly the files', () => {
 });
 
 describe('a pack file imports only types', () => {
+  const onlyTypes = (rel: string) => {
+    const code = src(`packs/${rel}`);
+    const imports = [...code.matchAll(/^import\s+(?!type\s)[^;]*;/gm)].map((m) => m[0]);
+    expect(imports, `packs/${rel} has a runtime import: ${imports[0] ?? ''}`).toEqual([]);
+  };
   for (const folder of ['sound', 'keys'] as const) {
     it(`${folder}: no runtime import — the registry would be one hop from itself`, () => {
-      for (const f of packFiles(folder)) {
-        const code = src(`packs/${folder}/${f}.ts`);
-        const imports = [...code.matchAll(/^import\s+(?!type\s)[^;]*;/gm)].map((m) => m[0]);
-        expect(imports, `packs/${folder}/${f}.ts has a runtime import: ${imports[0] ?? ''}`)
-          .toEqual([]);
-      }
+      for (const f of packFiles(folder)) onlyTypes(`${folder}/${f}.ts`);
     });
+  }
+  // Theme and font packs are CSS; the list beside them is the one TS
+  // file, and it is held to the same rule.
+  for (const folder of ['theme', 'font'] as const) {
+    it(`${folder}: the index imports only the contract`, () => onlyTypes(`${folder}/index.ts`));
   }
 });
 
@@ -131,32 +142,41 @@ const CSS_AXES = [
   ['wallpaper', WALLPAPERS, 'none'],
   ['cursor', CURSOR_PACKS, 'system'],
   ['shader', SHADER_PACKS, 'flat'],
+  // Blue and Geist are the BASE — their values are `:root` / `.dark`
+  // themselves, so a file for either would restate the engine's own
+  // defaults under a stamp nothing needs.
+  ['accent', THEME_PACKS, 'blue', 'theme'],
+  ['font', FONT_PACKS, 'geist'],
 ] as const;
 
 describe('a CSS pack is a file, and the index is exactly the files', () => {
-  for (const [axis, packs, dflt] of CSS_AXES) {
+  for (const [axis, packs, dflt, folderName] of CSS_AXES) {
+    const folder = folderName ?? axis;
     it(`${axis}: every non-default id has a file, and every file an id`, () => {
-      const files = packFiles(axis, 'css');
+      const files = packFiles(folder, 'css');
       const ids = packs.map((p) => p.id).filter((id) => id !== dflt).sort();
-      expect(files.length, `no pack files in packs/${axis}`).toBeGreaterThan(0);
-      expect(ids, `packs/${axis}: the index and the folder disagree`).toEqual(files);
+      expect(files.length, `no pack files in packs/${folder}`).toBeGreaterThan(0);
+      expect(ids, `packs/${folder}: the index and the folder disagree`).toEqual(files);
       expect(packs.some((p) => p.id === dflt), `${axis} lost its default "${dflt}"`).toBe(true);
     });
 
-    it(`${axis}: every pack file is screen-only and addresses only itself`, () => {
-      for (const id of packFiles(axis, 'css')) {
-        const code = src(`packs/${axis}/${id}.css`);
-        // Print puts the light palette back through specificity alone;
-        // a pattern or a pointer that survived into paper would be ink
-        // saying nothing. The wrapper used to be index.css's; a pack
-        // that leaves it carries it.
-        expect(code.trim(), `packs/${axis}/${id}.css is not wrapped in @media screen`)
-          .toMatch(/^@media screen\s*\{[\s\S]*\}\s*$/);
+    it(`${axis}: every pack file addresses only itself, and is screen-only where it must be`, () => {
+      for (const id of packFiles(folder, 'css')) {
+        const code = src(`packs/${folder}/${id}.css`);
+        // Wallpaper, cursor and shader are screen-only: print puts the
+        // light palette back through specificity alone, and a pattern
+        // or a pointer that survived into paper would be ink saying
+        // nothing. An accent or a face is NOT — a printed page keeps
+        // its accent and its typeface — and those blocks came out of
+        // `@layer base`, not the screen block.
+        if (['wallpaper', 'cursor', 'shader'].includes(axis))
+          expect(code.trim(), `packs/${folder}/${id}.css is not wrapped in @media screen`)
+            .toMatch(/^@media screen\s*\{[\s\S]*\}\s*$/);
         // One file, one pack: a rule for a sibling in here is the old
         // shared block reassembling itself.
         for (const m of code.matchAll(new RegExp(`\\[data-${axis}="([^"]+)"\\]`, 'g')))
-          expect(m[1], `packs/${axis}/${id}.css addresses "${m[1]}"`).toBe(id);
-        expect(code, `packs/${axis}/${id}.css reaches for !important`).not.toMatch(/!important/);
+          expect(m[1], `packs/${folder}/${id}.css addresses "${m[1]}"`).toBe(id);
+        expect(code, `packs/${folder}/${id}.css reaches for !important`).not.toMatch(/!important/);
       }
     });
   }
@@ -177,9 +197,34 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
 
   it('and the engine sheet imports every pack file', () => {
     const engine = engineCss();
-    for (const [axis] of CSS_AXES)
-      for (const id of packFiles(axis, 'css'))
-        expect(engine, `packs/${axis}/${id}.css exists and is never imported — a pack nobody can wear`)
-          .toContain(`@import './mods/packs/${axis}/${id}.css';`);
+    for (const [axis, , , folderName] of CSS_AXES) {
+      const folder = folderName ?? axis;
+      for (const id of packFiles(folder, 'css'))
+        expect(engine, `packs/${folder}/${id}.css exists and is never imported — a pack nobody can wear`)
+          .toContain(`@import './mods/packs/${folder}/${id}.css';`);
+    }
+  });
+});
+
+/**
+ * The one piece of pack data still held by the engine sheet, by name.
+ *
+ * `--swatch-accent-*` — the colour the picker paints a chip dot from —
+ * is declared in `:root`, `.dark` and the print block, because print
+ * restates every light token and a swatch moved into a pack file would
+ * either be restated in three places or vanish from paper. It stays,
+ * and `catalogue.test.ts` holds each swatch to its pack's hue. Named
+ * here so it is a known seam and not a forgotten one; the honest end
+ * state is a dot painted from the seed itself, with no token at all.
+ */
+describe('the known seam', () => {
+  it('the engine sheet still carries the accent swatches, and nothing else of a pack', () => {
+    const engine = engineCss().replace(/\/\*[\s\S]*?\*\//g, '');
+    // Three declarations, by name: `:root`, `.dark`, and the print
+    // reset — one of them gone and paper or dark loses the dot.
+    for (const p of THEME_PACKS)
+      expect(engine.match(new RegExp(`--swatch-accent-${p.id}:`, 'g'))?.length,
+        `--swatch-accent-${p.id} is not in all three engine root blocks — update this seam note`)
+        .toBe(3);
   });
 });

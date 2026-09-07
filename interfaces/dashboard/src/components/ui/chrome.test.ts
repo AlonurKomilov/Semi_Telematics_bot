@@ -722,8 +722,8 @@ const COLOUR_LITERAL_ALLOWED: { file: string; why: string }[] = [
     why: 'the black lerp target for a THREE material — design.md §8' },
   { file: 'features/applications/public/theme.ts',
     why: 'computes a readable label for a colour the CUSTOMER chose at runtime' },
-  { file: 'mods/catalogue.ts',
-    why: 'the pack catalogue: these hexes ARE the seeds, and themePacks.test.ts proves the shipped CSS is what they derive' },
+  { file: 'mods/packs/theme/index.ts',
+    why: 'the accent packs: these hexes ARE the seeds, and catalogue.test.ts proves the shipped CSS is what they derive' },
   { file: 'mods/theme/canvas.ts',
     why: 'the canvas seeds, for the same reason: a colour INPUT needs a hex to open on and the stylesheet declares oklch — canvas.test.ts parses index.css and fails when the two disagree, which is how the dark seed was caught being #030303 rather than the #0a0a0a it was written as' },
 ];
@@ -1700,9 +1700,9 @@ describe('UI chrome', () => {
   // white. Ship only the dark half and choosing that accent in Light
   // silently does nothing.
   it('every accent the picker offers has a rule in both modes', () => {
-    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const css = assembledCss();
     const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
-    const packs = readFileSync(join(SRC, 'mods/catalogue.ts'), 'utf8');
+    const packs = readFileSync(join(SRC, 'mods/packs/theme/index.ts'), 'utf8');
 
     const list = (name: string) =>
       (new RegExp(`${name}[^=]*=\\s*\\[([^\\]]*)\\]`).exec(registry)?.[1] ?? '')
@@ -1715,21 +1715,21 @@ describe('UI chrome', () => {
     // read from the one list that owns them.
     expect(registry, 'THEME_ACCENTS was re-pinned to a literal — read the catalogue instead')
       .toMatch(/THEME_ACCENTS[^=]*=\s*THEME_PACKS\.map/);
-    // From the THEME_PACKS array ONLY. themePacks.ts also declares
-    // MODS, whose entries have ids too — and a mod is a
+    // From the THEME_PACKS array ONLY. This used to read catalogue.ts,
+    // which also declares MODS — entries with ids too, and a mod is a
     // combination of axes, not an accent: it wears a pack's colour and
     // has no CSS block of its own. Scanning the whole file for `id:`
     // demanded a block for every mod and failed the moment the first two
-    // were added.
+    // were added. The packs have their own file now, so the collision is
+    // structural rather than a narrower regex: assert that the file this
+    // reads still holds NO mod list, because the day one moves in, the
+    // scan below widens again without a line of it changing.
+    expect(packs, 'mods/packs/theme/index.ts declares MODS — accents and mods share a file again')
+      .not.toMatch(/\bMODS\s*[:=]/);
     const packArray = /THEME_PACKS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
     expect(packArray, 'could not find the THEME_PACKS array').not.toBe('');
     const accents = [...packArray.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
-    expect(accents.length, 'no packs found in mods/catalogue.ts').toBeGreaterThan(0);
-    // And the mods must NOT be in it — if this ever collects one, the
-    // scan above has widened again.
-    const modArray = /MODS[^=]*=\s*\[([\s\S]*?)\n\] as const;/.exec(packs)?.[1] ?? '';
-    for (const m of [...modArray.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((x) => x[1]))
-      expect(accents, `mod "${m}" was collected as an accent`).not.toContain(m);
+    expect(accents.length, 'no packs found in mods/packs/theme/index.ts').toBeGreaterThan(0);
 
     const modes = list('THEME_MODES');
     expect(modes).toEqual(['dark', 'light']);
@@ -1917,7 +1917,9 @@ describe('UI chrome', () => {
   // The required set is READ from index.css rather than listed here —
   // a hand-written list is what would go stale on the fourth token.
   it('the public brand tint sets every accent-derived token', () => {
-    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    // Assembled: the accent blocks live in `mods/packs/theme/*.css` now,
+    // and the base ramp that derives from --primary stays in index.css.
+    const css = assembledCss();
 
     // What an accent block re-points…
     const fromAccents = new Set<string>();

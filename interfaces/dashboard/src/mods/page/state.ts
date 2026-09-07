@@ -10,7 +10,9 @@
  * components, and are tested without rendering anything.
  */
 import { MOD_DEFAULT, DEFS, type ModSetting, type SizeSetting } from '../../preferences';
-import { motionPercent, THEME_PACKS, FONT_PACKS } from '../catalogue';
+import { motionPercent } from '../catalogue';
+import { THEME_PACKS } from '../packs/theme';
+import { FONT_PACKS } from '../packs/font';
 import { SOUND_PACKS } from '../packs/sound';
 import { KEY_PACKS } from '../packs/keys';
 import type { TaxonomyCategory, TaxonomyItem } from '../taxonomy';

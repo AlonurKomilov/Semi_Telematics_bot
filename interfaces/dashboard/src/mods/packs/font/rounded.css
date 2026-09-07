@@ -1,0 +1,7 @@
+/* Rounded — an OS face, zero bytes. `ui-*` first so the platform's own
+   optical-quality face is used where it exists. Geist has no file: it IS
+   the base `--font-sans`. */
+  :root[data-font="rounded"] {
+    --font-sans: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN',
+                 'Varela Round', system-ui, sans-serif;
+  }

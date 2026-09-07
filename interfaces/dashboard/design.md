@@ -203,7 +203,9 @@ the migration branch, one release after the split ships.
 ### A mod is a look; the axes are still the state ⭐
 
 A **pack** is a colour: an id, a label and a seed per mode, in
-[`src/mods/catalogue.ts`](src/mods/catalogue.ts). A **mod** is a named
+[`src/mods/packs/theme/index.ts`](src/mods/packs/theme/index.ts), with
+its derived tokens beside it as one `.css` file per pack (blue has none
+— it is the base). A **mod** is a named
 combination of axes we already have — a pack plus corners plus scale —
 and it costs nothing to add: no seed, no CSS block, no swatch, no ramp
 rotation.
@@ -258,7 +260,10 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
 `mods/sound`.
 
     mods/index.ts      the one import surface
-    mods/catalogue.ts  MODS, the axes, THEME_PACKS
+    mods/catalogue.ts  MODS, the axes, and the pack CONTRACTS (ThemePack, FontPack)
+    mods/packs/        the resources — one file per pack, an index per axis:
+                       sound · keys (cue tables) · wallpaper · cursor · shader ·
+                       theme · font (CSS). The engine never lists what exists.
     mods/context.tsx   useMods, applyTheme
     mods/ModPanel.tsx  ModPanel (top-bar popover) + ModControls
     mods/taxonomy.ts   THE declaration: categories → items → axes
