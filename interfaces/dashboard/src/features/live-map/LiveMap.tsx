@@ -10,6 +10,7 @@ import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import MapTypeControl from '@/features/live-map/MapTypeControl';
 import { POI_LAYERS } from '../../config/poiLayers';
 import { MAP_STATUS, MARKER_HALO, MARKER_SHADOW } from '../../config/mapColors';
+import { faceOf, iconSignature, statusColour, type VehicleStatus } from './markerFace';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
 import SourceMarks from '../vehicles/SourceMarks';
@@ -99,11 +100,15 @@ function distMetres(lat1: number, lng1: number, lat2: number, lng2: number): num
 
 // ── Status helpers (outside component — stable references, usable in effects) ─
 
-type VehicleStatus = 'moving' | 'idle' | 'stopped';
 type VehicleId = string | number;
 
 function vehicleStatus(f: MapVehicleFeature): VehicleStatus {
-  const p = f.properties;
+  return statusOf(f.properties);
+}
+
+/** The same question asked of the properties alone — what the fast poll
+ *  holds, having no feature to hand. */
+function statusOf(p: MapVehicleProperties): VehicleStatus {
   // Trust the authoritative status computed server-side from CAN-bus
   // engineStates (On/Idle/Off) merged with speed.  Only fall back to a
   // local heuristic when the field is missing (very old payloads or
@@ -116,12 +121,6 @@ function vehicleStatus(f: MapVehicleFeature): VehicleStatus {
   if ((p.speed_mph || 0) > 0) return 'moving';
   if (p.engine_state === 'On' || p.engine_state === 'Idle') return 'idle';
   return 'stopped';
-}
-
-function statusColor(status: VehicleStatus): string {
-  if (status === 'moving') return MAP_STATUS.ok;
-  if (status === 'idle')   return MAP_STATUS.warn;
-  return MAP_STATUS.danger;
 }
 
 /** Haversine distance between two points — returns miles. */
@@ -247,8 +246,22 @@ export default function LiveMap() {
   const selectedIdRef = useRef<VehicleId | null>(null);
   // Latest positions from the fast live poll (id → position data)
   const livePosRef = useRef<Record<string, LiveVehiclePosition>>({});
-  // requestAnimationFrame IDs for per-vehicle smooth position interpolation
-  const animFramesRef = useRef<Map<string, number>>(new Map());
+  // ONE animation frame for the whole fleet.  This used to be one per
+  // moving vehicle: thirty moving trucks scheduled thirty callbacks a
+  // frame, and each of them asked the DOM to find its own arrow again.
+  const pumpRef = useRef<number | null>(null);
+  // The picture each marker is currently wearing, so an unchanged one is
+  // left alone instead of being destroyed and rebuilt.
+  const iconKeysRef = useRef<Map<VehicleId, string>>(new Map());
+  // Each marker's arrow, found once per element rather than once per
+  // frame.  ``setIcon`` replaces the element, so the element it was read
+  // from is part of the entry.
+  const arrowsRef = useRef<Map<VehicleId, { host: HTMLElement; poly: Element | null }>>(new Map());
+  // The freshest properties per vehicle, so a marker's click handler can
+  // be bound ONCE and still open the current record.  It used to be
+  // rebound on every refresh — a hundred listeners removed and added
+  // twice a minute to deliver the same thing.
+  const latestPropsRef = useRef<Map<VehicleId, MapVehicleProperties>>(new Map());
   // Continuous physics state per vehicle — position, velocity, heading
   const vehiclePhysRef = useRef<Map<string, VehiclePhysics>>(new Map());
   // Route line drawn from vehicle to a clicked POI
@@ -330,16 +343,24 @@ export default function LiveMap() {
     const timer     = setInterval(() => loadVehicles(Leaf), REFRESH_MS);
     const liveTimer = setInterval(() => livePositionPoll(Leaf), LIVE_REFRESH_MS);
 
+    // The cleanup empties the SAME maps this effect filled, so hold them
+    // in locals — a ref may point somewhere else by the time it runs,
+    // which is what React warns about.
+    const iconKeys = iconKeysRef.current, arrows = arrowsRef.current;
+    const latestProps = latestPropsRef.current, physics = vehiclePhysRef.current;
+    const markers = markersRef.current;
     return () => {
       clearInterval(timer);
       clearInterval(liveTimer);
-      // Cancel all in-flight position animations
-      animFramesRef.current.forEach((id) => cancelAnimationFrame(id));
-      animFramesRef.current.clear();
-      vehiclePhysRef.current.clear();
+      // The one animation frame the whole fleet shares.
+      if (pumpRef.current !== null) { cancelAnimationFrame(pumpRef.current); pumpRef.current = null; }
+      iconKeys.clear();
+      arrows.clear();
+      latestProps.clear();
+      physics.clear();
       clusterRef.current?.remove();
       clusterRef.current = null;
-      markersRef.current.clear();
+      markers.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
@@ -387,42 +408,56 @@ export default function LiveMap() {
         seenIds.add(id);
 
         const [lng, lat] = f.geometry.coordinates;
-        const color   = statusColor(vehicleStatus(f));
         const warn    = hasLowLevelWarning(f.properties);
-        const speed   = f.properties.speed_mph ?? 0;
         // Prefer the current physics heading (continuously updated) over the
         // stale heading from the 30 s poll, so the icon doesn't jump on refresh.
         const phys    = vehiclePhysRef.current.get(String(id));
-        const heading = phys?.headingDeg ?? f.properties.heading;
-        const icon    = makeIcon(Leaf, color, warn, speed, heading);
+        const heading = phys?.headingDeg ?? f.properties.heading ?? null;
 
         // Keep engine_state fresh so the live poll can color idle vs stopped.
         const engineState = f.properties.engine_state ?? 'Off';
         if (phys) phys.engineState = engineState;
 
+        // The colour and the shape come from whichever feed is fresher.
+        // This list is thirty seconds old; where it disagrees with the
+        // five-second poll it used to win anyway, redrawing a moving
+        // truck as parked twice a minute for as long as it drove.
+        const { colour, moving } = faceOf(vehicleStatus(f), phys);
+        // The click handler reads the CURRENT record rather than the one
+        // this refresh closed over, so it is bound once and never again.
+        latestPropsRef.current.set(id, f.properties);
+
         if (markersRef.current.has(id)) {
-          // Update existing marker in-place — no DOM remove/re-add
           const m = markersRef.current.get(id)!;
           // Skip position snap while the physics loop is running —
           // calling setLatLng every 30 s would teleport the vehicle visibly.
           if (!phys?.isMoving) m.setLatLng([lat, lng]);
-          m.setIcon(icon);
-          m.off('click').on('click', () => setSelected(f.properties));
+          applyIcon(Leaf, id, m, colour, warn, moving, heading);
         } else {
           // New vehicle — create marker but don't add to map yet;
           // the filter sync effect will add it if it matches the current filter.
-          const m = Leaf.marker([lat, lng], { icon })
-            .on('click', () => setSelected(f.properties));
+          const m = Leaf.marker([lat, lng], { icon: makeIcon(Leaf, colour, warn, moving ? 1 : 0, heading) })
+            .on('click', () => {
+              const cur = latestPropsRef.current.get(id);
+              if (cur) setSelected(cur);
+            });
           markersRef.current.set(id, m);
+          iconKeysRef.current.set(id, iconSignature(colour, warn, moving));
         }
       });
 
       // Remove markers for vehicles that disappeared from the fleet
       markersRef.current.forEach((m, id) => {
-        if (!seenIds.has(id)) {
-          m.remove();
-          markersRef.current.delete(id);
-        }
+        if (seenIds.has(id)) return;
+        m.remove();
+        markersRef.current.delete(id);
+        // Everything else keyed by this vehicle goes with it — including
+        // its motion, which would otherwise keep the pump awake for a
+        // truck that has no marker to move.
+        iconKeysRef.current.delete(id);
+        arrowsRef.current.delete(id);
+        latestPropsRef.current.delete(id);
+        vehiclePhysRef.current.delete(String(id));
       });
 
       // Updating vehicles state triggers the filter sync effect above,
@@ -443,20 +478,54 @@ export default function LiveMap() {
   // marker traces the road faithfully on curves: there is no straight-line
   // extrapolation that could overshoot the outside of a turn.
 
-  function startPhysicsLoop(vid: string, _Leaf: typeof L) {
-    const prevRaf = animFramesRef.current.get(vid);
-    if (prevRaf !== undefined) cancelAnimationFrame(prevRaf);
+  /** Turn a truck's arrow without asking the DOM to find it again.
+   *  A clustered marker has no element; that is not an error, it is a
+   *  truck currently drawn as part of a cluster. */
+  function aimArrow(vid: VehicleId, m: L.Marker, deg: number) {
+    const host = m.getElement();
+    if (!host) return;
+    let cached = arrowsRef.current.get(vid);
+    if (!cached || cached.host !== host) {
+      cached = { host, poly: host.querySelector('polygon') };
+      arrowsRef.current.set(vid, cached);
+    }
+    cached.poly?.setAttribute('transform', `rotate(${deg},9,9)`);
+  }
 
-    // 6% of remaining heading difference per frame ≈ 1 s to turn 30° at 60 fps
-    const HEADING_BLEND = 0.06;
+  /** Give a marker a picture only when the picture actually changes.
+   *  Leaflet's setIcon destroys the element and builds a new one, so
+   *  calling it on every refresh rebuilt the whole fleet twice a minute
+   *  — see iconSignature. */
+  function applyIcon(
+    Leaf: typeof L, vid: VehicleId, m: L.Marker,
+    colour: string, warn: boolean, moving: boolean, heading: number | null,
+  ) {
+    const key = iconSignature(colour, warn, moving);
+    if (iconKeysRef.current.get(vid) === key) return;
+    iconKeysRef.current.set(vid, key);
+    m.setIcon(makeIcon(Leaf, colour, warn, moving ? 1 : 0, heading));
+    arrowsRef.current.delete(vid);              // the element is a new one
+    if (moving && heading != null) aimArrow(vid, m, heading);
+  }
 
-    function frame(ts: number) {
-      const p = vehiclePhysRef.current.get(vid);
+  // ── The physics pump ───────────────────────────────────────────────────────
+  //
+  // One loop for every moving truck, not one per truck.  Each frame walks
+  // whatever is moving, tweens it along the segment between its last two GPS
+  // fixes, and turns its arrow toward the latest bearing.  It stops the moment
+  // nothing is moving, so a parked fleet costs nothing at all.
+
+  /** 6% of remaining heading difference per frame ≈ 1 s to turn 30° at 60 fps */
+  const HEADING_BLEND = 0.06;
+
+  function pump(ts: number) {
+    pumpRef.current = null;
+    let moving = false;
+    for (const [vid, p] of vehiclePhysRef.current) {
+      if (!p.isMoving) continue;
       const m = markersRef.current.get(vid);
-      if (!p || !m || !p.isMoving) {
-        animFramesRef.current.delete(vid);
-        return;
-      }
+      if (!m) continue;
+      moving = true;
 
       // Linear interpolation along the segment between consecutive GPS fixes.
       // Clamping to [0,1] holds the marker at the latest fix when a new one
@@ -470,18 +539,32 @@ export default function LiveMap() {
       const diff = shortestAngleDiff(p.headingDeg, p.targetHeading);
       if (Math.abs(diff) > 0.2) {
         p.headingDeg += diff * HEADING_BLEND;
-        // Update the SVG polygon transform directly — avoids a full icon rebuild
-        const el = m.getElement();
-        if (el) {
-          const poly = el.querySelector('polygon');
-          if (poly) poly.setAttribute('transform', `rotate(${p.headingDeg},9,9)`);
-        }
+        aimArrow(vid, m, p.headingDeg);
       }
-
-      animFramesRef.current.set(vid, requestAnimationFrame(frame));
     }
+    if (moving) pumpRef.current = requestAnimationFrame(pump);
+  }
 
-    animFramesRef.current.set(vid, requestAnimationFrame(frame));
+  function ensurePump() {
+    if (pumpRef.current === null) pumpRef.current = requestAnimationFrame(pump);
+  }
+
+  /** What the thirty-second list last said about a truck.  The fast poll
+   *  carries motion and nothing else — no levels, no engine word — so
+   *  this is where those come from. */
+  function listedProps(vid: VehicleId): MapVehicleProperties | undefined {
+    return latestPropsRef.current.get(vid);
+  }
+
+  /** Draw a truck as both feeds together describe it.  One place, so the
+   *  fast poll and the list can never put two different faces on one
+   *  vehicle — and so the low-fuel ring survives a motion change instead
+   *  of vanishing until the next full refresh. */
+  function applyFace(Leaf: typeof L, vid: VehicleId, m: L.Marker, heading: number | null) {
+    const props = listedProps(vid);
+    const { colour, moving } = faceOf(
+      props ? statusOf(props) : 'stopped', vehiclePhysRef.current.get(String(vid)));
+    applyIcon(Leaf, vid, m, colour, props ? hasLowLevelWarning(props) : false, moving, heading);
   }
 
   // ── Live position fast poll — feeds the physics state every 5 s ──────────
@@ -512,11 +595,15 @@ export default function LiveMap() {
             lastFixMs: nowMs,
             headingDeg, targetHeading: headingDeg,
             isMoving: nowMoving,
-            engineState: 'Off',      // will be overwritten by the next 30 s full poll
+            // Seeded from the list rather than assumed off: a truck
+            // idling showed red for up to thirty seconds before the
+            // full poll corrected it to amber.
+            engineState: listedProps(vid)?.engine_state ?? 'Off',
           });
-          const color = nowMoving ? MAP_STATUS.ok : MAP_STATUS.danger;
-          m.setIcon(makeIcon(Leaf, color, false, pos.speed_mph, headingDeg));
-          if (nowMoving) startPhysicsLoop(vid, Leaf);
+          applyFace(Leaf, vid, m, headingDeg);
+          // Only what is moving needs a frame; the pump's own promise is
+          // that a parked fleet costs nothing.
+          if (nowMoving) ensurePump();
           return;
         }
 
@@ -551,11 +638,10 @@ export default function LiveMap() {
           existing.duration = Math.min(8000, Math.max(1500, nowMs - existing.lastFixMs));
           existing.lastFixMs = nowMs;
 
-          // Only rebuild icon when transitioning stopped→moving (avoids flicker)
-          if (!wasMoving) {
-            m.setIcon(makeIcon(Leaf, MAP_STATUS.ok, false, pos.speed_mph, existing.headingDeg));
-            startPhysicsLoop(vid, Leaf);
-          }
+          // The picture only changes on a transition, and applyIcon is
+          // what decides that — so this may be called every poll.
+          if (!wasMoving) applyFace(Leaf, vid, m, existing.headingDeg);
+          ensurePump();
         } else {
           // ── Vehicle stopped ─────────────────────────────────────────────
           existing.lat = pos.lat;
@@ -565,19 +651,12 @@ export default function LiveMap() {
           existing.toLat = pos.lat;
           existing.toLng = pos.lng;
           existing.lastFixMs = performance.now();
-          // Stop the rAF loop — the isMoving=false check in frame() will exit
-          // it but we also cancel explicitly to be safe
-          const prevRaf = animFramesRef.current.get(vid);
-          if (prevRaf !== undefined) cancelAnimationFrame(prevRaf);
-          animFramesRef.current.delete(vid);
+          // The pump stops itself once nothing is moving; there is no
+          // per-vehicle frame left to cancel.
           m.setLatLng([pos.lat, pos.lng]);
-          if (wasMoving) {
-            // engine_state kept fresh from 30 s poll:
-            //   'On' or 'Idle' → engine still running → yellow dot
-            //   'Off'          → truly stopped        → red dot
-            const isIdle = existing.engineState === 'On' || existing.engineState === 'Idle';
-            m.setIcon(makeIcon(Leaf, isIdle ? MAP_STATUS.warn : MAP_STATUS.danger, false, 0, null));
-          }
+          // engine_state, kept fresh from the 30 s poll, is what makes an
+          // idling truck amber and a switched-off one red — faceOf.
+          if (wasMoving) applyFace(Leaf, vid, m, null);
         }
       });
     } catch { /* ignore live poll errors silently */ }
@@ -1004,7 +1083,7 @@ export default function LiveMap() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`w-2.5 h-2.5 rounded-full shrink-0 ${warn ? 'ring-2 ring-danger' : ''}`}
-                      style={{ background: statusColor(status) }}
+                      style={{ background: statusColour(status) }}
                     />
                     <span className="font-medium truncate flex-1">{p.name}</span>
                     {p.fuel_percent != null && p.fuel_percent < 15 && (
