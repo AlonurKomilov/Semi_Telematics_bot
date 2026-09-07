@@ -401,6 +401,11 @@ export const ALL_MATRIX_FLAGS: PermFlag[] = PERM_GROUPS.flatMap((g) => g.flags);
 export const GROUP_MODULE: Record<string, string> = {
   Fleet: 'fleet', Dispatch: 'dispatch', Safety: 'safety', HR: 'hr', Accounting: 'accounting',
 };
+// Band → the department switch that closes it.  Every department band
+// plus Recruiting, whose features ride the HR module (the catalog says
+// so) without a switch of their own — the echo on its header must not
+// be the one band that lies by omission.
+export const BAND_MODULE: Record<string, string> = { ...GROUP_MODULE, Recruiting: 'hr' };
 export interface ModulesData { enabled: string[]; all: string[] }
 // Parents that have sub-rows — collapsed by default (only features show).
 // Recursive: a sub-feature with its own children is collapsible too.

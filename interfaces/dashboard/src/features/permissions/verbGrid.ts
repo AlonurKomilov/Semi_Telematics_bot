@@ -15,7 +15,6 @@
  *    ride the two family flags (capabilities/config/docs/ARCHITECTURE.md) — the
  *    cell edits the cross-feature row, visibly shared.
  */
-import { FEATURE_CATALOG } from '../../config/featureCatalog';
 import {
   DRIVER_RECORDS, DRIVER_SERVICES, DRIVER_TRUCK, GROUP_BLOCKS, isHeader, isScoped,
 } from './permRows';

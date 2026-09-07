@@ -8,12 +8,14 @@
  */
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, Eye, Link2, Lock } from '../../lib/icons';
+import { Check, ChevronDown, ChevronRight, Eye, Link2, Lock, Search } from '../../lib/icons';
 import { InfoTip, Tip } from '../../components/tooltip';
+import { Input } from '@/components/ui/input';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
 import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
-import type { TickRow, VerbFamily } from './verbGrid';
+import type { TickRow, VerbBand, VerbFamily } from './verbGrid';
+import { bandAnchor, bandRows, bandSummary, familyMatches, viewRows } from './matrixView';
 import { isScoped } from './permRows';
 import type { PermFlag } from './permRows';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +24,12 @@ const GRID = buildVerbGrid();
 const HEAD_COLS = 'grid grid-cols-[1fr_84px_84px_76px_84px]';
 type ConfigScope = 'can_manage_config_role' | 'can_manage_config_all';
 const DRIVER_BANDS = driverBands();
+// The channels sit in a card of their own above the table; every other
+// band is a feature band.  Split once, here, from the one grid.
+const SERVICES: VerbBand | undefined = GRID.bands.find((b) => b.band === 'Services');
+const FEATURE_BANDS: VerbBand[] = GRID.bands.filter((b) => b.band !== 'Services');
+const DRIVER_SERVICES = DRIVER_BANDS.find((b) => b.title === 'Services');
+const DRIVER_FEATURE_BANDS = DRIVER_BANDS.filter((b) => b.title !== 'Services');
 
 export interface RoleLensApi {
   roles: readonly string[];
@@ -41,6 +49,15 @@ export interface RoleLensApi {
   /** How many ACTIVE people hold each role.  Undefined while the payload
    *  is still loading — a tab shows no number rather than a wrong 0. */
   people?: Record<string, number>;
+  /** The account's department switch behind a band — undefined for a
+   *  band that is not a department (Services, Administration, Shared…).
+   *  `pending` = flipped in this session and not saved yet.  The top bar
+   *  is the switch; the band header is where it lands. */
+  moduleState?: (band: string) => { on: boolean; pending: boolean; department: string } | undefined;
+  /** The feature search.  Owned by the page, not the lens, so a click on a
+   *  department name can clear it before scrolling to a band the search
+   *  had hidden. */
+  search: { query: string; setQuery: (q: string) => void };
 }
 
 export function RoleLens({ api }: { api: RoleLensApi }) {
@@ -73,7 +90,29 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   }
   for (const cap of GRID.crossFeature) if (rowDelta(cap)) deltaNames.push(cap.label);
 
-  const chk = (f: TickRow, ariaSuffix: string, soft = false) => {
+  // The account's department switches, echoed where they land: a band
+  // whose department is off shows it on its header and its rows go
+  // quiet — the grants stay stored, they just cannot open anything.
+  const moduleOf = (band: string) => api.moduleState?.(band);
+
+  // Reading aids for a sixty-row page: bands fold, a search narrows.  A
+  // search opens every band it touches, so a fold never hides a hit.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const { query, setQuery } = api.search;
+  const q = query.trim();
+  const isOpen = (band: string): boolean => (q ? true : !collapsed[band]);
+  const toggleBand = (band: string) => setCollapsed((p) => ({ ...p, [band]: !p[band] }));
+  // Grant every View in a band, or revoke every row of it.  Revoke has to
+  // take Manage too: a Manage left behind re-opens View on the server
+  // (Manage implies View), so "revoke the views" alone would not stick.
+  const setBand = (fams: VerbFamily[], grant: boolean) => {
+    for (const r of grant ? viewRows(fams) : bandRows(fams)) {
+      if (api.locked(col.key, r)) continue;
+      if (api.granted(col.key, r) !== grant) api.onToggle(col.key, r);
+    }
+  };
+
+  const chk = (f: TickRow, ariaSuffix: string, soft = false, closed = false) => {
     const on = api.granted(col.key, f);
     const lock = api.locked(col.key, f);
     const changed = api.changed(col.key, f);
@@ -81,14 +120,14 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       <button
         type="button"
         onClick={() => api.onToggle(col.key, f)}
-        disabled={lock}
+        disabled={lock || closed}
         aria-pressed={on}
-        aria-label={`${f.label} — ${ariaSuffix}: ${on ? 'granted' : 'no access'}`}
+        aria-label={`${f.label} — ${ariaSuffix}: ${on ? 'granted' : 'no access'}${closed ? ' · closed, the department is off' : ''}`}
         // Hit box split from paint. A 24px TICK would widen every column
         // of the matrix, so the 20px box stays what is drawn and the
         // button around it carries the WCAG 2.5.8 target; -m-0.5 gives
         // the grid back the rhythm the paint had.
-        className="inline-flex items-center justify-center min-h-tap min-w-tap -m-0.5 disabled:cursor-not-allowed"
+        className={`inline-flex items-center justify-center min-h-tap min-w-tap -m-0.5 disabled:cursor-not-allowed ${closed ? 'opacity-40' : ''}`}
       >
         <span
           aria-hidden
@@ -116,25 +155,27 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       </button>
     );
   };
-  // "Nothing to grant here" is an en dash — the SAME mark the matrix
-  // lens uses on its owners-only rows.  A bespoke dashed square would be
-  // a second vocabulary for one meaning on one page.
-  const noflag = (
-    <span className="inline-flex text-muted-foreground/40 text-xs leading-5" aria-hidden>–</span>
+  // Nothing to grant here: the cell stays empty.  A mark in every such
+  // cell — the old en dash, in seven cells of ten — read as content; an
+  // empty cell reads as what it is, and the legend says so once.
+  const emptyCell = <div className="text-center" aria-hidden />;
+  // An Owner power a co-owner does not hold: an empty, dimmed box.  Not
+  // a flag, so no button; not "nothing here" either, so not blank.
+  const notHeld = (
+    <span className="inline-flex items-center justify-center w-5 h-5 rounded border border-border/60" aria-label="not held by co-owners" />
   );
-  const emptyCell = <div className="text-center">{noflag}</div>;
 
   // One verb cell.  The tint marks THIS cell as what the senior tier adds —
   // never the whole row: a row whose View is identical in both tiers must
   // not claim the tier "adds" it just because its Manage differs.
   const verbCell = (
-    f: TickRow | null, ariaSuffix: string, extra?: ReactNode, soft = false,
+    f: TickRow | null, ariaSuffix: string, extra?: ReactNode, soft = false, closed = false,
   ): ReactNode => {
     if (!f) return emptyCell;
     const delta = seniorView && rowDelta(f);
     return (
       <div className={`text-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`}>
-        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft)}{extra}</span>
+        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft, closed)}{extra}</span>
       </div>
     );
   };
@@ -146,7 +187,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // softer and carries the link glyph — the same "this control isn't
   // local" mark the shared config cells use — because either tick toggles
   // the one flag.
-  const linkedCell = (f: TickRow): ReactNode => verbCell(
+  const linkedCell = (f: TickRow, closed = false): ReactNode => verbCell(
     f, 'manage — the same flag as view',
     (
       <Tip label="One flag covers View and Manage for this feature — toggling either changes both.">
@@ -154,6 +195,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       </Tip>
     ),
     true,
+    closed,
   );
 
   // The config cell edits a flag SHARED with other features — a link
@@ -194,13 +236,13 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     return (
       <Tip label={`Also granted to: ${others.join(', ')}`}>
         <span className="ml-2 text-2xs text-muted-foreground/70 cursor-help">
-          {others.length} other{others.length > 1 ? 's' : ''}
+          +{others.length} {others.length === 1 ? 'role' : 'roles'}
         </span>
       </Tip>
     );
   };
 
-  const famRow = (fam: VerbFamily) => {
+  const famRow = (fam: VerbFamily, closed = false) => {
     // The chip names what the tier adds, so it belongs to the row whose
     // OWN flag differs — never to a parent whose child's flag differs.
     const ownDelta = seniorView && rowDelta(fam.parent);
@@ -219,9 +261,9 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             )}
           </div>
           {fam.merged ? (
-            <>{verbCell(fam.parent, 'view')}{linkedCell(fam.parent)}</>
+            <>{verbCell(fam.parent, 'view', undefined, false, closed)}{linkedCell(fam.parent, closed)}</>
           ) : (
-            <>{verbCell(fam.parent, 'view')}{verbCell(fam.manage ?? null, 'manage')}</>
+            <>{verbCell(fam.parent, 'view', undefined, false, closed)}{verbCell(fam.manage ?? null, 'manage', undefined, false, closed)}</>
           )}
           {configCells(fam)}
         </div>
@@ -238,11 +280,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 )}
               </div>
               {c.verb === 'merged' ? (
-                <>{verbCell(c.row, 'view')}{linkedCell(c.row)}</>
+                <>{verbCell(c.row, 'view', undefined, false, closed)}{linkedCell(c.row, closed)}</>
               ) : (
                 <>
-                  {verbCell(c.verb === 'view' ? c.row : null, 'view')}
-                  {verbCell(c.verb === 'manage' ? c.row : null, 'manage')}
+                  {verbCell(c.verb === 'view' ? c.row : null, 'view', undefined, false, closed)}
+                  {verbCell(c.verb === 'manage' ? c.row : null, 'manage', undefined, false, closed)}
                 </>
               )}
               {emptyCell}
@@ -354,15 +396,68 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         </div>
       )}
 
-      {/* Verb grid */}
+      {/* ── Services: the channels, a card of their own ──────────────
+          A channel is a different kind of thing from a feature: it is
+          granted here, but what flows THROUGH it follows the feature
+          grants below.  Same columns as the table so a tick lands where
+          the eye already expects it. */}
+      <div className="mx-4 mt-3 rounded-lg border border-border overflow-hidden">
+        <div className={`${HEAD_COLS} gap-x-2 px-4 pt-2 pb-1.5 bg-muted/40 items-end`}>
+          <div className="min-w-0">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
+              Services
+              <InfoTip size={12} label="The channels — the inbox, the assistant, the report hub. Granted per role like a feature; what flows through each one follows the feature grants below (untick Maintenance and its alerts, its report tab and its AI tools leave — the channel stays). The inbox's width — every unit or assigned trucks — is Team Management's." />
+            </span>
+            <div className="text-2xs text-muted-foreground/70">The channels. What flows through each one follows the feature grants below.</div>
+          </div>
+          <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
+          <span /><span />
+          <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
+        </div>
+        <div className="px-4 pb-1">
+          {isDriver
+            ? DRIVER_SERVICES?.rows.map((r) => (
+              <div key={rowId(r)} className={rowCls()}>
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{r.label}</span>
+                  {r.description && (
+                    <div className="text-2xs text-muted-foreground/70">{r.description}</div>
+                  )}
+                </div>
+                {verbCell(r, 'view')}
+                {emptyCell}
+                {emptyCell}
+                {emptyCell}
+              </div>
+            ))
+            : SERVICES?.families.map((fam) => famRow(fam))}
+        </div>
+      </div>
+
+      {/* ── Features ────────────────────────────────────────────── */}
       <div className="px-4 pb-4">
+        <div className="flex items-center justify-between gap-3 pt-4 pb-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Features</span>
+          {!isDriver && (
+            <div className="relative w-64">
+              <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" aria-hidden />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Find a feature…"
+                aria-label="Find a feature"
+                className="h-8 pl-7 text-xs"
+              />
+            </div>
+          )}
+        </div>
         {/* Two-level header for CONFIG alone: its two columns ARE the two
             config flags, so a tick's COLUMN says which scope it is and
             features sharing a flag line up under it — position carries
             what the link mark used to carry by itself.  The scope
             descriptions live on these headers because the column is the
             flag. */}
-        <div className="sticky top-0 bg-card z-10 border-b border-border pt-3 pb-1.5">
+        <div className="sticky top-0 bg-card z-30 border-b border-border pt-1 pb-1.5">
           <div className={`${HEAD_COLS} gap-x-2`}>
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Feature</span>
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
@@ -384,10 +479,10 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         {isDriver && (
           <p className="text-2xs text-muted-foreground pt-2.5 inline-flex items-center gap-1">
             Mini app only — every grant is View, always their own truck.
-            <InfoTip size={12} label="Drivers never manage anything and work in the Telegram mini app only. Changes reach every driver's app on next load. The Alerts inbox and the AI assistant come automatically with the Vehicle grant." />
+            <InfoTip size={12} label="Drivers never manage anything and work in the Telegram mini app only. Changes reach every driver's app on next load." />
           </p>
         )}
-        {isDriver && DRIVER_BANDS.map((b) => (
+        {isDriver && DRIVER_FEATURE_BANDS.map((b) => (
           <div key={b.title}>
             <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               {b.title} <span className="normal-case tracking-normal text-muted-foreground/70">— {b.note}</span>
@@ -408,19 +503,82 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             ))}
           </div>
         ))}
-        {!isDriver && GRID.bands.map((b) => (
-          <div key={b.band}>
-            <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-              {b.band}
+        {!isDriver && FEATURE_BANDS.map((b) => {
+          const fams = q ? b.families.filter((f) => familyMatches(f, q)) : b.families;
+          if (q && !fams.length) return null;
+          const mod = moduleOf(b.band);
+          const closed = mod?.on === false;
+          const open = isOpen(b.band);
+          // Everything on the header speaks of the rows on screen: under a
+          // search that is the filtered set, and the batch acts take the same.
+          const sum = bandSummary(fams, (r) => api.granted(col.key, r));
+          return (
+            // scroll-mt keeps a band scrolled to from the top bar clear of
+            // the sticky column header.
+            <div key={b.band} id={bandAnchor(b.band)} className="scroll-mt-16">
+              <div className="-mx-4 px-4 mt-1 bg-muted/40 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => toggleBand(b.band)}
+                  aria-expanded={open}
+                  aria-controls={`${bandAnchor(b.band)}-rows`}
+                  className="inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground min-h-tap"
+                >
+                  {open
+                    ? <ChevronDown className="size-3" aria-hidden />
+                    : <ChevronRight className="size-3" aria-hidden />}
+                  {b.band}
+                </button>
+                <span className="text-2xs text-muted-foreground/70 tabular-nums">
+                  {sum.granted} of {sum.total} granted
+                </span>
+                {mod && !mod.on && (
+                  <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
+                    <Lock className="size-3" aria-hidden /> {mod.department} department off — closed for every role
+                  </span>
+                )}
+                {mod?.pending && (
+                  <span className="text-2xs text-muted-foreground rounded px-1 bg-primary/10">
+                    switching {mod.on ? 'on' : 'off'} — unsaved
+                  </span>
+                )}
+                <span className="flex-1" />
+                {!closed && open && (
+                  <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => setBand(fams, true)}
+                      className="underline decoration-dotted hover:text-foreground min-h-tap"
+                    >
+                      grant all views
+                    </button>
+                    <span aria-hidden>·</span>
+                    <button
+                      type="button"
+                      onClick={() => setBand(fams, false)}
+                      className="underline decoration-dotted hover:text-foreground min-h-tap"
+                    >
+                      revoke all
+                    </button>
+                  </span>
+                )}
+              </div>
+              <div id={`${bandAnchor(b.band)}-rows`} hidden={!open}>
+                {open && fams.map((fam) => famRow(fam, closed))}
+              </div>
             </div>
-            {b.families.map(famRow)}
-          </div>
-        ))}
+          );
+        })}
+        {!isDriver && q && !FEATURE_BANDS.some((b) => b.families.some((f) => familyMatches(f, q))) && (
+          <p className="text-sm text-muted-foreground pt-3">
+            No feature matches “{q}”. Clear the search to see every feature.
+          </p>
+        )}
         {/* Owner powers: not flags — is_primary_owner gates.  They are the
             ONLY real difference between Primary and Co-owner, so an owner
             weighing how much to trust a co-owner has to see them. */}
-        {role === 'owner' && (
-          <>
+        {role === 'owner' && !q && (
+          <div id={bandAnchor('Owner powers')}>
             <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               Owner powers <span className="normal-case tracking-normal text-muted-foreground/70">— primary owner only · not editable</span>
             </div>
@@ -433,28 +591,28 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 <div className="text-center">
                   {seniorView
                     ? <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-foreground" aria-label="held"><CheckMark /></span>
-                    : noflag}
+                    : notHeld}
                 </div>
                 {emptyCell}
                 {emptyCell}
                 {emptyCell}
               </div>
             ))}
-          </>
+          </div>
         )}
-        {!isDriver && (
+        {!isDriver && !q && (
           <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
             Configuration
           </div>
         )}
         {/* The flags themselves — ONE row, because they are not features:
-            the label spans the verb columns (no "– –" on rows that were
-            never about View or Manage) and each tick sits under its own
-            scope, in the same column as every feature that rides it.
+            the label spans the verb columns (no empty cells on rows that
+            were never about View or Manage) and each tick sits under its
+            own scope, in the same column as every feature that rides it.
             They still need a row of their own: can_manage_config_role
             governs page layouts, and the only page with layouts today is
-            Alerts — an always-on service with no row to hang a cell on. */}
-        {!isDriver && (
+            Alerts — a service whose row carries no config of its own. */}
+        {!isDriver && !q && (
           <div className={rowCls()}>
             <div className="min-w-0 col-span-3">
               <span className="text-sm font-medium">Who may configure</span>
@@ -467,7 +625,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </div>
         )}
         <p className="text-2xs text-muted-foreground mt-3">
-          <span className="font-medium">–</span> means this feature has no flag of that verb —
+          An empty cell means the feature has no flag of that verb —
           nothing to grant, not a denial.
           Where one flag covers both verbs, the Manage tick is drawn softer with a link
           mark (<Link2 className="inline align-[-2px] size-3" aria-hidden />) — either tick toggles both.

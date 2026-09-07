@@ -10,6 +10,7 @@ import { InfoTip } from '../../components/tooltip';
 import { toneClasses } from '../../lib/status';
 import { RoleLens } from './RoleLens';
 import type { RoleLensApi } from './RoleLens';
+import { bandAnchor } from './matrixView';
 
 // Column order mirrors the persona-selector dropdown.  The Driver role is
 // deliberately ABSENT: a driver never manages anything and lives only in the
@@ -28,7 +29,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 import {
-  ALL_MATRIX_FLAGS, DEFAULT_SCOPED_FLAGS, DRIVER_PANEL_FLAGS,
+  ALL_MATRIX_FLAGS, BAND_MODULE, DEFAULT_SCOPED_FLAGS, DRIVER_PANEL_FLAGS,
   GROUP_MODULE, OWNER_PROTECTED, PARENT_KEY, PARENT_LABEL, blockKey,
   contextLabel, isHeader, isScoped,
 } from './permRows';
@@ -70,6 +71,8 @@ export default function Permissions() {
   const qc = useQueryClient();
 
   const [edits, setEdits] = useState<Edits>({});
+  // The lens's feature search — held here so a department jump can clear it.
+  const [query, setQuery] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -90,8 +93,13 @@ export default function Permissions() {
     enabled: canManageModules,
   });
   const [moduleEdits, setModuleEdits] = useState<Record<string, boolean>>({});
+  // The switch's state, pending edit first.  A permissions holder who
+  // cannot manage the account never loads the modules payload, so the
+  // echo on the band headers falls back to what /me already says.
   const moduleOn = (id: string): boolean =>
-    moduleEdits[id] ?? !!modData?.enabled.includes(id);
+    moduleEdits[id] ?? (modData
+      ? modData.enabled.includes(id)
+      : (authUser?.enabled_modules ? authUser.enabled_modules.includes(id) : true));
   const moduleChanges = useMemo(
     () => !modData ? [] : Object.entries(GROUP_MODULE)
       .filter(([, id]) => moduleOn(id) !== modData.enabled.includes(id))
@@ -298,6 +306,16 @@ export default function Permissions() {
       ? Object.fromEntries([...ROLES, DRIVER_KEY].map(
           (r) => [r, data.people?.[r] ?? 0]))
       : undefined,
+    // The department switch behind a band, echoed on the band header and
+    // closing its rows while off — the top bar is the switch, the band
+    // is where it lands.
+    moduleState: (band) => {
+      const id = BAND_MODULE[band];
+      if (!id) return undefined;
+      const department = Object.keys(GROUP_MODULE).find((t) => GROUP_MODULE[t] === id) ?? band;
+      return { on: moduleOn(id), pending: moduleChanges.some((m) => m.id === id), department };
+    },
+    search: { query, setQuery },
   };
 
   return (
@@ -305,7 +323,7 @@ export default function Permissions() {
       <PageHeader
         icon={Shield}
         title={t('pages.role_perms_title')}
-        description="What each role can DO. Tick a cell, review the summary, then Save — changes apply immediately. (Department on/off switches sit on the section headers; whose data each person sees — All / Company / Vehicle — is per-user in Team Management.)"
+        description="What each role can DO. Tick a cell, review the summary, then Save — changes apply immediately. (The department switches above are account-wide; whose data each person sees — All / Company / Vehicle — is per-user in Team Management.)"
       />
 
       {error && <div className="mb-3"><p className={`text-sm rounded-md px-3 py-2 ${toneClasses('danger')}`}>{error}</p></div>}
@@ -326,8 +344,8 @@ export default function Permissions() {
             <div className="mb-3 rounded-lg border border-border bg-card px-4 py-2.5">
               <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
-                  Departments
-                  <InfoTip size={12} label="A department that is off hides its features from every sidebar, for every role — the permissions below stay as they are." />
+                  Account departments
+                  <InfoTip size={12} label="On or off for the whole account. Off closes the department's features for every role — nav, API, bot and AI tools; the ticks below stay as they are and come back when it is on again. The department's section below says so while it is off. Click a name to go to its section." />
                 </span>
                 {Object.entries(GROUP_MODULE).map(([title, id]) => {
                   const on = moduleOn(id);
@@ -350,10 +368,23 @@ export default function Permissions() {
                           <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-background shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
                         </span>
                       </button>
-                      <span className={`text-xs ${on ? 'text-foreground' : 'text-muted-foreground'}`}>{title}</span>
+                      <button
+                        type="button"
+                        // A search may have hidden the band: clear it, let React
+                        // put the band back, then go there.
+                        onClick={() => {
+                          setQuery('');
+                          setTimeout(() => document.getElementById(bandAnchor(title))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+                        }}
+                        aria-label={`Go to the ${title} section`}
+                        className={`text-xs hover:underline decoration-dotted min-h-tap ${on ? 'text-foreground' : 'text-muted-foreground'}`}
+                      >
+                        {title}
+                      </button>
                     </span>
                   );
                 })}
+                <span className="text-2xs text-muted-foreground/70">off closes the section for every role</span>
               </div>
             </div>
           )}
