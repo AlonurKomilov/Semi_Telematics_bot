@@ -235,7 +235,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     if (!others.length) return null;
     return (
       <Tip label={`Also granted to: ${others.join(', ')}`}>
-        <span className="ml-2 text-2xs text-muted-foreground/70 cursor-help">
+        <span className="ml-2 text-2xs font-normal text-muted-foreground/50 cursor-help">
           +{others.length} {others.length === 1 ? 'role' : 'roles'}
         </span>
       </Tip>
@@ -267,16 +267,25 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           )}
           {configCells(fam)}
         </div>
-        {fam.children.map((c) => {
-          const cDelta = seniorView && rowDelta(c.row);
-          return (
-            <div key={rowId(c.row)} className={rowCls()}>
-              <div className="min-w-0 pl-4 border-l-2 border-border ml-0.5">
-                <span className="text-sm text-muted-foreground">
+        {fam.children.length > 0 && (
+          // The sub-features are a region INSIDE the feature: a tinted
+          // block with one tree bar down its side, rows denser and one
+          // line each, the divider lighter and inside the block — so the
+          // eye reads "belongs to Vehicles" before it reads a word.
+          // The block keeps the full grid width, so every tick stays in
+          // its column; only the name cell indents.
+          <div className="relative bg-muted/20">
+            <span aria-hidden className="absolute left-1 top-1 bottom-1 w-0.5 rounded-full bg-border" />
+            {fam.children.map((c) => {
+              const cDelta = seniorView && rowDelta(c.row);
+              return (
+            <div key={rowId(c.row)} className={childRowCls()}>
+              <div className="min-w-0 pl-5">
+                <span className="text-xs font-medium text-foreground/80">
                   {c.row.label}{cDelta && <DeltaChip />}{alsoChip(c.row)}
                 </span>
                 {c.row.description && (
-                  <div className="text-2xs text-muted-foreground/60">{c.row.description}</div>
+                  <span className="text-2xs text-muted-foreground/60"> — {c.row.description}</span>
                 )}
               </div>
               {c.verb === 'merged' ? (
@@ -290,8 +299,10 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               {emptyCell}
               {emptyCell}
             </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
@@ -484,7 +495,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         )}
         {isDriver && DRIVER_FEATURE_BANDS.map((b) => (
           <div key={b.title}>
-            <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
               {b.title} <span className="normal-case tracking-normal text-muted-foreground/70">— {b.note}</span>
             </div>
             {b.rows.map((r) => (
@@ -516,13 +527,13 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             // scroll-mt keeps a band scrolled to from the top bar clear of
             // the sticky column header.
             <div key={b.band} id={bandAnchor(b.band)} className="scroll-mt-16">
-              <div className="-mx-4 px-4 mt-1 bg-muted/40 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+              <div className={`${BAND_STRIP} flex items-center gap-x-3 gap-y-0.5 flex-wrap`}>
                 <button
                   type="button"
                   onClick={() => toggleBand(b.band)}
                   aria-expanded={open}
                   aria-controls={`${bandAnchor(b.band)}-rows`}
-                  className="inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground min-h-tap"
+                  className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-foreground hover:text-primary min-h-tap"
                 >
                   {open
                     ? <ChevronDown className="size-3" aria-hidden />
@@ -579,7 +590,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             weighing how much to trust a co-owner has to see them. */}
         {role === 'owner' && !q && (
           <div id={bandAnchor('Owner powers')}>
-            <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
               Owner powers <span className="normal-case tracking-normal text-muted-foreground/70">— primary owner only · not editable</span>
             </div>
             {api.ownerPowers.map((op) => (
@@ -601,7 +612,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </div>
         )}
         {!isDriver && !q && (
-          <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className={`${BAND_STRIP} text-xs font-semibold uppercase tracking-wide text-foreground`}>
             Configuration
           </div>
         )}
@@ -643,6 +654,13 @@ const capRow = (key: 'can_manage_config_all' | 'can_manage_config_role'): TickRo
   GRID.crossFeature.find((c) => rowId(c) === key)!;
 const rowCls = (): string =>
   'grid grid-cols-[1fr_84px_84px_76px_84px] gap-x-2 items-center py-1.5 border-t border-border';
+// A sub-feature row: denser than its parent, divided by a lighter line
+// that lives inside the nested block, never a full-width one.
+const childRowCls = (): string =>
+  'grid grid-cols-[1fr_84px_84px_76px_84px] gap-x-2 items-center py-1 border-t border-border/40';
+// A band's title strip: air above it, a fill, a heavier label — the
+// section title of the page, not a caption between rows.
+const BAND_STRIP = '-mx-4 px-4 mt-4 py-1.5 bg-muted/40';
 
 function DeltaChip() {
   return (
