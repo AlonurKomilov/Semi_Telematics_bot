@@ -22,8 +22,9 @@ from interfaces.api.deps import (
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
 )
-from infra.services import get_client
-from features.location.service import classify_vehicle_status, get_vehicles_for_map
+from features.location.service import (
+    classify_vehicle_status, get_vehicles_for_map, live_snapshot,
+)
 
 router = APIRouter(prefix="/map", tags=["map"])
 
@@ -193,22 +194,35 @@ async def map_vehicles_live(
 ):
     """Lightweight position-only update for smooth live tracking.
 
-    Uses _run_per_company to call get_locations() on each underlying
-    SamsaraClient in parallel, suitable for 5-second polling.
-    Returns id -> {lat, lng, speed_mph, heading, updated_at}.
+    Reads the account's shared snapshot (``live_snapshot``: one provider
+    fan-out per TTL for the whole account, however many tabs poll) and
+    narrows it per request.  Returns id -> {lat, lng, speed_mph,
+    heading, updated_at}.
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    client = await get_client(user["account_id"])
+    snapshot = await live_snapshot(user["account_id"])
 
-    async def _get_locs(c):
-        return await c.get_locations()
-
-    per_co = await client._run_per_company(_get_locs, company=company)
+    # The snapshot is the whole account.  Narrow it to the company asked
+    # for and — as the list endpoint next door has always done — to the
+    # companies this member is assigned to.  This endpoint used to apply
+    # only the first, so a member restricted to one company who polled
+    # without naming it was handed every company's positions.  With the
+    # snapshot keyed by company the rule is one membership test.  A
+    # company the snapshot does not hold answers empty rather than
+    # erroring: the snapshot is the account's truth for this cycle, and
+    # a code the provider did not answer for this cycle has no
+    # positions — the same answer its rows would give.
+    wanted = company.upper() if company else None
+    allowed_upper = {c.upper() for c in allowed} if allowed else None
     location_raw: list = []
-    for locs in per_co.values():
-        if isinstance(locs, list):
-            location_raw.extend(locs)
+    for code, rows in snapshot.items():
+        code_upper = (code or "").upper()
+        if wanted is not None and code_upper != wanted:
+            continue
+        if allowed_upper is not None and code_upper not in allowed_upper:
+            continue
+        location_raw.extend(rows)
 
     positions: dict = {}
     for v in location_raw:
