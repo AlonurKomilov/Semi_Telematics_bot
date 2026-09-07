@@ -36,6 +36,7 @@
 import { ICON_PACKS, type IconPack } from '../lib/icons';
 import { WALLPAPER_IDS } from '../mods/wallpaper';
 import { CURSOR_IDS } from '../mods/cursor';
+import { SHADER_IDS } from '../mods/shader';
 import {
   THEME_PACKS, MOD_MATERIALS, MOD_MOTIONS, MOD_ICONS, MODS,
 } from '../mods/catalogue';
@@ -208,6 +209,15 @@ export interface ModSetting {
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
   /**
+   * The light the interface sits in — a `SHADER_PACKS` id.
+   *
+   * A lighting model, the way a Minecraft shader pack is one: it moves
+   * the sun and leaves every object's own colour alone. No token that
+   * carries meaning is touched, so unlike the canvas it needs no
+   * readability gate — see `mods/shader.ts`.
+   */
+  shader: string;
+  /**
    * The pointer set — a `CURSOR_PACKS` id.
    *
    * The one axis that REPLACES something rather than adding to it: a
@@ -351,7 +361,7 @@ export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
-  wallpaper: 'none', cursor: 'system',
+  wallpaper: 'none', cursor: 'system', shader: 'flat',
   color: 'dark-blue',
 };
 
@@ -405,6 +415,9 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * that changes shape after hydration is a flicker they are looking
  * directly at.
  *
+ * `shader` likewise: it drives the whole shadow scale, so a preset
+ * arriving late is every card on the page changing depth at once.
+ *
  * `themeBoot.test.ts` reads this list, and also asserts that every key
  * of MOD_DEFAULT appears either here or in its own exclusion list — so
  * a new axis forces the decision instead of quietly skipping the guard.
@@ -418,7 +431,7 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  */
 export const PREPAINT_AXES = [
   'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'cursor',
-  'color',
+  'shader', 'color',
 ] as const;
 
 export const SIZE_REGIONS: SizeRegion[] = [
@@ -579,6 +592,10 @@ export const DEFS = {
       // leave the app with whatever the last rule happened to set.
       const cursor = CURSOR_IDS.includes(o.cursor as string)
         ? o.cursor as string : MOD_DEFAULT.cursor;
+      // A preset that was removed falls back to the light this app was
+      // drawn in, which is also what an unstamped document renders.
+      const shader = SHADER_IDS.includes(o.shader as string)
+        ? o.shader as string : MOD_DEFAULT.shader;
       // A stored id for a mod that no longer exists is dropped rather
       // than kept: the catalogue is ours and can shrink between
       // releases, and an id nothing resolves would show an empty chip
@@ -648,7 +665,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance,
-        wallpaper, cursor,
+        wallpaper, cursor, shader,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.

@@ -1084,6 +1084,30 @@
         color-mix(in oklab, var(--primary) 7%, transparent) 0%, transparent 100%);
   }
 
+  /* ── Shader (the light) ───────────────────────────────────────
+     A LIGHTING model, which is what a Minecraft shader pack is: it
+     moves the sun and leaves every object's own colour alone. Nothing
+     here touches a token that carries meaning — `--danger` is
+     `--danger` under every preset — which is why this axis needs no
+     readability gate, and why it is safe where GX's `hue-rotate` over
+     content was not.
+
+     The three multipliers drive the whole `shadow-*` scale through
+     `tailwind.config.js`, so 79 call sites answer to them without
+     changing. `flat` declares nothing on purpose: every fallback in
+     that scale is 1, so the absence of a rule IS the shipped light —
+     the same reason wallpaper's `none` has no block. */
+  :root[data-shader="soft"] {
+    --light-lift: 1.7;
+    --light-spread: 1.9;
+    --light-strength: 0.75;
+  }
+  :root[data-shader="studio"] {
+    --light-lift: 0.6;
+    --light-spread: 0.5;
+    --light-strength: 1.7;
+  }
+
   /* The chrome steps aside so the ground can be seen.
      Every chrome surface — the sidebar, the header, the envelope —
      paints `bg-sidebar` flat, and three opaque layers over a pattern is

@@ -79,6 +79,7 @@ export function applyTheme(theme: Theme) {
   root.dataset.font = theme.font;
   root.dataset.wallpaper = theme.wallpaper;
   root.dataset.cursor = theme.cursor;
+  root.dataset.shader = theme.shader;
 }
 
 /**

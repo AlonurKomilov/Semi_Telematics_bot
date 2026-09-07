@@ -145,6 +145,12 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     panel: true,
     items: [
       { id: 'motion',   title: 'Motion',   heading: 'Motion', axes: ['motion'],   modFields: ['motion'] },
+      // Effects, not Interface, and the category's own dividing line
+      // decides it: Interface is what things are MADE of, Effects is a
+      // treatment applied OVER something that exists. Light is applied
+      // to surfaces that were already there.
+      { id: 'shader',   title: 'Shaders',  heading: 'Shaders',
+        axes: ['shader'], modFields: ['shader'] },
       // A look may switch the page entrance on; the panel offers no
       // control, and the effects reset still clears it.
       { id: 'entrance', title: 'Entrance', axes: ['entrance'], modFields: ['entrance'],

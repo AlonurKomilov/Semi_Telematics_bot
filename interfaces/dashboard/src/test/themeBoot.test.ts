@@ -25,6 +25,7 @@ import { applyTheme, applySize } from '../mods/context';
 import { MOD_FONTS } from '../mods/catalogue';
 import { WALLPAPER_IDS } from '../mods/wallpaper';
 import { CURSOR_IDS } from '../mods/cursor';
+import { SHADER_IDS } from '../mods/shader';
 import {
   MOD_DEFAULT, THEME_COLORS, THEME_MODES, THEME_ACCENTS, MOD_RADII,
   MOD_MATERIAL_LIST,
@@ -205,6 +206,7 @@ describe('theme-boot ↔ applyTheme', () => {
     mode: THEME_MODES, accent: THEME_ACCENTS, radius: MOD_RADII,
     material: MOD_MATERIAL_LIST, motion: MOD_MOTION_LIST,
     font: MOD_FONTS, wallpaper: WALLPAPER_IDS, cursor: CURSOR_IDS,
+    shader: SHADER_IDS,
     // Derived from mode+accent rather than stored on its own; the
     // legacy migration is swept by its own test.
     color: THEME_COLORS,

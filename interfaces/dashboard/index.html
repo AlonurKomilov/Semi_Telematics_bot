@@ -67,6 +67,7 @@
         var font = pick(t.font, ['geist', 'system', 'serif', 'mono', 'rounded'], 'geist');
         var wallpaper = pick(t.wallpaper, ['none', 'mesh', 'grid', 'grain', 'paper', 'plasma'], 'none');
         var cursor = pick(t.cursor, ['system', 'sharp'], 'system');
+        var shader = pick(t.shader, ['flat', 'soft', 'studio'], 'flat');
 
         // Mode and accent, with the pre-split `color` as the fallback —
         // the same migration registry.ts's sanitiser does, written a
@@ -102,6 +103,7 @@
         root.dataset.font = font;
         root.dataset.wallpaper = wallpaper;
         root.dataset.cursor = cursor;
+        root.dataset.shader = shader;
 
         // Size. The clamp MUST match clampSize() in preferences/registry.ts
         // — themeBoot.test.ts asserts that it does. 1 is "as designed".

@@ -225,6 +225,9 @@ export interface Mod {
    *  A look that changes the colour and not the lettering is half a
    *  look — this is the field that lets a mod be one. */
   readonly font?: ModFont;
+  /** The light — a `SHADER_PACKS` id. The axis that changes a look's
+   *  DEPTH without changing one of its colours. */
+  readonly shader?: string;
   /** The pointer set — a `CURSOR_PACKS` id. A look may carry it, and a
    *  look is the only thing that should: it is per-device by nature and
    *  replaces an operating-system setting, so nothing account-wide may
@@ -330,7 +333,7 @@ export const MOD_FIELD_APPLIER: Record<
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
-  wallpaper: 'theme', cursor: 'theme',
+  wallpaper: 'theme', cursor: 'theme', shader: 'theme',
   size: 'size', sound: 'sound',
 };
 

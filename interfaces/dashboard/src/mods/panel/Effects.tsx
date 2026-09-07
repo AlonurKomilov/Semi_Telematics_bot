@@ -12,6 +12,7 @@ import { usePreference } from '../../preferences';
 import { useMods, type Motion } from '../context';
 import { MOD_MOTIONS, motionPercent } from '../catalogue';
 import { Chip } from './Chip';
+import { SHADER_PACKS, shaderPackById } from '../shader';
 import type { LabelClass } from './Interface';
 
 const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
@@ -27,6 +28,24 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
   const { value: ambient, setValue: setAmbient } = usePreference('mods.ambient');
   return (
     <div>
+      {/* Light first, because it is the one effect that is on all the
+          time. Motion happens when something moves and Ambient when
+          nobody touches anything; the light is simply how the room is
+          lit while the work is being done. */}
+      <p className="text-xs text-foreground mt-0.5 mb-1.5">
+        {t('mods.group_shader', 'Shaders')}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {SHADER_PACKS.map((sp) => (
+          <Chip key={sp.id} value={sp.id} current={theme.shader ?? 'flat'}
+            label={t(`mods.shader_${sp.id}`, sp.label)}
+            onClick={(v) => setTheme({ shader: v })} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5 mb-2.5">
+        {shaderPackById(theme.shader ?? 'flat')?.why}
+      </p>
+
       {/* The header carries the intensity, exactly as Sound's does.
           GX gives every mods category a percentage; ours had one for
           Sound and one for Size and nothing here, even though motion

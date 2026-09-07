@@ -415,6 +415,26 @@ export default {
         DEFAULT: 'var(--motion-ease, cubic-bezier(0.4, 0, 0.2, 1))',
       },
 
+      // ── The shadow scale, driven by the light axis ────────────
+      // Tailwind's own v3 numbers, with the two that describe LIGHT —
+      // how far a surface lifts and how far its shadow spreads — and
+      // the alpha routed through multipliers. `shadow-lg` on 37
+      // popovers keeps meaning exactly what it meant; it just answers
+      // to `mods/shader.ts` now.
+      //
+      // Same move as `borderRadius` below and `--size-*` above: the
+      // utility stays, the number behind it becomes an axis. Every
+      // fallback is 1, so a document with no `[data-shader]` — an email
+      // preview, a print sheet, a test — renders the shipped light.
+      boxShadow: {
+        sm: '0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1)) 0px rgb(0 0 0 / calc(0.05 * var(--light-strength, 1)))',
+        DEFAULT: '0 calc(1px * var(--light-lift, 1)) calc(3px * var(--light-spread, 1)) 0px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1))), 0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1)) -1px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1)))',
+        md: '0 calc(4px * var(--light-lift, 1)) calc(6px * var(--light-spread, 1)) -1px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1))), 0 calc(2px * var(--light-lift, 1)) calc(4px * var(--light-spread, 1)) -2px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1)))',
+        lg: '0 calc(10px * var(--light-lift, 1)) calc(15px * var(--light-spread, 1)) -3px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1))), 0 calc(4px * var(--light-lift, 1)) calc(6px * var(--light-spread, 1)) -4px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1)))',
+        xl: '0 calc(20px * var(--light-lift, 1)) calc(25px * var(--light-spread, 1)) -5px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1))), 0 calc(8px * var(--light-lift, 1)) calc(10px * var(--light-spread, 1)) -6px rgb(0 0 0 / calc(0.1 * var(--light-strength, 1)))',
+        '2xl': '0 calc(25px * var(--light-lift, 1)) calc(50px * var(--light-spread, 1)) -12px rgb(0 0 0 / calc(0.25 * var(--light-strength, 1)))',
+      },
+
       borderRadius: {
         DEFAULT: 'max(0px, calc(var(--radius) - 3px))',
         sm: 'max(0px, calc(var(--radius) - 4px))',
