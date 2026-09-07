@@ -17,7 +17,7 @@
  */
 import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
-import { OPEN_PANEL, OVERLAY_VEHICLES, toOverlayVehicles, type OverlayReply } from './features/maps-overlay/bridge';
+import { OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, toOverlayFixes, toOverlayVehicles, type LiveReply, type OverlayReply } from './features/maps-overlay/bridge';
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -34,6 +34,20 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
     const tabId = sender.tab?.id;
     if (tabId !== undefined) void chrome.sidePanel.open({ tabId }).catch(() => {});
     sendResponse({ ok: true });
+    return true;
+  }
+  if (m?.type === OVERLAY_LIVE) {
+    (async () => {
+      if (!(await getToken())) { sendResponse({ ok: false } satisfies LiveReply); return; }
+      try {
+        const data = await apiJSON<{ positions?: Record<string, never> }>('/map/vehicles/live');
+        sendResponse({ ok: true, fixes: toOverlayFixes(data) } satisfies LiveReply);
+      } catch {
+        // The fast poll stays quiet, exactly as the panel's does: the
+        // thirty-second one is what surfaces a real outage.
+        sendResponse({ ok: false } satisfies LiveReply);
+      }
+    })();
     return true;
   }
   if (m?.type !== OVERLAY_VEHICLES) return false;

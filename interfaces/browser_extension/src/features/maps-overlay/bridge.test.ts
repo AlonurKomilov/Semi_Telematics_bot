@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { toOverlayVehicles } from './bridge';
+import { toOverlayFixes, toOverlayVehicles } from './bridge';
 
 describe('what crosses into a page we do not own', () => {
   it('carries a marker\'s worth and nothing else', () => {
@@ -47,5 +47,33 @@ describe('what crosses into a page we do not own', () => {
       { geometry: { coordinates: [-93, 35] }, properties: {} },
     ]);
     expect(vs.map((v) => v.heading)).toEqual([0, null, null]);
+  });
+});
+
+describe('the live feed, trimmed', () => {
+  it('keeps a marker\'s worth per fix', () => {
+    expect(toOverlayFixes({ positions: { '42': { lat: 35.5, lng: -93.7, speed_mph: 62, heading: 270 } } }))
+      .toEqual([{ id: '42', lat: 35.5, lng: -93.7, speed_mph: 62, heading: 270 }]);
+  });
+
+  it('drops a fix with no usable position — including the null that Number() turns into 0', () => {
+    // Number(null) is 0, a finite coordinate off the coast of Africa.
+    expect(toOverlayFixes({ positions: {
+      a: { lat: null, lng: -93 },
+      b: { lng: -93 },
+      c: { lat: 35, lng: null },
+      d: { lat: 'north', lng: -93 },
+    } })).toEqual([]);
+  });
+
+  it('a missing speed is standing still, a missing heading is unknown — never NaN', () => {
+    const [f] = toOverlayFixes({ positions: { '7': { lat: 1, lng: 2 } } });
+    expect(f.speed_mph).toBe(0);
+    expect(f.heading).toBeNull();
+  });
+
+  it('survives an empty or malformed payload', () => {
+    expect(toOverlayFixes({})).toEqual([]);
+    expect(toOverlayFixes(undefined as never)).toEqual([]);
   });
 });

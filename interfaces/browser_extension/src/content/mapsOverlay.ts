@@ -27,13 +27,25 @@
  * which stack above the map, stack above the markers too.  A layer
  * pinned to the top of the page covered the panel with trucks.
  *
+ * HOW IT MOVES.  The same way the panel's own map does, and from the
+ * same two feeds: the thirty-second list carries addresses and levels,
+ * and a five-second positions-only feed carries where everything is.
+ * Between fixes a moving truck GLIDES along the tween (physics.ts,
+ * shared with the panel) rather than teleporting twice a minute — the
+ * overlay used to sit up to thirty seconds behind the panel showing the
+ * same truck, which is the one thing a live map may not do.
+ *
  * WHAT IT REFUSES TO DO.  It draws nothing when signed out, nothing in
  * Street View, nothing when it cannot find a canvas big enough to be a
  * map, and nothing the person has switched off.  Google's page is
  * unversioned: each of those is a state we will meet without warning,
  * and the right answer to each is to disappear rather than draw wrong.
  */
-import { OPEN_PANEL, OVERLAY_VEHICLES, type OverlayReply, type OverlayVehicle } from '../features/maps-overlay/bridge';
+import {
+  OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES,
+  type LiveReply, type OverlayReply, type OverlayVehicle,
+} from '../features/maps-overlay/bridge';
+import { applyFix, positionAt, shortestAngleDiff, type Phys } from '../features/live-map/physics';
 import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
@@ -50,6 +62,9 @@ const PENDING_SELECT_KEY = 'pendingSelectVehicle';
 /** Positions are 30s fresh on the server; asking faster spends quota
  *  for numbers that have not changed. */
 const POLL_MS = 30_000;
+/** Positions only, the panel's own cadence.  Cheap enough to ask this
+ *  often; the full list is not. */
+const LIVE_POLL_MS = 5_000;
 /** Google writes its URL on a settle, so watching it is a poll.  This
  *  is the latency between the hand lifting and markers landing, so it
  *  is short; the compare is one string. */
@@ -85,6 +100,10 @@ let dataState: 'loading' | 'ready' | 'error' = 'loading';
  *  be matched to a vehicle without the markers taking pointer events,
  *  which would stop a drag that begins on a truck. */
 const drawnAt = new Map<string, { x: number; y: number }>();
+/** Per-vehicle motion, shared with the panel's map.  A vehicle in here
+ *  is drawn from its tween; one absent is drawn from the list. */
+const phys = new Map<string, Phys>();
+let animFrame: number | null = null;
 
 // ── gesture state ──────────────────────────────────────────────────────
 let drag: Drag | null = null;
@@ -148,8 +167,10 @@ function removeAll(): void {
   root?.remove();
   root = null;
   markers.clear();
+  parts.clear();
   drawnAt.clear();
   setHoverCursor(false);
+  if (animFrame !== null) { cancelAnimationFrame(animFrame); animFrame = null; }
 }
 
 // ── the switch on the map ──────────────────────────────────────────────
@@ -242,28 +263,65 @@ function updateChip(inView: number | null): void {
   }
 }
 
-function markerFor(v: OverlayVehicle): HTMLDivElement {
-  let el = markers.get(v.id);
-  if (!el) {
-    el = document.createElement('div');
-    // Markers take no pointer events either: a drag that starts on a
-    // truck must drag the map, and nothing here answers a click yet.
+/** The panel draws an arrow while a truck moves and a dot when it does
+ *  not, and the arrow points where the truck is going.  The overlay drew
+ *  a dot for everything, so the same truck had two different faces on
+ *  two of our own surfaces.  Same shapes here, in plain DOM — the panel
+ *  builds them through Leaflet's divIcon, which this bundle has not got. */
+const HALO = '#fff', SHADOW = 'rgba(0,0,0,.45)';
+function glyphHtml(moving: boolean, colour: string): string {
+  if (moving) {
+    return '<svg data-glyph="arrow" width="18" height="18" viewBox="0 0 18 18" '
+      + `style="overflow:visible;filter:drop-shadow(0 1px 2px ${SHADOW})">`
+      + `<polygon data-arrow points="9,2 17,16 1,16" fill="${colour}" stroke="${HALO}" stroke-width="1.5"/></svg>`;
+  }
+  return `<span data-glyph="dot" style="display:block;width:12px;height:12px;border-radius:50%;`
+    + `background:${colour};border:2px solid ${HALO};box-shadow:0 1px 3px ${SHADOW}"></span>`;
+}
+
+interface MarkerParts { el: HTMLDivElement; glyph: HTMLElement; name: HTMLElement; shape: string }
+const parts = new Map<string, MarkerParts>();
+
+function markerFor(v: OverlayVehicle): MarkerParts {
+  const p = phys.get(v.id);
+  const moving = !!p?.isMoving || v.status === 'moving';
+  const shape = `${moving ? 'arrow' : 'dot'}:${colourFor(v.status)}`;
+  let m = parts.get(v.id);
+  if (!m || !m.el.isConnected) {
+    const el = document.createElement('div');
+    // Markers take no pointer events: a drag that starts on a truck must
+    // still drag the map, so the click is hit-tested by us instead.
     el.style.cssText =
       'position:absolute;transform:translate(-50%,-50%);pointer-events:none;' +
       'display:flex;align-items:center;gap:4px;font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
-    el.innerHTML =
-      '<span data-dot style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)"></span>' +
-      '<span data-name style="background:rgba(17,20,26,.86);color:#fff;padding:2px 5px;border-radius:4px"></span>';
+    el.innerHTML = `<span data-glyphwrap style="display:flex">${glyphHtml(moving, colourFor(v.status))}</span>`
+      + '<span data-name style="background:rgba(17,20,26,.86);color:#fff;padding:2px 5px;border-radius:4px"></span>';
     ensureRoot().appendChild(el);
+    m = { el, glyph: el.querySelector<HTMLElement>('[data-glyphwrap]')!,
+          name: el.querySelector<HTMLElement>('[data-name]')!, shape };
     markers.set(v.id, el);
+    parts.set(v.id, m);
+  } else if (m.shape !== shape) {
+    // Only when it actually changes: rewriting innerHTML every frame
+    // would rebuild a hundred SVGs a second for nothing.
+    m.glyph.innerHTML = glyphHtml(moving, colourFor(v.status));
+    m.shape = shape;
   }
-  el.querySelector<HTMLElement>('[data-dot]')!.style.background = colourFor(v.status);
-  const name = el.querySelector<HTMLElement>('[data-name]')!;
-  name.textContent = v.name || v.id;
+  m.name.textContent = v.name || v.id;
   // The dot alone below the label zoom: at national scale a hundred
   // name pills overlap into a block that says less than the dots do.
-  name.hidden = !showsLabels(camera?.zoom ?? 0);
-  return el;
+  m.name.hidden = !showsLabels(camera?.zoom ?? 0);
+  if (moving && p) aimArrow(m, p.headingDeg);
+  return m;
+}
+
+/** The arrow turns; the marker itself must not, or the name pill would
+ *  spin with it. */
+function aimArrow(m: MarkerParts, deg: number): void {
+  const svg = m.glyph.firstElementChild as SVGElement | null;
+  if (svg?.getAttribute('data-glyph') === 'arrow') {
+    svg.style.transform = `rotate(${deg}deg)`;
+  }
 }
 
 function draw(): void {
@@ -285,20 +343,21 @@ function draw(): void {
 
   const seen = new Set<string>();
   drawnAt.clear();
+  const ts = performance.now();
   for (const v of vehicles) {
-    const p = project(v, camera, surface);
+    const p = project(livePosition(v, ts), camera, surface);
     if (!isVisible(p, surface)) continue;
     seen.add(v.id);
     drawnAt.set(v.id, p);
     const m = markerFor(v);
-    m.style.left = `${p.x}px`;
-    m.style.top = `${p.y}px`;
+    m.el.style.left = `${p.x}px`;
+    m.el.style.top = `${p.y}px`;
   }
   // A marker for a vehicle that has left the view is removed, not
   // hidden: a hundred hidden nodes on every Google Maps tab is a cost
   // the person did not agree to.
   for (const [id, m] of markers) {
-    if (!seen.has(id)) { m.remove(); markers.delete(id); }
+    if (!seen.has(id)) { m.remove(); markers.delete(id); parts.delete(id); }
   }
   updateChip(seen.size);
 }
@@ -334,6 +393,49 @@ function awaitSettle(): void {
   }, drag ? SETTLE_WAIT_MS : QUIET_RESTORE_MS);
 }
 
+/** Where a vehicle IS at this instant: its tween while it is moving,
+ *  the list's own fix when it is not. */
+function livePosition(v: OverlayVehicle, ts: number): { lat: number; lng: number } {
+  const p = phys.get(v.id);
+  if (!p) return v;
+  if (!p.isMoving) return { lat: p.lat, lng: p.lng };
+  const at = positionAt(p, ts);
+  p.lat = at.lat; p.lng = at.lng;
+  return at;
+}
+
+/** One loop for every moving truck, not one per truck: the overlay
+ *  repositions markers by writing a style, and a hundred of those in a
+ *  frame is cheaper than a hundred scheduled callbacks.  It stops the
+ *  moment nothing is moving, so a parked fleet costs nothing. */
+function pump(): void {
+  animFrame = null;
+  if (!camera || !surface || !enabled) return;
+  const ts = performance.now();
+  let moving = false;
+  for (const v of vehicles) {
+    const p = phys.get(v.id);
+    if (!p?.isMoving) continue;
+    moving = true;
+    // Turn toward the new bearing rather than snapping to it.
+    p.headingDeg += shortestAngleDiff(p.headingDeg, p.targetHeading) * 0.12;
+    const at = positionAt(p, ts);
+    p.lat = at.lat; p.lng = at.lng;
+    const m = parts.get(v.id);
+    if (!m) continue;                    // off screen; the next draw places it
+    const pt = project(at, camera, surface);
+    drawnAt.set(v.id, pt);
+    m.el.style.left = `${pt.x}px`;
+    m.el.style.top = `${pt.y}px`;
+    aimArrow(m, p.headingDeg);
+  }
+  if (moving) animFrame = requestAnimationFrame(pump);
+}
+
+function ensurePump(): void {
+  if (animFrame === null) animFrame = requestAnimationFrame(pump);
+}
+
 /** The camera and the canvas, re-read.  True when either changed. */
 function refreshView(): boolean {
   const nextCamera = cameraFromUrl(location.href);
@@ -345,6 +447,34 @@ function refreshView(): boolean {
   camera = nextCamera;
   surface = nextSurface;
   return changed;
+}
+
+function loadFixes(): Promise<LiveReply> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: OVERLAY_LIVE }, (reply: LiveReply) => {
+        resolve(chrome.runtime.lastError || !reply ? { ok: false } : reply);
+      });
+    } catch {
+      resolve({ ok: false });
+    }
+  });
+}
+
+async function refreshFixes(): Promise<void> {
+  if (!enabled || !signedIn) return;
+  const reply = await loadFixes();
+  if (!reply.ok) return;                 // the fast poll stays quiet
+  const now = performance.now();
+  const known = new Set(vehicles.map((v) => v.id));
+  for (const f of reply.fixes) {
+    if (!known.has(f.id)) continue;      // a truck the list has not caught up to
+    const { phys: next } = applyFix(phys.get(f.id), f.lat, f.lng, f.speed_mph, f.heading, now);
+    phys.set(f.id, next);
+  }
+  for (const id of [...phys.keys()]) if (!known.has(id)) phys.delete(id);
+  ensurePump();
+  if (!drag && !settling) draw();
 }
 
 async function refreshData(): Promise<void> {
@@ -469,7 +599,7 @@ function start(): void {
   chrome.storage.local.get(OVERLAY_PREF_KEY, (got) => {
     enabled = got[OVERLAY_PREF_KEY] !== false;
     refreshView();
-    void refreshData();
+    void refreshData().then(() => refreshFixes());
   });
 
   setInterval(() => {
@@ -482,6 +612,7 @@ function start(): void {
     else if (!drag) draw();
   }, URL_POLL_MS);
   setInterval(() => { void refreshData(); }, POLL_MS);
+  setInterval(() => { void refreshFixes(); }, LIVE_POLL_MS);
   window.addEventListener('resize', () => { if (refreshView() && !drag) draw(); }, { passive: true });
 
   // Capture on window: we see the gesture before Google's own handlers

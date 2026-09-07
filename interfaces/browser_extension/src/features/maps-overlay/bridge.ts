@@ -21,6 +21,14 @@ export const OVERLAY_VEHICLES = '4truck:overlay-vehicles';
  *  panel finds it whether it was already open or opens because of this. */
 export const OPEN_PANEL = '4truck:open-panel';
 
+/** "Where is everything RIGHT NOW."  The list answer is thirty seconds
+ *  old by design — it carries addresses, levels and provenance, and
+ *  asking for all of that every five seconds would be wasteful.  This
+ *  is the cheap half: positions only, the same feed the panel's map
+ *  glides on, so a truck on Google's map moves like a truck on ours
+ *  instead of teleporting twice a minute. */
+export const OVERLAY_LIVE = '4truck:overlay-live';
+
 /** One vehicle, trimmed to what a marker on somebody else's map needs.
  *  Deliberately not the full map payload: less to hand a page we do
  *  not control, and less to keep in sync. */
@@ -31,6 +39,43 @@ export interface OverlayVehicle {
   lng: number;
   status: string;
   heading: number | null;
+}
+
+/** One live fix.  The wire shape of `/map/vehicles/live`, trimmed the
+ *  same way the list is. */
+export interface OverlayFix {
+  id: string;
+  lat: number;
+  lng: number;
+  speed_mph: number;
+  heading: number | null;
+}
+
+export type LiveReply =
+  | { ok: true; fixes: OverlayFix[] }
+  | { ok: false };
+
+interface LiveWire { positions?: Record<string, { lat?: unknown; lng?: unknown; speed_mph?: unknown; heading?: unknown }> }
+
+/** The live payload, trimmed.  Shared by the worker and its tests. */
+export function toOverlayFixes(wire: LiveWire): OverlayFix[] {
+  const out: OverlayFix[] = [];
+  for (const [id, pos] of Object.entries(wire?.positions ?? {})) {
+    // `Number(null)` is 0, a perfectly finite coordinate off the coast
+    // of Africa — the same phantom fix the server filters out of the
+    // list.  A missing coordinate is rejected before it becomes one.
+    if (pos?.lat == null || pos?.lng == null) continue;
+    const lat = Number(pos.lat), lng = Number(pos.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const speed = Number(pos.speed_mph);
+    const heading = pos.heading == null ? NaN : Number(pos.heading);
+    out.push({
+      id, lat, lng,
+      speed_mph: Number.isFinite(speed) ? speed : 0,
+      heading: Number.isFinite(heading) ? heading : null,
+    });
+  }
+  return out;
 }
 
 export type OverlayReply =
