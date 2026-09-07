@@ -1,11 +1,11 @@
 {
   "name": "4truck-browser-extension",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.config.content.ts",
     "lint": "eslint src --max-warnings=0",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

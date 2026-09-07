@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getFollowPref, setFollowPref } from '../features/live-map/googleMaps';
+import { getOverlayPref, setOverlayPref } from '../features/maps-overlay/pref';
 
 /**
  * The panel's settings — every preference the panel keeps, in one
@@ -9,7 +10,9 @@ import { getFollowPref, setFollowPref } from '../features/live-map/googleMaps';
  */
 export default function Settings({ onBack }: { onBack: () => void }) {
   const [follow, setFollow] = useState<boolean | null>(null);
+  const [overlay, setOverlay] = useState<boolean | null>(null);
   useEffect(() => { void getFollowPref().then(setFollow); }, []);
+  useEffect(() => { void getOverlayPref().then(setOverlay); }, []);
 
   const manifest = chrome.runtime.getManifest();
 
@@ -31,6 +34,22 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           </span>
           <input type="checkbox" checked={!!follow} disabled={follow === null}
                  onChange={(e) => { setFollow(e.target.checked); void setFollowPref(e.target.checked); }} />
+        </label>
+      </section>
+
+      <section style={{ display: 'grid', gap: 8 }}>
+        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Google Maps</span>
+        <label className="row" style={{ justifyContent: 'space-between', cursor: 'pointer' }}>
+          <span>
+            Show my vehicles on Google Maps
+            <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+              Draws them on google.com/maps itself, so a route and your vehicles are one
+              picture. They settle after a drag rather than moving with it — Google only
+              tells the page where it is once the hand lifts.
+            </span>
+          </span>
+          <input type="checkbox" checked={!!overlay} disabled={overlay === null}
+                 onChange={(e) => { setOverlay(e.target.checked); void setOverlayPref(e.target.checked); }} />
         </label>
       </section>
 
