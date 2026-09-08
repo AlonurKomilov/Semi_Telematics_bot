@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { UserCog, LogOut, Palette } from '../lib/icons';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
-import { MODS_HREF } from '../mods';
+import { MODS_HREF, MODS_PERMISSION } from '../mods';
+import { useViewPermissions } from '../hooks/useViewPermissions';
 
 export function AvatarMenu() {
   const { user, logout } = useAuth();
+  const canMods = useViewPermissions().has(MODS_PERMISSION);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -88,11 +90,13 @@ export function AvatarMenu() {
                 first and the one people will use; this one exists because
                 a page reachable only from inside a popover is a page most
                 users never learn is a page. */}
-            <MenuButton
-              icon={<Palette className="size-3.5" />}
-              label="Mods"
-              onClick={() => go(MODS_HREF)}
-            />
+            {canMods && (
+              <MenuButton
+                icon={<Palette className="size-3.5" />}
+                label="Mods"
+                onClick={() => go(MODS_HREF)}
+              />
+            )}
           </div>
 
           {/* Sign out */}

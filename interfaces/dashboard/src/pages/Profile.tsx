@@ -46,7 +46,8 @@ import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';
 import StoredPreferencesCard from '../preferences/StoredPreferencesCard';
 import BrowserExtensionCard from '../features/profile/BrowserExtensionCard';
-import { Modifications } from '../mods';
+import { Modifications, MODS_PERMISSION } from '../mods';
+import { useViewPermissions } from '../hooks/useViewPermissions';
 import { toneClasses } from '../lib/status';
 import type { User } from '../types';
 import { LANGUAGE_OPTIONS } from '../utils/languages';
@@ -64,6 +65,7 @@ import { Badge } from '@/components/ui/badge';
 
 
 export default function Profile() {
+  const canMods = useViewPermissions().has(MODS_PERMISSION);
   const { t } = useTranslation();
   const now = useNow();
 
@@ -343,7 +345,7 @@ export default function Profile() {
         </button>
       </Card>
 
-      <Modifications />
+      {canMods && <Modifications />}
       <StoredPreferencesCard />
       <SignInMethods />
       <RecentActivity />

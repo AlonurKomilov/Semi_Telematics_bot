@@ -5,9 +5,9 @@ the SSOT for how we classify product surface.  The catalog
 (`interfaces/dashboard/src/config/featureCatalog.ts`) encodes the tier per
 feature; the Permissions page bands its rows the same way.
 
-> **Alerts, the AI assistant, and Reports are NOT features** — they are
-> always-on **system services** (every role has them; access is *derived*, not
-> toggled). They have a different architecture and their own SSOT:
+> **Alerts, the AI assistant, Reports, and Mods are NOT features** — they are
+> **system services**, granted per role as one View row each (since 2026-09-06;
+> Mods since 2026-09-08). They have a different architecture and their own SSOT:
 > [`SERVICES.md`](SERVICES.md). This doc covers only the toggleable feature
 > taxonomy; it points to SERVICES.md for the service layer and never duplicates
 > it.

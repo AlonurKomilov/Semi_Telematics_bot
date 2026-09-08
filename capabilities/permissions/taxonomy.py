@@ -185,6 +185,8 @@ TAXONOMY: dict[str, Verdict] = {
     # ── services: granted per role like a feature (owner, 2026-09-06);
     #    the alerts inbox is a unit pair, its width Team Management's ──
     "can_ai_chat":        Verdict(V, "can_view_ai_assistant"),
+    # Mods — born as a service verb on 2026-09-08; no legacy name.
+    "can_view_mods":      Verdict(V, "can_view_mods"),
     "can_digest":         Verdict(V, "can_view_reports"),
     "can_alerts_all":     Verdict(V, "can_view_alerts"),
     "can_alerts_vehicle": Verdict(S, "can_view_alerts"),

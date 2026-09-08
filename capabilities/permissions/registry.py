@@ -99,6 +99,8 @@ ENTRIES: tuple[Entry, ...] = (
     # ── core — always on ─────────────────────────────────────────────
     _e("overview", tier="shared", modules=["core"], note="an aggregator page; gated by what it shows"),
     _e("ai_assistant", kind="service", modules=["core"], opens=["can_view_ai_assistant"]),
+    _e("mods", kind="service", modules=["core"], opens=["can_view_mods"],
+       note="the personal look — colour, corners, sound, effects, wallpaper; per person, per device, nothing account-wide flows through it. Without it every setting holds its default and the panel, the page and the doors are closed"),
     _e("alerts", kind="service", modules=["core"], opens=["can_view_alerts"],
        note="the inbox channel; what it shows follows the role's features, its width is Team Management's"),
     _e("reports", kind="service", modules=["core"],

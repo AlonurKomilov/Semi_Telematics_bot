@@ -115,6 +115,7 @@ class FeatureSet:
     # tool still answers only from the role's own feature grants
     # (TOOL_PERMISSIONS).
     can_view_ai_assistant: bool = False  # AI assistant chat + summary
+    can_view_mods: bool = False  # Mods — the personal look, sound and effects (a service: per person, per device; without it every setting stays at its default and the panel, page and doors are closed)
 
     # Management
     can_invite: bool = False         # /invite
@@ -548,7 +549,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.ADMIN: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
@@ -584,7 +585,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.FLEET: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
@@ -619,7 +620,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_drivers=True,   # runs the driver roster (trucks, TMS links)
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.SAFETY: FeatureSet(
         can_view_vehicle_docs=True,
@@ -647,7 +648,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True,
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.DISPATCHER: FeatureSet(
         can_view_vehicle_docs=True,
@@ -674,7 +675,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_coaching=False,
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.HR: FeatureSet(
         # HR persona — people management.  Focus: driver compliance,
@@ -701,7 +702,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_risk_reports=True,              # Personnel risk reporting
         can_manage_geofence=True, can_view_geofence=True,                 # See geofence context for incidents
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
@@ -722,7 +723,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # generate WHICH costs:
         can_view_vehicles=True,                  # Vehicle list for asset accounting
         can_view_driver_pay=True, can_view_coaching=False, can_view_driver_docs=False,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     Role.DRIVER: FeatureSet(
         can_view_vehicle_docs=True,
@@ -750,7 +751,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_inspections=False, can_view_inspections=True,
         can_view_loads=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
@@ -799,7 +800,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=False,
         can_view_carrier_directory=True,   # read the carrier directory (managers also edit)
         can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
-        can_view_alerts=False, can_view_ai_assistant=True, can_view_reports=True,
+        can_view_alerts=False, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
     ),
 }
 
@@ -1434,6 +1435,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_parking_vehicle": "parking events (assigned vehicle)",
     "can_cameras": "dashcam cameras",
     "can_view_ai_assistant": "AI assistant chat",
+    "can_view_mods": "mods (personal look, sound and effects)",
     "can_cost_reports": "cost reports (executive rollups)",
     "can_inspections_all": "inspections (review all)",
     "can_inspections_vehicle": "inspections (assigned vehicle)",

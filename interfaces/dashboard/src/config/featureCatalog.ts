@@ -38,6 +38,7 @@ import {
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
   Plug, Store, Cog,
   type LucideIcon, Boxes, BadgeDollarSign,
+  Palette,
 } from '../lib/icons';
 
 export type Module =
@@ -156,6 +157,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // avatar) + ⌘/Ctrl-J, not a sidebar row — navHidden keeps the route guard
   // and can_view_ai_assistant wiring while dropping the nav entry.
   { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], kind: 'service', permission: ['can_view_ai_assistant'], navGroup: 'main', navHidden: true },
+  // Mods — the personal look, sound and effects. A service so the owner can
+  // withhold it from a role like any channel; reached from the top-bar palette
+  // and the avatar menu, never the sidebar — navHidden keeps the /mods guard.
+  { id: 'mods',           labelKey: 'nav.mods',           path: '/mods',      icon: Palette,         modules: ['core'], kind: 'service', permission: ['can_view_mods'], navGroup: 'main', navHidden: true },
   // Alerts launches from the topbar bell (a monitoring SERVICE beside
   // the AI icon), not a sidebar row — navHidden keeps the /alerts route
   // guard + P_ALERTS wiring while dropping the nav entry.

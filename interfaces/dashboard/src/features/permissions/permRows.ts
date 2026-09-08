@@ -87,6 +87,7 @@ export const SERVICE_ROW_KEYS: Record<string, string> = {
   alerts: 'can_view_alerts',
   ai_assistant: 'can_view_ai_assistant',
   reports: 'can_view_reports',
+  mods: 'can_view_mods',
 };
 
 export const PERM_GROUPS: PermGroup[] = [
@@ -104,6 +105,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_alerts', kind: 'feature', label: 'Alerts', description: 'The inbox. Shows the alerts for whichever features the role can see; its width (all units or assigned trucks) is Team Management’s' },
       { key: 'can_view_ai_assistant', kind: 'feature', label: 'AI Assistant', description: 'Chat + fleet summary. Each tool answers only from data the role can already see' },
       { key: 'can_view_reports', kind: 'feature', label: 'Reports', description: 'The hub and its scheduled-report subscription; which tabs appear follows the role’s features' },
+      { key: 'can_view_mods', kind: 'feature', label: 'Mods', description: 'The personal look — colour, corners, sound, effects, wallpaper. Per person, per device; without it every setting stays at its default and the panel, page and doors are closed' },
     ],
   },
   {

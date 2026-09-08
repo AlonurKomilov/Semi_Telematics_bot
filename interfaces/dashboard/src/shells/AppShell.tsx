@@ -30,7 +30,8 @@ import Sidebar from '../components/Sidebar';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { ModPanel, useMods, surfaceFor } from '../mods';
+import { ModPanel, useMods, surfaceFor, ModsLock, MODS_PERMISSION } from '../mods';
+import { useViewPermissions } from '../hooks/useViewPermissions';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -42,6 +43,9 @@ import ShellHero from './heroes/ShellHero';
 
 export default function AppShell({ hero }: { hero?: ReactNode }) {
   const { theme } = useMods();
+  // Mods is a service: a role without it gets no palette in the bar,
+  // and `ModsLock` below puts its stored look back to the defaults.
+  const canMods = useViewPermissions().has(MODS_PERMISSION);
   const { pathname } = useLocation();
   const dockedContentClass = useDockedContentClass();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -80,6 +84,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground chrome-ground">
+      <ModsLock />
       {/* Recedes in ambient mode — see the [data-ambient] block in
           index.css. Marked rather than selected by shape, so a shell
           refactor cannot silently take the mode's meaning with it. */}
@@ -152,7 +157,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             <LanguageSelector />
             <AlertsLauncher />
             <AssistantLauncher />
-            <ModPanel />
+            {canMods && <ModPanel />}
             <AvatarMenu />
           </div>
         </header>

@@ -1,11 +1,12 @@
 # System Services — the channels
 
 Decided 2026-06-22 (the "Option C" pass), revised 2026-09-06. This is the
-SSOT for the three infrastructure **services** — **Alerts, the AI assistant,
-and Reports**. They are **not features**: a service owns no data of its own;
+SSOT for the four **services** — **Alerts, the AI assistant, Reports,
+and Mods**. They are **not features**: a service owns no data of its own;
 it is a *channel* through which the role's features flow. Since 2026-09-06 a
 service is **granted per role** like a feature (one View row each in the
-matrix — `can_view_alerts`, `can_view_ai_assistant`, `can_view_reports`), so
+matrix — `can_view_alerts`, `can_view_ai_assistant`, `can_view_reports`,
+`can_view_mods`), so
 an owner can withhold a channel from a role (a future broker role denied AI).
 What flows *through* a granted channel is still decided by the role's
 **feature** grants. For the toggleable feature taxonomy, see
@@ -35,7 +36,7 @@ route + nav registry. A service carries **no `tier`** — the type makes that
 impossible (`CatalogEntry`'s service arm declares `tier?: never`), because a
 value inside the tier union would claim services sit on an axis they don't.
 
-## The three services
+## The four services
 
 ### 🔔 Alerts
 - **Surface**: the Alerts inbox (dashboard) · bot `/alerts` · *My Notifications*.
@@ -83,10 +84,22 @@ value inside the tier union would claim services sit on an axis they don't.
   report **types** are features.
 - **Contribution pattern**: each feature component owns a `report.py`.
 
+### 🎨 Mods
+- **Surface**: the top-bar palette popover, the `/mods` page, the *Modifications*
+  card on the profile. Dashboard only.
+- **Access**: `can_view_mods`, granted per role (seeded for every role, 2026-09-08).
+  Not a hub and owns no account data: everything it holds is **per person,
+  per device** (`mods.*` preferences). It is a service for one reason — the
+  owner can withhold it from a role the way any channel is withheld: without
+  the grant every setting stays at its default, the popover and the doors
+  are hidden, and `/mods` redirects — one row in the matrix, like the others.
+  Nothing account-wide flows through it: no config verb, no company theme.
+- **Content gate**: none — there is nothing role-specific inside it.
+
 ## The service verbs
 
 ```
-can_view_alerts · can_view_ai_assistant · can_view_reports
+can_view_alerts · can_view_ai_assistant · can_view_reports · can_view_mods
 ```
 
 Plain grants, stored like any feature's, seeded for every role (the inbox

@@ -38,6 +38,8 @@ export { ModPanel } from './panel/ModPanel';
 export { ModControls } from './panel/ModControls';
 export { default as Modifications } from './Modifications';
 export { MODS_HREF, MODS_PAGE_HREF } from './href';
+export { MODS_PERMISSION } from './access';
+export { ModsLock, lockedModsKeys } from './ModsLock';
 export { SURFACES, surfaceFor, surfaceById, type Surface } from './surfaces';
 export { default as ModsPage } from './page/ModsPage';
 export { default as SizeCard } from './SizeCard';

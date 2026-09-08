@@ -5,7 +5,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 // renders in. Adding or retiring a persona shell never touches this
 // file — the registry is the only place that mapping lives.
 import { pickShell } from './shells';
-import { ModsPage } from './mods';
+import { ModsPage, MODS_PERMISSION } from './mods';
 import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AssistantHost from './features/ai/AssistantHost';
@@ -324,9 +324,11 @@ export default function AppRouter() {
             permission, like /profile. Imported through the barrel rather
             than lazily by path: the mods service is already in the
             shell's graph, and a deep import would trip index.test.ts. */}
-        <Route path="mods" element={<ModsPage />} />
-        <Route path="mods/:category" element={<ModsPage />} />
-        <Route path="mods/:category/:item" element={<ModsPage />} />
+        {/* Mods — a service: one View row in the matrix. A role without it
+            never sees the panel or the doors, and lands here only by URL. */}
+        <Route path="mods" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
+        <Route path="mods/:category" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
+        <Route path="mods/:category/:item" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
         {/* Notifications are a cross-source PERSONAL surface on their own
             door (the topbar bell), not an Alerts sub-tab. /notifications =
             the browsable history (Notification center); /preferences = the
