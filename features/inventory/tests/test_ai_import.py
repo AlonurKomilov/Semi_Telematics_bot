@@ -292,10 +292,10 @@ def test_scope_and_permission_contract():
     s = get_tool_schema("import_inventory_items")
     assert s and s["writes"] and s["scope"] == "account_unscoped"
     assert s["uses_attachments"] is True
-    assert TOOL_PERMISSIONS["import_inventory_items"] == ["can_manage_vehicles"]
+    assert TOOL_PERMISSIONS["import_inventory_items"] == ["can_manage_inventory"]
     assert "import_inventory_items" in ACCOUNT_WIDE_TOOLS
     assert "import_inventory_items" not in SCOPE_AWARE_TOOLS
-    assert any(t.name == "inventory" and t.permission == "can_manage_vehicles"
+    assert any(t.name == "inventory" and t.permission == "can_manage_inventory"
                for t in list_import_targets())
 
 

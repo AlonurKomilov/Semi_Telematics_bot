@@ -102,6 +102,16 @@ class FeatureSet:
     can_manage_vehicle_docs: bool = False # upload / delete them
     can_view_vehicles: bool = False      # /vehicle <any>
 
+    # Onboard Inventory — what physically lives in a truck (dashcam,
+    # fuel card, toll transponder, ELD).  Its own pair since the feature
+    # left features/vehicles/: reading what is in a truck and
+    # administering the truck registry are different jobs, and a safety
+    # officer chasing a missing extinguisher needs the first without the
+    # second.  Seeded to exactly whoever held the vehicles flags the day
+    # it split, so nobody gained or lost anything on the way out.
+    can_view_inventory: bool = False     # the items in a truck + their trail
+    can_manage_inventory: bool = False   # add / edit / verify / transfer / remove
+
     # Alerts — a SERVICE granted per role (owner, 2026-09-06): the inbox
     # channel.  What it shows follows the role's feature grants
     # (relevance.py); its WIDTH is Team Management's (unit_width).
@@ -116,6 +126,7 @@ class FeatureSet:
     # (TOOL_PERMISSIONS).
     can_view_ai_assistant: bool = False  # AI assistant chat + summary
     can_view_mods: bool = True   # Mods — the personal look, sound and effects (a service: per person, per device). ON for everyone by default, the owner's call; withheld per role, and then every setting stays at its default and the panel, page and doors are closed.
+    can_view_notifications: bool = True  # Notifications — the bell, the centre, the channels (Telegram, email, push) and their settings, and delivery itself (a service: per role; withheld, nothing reaches the person — mandatory security/billing notices excepted). ON for everyone by default; the field default carries every stored row that predates it.
 
     # Management
     can_invite: bool = False         # /invite
@@ -518,8 +529,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
         can_view_efficiency=True, can_view_health=True,
         can_view_vehicles=True,
+        can_view_inventory=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
+        can_manage_inventory=True,
         can_view_loads=True, can_manage_loads=True,
         can_view_kpi=True,
         can_manage_permissions=True, can_manage_integrations=True,
@@ -549,15 +562,17 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.ADMIN: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
         can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
         can_view_efficiency=True, can_view_health=True,
         can_view_vehicles=True,
+        can_view_inventory=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
+        can_manage_inventory=True,
         can_view_loads=True, can_manage_loads=True,
         can_view_kpi=True,
         can_manage_permissions=False, can_manage_integrations=False,
@@ -585,15 +600,17 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=True,
         can_view_carrier_directory=True, can_manage_carrier_directory=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.FLEET: FeatureSet(
         can_view_vehicle_docs=True, can_manage_vehicle_docs=True,
         can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
         can_view_efficiency=True, can_view_health=True,
         can_view_vehicles=True,
+        can_view_inventory=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
+        can_manage_inventory=True,
         # Loads is a Dispatch-owned feature (dispatcher CRUDs, KPI grades on
         # can_kpi, driver pay reads loads server-side) — Fleet has no loads
         # consumer, so it is NOT granted here.  Left at the FeatureSet default
@@ -620,13 +637,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_drivers=True,   # runs the driver roster (trucks, TMS links)
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.SAFETY: FeatureSet(
         can_view_vehicle_docs=True,
         can_view_faults=True, can_view_fuel=False, can_view_cameras=True,
         can_view_efficiency=False, can_view_health=True,
         can_view_vehicles=True,
+        can_view_inventory=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_manage_geofence=True, can_view_geofence=True,
@@ -648,13 +666,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True,
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.DISPATCHER: FeatureSet(
         can_view_vehicle_docs=True,
         can_view_faults=False, can_view_fuel=True,
         can_view_efficiency=False, can_view_health=False,
         can_view_vehicles=True,
+        can_view_inventory=True,
         can_view_loads=True, can_manage_loads=True,
         # Dispatchers need the geofence and safety-event features (granted
         # below) to react to deviations mid-shift.  Those alerts surface in the
@@ -675,7 +694,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_coaching=False,
         can_manage_inspections=True, can_view_inspections=True,
         can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.HR: FeatureSet(
         # HR persona — people management.  Focus: driver compliance,
@@ -696,13 +715,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Read-only context — HR needs to see WHO is doing WHAT,
         # not edit fleet ops:
         can_view_vehicles=True,                  # Which vehicle a driver is on
+        can_view_inventory=True,
         can_view_location=True,                 # Where drivers are right now
         can_view_events=True,                   # Safety events drive coaching
         can_view_scorecards=True,                # Driver behaviour insight
         can_view_risk_reports=True,              # Personnel risk reporting
         can_manage_geofence=True, can_view_geofence=True,                 # See geofence context for incidents
         can_view_driver_pay=False, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
@@ -722,14 +742,16 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Read-only context — accounting needs to see WHICH assets
         # generate WHICH costs:
         can_view_vehicles=True,                  # Vehicle list for asset accounting
+        can_view_inventory=True,
         can_view_driver_pay=True, can_view_coaching=False, can_view_driver_docs=False,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     Role.DRIVER: FeatureSet(
         can_view_vehicle_docs=True,
         can_view_faults=False, can_view_fuel=False,
         can_view_efficiency=False, can_view_health=False,
         can_view_vehicles=True,
+        can_view_inventory=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_manage_geofence=False, can_view_geofence=True,
@@ -751,7 +773,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_inspections=False, can_view_inspections=True,
         can_view_loads=True,
         can_view_driver_pay=True, can_view_coaching=True, can_view_driver_docs=True,
-        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=True, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
@@ -800,7 +822,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_applications=True, can_onboard_drivers=False,
         can_view_carrier_directory=True,   # read the carrier directory (managers also edit)
         can_view_driver_pay=False, can_view_coaching=False, can_view_driver_docs=False,
-        can_view_alerts=False, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True,
+        can_view_alerts=False, can_view_ai_assistant=True, can_view_reports=True, can_view_mods=True, can_view_notifications=True,
     ),
 }
 
@@ -1447,6 +1469,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_cameras": "dashcam cameras",
     "can_view_ai_assistant": "AI assistant chat",
     "can_view_mods": "mods (personal look, sound and effects)",
+    "can_view_notifications": "notifications (the bell, channels and delivery)",
     "can_cost_reports": "cost reports (executive rollups)",
     "can_inspections_all": "inspections (review all)",
     "can_inspections_vehicle": "inspections (assigned vehicle)",
@@ -1727,7 +1750,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "acknowledge_alerts":       ["can_view_alerts"],        # owner/admin/fleet/safety/driver(own)
     "file_vehicle_document":    ["can_manage_vehicle_docs"],                 # you may only file what you could upload
     "get_vehicle_documents_status": ["can_view_vehicle_docs"],                    # whoever may read the papers may ask about them
-    "import_inventory_items":   ["can_manage_vehicles"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing
+    "import_inventory_items":   ["can_manage_inventory"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing
 }
 
 # Tools that are account-wide — driver must NOT call these even if permitted

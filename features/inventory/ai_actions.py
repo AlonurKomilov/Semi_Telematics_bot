@@ -270,7 +270,7 @@ register_import_target(ImportTarget(
     },
     build_rows=_build_rows,
     executor=_noop_executor,   # real execution = the registered action below
-    permission="can_manage_vehicles",
+    permission="can_manage_inventory",
     edit_row=_edit_row,
     edit_options={"status": list(INVENTORY_STATUSES)},
 ))

@@ -124,6 +124,7 @@ const P_REPORTS = ['can_view_reports'];
  *  a legacy pair.  Guards that ask "is this a real flag" must accept
  *  these too — grown one family at a time as enforcement migrates. */
 export const CANONICAL_WIRE_FLAGS: readonly string[] = [
+  'can_view_notifications',
   'can_manage_maintenance', 'can_manage_work_orders',
   'can_manage_inspections', 'can_manage_geofence',
   'can_view_driver_pay', 'can_view_coaching', 'can_view_driver_docs',
@@ -160,6 +161,9 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Mods — the personal look, sound and effects. A service so the owner can
   // withhold it from a role like any channel; reached from the top-bar palette
   // and the avatar menu, never the sidebar — navHidden keeps the /mods guard.
+  // Notifications — the bell and its centre, a delivery SERVICE granted
+  // per role; reached from the topbar bell, never the sidebar.
+  { id: 'notifications',  labelKey: 'nav.notifications',  path: '/notifications', icon: Bell, modules: ['core'], kind: 'service', permission: ['can_view_notifications'], navGroup: 'main', navHidden: true },
   { id: 'mods',           labelKey: 'nav.mods',           path: '/mods',      icon: Palette,         modules: ['core'], kind: 'service', permission: ['can_view_mods'], navGroup: 'main', navHidden: true },
   // Alerts launches from the topbar bell (a monitoring SERVICE beside
   // the AI icon), not a sidebar row — navHidden keeps the /alerts route
@@ -189,7 +193,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // lives in every truck; search by serial, filter missing/damaged).
   // Sits directly under Vehicles in the sidebar — a destination, unlike
   // the per-truck card (which is a detail-page section).
-  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_vehicles', navGroup: 'operations', parentId: 'vehicles' },
+  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_inventory', navGroup: 'operations', parentId: 'vehicles' },
   { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_view_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────

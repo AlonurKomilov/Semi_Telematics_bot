@@ -50,8 +50,12 @@ from interfaces.api.deps import (
 # not a side effect of moving files.
 router = APIRouter(prefix="/vehicles", tags=["inventory"])
 
-_VIEW = require_permission("can_view_vehicles")
-_MANAGE = require_permission("can_manage_vehicles")
+# The feature's own gates since it left features/vehicles/.  Seeded to
+# exactly whoever held the vehicles pair that day, so the split took
+# nothing from anyone; from here an owner may grant reading a truck's
+# kit without granting the truck registry.
+_VIEW = require_permission("can_view_inventory")
+_MANAGE = require_permission("can_manage_inventory")
 
 
 # ── helpers ──────────────────────────────────────────────────────

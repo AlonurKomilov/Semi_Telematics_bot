@@ -128,7 +128,7 @@ const COLUMNS: AnyColumn[] = [
 
 export default function InventoryPage() {
   const { has } = useViewPermissions();
-  const canManage = has('can_manage_vehicles');
+  const canManage = has('can_manage_inventory');
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<FleetItem | null>(null);
   const { data, isLoading, error } = useQuery<FleetInventoryResponse>({

@@ -88,6 +88,7 @@ export const SERVICE_ROW_KEYS: Record<string, string> = {
   ai_assistant: 'can_view_ai_assistant',
   reports: 'can_view_reports',
   mods: 'can_view_mods',
+  notifications: 'can_view_notifications',
 };
 
 export const PERM_GROUPS: PermGroup[] = [
@@ -105,6 +106,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_alerts', kind: 'feature', label: 'Alerts', description: 'The inbox. Shows the alerts for whichever features the role can see; its width (all units or assigned trucks) is Team Management’s' },
       { key: 'can_view_ai_assistant', kind: 'feature', label: 'AI Assistant', description: 'Chat + fleet summary. Each tool answers only from data the role can already see' },
       { key: 'can_view_reports', kind: 'feature', label: 'Reports', description: 'The hub and its scheduled-report subscription; which tabs appear follows the role’s features' },
+      { key: 'can_view_notifications', kind: 'feature', label: 'Notifications', description: 'The bell, the notification centre, the channels (Telegram, email, push) and their settings, and delivery itself. Without it nothing reaches the person — except mandatory security and billing notices' },
       { key: 'can_view_mods', kind: 'feature', label: 'Mods', description: 'The personal look — colour, corners, sound, effects, wallpaper. Per person, per device; without it every setting stays at its default and the panel, page and doors are closed' },
     ],
   },
@@ -170,6 +172,12 @@ export const PERM_GROUPS: PermGroup[] = [
       // the second.  Named rather than a second bare "Manage", which
       // the verb grid would promote into the Vehicles row and hide.
       { key: 'can_manage_vehicle_docs', kind: 'action', label: 'Manage documents', indented: true, description: "Upload and delete a truck's documents" },
+      // Onboard Inventory is its own feature (features/inventory/) and
+      // sits under Vehicles because that is where a person looks for
+      // what is in a truck.  Its own pair since 2026-09-08: chasing a
+      // missing extinguisher is not administering the registry.
+      { key: 'can_view_inventory', kind: 'feature', label: 'Onboard Inventory', indented: true, description: "What lives in each truck — dashcam, fuel card, toll transponder, ELD — and who touched it" },
+      { key: 'can_manage_inventory', kind: 'action', label: 'Manage inventory', indented: true, description: 'Add, edit, verify, transfer and remove items' },
       // SUB-FEATURES of the Vehicles family: each has its OWN home
       // (features/vehicles/<x>/ with report.py / ai_tool.py / alert.py /
       // scoring_signal.py) and gates the live tab + report + AI tool.
@@ -391,6 +399,7 @@ export const DRIVER_SERVICES: SimpleFlag[] = [
   { kind: 'feature', key: 'can_view_alerts',       label: 'Alerts',       description: 'The inbox for their trucks (bot + mini app)' },
   { kind: 'feature', key: 'can_view_ai_assistant', label: 'AI Assistant', description: 'Chat about their own truck (bot + mini app)' },
   { kind: 'feature', key: 'can_view_reports',      label: 'Reports',      description: 'Scheduled reports for their truck (bot)' },
+  { kind: 'feature', key: 'can_view_notifications', label: 'Notifications', description: 'Bot messages and push for their truck; without it nothing is sent' },
 ];
 export const DRIVER_PANEL_FLAGS: PermFlag[] = [...DRIVER_TRUCK, ...DRIVER_RECORDS, ...DRIVER_SERVICES];
 // Static flag list for the change diff — PERM_GROUPS never changes at runtime.

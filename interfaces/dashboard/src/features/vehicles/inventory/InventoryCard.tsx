@@ -8,7 +8,9 @@
  * opens the item dialog (details, actions, accountability trail).
  *
  * VIEW rides normal vehicle access; the Add button and every action are
- * gated on ``can_manage_vehicles`` (registry admin).
+ * gated on ``can_manage_inventory`` — the feature's own
+ * grant since it left features/vehicles/, so a person may read a
+ * truck's kit without administering the registry.
  */
 import { useState } from 'react';
 import { Plus } from '../../../lib/icons';
@@ -27,7 +29,7 @@ import { SectionHeader } from '@/components/shell';
 
 export default function InventoryCard({ vehicleName, company }: VehicleSectionProps) {
   const { has } = useViewPermissions();
-  const canManage = has('can_manage_vehicles');
+  const canManage = has('can_manage_inventory');
   const { data, isLoading } = useInventory(vehicleName, company);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<InventoryItem | null>(null);

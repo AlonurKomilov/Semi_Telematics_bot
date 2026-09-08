@@ -228,6 +228,7 @@ async def run_all(conn) -> None:
     # visibility diverged from the seed get what the derivation computed.
     await migrate_backfill_alerts_grant(conn)
     await migrate_google_signin(conn)
+    await migrate_inventory_own_flags(conn)
 
 
 async def migrate_alert_vehicle_documents_column(conn) -> None:
@@ -4878,6 +4879,79 @@ async def migrate_google_signin(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.info("idx_users_google_sub skipped (%s)", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_inventory_own_flags(conn) -> None:
+    """Onboard Inventory got its own permission pair; an owner's stored
+    decision must survive the split.
+
+    Until 2026-09-08 the feature rode ``can_view_vehicles`` /
+    ``can_manage_vehicles``.  Role DEFAULTS were seeded to exactly the
+    same roles that held those, so an account that never touched its
+    matrix sees no change at all.
+
+    An account that DID touch it is the reason this migration exists.  A
+    stored row that says ``can_view_vehicles: false`` for dispatch was a
+    deliberate denial; without carrying it across, the new flag would
+    fall back to its role default — true — and dispatch would silently
+    GAIN a page an owner had taken away.  So every explicit value is
+    copied to the new key, and only where the new key is not already
+    set: a re-run, or an owner who has meanwhile made a real decision
+    about Inventory itself, must not be overwritten.
+
+    Idempotent.  Rows with no explicit vehicles value are untouched —
+    absence means "the role default", which is already correct.
+    """
+    import json as _json
+    pairs = (
+        ("can_view_vehicles", "can_view_inventory"),
+        ("can_manage_vehicles", "can_manage_inventory"),
+    )
+    try:
+        cur = await conn.execute(
+            "SELECT id, permissions FROM role_permissions"
+            " WHERE permissions LIKE '%can_view_vehicles%'"
+            "    OR permissions LIKE '%can_manage_vehicles%'"
+        )
+        rows = await cur.fetchall()
+        changed = 0
+        for row in rows:
+            row_id, raw = row[0], row[1]
+            try:
+                perms = _json.loads(raw or "{}")
+            except (ValueError, TypeError):
+                # This table gates authorization — a stuck row must be
+                # discoverable, not silent.
+                logger.warning(
+                    "Migration: role_permissions row %s has unparseable "
+                    "JSON, inventory split skipped for it", row_id,
+                )
+                continue
+            if not isinstance(perms, dict):
+                continue
+            touched = False
+            for old_key, new_key in pairs:
+                if old_key in perms and new_key not in perms:
+                    perms[new_key] = perms[old_key]
+                    touched = True
+            if touched:
+                await conn.execute(
+                    "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                    (_json.dumps(perms), row_id),
+                )
+                changed += 1
+        await conn.commit()
+        if changed:
+            logger.info(
+                "Migration: carried %d stored vehicles grant(s) onto the "
+                "inventory flags", changed,
+            )
+    except Exception as e:
+        logger.info("inventory flag migration skipped — %s", e)
         try:
             await conn.rollback()
         except Exception:

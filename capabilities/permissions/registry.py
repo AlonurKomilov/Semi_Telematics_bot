@@ -99,6 +99,9 @@ ENTRIES: tuple[Entry, ...] = (
     # ── core — always on ─────────────────────────────────────────────
     _e("overview", tier="shared", modules=["core"], note="an aggregator page; gated by what it shows"),
     _e("ai_assistant", kind="service", modules=["core"], opens=["can_view_ai_assistant"]),
+    _e("notifications", kind="service", modules=["core"], opens=["can_view_notifications"],
+       note="the delivery channel: the bell, the centre, Telegram/email/push and their settings; "
+            "withheld, nothing reaches the person except mandatory security/billing notices"),
     _e("mods", kind="service", modules=["core"], opens=["can_view_mods"],
        note="the personal look — colour, corners, sound, effects, wallpaper; per person, per device, nothing account-wide flows through it. Without it every setting holds its default and the panel, the page and the doors are closed"),
     _e("alerts", kind="service", modules=["core"], opens=["can_view_alerts"],
@@ -123,8 +126,12 @@ ENTRIES: tuple[Entry, ...] = (
     # ── shared across departments ────────────────────────────────────
     _e("kpi", tier="shared", modules=["account", "dispatch", "accounting"], opens=["can_view_kpi"]),
     _e("kpi_my_payouts", tier="shared", modules=["dispatch"], note="finalized payout rows; no flag of its own"),
-    _e("vehicle_inventory", tier="shared", modules=["fleet", "account"], opens=["can_view_vehicles"], flags=[],
-       parent="vehicles", note="rides Vehicles"),
+    _e("vehicle_inventory", tier="shared", modules=["fleet", "account"],
+       opens=["can_view_inventory"],
+       flags=["can_view_inventory", "can_manage_inventory"], parent="vehicles",
+       note="features/inventory/ — its own flags since 2026-09-08; still "
+            "nested under Vehicles in the nav, because that is where a "
+            "person looks for what is in a truck"),
     _e("vehicle_documents", tier="shared", modules=["fleet", "account"], opens=["can_view_vehicle_docs"],
        flags=["can_view_vehicle_docs", "can_manage_vehicle_docs"], parent="vehicles"),
     _e("geofences", tier="shared", modules=["fleet", "dispatch"], opens=["can_view_geofence"],

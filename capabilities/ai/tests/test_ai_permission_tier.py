@@ -166,10 +166,14 @@ def test_user_context_carries_the_tier_flags():
 class TestManagerTierAdvertisement:
     """The reported case, against a real permission store.
 
-    Owner restricts plain fleet users (no Vehicles → Manage) and grants it
-    to fleet MANAGERS.  The manager must be OFFERED the import tool; the
-    plain fleet user must not — and the two must never share a cache
+    Owner restricts plain fleet users (no Inventory → Manage) and grants
+    it to fleet MANAGERS.  The manager must be OFFERED the import tool;
+    the plain fleet user must not — and the two must never share a cache
     entry.
+
+    The flag is ``can_manage_inventory`` since Onboard Inventory left
+    features/vehicles/ with its own pair; the tier mechanism under test
+    is the same whichever flag gates the example tool.
     """
 
     async def test_manager_sees_the_tool_the_base_tier_lacks(self, seeded_db, monkeypatch):
@@ -182,9 +186,9 @@ class TestManagerTierAdvertisement:
         account = seeded_db["account"]
         monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
 
-        await db.set_role_permissions(account.id, "fleet", {"can_manage_vehicles": False})
+        await db.set_role_permissions(account.id, "fleet", {"can_manage_inventory": False})
         await db.set_role_permissions(
-            account.id, R.perm_tier_key("fleet", True), {"can_manage_vehicles": True},
+            account.id, R.perm_tier_key("fleet", True), {"can_manage_inventory": True},
         )
         R.invalidate_permissions_cache()
         invalidate_tool_cache()

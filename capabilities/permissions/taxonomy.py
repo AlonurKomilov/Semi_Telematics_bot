@@ -92,6 +92,10 @@ TAXONOMY: dict[str, Verdict] = {
         "DARK feature — stays in DARK_FEATURE_FIELDS under the new name."),
     "can_carrier_directory": Verdict(V, "can_view_carrier_directory"),
     "can_vehicle_docs":  Verdict(V, "can_view_vehicle_docs"),
+    # Onboard Inventory left features/vehicles/ with its own pair; both
+    # names are already grammatical, so nothing renames and no alias is
+    # owed.
+    "can_view_inventory": Verdict(V, "can_view_inventory"),
 
     # ── wide/assigned pairs: _all → verb, _vehicle → dies into
     #    (view verb + Team Management scope=assigned) ────────────────
@@ -148,6 +152,7 @@ TAXONOMY: dict[str, Verdict] = {
 
     # ── already-grammatical manage flags: target == self, no rename ─
     "can_manage_vehicle_docs":      Verdict(M, "can_manage_vehicle_docs"),
+    "can_manage_inventory":         Verdict(M, "can_manage_inventory"),
     "can_manage_users":             Verdict(M, "can_manage_users"),
     "can_manage_companies":         Verdict(M, "can_manage_companies"),
     "can_manage_vehicles":          Verdict(M, "can_manage_vehicles"),
@@ -187,6 +192,7 @@ TAXONOMY: dict[str, Verdict] = {
     "can_ai_chat":        Verdict(V, "can_view_ai_assistant"),
     # Mods — born as a service verb on 2026-09-08; no legacy name.
     "can_view_mods":      Verdict(V, "can_view_mods"),
+    "can_view_notifications": Verdict(V, "can_view_notifications"),
     "can_digest":         Verdict(V, "can_view_reports"),
     "can_alerts_all":     Verdict(V, "can_view_alerts"),
     "can_alerts_vehicle": Verdict(S, "can_view_alerts"),

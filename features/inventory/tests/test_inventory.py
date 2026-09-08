@@ -3,7 +3,7 @@
 Proves: CRUD + the accountability contract (every write appends an event
 with the actor AND the driver assigned to the truck at that moment),
 transfer keeps history, gates (view = vehicle access, write =
-can_manage_vehicles), company scoping, and the fleet badge counts.
+can_manage_inventory), company scoping, and the fleet badge counts.
 """
 from __future__ import annotations
 
@@ -166,11 +166,11 @@ class TestInventoryCrudAndTrail:
 
 class TestInventoryGates:
     async def test_viewer_reads_but_cannot_write(self, api):
-        """Dispatcher: has vehicle access (view) but NOT can_manage_vehicles."""
+        """Dispatcher: reads inventory but may not change it."""
         app, db = api
         acct = await db.create_account("Gates Co")
         from capabilities.permissions.roles import ROLE_PERMISSIONS
-        assert ROLE_PERMISSIONS[Role.DISPATCHER].can_manage_vehicles is False
+        assert ROLE_PERMISSIONS[Role.DISPATCHER].can_manage_inventory is False
         dispatcher = await db.create_user(800004, acct.id, role=Role.DISPATCHER)
         fleet = await db.create_user(800005, acct.id, role=Role.FLEET)
         await _seed(db, acct, unit="110")
@@ -249,3 +249,30 @@ class TestFleetWideInventory:
             items = r.json()["items"]
             assert [i["unit_number"] for i in items] == ["201"]
         assert va and vb
+
+
+# ── the split kept everyone where they were ──────────────────────────
+#
+# A permission split is only safe if it takes nothing from anyone on the
+# day it lands.  These pin the seeding decision so a later edit to either
+# pair is a deliberate one.
+
+def test_the_inventory_pair_was_seeded_to_exactly_who_held_the_vehicles_pair():
+    from capabilities.permissions.roles import ROLE_PERMISSIONS
+    for role, perms in ROLE_PERMISSIONS.items():
+        assert perms.can_view_inventory == perms.can_view_vehicles, (
+            f"{role}: inventory view drifted from the vehicles view it was split from")
+        assert perms.can_manage_inventory == perms.can_manage_vehicles, (
+            f"{role}: inventory manage drifted from the vehicles manage it was split from")
+
+
+def test_inventory_is_grantable_on_its_own():
+    """The whole point of the split: the flags are separate fields, so an
+    owner can deny one and keep the other."""
+    from dataclasses import replace
+    from capabilities.permissions.roles import ROLE_PERMISSIONS, Role
+    fleet = ROLE_PERMISSIONS[Role.FLEET]
+    assert fleet.can_view_inventory and fleet.can_view_vehicles
+    narrowed = replace(fleet, can_view_inventory=False)
+    assert narrowed.can_view_vehicles is True
+    assert narrowed.can_view_inventory is False

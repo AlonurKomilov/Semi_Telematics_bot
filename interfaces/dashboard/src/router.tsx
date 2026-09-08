@@ -198,7 +198,7 @@ export default function AppRouter() {
             path. */}
         <Route path="live-map" element={L(<P perm={['can_view_location']}><LiveMap /></P>)} />
         <Route path="vehicles" element={L(<P perm={['can_view_vehicles']}><Vehicles /></P>)} />
-        <Route path="vehicles/inventory" element={L(<P perm={['can_view_vehicles']}><VehicleInventory /></P>)} />
+        <Route path="vehicles/inventory" element={L(<P perm={['can_view_inventory']}><VehicleInventory /></P>)} />
         {/* Before the parametric vehicle route for the same reason the
             API mounts its list first — otherwise "documents" resolves
             as a truck name. */}
@@ -335,8 +335,8 @@ export default function AppRouter() {
             settings page (the bell's gear). The alert BOARD stays at
             /alerts; the old /alerts/preferences path 301s so bookmarks
             survive. */}
-        <Route path="notifications" element={L(<NotificationCenter />)} />
-        <Route path="notifications/preferences" element={L(<MyNotifications />)} />
+        <Route path="notifications" element={L(<P perm="can_view_notifications"><NotificationCenter /></P>)} />
+        <Route path="notifications/preferences" element={L(<P perm="can_view_notifications"><MyNotifications /></P>)} />
         <Route path="alerts/preferences" element={<Navigate to="/notifications/preferences" replace />} />
         <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
         {/* Deliberately UNGATED, unlike the Board beside it: a trigger is
