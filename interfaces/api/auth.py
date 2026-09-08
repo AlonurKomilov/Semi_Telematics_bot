@@ -155,7 +155,15 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> dict:
 # exercise — every other permission reads False for that token, however
 # senior the person behind it.  Unknown audiences are rejected at decode.
 EXTENSION_AUDIENCE = "extension"
-KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE})
+# A Google sign-up that has not finished setting up.  The token opens
+# exactly one door — completing setup — and nothing else; it is not a
+# session and cannot become one by refresh.  Fifteen minutes, because
+# the only thing it waits for is a person typing a password and a
+# company name.
+SETUP_AUDIENCE = "setup"
+SETUP_TTL_MINUTES = 15
+SETUP_ROUTES: frozenset[str] = frozenset({"/auth/complete-setup"})
+KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 # Canonical first; the two legacy names ride along for one release so
 # an installed extension that still checks the old scope string keeps
 # connecting (interfaces/browser_extension/src/connect.ts moved to the
@@ -357,6 +365,22 @@ async def mint_session_token(
         except Exception:
             lc = None  # lifecycle read failure must not lock everyone out
         if lc:
+            # A Google sign-up whose owner has not yet set a password
+            # and named the company is not signed-in-able by ANY method
+            # — this is the one place that says so, so no login path
+            # can forget.  The message may be specific: it reaches only
+            # a person who just authenticated as that account's owner.
+            if lc.get("setup_pending_since") and aud != SETUP_AUDIENCE:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error_code": "setup_pending",
+                        "message": (
+                            "Finish setting up your company to sign in: "
+                            "choose a password and name your company."
+                        ),
+                    },
+                )
             if lc.get("suspended_at"):
                 raise HTTPException(
                     status_code=403,
@@ -606,6 +630,10 @@ async def refresh_token(request: Request, response: Response, authorization: str
     # its expiry past the denylist entry and the session would come back.
     if payload.get("jti") and await is_jti_revoked(str(payload["jti"])):
         raise HTTPException(status_code=401, detail="Session revoked. Sign in again.")
+    if payload.get("aud") == SETUP_AUDIENCE:
+        # Not a session: it opens one door and expires.  Renewing it
+        # would turn a fifteen-minute setup window into a standing key.
+        raise HTTPException(status_code=403, detail="Finish setting up your company first.")
 
     telegram_id = int(payload["sub"])
     user = await db.get_user_by_telegram_id(telegram_id)
@@ -960,6 +988,11 @@ async def auth_config(request: Request):
         "bot_id": _bot_id,
         "signup_base_url": signup_base,
         "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
+        # Public by design — every browser sends it to Google.  Absent
+        # (so the button is not drawn) when the platform has no client
+        # configured, and on the operator console's host, which has its
+        # own login and must never offer this one.
+        "google_signin_client_id": google_signin_client_id(request),
     }
 
 
@@ -1649,6 +1682,436 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
             "link, then sign in."
         ),
     }
+
+
+# ── Sign in with Google ────────────────────────────────────────────
+#
+# Google Identity Services hands the browser an ID token; the browser
+# posts it here; we verify it against Google's published keys and OUR
+# client id.  No client secret, no redirect: this client cannot be
+# confused with the Drive one (capabilities/object_storage), which is
+# the whole point of keeping them apart.
+#
+# Identity is Google's ``sub``.  Email is used exactly once — to find a
+# user to link on the FIRST sign-in, and only when both Google and we
+# have verified that mailbox — and never again after a link: a Workspace
+# address that changes hands must not inherit the previous holder's
+# account.  Refusals are one generic message whether the email is
+# unknown, unverified, or present in several tenants; a distinct answer
+# would tell a stranger which addresses exist.
+
+ENV_GOOGLE_SIGNIN_CLIENT_ID = "GOOGLE_SIGNIN_CLIENT_ID"
+_GOOGLE_REFUSAL = (
+    "No 4truck account is linked to that Google address.  Sign in with "
+    "your password and link Google from your profile, or use your invite."
+)
+
+
+def google_signin_client_id(request: Request | None = None) -> str:
+    """The platform's Google sign-in client id, or "" when the button
+    must not be drawn: unset, or asked for by the operator console's
+    host."""
+    cid = (os.getenv(ENV_GOOGLE_SIGNIN_CLIENT_ID) or "").strip()
+    if not cid:
+        return ""
+    host = ((request.headers.get("host") if request else "") or "").split(":")[0].lower()
+    if host.startswith("system."):
+        return ""
+    return cid
+
+
+_google_transport = None
+
+
+def _google_request():
+    """One cached transport for Google's certificate fetches.  Without a
+    session ``verify_oauth2_token`` downloads Google's JWKS on every
+    call — one HTTPS round-trip per login for a document that changes
+    a few times a year."""
+    global _google_transport
+    if _google_transport is None:
+        import requests as _requests
+        from google.auth.transport import requests as gart
+        _google_transport = gart.Request(session=_requests.Session())
+    return _google_transport
+
+
+def _verify_google_credential_sync(credential: str, client_id: str) -> dict:
+    from google.oauth2 import id_token as _id_token
+    return _id_token.verify_oauth2_token(credential, _google_request(), client_id)
+
+
+async def verify_google_credential(credential: str) -> dict:
+    """Verify a GIS ID token and return its claims, or raise 401.
+
+    The library checks signature, expiry, audience and issuer.  We add
+    what it does not: the claims we rely on are present, the mailbox is
+    one Google has verified, and this exact credential has not been
+    presented before (single-use, keyed by hash, TTL to its own expiry;
+    Redis down means the check is skipped with a warning — TLS + exp +
+    aud remain the primary guards).  The credential itself is never
+    logged or stored.
+    """
+    client_id = (os.getenv(ENV_GOOGLE_SIGNIN_CLIENT_ID) or "").strip()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured.")
+    if not credential or len(credential) > 4096:
+        raise HTTPException(status_code=401, detail="Invalid Google credential.")
+    from fastapi.concurrency import run_in_threadpool
+    try:
+        claims = await run_in_threadpool(_verify_google_credential_sync, credential, client_id)
+    except Exception as e:
+        # A Google outage, clock skew and a forged token all end in the
+        # same 401; the log is where they stay distinguishable.
+        logging.getLogger("api.auth").info("google credential refused: %s: %s", type(e).__name__, str(e)[:160])
+        raise HTTPException(status_code=401, detail="Invalid Google credential.")
+    sub = str(claims.get("sub") or "")
+    email = str(claims.get("email") or "").strip().lower()
+    if not sub or not email or not claims.get("email_verified"):
+        raise HTTPException(status_code=401, detail="Invalid Google credential.")
+    import hashlib
+    import time as _time
+    key = "gsi:" + hashlib.sha256(credential.encode()).hexdigest()
+    ttl = max(1, int(claims.get("exp", 0)) - int(_time.time()))
+    try:
+        from infra import cache as _rc
+        # SET NX EX: one winner across every worker, no check-then-set gap.
+        if _rc.is_available() and not await _rc.acquire_lock(key, ttl):
+            raise HTTPException(status_code=401, detail="Invalid Google credential.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.getLogger("api.auth").warning("google credential replay check skipped: %s", e)
+    return {"sub": sub, "email": email, "name": str(claims.get("name") or "")}
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str
+    remember_me: bool = False
+
+
+class GoogleRegisterRequest(BaseModel):
+    """Google + an invite (join a company) or Google alone (start one)."""
+    credential: str
+    invite_code: str | None = None
+    turnstile_token: str | None = None
+
+
+class CompleteSetupRequest(BaseModel):
+    company_name: str = Field(..., min_length=2, max_length=100)
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: str = ""
+
+
+def _google_refuse() -> HTTPException:
+    return HTTPException(status_code=401, detail=_GOOGLE_REFUSAL)
+
+
+async def _resolve_google_user(db, g: dict, *, ua: str, ip: str):
+    """The user a verified Google identity signs in as, or a refusal.
+
+    Order: a user already bound to this ``sub`` wins outright.  Otherwise
+    the email may link a user — once, and only when Google AND we have
+    verified it, it lives in exactly one account, and that user holds no
+    other Google identity.  Every other outcome is the same 401; the
+    distinct reason goes to the login-attempt log only.
+    """
+    async def _miss(reason: str, user_id=None):
+        await db.record_login_attempt(user_id=user_id, email=g["email"], success=False,
+                                      failure_reason=reason, ip_address=ip, user_agent=ua)
+        return _google_refuse()
+
+    user = await db.get_user_by_google_sub(g["sub"])
+    if user:
+        return user, False
+    n = await db.count_accounts_for_email(g["email"])
+    if n == 0:
+        raise await _miss("google_no_account")
+    if n > 1:
+        raise await _miss("google_ambiguous_email")
+    user = await db.get_user_by_email(g["email"])
+    if not user:
+        raise await _miss("google_no_account")
+    if user.google_sub and user.google_sub != g["sub"]:
+        raise await _miss("google_sub_mismatch", user.id)
+    if not await db.is_email_verified(user.id):
+        raise await _miss("google_local_email_unverified", user.id)
+    try:
+        await db.link_google_to_user(user.id, g["sub"], g["email"])
+    except ValueError:
+        raise await _miss("google_link_refused", user.id)
+    return user, True
+
+
+def _auth_user_dict(user, name: str | None = None) -> dict:
+    return {
+        "telegram_id": user.telegram_id,
+        "name": name or user.display_name or user.email or "",
+        "role": user.role.value,
+        "account_id": user.account_id,
+    }
+
+
+async def _resume_setup_if_pending(db, request: Request, user) -> dict | None:
+    """A Google owner whose company never finished setting up gets a
+    fresh setup token when they come back — from a closed tab, an
+    expired fifteen minutes, or a week later.  Anyone else on a pending
+    account (there is nobody else yet, but the check is cheap) keeps the
+    403 the gate raises."""
+    lc = await db.get_account_lifecycle(user.account_id)
+    if not lc or not lc.get("setup_pending_since"):
+        return None
+    if user.role.value != "owner" or not user.google_sub:
+        return None
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=None,
+        account_id=user.account_id, role=user.role.value,
+        remember_me=False, aud=SETUP_AUDIENCE, scope=(),
+        device_label="setup", always_notify=False,
+    )
+    return {"status": "setup_required", "setup_token": token,
+            "email": user.email, "account_id": user.account_id}
+
+
+@router.post("/google")
+@limiter.limit("10/minute")
+async def google_login(
+    request: Request, response: Response, body: GoogleLoginRequest,
+):
+    """Sign in with a Google ID token.
+
+    Every non-password gate ``/login`` applies is applied here — through
+    ``mint_session_token`` (suspension, deletion, setup) and by the same
+    refusals (inactive user).  Google failures never count toward the
+    password lockout: a wrong password and a bad token are different
+    attackers.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    _ip = _client_ip(request)
+    _ua = (request.headers.get("user-agent") or "")[:500]
+    g = await verify_google_credential(body.credential)
+    user, just_linked = await _resolve_google_user(db, g, ua=_ua, ip=_ip)
+    resume = await _resume_setup_if_pending(db, request, user)
+    if resume:
+        return resume
+    await db.record_login_attempt(
+        user_id=user.id, email=user.email, success=True,
+        ip_address=_ip, user_agent=_ua,
+    )
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=user.telegram_id,
+        account_id=user.account_id, role=user.role.value,
+        is_manager=user.is_manager,
+        is_primary_owner=user.is_primary_owner,
+        remember_me=body.remember_me,
+    )
+    if just_linked:
+        # The one link that was not made from inside a session: say so
+        # to the mailbox, the way a new device is announced.
+        try:
+            from capabilities.email.auth_emails import send_google_linked_email
+            send_google_linked_email(
+                to=user.email or g["email"], recipient_name=user.display_name or "",
+                google_email=g["email"], ip=_ip,
+            )
+        except Exception as e:
+            logging.getLogger("api.auth").warning("google-linked email failed: %s", e)
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
+    return AuthResponse(access_token=token, user=_auth_user_dict(user))
+
+
+@router.post("/register-google")
+@limiter.limit("10/minute")
+async def google_register(request: Request, body: GoogleRegisterRequest):
+    """Create a user from a Google identity.
+
+    With an invite: join that company in the invite's role — the whole
+    value of Google for office onboarding.  The user is born with
+    ``email_verified=1`` (Google's claim) and no password; they may add
+    one from their profile.  A session is minted at once.
+
+    Without an invite: start a company.  The account and its owner are
+    created behind the setup gate — no session; a fifteen-minute
+    ``aud=setup`` token that opens only ``/auth/complete-setup``, where a
+    password and the company name are required.  The trial starts THERE,
+    not here, so a Google click abandoned at this step burns nothing.
+    Turnstile guards this path exactly as it guards ``/register-account``.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    _ip = _client_ip(request)
+    _ua = (request.headers.get("user-agent") or "")[:500]
+    g = await verify_google_credential(body.credential)
+
+    if body.invite_code:
+        invite = await db.get_invite(body.invite_code.strip())
+        if not invite:
+            raise HTTPException(status_code=404, detail="Invalid invite code")
+        if invite.is_expired:
+            raise HTTPException(status_code=410, detail="Invite code expired")
+        if invite.is_used:
+            raise HTTPException(status_code=410, detail="Invite code already used")
+        if await db.get_user_by_google_sub(g["sub"]):
+            raise HTTPException(status_code=409, detail="That Google account is already linked to a 4truck user.")
+        if await db.get_user_by_email_in_account(g["email"], invite.account_id):
+            raise HTTPException(status_code=409, detail="Email already registered in this company.")
+        async with db.transaction():
+            invite = await db.get_invite(body.invite_code.strip())
+            if not invite or invite.is_used:
+                raise HTTPException(status_code=410, detail="Invite code already used")
+            from interfaces.api.deps import enforce_user_quota
+            await enforce_user_quota(invite.account_id, platform_db=db)
+            try:
+                user = await db.create_user_with_email(
+                    email=g["email"], password_hash=None,
+                    account_id=invite.account_id,
+                    role=database.Role.from_str(invite.role),
+                    display_name=g["name"] or g["email"].split("@")[0],
+                    email_verified=True, google_sub=g["sub"], google_email=g["email"],
+                )
+            except Exception as e:
+                # Two requests for one sub or one email at the same
+                # instant: the unique index decides, and the loser
+                # gets the same answer the pre-check would have given.
+                if "unique" in type(e).__name__.lower() or "integrity" in type(e).__name__.lower():
+                    raise HTTPException(status_code=409, detail="That Google account or email is already registered.")
+                raise
+            cur = await db._db.execute(
+                "UPDATE invites SET used_by = ? "
+                "WHERE id = ? AND used_by IS NULL AND revoked_at IS NULL",
+                (user.id, invite.id),
+            )
+            if cur.rowcount != 1:
+                raise HTTPException(status_code=410, detail="Invite code already used")
+        await db.record_login_attempt(user_id=user.id, email=user.email, success=True,
+                                      ip_address=_ip, user_agent=_ua)
+        token = await mint_session_token(
+            db, request,
+            user_id=user.id, telegram_id=None,
+            account_id=user.account_id, role=user.role.value,
+            remember_me=False,
+        )
+        return {"status": "joined", "access_token": token, "token_type": "bearer",
+                "user": _auth_user_dict(user)}
+
+    # ── new company ──
+    from infra.turnstile import verify_turnstile
+    if not await verify_turnstile(body.turnstile_token, remote_ip=_ip):
+        raise HTTPException(status_code=403, detail="Captcha verification failed. Please try again.")
+    if await db.get_user_by_google_sub(g["sub"]) or await db.count_accounts_for_email(g["email"]):
+        # The same answer /register-account gives an existing address.
+        raise HTTPException(status_code=409, detail="Email already registered")
+    try:
+        # A placeholder the owner replaces at completion; unique so two
+        # sign-ups in the same minute cannot collide on it.
+        placeholder = f"Pending setup {secrets.token_hex(4)}"
+        account = await db.create_account(placeholder)
+        # Gate first, owner second: if the owner insert fails, what is
+        # left is an empty pending account the sweep removes — never an
+        # owner who can sign in to a company that skipped setup.
+        await db.set_setup_pending(account.id)
+        user = await db.create_user_with_email(
+            email=g["email"], password_hash=None, account_id=account.id,
+            role=database.Role.OWNER,
+            display_name=g["name"] or g["email"].split("@")[0],
+            email_verified=True, google_sub=g["sub"], google_email=g["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logging.getLogger("api.auth").error("Google account registration failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
+    try:
+        await db.add_platform_audit(
+            "account_created", account_id=account.id, actor="google-signup",
+            details=f"owner={g['email']} ip={_ip} setup_pending=1",
+        )
+    except Exception:
+        logging.getLogger("api.auth").exception("platform audit write failed for account %s", account.id)
+    setup_token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=None,
+        account_id=account.id, role=user.role.value,
+        remember_me=False, aud=SETUP_AUDIENCE, scope=(),
+        device_label="setup", always_notify=False,
+    )
+    return {"status": "setup_required", "setup_token": setup_token,
+            "email": g["email"], "account_id": account.id}
+
+
+@router.post("/complete-setup", response_model=AuthResponse)
+@limiter.limit("10/minute")
+async def complete_setup(
+    request: Request, response: Response, body: CompleteSetupRequest,
+    authorization: str | None = Header(default=None),
+):
+    """The second half of a Google company sign-up: a password and a
+    company name.  Reached only with the ``aud=setup`` token the first
+    half issued — read from the Bearer header here the way /refresh
+    reads its own (deps.py imports this module, so this module cannot
+    lean on deps' dependency), and refused for any other audience.  One
+    transaction; then the trial starts and a real session is minted."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        user_claims = decode_jwt(authorization.split(" ", 1)[1].strip())
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if user_claims.get("aud") != SETUP_AUDIENCE:
+        raise HTTPException(status_code=403, detail="Not a setup token.")
+    if user_claims.get("jti") and await is_jti_revoked(str(user_claims["jti"])):
+        raise HTTPException(status_code=401, detail="Session revoked. Sign in again.")
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    user = await db.get_user_by_id(int(user_claims["uid"]))
+    if not user or not user.is_active or user.role.value != "owner":
+        raise HTTPException(status_code=404, detail="User not found")
+    lc = await db.get_account_lifecycle(user.account_id)
+    if not lc or not lc.get("setup_pending_since"):
+        raise HTTPException(status_code=409, detail="Setup is already complete.")
+    pw_hash = _hash_password(body.password)
+    try:
+        async with db.transaction():
+            await db.set_user_email_password(user.id, user.email or "", pw_hash)
+            if body.display_name.strip():
+                await db._db.execute(
+                    "UPDATE users SET display_name = ? WHERE id = ?",
+                    (body.display_name.strip(), user.id),
+                )
+            if not await db.complete_setup(user.account_id, name=body.company_name):
+                raise HTTPException(status_code=409, detail="Setup is already complete.")
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    try:
+        await db.start_trial(user.account_id, tier="pro", days=_AUTO_TRIAL_DAYS)
+    except Exception as e:
+        logging.getLogger("api.auth").warning("Auto-trial start failed for account %s: %s", user.account_id, e)
+    try:
+        await db.add_platform_audit(
+            "account_setup_completed", account_id=user.account_id, actor="google-signup",
+            details=f"name={body.company_name!r} owner={user.email} ip={_client_ip(request)}",
+        )
+    except Exception:
+        logging.getLogger("api.auth").exception("platform audit write failed for account %s", user.account_id)
+    # The setup token has done its one job; a copy of it must not open
+    # this door again even inside its fifteen minutes.
+    if user_claims.get("jti"):
+        try:
+            await db.revoke_user_session_by_jti(str(user_claims["jti"]))
+        except Exception as e:
+            logging.getLogger("api.auth").warning("setup jti revoke failed: %s", e)
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=None,
+        account_id=user.account_id, role=user.role.value,
+        is_primary_owner=True, remember_me=False,
+    )
+    _set_auth_cookie(response, token, remember_me=False)
+    return AuthResponse(access_token=token,
+                        user=_auth_user_dict(user, body.display_name.strip() or None))
 
 
 class ForgotPasswordRequest(BaseModel):

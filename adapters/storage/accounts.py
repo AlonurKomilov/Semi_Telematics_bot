@@ -194,7 +194,8 @@ class AccountsMixin:
             """
             SELECT id, name, is_active,
                    suspended_at, suspended_reason, suspended_by,
-                   deleted_at, delete_requested_by, purge_at
+                   deleted_at, delete_requested_by, purge_at,
+                   setup_pending_since
               FROM accounts
              WHERE id = ?
             """,
@@ -213,6 +214,11 @@ class AccountsMixin:
             "deleted_at":          r[6],
             "delete_requested_by": r[7],
             "purge_at":            r[8],
+            # Set by a Google sign-up until its owner has set a password
+            # and named the company; every login path refuses while it
+            # is set (mint_session_token), and housekeeping sweeps
+            # abandoned ones.
+            "setup_pending_since": r[9],
         }
 
     async def suspend_account(
@@ -326,6 +332,81 @@ class AccountsMixin:
         )
         await self._db.commit()
         return cur.rowcount > 0
+
+    # ── Setup gate (Google sign-up) ────────────────────────────────
+
+    async def set_setup_pending(self, account_id: int) -> None:
+        """Mark a freshly created account as not yet usable: its owner
+        has an identity but no password and the company has no real
+        name yet.  Cleared by ``complete_setup``."""
+        await self._db.execute(
+            "UPDATE accounts SET setup_pending_since = ? WHERE id = ?",
+            (self._now(), account_id),
+        )
+        await self._db.commit()
+
+    async def complete_setup(self, account_id: int, *, name: str) -> bool:
+        """Name the company and open the gate.  Returns False when the
+        account was not pending (already completed, or never a Google
+        sign-up) so the caller can refuse a replayed completion.
+        Raises ``ValueError`` on a case-insensitive name collision, the
+        same rule ``create_account`` enforces."""
+        clean = (name or "").strip()
+        cur = await self._db.execute(
+            "SELECT id FROM accounts WHERE LOWER(name) = LOWER(?) AND id <> ?",
+            (clean, account_id),
+        )
+        if await cur.fetchone():
+            raise ValueError(
+                f"An account named '{clean}' already exists. "
+                "Choose a different company name."
+            )
+        cur = await self._db.execute(
+            """
+            UPDATE accounts
+               SET name = ?, slug = ?, setup_pending_since = NULL
+             WHERE id = ? AND setup_pending_since IS NOT NULL
+            """,
+            (clean, self._make_slug(clean), account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount == 1
+
+    async def list_accounts_setup_abandoned(self, *, before_iso: str) -> list[int]:
+        """Google sign-ups whose owner never finished setup: pending
+        since before ``before_iso``.  Housekeeping purges these — an
+        account nobody can sign in to is not a customer, and its owner
+        can simply sign up again."""
+        cur = await self._db.execute(
+            """
+            SELECT id FROM accounts
+             WHERE setup_pending_since IS NOT NULL
+               AND setup_pending_since <= ?
+             ORDER BY setup_pending_since
+            """,
+            (before_iso,),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
+    async def claim_abandoned_setup(self, account_id: int, *, before_iso: str) -> bool:
+        """Take an abandoned sign-up off the board in ONE statement,
+        right before purging it.  Returns False when the row is no
+        longer pending — its owner finished setup between the sweep's
+        listing and now — and the caller must not touch it.  The same
+        predicate the listing used, re-evaluated at the moment that
+        matters."""
+        cur = await self._db.execute(
+            """
+            UPDATE accounts
+               SET is_active = 0, deleted_at = ?, purge_at = ?
+             WHERE id = ?
+               AND setup_pending_since IS NOT NULL
+               AND setup_pending_since <= ?
+            """,
+            (self._now(), self._now(), account_id, before_iso),
+        )
+        await self._db.commit()
+        return cur.rowcount == 1
 
     async def list_accounts_pending_purge(self, *, before_iso: str) -> list[int]:
         """Return account IDs whose grace period has elapsed.

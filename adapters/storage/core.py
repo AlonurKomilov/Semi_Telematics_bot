@@ -387,6 +387,9 @@ class _DatabaseCore:
             samsara_driver_id=row["samsara_driver_id"] if "samsara_driver_id" in row.keys() else None,
             datatruck_driver_id=row["datatruck_driver_id"] if "datatruck_driver_id" in row.keys() else None,
             vehicle_scope=row["vehicle_scope"] if "vehicle_scope" in row.keys() else None,
+            google_sub=row["google_sub"] if "google_sub" in row.keys() else None,
+            google_email=row["google_email"] if "google_email" in row.keys() else None,
+            google_linked_at=row["google_linked_at"] if "google_linked_at" in row.keys() else None,
         )
 
     def _row_to_invite(self, row) -> Invite:

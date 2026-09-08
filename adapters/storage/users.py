@@ -151,9 +151,13 @@ class UsersMixin:
         return int(cur.lastrowid)
 
     async def create_user_with_email(
-        self, email: str, password_hash: str, account_id: int,
+        self, email: str, password_hash: Optional[str], account_id: int,
         role: Role = Role.FLEET,
         display_name: str = "",
+        *,
+        email_verified: bool = False,
+        google_sub: Optional[str] = None,
+        google_email: Optional[str] = None,
     ) -> User:
         """Create a user that signed up via email + password.
 
@@ -176,13 +180,22 @@ class UsersMixin:
         # here) is the PRIMARY owner — the un-demotable seat.  Co-owners are
         # created later via the promote-owner flow with is_primary_owner=0.
         is_primary = 1 if role == Role.OWNER else 0
+        # ``password_hash`` may be None: a user who arrived through
+        # Google holds that identity instead, and the strand guard
+        # counts it.  ``email_verified`` is 1 only when the caller
+        # proved the mailbox (our own link, or Google's verified claim)
+        # — never assumed.  A Google link recorded at birth carries the
+        # same three fields ``link_google_to_user`` writes later.
+        linked_at = now if google_sub else None
         cur = await self._db.execute(
             """INSERT INTO users
                (telegram_id, account_id, role, display_name,
-                email, password_hash, is_primary_owner, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                email, password_hash, is_primary_owner, created_at,
+                email_verified, google_sub, google_email, google_linked_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (None, account_id, role.value,
-             display_name, email.lower().strip(), password_hash, is_primary, now),
+             display_name, email.lower().strip(), password_hash, is_primary, now,
+             1 if email_verified else 0, google_sub, google_email, linked_at),
         )
         await self._db.commit()
         return User(
@@ -191,6 +204,8 @@ class UsersMixin:
             truck_num=None,
             display_name=display_name, email=email.lower().strip(),
             password_hash=password_hash,
+            google_sub=google_sub, google_email=google_email,
+            google_linked_at=linked_at,
             alerts_on=False, is_active=True, created_at=now,
             is_primary_owner=bool(is_primary),
         )
@@ -203,28 +218,121 @@ class UsersMixin:
         )
         await self._db.commit()
 
-    async def unlink_telegram_from_user(self, user_id: int) -> None:
-        """Detach the Telegram link from a user, leaving them with email
-        sign-in only.  Refuses to unlink the last sign-in method — a
-        Telegram-only user without an email + password would otherwise
-        end up with no way to sign in at all."""
+    # ── Sign-in methods and the strand guard ───────────────────────
+    #
+    # A user signs in by any of three: email + password, Telegram, or
+    # Google.  Removing one is allowed only while another remains — a
+    # user with no way in is not a security posture, it is a support
+    # ticket.  One counter, used by every unlink, so a fourth method
+    # one day is one line here and nowhere else.
+
+    async def _signin_methods(self, user_id: int) -> set[str]:
+        """The sign-in methods this user holds RIGHT NOW."""
         cur = await self._db.execute(
-            "SELECT email, password_hash FROM users WHERE id = ?",
+            "SELECT email, password_hash, telegram_id, google_sub "
+            "FROM users WHERE id = ?",
             (user_id,),
         )
         row = await cur.fetchone()
         if not row:
-            return
-        email = dict(row).get("email")
-        pw = dict(row).get("password_hash")
-        if not email or not pw:
+            return set()
+        d = dict(row)
+        methods: set[str] = set()
+        if d.get("email") and d.get("password_hash"):
+            methods.add("password")
+        if d.get("telegram_id"):
+            methods.add("telegram")
+        if d.get("google_sub"):
+            methods.add("google")
+        return methods
+
+    async def _refuse_to_strand(self, user_id: int, removing: str) -> None:
+        """Raise unless another sign-in method survives ``removing``."""
+        methods = await self._signin_methods(user_id)
+        if removing not in methods:
+            return                      # nothing to remove; caller no-ops
+        if len(methods) < 2:
             raise ValueError(
-                "Cannot unlink Telegram: no email + password is set on this "
-                "account, so removing the Telegram link would leave the user "
-                "with no way to sign in.",
+                f"Cannot unlink {removing}: it is the only way this user "
+                "can sign in.  Add a password or another sign-in method "
+                "first.",
             )
+
+    async def unlink_telegram_from_user(self, user_id: int) -> None:
+        """Detach the Telegram link.  Refuses to remove the last sign-in
+        method — see ``_refuse_to_strand``."""
+        await self._refuse_to_strand(user_id, "telegram")
         await self._db.execute(
             "UPDATE users SET telegram_id = NULL WHERE id = ?", (user_id,),
+        )
+        await self._db.commit()
+
+    # ── Sign in with Google ────────────────────────────────────────
+
+    async def get_user_by_google_sub(self, google_sub: str) -> Optional[User]:
+        """The user this Google identity is bound to, if any and active.
+        ``sub`` is the only key after a link; the email Google sends is
+        never used to find a user that already has a sub."""
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE google_sub = ? AND is_active = 1",
+            (google_sub,),
+        )
+        row = await cur.fetchone()
+        return self._row_to_user(row) if row else None
+
+    async def count_accounts_for_email(self, email: str) -> int:
+        """How many ACTIVE accounts hold a user with this email.
+        ``UNIQUE(account_id, email)`` allows the same address in several
+        tenants; a first-time Google sign-in must refuse to guess which
+        one is meant."""
+        cur = await self._db.execute(
+            "SELECT COUNT(DISTINCT account_id) FROM users "
+            "WHERE email = ? AND is_active = 1",
+            (email.lower().strip(),),
+        )
+        row = await cur.fetchone()
+        return int(row[0] or 0) if row else 0
+
+    async def link_google_to_user(
+        self, user_id: int, google_sub: str, google_email: str,
+    ) -> None:
+        """Bind a Google identity to a user.  Refuses if the user already
+        holds a DIFFERENT sub (re-keying by email is how a reused
+        Workspace address would inherit a stranger's account) or if the
+        sub is already bound elsewhere (the UNIQUE index says so too;
+        this turns it into a message)."""
+        cur = await self._db.execute(
+            "SELECT google_sub FROM users WHERE id = ?", (user_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise ValueError("User not found")
+        current = dict(row).get("google_sub")
+        if current and current != google_sub:
+            raise ValueError(
+                "This user is already linked to a different Google account. "
+                "Unlink it first."
+            )
+        other = await self.get_user_by_google_sub(google_sub)
+        if other and other.id != user_id:
+            raise ValueError(
+                "That Google account is already linked to another user."
+            )
+        await self._db.execute(
+            "UPDATE users SET google_sub = ?, google_email = ?, "
+            "google_linked_at = ? WHERE id = ?",
+            (google_sub, google_email.lower().strip(), self._now(), user_id),
+        )
+        await self._db.commit()
+
+    async def unlink_google_from_user(self, user_id: int) -> None:
+        """Detach the Google identity.  Refuses to remove the last
+        sign-in method — see ``_refuse_to_strand``."""
+        await self._refuse_to_strand(user_id, "google")
+        await self._db.execute(
+            "UPDATE users SET google_sub = NULL, google_email = NULL, "
+            "google_linked_at = NULL WHERE id = ?",
+            (user_id,),
         )
         await self._db.commit()
 

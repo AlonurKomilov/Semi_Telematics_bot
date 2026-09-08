@@ -12,6 +12,7 @@ from jose import JWTError
 from interfaces.api.auth import (
     AUTH_COOKIE_NAME, EXTENSION_AUDIENCE as _EXTENSION_AUDIENCE,
     EXTENSION_ROUTES as _EXTENSION_ROUTES,
+    SETUP_AUDIENCE as _SETUP_AUDIENCE, SETUP_ROUTES as _SETUP_ROUTES,
     KNOWN_AUDIENCES as _KNOWN_AUDIENCES, decode_jwt, is_jti_revoked,
 )
 from infra.platform import get_router as _get_router
@@ -162,6 +163,11 @@ def normalize_api_path(path: str) -> str:
     return p.rstrip("/") or "/"
 
 
+def setup_route_allowed(request) -> bool:
+    """A setup token opens exactly the completion endpoint."""
+    return normalize_api_path(_request_path(request)) in _SETUP_ROUTES
+
+
 def extension_route_allowed(request) -> bool:
     """Exact membership in EXTENSION_ROUTES.  A request with no path
     (a bare object in a test) normalizes to "/" and is refused — the
@@ -236,6 +242,8 @@ async def get_current_user(
         # client drops its token on a 401, which a stray call must not do.
         # No fall-through to the cookie candidate: a lifted panel token
         # must not be rescued by the dashboard session behind it.
+        if aud == _SETUP_AUDIENCE and not setup_route_allowed(request):
+            raise HTTPException(status_code=403, detail="Finish setting up your company first.")
         if aud == _EXTENSION_AUDIENCE and not extension_route_allowed(request):
             import logging
             logging.getLogger("api.deps").warning(

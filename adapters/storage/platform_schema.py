@@ -35,6 +35,7 @@ async def create_tables(conn) -> None:
             payroll_enabled     INTEGER NOT NULL DEFAULT 0,
             coaching_enabled    INTEGER NOT NULL DEFAULT 0,
             timezone            TEXT    NOT NULL DEFAULT 'America/New_York',
+            setup_pending_since TEXT,
             alert_routing_mode  TEXT    NOT NULL DEFAULT 'single_group',
             created_at          TEXT    NOT NULL
         );
@@ -73,6 +74,9 @@ async def create_tables(conn) -> None:
             password_hash   TEXT,
             samsara_driver_id TEXT,
             last_seen       TEXT,
+            google_sub      TEXT,
+            google_email    TEXT,
+            google_linked_at TEXT,
             UNIQUE(account_id, email)
         );
 

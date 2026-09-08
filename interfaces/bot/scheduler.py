@@ -590,6 +590,33 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
                 datetime.now(timezone.utc).isoformat(timespec="seconds")
                 .replace("+00:00", "Z")
             )
+            # 0. Google sign-ups nobody finished.  Seven days is long
+            #    enough for anyone who meant it; an account no one can
+            #    sign in to is not a customer, and its owner can simply
+            #    sign up again.  Same purge path as a deleted account —
+            #    there is nothing in it but the placeholder row and one
+            #    password-less owner.
+            from datetime import timedelta
+            stale_iso = (
+                (datetime.now(timezone.utc) - timedelta(days=7))
+                .isoformat(timespec="seconds").replace("+00:00", "Z")
+            )
+            for acct_id in await db.list_accounts_setup_abandoned(before_iso=stale_iso):
+                try:
+                    # Re-checked in one statement at the moment of
+                    # deletion: an owner who finished setup after the
+                    # listing keeps their company.
+                    if not await db.claim_abandoned_setup(acct_id, before_iso=stale_iso):
+                        continue
+                    deleted = await db.purge_account_data(acct_id)
+                    await db.add_platform_audit(
+                        "account_setup_abandoned_purged", account_id=None,
+                        actor="scheduler",
+                        details=f"account_id={acct_id} rows={sum(deleted.values())}",
+                    )
+                    logger.info("housekeeping: purged abandoned Google sign-up acct=%s", acct_id)
+                except Exception:
+                    logger.exception("housekeeping: abandoned-setup purge failed acct=%s", acct_id)
             for acct_id in await db.list_accounts_pending_purge(before_iso=now_iso):
                 lc = await db.get_account_lifecycle(acct_id)
                 name = lc["name"] if lc else "?"

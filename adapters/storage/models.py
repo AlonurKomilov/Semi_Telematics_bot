@@ -229,6 +229,15 @@ class User:
     # Team Management answers "which units" — the verb/scope migration
     # contract (capabilities/permissions/taxonomy.py).
     vehicle_scope: Optional[str] = None
+    # ── Sign in with Google ───────────────────────────────────────
+    # Google's stable subject id is THE identity; the email is what
+    # Google said at link time, kept for explanations, never a join key
+    # after the first link.  NULL ⇒ not linked.  A user may hold any
+    # combination of email+password / Telegram / Google; the storage
+    # strand guard keeps at least one.
+    google_sub: Optional[str] = None
+    google_email: Optional[str] = None
+    google_linked_at: Optional[str] = None
 
     @property
     def resolved_vehicle_scope(self) -> str:

@@ -110,6 +110,12 @@ async def user_me(
         # ``telegram_id`` for "is this row mine?" comparisons.
         "id": db_user.id,
         "telegram_id": db_user.telegram_id,
+        # Sign in with Google: linked or not, and to which address.  The
+        # profile draws its Google card from these the way it draws the
+        # Telegram card from telegram_id.
+        "google_linked": bool(db_user.google_sub),
+        "google_email": db_user.google_email,
+        "has_password": bool(db_user.password_hash),
         "display_name": db_user.display_name,
         "role": user["role"],
         # Per-user manager tier (orthogonal to role) — the SPA shows the
@@ -611,6 +617,91 @@ async def telegram_unlink(
         await platform_db.unlink_telegram_from_user(db_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
+# ── Google link / unlink / first password ──────────────────────────
+#
+# The in-session half of Sign in with Google.  Linking here needs no
+# email match at all: the session already names the row, so the Google
+# identity is bound to THIS user whatever address it carries — which is
+# also how a person whose email lives in two accounts links each one.
+# Unlinking passes the same strand guard Telegram does.
+
+
+class GoogleLinkRequest(BaseModel):
+    credential: str
+
+
+@router.post("/google/link")
+async def google_link(
+    body: GoogleLinkRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    from interfaces.api.auth import verify_google_credential
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    g = await verify_google_credential(body.credential)
+    try:
+        await platform_db.link_google_to_user(db_user.id, g["sub"], g["email"])
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"ok": True, "google_email": g["email"]}
+
+
+@router.delete("/google")
+async def google_unlink(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Detach Google.  Refuses (400) when it is the only way in."""
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not db_user.google_sub:
+        return {"ok": True, "already_unlinked": True}
+    try:
+        await platform_db.unlink_google_from_user(db_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
+class SetPasswordRequest(BaseModel):
+    password: str
+    current_password: str | None = None
+
+
+@router.post("/password")
+async def set_password(
+    body: SetPasswordRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Set a password without touching the email.
+
+    ``PUT /credentials`` is the wrong tool for a user who arrived through
+    Google: it re-stores the email with ``email_verified = 0`` and mails a
+    link, though Google already verified that mailbox.  This sets only
+    the password.  A user who HAS one must present it; a user who has
+    none (Google- or Telegram-only) is adding their first, and the
+    session is the proof.  ``/forgot-password`` never mails an address
+    without a password, so this is the only way such a user gets one.
+    """
+    from interfaces.api.auth import _validate_password_strength, _verify_password
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not db_user.email:
+        raise HTTPException(status_code=409, detail="Add an email first (PUT /user/credentials).")
+    if db_user.password_hash:
+        if not body.current_password or not _verify_password(body.current_password, db_user.password_hash):
+            raise HTTPException(status_code=403, detail="Current password is wrong.")
+    _validate_password_strength(body.password)
+    pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    await platform_db.set_user_email_password(db_user.id, db_user.email, pw_hash)
     return {"ok": True}
 
 

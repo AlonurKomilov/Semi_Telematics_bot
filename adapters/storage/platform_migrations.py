@@ -227,6 +227,7 @@ async def run_all(conn) -> None:
     # The Alerts inbox is a stored grant now; rows whose stored vehicle
     # visibility diverged from the seed get what the derivation computed.
     await migrate_backfill_alerts_grant(conn)
+    await migrate_google_signin(conn)
 
 
 async def migrate_alert_vehicle_documents_column(conn) -> None:
@@ -4830,3 +4831,54 @@ async def migrate_backfill_alerts_grant(conn) -> None:
             "Migration: backfilled can_view_alerts from stored vehicle "
             "visibility in %d role_permissions row(s)", changed,
         )
+
+
+async def migrate_google_signin(conn) -> None:
+    """Sign in with Google — the identity columns, and the setup gate.
+
+    ``users.google_sub`` is Google's stable subject id: THE identity,
+    unique per platform.  ``google_email`` is what Google reported at
+    link time, kept so a later mismatch is explainable; it is never a
+    join key after the first link.  ``google_linked_at`` is when.
+    Nullable, like ``telegram_id`` — a user may hold zero, one or all
+    three sign-in methods, and the strand guard keeps it at ≥1.
+
+    ``accounts.setup_pending_since`` is the gate a Google-registered
+    company waits behind until its owner has set a password and named
+    the company.  Checked inside ``mint_session_token``, so every
+    login path refuses at once; cleared by ``/auth/complete-setup``;
+    swept by the lifecycle housekeeping job when abandoned.
+
+    Each ALTER is its own try — idempotent on re-run and on both
+    engines.  The UNIQUE index is created HERE, not in platform_schema:
+    an index there on a column a migration adds crashes boot on upgrade
+    (this repo's recorded trap).
+    """
+    for table, col, decl in (
+        ("users",    "google_sub",          "TEXT"),
+        ("users",    "google_email",        "TEXT"),
+        ("users",    "google_linked_at",    "TEXT"),
+        ("accounts", "setup_pending_since", "TEXT"),
+    ):
+        try:
+            await conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+            await conn.commit()
+            logger.info("Platform migration: %s.%s added", table, col)
+        except Exception as e:
+            logger.debug("%s.%s ADD skipped (%s)", table, col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+    try:
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub "
+            "ON users(google_sub) WHERE google_sub IS NOT NULL"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.info("idx_users_google_sub skipped (%s)", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

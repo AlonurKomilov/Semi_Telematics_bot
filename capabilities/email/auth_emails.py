@@ -586,3 +586,52 @@ async def send_invite_email_async(
         ),
     )
     return (ok, None)
+
+
+# ── Google linked ───────────────────────────────────────────────────
+
+def send_google_linked_email(
+    *, to: str, recipient_name: str = "", google_email: str, ip: str = "",
+) -> bool:
+    """Tell the mailbox that a Google account was just linked to it.
+
+    Sent for the ONE link that is not made from inside a signed-in
+    session: a first Google sign-in that matched this address.  The
+    person who did it expects the mail; anyone else holding this inbox
+    learns at once, with a way to undo it — the same courtesy a new
+    device gets.
+    """
+    if not is_email_configured():
+        logger.info("google-linked email skipped for %s: email not configured", to)
+        return False
+    brand = _company_name()
+    base = _auth_base()
+    profile_url = f"{base}/profile"
+    greeting = f"Hi {html.escape(recipient_name)}," if recipient_name else "Hi,"
+    where = f" from {ip}" if ip else ""
+    subject = f"{brand}: Google sign-in was linked to your account"
+    text_body = (
+        f"{greeting}\n\n"
+        f"The Google account {google_email} was just linked to your {brand} "
+        f"account{where}, and used to sign in.\n\n"
+        "If that was you, nothing else is needed — you can sign in with "
+        "Google from now on.\n\n"
+        "If it was NOT you, unlink it right away from your profile and change "
+        f"your password:\n{profile_url}\n\n"
+        f"— {brand}\n"
+    )
+    html_body = f"""\
+<!doctype html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:24px auto;color:#1f2937">
+<p style="font-size:15px">{greeting}</p>
+<p style="font-size:15px">The Google account <strong>{html.escape(google_email)}</strong> was just linked to your <strong>{html.escape(brand)}</strong> account{html.escape(where)}, and used to sign in.</p>
+<p style="font-size:15px">If that was you, nothing else is needed — you can sign in with Google from now on.</p>
+<p style="font-size:15px">If it was <strong>not</strong> you, unlink it right away and change your password:</p>
+<p style="margin:20px 0">
+  <a href="{html.escape(profile_url)}"
+     style="background:#111827;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-weight:600">Open my profile</a>
+</p>
+<p style="font-size:13px;color:#6b7280">— {html.escape(brand)}</p>
+</body></html>
+"""
+    return send_email(to=to, subject=subject, body=text_body, html_body=html_body)
