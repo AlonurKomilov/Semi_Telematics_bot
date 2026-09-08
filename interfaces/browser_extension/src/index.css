@@ -5,7 +5,10 @@ html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 button, input { font: inherit; }
 .btn { border:1px solid var(--border); background: var(--card); color: var(--fg); border-radius:6px;
-       padding:6px 10px; cursor:pointer; min-height:24px; }
+       padding:6px 10px; cursor:pointer; min-height:24px;
+       /* A label is one line.  Squeezed, a button moves to the next row
+          of its group (the groups wrap); it never folds its own words. */
+       white-space:nowrap; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color:#fff; }
 .btn:disabled { opacity:.6; cursor: default; }
 .input { width:100%; border:1px solid var(--border); background: var(--card); color: var(--fg);

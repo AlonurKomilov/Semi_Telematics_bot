@@ -513,8 +513,16 @@ export default function LiveMapPanel() {
           const lowLevels = levels.filter((l) => l.low);
           return (
             <div className="sheet">
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <span className="row" style={{ gap: 6, minWidth: 0 }}>
+              {/* Two groups that WRAP.  At the panel's narrowest (Chrome's
+                  floor is 320px) the identity and the two actions do not
+                  fit on one line; forced onto one they ellipsised the
+                  name to "0.", folded "Keeping in view" over two lines
+                  and pushed Close off the edge, and the row's min-content
+                  width gave the whole panel a horizontal scrollbar.  Now
+                  the actions drop to a second line, right-aligned, and
+                  every word stays whole. */}
+              <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6 }}>
+                <span className="row" style={{ gap: 6, minWidth: 0, flex: '1 1 auto' }}>
                   {/* The caret LEADS the thing it opens, and it WEARS
                       what a control wears here.
 
@@ -539,7 +547,10 @@ export default function LiveMapPanel() {
                                    display: 'grid', placeItems: 'center', lineHeight: 1 }}>
                     <span aria-hidden>{cardOpen ? '▾' : '▴'}</span>
                   </button>
-                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {/* minWidth 0 lets the ellipsis work at all — a flex
+                      item's default minimum is its full text, which is
+                      the width the whole panel was being stretched to. */}
+                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {selected.properties.name}
                     {multiCompany && selected.properties.company && (
                       <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
@@ -574,7 +585,7 @@ export default function LiveMapPanel() {
                   {/* Who supplies this truck, next to what it is called. */}
                   <SourceMarks sources={selected.properties.sources} source={selected.properties.source} links={links} />
                 </span>
-                <div className="row" style={{ gap: 6 }}>
+                <div className="row" style={{ gap: 6, flexShrink: 0, marginLeft: 'auto' }}>
                   {/* On: the map rides along. Off (you panned away): the
                       same control brings it back and re-engages. */}
                   {/* A pressed STATE, not an action: filled primary is
@@ -639,7 +650,7 @@ export default function LiveMapPanel() {
                   <div className={`bar ${l.low ? 'low' : ''}`}><i style={{ width: `${l.pct}%` }} /></div>
                 </div>
               ))}
-              <div className="row">
+              <div className="row" style={{ flexWrap: 'wrap', rowGap: 6 }}>
                 <button className="btn primary" onClick={() => void openInGoogleMaps(searchUrl(lat, lng))}>Open in Google Maps</button>
                 <button className="btn" onClick={() => void openInGoogleMaps(directionsUrl(lat, lng))}>Directions</button>
               </div>
