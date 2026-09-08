@@ -192,6 +192,18 @@ def merge_registry_with_live(
 
     out: list[dict[str, Any]] = []
     consumed: set[int] = set()
+    # One device, one row.  Two registry rows can claim the same
+    # telematics ref — a provider rename that landed as a new unit
+    # number did exactly that (registry 60 "229" and 1003 "229 Idris
+    # Ahmed", one Samsara id) — and emitting both put the same provider
+    # id on the map twice.  Every client keys a marker or a list row by
+    # that id, so a duplicate id is a duplicate key, and React answers a
+    # duplicate key by leaving ghost rows behind that survive filtering.
+    # The ingest already picks the row to keep syncing (active first,
+    # then the lower id — the one that existed first); the map picks the
+    # same one, and folds the other's provenance in so nothing it knew
+    # is lost from the picture.
+    claimed: dict[str, dict[str, Any]] = {}
     for v in registry:
         match = None
         if v.telematics_ref and v.telematics_ref in by_id:
@@ -207,7 +219,27 @@ def merge_registry_with_live(
             enriched["source"] = v.source
             enriched["sources"] = list(v.sources)
             enriched["_registry_id"] = v.id
-            out.append(enriched)
+            enriched["_registry_active"] = bool(getattr(v, "is_active", True))
+            live_id = str(match.get("id") or "")
+            prior = claimed.get(live_id) if live_id else None
+            if prior is None:
+                if live_id:
+                    claimed[live_id] = enriched
+                out.append(enriched)
+                continue
+            # Second registry row for a device already drawn.  Keep the
+            # row the ingest keeps — active first, then the lower id, the
+            # one that existed first — and fold the loser's provenance in.
+            def _rank(row: dict[str, Any]) -> tuple[bool, int]:
+                return (not row.get("_registry_active", True), int(row["_registry_id"]))
+            winner, loser = sorted((prior, enriched), key=_rank)
+            winner["sources"] = list(dict.fromkeys([*winner.get("sources", []), *loser.get("sources", [])]))
+            logger.warning(
+                "map merge: device %s is claimed by registry rows %s and %s — drawing %s once",
+                live_id, prior["_registry_id"], v.id, winner["_registry_id"])
+            if winner is not prior:
+                out[out.index(prior)] = winner
+                claimed[live_id] = winner
         else:
             out.append(_registry_only_overview(v))
 
