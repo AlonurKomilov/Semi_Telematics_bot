@@ -77,7 +77,7 @@ import { MODS } from './packs/mods';
 import { headingsOf } from './taxonomy';
 
 /** Sections every surface carries — the two questions asked most often. */
-const SHARED = ['Mods', 'Color'];
+const SHARED = ['Mods', 'Mode', 'Accent'];
 /** Sections the page carries and the popover sends people to the page for. */
 const PAGE_ONLY = ['Corners', 'Material', 'Typeface', 'Icons', 'Motion', 'Sound'];
 
@@ -349,7 +349,8 @@ describe('the section table knows every group the panel renders', () => {
   it('is not empty — a derivation from nothing would pass everything below', () => {
     // Literals, deliberately: a sentinel that read from the taxonomy too
     // would pass on an empty taxonomy.
-    expect(SECTIONS.interface).toContain('Color');
+    expect(SECTIONS.interface).toContain('Mode');
+    expect(SECTIONS.interface).toContain('Accent');
     expect(SECTIONS.sounds).toContain('Sound');
     expect(SECTIONS.effects).toContain('Motion');
     expect(Object.values(SECTIONS).flat().length).toBeGreaterThan(6);

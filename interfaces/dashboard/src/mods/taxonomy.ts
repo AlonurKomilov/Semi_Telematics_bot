@@ -100,14 +100,22 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     title: 'Interface',
     panel: true,
     items: [
-      // The palette: mode, the accent, a brand colour, and the canvas
+      // MODE is the room a person is sitting in — a bright office, a cab
+      // at night — and its own item for that reason: a look never
+      // carries it (see `Mod`), a reset never takes it, and it was the
+      // one row under "Color" that was not about colour. Owner's call
+      // (2026-09-08): mode and accent are two questions, in the code as
+      // in the panel. `keep` holds the category reset off it, as before.
+      { id: 'mode',     title: 'Mode',     heading: 'Mode',
+        axes: ['mode'], keep: ['mode'] },
+      // ACCENT is the palette: the accent, a brand colour, and the canvas
       // — the ground colour EVERY surface derives from, global or per
       // named place. The canvas moved to Wallpaper once and came
       // straight back: a red picked "for the page" turned the whole
       // app red, because that is what a palette's ground does.
-      { id: 'theme',    title: 'Color',    heading: 'Color',
-        axes: ['mode', 'accent', 'brand', 'canvas', 'surfaces'],
-        keep: ['mode'], modFields: ['accent'] },
+      { id: 'theme',    title: 'Accent',   heading: 'Accent',
+        axes: ['accent', 'brand', 'canvas', 'surfaces'],
+        modFields: ['accent'] },
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modFields: ['radius'] },
       { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modFields: ['material'] },
       { id: 'typeface', title: 'Typeface', heading: 'Typeface', axes: ['font'],     modFields: ['font'] },

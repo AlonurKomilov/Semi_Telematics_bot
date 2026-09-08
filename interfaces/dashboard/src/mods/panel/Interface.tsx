@@ -178,7 +178,35 @@ function wornCanvas(hex: string | undefined, mode: Mode, brand: string, underPat
   return paletteTokens(hex, brand, mode, underPattern).tokens ? hex : undefined;
 }
 
-export function ColorGroup({ label }: { label: LabelClass }) {
+/**
+ * Mode — the room a person is sitting in. Its own group, not a row under
+ * the accent: a look never carries it, a reset never takes it, and it
+ * answers a different question from every other axis on this panel.
+ */
+export function ModeGroup({ label }: { label: LabelClass }) {
+  const { t } = useTranslation();
+  const { theme, setTheme } = useMods();
+  return (
+    <div>
+      <p className={`${label} mb-1.5`}>
+        {t('theme.group_mode', 'Mode')}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {MODE_OPTIONS.map((o) => (
+          <Chip key={o.value} value={o.value} current={theme.mode} label={t(o.key, o.label)} dot={o.dot}
+            onClick={(v) => setTheme({ mode: v })} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {theme.mode === 'dark'
+          ? t('theme.mode_dark_hint', 'For a cab at night, and for long shifts.')
+          : t('theme.mode_light_hint', 'For a bright office, and for print.')}
+      </p>
+    </div>
+  );
+}
+
+export function AccentGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   /** Which place the background picker is aiming at. Deliberately NOT
@@ -225,23 +253,14 @@ export function ColorGroup({ label }: { label: LabelClass }) {
   return (
     <div>
       <p className={`${label} mb-1.5`}>
-        {t('theme.group_color', 'Color')}
+        {t('theme.group_accent', 'Accent')}
       </p>
-      {/* Mode first, then accent. The rows are separate elements
-          rather than one wrapped list so the two questions cannot
-          re-flow into each other at any Size setting. */}
-      <div className="flex flex-wrap gap-1">
-        {MODE_OPTIONS.map((o) => (
-          <Chip key={o.value} value={o.value} current={theme.mode} label={t(o.key, o.label)} dot={o.dot}
-            onClick={(v) => setTheme({ mode: v })} />
-        ))}
-      </div>
       {/* While a picked colour is what paints, NO pack chip is
           highlighted — the stylesheet has stood that pack's block
           down, so showing it selected would be showing a colour that
           is not on the screen. `theme.accent` is still stored and
           still what a Clear returns to. */}
-      <div className="flex flex-wrap gap-1 mt-1">
+      <div className="flex flex-wrap gap-1">
         {ACCENT_OPTIONS.map((o) => (
           <Chip key={o.value} value={o.value} current={brandWorn ? ('' as Accent) : theme.accent}
             label={t(o.key, o.label)} dot={accentSeed(o.value, theme.mode)}

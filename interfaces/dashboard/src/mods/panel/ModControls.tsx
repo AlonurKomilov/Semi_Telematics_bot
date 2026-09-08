@@ -27,7 +27,7 @@ import { MODS_HREF } from '../href';
 import type { ModSection } from '../taxonomy';
 import { ModsRow, HAS_MODS } from './ModsRow';
 import {
-  ColorGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup, WallpaperGroup, CursorGroup,
+  ModeGroup, AccentGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup, WallpaperGroup, CursorGroup,
 } from './Interface';
 import { EffectsGroup } from './Effects';
 import { SoundsGroup } from './Sounds';
@@ -68,7 +68,12 @@ export function ModControls({ compact = false, onNavigate, section }: {
       )}
 
       {/* Colour is the one Interface group the popover carries. */}
-      {has('interface') && <ColorGroup label={groupLabel} />}
+      {has('interface') && (
+        <>
+          <ModeGroup label={groupLabel} />
+          <AccentGroup label={groupLabel} />
+        </>
+      )}
 
       {compact ? (
         <>

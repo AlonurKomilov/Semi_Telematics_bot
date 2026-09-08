@@ -29,7 +29,7 @@ describe('itemState', () => {
   });
 
   it('counts a kept axis as a change — Light is a choice even though a reset would not touch it', () => {
-    expect(itemState(item('interface', 'theme'), theme({ mode: 'light' }), prefs())).toBe('changed');
+    expect(itemState(item('interface', 'mode'), theme({ mode: 'light' }), prefs())).toBe('changed');
   });
 
   it('does not blame one item for another item\'s axis', () => {
@@ -110,9 +110,11 @@ describe('itemSummary — the tile answers instead of announcing', () => {
     expect(itemSummary(item('interface', 'material'), theme({ material: 'glass' }), prefs())).toBe('Glass');
   });
 
-  it('shows the mode alongside the accent, in the item\'s own axis order', () => {
-    const sum = itemSummary(item('interface', 'theme'), theme({ mode: 'light', accent: 'green' }), prefs());
-    expect(sum).toBe('Light · Green');
+  it('mode and accent are two tiles, each answering its own question', () => {
+    // They were one tile ("Light · Green") until mode became its own item
+    // — the room, not the palette. Neither summary may borrow the other's.
+    expect(itemSummary(item('interface', 'mode'), theme({ mode: 'light', accent: 'green' }), prefs())).toBe('Light');
+    expect(itemSummary(item('interface', 'theme'), theme({ mode: 'light', accent: 'green' }), prefs())).toBe('Green');
   });
 
   it('short-circuits to Off when the gate is down — a pack that cannot be heard', () => {
