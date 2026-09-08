@@ -22,7 +22,7 @@ import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, distance, type RGB } from './theme/contrast';
 import {
   LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
-  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, WALLPAPER_PAGE_ATTR,
+  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, WALLPAPER_PAGE_ATTR, pageWallpaperFor,
 } from './wallpaper';
 
 const CSS = assembledCss()
@@ -492,8 +492,22 @@ describe('the page can wear it too, and stays readable', () => {
     const shell = readFileSync(join(__dirname, '..', 'shells', 'AppShell.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(shell, 'the content card is not a page ground').toMatch(/\bpage-ground\b/);
+    // Two writers — the engine on a theme change, the shell on a route
+    // change — and both go through the one resolver, so a named place's
+    // own pattern is what paints whichever of them wrote last.
     const engine = readFileSync(join(__dirname, 'context.tsx'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(engine, 'the page pattern is never stamped').toMatch(/dataset\.wallpaperPage\s*=\s*theme\.wallpaperPage/);
+    expect(engine, 'the engine stamps the page pattern without resolving the place').toMatch(/dataset\.wallpaperPage\s*=\s*pageWallpaperFor\(/);
+    expect(shell, 'the shell stamps the page pattern without resolving the place').toMatch(/dataset\.wallpaperPage\s*=\s*pageWallpaperFor\(/);
+  });
+
+  it('a place wears its own pattern, or everywhere\'s', () => {
+    const base = { wallpaperPage: 'mesh' };
+    expect(pageWallpaperFor(base, null)).toBe('mesh');
+    expect(pageWallpaperFor(base, 'loads')).toBe('mesh');
+    expect(pageWallpaperFor({ ...base, wallpaperPages: { loads: 'grid' } }, 'loads')).toBe('grid');
+    expect(pageWallpaperFor({ ...base, wallpaperPages: { loads: 'grid' } }, 'live-map')).toBe('mesh');
+    // A place may choose plain while everywhere wears a pattern.
+    expect(pageWallpaperFor({ ...base, wallpaperPages: { loads: 'none' } }, 'loads')).toBe('none');
   });
 
   it('every pack paints the page ground under its OWN attribute, with the frame\'s stops', () => {

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { pageWallpaperFor } from './wallpaper';
 
 import { usePreference } from '../preferences';
 import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
@@ -78,8 +79,9 @@ export function applyTheme(theme: Theme) {
   // it a frame late reflows the page rather than recolouring it.
   root.dataset.font = theme.font;
   root.dataset.wallpaper = theme.wallpaper;
-  // The page's own pattern, keyed apart from the frame's.
-  root.dataset.wallpaperPage = theme.wallpaperPage;
+  // The page's own pattern, keyed apart from the frame's — for the
+  // place currently on screen, which the shell has already stamped.
+  root.dataset.wallpaperPage = pageWallpaperFor(theme, root.dataset.surface);
   // Present or absent, not true/false: the stylesheet gates a live
   // pattern's animation on the attribute existing, and a `"false"` would
   // still exist.

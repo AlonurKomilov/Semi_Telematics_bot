@@ -67,6 +67,24 @@ export interface Wallpaper extends PackMeta {
   readonly kind: WallpaperKind;
 }
 
+/**
+ * The page pattern this place wears: its own, or everywhere's.
+ *
+ * `wallpaperPage` is the answer for the whole app; `wallpaperPages` lets
+ * a named place — the same places the canvas colour can be aimed at —
+ * hold its own. A place with no entry follows everywhere's, so setting
+ * the global later reaches every place that never chose for itself.
+ * Written to `data-wallpaper-page` by the engine on every theme change
+ * AND by the shell on every route change, both through this function,
+ * so the two writers cannot disagree.
+ */
+export function pageWallpaperFor(
+  theme: { wallpaperPage: string; wallpaperPages?: Readonly<Record<string, string>> },
+  surfaceId: string | null | undefined,
+): string {
+  return (surfaceId && theme.wallpaperPages?.[surfaceId]) || theme.wallpaperPage;
+}
+
 /** The attribute the page's pattern is keyed on — the frame's is
  *  `data-wallpaper`. Every pack rule names both grounds, each under
  *  its own attribute, so one pack file serves either place. */

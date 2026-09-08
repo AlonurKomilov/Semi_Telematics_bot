@@ -308,6 +308,14 @@ export interface ModSetting {
    *  frame's. `none` by default: the page has always been plain. Paints
    *  around the cards, over the page's own colour. */
   wallpaperPage: string;
+  /**
+   * A page pattern for one named place — `{ loads: 'grid' }`. Keys are
+   * `SURFACES` ids, values `WALLPAPERS` ids; a place with no entry
+   * follows `wallpaperPage`. The same shape as `surfaces` for the
+   * canvas, because it answers the same question about a different
+   * layer: WHERE.
+   */
+  wallpaperPages?: Record<string, string>;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -661,6 +669,19 @@ export const DEFS = {
         }
         if (Object.keys(kept).length) surfaces = kept;
       }
+      // Same shape, same reasons: named places only, shipped patterns
+      // only, capped, dropped when empty.
+      let wallpaperPages: Record<string, string> | undefined;
+      if (o.wallpaperPages && typeof o.wallpaperPages === 'object' && !Array.isArray(o.wallpaperPages)) {
+        const kept: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o.wallpaperPages as Record<string, unknown>)) {
+          if (!SURFACES.some((x) => x.id === k)) continue;
+          if (typeof v !== 'string' || !WALLPAPER_IDS.includes(v)) continue;
+          if (Object.keys(kept).length >= SURFACES.length) break;
+          kept[k] = v;
+        }
+        if (Object.keys(kept).length) wallpaperPages = kept;
+      }
 
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
@@ -686,6 +707,7 @@ export const DEFS = {
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),
         ...(surfaces ? { surfaces } : {}),
+        ...(wallpaperPages ? { wallpaperPages } : {}),
         color: themeColorAlias(mode, accent),
       };
     },

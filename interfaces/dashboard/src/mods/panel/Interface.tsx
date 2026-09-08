@@ -445,9 +445,27 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   const frame = theme.wallpaper ?? 'none';
-  const page = theme.wallpaperPage ?? 'none';
   const wornFrame = wallpaperById(frame);
+
+  /** Which place the page pattern is aiming at. Deliberately NOT
+   *  stored, like the canvas's aim: a question about this moment. */
+  const [target, setTarget] = useState('');
+  const { hasAny, ready } = useViewPermissions();
+  const offered = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
+  useEffect(() => {
+    if (target && !offered.some((s) => s.id === target)) setTarget('');
+  }, [offered, target]);
+  /** What the aimed place wears: its own pattern, or everywhere's. */
+  const own = target ? theme.wallpaperPages?.[target] : undefined;
+  const page = own ?? theme.wallpaperPage ?? 'none';
   const wornPage = wallpaperById(page);
+  const writePage = (v: string) => {
+    if (!target) { setTheme({ wallpaperPage: v }); return; }
+    const next = { ...(theme.wallpaperPages ?? {}) };
+    if (v === '') delete next[target]; else next[target] = v;
+    setTheme({ wallpaperPages: Object.keys(next).length ? next : undefined });
+  };
+
   // Live is one switch for both grounds: it applies to whichever of
   // them wears a pattern that can move.
   const canLive = wornFrame?.kind === 'live' || wornPage?.kind === 'live';
@@ -482,12 +500,42 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <p className="text-xs text-foreground mt-3 mb-1.5">
         {t('mods.wallpaper_page', 'Page')}
       </p>
-      {chips(page, (v) => setTheme({ wallpaperPage: v }))}
-      <p className="text-2xs text-muted-foreground mt-1.5">
-        {page === 'none'
-          ? t('mods.wallpaper_page_none', 'The page stays plain.')
-          : `${wornPage?.description ?? ''} ${t('mods.wallpaper_page_hint', 'Around the cards — tables and cards stay solid.')}`}
+      {offered.length > 0 && (<>
+      {/* WHERE the page pattern applies — the same places, the same
+          gate and the same shape as the canvas's row under Color. Each
+          chip wears a dot only when that place holds its OWN pattern,
+          so which places chose for themselves is legible without
+          clicking through them. */}
+      <p className="text-2xs text-muted-foreground mb-1">
+        {t('mods.wallpaper_page_scope', 'Pattern applies to')}
       </p>
+      <div className="flex flex-wrap gap-1 mb-1.5">
+        <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
+          onClick={() => setTarget('')} />
+        {offered.map((s) => (
+          <Chip key={s.id} value={s.id} current={target} label={s.title}
+            live={theme.wallpaperPages?.[s.id] ? 'on' : undefined}
+            onClick={(v) => setTarget(v)} />
+        ))}
+      </div>
+      </>)}
+      {chips(page, writePage)}
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {target && !own
+          ? t('mods.wallpaper_page_follows', '{{place}} follows Everywhere.', { place: surfaceById(target)?.title ?? target })
+          : page === 'none'
+            ? t('mods.wallpaper_page_none', 'The page stays plain.')
+            : `${wornPage?.description ?? ''} ${t('mods.wallpaper_page_hint', 'Around the cards — tables and cards stay solid.')}`}
+      </p>
+      {target && own && (
+        <button
+          type="button"
+          onClick={() => writePage('')}
+          className="mt-1 text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          {t('mods.wallpaper_page_follow', 'Follow Everywhere again')}
+        </button>
+      )}
 
       {/* One switch for both grounds, not a twin chip per pattern:
           "live" is a state of a pattern that can move, and the light on

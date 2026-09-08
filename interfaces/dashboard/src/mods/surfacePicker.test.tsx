@@ -13,7 +13,7 @@
  * the refusal under test is a real refusal, found by sweeping.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 
 const { setTheme, undoableAction, view } = vi.hoisted(() => ({
   setTheme: vi.fn(), undoableAction: vi.fn(),
@@ -67,7 +67,12 @@ const mount = (over: Record<string, unknown> = {}) => {
   theme = { ...BASE, ...over };
   return render(<ModControls />);
 };
-const chip = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}$`, 'i') });
+/** The Color group — Wallpaper › Page has an applies-to row of its own
+ *  now, with the same place names, so the canvas's chips are found
+ *  inside the group that owns them. */
+const colorGroup = () => screen.getByText('Background applies to').parentElement as HTMLElement;
+const chip = (name: string) =>
+  within(colorGroup()).getByRole('button', { name: new RegExp(`^${name}$`, 'i') });
 const dotOf = (name: string) =>
   (chip(name).querySelector('span[aria-hidden]') as HTMLElement | null)?.style.background;
 const canvasInput = () =>

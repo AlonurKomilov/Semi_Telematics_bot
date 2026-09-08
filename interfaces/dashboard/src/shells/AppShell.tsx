@@ -30,7 +30,7 @@ import Sidebar from '../components/Sidebar';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { ModPanel, useMods, surfaceFor, ModsLock, useCanMods } from '../mods';
+import { ModPanel, useMods, surfaceFor, ModsLock, useCanMods, pageWallpaperFor } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -79,7 +79,11 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
     const root = document.documentElement;
     if (s) root.dataset.surface = s.id;
     else delete root.dataset.surface;
-  }, [pathname]);
+    // The page's pattern follows the place: a named place may hold its
+    // own. The engine stamps the same answer on every theme change, both
+    // through one resolver, so the two writers cannot disagree.
+    root.dataset.wallpaperPage = pageWallpaperFor(theme, s?.id ?? null);
+  }, [pathname, theme]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground chrome-ground">
