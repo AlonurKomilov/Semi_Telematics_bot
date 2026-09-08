@@ -453,6 +453,7 @@ def attachment_prompt_line(user_context: dict | None) -> str:
 
 async def parse_attachments_for_request(
     attachments: list, role: str | None, account_id: int | None,
+    user_context: dict | None = None,
 ) -> tuple[dict[str, list[list[str]]], dict[str, str], dict[str, str]]:
     """Validate + transiently parse a request's attachments.
 
@@ -494,17 +495,14 @@ async def parse_attachments_for_request(
         targets = [t for t in list_import_targets() if t.permission]
         allowed = False
         if role and targets:
-            try:
-                from adapters.storage import Role
-                from capabilities.permissions.roles import (
-                    get_account_permissions, get_permissions,
-                )
-                r = Role(role)
-                perms = (await get_account_permissions(r, int(account_id))
-                         if account_id is not None else get_permissions(r))
+            # The USER's effective set, tier included.  This read the base
+            # ROLE row, so a fleet manager whose owner had restricted plain
+            # fleet users and granted managers was told "your role can't
+            # run imports" while the Permissions page showed it allowed.
+            from capabilities.ai.usage import resolve_user_permissions
+            perms = await resolve_user_permissions(role, account_id, user_context)
+            if perms is not None:
                 allowed = any(getattr(perms, t.permission, False) for t in targets)
-            except (ValueError, KeyError, ImportError):
-                allowed = False
         if not allowed:
             raise AttachmentError(
                 "Your role can't run imports, so attachments aren't processed."

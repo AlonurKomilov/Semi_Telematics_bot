@@ -35,7 +35,15 @@ def build_user_ai_context(user_obj) -> dict:
     Accepts a DB user object (ORM row or dataclass).  Normalises role
     to its string value regardless of whether it is an enum or plain str.
 
-    Returns a dict with keys: name, role, vehicle_num, timezone.
+    Returns a dict with keys: name, role, vehicle_num, timezone,
+    is_manager, is_primary_owner.
+
+    The two tier flags are what make a permission check answer for THIS
+    user rather than for their role.  Without them every AI gate resolved
+    the base role row, so a Fleet MANAGER — whose owner had restricted
+    plain fleet users and granted managers — was refused imports the
+    Permissions page said they had.  The REST layer always carried them
+    (interfaces/api/deps.py); the AI context never did.
     """
     role_val = user_obj.role.value if hasattr(user_obj.role, "value") else user_obj.role
     return {
@@ -43,7 +51,51 @@ def build_user_ai_context(user_obj) -> dict:
         "role": role_val,
         "vehicle_num": getattr(user_obj, "truck_num", None) or "",
         "timezone": getattr(user_obj, "timezone", "America/New_York") or "America/New_York",
+        "is_manager": bool(getattr(user_obj, "is_manager", False)),
+        "is_primary_owner": bool(getattr(user_obj, "is_primary_owner", False)),
     }
+
+
+async def resolve_user_permissions(
+    role: str | None, account_id: int | None, user_context: dict | None,
+):
+    """The caller's EFFECTIVE permission set — role AND tier.
+
+    The one resolver every AI gate must use.  It reads the tier flags that
+    ``build_user_ai_context`` writes and hands them to
+    ``get_user_permissions``, so a manager resolves the ``{role}__manager``
+    row and a co-owner the ``owner__co`` row — the same rows the
+    Permissions page edits and the REST API enforces.
+
+    Three sites used ``get_account_permissions`` instead, whose own
+    docstring reserves it for "account-agnostic, role-level surfaces".
+    That was wrong in both directions: it denied a manager what the tier
+    row granted, and it gave a co-owner the full primary-owner row when
+    the owner had restricted ``owner__co``.
+
+    Returns ``None`` when the role is unknown or unparseable — callers
+    treat that as "no permissions", never as "all".  With no account (an
+    unauthenticated context) it falls back to the hardcoded role
+    defaults, matching the previous behaviour of every site.
+    """
+    if not role:
+        return None
+    try:
+        from adapters.storage import Role
+        from capabilities.permissions.roles import (
+            get_permissions, get_user_permissions,
+        )
+        r = Role(role)
+    except (ValueError, KeyError, ImportError):
+        return None
+    if account_id is None:
+        return get_permissions(r)
+    ctx = user_context or {}
+    return await get_user_permissions(
+        r, int(account_id),
+        is_manager=bool(ctx.get("is_manager")),
+        is_primary_owner=bool(ctx.get("is_primary_owner")),
+    )
 
 
 async def record_call_attempt(

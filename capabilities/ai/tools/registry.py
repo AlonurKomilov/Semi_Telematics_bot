@@ -166,13 +166,16 @@ async def filter_tools_for_role(
     role_str: str | None,
     account_id: int | None = None,
     scoped: bool = False,
+    user_context: dict | None = None,
 ) -> list[dict]:
     """Return the subset of tool schemas a user may actually use.
 
-    **Account-aware:** when ``account_id`` is given, permissions resolve via
-    ``get_account_permissions`` — the same per-account Permissions matrix +
-    module masking the runtime gate uses — so a revoked feature's tools
-    disappear from what the model is shown (not just blocked at call time).
+    **User-aware:** permissions resolve via ``resolve_user_permissions`` —
+    the caller's role AND tier, the same rows the Permissions page edits
+    and the runtime gate enforces — so a revoked feature's tools disappear
+    from what the model is shown, and a manager's tier grants appear.  It
+    resolved the base ROLE row before, so a fleet manager granted imports
+    in the ``fleet__manager`` row was never even offered the import tool.
     Falls back to role defaults when no account_id is available.
 
     **Scope-aware:** when ``scoped`` (a vehicle/company-restricted user), the
@@ -184,16 +187,12 @@ async def filter_tools_for_role(
     all_schemas = get_all_tool_schemas()
     if not role_str:
         return all_schemas
-    try:
-        from adapters.storage import Role
-        role = Role(role_str)
-        if account_id is not None:
-            from capabilities.permissions.roles import get_account_permissions
-            perms = await get_account_permissions(role, int(account_id))
-        else:
-            from capabilities.permissions.roles import get_permissions
-            perms = get_permissions(role)
-    except (ValueError, KeyError, ImportError):
+    from capabilities.ai.usage import resolve_user_permissions
+    perms = await resolve_user_permissions(role_str, account_id, user_context)
+    if perms is None:
+        # Unknown role: advertise everything, as before.  Harmless — the
+        # execution gate DENIES an unknown role, so advertising is the
+        # widest a wrong answer can get here.
         return all_schemas
 
     filtered = []
@@ -209,6 +208,12 @@ async def filter_tools_for_role(
     return filtered
 
 
+def _tier_key(user_context: dict | None) -> tuple[bool, bool]:
+    """The two flags that change which permission ROW a user resolves."""
+    ctx = user_context or {}
+    return (bool(ctx.get("is_manager")), bool(ctx.get("is_primary_owner")))
+
+
 def _cache_hit(cache: dict, key: tuple):
     entry = cache.get(key)
     if entry is not None and entry[0] > _time.monotonic():
@@ -220,14 +225,19 @@ async def get_cached_vertex_tools(
     role: str | None = None,
     account_id: int | None = None,
     scoped: bool = False,
+    user_context: dict | None = None,
 ):
     """Return cached google-genai Tool objects, filtered for the user."""
-    key = (account_id, role, scoped)
+    # The tier is part of the key.  The list is filtered per USER now,
+    # so a manager's tools cached under (account, role, scoped) alone
+    # would be served to the next plain-tier user of that role — the
+    # same bug this fixes, one layer down.
+    key = (account_id, role, scoped, _tier_key(user_context))
     hit = _cache_hit(_cached_tools, key)
     if hit is not None:
         return hit
     from google.genai import types as _gtypes
-    tool_defs = await filter_tools_for_role(role, account_id, scoped)
+    tool_defs = await filter_tools_for_role(role, account_id, scoped, user_context)
     # PROJECT the API fields — never splat the whole schema dict.  Tool
     # schemas carry registry metadata (``writes`` / ``risk`` / ``scope``)
     # on top of the API shape, and FunctionDeclaration is a pydantic
@@ -256,6 +266,7 @@ async def get_anthropic_tools(
     role: str | None = None,
     account_id: int | None = None,
     scoped: bool = False,
+    user_context: dict | None = None,
 ) -> list[dict]:
     """Return Anthropic-format tool definitions filtered for the user.
 
@@ -263,11 +274,15 @@ async def get_anthropic_tools(
     where Gemini uses ``{name, description, parameters}``.  Same JSON
     Schema body, just a different field name.
     """
-    key = (account_id, role, scoped)
+    # The tier is part of the key.  The list is filtered per USER now,
+    # so a manager's tools cached under (account, role, scoped) alone
+    # would be served to the next plain-tier user of that role — the
+    # same bug this fixes, one layer down.
+    key = (account_id, role, scoped, _tier_key(user_context))
     hit = _cache_hit(_anthropic_tools_cache, key)
     if hit is not None:
         return hit
-    tool_defs = await filter_tools_for_role(role, account_id, scoped)
+    tool_defs = await filter_tools_for_role(role, account_id, scoped, user_context)
     converted = [
         {
             "name": td["name"],
@@ -289,6 +304,7 @@ async def get_openai_tools(
     role: str | None = None,
     account_id: int | None = None,
     scoped: bool = False,
+    user_context: dict | None = None,
 ) -> list[dict]:
     """Return OpenAI-format tool definitions filtered for the user.
 
@@ -296,11 +312,15 @@ async def get_openai_tools(
     ``{"type": "function", "function": {name, description, parameters}}``
     — same schema body as Gemini, one wrapper level deeper.
     """
-    key = (account_id, role, scoped)
+    # The tier is part of the key.  The list is filtered per USER now,
+    # so a manager's tools cached under (account, role, scoped) alone
+    # would be served to the next plain-tier user of that role — the
+    # same bug this fixes, one layer down.
+    key = (account_id, role, scoped, _tier_key(user_context))
     hit = _cache_hit(_openai_tools_cache, key)
     if hit is not None:
         return hit
-    tool_defs = await filter_tools_for_role(role, account_id, scoped)
+    tool_defs = await filter_tools_for_role(role, account_id, scoped, user_context)
     converted = [
         {
             "type": "function",

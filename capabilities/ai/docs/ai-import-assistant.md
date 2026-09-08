@@ -227,7 +227,10 @@ data, the human approves visible output."* The binding tightenings:
    (quoted embedded newlines break naive counting); caps rows ~2000 /
    cols ~64 / cell ~500 enforced streaming with early abort; strip
    NUL/control chars; **`can_manage_vehicles` required on the upload
-   endpoint itself** (defense in depth + no free storage); ~10
+   endpoint itself** (defense in depth + no free storage) — resolved
+   for the USER, tier included (`resolve_user_permissions`): a fleet
+   manager gets the `fleet__manager` row the Permissions page edits,
+   not the base fleet row; ~10
    uploads/hr/user. Formula injection (`=cmd()`) is NOT mangled at
    ingest — it's an export-layer concern; any future CSV exporter of
    inventory fields does the `=+-@` escaping.

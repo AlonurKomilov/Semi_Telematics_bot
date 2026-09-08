@@ -593,12 +593,14 @@ async def _check_tool_permission(
 ) -> dict | None:
     """Server-side guard: enforce role permissions on tool execution.
 
-    Resolves permissions **account-aware** via ``get_account_permissions``
-    — the same source of truth the API, dashboard, and bot enforce — so a
-    per-account override set in the Role Permissions matrix, or a disabled
-    module, is honored here too rather than silently bypassed by the
-    hardcoded role defaults.  Falls back to role defaults only when
-    ``account_id`` is unknown (e.g. an unauthenticated context).
+    Resolves the caller's EFFECTIVE permissions — role AND tier — via
+    ``resolve_user_permissions``, the same rows the Permissions page edits
+    and the REST API enforces, so a per-account override, a disabled
+    module, and the manager / co-owner tier are all honored here.  It
+    used ``get_account_permissions`` (the base ROLE row): a fleet manager
+    granted a tool in their tier row was refused it at execution, and a
+    co-owner the owner had restricted got the full owner row.  Falls back
+    to role defaults only when ``account_id`` is unknown.
 
     Returns ``None`` if the call is allowed.  Returns a ``{"error": …}``
     dict if blocked — caller feeds that back to the model so it can
@@ -630,19 +632,13 @@ async def _check_tool_permission(
             )}
     req_perms = TOOL_PERMISSIONS.get(tool_name)
     if req_perms is not None:
-        try:
-            from adapters.storage import Role
-            role = Role(user_role)
-            if account_id is not None:
-                from capabilities.permissions.roles import get_account_permissions
-                perms = await get_account_permissions(role, int(account_id))
-            else:
-                from capabilities.permissions.roles import get_permissions
-                perms = get_permissions(role)
-            if not any(getattr(perms, p, False) for p in req_perms):
-                return {"error": f"Access denied: your role ({user_role}) cannot use {tool_name}."}
-        except (ValueError, KeyError, ImportError) as e:
-            logger.debug("Tool dispatch error for %s: %s", tool_name, e)
+        from capabilities.ai.usage import resolve_user_permissions
+        perms = await resolve_user_permissions(user_role, account_id, user_context)
+        # ``None`` = unknown role.  Deny, as the old except-branch did NOT:
+        # it logged and fell through to "allowed", so an unparseable role
+        # string passed every permission-gated tool.
+        if perms is None or not any(getattr(perms, p, False) for p in req_perms):
+            return {"error": f"Access denied: your role ({user_role}) cannot use {tool_name}."}
     # Vehicle-Access isolation (Account → Company → Vehicle SSOT).  The AI
     # entry point resolves the caller's effective scope into
     # ``scoped_vehicle_nums``: ``None`` = unrestricted; a list = the only
@@ -793,6 +789,7 @@ async def _run_anthropic_agent(
     tools = await _get_anthropic_tools(
         role=user_role, account_id=account_id,
         scoped=_effective_scoped_flag(user_context, user_role),
+        user_context=user_context,
     )
 
     system_prompt = ASSISTANT_SYSTEM
@@ -1323,6 +1320,7 @@ async def _run_openai_compat_agent(
     tools = await _get_openai_tools(
         role=user_role, account_id=account_id,
         scoped=_effective_scoped_flag(user_context, user_role),
+        user_context=user_context,
     )
 
     system_prompt = ASSISTANT_SYSTEM
@@ -1779,6 +1777,7 @@ async def ask_agent(question: str, vehicle_context: dict,
     tools = await _get_cached_tools(
         role=user_role, account_id=account_id,
         scoped=_effective_scoped_flag(user_context, user_role),
+        user_context=user_context,
     )
 
     # Per-attempt telemetry — write one ai_usage row per model call

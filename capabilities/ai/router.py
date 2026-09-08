@@ -188,6 +188,13 @@ def _apply_persona_preview(user_context: dict | None, view: str | None) -> None:
     """
     if user_context and view and view != user_context.get("role"):
         user_context["role"] = view
+        # A preview is the BASE tier of the previewed role.  The real
+        # user's tier flags must not ride along: a full admin previewing
+        # "fleet" would otherwise resolve the fleet MANAGER row and see
+        # more than a plain fleet user does — the one thing this function
+        # promises it never does.
+        user_context["is_manager"] = False
+        user_context["is_primary_owner"] = False
         # Mark the lens so write actions are suppressed while previewing —
         # preview is a read-only view of another role, and a write proposed
         # under the narrowed role but executed under the real role would
@@ -461,6 +468,7 @@ async def ai_chat_stream(
         try:
             grids, docs, images = await parse_attachments_for_request(
                 body.attachments, user.get("role"), account_id,
+                user_context=user_context,
             )
         except AttachmentError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -687,11 +695,10 @@ async def ai_summary(
         # application counts in their briefing data.  Keyed by the permission,
         # never the role name — best-effort, a failure never blocks the brief.
         try:
-            from adapters.storage import Role as _Role
-            from capabilities.permissions.roles import get_account_permissions
+            from capabilities.ai.usage import resolve_user_permissions
             _role_str = (user_context or {}).get("role")
             if _role_str:
-                _perms = await get_account_permissions(_Role(_role_str), account_id)
+                _perms = await resolve_user_permissions(_role_str, account_id, user_context)
                 if getattr(_perms, "can_manage_applications", False):
                     _apps = await tenant_db.list_driver_applications(account_id, limit=500)
                     _by_stage: dict[str, int] = {}
