@@ -46,12 +46,13 @@ import {
   type LiveReply, type OverlayReply, type OverlayVehicle,
 } from '../features/maps-overlay/bridge';
 import { applyFix, positionAt, shortestAngleDiff, type Phys } from '../features/live-map/physics';
+import { ageMs, describeAge, formatAge, stalenessOf } from '../features/live-map/freshness';
 import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraDrawable, cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
-import { colourFor, findMapCanvas, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
+import { cardAnchor, colourFor, findMapCanvas, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
 const CHIP_ID = '4truck-maps-chip';
@@ -90,6 +91,10 @@ const markers = new Map<string, HTMLDivElement>();
  *  switch.  A person who has not connected did not ask for this. */
 let signedIn = false;
 let chip: HTMLButtonElement | null = null;
+/** The truck whose card is open, or null.  A selection, not a filter:
+ *  every other marker keeps being drawn exactly as before. */
+let cardId: string | null = null;
+let card: HTMLDivElement | null = null;
 /**
  * What the switch may honestly claim.
  *
@@ -194,7 +199,14 @@ function ensureRoot(): HTMLDivElement {
   return root;
 }
 
+function closeCard(): void {
+  card?.remove();
+  card = null;
+  cardId = null;
+}
+
 function removeAll(): void {
+  closeCard();
   root?.remove();
   root = null;
   markers.clear();
@@ -377,6 +389,100 @@ function aimArrow(m: MarkerParts, deg: number): void {
   }
 }
 
+// ── the card on the map ────────────────────────────────────────────────
+//
+// Clicking a truck used to open the side panel: correct, and a trip out
+// of the map somebody is in the middle of reading.  The card answers the
+// question that made them click — which truck, doing what, how fresh,
+// how full — where they asked it, and keeps the panel one button away
+// for everything else.
+//
+// It takes pointer events (the markers deliberately do not, so a drag
+// that starts on a truck still drags Google's map); it lives INSIDE the
+// layer, so it rides a drag and fades with a gesture exactly as the
+// markers do; and it is anchored above its marker, flipped and clamped
+// by ``cardAnchor`` so it never hangs off the edge.
+
+const CARD_W = 220;
+
+function cardHtml(v: OverlayVehicle, ts: number): string {
+  const age = ageMs(v.updated_at, ts);
+  const st = stalenessOf(age);
+  const old_ = st === 'stale' || st === 'very_stale';
+  const moving = v.status === 'moving' && v.speed_mph > 0;
+  return ''
+    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+    +   `<span aria-hidden style="width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:${colourFor(v.status)}"></span>`
+    +   `<strong style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">${esc(v.name || v.id)}`
+    +     (v.company ? `<span style="font-weight:400;opacity:.6"> · ${esc(v.company)}</span>` : '')
+    +   '</strong>'
+    +   '<button data-close aria-label="Close" style="all:unset;cursor:pointer;padding:2px 4px;line-height:1;'
+    +     'color:rgba(255,255,255,.55);font-size:14px">\u00d7</button>'
+    + '</div>'
+    + '<div style="font-size:11px;margin-bottom:6px">'
+    +   `<span style="font-weight:600;text-transform:capitalize">${esc(v.status)}</span>`
+    +   (moving ? `<span style="opacity:.6"> \u00b7 ${Math.round(v.speed_mph)} mph</span>` : '')
+    +   (age === null
+        ? '<span style="opacity:.6"> \u00b7 no position time</span>'
+        : `<span style="${old_ ? 'color:#fbbf24' : 'opacity:.6'}" title="${esc(describeAge(age))}"> \u00b7 ${esc(formatAge(age))} old</span>`)
+    + '</div>'
+    // Fuel, DEF, the address, the faults: all one button away, in the
+    // panel, which is where they live — see bridge.ts on what does not
+    // cross into a page we do not own.
+    + '<button data-panel style="all:unset;box-sizing:border-box;display:block;width:100%;text-align:center;'
+    +   'cursor:pointer;margin-top:2px;padding:6px 8px;border-radius:6px;background:#2563eb;color:#fff;'
+    +   'font:600 11px/1 system-ui,sans-serif">Open in 4truck for levels &amp; more</button>';
+}
+
+function esc(v: string): string {
+  return String(v).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+/** Draw or move the open card.  Called from every place that moves a
+ *  marker, so the card follows its truck rather than floating where the
+ *  truck used to be. */
+function placeCard(): void {
+  if (!cardId || !surface || !root) { closeCard(); return; }
+  const v = vehicles.find((x) => x.id === cardId);
+  const at = drawnAt.get(cardId);
+  // Off screen, filtered away, or gone from the list: the card goes too
+  // — a card for a truck that is not on the map describes nothing.
+  if (!v || !at) { closeCard(); return; }
+  if (!card || !card.isConnected) {
+    card = document.createElement('div');
+    card.id = '4truck-maps-card';
+    card.style.cssText =
+      'position:absolute;pointer-events:auto;width:' + CARD_W + 'px;box-sizing:border-box;'
+      + 'padding:8px 10px;border-radius:10px;background:rgba(17,20,26,.94);color:#fff;'
+      + 'font:400 12px/1.35 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.45);'
+      + 'backdrop-filter:blur(2px)';
+    // The card is ours; a click inside it is never a map gesture.
+    card.addEventListener('pointerdown', (e) => e.stopPropagation());
+    card.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('[data-close]')) { closeCard(); return; }
+      if (t?.closest('[data-panel]') && cardId) openInPanel(cardId);
+    });
+    root.appendChild(card);
+  }
+  card.innerHTML = cardHtml(v, performance.now());
+  // Measured after the content is in: a two-line unit number makes a
+  // taller card, and a card placed against last frame's height sits
+  // wrong by exactly that difference.
+  const box = { width: CARD_W, height: card.offsetHeight || 120 };
+  const pos = cardAnchor(at, box, surface);
+  card.style.left = `${pos.left}px`;
+  card.style.top = `${pos.top}px`;
+}
+
+function openInPanel(id: string): void {
+  // Written first, then the panel is asked to open: whichever arrives
+  // first, the panel finds the choice waiting for it.
+  void chrome.storage.local.set({ [PENDING_SELECT_KEY]: id });
+  try { chrome.runtime.sendMessage({ type: OPEN_PANEL }); } catch { /* worker asleep; storage still carries it */ }
+}
+
 function draw(): void {
   // Street View is a photograph and a page with no map canvas is not a
   // map: nothing of ours belongs on either, the switch included.
@@ -411,6 +517,7 @@ function draw(): void {
     if (!seen.has(id)) { m.remove(); markers.delete(id); parts.delete(id); }
   }
   updateChip(seen.size);
+  placeCard();
 }
 
 /** The camera settled: markers are re-projected and, in the SAME frame,
@@ -479,7 +586,11 @@ function pump(): void {
     placeAt(m, pt.x, pt.y);
     aimArrow(m, p.headingDeg);
   }
-  if (moving) animFrame = requestAnimationFrame(pump);
+  if (moving) {
+    // The open card belongs to its truck, not to a spot on the glass.
+    if (cardId) placeCard();
+    animFrame = requestAnimationFrame(pump);
+  }
 }
 
 function ensurePump(): void {
@@ -639,11 +750,14 @@ function selectAt(clientX: number, clientY: number): void {
   if (!enabled || !signedIn) return;
   if (!surface) return;
   const id = markerAt(drawnAt, clientX - surface.left, clientY - surface.top);
-  if (!id) return;
-  // Written first, then the panel is asked to open: whichever arrives
-  // first, the panel finds the choice waiting for it.
-  void chrome.storage.local.set({ [PENDING_SELECT_KEY]: id });
-  try { chrome.runtime.sendMessage({ type: OPEN_PANEL }); } catch { /* worker asleep; storage still carries it */ }
+  if (!id) {
+    // A press on empty map closes the card, the way every map dismisses
+    // a popup — without swallowing the press, which is Google's.
+    closeCard();
+    return;
+  }
+  cardId = id;
+  placeCard();
 }
 
 function onPointerUp(e?: PointerEvent): void {
@@ -670,6 +784,7 @@ function onWheel(e: WheelEvent): void {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && cardId) { closeCard(); return; }
   if (!root || !isMapKey(e.key)) return;
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { HIT_RADIUS, colourFor, findMapSurface, markerAt, needsRemeasure, sameSurface } from './surface';
+import { HIT_RADIUS, cardAnchor, colourFor, findMapSurface, markerAt, needsRemeasure, sameSurface } from './surface';
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   getBoundingClientRect: () => ({ left, top, width, height }) as DOMRectReadOnly,
@@ -113,5 +113,36 @@ describe('needsRemeasure', () => {
     // Google's markup is unversioned; a resize that never reaches us
     // must not leave the box wrong for ever.
     expect(needsRemeasure({ ...settled, now: 3000 })).toBe(true);
+  });
+});
+
+describe('cardAnchor', () => {
+  const surface = { width: 800, height: 600 };
+  const box = { width: 220, height: 120 };
+
+  it('sits above the marker, centred on it', () => {
+    const a = cardAnchor({ x: 400, y: 300 }, box, surface);
+    expect(a.below).toBe(false);
+    expect(a.left).toBe(400 - 110);
+    expect(a.top).toBe(300 - 120 - 12);
+  });
+
+  it('flips below when there is no room above', () => {
+    const a = cardAnchor({ x: 400, y: 40 }, box, surface);
+    expect(a.below).toBe(true);
+    expect(a.top).toBe(40 + 12);
+  });
+
+  it('never hangs off an edge — the missing half is always the numbers', () => {
+    expect(cardAnchor({ x: 5, y: 300 }, box, surface).left).toBe(4);
+    expect(cardAnchor({ x: 795, y: 300 }, box, surface).left).toBe(800 - 220 - 4);
+    expect(cardAnchor({ x: 400, y: 595 }, box, surface).top).toBeLessThanOrEqual(600 - 120 - 4);
+  });
+
+  it('stays inside a map smaller than the card', () => {
+    const tiny = { width: 200, height: 100 };
+    const a = cardAnchor({ x: 100, y: 50 }, box, tiny);
+    expect(a.left).toBe(4);
+    expect(a.top).toBe(4);
   });
 });

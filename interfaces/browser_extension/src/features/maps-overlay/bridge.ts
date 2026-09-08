@@ -44,9 +44,30 @@ export const OVERLAY_LIVE = '4truck:overlay-live';
  *  never leaves the extension. */
 export const PANEL_LIVE = '4truck:panel-live';
 
-/** One vehicle, trimmed to what a marker on somebody else's map needs.
- *  Deliberately not the full map payload: less to hand a page we do
- *  not control, and less to keep in sync. */
+/** One vehicle, trimmed to what the overlay draws AND what its card
+ *  answers.  Still not the full map payload — the page is Google's, not
+ *  ours — and every field below earns its place:
+ *
+ *    id, lat, lng, heading   the marker itself
+ *    name + company          WHICH truck: unit numbers repeat across
+ *                            companies, so "229" alone names nothing
+ *                            and a card can name the wrong truck
+ *    status + speed          what it is DOING; the map draws a heading,
+ *                            never a speed
+ *    updated_at              how old the reading is.  A marker on a live
+ *                            map with no age is the lie the panel's
+ *                            fold was: a three-week-old position drawn
+ *                            beside moving traffic reads as moving
+ *
+ *  Each of the three additions answers "is this card telling the truth
+ *  about which truck and when", which a card cannot do without them.
+ *
+ *  What stays OUT, and stays out on purpose: fuel and DEF levels,
+ *  addresses, fault counts, provenance, registry ids.  They were
+ *  tempting — a dispatcher planning a route wants the tank — but the
+ *  card carries a button to the panel, which is where they live and
+ *  where the page cannot read them.  "It is already exposed, one more
+ *  field is marginal" is how a boundary stops being one. */
 export interface OverlayVehicle {
   id: string;
   name: string;
@@ -54,6 +75,9 @@ export interface OverlayVehicle {
   lng: number;
   status: string;
   heading: number | null;
+  company: string;
+  speed_mph: number;
+  updated_at: string;
 }
 
 /** One live fix.  The wire shape of `/map/vehicles/live`, trimmed the
@@ -137,12 +161,16 @@ export function toOverlayVehicles(features: MapFeature[]): OverlayVehicle[] {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
     const p = f.properties ?? {};
     const heading = typeof p.heading === 'number' && Number.isFinite(p.heading) ? p.heading : null;
+    const speed = Number(p.speed_mph);
     out.push({
       id: String(p.id ?? p.name ?? `${lat},${lng}`),
       name: String(p.name ?? ''),
       lat, lng,
       status: String(p.status ?? 'stopped'),
       heading,
+      company: String(p.company ?? ''),
+      speed_mph: Number.isFinite(speed) ? speed : 0,
+      updated_at: String(p.updated_at ?? ''),
     });
   }
   return out;

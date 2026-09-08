@@ -132,3 +132,30 @@ export function markerAt(
   }
   return best;
 }
+
+
+/**
+ * Where a card anchored to a marker actually goes.
+ *
+ * Above the marker by default — a card below it covers the road the
+ * person is reading — and flipped under when there is no room above.
+ * Then clamped into the map's own box on both axes, because a truck
+ * near an edge would otherwise hang a card half off the screen, and
+ * the half that is missing is always the half with the numbers.
+ *
+ * Pure: the caller measures, this decides.
+ */
+export function cardAnchor(
+  marker: { x: number; y: number },
+  card: { width: number; height: number },
+  surface: { width: number; height: number },
+  gap = 12,
+): { left: number; top: number; below: boolean } {
+  const below = marker.y - card.height - gap < 0;
+  const rawTop = below ? marker.y + gap : marker.y - card.height - gap;
+  const rawLeft = marker.x - card.width / 2;
+  const pad = 4;
+  const left = Math.max(pad, Math.min(rawLeft, surface.width - card.width - pad));
+  const top = Math.max(pad, Math.min(rawTop, surface.height - card.height - pad));
+  return { left, top, below };
+}

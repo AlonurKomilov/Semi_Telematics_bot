@@ -3,19 +3,29 @@ import { describe, expect, it, vi } from 'vitest';
 import { sharedOrOwn, toOverlayFixes, toOverlayVehicles } from './bridge';
 
 describe('what crosses into a page we do not own', () => {
-  it('carries a marker\'s worth and nothing else', () => {
+  it('carries a marker and its card, and nothing else', () => {
+    // The line moved once, deliberately: the on-map card needs to say
+    // WHICH truck (company — unit numbers repeat) and WHEN the position
+    // was taken (updated_at — a marker with no age reads as live), and
+    // the map draws a heading but never a speed.  It moved by exactly
+    // those three.  Fuel, DEF, the address, the faults and the registry
+    // id stayed behind the "Open in 4truck" button, where the page
+    // cannot read them.
     const [v] = toOverlayVehicles([{
       geometry: { coordinates: [-93.72, 35.5] },
       properties: {
         id: 42, name: '103', status: 'moving', heading: 270,
-        // Everything below is in the map payload and has no business
-        // inside google.com/maps.
+        company: 'PTG', speed_mph: 61.2, updated_at: '2026-09-08T07:00:00Z',
+        // Still no business inside google.com/maps:
         address: '515 Marshall Street, Paterson, NJ', fuel_percent: 45,
-        def_percent: 78, fault_count: 3, company: 'PTG', registry_id: 9001,
+        def_percent: 78, fault_count: 3, registry_id: 9001,
       },
     }]);
-    expect(v).toEqual({ id: '42', name: '103', lat: 35.5, lng: -93.72, status: 'moving', heading: 270 });
-    expect(Object.keys(v)).toHaveLength(6);
+    expect(v).toEqual({
+      id: '42', name: '103', lat: 35.5, lng: -93.72, status: 'moving', heading: 270,
+      company: 'PTG', speed_mph: 61.2, updated_at: '2026-09-08T07:00:00Z',
+    });
+    expect(Object.keys(v)).toHaveLength(9);
   });
 
   it('drops a feature with no usable position rather than drawing at null island', () => {
@@ -100,5 +110,36 @@ describe('sharedOrOwn', () => {
       async () => ({ ok: false }),
       async () => { throw new Error('offline'); },
     )).rejects.toThrow('offline');
+  });
+});
+
+describe('toOverlayVehicles — the card\'s fields', () => {
+  const feature = (props: Record<string, unknown>) => ({
+    geometry: { coordinates: [-87, 41] as [number, number] },
+    properties: props,
+  });
+
+  it('carries what the card answers with, and nothing more', () => {
+    const [v] = toOverlayVehicles([feature({
+      id: 'v1', name: '229', company: 'RMR', status: 'moving', heading: 90,
+      speed_mph: 56.4, updated_at: '2026-09-08T07:00:00Z',
+      // Present in the map payload, deliberately not handed to a page
+      // we do not control:
+      fuel_percent: 36, def_percent: 75,
+      address: '123 Main St', registry_id: 60, source: 'samsara', fault_count: 2,
+    })]);
+    expect(v).toEqual({
+      id: 'v1', name: '229', lat: 41, lng: -87, status: 'moving', heading: 90,
+      company: 'RMR', speed_mph: 56.4, updated_at: '2026-09-08T07:00:00Z',
+    });
+  });
+
+  it('a field the payload never sent is empty, never invented', () => {
+    // `Number(undefined)` is NaN; a card that read it as 0 would say a
+    // truck was stopped when nobody had measured it.
+    const [v] = toOverlayVehicles([feature({ id: 'v2', name: '101' })]);
+    expect(v.speed_mph).toBe(0);
+    expect(v.company).toBe('');
+    expect(v.updated_at).toBe('');
   });
 });
