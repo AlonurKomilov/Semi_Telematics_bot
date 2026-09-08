@@ -1,7 +1,7 @@
 /* Mesh — two soft pools of the accent, low in the corners. */
 @media screen {
-  :root[data-wallpaper="mesh"] .chrome-ground {
-    background-color: var(--sidebar);
+  :root[data-wallpaper="mesh"] :is(.chrome-ground, .page-ground) {
+    background-color: var(--ground);
     background-image:
       radial-gradient(60% 55% at 12% 8%,
         color-mix(in oklab, var(--primary) 20%, transparent) 0%, transparent 100%),

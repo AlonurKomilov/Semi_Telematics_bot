@@ -49,6 +49,7 @@ import { SOUND_PACKS } from '../mods/packs/sound';
 import { KEY_PACKS } from '../mods/packs/keys';
 import { MOD_FONTS } from '../mods/packs/font';
 import { SURFACES } from '../mods/surfaces';
+import { PAGE_EVERYWHERE } from '../mods/wallpaper';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -304,6 +305,13 @@ export interface ModSetting {
    * products. Seeds again, re-derived per mode like the global one.
    */
   surfaces?: Record<string, string>;
+  /**
+   * Where the frame's pattern also shows on the PAGE — `{ everywhere:
+   * true, loads: false }`. Keys are `PAGE_EVERYWHERE` and `SURFACES`
+   * ids; a named place's own answer wins over everywhere's. Absent
+   * means nowhere, which is what the page has always been.
+   */
+  wallpaperPage?: Record<string, boolean>;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -655,6 +663,19 @@ export const DEFS = {
         }
         if (Object.keys(kept).length) surfaces = kept;
       }
+      // Same shape, same reasons: named keys only, capped, dropped when
+      // empty so "nowhere" and "an empty set of places" are one state.
+      let wallpaperPage: Record<string, boolean> | undefined;
+      if (o.wallpaperPage && typeof o.wallpaperPage === 'object' && !Array.isArray(o.wallpaperPage)) {
+        const kept: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(o.wallpaperPage as Record<string, unknown>)) {
+          if (k !== PAGE_EVERYWHERE && !SURFACES.some((x) => x.id === k)) continue;
+          if (typeof v !== 'boolean') continue;
+          if (Object.keys(kept).length > SURFACES.length) break;
+          kept[k] = v;
+        }
+        if (Object.keys(kept).length) wallpaperPage = kept;
+      }
 
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
@@ -680,6 +701,7 @@ export const DEFS = {
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),
         ...(surfaces ? { surfaces } : {}),
+        ...(wallpaperPage ? { wallpaperPage } : {}),
         color: themeColorAlias(mode, accent),
       };
     },

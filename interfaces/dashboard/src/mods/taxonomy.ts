@@ -123,7 +123,7 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // it moves) and the page (its colour, for the whole app or for one
       // named place). One item, one reset.
       { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
-        axes: ['wallpaper', 'wallpaperLive', 'canvas', 'surfaces'],
+        axes: ['wallpaper', 'wallpaperLive', 'wallpaperPage', 'canvas', 'surfaces'],
         modFields: ['wallpaper', 'wallpaperLive'] },
       { id: 'cursor', title: 'Cursor', heading: 'Cursor',
         axes: ['cursor'], modFields: ['cursor'] },

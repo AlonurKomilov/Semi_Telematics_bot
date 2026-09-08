@@ -17,10 +17,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
 import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
-import { assembledCss } from '../test/stylesheet';
+import { assembledCss, engineCss } from '../test/stylesheet';
 import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, distance, type RGB } from './theme/contrast';
-import { LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE } from './wallpaper';
+import {
+  LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
+  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, pageWallpaperOn, PAGE_EVERYWHERE,
+} from './wallpaper';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -69,8 +72,12 @@ const mix = (a: RGB, b: RGB, pct: number): RGB =>
  * only transforms; the stops live there, and a gate that read the
  * ground alone would measure a live pattern's tooth and call it safe.
  */
+/** The one selector a pack paints its ground with — BOTH grounds, so a
+ *  page wearing the pattern paints the same stops the frame does. */
+const groundOf = (id: string) => `:root[data-wallpaper="${id}"] :is(.chrome-ground, .page-ground)`;
+
 function paintOf(id: string): string {
-  const ground = `:root[data-wallpaper="${id}"] .chrome-ground`;
+  const ground = groundOf(id);
   return body(ground) + body(`${ground}::before`) + body(`${ground}::after`);
 }
 
@@ -116,7 +123,7 @@ describe('the stylesheet answers for every pattern the list offers', () => {
 
   it('gives every pattern but "none" a block, and "none" none', () => {
     for (const w of WALLPAPERS) {
-      const has = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`) !== '';
+      const has = body(groundOf(w.id)) !== '';
       if (w.id === 'none') {
         // Flat chrome is the absence of a rule, not a rule that undoes
         // one — an `background-image: none` block would still have to
@@ -142,7 +149,7 @@ describe('the stylesheet answers for every pattern the list offers', () => {
     // few hundred bytes, and being greyscale it has knowable extremes.
     let counted = 0;
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
-      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      const block = body(groundOf(w.id));
       for (const m of block.matchAll(/url\((['"]?)([^'")]*)/g)) {
         // `url(%23g)` inside the SVG is a filter REFERENCE — a pointer
         // to an element in the same document, not a fetch. Only the
@@ -165,7 +172,7 @@ describe('the stylesheet answers for every pattern the list offers', () => {
   it('and every generated texture stitches its tiles', () => {
     let seen = 0;
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
-      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      const block = body(groundOf(w.id));
       for (const m of block.matchAll(/feTurbulence[^%]*?%3E/g)) {
         seen++;
         expect(m[0], `${w.id} tiles its noise without stitching`)
@@ -188,7 +195,7 @@ describe('the stylesheet answers for every pattern the list offers', () => {
   it('and drains it of colour, so its extremes are knowable', () => {
     let seen = 0;
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
-      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      const block = body(groundOf(w.id));
       for (const m of block.matchAll(/%3Cfilter[\s\S]*?%3C\/filter%3E/g)) {
         seen++;
         expect(m[0], `${w.id} generates coloured noise — its extremes are unknown`)
@@ -248,14 +255,16 @@ describe('the ground is where it can be seen', () => {
       .toBeGreaterThanOrEqual(3);
   });
 
-  it('and the ground carries the chrome colour itself', () => {
+  it('and the ground carries its own colour under the pattern', () => {
     // Without it the panes go transparent onto `bg-background` and the
     // whole chrome turns the content card's colour — the pattern would
-    // arrive and the app would look broken around it.
+    // arrive and the app would look broken around it. `var(--ground)`,
+    // not `var(--sidebar)`: the engine resolves it to the sidebar on the
+    // frame and to the page colour on the page, so one pack paints both.
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
-      const block = body(`:root[data-wallpaper="${w.id}"] .chrome-ground`);
+      const block = body(groundOf(w.id));
       expect(block, `${w.id} paints a pattern on no ground`)
-        .toMatch(/background-color:\s*var\(--sidebar\)/);
+        .toMatch(/background-color:\s*var\(--ground\)/);
     }
   });
 });
@@ -442,5 +451,88 @@ describe('and every one of them can actually be seen', () => {
     const primary = token(body(MODE_CELL.dark), '--primary')!.rgb;
     expect(distance(base, mix(base, primary, 1))).toBeLessThan(WALLPAPER_VISIBLE);
     expect(distance(base, mix(base, primary, 18))).toBeGreaterThanOrEqual(WALLPAPER_VISIBLE);
+  });
+});
+
+/**
+ * The page half. A pattern may show on the content card too, over the
+ * page's own colour, around the cards — so the same stops are measured
+ * a second time against the page's ground and the page's inks. The
+ * muted ink is the one that binds, and in light mode the engine sheet
+ * steps it darker on the page ground; that stepped value is what is
+ * measured, and the unstepped one is shown to fail, so the step cannot
+ * be removed without this noticing.
+ */
+describe('the page can wear it too, and stays readable', () => {
+  const pageInk = (mode: 'light' | 'dark', name: string) => {
+    const stepped = mode === 'light' ? token(body(':root:not(.dark) .page-ground'), name) : null;
+    return stepped ?? token(body(MODE_CELL[mode]), name)!;
+  };
+
+  it('both grounds paint the same variable, and the engine names both', () => {
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
+      const paint = paintOf(w.id);
+      expect(paint, `${w.id} paints the sidebar colour by name — the page would wear the frame's colour`)
+        .not.toMatch(/var\(--sidebar\)/);
+      expect(paint, `${w.id} does not paint var(--ground)`).toMatch(/background-color:\s*var\(--ground\)/);
+    }
+    const engine = engineCss();
+    expect(engine).toMatch(/\.chrome-ground\s*\{\s*--ground:\s*var\(--sidebar\)/);
+    expect(engine).toMatch(/\.page-ground\s*\{\s*--ground:\s*var\(--background\)/);
+  });
+
+  it('the shell makes the content card a page ground only where asked', () => {
+    const shell = readFileSync(join(__dirname, '..', 'shells', 'AppShell.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(shell, 'the content card never becomes a page ground').toMatch(/page-ground/);
+    expect(shell, 'the class is not resolved per place').toMatch(/pageWallpaperOn\(/);
+  });
+
+  it('resolves a place\'s own answer over everywhere\'s, and nothing to no', () => {
+    expect(pageWallpaperOn(undefined, 'loads')).toBe(false);
+    expect(pageWallpaperOn({ [PAGE_EVERYWHERE]: true }, 'loads')).toBe(true);
+    expect(pageWallpaperOn({ [PAGE_EVERYWHERE]: true, loads: false }, 'loads')).toBe(false);
+    expect(pageWallpaperOn({ loads: true }, null)).toBe(false);
+    expect(pageWallpaperOn({ loads: true }, 'loads')).toBe(true);
+  });
+
+  it('every declared stop clears AA under the page inks, in both modes, under every accent', () => {
+    let measured = 0;
+    for (const mode of ['light', 'dark'] as const) {
+      const base = token(body(MODE_CELL[mode]), WALLPAPER_PAGE_BASE)!.rgb;
+      for (const inkName of WALLPAPER_PAGE_INKS) {
+        const ink = pageInk(mode, inkName).rgb;
+        for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
+          for (const stop of stopsOf(w.id)) {
+            const colours = stop.token === '--primary'
+              ? THEME_PACKS.map((p) => [p.id, token(body(packCell(p.id, mode)), '--primary') ?? token(body(MODE_CELL[mode]), '--primary')!] as const)
+              : stop.token.startsWith('#') ? [['—', { rgb: hex(stop.token), alpha: 1 }] as const]
+                : [['—', token(body(MODE_CELL[mode]), stop.token)!] as const];
+            for (const [pack, c] of colours) {
+              measured++;
+              expect(contrastRatio(ink, mix(base, c.rgb, stop.pct * c.alpha)),
+                `${inkName} over ${w.id} ${stop.token}@${stop.pct}% (${pack}/${mode}) on the page`)
+                .toBeGreaterThanOrEqual(WALLPAPER_AA);
+            }
+          }
+        }
+      }
+    }
+    expect(measured, 'nothing was measured').toBeGreaterThan(40);
+  });
+
+  it('and the light step is load-bearing — the unstepped muted ink fails under the strongest stop', () => {
+    const base = token(body(MODE_CELL.light), WALLPAPER_PAGE_BASE)!.rgb;
+    const raw = token(body(MODE_CELL.light), '--muted-foreground')!.rgb;
+    const stepped = pageInk('light', '--muted-foreground').rgb;
+    expect(stepped, 'no light step on the page ground — the test above is measuring the raw ink').not.toEqual(raw);
+    let worst = Infinity;
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none'))
+      for (const stop of stopsOf(w.id).filter((s) => s.token === '--primary'))
+        for (const p of THEME_PACKS) {
+          const c = token(body(packCell(p.id, 'light')), '--primary') ?? token(body(MODE_CELL.light), '--primary')!;
+          worst = Math.min(worst, contrastRatio(raw, mix(base, c.rgb, stop.pct * c.alpha)));
+        }
+    expect(worst, 'the raw muted ink clears every stop — the step is decoration').toBeLessThan(WALLPAPER_AA);
   });
 });

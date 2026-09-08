@@ -4,8 +4,8 @@
      is structure, and structure is not a place for the brand. 24px is
      the 4px spacing scale six steps up, so the lines land on the same
      rhythm the layout already uses. */
-  :root[data-wallpaper="grid"] .chrome-ground {
-    background-color: var(--sidebar);
+  :root[data-wallpaper="grid"] :is(.chrome-ground, .page-ground) {
+    background-color: var(--ground);
     background-image:
       linear-gradient(to right,
         color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px),

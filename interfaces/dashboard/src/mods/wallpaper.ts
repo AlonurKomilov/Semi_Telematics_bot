@@ -23,12 +23,19 @@ import type { PackMeta } from './packs/meta';
  *     that quietly adds a megabyte to a dashboard people open on a
  *     tethered phone in a yard.
  *
- * WHERE IT PAINTS: the chrome envelope — the sidebar, the header and
- * the gutters, which `AppShell` already calls "one continuous chrome
- * surface" and paints `bg-sidebar`. The content card sits IN that, so
- * the pattern is the ground around the work rather than under the
- * words. It is the same relationship GX has: the wallpaper is behind
- * the browser, and the page sits on top of it.
+ * WHERE IT PAINTS: the FRAME — the sidebar, the header and the gutters,
+ * which `AppShell` already calls "one continuous chrome surface" and
+ * paints `bg-sidebar`. It is the same relationship GX has: the wallpaper
+ * is behind the browser, and the page sits on top of it.
+ *
+ * And, if a person asks, the PAGE: the content card can wear the same
+ * pattern over its OWN colour (`.page-ground`, resolved per place by
+ * `pageWallpaperOn`). Around the cards, never under the words — every
+ * table and card stays solid — and the page's small text steps darker
+ * under it in light mode, because the gate measured that it had to.
+ * Both grounds paint `var(--ground)`: the frame's is `--sidebar`, the
+ * page's is `--background`, so the page's colour and its pattern never
+ * fight over the same pixels.
  *
  * A custom image is a later, separate decision — the way `brand`
  * followed `accent`. It needs storage, a tenancy path, a CSP change and
@@ -109,6 +116,33 @@ export const WALLPAPER_INK = '--sidebar-foreground';
  * paints it.
  */
 export const WALLPAPER_AA = 4.5;
+
+/** The page's ground and the inks that sit on it, for the page half of
+ *  the gate. `--muted-foreground` is the one that binds: at its normal
+ *  lightness it clears the plain light page by a hair, and any stop
+ *  darkens the page — so under a page pattern the engine sheet steps it
+ *  darker, and the gate measures the stepped value. */
+export const WALLPAPER_PAGE_BASE = '--background';
+export const WALLPAPER_PAGE_INKS = ['--foreground', '--muted-foreground'] as const;
+
+/** The key that stands for "every place" in `wallpaperPage`. */
+export const PAGE_EVERYWHERE = 'everywhere';
+
+/**
+ * Whether the page at `surfaceId` wears the pattern.
+ *
+ * A named place's own answer wins; otherwise "everywhere"'s; otherwise
+ * no. A boolean per key rather than a list, so a place can be switched
+ * OFF while everywhere is on — a list could only add.
+ */
+export function pageWallpaperOn(
+  pages: Readonly<Record<string, boolean>> | undefined,
+  surfaceId: string | null,
+): boolean {
+  if (!pages) return false;
+  if (surfaceId && surfaceId in pages) return pages[surfaceId];
+  return pages[PAGE_EVERYWHERE] ?? false;
+}
 
 /**
  * The FLOOR — a pattern must be visible, not only safe.

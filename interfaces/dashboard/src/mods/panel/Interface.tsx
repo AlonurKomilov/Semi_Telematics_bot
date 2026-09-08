@@ -32,6 +32,7 @@ import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
 import { ICON_PACKS, iconPackById, BASE_PACK } from '../packs/icons';
 import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
+import { pageWallpaperOn, PAGE_EVERYWHERE } from '../wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
 
 /** The caps label above a group. The popover runs smaller — seven of
@@ -493,6 +494,29 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
             ? `${t('theme.scope_unworn', 'Not worn in {{mode}} mode')
                 .replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
             : t('theme.scope_all_hint', 'One background for the whole app.')}
+      </p>
+      {/* The pattern on the page, for the aimed place. Shows the
+          RESOLVED answer — a named place inherits everywhere's until it
+          has its own — and writes only the aimed key. Disabled with the
+          reason when no pattern is worn: there is nothing to show. */}
+      <div className="flex items-center justify-between gap-2 mt-2">
+        <span className={current !== 'none' ? 'text-xs text-foreground' : 'text-xs text-muted-foreground'}>
+          {t('mods.wallpaper_page_show', 'Show the pattern on the page')}
+        </span>
+        <Switch
+          size="sm"
+          checked={current !== 'none' && pageWallpaperOn(theme.wallpaperPage, target || null)}
+          disabled={current === 'none'}
+          onCheckedChange={(next) => setTheme({
+            wallpaperPage: { ...(theme.wallpaperPage ?? {}), [target || PAGE_EVERYWHERE]: next },
+          })}
+          aria-label={t('mods.wallpaper_page_show', 'Show the pattern on the page')}
+        />
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1">
+        {current === 'none'
+          ? t('mods.wallpaper_page_none', 'Pick a pattern above first.')
+          : t('mods.wallpaper_page_hint', 'Around the cards — tables and cards stay solid.')}
       </p>
     </div>
   );

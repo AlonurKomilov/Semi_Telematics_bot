@@ -985,12 +985,27 @@
      instead, so the chrome looks identical at `none` and gains the
      pattern otherwise.
 
-     The content card is deliberately NOT a pane. It stays opaque, which
-     is the whole shape of the feature — the ground is around the work,
-     never under the words. */
+     The content card is NOT a pane. It never goes transparent: when a
+     person asks for the pattern on the page, the card becomes a
+     `page-ground` and paints the pattern over its OWN colour — around
+     the cards inside it, never under the words. */
   :root:not([data-wallpaper="none"]) .chrome-pane {
     background-color: transparent;
   }
+
+  /* Two grounds, one variable. A pack paints `var(--ground)` and does
+     not know which it is on: the frame's ground is the sidebar colour,
+     the page's is the page colour, so a page colour picked under
+     Wallpaper › Page and a pattern shown there never fight. */
+  .chrome-ground { --ground: var(--sidebar); }
+  .page-ground { --ground: var(--background); }
+  /* The page's small text, under a pattern, in light mode. At its
+     normal lightness `--muted-foreground` clears the plain light page
+     by a hair (4.96), and every stop darkens the page — the strongest
+     took it to 3.67. Stepped here, on the page ground only, to the
+     lightness the gate measured; dark mode has the headroom and is
+     left alone. `wallpaper.test.ts` holds the number. */
+  :root:not(.dark) .page-ground { --muted-foreground: oklch(0.48 0 0); }
 
   /* GLASS IS NOT HERE. `mods/packs/material/glass.css` carries the
      translucent surface — its tokens, the backdrop filter, and the
