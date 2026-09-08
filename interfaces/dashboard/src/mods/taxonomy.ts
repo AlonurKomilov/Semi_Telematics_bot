@@ -100,11 +100,13 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     title: 'Interface',
     panel: true,
     items: [
-      // The palette: mode, the accent, and a brand colour. The page's
-      // own colour is NOT here — it is a half of the ground and lives
-      // with the wallpaper, beside the places it applies to.
+      // The palette: mode, the accent, a brand colour, and the canvas
+      // — the ground colour EVERY surface derives from, global or per
+      // named place. The canvas moved to Wallpaper once and came
+      // straight back: a red picked "for the page" turned the whole
+      // app red, because that is what a palette's ground does.
       { id: 'theme',    title: 'Color',    heading: 'Color',
-        axes: ['mode', 'accent', 'brand'],
+        axes: ['mode', 'accent', 'brand', 'canvas', 'surfaces'],
         keep: ['mode'], modFields: ['accent'] },
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modFields: ['radius'] },
       { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modFields: ['material'] },
@@ -119,12 +121,12 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // derives from it, while a wallpaper is one pattern on one
       // surface. Folding it into Color would put a decision about the
       // chrome inside the question that repaints the whole app.
-      // The GROUND, in two places: the frame (the pattern, and whether
-      // it moves) and the page (its colour, for the whole app or for one
-      // named place). One item, one reset.
+      // The PATTERN, in two places: the frame (which one, and whether
+      // it moves) and the page (whether it shows there too). Only the
+      // pattern — the page's colour is the palette's, under Color.
       { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
-        axes: ['wallpaper', 'wallpaperLive', 'wallpaperPage', 'canvas', 'surfaces'],
-        modFields: ['wallpaper', 'wallpaperLive'] },
+        axes: ['wallpaper', 'wallpaperLive', 'wallpaperPage'],
+        modFields: ['wallpaper', 'wallpaperLive', 'wallpaperPage'] },
       { id: 'cursor', title: 'Cursor', heading: 'Cursor',
         axes: ['cursor'], modFields: ['cursor'] },
     ],

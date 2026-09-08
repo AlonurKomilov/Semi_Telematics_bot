@@ -513,7 +513,7 @@ describe('the axis set itself', () => {
      */
     expect(Object.keys(MOD_DEFAULT).sort()).toEqual([
       'accent', 'color', 'cursor', 'entrance', 'font', 'iconPack', 'icons',
-      'material', 'mode', 'motion', 'radius', 'shader', 'wallpaper', 'wallpaperLive',
+      'material', 'mode', 'motion', 'radius', 'shader', 'wallpaper', 'wallpaperLive', 'wallpaperPage',
     ]);
   });
 });

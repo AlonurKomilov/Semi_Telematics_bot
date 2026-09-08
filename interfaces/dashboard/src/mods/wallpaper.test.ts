@@ -22,7 +22,7 @@ import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, distance, type RGB } from './theme/contrast';
 import {
   LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
-  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, pageWallpaperOn, PAGE_EVERYWHERE,
+  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS,
 } from './wallpaper';
 
 const CSS = assembledCss()
@@ -485,15 +485,7 @@ describe('the page can wear it too, and stays readable', () => {
     const shell = readFileSync(join(__dirname, '..', 'shells', 'AppShell.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(shell, 'the content card never becomes a page ground').toMatch(/page-ground/);
-    expect(shell, 'the class is not resolved per place').toMatch(/pageWallpaperOn\(/);
-  });
-
-  it('resolves a place\'s own answer over everywhere\'s, and nothing to no', () => {
-    expect(pageWallpaperOn(undefined, 'loads')).toBe(false);
-    expect(pageWallpaperOn({ [PAGE_EVERYWHERE]: true }, 'loads')).toBe(true);
-    expect(pageWallpaperOn({ [PAGE_EVERYWHERE]: true, loads: false }, 'loads')).toBe(false);
-    expect(pageWallpaperOn({ loads: true }, null)).toBe(false);
-    expect(pageWallpaperOn({ loads: true }, 'loads')).toBe(true);
+    expect(shell, 'the class is not gated on the preference').toMatch(/theme\.wallpaperPage\s*\?/);
   });
 
   it('every declared stop clears AA under the page inks, in both modes, under every accent', () => {

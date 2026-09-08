@@ -32,7 +32,6 @@ import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
 import { ICON_PACKS, iconPackById, BASE_PACK } from '../packs/icons';
 import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
-import { pageWallpaperOn, PAGE_EVERYWHERE } from '../wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
 
 /** The caps label above a group. The popover runs smaller — seven of
@@ -182,10 +181,38 @@ function wornCanvas(hex: string | undefined, mode: Mode): string | undefined {
 export function ColorGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
+  /** Which place the background picker is aiming at. Deliberately NOT
+   *  stored: it is a question about this moment, not a preference, and
+   *  a remembered target is one a person returns to having forgotten. */
+  const [target, setTarget] = useState('');
+  /** The places this person may aim at — the ones they can open, in the
+   *  view they are wearing. Nothing offered means the row is absent, not
+   *  a row with one chip: a question with a single answer is a
+   *  decoration, and every pick then goes to the global canvas, which is
+   *  what `target === ''` already means. */
+  const { hasAny, ready } = useViewPermissions();
+  const offered = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
+  /** A place whose permission was lost — a role change, a preview of a
+   *  narrower view — must not stay aimed at. The pick would land on a
+   *  screen this person cannot open and could not be found again. */
+  useEffect(() => {
+    if (target && !offered.some((s) => s.id === target)) setTarget('');
+  }, [offered, target]);
   // Whether a picked colour is what is actually painting, in the mode
   // being worn — not merely whether one is stored. The pack chips read
   // their highlight off this, because a chip highlighted while its block
   // stands down is pointing at a colour nobody can see.
+  /** Places holding a background this mode refuses. A bare chip would
+   *  otherwise say two things at once — no colour set, or one set and
+   *  standing down — and the difference is what somebody needs to know
+   *  before picking again over the top of it. */
+  const unworn = useMemo(
+    () => SURFACES.filter((s) => {
+      const hex = theme.surfaces?.[s.id];
+      return Boolean(hex) && !wornCanvas(hex, theme.mode);
+    }),
+    [theme.surfaces, theme.mode],
+  );
   const brandWorn = useMemo(
     () => (theme.brand ? accentTokens(theme.brand, theme.mode).tokens !== null : false),
     [theme.brand, theme.mode],
@@ -230,9 +257,59 @@ export function ColorGroup({ label }: { label: LabelClass }) {
       <p className="text-2xs text-muted-foreground mt-1.5">
         {brandWorn ? '' : packById(theme.accent)?.description ?? ''}
       </p>
-      {/* The page's own colour is NOT here any more. It is the other
-          half of the GROUND, not of the palette — it lives with the
-          wallpaper, under "Page", beside the places it applies to. */}
+      {/* The other half of a palette. Its own row, because it claims
+          far more than the accent does — a background repaints every
+          surface in the app, and putting it in the accent row would
+          make the two look like the same size of decision. */}
+      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        <CanvasChip
+          canvas={target ? theme.surfaces?.[target] : theme.canvas}
+          mode={theme.mode}
+          onPick={(hex) => setTheme(writeCanvas(theme, target, hex))}
+          onClear={() => setTheme(writeCanvas(theme, target, undefined))}
+        />
+      </div>
+
+      {offered.length > 0 && (<>
+      {/* WHERE the background applies. Each chip wears the background
+          that place is painting, so which places carry one is legible
+          without clicking through all four — state that can only be
+          discovered by probing is state a person forgets they set. The accent has no such row: it
+          is the brand and stays global, so a page can change the
+          conditions it is read in without the product looking like
+          several products.
+
+          A named list rather than a route pattern — we own all
+          forty-one routes, so a pattern would buy nothing and cost
+          the two things a list gives: a typo fails loudly, and the
+          control is a button rather than a text field. */}
+      {/* A plain sub-label, NOT the caps group class. This is a
+          question WITHIN Color — where does the background you just
+          picked apply — and giving it the weight of a heading made it
+          read as a peer of Corners and Material. The section guard
+          caught that: it saw a group the taxonomy had never heard of. */}
+      <p className="text-xs text-foreground mt-2.5 mb-1.5">
+        {t('theme.canvas_scope', 'Background applies to')}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
+          dot={wornCanvas(theme.canvas, theme.mode)}
+          onClick={() => setTarget('')} />
+        {offered.map((s) => (
+          <Chip key={s.id} value={s.id} current={target} label={s.title}
+            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode)}
+            onClick={(v) => setTarget(v)} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {target
+          ? `${surfaceById(target)?.title} — ${surfaceById(target)?.why}.`
+          : unworn.length
+            ? `${t('theme.scope_unworn', 'Not worn in {{mode}} mode')
+                .replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
+            : t('theme.scope_all_hint', 'One background for the whole app.')}
+      </p>
+      </>)}
     </div>
   );
 }
@@ -355,15 +432,14 @@ export function CursorGroup({ label }: { label: LabelClass }) {
 }
 
 /**
- * The ground the app sits on — in two places.
+ * The ground the app sits on — the pattern, in two places.
  *
- * FRAME is the chrome around the page: sidebar, header, gutters. That is
- * where a pattern paints, and it is the half every role has. PAGE is
- * the content card itself: its colour, chosen for the whole app or for
- * one named place. The colour used to sit under Color as "Background",
- * which made it look like a part of the palette; it is a part of the
- * ground, and a person deciding what the app sits on should find both
- * halves in one place.
+ * FRAME is the chrome around the page: sidebar, header, gutters. PAGE
+ * is the content card, which may wear the same pattern over its own
+ * colour. Only the PATTERN lives here. The page's colour — "Background"
+ * under Color — is a palette decision: every surface derives from it,
+ * and it moved here once and went straight back, because a person who
+ * picked red under Wallpaper › Page watched the whole app turn red.
  */
 export function WallpaperGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
@@ -372,36 +448,6 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   const worn = wallpaperById(current);
   const canLive = worn?.kind === 'live';
   const movers = WALLPAPERS.filter((w) => w.kind === 'live').map((w) => w.label);
-
-  /** Which place the page colour is aiming at. Deliberately NOT
-   *  stored: it is a question about this moment, not a preference, and
-   *  a remembered target is one a person returns to having forgotten. */
-  const [target, setTarget] = useState('');
-  /** The places this person may aim at — the ones they can open, in the
-   *  view they are wearing. Nothing offered means the row is absent, not
-   *  a row with one chip: a question with a single answer is a
-   *  decoration, and every pick then goes to the global canvas, which is
-   *  what `target === ''` already means. */
-  const { hasAny, ready } = useViewPermissions();
-  const offered = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
-  /** A place whose permission was lost — a role change, a preview of a
-   *  narrower view — must not stay aimed at. The pick would land on a
-   *  screen this person cannot open and could not be found again. */
-  useEffect(() => {
-    if (target && !offered.some((s) => s.id === target)) setTarget('');
-  }, [offered, target]);
-  /** Places holding a colour this mode refuses. A bare chip would
-   *  otherwise say two things at once — no colour set, or one set and
-   *  standing down — and the difference is what somebody needs to know
-   *  before picking again over the top of it. */
-  const unworn = useMemo(
-    () => SURFACES.filter((s) => {
-      const hex = theme.surfaces?.[s.id];
-      return Boolean(hex) && !wornCanvas(hex, theme.mode);
-    }),
-    [theme.surfaces, theme.mode],
-  );
-
   return (
     <div>
       <p className={`${label} mb-1.5`}>
@@ -449,67 +495,18 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <p className="text-xs text-foreground mt-3 mb-1.5">
         {t('mods.wallpaper_page', 'Page')}
       </p>
-      {offered.length > 0 && (<>
-      {/* WHERE the page colour applies. Each chip wears the colour that
-          place is painting, so which places carry one is legible
-          without clicking through all four — state that can only be
-          discovered by probing is state a person forgets they set. The
-          accent has no such row: it is the brand and stays global, so
-          a page can change the conditions it is read in without the
-          product looking like several products.
-
-          A named list rather than a route pattern — we own all
-          forty-one routes, so a pattern would buy nothing and cost
-          the two things a list gives: a typo fails loudly, and the
-          control is a button rather than a text field. */}
-      <p className="text-2xs text-muted-foreground mb-1">
-        {t('theme.canvas_scope', 'Background applies to')}
-      </p>
-      <div className="flex flex-wrap gap-1">
-        <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
-          dot={wornCanvas(theme.canvas, theme.mode)}
-          onClick={() => setTarget('')} />
-        {offered.map((s) => (
-          <Chip key={s.id} value={s.id} current={target} label={s.title}
-            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode)}
-            onClick={(v) => setTarget(v)} />
-        ))}
-      </div>
-      </>)}
-      {/* The page's colour — for the aimed place, or for the whole app.
-          Its own row because it claims far more than the accent does: a
-          background repaints every surface in the app. */}
-      <div className="flex flex-wrap items-center gap-1 mt-1.5">
-        <CanvasChip
-          canvas={target ? theme.surfaces?.[target] : theme.canvas}
-          mode={theme.mode}
-          onPick={(hex) => setTheme(writeCanvas(theme, target, hex))}
-          onClear={() => setTheme(writeCanvas(theme, target, undefined))}
-        />
-      </div>
-      <p className="text-2xs text-muted-foreground mt-1.5">
-        {target
-          ? `${surfaceById(target)?.title} — ${surfaceById(target)?.why}.`
-          : unworn.length
-            ? `${t('theme.scope_unworn', 'Not worn in {{mode}} mode')
-                .replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
-            : t('theme.scope_all_hint', 'One background for the whole app.')}
-      </p>
-      {/* The pattern on the page, for the aimed place. Shows the
-          RESOLVED answer — a named place inherits everywhere's until it
-          has its own — and writes only the aimed key. Disabled with the
-          reason when no pattern is worn: there is nothing to show. */}
-      <div className="flex items-center justify-between gap-2 mt-2">
+      {/* The pattern on the page — one switch, the whole app. Disabled
+          with the reason when no pattern is worn: there is nothing to
+          show. The page's COLOUR is not here; see the note above. */}
+      <div className="flex items-center justify-between gap-2">
         <span className={current !== 'none' ? 'text-xs text-foreground' : 'text-xs text-muted-foreground'}>
           {t('mods.wallpaper_page_show', 'Show the pattern on the page')}
         </span>
         <Switch
           size="sm"
-          checked={current !== 'none' && pageWallpaperOn(theme.wallpaperPage, target || null)}
+          checked={current !== 'none' && theme.wallpaperPage}
           disabled={current === 'none'}
-          onCheckedChange={(next) => setTheme({
-            wallpaperPage: { ...(theme.wallpaperPage ?? {}), [target || PAGE_EVERYWHERE]: next },
-          })}
+          onCheckedChange={(next) => setTheme({ wallpaperPage: next })}
           aria-label={t('mods.wallpaper_page_show', 'Show the pattern on the page')}
         />
       </div>

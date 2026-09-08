@@ -49,7 +49,6 @@ import { SOUND_PACKS } from '../mods/packs/sound';
 import { KEY_PACKS } from '../mods/packs/keys';
 import { MOD_FONTS } from '../mods/packs/font';
 import { SURFACES } from '../mods/surfaces';
-import { PAGE_EVERYWHERE } from '../mods/wallpaper';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -305,13 +304,10 @@ export interface ModSetting {
    * products. Seeds again, re-derived per mode like the global one.
    */
   surfaces?: Record<string, string>;
-  /**
-   * Where the frame's pattern also shows on the PAGE — `{ everywhere:
-   * true, loads: false }`. Keys are `PAGE_EVERYWHERE` and `SURFACES`
-   * ids; a named place's own answer wins over everywhere's. Absent
-   * means nowhere, which is what the page has always been.
-   */
-  wallpaperPage?: Record<string, boolean>;
+  /** Whether the frame's pattern also shows on the PAGE — around the
+   *  cards, over the page's own colour. Off by default: the page has
+   *  always been plain. */
+  wallpaperPage: boolean;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -375,7 +371,7 @@ export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
-  wallpaper: 'none', wallpaperLive: false, cursor: 'system', shader: 'flat',
+  wallpaper: 'none', wallpaperLive: false, wallpaperPage: false, cursor: 'system', shader: 'flat',
   color: 'dark-blue',
 };
 
@@ -602,6 +598,7 @@ export const DEFS = {
       const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
         ? o.wallpaper as string : MOD_DEFAULT.wallpaper;
       const wallpaperLive = typeof o.wallpaperLive === 'boolean' ? o.wallpaperLive : MOD_DEFAULT.wallpaperLive;
+      const wallpaperPage = typeof o.wallpaperPage === 'boolean' ? o.wallpaperPage : MOD_DEFAULT.wallpaperPage;
       // A pack that was removed falls back to the OS pointer, which is
       // the one thing always available — an unanswered stamp would
       // leave the app with whatever the last rule happened to set.
@@ -663,19 +660,6 @@ export const DEFS = {
         }
         if (Object.keys(kept).length) surfaces = kept;
       }
-      // Same shape, same reasons: named keys only, capped, dropped when
-      // empty so "nowhere" and "an empty set of places" are one state.
-      let wallpaperPage: Record<string, boolean> | undefined;
-      if (o.wallpaperPage && typeof o.wallpaperPage === 'object' && !Array.isArray(o.wallpaperPage)) {
-        const kept: Record<string, boolean> = {};
-        for (const [k, v] of Object.entries(o.wallpaperPage as Record<string, unknown>)) {
-          if (k !== PAGE_EVERYWHERE && !SURFACES.some((x) => x.id === k)) continue;
-          if (typeof v !== 'boolean') continue;
-          if (Object.keys(kept).length > SURFACES.length) break;
-          kept[k] = v;
-        }
-        if (Object.keys(kept).length) wallpaperPage = kept;
-      }
 
       // THE MIGRATION LIVES HERE, and only here. This sanitiser rebuilds
       // the stored object field by field and drops anything it does not
@@ -693,7 +677,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance,
-        wallpaper, wallpaperLive, cursor, shader,
+        wallpaper, wallpaperLive, wallpaperPage, cursor, shader,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.
@@ -701,7 +685,6 @@ export const DEFS = {
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),
         ...(surfaces ? { surfaces } : {}),
-        ...(wallpaperPage ? { wallpaperPage } : {}),
         color: themeColorAlias(mode, accent),
       };
     },

@@ -579,7 +579,7 @@ describe('theme-boot source', () => {
     // it to PREPAINT_AXES, or add it here and say why.
     // `wallpaperLive` starts an animation whose first frame is the
     // still state, so a late stamp changes nothing a person can see.
-    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'wallpaperLive'];
+    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'wallpaperLive', 'wallpaperPage'];
     for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),

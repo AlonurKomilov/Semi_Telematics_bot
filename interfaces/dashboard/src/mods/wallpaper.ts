@@ -29,8 +29,7 @@ import type { PackMeta } from './packs/meta';
  * is behind the browser, and the page sits on top of it.
  *
  * And, if a person asks, the PAGE: the content card can wear the same
- * pattern over its OWN colour (`.page-ground`, resolved per place by
- * `pageWallpaperOn`). Around the cards, never under the words — every
+ * pattern over its OWN colour (`.page-ground`, one switch, `wallpaperPage`). Around the cards, never under the words — every
  * table and card stays solid — and the page's small text steps darker
  * under it in light mode, because the gate measured that it had to.
  * Both grounds paint `var(--ground)`: the frame's is `--sidebar`, the
@@ -125,24 +124,6 @@ export const WALLPAPER_AA = 4.5;
 export const WALLPAPER_PAGE_BASE = '--background';
 export const WALLPAPER_PAGE_INKS = ['--foreground', '--muted-foreground'] as const;
 
-/** The key that stands for "every place" in `wallpaperPage`. */
-export const PAGE_EVERYWHERE = 'everywhere';
-
-/**
- * Whether the page at `surfaceId` wears the pattern.
- *
- * A named place's own answer wins; otherwise "everywhere"'s; otherwise
- * no. A boolean per key rather than a list, so a place can be switched
- * OFF while everywhere is on — a list could only add.
- */
-export function pageWallpaperOn(
-  pages: Readonly<Record<string, boolean>> | undefined,
-  surfaceId: string | null,
-): boolean {
-  if (!pages) return false;
-  if (surfaceId && surfaceId in pages) return pages[surfaceId];
-  return pages[PAGE_EVERYWHERE] ?? false;
-}
 
 /**
  * The FLOOR — a pattern must be visible, not only safe.

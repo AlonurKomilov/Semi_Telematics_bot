@@ -30,7 +30,7 @@ import Sidebar from '../components/Sidebar';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { ModPanel, useMods, surfaceFor, pageWallpaperOn } from '../mods';
+import { ModPanel, useMods, surfaceFor } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -180,11 +180,11 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
         <main
           style={sizeRegion('text')}
           className={`flex-1 bg-background border border-border rounded-xl overflow-hidden ${dockedContentClass}${
-            // The page wears the frame's pattern where a person asked
-            // for it — resolved per place, over the page's own colour.
-            // `bg-background` stays: with no pattern worn there is no
-            // rule for the class to reach, and the card paints itself.
-            pageWallpaperOn(theme.wallpaperPage, surfaceFor(pathname)?.id ?? null) ? ' page-ground' : ''
+            // The page wears the frame's pattern when a person asked for
+            // it, over the page's own colour. `bg-background` stays: with
+            // no pattern worn there is no rule for the class to reach,
+            // and the card paints itself.
+            theme.wallpaperPage ? ' page-ground' : ''
           }`}
         >
           <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
