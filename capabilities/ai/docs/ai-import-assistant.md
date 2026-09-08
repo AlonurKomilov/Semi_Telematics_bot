@@ -70,7 +70,7 @@ assistant (flat, streaming):
   └─────────────────────────────────────────────────────────┘
 ```
 
-Post-approve: "✓ Imported 58 items" + deep-link button → /vehicles/inventory.
+Post-approve: "✓ Imported 58 items" + deep-link button → /inventory.
 
 ## 3. Architecture — device-held file, transient server parse, staged rows
 
@@ -168,7 +168,7 @@ fork of the pipeline.
   this adds the first shared composite type to that contract.
 
 **Feature adapter (per feature — Inventory is merely the first)**
-- `features/vehicles/inventory/ai_actions.py` — registers the
+- `features/inventory/ai_actions.py` — registers the
   `inventory` ImportTarget: field vocabulary (item, category, status,
   identifier, note), vehicle resolution per §5.5, transactional
   executor over `add_inventory_item`, and the
@@ -309,7 +309,7 @@ PHASE C1 — universal import framework
   MOD  interfaces/dashboard/src/features/ai/artifacts/types.ts   type union
 
 PHASE C2 — Inventory adapter (first ImportTarget)
-  NEW  features/vehicles/inventory/ai_actions.py ImportTarget registration:
+  NEW  features/inventory/ai_actions.py ImportTarget registration:
                                                  field vocabulary, vehicle
                                                  resolution (§5.5), ONE-
                                                  transaction executor,
@@ -320,7 +320,7 @@ PHASE C2 — Inventory adapter (first ImportTarget)
                                                  (NOT scope-aware — guard test
                                                  enforces the pairing)
   MOD  capabilities/ai/tools/__init__.py         import the feature module
-  NEW  features/vehicles/tests/test_ai_inventory_import.py         resolution rules, transaction
+  NEW  features/inventory/tests/test_ai_import.py         resolution rules, transaction
                                                  all-or-nothing, staged-rows
                                                  flow, re-approve idempotency
                                                  (pg_db)
@@ -422,7 +422,7 @@ above, all recorded at the section they amend:
   design.  Composer holds an attached-state placeholder; store eviction
   is announced, never silent; preview titles carry the file name.
 - **Tests**: `capabilities/ai/tests/test_ai_attachments.py` (21) +
-  `features/vehicles/tests/test_ai_inventory_import.py` (8); the §7 "foreign-account
+  `features/inventory/tests/test_ai_import.py` (8); the §7 "foreign-account
   attachment → 404" row became structurally impossible (no stored
   attachments to cross accounts).
 

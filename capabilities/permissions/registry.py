@@ -126,12 +126,14 @@ ENTRIES: tuple[Entry, ...] = (
     # ── shared across departments ────────────────────────────────────
     _e("kpi", tier="shared", modules=["account", "dispatch", "accounting"], opens=["can_view_kpi"]),
     _e("kpi_my_payouts", tier="shared", modules=["dispatch"], note="finalized payout rows; no flag of its own"),
-    _e("vehicle_inventory", tier="shared", modules=["fleet", "account"],
+    _e("inventory", tier="shared", modules=["fleet", "account"],
        opens=["can_view_inventory"],
-       flags=["can_view_inventory", "can_manage_inventory"], parent="vehicles",
-       note="features/inventory/ — its own flags since 2026-09-08; still "
-            "nested under Vehicles in the nav, because that is where a "
-            "person looks for what is in a truck"),
+       flags=["can_view_inventory", "can_manage_inventory"],
+       note="features/inventory/ — left Vehicles entirely on 2026-09-08: "
+            "its own package, its own flags, its own /inventory address "
+            "and its own nav entry.  It REFERENCES the vehicle registry "
+            "(a unit number resolves to a truck) the way Work Orders "
+            "does; that is a reference, not a parent"),
     _e("vehicle_documents", tier="shared", modules=["fleet", "account"], opens=["can_view_vehicle_docs"],
        flags=["can_view_vehicle_docs", "can_manage_vehicle_docs"], parent="vehicles"),
     _e("geofences", tier="shared", modules=["fleet", "dispatch"], opens=["can_view_geofence"],

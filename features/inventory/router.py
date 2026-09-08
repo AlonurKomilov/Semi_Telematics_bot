@@ -5,14 +5,19 @@ router.py may import interfaces.api.deps.
 
 Routes (mounted under the same /vehicles prefix as the parent feature):
 
-    GET    /vehicles/{vehicle_name}/inventory        items + summary
-    POST   /vehicles/{vehicle_name}/inventory        add item
-    GET    /vehicles/inventory/alerts                fleet badge counts
-    PATCH  /vehicles/inventory/{item_id}             edit fields / status
-    POST   /vehicles/inventory/{item_id}/verify      stamp verified-by/at
-    POST   /vehicles/inventory/{item_id}/transfer    move to another truck
-    POST   /vehicles/inventory/{item_id}/remove      soft-remove (trail kept)
-    GET    /vehicles/inventory/{item_id}/events      accountability trail
+    GET    /inventory/vehicle/{unit}                one truck's items
+    POST   /inventory/vehicle/{unit}                add an item to a truck
+    GET    /inventory/all                           the fleet-wide list
+    GET    /inventory/alerts                        badge counts
+    PATCH  /inventory/items/{id}                    edit fields / status
+    POST   /inventory/items/{id}/verify             stamp verified-by/at
+    POST   /inventory/items/{id}/transfer           move to another truck
+    POST   /inventory/items/{id}/remove             soft-remove (trail kept)
+    GET    /inventory/items/{id}/events             accountability trail
+
+    Every one also answers on its pre-move ``/vehicles/…`` address, as a
+    deprecated alias; ``tests/test_inventory_url_move.py`` proves the two
+    stay identical.
 
 Gates: VIEW rides normal vehicle access; WRITE rides can_manage_vehicles
 (the registry-admin permission — inventory is part of "manage vehicles").
@@ -41,14 +46,30 @@ from interfaces.api.deps import (
     resolve_user_id,
 )
 
-# The prefix is still ``/vehicles``.  The package moved to
-# features/inventory/ (its own feature); the URL is a WIRE identifier —
-# the dashboard calls it, the audit trail records it, and a bookmark
-# holds it — so it moves the way this repo moves wire names: a new
-# primary with the old one kept as a deprecated same-object alias, and a
-# test that proves the two answer identically.  That is its own change,
-# not a side effect of moving files.
-router = APIRouter(prefix="/vehicles", tags=["inventory"])
+# ── Two prefixes, one set of handlers ──────────────────────────────
+#
+# ``/inventory`` is the address now.  ``/vehicles/…`` was the address for
+# the feature's whole life under Vehicles, and a URL is a WIRE
+# identifier: the dashboard calls it, the audit trail records it, a
+# bookmark holds it, and an installed browser extension may still ask
+# for it.  So it moves the way this repo moves wire names — a new
+# primary, the old one kept as a DEPRECATED SAME-OBJECT ALIAS, and a
+# test that walks both and proves they answer identically.
+#
+# Each handler carries both decorators, so the alias is written where a
+# reader is already looking rather than in a table further down that
+# drifts.  The legacy paths are ``include_in_schema=False``: they work,
+# and the API documentation offers only one way in.
+#
+# The shape changed with the prefix, because under ``/inventory`` the
+# old segments read as a stutter: ``/vehicles/{unit}/inventory`` becomes
+# ``/inventory/vehicle/{unit}``, and ``/vehicles/inventory/{id}``
+# becomes ``/inventory/items/{id}``.  The explicit ``vehicle`` and
+# ``items`` segments are not decoration: without them ``{unit}`` and
+# ``{item_id}`` would occupy the same slot and one would shadow the
+# other.
+router = APIRouter(prefix="/inventory", tags=["inventory"])
+legacy = APIRouter(prefix="/vehicles", tags=["inventory"], include_in_schema=False)
 
 # The feature's own gates since it left features/vehicles/.  Seeded to
 # exactly whoever held the vehicles pair that day, so the split took
@@ -109,7 +130,8 @@ def _summary(items: list[dict]) -> dict:
 
 # ── vehicle-scoped routes ────────────────────────────────────────
 
-@router.get("/{vehicle_name}/inventory")
+@router.get("/vehicle/{vehicle_name}")
+@legacy.get("/{vehicle_name}/inventory")
 async def vehicle_inventory(
     vehicle_name: str,
     company: str | None = None,
@@ -137,7 +159,8 @@ class AddItemBody(BaseModel):
     company: str | None = None
 
 
-@router.post("/{vehicle_name}/inventory")
+@router.post("/vehicle/{vehicle_name}")
+@legacy.post("/{vehicle_name}/inventory")
 async def add_item(
     vehicle_name: str,
     body: AddItemBody,
@@ -162,7 +185,8 @@ async def add_item(
 
 # ── fleet badge ──────────────────────────────────────────────────
 
-@router.get("/inventory/alerts")
+@router.get("/alerts")
+@legacy.get("/inventory/alerts")
 async def inventory_alerts(
     user: dict = Depends(_VIEW),
     tenant=Depends(get_tenant_db),
@@ -176,7 +200,8 @@ async def inventory_alerts(
     }
 
 
-@router.get("/inventory/all")
+@router.get("/all")
+@legacy.get("/inventory/all")
 async def inventory_all(
     user: dict = Depends(_VIEW),
     tenant=Depends(get_tenant_db),
@@ -206,7 +231,8 @@ class PatchItemBody(BaseModel):
     note: str = Field("", max_length=500)  # reason attached to a status change
 
 
-@router.patch("/inventory/{item_id}")
+@router.patch("/items/{item_id}")
+@legacy.patch("/inventory/{item_id}")
 async def patch_item(
     item_id: int,
     body: PatchItemBody,
@@ -238,7 +264,8 @@ async def patch_item(
     return {"ok": True, "changed": changed}
 
 
-@router.post("/inventory/{item_id}/verify")
+@router.post("/items/{item_id}/verify")
+@legacy.post("/inventory/{item_id}/verify")
 async def verify_item(
     item_id: int,
     user: dict = Depends(_MANAGE),
@@ -260,7 +287,8 @@ class TransferBody(BaseModel):
     note: str = Field("", max_length=500)
 
 
-@router.post("/inventory/{item_id}/transfer")
+@router.post("/items/{item_id}/transfer")
+@legacy.post("/inventory/{item_id}/transfer")
 async def transfer_item(
     item_id: int,
     body: TransferBody,
@@ -286,7 +314,8 @@ class RemoveBody(BaseModel):
     note: str = Field("", max_length=500)
 
 
-@router.post("/inventory/{item_id}/remove")
+@router.post("/items/{item_id}/remove")
+@legacy.post("/inventory/{item_id}/remove")
 async def remove_item(
     item_id: int,
     body: RemoveBody,
@@ -303,7 +332,8 @@ async def remove_item(
     return {"ok": ok}
 
 
-@router.get("/inventory/{item_id}/events")
+@router.get("/items/{item_id}/events")
+@legacy.get("/inventory/{item_id}/events")
 async def item_events(
     item_id: int,
     user: dict = Depends(_VIEW),

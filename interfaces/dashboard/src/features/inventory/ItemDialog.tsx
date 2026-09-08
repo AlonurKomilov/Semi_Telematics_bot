@@ -9,20 +9,20 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRightLeft, Check, Trash2 } from '../../../lib/icons';
-import { apiJSON } from '../../../api/client';
+import { ArrowRightLeft, Check, Trash2 } from '../../lib/icons';
+import { apiJSON } from '../../api/client';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from '../../../components/ui/dialog';
-import { Button } from '../../../components/ui/button';
+} from '../../components/ui/dialog';
+import { Button } from '../../components/ui/button';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
-} from '../../../components/ui/select';
-import { Tip, InfoTip } from '../../../components/tooltip';
-import { statusClasses, toneClasses } from '../../../lib/status';
-import { formatDate, formatAgoShort } from '../../../utils/datetime';
-import { useTimezone } from '../../../hooks/useTimezone';
-import { VehiclePicker, type VehicleSummary } from '../../maintenance/pickers';
+} from '../../components/ui/select';
+import { Tip, InfoTip } from '../../components/tooltip';
+import { statusClasses, toneClasses } from '../../lib/status';
+import { formatDate, formatAgoShort } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
+import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
 import { useInventoryEvents, useInventoryMutations } from './useInventory';
 import type { InventoryItem } from './useInventory';
 import { categoryMeta, STATUS_LABELS } from './categories';

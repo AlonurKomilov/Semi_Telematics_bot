@@ -191,9 +191,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'vehicles', labelKey: 'nav.vehicles', path: '/vehicles', icon: Truck, modules: ['core'], tier: 'shared', permission: P_VEHICLE, navGroup: 'operations' },
   // Inventory — the Vehicle feature's account-wide component page (what
   // lives in every truck; search by serial, filter missing/damaged).
-  // Sits directly under Vehicles in the sidebar — a destination, unlike
-  // the per-truck card (which is a detail-page section).
-  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_inventory', navGroup: 'operations', parentId: 'vehicles' },
+  // Its own nav entry since it left Vehicles (2026-09-08).  The
+  // per-truck card on the vehicle detail page is the same data seen
+  // from the truck; this is the fleet-wide destination.
+  { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_inventory', navGroup: 'operations' },
   { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_view_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────

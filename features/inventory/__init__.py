@@ -11,9 +11,9 @@ which is the stockroom feature next door.
 A FEATURE, not a component of Vehicles.  It began as one, and the move
 out is deliberate: it has its own page, its own AI import, its own
 retention need and its own trail, and an owner should be able to grant
-it to somebody who may not administer trucks.  What it still borrows
-from Vehicles is the registry — a unit number resolves to a truck there
-— which is a reference, not ownership.
+it to somebody who may not administer trucks.  The one thing it still
+borrows is the vehicle registry — a unit number resolves to a truck
+there — which is a reference, not ownership.
 
 The storage mixin and its two tables keep their ``vehicle_inventory_*``
 names, and the retention target keeps ``vehicles.inventory_events``:

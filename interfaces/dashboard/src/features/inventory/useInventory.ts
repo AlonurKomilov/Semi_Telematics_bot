@@ -4,7 +4,7 @@
  * and the fleet-list badge together.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiJSON } from '../../../api/client';
+import { apiJSON } from '../../api/client';
 
 export interface InventoryItem {
   id: number;
@@ -50,7 +50,7 @@ export function useInventory(vehicleName: string, company?: string) {
     queryKey: ['vehicle-inventory', vehicleName, company ?? ''],
     queryFn: () =>
       apiJSON<InventoryResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}/inventory${qs(company)}`,
+        `/inventory/vehicle/${encodeURIComponent(vehicleName)}${qs(company)}`,
       ),
     staleTime: 30_000,
   });
@@ -59,7 +59,7 @@ export function useInventory(vehicleName: string, company?: string) {
 export function useInventoryEvents(itemId: number | null) {
   return useQuery<{ events: InventoryEvent[] }>({
     queryKey: ['vehicle-inventory-events', itemId],
-    queryFn: () => apiJSON(`/vehicles/inventory/${itemId}/events`),
+    queryFn: () => apiJSON(`/inventory/items/${itemId}/events`),
     enabled: itemId != null,
     staleTime: 15_000,
   });
@@ -69,7 +69,7 @@ export function useInventoryEvents(itemId: number | null) {
 export function useInventoryAlerts(enabled: boolean) {
   return useQuery<{ by_vehicle: Record<string, { total: number; attention: number }> }>({
     queryKey: ['vehicle-inventory-alerts'],
-    queryFn: () => apiJSON('/vehicles/inventory/alerts'),
+    queryFn: () => apiJSON('/inventory/alerts'),
     enabled,
     staleTime: 60_000,
   });
@@ -87,7 +87,7 @@ export function useInventoryMutations(vehicleName: string, company?: string) {
 
   const add = useMutation({
     mutationFn: (body: { category: string; label: string; identifier?: string; notes?: string }) =>
-      apiJSON(`/vehicles/${encodeURIComponent(vehicleName)}/inventory`, {
+      apiJSON(`/inventory/vehicle/${encodeURIComponent(vehicleName)}`, {
         method: 'POST', body: { ...body, company: company || null },
       }),
     onSuccess: invalidate,
@@ -97,19 +97,19 @@ export function useInventoryMutations(vehicleName: string, company?: string) {
     mutationFn: ({ itemId, ...body }: {
       itemId: number; label?: string; identifier?: string; notes?: string;
       category?: string; status?: string; note?: string;
-    }) => apiJSON(`/vehicles/inventory/${itemId}`, { method: 'PATCH', body }),
+    }) => apiJSON(`/inventory/items/${itemId}`, { method: 'PATCH', body }),
     onSuccess: invalidate,
   });
 
   const verify = useMutation({
     mutationFn: (itemId: number) =>
-      apiJSON(`/vehicles/inventory/${itemId}/verify`, { method: 'POST', body: {} }),
+      apiJSON(`/inventory/items/${itemId}/verify`, { method: 'POST', body: {} }),
     onSuccess: invalidate,
   });
 
   const transfer = useMutation({
     mutationFn: ({ itemId, toVehicleName, note }: { itemId: number; toVehicleName: string; note?: string }) =>
-      apiJSON(`/vehicles/inventory/${itemId}/transfer`, {
+      apiJSON(`/inventory/items/${itemId}/transfer`, {
         method: 'POST',
         body: { to_vehicle_name: toVehicleName, note: note ?? '', company: company || null },
       }),
@@ -118,7 +118,7 @@ export function useInventoryMutations(vehicleName: string, company?: string) {
 
   const remove = useMutation({
     mutationFn: ({ itemId, note }: { itemId: number; note?: string }) =>
-      apiJSON(`/vehicles/inventory/${itemId}/remove`, {
+      apiJSON(`/inventory/items/${itemId}/remove`, {
         method: 'POST', body: { note: note ?? '' },
       }),
     onSuccess: invalidate,

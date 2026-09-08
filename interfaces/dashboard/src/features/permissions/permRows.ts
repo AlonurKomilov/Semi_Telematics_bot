@@ -172,12 +172,6 @@ export const PERM_GROUPS: PermGroup[] = [
       // the second.  Named rather than a second bare "Manage", which
       // the verb grid would promote into the Vehicles row and hide.
       { key: 'can_manage_vehicle_docs', kind: 'action', label: 'Manage documents', indented: true, description: "Upload and delete a truck's documents" },
-      // Onboard Inventory is its own feature (features/inventory/) and
-      // sits under Vehicles because that is where a person looks for
-      // what is in a truck.  Its own pair since 2026-09-08: chasing a
-      // missing extinguisher is not administering the registry.
-      { key: 'can_view_inventory', kind: 'feature', label: 'Onboard Inventory', indented: true, description: "What lives in each truck — dashcam, fuel card, toll transponder, ELD — and who touched it" },
-      { key: 'can_manage_inventory', kind: 'action', label: 'Manage inventory', indented: true, description: 'Add, edit, verify, transfer and remove items' },
       // SUB-FEATURES of the Vehicles family: each has its OWN home
       // (features/vehicles/<x>/ with report.py / ai_tool.py / alert.py /
       // scoring_signal.py) and gates the live tab + report + AI tool.
@@ -186,6 +180,12 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_fuel',       kind: 'subfeature', label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
       { key: 'can_view_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
       { key: 'can_view_vehicle_docs', kind: 'subfeature', label: 'Documents', indented: true, description: "Registration, title, insurance, annual inspections — read + download" },
+      // Onboard Inventory — a feature of its own since 2026-09-08, not a
+      // row under Vehicles: chasing a missing extinguisher is not
+      // administering the truck registry, and an owner can now grant one
+      // without the other.
+      { key: 'can_view_inventory', kind: 'feature', label: 'Onboard Inventory', description: "What lives in each truck — dashcam, fuel card, toll transponder, ELD — and who touched it" },
+      { key: 'can_manage_inventory', kind: 'action', label: 'Manage', indented: true, description: 'Add, edit, verify, transfer and remove items' },
       { key: 'can_view_geofence', kind: 'feature', label: 'Geofences' },
       { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
       { key: 'can_view_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },

@@ -13,13 +13,13 @@
  * truck's kit without administering the registry.
  */
 import { useState } from 'react';
-import { Plus } from '../../../lib/icons';
-import { CardSkeleton } from '../../../components/shell';
-import { Button } from '../../../components/ui/button';
-import { Freshness } from '../../../components/tooltip';
-import { statusClasses, toneText } from '../../../lib/status';
-import { useViewPermissions } from '../../../hooks/useViewPermissions';
-import type { VehicleSectionProps } from '../sections/_shared/types';
+import { Plus } from '../../lib/icons';
+import { CardSkeleton } from '../../components/shell';
+import { Button } from '../../components/ui/button';
+import { Freshness } from '../../components/tooltip';
+import { statusClasses, toneText } from '../../lib/status';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
+import type { VehicleSectionProps } from '../vehicles/sections/_shared/types';
 import { useInventory } from './useInventory';
 import type { InventoryItem } from './useInventory';
 import { categoryMeta, STATUS_LABELS } from './categories';

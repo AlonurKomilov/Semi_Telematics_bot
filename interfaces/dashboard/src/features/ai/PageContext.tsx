@@ -84,7 +84,7 @@ export function useCurrentPageContext(): PageContext | null {
 /**
  * Route-derived fallback: "the user is on <feature>" for EVERY page,
  * current and future, with zero per-page wiring — matched from the
- * featureCatalog SSOT by longest path prefix (so /vehicles/inventory
+ * featureCatalog SSOT by longest path prefix (so /vehicles/documents
  * wins over /vehicles; '/' only matches exactly).  Pages that publish a
  * rich descriptor (filters/selection/focus) via usePublishContext
  * override this automatically — the fallback only fills the silence.

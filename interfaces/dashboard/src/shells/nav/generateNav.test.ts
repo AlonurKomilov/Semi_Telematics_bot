@@ -67,28 +67,47 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
 });
 
 describe('generateNav — item-level children (Settings-style nesting)', () => {
-  it('Inventory folds under Vehicles as a child, not a flat sibling', () => {
+  it('a child folds under its parent, not as a flat sibling', () => {
+    // Documents is the example since Onboard Inventory left Vehicles
+    // (2026-09-08) and became a feature of its own; the FOLDING rule
+    // this pins is unchanged, only which entry demonstrates it.
     const nav = generateNav('fleet', grants(
-      'can_view_vehicles', 'can_view_location', 'can_view_maintenance',
+      'can_view_vehicles', 'can_view_vehicle_docs', 'can_view_location', 'can_view_maintenance',
     ), undefined);
     const flat = nav.flatMap((g) => g.items);
     const vehicles = flat.find((i) => i.path === '/vehicles');
     expect(vehicles).toBeDefined();
-    expect(vehicles?.children?.map((c) => c.path)).toContain('/vehicles/inventory');
+    expect(vehicles?.children?.map((c) => c.path)).toContain('/vehicles/documents');
     // …and it is NOT duplicated as a top-level entry
-    expect(flat.map((i) => i.path)).not.toContain('/vehicles/inventory');
+    expect(flat.map((i) => i.path)).not.toContain('/vehicles/documents');
+  });
+
+  it('Onboard Inventory stands on its own, not under Vehicles', () => {
+    const nav = generateNav('fleet', grants(
+      'can_view_vehicles', 'can_view_inventory', 'can_view_location',
+    ), undefined);
+    const flat = nav.flatMap((g) => g.items);
+    expect(flat.map((i) => i.path)).toContain('/inventory');
+    const vehicles = flat.find((i) => i.path === '/vehicles');
+    expect(vehicles?.children?.map((c) => c.path) ?? []).not.toContain('/inventory');
+  });
+
+  it('its grant alone is enough — Vehicles is not a prerequisite', () => {
+    // The point of the split: a person may read what is in a truck
+    // without being able to administer the registry.
+    const flat = generateNav('safety', grants('can_view_inventory'), undefined)
+      .flatMap((g) => g.items);
+    expect(flat.map((i) => i.path)).toContain('/inventory');
   });
 
   it('an orphaned child falls back to a flat entry (grant never unreachable)', () => {
-    // Hypothetical persona state where the child is granted but the parent
-    // filtered out cannot occur for vehicles/inventory (same flags), so we
-    // assert the folding rule structurally: every child path present in the
-    // catalog appears EITHER nested or flat — never lost.
+    // A granted child must never be lost: it appears EITHER nested under
+    // its parent or flat, never nowhere.
     const nav = generateNav('owner', grants(
-      'can_view_vehicles', 'can_view_location',
+      'can_view_vehicles', 'can_view_vehicle_docs', 'can_view_location',
     ), undefined);
     const all = nav.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])]));
-    expect(all.map((i) => i.path)).toContain('/vehicles/inventory');
+    expect(all.map((i) => i.path)).toContain('/vehicles/documents');
   });
 });
 

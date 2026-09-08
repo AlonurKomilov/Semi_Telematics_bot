@@ -9,7 +9,7 @@ import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { vehicleRowMenu } from './contextMenu';
 import StatusBadge from '../../components/StatusBadge';
 import { Freshness, InfoTip, Tip } from '../../components/tooltip';
-import { useInventoryAlerts } from './inventory/useInventory';
+import { useInventoryAlerts } from '../inventory/useInventory';
 import { PackageX } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import {

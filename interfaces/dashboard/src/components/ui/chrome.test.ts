@@ -368,9 +368,9 @@ const OVERRIDE_DEBT = ['components/datagrid/DataGrid.tsx'];
 
 const STATUS_DOOR_DEBT = [
   'features/loads/Loads.tsx',
-  'features/vehicles/inventory/InventoryCard.tsx',
-  'features/vehicles/inventory/InventoryPage.tsx',
-  'features/vehicles/inventory/ItemDialog.tsx',
+  'features/inventory/InventoryCard.tsx',
+  'features/inventory/InventoryPage.tsx',
+  'features/inventory/ItemDialog.tsx',
   'features/parking/badges.tsx',
   'features/applications/Applications.tsx',
 ];

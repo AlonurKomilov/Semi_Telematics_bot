@@ -166,6 +166,7 @@ department, so it was always surfaced anyway.
 | **Overview** | greeting · alert strip · AI fleet brief · status grid · KPI grid — the purest persona-composed page; no permission of its own (each section is gated by what the role can already see) |
 | **Knowledge Base** | articles · categories · approval workflow · bookmarks · uploads — every department reads the same thing; no permission |
 | **Vehicles** | list · detail sections: health, faults, location, timeline, usage, inspections |
+| **Onboard Inventory** | per-truck item list · attention alerts · immutable event trail · AI/CSV import — left Vehicles on 2026-09-08 for its own `/inventory` home and its own `can_view_inventory` / `can_manage_inventory`; Vehicles still *consumes* it (detail-section card + fleet-list attention badge), it no longer owns it |
 | **Drivers** | profiles · documents (+ Own Documents → Personal) · **Driver roster** (component: invite, assign trucks, TMS links) · expiry |
 | **Live Map** | map · overlays · **POI Layers** (component — the Live Map grant shows them, its own flag edits them) |
 | **Geofences** | zones CRUD · entry/exit alert contribution |

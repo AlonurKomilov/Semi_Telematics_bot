@@ -50,7 +50,7 @@ from capabilities.object_storage import router as object_storage_routes
 # Feature-owned routers live with their feature (vertical slice):
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
-from features.inventory import router as vehicle_inventory_routes
+from features.inventory import router as inventory_routes
 from features.cameras import router as cameras_routes
 from features.location import router as maps
 from features.location import config as location_config
@@ -459,7 +459,10 @@ def create_api() -> FastAPI:
         app.include_router(vehicles_config.router, prefix=prefix)
         app.include_router(vehicles_documents.router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
-        app.include_router(vehicle_inventory_routes.router, prefix=prefix)
+        app.include_router(inventory_routes.router, prefix=prefix)
+        # The pre-move ``/vehicles/…`` addresses, kept working while
+        # anything still holds one.  Same handlers; out of the schema.
+        app.include_router(inventory_routes.legacy, prefix=prefix)
         app.include_router(loads_routes.router, prefix=prefix)
         app.include_router(kpi_config.router, prefix=prefix)
         app.include_router(kpi_routes.router, prefix=prefix)

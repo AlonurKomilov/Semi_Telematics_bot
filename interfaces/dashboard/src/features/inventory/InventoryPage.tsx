@@ -10,16 +10,16 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Boxes, Plus } from '../../../lib/icons';
-import { apiJSON } from '../../../api/client';
-import DataGrid from '../../../components/datagrid';
-import { Button } from '../../../components/ui/button';
-import { useViewPermissions } from '../../../hooks/useViewPermissions';
+import { Boxes, Plus } from '../../lib/icons';
+import { apiJSON } from '../../api/client';
+import DataGrid from '../../components/datagrid';
+import { Button } from '../../components/ui/button';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { AddItemDialog, ItemDialog } from './ItemDialog';
-import { PageHeader, CardSkeleton, ErrorState } from '../../../components/shell';
-import { Freshness } from '../../../components/tooltip';
-import { statusClasses } from '../../../lib/status';
-import type { AnyColumn } from '../../../types';
+import { PageHeader, CardSkeleton, ErrorState } from '../../components/shell';
+import { Freshness } from '../../components/tooltip';
+import { statusClasses } from '../../lib/status';
+import type { AnyColumn } from '../../types';
 import { categoryMeta, STATUS_LABELS } from './categories';
 import type { InventoryItem } from './useInventory';
 
@@ -133,7 +133,7 @@ export default function InventoryPage() {
   const [selected, setSelected] = useState<FleetItem | null>(null);
   const { data, isLoading, error } = useQuery<FleetInventoryResponse>({
     queryKey: ['vehicle-inventory-fleet'],
-    queryFn: () => apiJSON('/vehicles/inventory/all'),
+    queryFn: () => apiJSON('/inventory/all'),
     staleTime: 30_000,
   });
 

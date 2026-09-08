@@ -81,7 +81,7 @@ const Overview         = lazyWithReload(() => import('./features/overview/Overvi
 // with role names.  URLs are unchanged.
 const Vehicles         = lazyWithReload(() => import('./features/vehicles/Vehicles'));
 const VehicleDetail    = lazyWithReload(() => import('./features/vehicles/VehicleDetail'));
-const VehicleInventory = lazyWithReload(() => import('./features/vehicles/inventory/InventoryPage'));
+const Inventory = lazyWithReload(() => import('./features/inventory/InventoryPage'));
 const VehicleDocuments = lazyWithReload(() => import('./features/vehicles/documents/DocumentsPage'));
 const LiveMap          = lazyWithReload(() => import('./features/live-map/LiveMap'));
 const Alerts           = lazyWithReload(() => import('./features/alerts/Alerts'));
@@ -198,7 +198,10 @@ export default function AppRouter() {
             path. */}
         <Route path="live-map" element={L(<P perm={['can_view_location']}><LiveMap /></P>)} />
         <Route path="vehicles" element={L(<P perm={['can_view_vehicles']}><Vehicles /></P>)} />
-        <Route path="vehicles/inventory" element={L(<P perm={['can_view_inventory']}><VehicleInventory /></P>)} />
+        <Route path="inventory" element={L(<P perm={['can_view_inventory']}><Inventory /></P>)} />
+        {/* Where it lived until it left Vehicles — kept so a bookmark,
+            a shared link or a stale tab still lands on the page. */}
+        <Route path="vehicles/inventory" element={<Navigate to="/inventory" replace />} />
         {/* Before the parametric vehicle route for the same reason the
             API mounts its list first — otherwise "documents" resolves
             as a truck name. */}
