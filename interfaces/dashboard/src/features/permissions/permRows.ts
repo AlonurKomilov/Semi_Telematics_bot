@@ -365,6 +365,11 @@ export const DRIVER_TRUCK: (ScopedFlag | SimpleFlag)[] = [
   { key: 'can_view_maintenance', kind: 'feature', label: 'Maintenance',         description: 'Their truck’s maintenance schedule' },
   { key: 'can_manage_maintenance', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit, complete & delete tasks and templates — for the trucks this member sees' },
   { key: 'can_view_inspections', kind: 'feature', label: 'PTI Inspections',     description: 'Do & review pre-trip inspections on their truck' },
+  // Onboard Inventory rode the Vehicle grant until inventory became a
+  // feature with its own flag (2026-09-08).  Without a row here the
+  // driver keeps the grant and the owner loses the only place to see or
+  // revoke it — the staff matrix has no Driver column.
+  { key: 'can_view_inventory', kind: 'feature',    label: 'Onboard Inventory',   description: 'What is on their assigned truck — dashcam, fuel card, toll transponder, ELD' },
   { key: 'can_manage_inspections', kind: 'action', label: 'Manage', indented: true, description: 'Review submissions and edit the checklist' },
   { key: 'can_view_routes', kind: 'feature',       label: 'Routes',              description: 'Their own assigned routes' },
   { key: 'can_view_scorecards', kind: 'feature',   label: 'Scorecard',           description: 'Their own safety scorecard' },
