@@ -11,7 +11,8 @@
  * On mount it fetches the live status (a proposal approved on another
  * device / earlier session shows "Done" instead of a stale button).
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Check, X, Loader2, ShieldAlert, Undo2, Paperclip } from '../../../lib/icons';
 import { aiApproveAction, aiRejectAction, aiUndoAction, aiGetActionStatus } from '../../../api/client';
@@ -23,11 +24,49 @@ import { Badge } from '@/components/ui/badge';
 
 type Phase = 'pending' | 'working' | 'done' | 'declined' | 'failed' | 'expired' | 'undoing' | 'undone';
 
+/** Which caches a write of each kind makes stale.
+ *
+ *  Keyed on ``target_type`` — the server already returns it, and the card
+ *  already reads it for the work-order link — rather than on a tool name,
+ *  so a new tool writing an existing KIND of record is covered the day it
+ *  ships.  Prefixes only: react-query matches by prefix, so
+ *  ``['work-orders']`` reaches every page/filter variant without anyone
+ *  enumerating them here. */
+const STALE_AFTER: Record<string, string[][]> = {
+  work_order: [['work-orders'], ['work-order'], ['wo-reports']],
+  maintenance_task: [['maintenance-tasks']],
+  vehicle_document: [['vehicle-documents']],
+  vehicle_inventory: [
+    ['vehicle-inventory'], ['vehicle-inventory-fleet'],
+    ['vehicle-inventory-alerts'], ['vehicle-inventory-events'],
+  ],
+};
+
 function ActionProposalView({ artifact }: { artifact: Artifact }) {
   const a = artifact as Artifact & {
     proposal_id?: string; summary?: string; risk?: string; error?: string;
     consequence?: string;
   };
+  const qc = useQueryClient();
+  // The panel writes real records beside a grid that never repainted.
+  // Approve "create a task for truck 402" from the docked assistant and
+  // the Maintenance grid one inch to the left still did not contain it,
+  // nor did the topbar chip reading the same query — and with a 60s
+  // staleTime and window-focus refetching off, nothing corrected it while
+  // the page stayed mounted.  Undo was worse: the row the operator
+  // watched appear stayed on screen after they reversed it.
+  //
+  // Unknown target type falls back to invalidating EVERYTHING.  That is
+  // the expensive branch and the right one: this runs once, on a write
+  // the operator just approved and is looking at, so a wrong screen costs
+  // more than a few refetches — and the failure mode of a missing entry
+  // in the map above is otherwise silent.
+  const invalidateFor = useCallback((r: Record<string, unknown> | null) => {
+    const keys = STALE_AFTER[String(r?.target_type ?? '')];
+    if (!keys) { void qc.invalidateQueries(); return; }
+    for (const key of keys) void qc.invalidateQueries({ queryKey: key });
+  }, [qc]);
+
   const [phase, setPhase] = useState<Phase>('pending');
   const [error, setError] = useState('');
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -97,6 +136,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       const res = await aiApproveAction(a.proposal_id);
       setResult(res.result || null);
       setPhase('done');
+      invalidateFor(res.result || null);
       // Freshly executed — re-read undo availability from the server
       // (registry recipe + window), never assume it client-side.
       aiGetActionStatus(a.proposal_id)
@@ -163,6 +203,10 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       const res = await aiUndoAction(a.proposal_id);
       setUndoResult(res.result || null);
       setPhase('undone');
+      // Reversing a write makes the same caches stale as making it.  The
+      // undo response may not echo the target, so fall back to the
+      // approve result the card is still holding.
+      invalidateFor((res.result as Record<string, unknown> | null) || result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Undo failed');
       setPhase('done');

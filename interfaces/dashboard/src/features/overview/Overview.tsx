@@ -28,6 +28,7 @@ import {
   Greeting,
 } from '../../components/shell';
 import type { DashboardStats } from '../../types';
+import { useShellStats } from '../../shells/heroes/useShellStats';
 import { PageLayoutHost } from '../_lib/PageLayoutHost';
 import { OVERVIEW_SECTIONS } from './registry';
 import { OVERVIEW_LAYOUTS } from './layouts';
@@ -53,10 +54,20 @@ export default function Overview() {
     isFetching,
     refetch,
     dataUpdatedAt,
-  } = useQuery<DashboardStats>({
-    queryKey: ['dashboard-stats'],
-    queryFn: () => apiJSON<DashboardStats>('/overview/stats'),
-  });
+    // ONE key for one endpoint.  This page and the topbar heroes both
+    // read /overview/stats and returned the SAME object under two
+    // different keys, so they were two cache entries that could — and
+    // did — disagree: acknowledging an alert invalidates
+    // ``['shell','overview-stats']`` (useRecentAlerts), and nothing ever
+    // invalidated ``['dashboard-stats']``.  The bell dropped to 0 while
+    // the KPI card a few hundred pixels below still read "Open alerts:
+    // 7", deterministically, on the same screen.
+    //
+    // Sharing the hook rather than adding a second invalidation: the
+    // second key was the defect, and another thing to remember is not a
+    // fix.  ``useShellStats`` already documents its policy as matching
+    // this page's, so there was never a reason for them to differ.
+  } = useShellStats();
   const errorMsg =
     queryError instanceof Error
       ? queryError.message

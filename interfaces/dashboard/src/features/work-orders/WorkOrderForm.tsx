@@ -1073,6 +1073,19 @@ export default function WorkOrderForm() {
       }
       qc.invalidateQueries({ queryKey: ['work-orders'] });
       if (savedId) qc.invalidateQueries({ queryKey: ['work-order', savedId] });
+      // The cost reports are derived from these rows and were invalidated
+      // by nothing at all: correct a mis-keyed parts total, click through
+      // to Reports, and all eight charts showed the pre-edit numbers.
+      // "Fix the cost, then check the report" is exactly the sub-60s path
+      // the default staleTime does not cover — and these are dollar
+      // figures with prior-period comparisons hanging off them.
+      //
+      // A PREFIX, deliberately: the report keys are
+      // ``['wo-reports', <slice>, days]``, and react-query matches by
+      // prefix, so this one line reaches every chart at every window
+      // without anyone having to enumerate them here and keep the list
+      // in step.
+      qc.invalidateQueries({ queryKey: ['wo-reports'] });
       toast.success(isEdit
         ? t('work_orders_page.toast_wo_updated')
         : t('work_orders_page.toast_wo_created', { id: savedId }));

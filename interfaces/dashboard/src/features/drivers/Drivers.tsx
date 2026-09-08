@@ -295,7 +295,24 @@ export default function Drivers() {
   });
 
   const refetchDetail = useCallback(
-    () => qc.invalidateQueries({ queryKey: ['driver-detail', selectedId] }),
+    () => {
+      void qc.invalidateQueries({ queryKey: ['driver-detail', selectedId] });
+      // The fleet-wide expiring-documents banner is derived from the same
+      // documents this panel edits, and NOTHING invalidated it — not one
+      // site in the app.  So the operator uploads the renewed CDL, the
+      // driver's own Documents tab updates correctly, and the banner
+      // directly above — the reason they opened the page — keeps counting
+      // the document they just fixed.
+      //
+      // It does not self-correct either: the query stays mounted,
+      // ``refetchOnWindowFocus`` is off, and there is no poll.
+      //
+      // Invalidated on ANY detail save rather than only on document
+      // mutations: the banner reads a driver-scoped endpoint, so several
+      // edits can move it, and a cheap extra refetch of one count is a
+      // better failure than a stale warning about a compliance document.
+      void qc.invalidateQueries({ queryKey: ['drivers-expiring'] });
+    },
     [qc, selectedId],
   );
   const refetchList = useCallback(
