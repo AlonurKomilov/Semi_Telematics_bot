@@ -115,7 +115,7 @@ class FeatureSet:
     # tool still answers only from the role's own feature grants
     # (TOOL_PERMISSIONS).
     can_view_ai_assistant: bool = False  # AI assistant chat + summary
-    can_view_mods: bool = False  # Mods — the personal look, sound and effects (a service: per person, per device; without it every setting stays at its default and the panel, page and doors are closed)
+    can_view_mods: bool = True   # Mods — the personal look, sound and effects (a service: per person, per device). ON for everyone by default, the owner's call; withheld per role, and then every setting stays at its default and the panel, page and doors are closed.
 
     # Management
     can_invite: bool = False         # /invite
@@ -1250,6 +1250,18 @@ def can(role: Role, feature: str) -> bool:
 
     Usage:  can(user.role, "can_faults")
     """
+    return bool(getattr(current_permissions(role), feature, False))
+
+
+def current_permissions(role: Role) -> FeatureSet:
+    """The FeatureSet ``can`` answers from — the bot's account-aware set.
+
+    The primed per-account entry when an account context is bound and
+    fresh (see :func:`prime_account_permissions`), else the role's seed.
+    The bot's keyboards read this, not ``get_permissions``: a menu built
+    from the seed offered every role the buttons the account's matrix
+    had taken away, and the handler behind each one refused.
+    """
     aid = _active_account_id.get()
     if aid is not None:
         import time as _time
@@ -1258,14 +1270,13 @@ def can(role: Role, feature: str) -> bool:
         if cached is not None:
             expires_at, fs = cached
             if expires_at > _time.monotonic():
-                return bool(getattr(fs, feature, False))
+                return fs
             # Stale cache entry — fall through to hardcoded defaults.
             # The contextvar-primed sync path can't await a fresh DB
             # read, so the next call to ``can_for_account`` (or any
             # async-context caller through ``get_account_permissions``)
             # will repopulate the cache from DB on its TTL refresh.
-    perms = get_permissions(role)
-    return getattr(perms, feature, False)
+    return get_permissions(role)
 
 
 async def can_for_account(
@@ -1566,19 +1577,6 @@ async def build_role_guidance_for_account(
 
 
 # ─── Menu visibility — which buttons to show per role ─────────────
-
-def visible_main_buttons(role: Role) -> list[str]:
-    """Return list of callback_data strings the role can see in main menu."""
-    perms = get_permissions(role)
-    buttons = []
-    if perms.can_faults:
-        buttons.append("cmd_faults")
-    if perms.can_fuel:
-        buttons.append("cmd_fuel")
-    if perms.can_alerts_all or perms.can_alerts_vehicle:
-        buttons.append("cmd_alerts")
-    return buttons
-
 
 def can_access_company_submenu(role: Role) -> bool:
     """Whether this role can filter by individual company."""

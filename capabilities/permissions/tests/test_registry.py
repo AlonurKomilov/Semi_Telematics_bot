@@ -16,7 +16,7 @@ from capabilities.permissions.registry import (
     CROSS_FEATURE_FLAGS, ENTRIES, FEATURES, REGISTRY, SERVICES,
     TOGGLEABLE_MODULES, derive_flag_modules, owner_of,
 )
-from capabilities.permissions.roles import FeatureSet
+from capabilities.permissions.roles import FeatureSet, ROLE_PERMISSIONS
 
 FIELDS = set(FeatureSet.__dataclass_fields__)
 
@@ -139,3 +139,24 @@ def test_a_narrowed_flag_names_only_its_features_departments():
             assert own <= e.modules, (e.id, flag, sorted(own), sorted(e.modules))
             assert own <= set(TOGGLEABLE_MODULES), (e.id, flag)
 
+
+
+def test_a_service_is_seeded_for_every_role_that_should_hold_it():
+    """Mods is ON for everyone — the owner's call — and withheld by editing
+    the matrix, never by shipping it off.
+
+    Two halves, because they fail in different ways. The SEEDS decide what
+    a fresh account's roles get. The FIELD DEFAULT decides what an account
+    whose stored permission row predates the field gets: the resolver
+    starts from the seed and lays the stored row over it, so a field that
+    defaults False would take Mods away from every existing account on
+    upgrade — silently, and only for accounts old enough to have a row.
+    """
+    assert FeatureSet().can_view_mods is True, (
+        "can_view_mods defaults False — every account with a stored "
+        "permission row loses Mods on upgrade"
+    )
+    # A role withheld in the SEEDS rather than in the matrix — that is a
+    # decision for the owner to make per account, not one this repo ships.
+    missing = sorted(r.value for r, fs in ROLE_PERMISSIONS.items() if not fs.can_view_mods)
+    assert missing == [], f"roles seeded without Mods: {missing}"

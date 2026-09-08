@@ -22,7 +22,7 @@ vi.mock('../hooks/useViewPermissions', () => ({
   }),
 }));
 
-import { ModsLock, lockedModsKeys } from './ModsLock';
+import { ModsLock, lockedModsKeys, useCanMods } from './ModsLock';
 import { MODS_PERMISSION } from './access';
 import { DEFS, preferences } from '../preferences';
 
@@ -74,9 +74,22 @@ describe('every door reads the one flag', () => {
   it('by name, never as a literal', () => {
     for (const [file, what] of Object.entries(DOORS)) {
       const code = src(file);
-      expect(code, `${what} (${file}) does not read MODS_PERMISSION`).toMatch(/\bMODS_PERMISSION\b/);
+      // The doors ask `useCanMods()` — open until the permissions have
+      // loaded — and the router gates by the flag's name.
+      expect(code, `${what} (${file}) asks neither useCanMods nor MODS_PERMISSION`)
+        .toMatch(file === 'router.tsx' ? /\bMODS_PERMISSION\b/ : /\buseCanMods\(\)/);
       expect(code, `${file} spells the flag instead of naming it`).not.toMatch(/['"]can_view_mods['"]/);
     }
+  });
+
+  it('a door stays open until the permissions have loaded, and closes only on a real no', () => {
+    const { renderHook } = require('@testing-library/react') as typeof import('@testing-library/react');
+    view.allow = new Set(); view.ready = false;
+    expect(renderHook(() => useCanMods()).result.current, 'closed before the answer arrived').toBe(true);
+    view.ready = true;
+    expect(renderHook(() => useCanMods()).result.current, 'open for a role without the grant').toBe(false);
+    view.allow = new Set([MODS_PERMISSION]);
+    expect(renderHook(() => useCanMods()).result.current).toBe(true);
   });
   it('the shell mounts the lock and gates the palette', () => {
     const shell = src('shells/AppShell.tsx');

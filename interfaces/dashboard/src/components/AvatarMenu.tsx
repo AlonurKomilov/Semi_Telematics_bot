@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { UserCog, LogOut, Palette } from '../lib/icons';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
-import { MODS_HREF, MODS_PERMISSION } from '../mods';
-import { useViewPermissions } from '../hooks/useViewPermissions';
+import { MODS_HREF, useCanMods } from '../mods';
 
 export function AvatarMenu() {
   const { user, logout } = useAuth();
-  const canMods = useViewPermissions().has(MODS_PERMISSION);
+  const canMods = useCanMods();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

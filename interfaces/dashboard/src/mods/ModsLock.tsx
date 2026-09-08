@@ -23,6 +23,18 @@ export function lockedModsKeys(): string[] {
   return Object.keys(DEFS).filter((k) => k.startsWith(MODS_PREF_PREFIX));
 }
 
+/**
+ * Whether the doors to Mods are open. TRUE until the permissions have
+ * loaded — "not loaded" is not "denied": a door hidden while the answer
+ * is still on its way flashes out of the header on every load for every
+ * role, and the lock below already puts a denied role's look back to the
+ * defaults the moment the answer arrives.
+ */
+export function useCanMods(): boolean {
+  const { has, ready } = useViewPermissions();
+  return !ready || has(MODS_PERMISSION);
+}
+
 export function ModsLock() {
   const { has, ready } = useViewPermissions();
   const locked = ready && !has(MODS_PERMISSION);
