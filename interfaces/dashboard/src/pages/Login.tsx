@@ -9,7 +9,9 @@ import TurnstileWidget from '../components/TurnstileWidget';
 import { toneClasses, toneText } from '../lib/status';
 import type { TelegramLoginData } from '../types';
 import { Card } from '@/components/ui/card';
-import { Bot, Check } from '../lib/icons';
+import { Bot, Check, Send } from '../lib/icons';
+import { renderGoogleButton } from '../lib/googleSignIn';
+import { stashSetupHandoff } from '../lib/setupHandoff';
 
 type Mode = 'login' | 'register';
 // Within the Register tab, the operator picks between two distinct flows:
@@ -21,7 +23,7 @@ type RegisterKind = 'invite' | 'new-company';
 
 export default function Login() {
   const { t } = useTranslation();
-  const { loginWithTelegram, loginWithEmail, registerWithEmail } = useAuth();
+  const { loginWithTelegram, loginWithEmail, loginWithGoogle, registerWithEmail } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('login');
   const [registerKind, setRegisterKind] = useState<RegisterKind>('invite');
@@ -43,6 +45,15 @@ export default function Login() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [botUsername, setBotUsername] = useState('4truckBot');
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  // Sign in with Google.  Empty = the platform has no client configured
+  // (or this is the operator host) and the button is simply not drawn.
+  const [googleClientId, setGoogleClientId] = useState('');
+  const googleRef = useRef<HTMLDivElement>(null);
+  // The two Telegram methods live behind one disclosure: three ways in
+  // plus two dividers was a wall, and a person choosing between "email",
+  // "Google" and "Telegram" does not need the bot/widget split until
+  // they have picked Telegram.
+  const [telegramOpen, setTelegramOpen] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState('');
   // Incremented after every register submit attempt — Turnstile tokens
   // are single-use, so the widget must issue a fresh one before retry.
@@ -205,6 +216,7 @@ export default function Login() {
           if (data.bot_username) setBotUsername(data.bot_username);
           if (data.bot_id) setBotId(data.bot_id);
           if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
+          setGoogleClientId(String(data.google_signin_client_id || ''));
         }
       } catch { /* fall back to defaults */ }
     })();
@@ -225,6 +237,10 @@ export default function Login() {
 
     const el = containerRef.current;
     if (!el) return;  // register tab: no widget container, nothing to inject
+    // Injected on the first opening of the Telegram disclosure, not on
+    // mount: the widget sizes itself when it loads, and a container
+    // that is display:none at that moment gives it nothing to measure.
+    if (!telegramOpen) return;
 
     el.innerHTML = '';
     const script = document.createElement('script');
@@ -242,7 +258,64 @@ export default function Login() {
     el.appendChild(script);
 
     return () => { delete window.__onTelegramAuth; };
-  }, [loginWithTelegram, rememberMe, widgetKey, botUsername, mode]);
+  }, [loginWithTelegram, rememberMe, widgetKey, botUsername, mode, telegramOpen]);
+
+  /** One Google credential, three meanings — decided by the tab and the
+   *  register kind, exactly as the email form decides them. */
+  const onGoogleCredential = useCallback(async (credential: string) => {
+    setError('');
+    setLoading(true);
+    try {
+      if (mode === 'login') {
+        await loginWithGoogle(credential, rememberMe);
+        return;
+      }
+      if (registerKind === 'invite') {
+        if (!inviteCode.trim()) { setError(t('login_google.need_invite', 'Enter your invite code first, then continue with Google.')); return; }
+        const res = await apiJSON<{ status: string; access_token?: string }>('/auth/register-google', {
+          method: 'POST', body: { credential, invite_code: inviteCode.trim() },
+        });
+        if (res.access_token) { setToken(res.access_token, true); window.location.reload(); }
+        return;
+      }
+      // New company: Google gives the owner's email; the password and
+      // the company name come next, on /complete-setup.
+      const res = await apiJSON<{ status: string; setup_token?: string; email?: string }>('/auth/register-google', {
+        method: 'POST', body: { credential, turnstile_token: turnstileToken || null },
+      });
+      if (res.status === 'setup_required' && res.setup_token) {
+        stashSetupHandoff(res.setup_token, res.email || '');
+        window.location.assign('/complete-setup');
+      }
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : '';
+      if (raw.includes('setup_pending')) {
+        setError(t('auth.error_setup_pending', 'This company is not set up yet. Sign in with Google and finish the setup to continue.'));
+      } else {
+        setError(raw || t('login_google.failed', 'Google sign-in failed'));
+      }
+      if (mode === 'register' && turnstileSiteKey) { setTurnstileToken(''); setTurnstileResetNonce((n) => n + 1); }
+    } finally {
+      setLoading(false);
+    }
+  }, [mode, registerKind, inviteCode, rememberMe, turnstileToken, turnstileSiteKey, loginWithGoogle, t]);
+
+  useEffect(() => {
+    const el = googleRef.current;
+    if (!el || !googleClientId) return;
+    // The register tab holds Google until Turnstile has a token: the
+    // API refuses the new-company POST without one, and a button that
+    // fails on its first press reads as broken.
+    if (mode === 'register' && registerKind === 'new-company' && turnstileSiteKey && !turnstileToken) {
+      el.innerHTML = '';
+      return;
+    }
+    let cancelled = false;
+    void renderGoogleButton(el, googleClientId, (c) => { if (!cancelled) void onGoogleCredential(c); }, {
+      text: mode === 'register' ? 'continue_with' : 'signin_with',
+    }).catch(() => { /* no Google today: the other methods remain */ });
+    return () => { cancelled = true; };
+  }, [googleClientId, mode, registerKind, turnstileSiteKey, turnstileToken, onGoogleCredential]);
 
   /** Guide the user to disconnect their Telegram Login Widget session.
    *
@@ -326,6 +399,8 @@ export default function Login() {
       if (raw.includes('email_not_verified')) {
         setNeedsVerification(true);
         setError(t('auth.error_email_not_verified'));
+      } else if (raw.includes('setup_pending')) {
+        setError(t('auth.error_setup_pending', 'This company is not set up yet. Sign in with Google and finish the setup to continue.'));
       } else {
         setError(raw || 'Authentication failed');
       }
@@ -570,6 +645,22 @@ export default function Login() {
         {/* Telegram + bot-login are SIGN-IN methods, not registration
             methods — showing "Log in as Allen" while someone is creating
             a new account is confusing.  Gate the whole block to login. */}
+        {/* Google — on both tabs.  Sign In: a session.  Register: joins by
+            invite or starts a company (then /complete-setup).  Drawn only
+            when the platform has a client id. */}
+        {googleClientId && (
+          <>
+            <div className="flex items-center my-5">
+              <div className="flex-1 border-t border-border" />
+              <span className="px-3 text-xs text-muted-foreground">{t('login_tg.or_separator')}</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+            <div ref={googleRef} className="flex justify-center min-h-10" aria-label={t('login_google.label', 'Sign in with Google')} />
+            {mode === 'register' && registerKind === 'new-company' && turnstileSiteKey && !turnstileToken && (
+              <p className="text-2xs text-muted-foreground text-center mt-1">{t('login_google.verifying', 'Verifying…')}</p>
+            )}
+          </>
+        )}
         {mode === 'login' && (
         <>
         {/* Divider */}
@@ -579,6 +670,20 @@ export default function Login() {
           <div className="flex-1 border-t border-border" />
         </div>
 
+        {/* Telegram: one door, two ways through it.  The caret leads what
+            it opens — the same rule the extension's panel settled on. */}
+        <button
+          type="button"
+          onClick={() => setTelegramOpen((v) => !v)}
+          aria-expanded={telegramOpen}
+          aria-controls="login-telegram-methods"
+          className="w-full inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-accent min-h-tap"
+        >
+          <span aria-hidden className="text-muted-foreground">{telegramOpen ? '▾' : '▸'}</span>
+          <Send className="size-4" aria-hidden />
+          {t('login_tg.sign_in_with_telegram', 'Sign in with Telegram')}
+        </button>
+        <div id="login-telegram-methods" hidden={!telegramOpen} className="mt-4">
         {/* Telegram widget */}
         <div ref={containerRef} className="flex justify-center" />
 
@@ -706,6 +811,7 @@ export default function Login() {
             </p>
           </div>
         )}
+        </div>
         </>
         )}
 

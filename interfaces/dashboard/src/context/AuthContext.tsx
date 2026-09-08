@@ -52,6 +52,8 @@ interface AuthContextValue {
   loading: boolean;
   loginWithTelegram: (tgData: TelegramLoginData, rememberMe?: boolean) => Promise<void>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  /** Sign in with a Google ID token (from the GIS button). */
+  loginWithGoogle: (credential: string, rememberMe?: boolean) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string, inviteCode: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Force re-fetch of /user/me — used by the Role Permissions admin
@@ -243,6 +245,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   }, [fetchUser]);
 
+  const loginWithGoogle = useCallback(async (credential: string, rememberMe = false) => {
+    const res = await apiJSON<AuthResponse & { status?: string; setup_token?: string; email?: string }>('/auth/google', {
+      method: 'POST',
+      body: { credential, remember_me: rememberMe },
+    });
+    if (res.status === 'setup_required' && res.setup_token) {
+      // A company that never finished setting up: the API hands back a
+      // fresh setup token instead of a session.  Same page, same form.
+      const { stashSetupHandoff } = await import('../lib/setupHandoff');
+      stashSetupHandoff(res.setup_token, res.email || '');
+      window.location.assign('/complete-setup');
+      return;
+    }
+    setToken(res.access_token, rememberMe);
+    if (redirectAfterLoginIfNeeded(res.user?.role)) return;
+    await fetchUser();
+  }, [fetchUser]);
   const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = false) => {
     const res = await apiJSON<AuthResponse>('/auth/login', {
       method: 'POST',
@@ -326,7 +345,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithTelegram, loginWithEmail, registerWithEmail, logout, refreshUser: fetchUser }}>
+    <AuthContext.Provider value={{ user, loading, loginWithTelegram, loginWithEmail, loginWithGoogle, registerWithEmail, logout, refreshUser: fetchUser }}>
       {children}
     </AuthContext.Provider>
   );

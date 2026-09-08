@@ -31,12 +31,16 @@ import {
   Mail,
   Link as LinkIcon,
   Unlink,
+  Globe,
+  KeyRound,
   Download,
   History,
   CheckCircle2,
   XCircle,
   ExternalLink,
 } from '../lib/icons';
+import { renderGoogleButton } from '../lib/googleSignIn';
+import { Input } from '../components/ui/input';
 
 import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';
@@ -366,6 +370,17 @@ function SignInMethods() {
   const [unlinking, setUnlinking] = useState(false);
   const [linkStatus, setLinkStatus] = useState<'idle' | 'pending' | 'rejected'>('idle');
   const [linkReason, setLinkReason] = useState('');
+  // Sign in with Google: the client id comes from /auth/config (absent
+  // when the platform has none); the button renders into googleRef.
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const googleRef = useRef<HTMLDivElement>(null);
+  // First password for a user who arrived through Google or Telegram.
+  const [showPwForm, setShowPwForm] = useState(false);
+  const [pw1, setPw1] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [savingPw, setSavingPw] = useState(false);
+  const [pwOk, setPwOk] = useState('');
   const pollHandle = useRef<number | null>(null);
   // Add-email form state — visible inline when the user has no email
   // attached.  No "ask an admin" detour; the /user/credentials endpoint
@@ -456,6 +471,73 @@ function SignInMethods() {
       ));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to resend');
+    }
+  };
+
+  useEffect(() => {
+    apiJSON<{ google_signin_client_id?: string }>('/auth/config')
+      .then((c) => setGoogleClientId(String(c.google_signin_client_id || '')))
+      .catch(() => { /* no Google today */ });
+  }, []);
+
+  const linkGoogle = async (credential: string) => {
+    setErr('');
+    setGoogleBusy(true);
+    try {
+      await apiJSON('/user/google/link', { method: 'POST', body: { credential } });
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : t('profile.signin_google_link_failed', 'Could not link Google.'));
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    const el = googleRef.current;
+    if (!el || !googleClientId || me?.google_linked) return;
+    void renderGoogleButton(el, googleClientId, (c) => void linkGoogle(c), { text: 'continue_with', width: 220 })
+      .catch(() => { /* the other methods remain */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleClientId, me?.google_linked]);
+
+  const unlinkGoogle = async () => {
+    if (!window.confirm(t('profile.confirm_unlink_google', 'Disconnect Google from this account?  You can link it again from this same panel.'))) return;
+    setGoogleBusy(true);
+    setErr('');
+    try {
+      const r = await apiFetch('/user/google', { method: 'DELETE' });
+      if (!r.ok) {
+        let detail = `Failed (${r.status})`;
+        try { const j = await r.json() as { detail?: string }; if (j.detail) detail = j.detail; } catch { /* keep generic */ }
+        throw new Error(detail);
+      }
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Unlink failed');
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const submitPassword = async () => {
+    setErr('');
+    setPwOk('');
+    if (pw1 !== pw2) { setErr(t('profile.signin_pw_mismatch', "Passwords don't match.")); return; }
+    if (pw1.length < 8 || !/[A-Za-z]/.test(pw1) || !/\d/.test(pw1)) {
+      setErr(t('profile.signin_pw_rule', 'Password must be at least 8 characters and include one letter and one digit.'));
+      return;
+    }
+    setSavingPw(true);
+    try {
+      await apiJSON('/user/password', { method: 'POST', body: { password: pw1, current_password: null } });
+      setPwOk(t('profile.signin_password_saved', 'Password saved. You can now sign in with your email and password too.'));
+      setShowPwForm(false); setPw1(''); setPw2('');
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save the password');
+    } finally {
+      setSavingPw(false);
     }
   };
 
@@ -570,6 +652,15 @@ function SignInMethods() {
             >
               {t('profile.signin_resend_verification', 'Resend link')}
             </button>
+          ) : me?.email && me.has_password === false ? (
+            <button
+              type="button"
+              onClick={() => setShowPwForm((v) => !v)}
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-foreground hover:bg-primary/10 px-2 py-1 rounded min-h-tap ring-1 ring-primary"
+            >
+              <KeyRound className="size-3" aria-hidden />
+              {showPwForm ? t('profile.signin_email_cancel', 'Cancel') : t('profile.signin_set_password', 'Set a password')}
+            </button>
           ) : me?.email ? (
             <a
               href="/forgot-password"
@@ -590,6 +681,25 @@ function SignInMethods() {
           )}
         </li>
 
+        {/* First password for a Google- or Telegram-born user.  /forgot-
+            password mails nothing to an address without a password, so
+            this signed-in form is the only way they get one. */}
+        {me?.email && me.has_password === false && showPwForm && (
+          <li className="py-3">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {t('profile.signin_password_form_intro', 'Choose a password so you can sign in with your email even when Google or Telegram is unavailable — and disconnect either later without losing access.')}
+              </p>
+              <Input type="password" placeholder={t('profile.signin_new_password', 'New password')} value={pw1} onChange={(e) => setPw1(e.target.value)} autoComplete="new-password" />
+              <Input type="password" placeholder={t('profile.signin_confirm_password', 'Confirm password')} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
+              <div className="flex gap-2">
+                <button type="button" onClick={submitPassword} disabled={savingPw} className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-50 min-h-tap">{savingPw ? '…' : t('profile.signin_save_password', 'Save password')}</button>
+                <button type="button" onClick={() => setShowPwForm(false)} className="text-sm px-3 py-1.5 rounded text-muted-foreground hover:bg-muted">{t('common.cancel', 'Cancel')}</button>
+              </div>
+            </div>
+          </li>
+        )}
+        {pwOk && <li className="py-2 text-xs text-ok">{pwOk}</li>}
         {/* Inline "add email + password" form — only when the user has
             no email attached and they've clicked "Add email". */}
         {!me?.email && showEmailForm && (
@@ -723,9 +833,42 @@ function SignInMethods() {
             </button>
           )}
         </li>
+        {/* Google */}
+        {googleClientId && (
+          <li className="flex items-start gap-3 py-3">
+            <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${me?.google_linked ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'}`}>
+              <Globe className="size-4.5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">{t('profile.signin_google_label', 'Google')}</div>
+              <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                {me?.google_linked ? (
+                  <>
+                    {t('profile.signin_google_linked', 'Connected')}{' '}
+                    <span className="opacity-75">· {me.google_email}</span>
+                  </>
+                ) : (
+                  t('profile.signin_google_not_linked', 'Not linked — connect to sign in with one click.')
+                )}
+              </div>
+            </div>
+            {me?.google_linked ? (
+              <button
+                onClick={unlinkGoogle}
+                disabled={googleBusy}
+                className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 px-2 py-1 rounded min-h-tap"
+              >
+                <Unlink className="size-3" />
+                {googleBusy ? t('profile.signin_unlinking', 'Unlinking…') : t('profile.signin_unlink', 'Disconnect')}
+              </button>
+            ) : (
+              <div ref={googleRef} className="shrink-0 min-h-tap" aria-label={t('profile.signin_link_google', 'Connect Google')} />
+            )}
+          </li>
+        )}
       </ul>
 
-      {!me?.email && !me?.telegram_id && (
+      {!me?.email && !me?.telegram_id && !me?.google_linked && (
         <p className="text-2xs text-warn mt-2">
           {t(
             'profile.signin_warn_no_methods',

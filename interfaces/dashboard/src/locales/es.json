@@ -304,7 +304,31 @@
     "login_via_bot": "Iniciar sesión con el bot de Telegram",
     "waiting_approval": "Esperando aprobación...",
     "bot_link_opened": "Se abrió un enlace a <b>@{{bot}}</b>. Pulse <b>Start</b> en el bot para aprobar el inicio de sesión.",
-    "didnt_open": "¿No se abrió? Pulse aquí para abrir el bot"
+    "didnt_open": "¿No se abrió? Pulse aquí para abrir el bot",
+    "sign_in_with_telegram": "Iniciar sesión con Telegram"
+  },
+  "setup": {
+    "tagline": "Un paso más y tu empresa estará lista.",
+    "title": "Configura tu empresa",
+    "intro": "Sesión iniciada con Google como",
+    "intro_2": "Elige una contraseña para esta cuenta y ponle nombre a tu empresa. Hoy no hace falta nada más.",
+    "company_name": "Nombre de la empresa",
+    "display_name": "Tu nombre",
+    "optional": "opcional",
+    "password": "Contraseña",
+    "confirm": "Confirmar contraseña",
+    "submit": "Terminar y abrir mi panel",
+    "password_why": "La contraseña te permite iniciar sesión aunque Google no esté disponible, y desconectar Google más adelante sin perder el acceso.",
+    "pw_mismatch": "Las contraseñas no coinciden.",
+    "pw_rule": "La contraseña debe tener al menos 8 caracteres e incluir una letra y un dígito.",
+    "token_expired": "Este enlace de configuración ha caducado. Inicia sesión con Google de nuevo para continuar donde lo dejaste.",
+    "failed": "No se pudo terminar la configuración. Inténtalo de nuevo."
+  },
+  "login_google": {
+    "label": "Iniciar sesión con Google",
+    "need_invite": "Introduce primero tu código de invitación y luego continúa con Google.",
+    "failed": "Error al iniciar sesión con Google",
+    "verifying": "Verificando…"
   },
   "auth": {
     "login": "Iniciar sesión",
@@ -354,7 +378,8 @@
     "verification_resend_button": "Reenviar correo de verificación",
     "verification_resending": "Enviando…",
     "verification_resent": "Correo de verificación enviado. Revisa tu bandeja de entrada.",
-    "register_check_inbox": "Hemos enviado un enlace de verificación a {{email}}. Haz clic para activar tu cuenta y luego inicia sesión."
+    "register_check_inbox": "Hemos enviado un enlace de verificación a {{email}}. Haz clic para activar tu cuenta y luego inicia sesión.",
+    "error_setup_pending": "Esta empresa aún no está configurada. Inicia sesión con Google y termina la configuración para continuar."
   },
   "errors": {
     "load_failed": "Error al cargar",
@@ -940,7 +965,19 @@
     "signin_unverified_chip": "Sin verificar",
     "signin_verify_hint": "Le enviamos un enlace de verificación. Hasta que lo confirme, este correo no puede usarse para iniciar sesión.",
     "signin_resend_verification": "Reenviar enlace",
-    "signin_verification_sent": "Correo de verificación enviado. Revise su bandeja."
+    "signin_verification_sent": "Correo de verificación enviado. Revise su bandeja.",
+    "signin_google_label": "Google",
+    "signin_google_linked": "Conectado",
+    "signin_google_not_linked": "Sin vincular — conéctalo para iniciar sesión con un clic.",
+    "signin_link_google": "Conectar Google",
+    "signin_google_link_failed": "No se pudo vincular Google.",
+    "confirm_unlink_google": "¿Desconectar Google de esta cuenta?  Puedes volver a vincularlo desde este mismo panel.",
+    "signin_set_password": "Establecer una contraseña",
+    "signin_password_form_intro": "Elige una contraseña para poder iniciar sesión con tu correo aunque Google o Telegram no estén disponibles, y desconectar cualquiera de ellos más adelante sin perder el acceso.",
+    "signin_new_password": "Nueva contraseña",
+    "signin_confirm_password": "Confirmar contraseña",
+    "signin_save_password": "Guardar contraseña",
+    "signin_password_saved": "Contraseña guardada. Ahora también puedes iniciar sesión con tu correo y contraseña."
   },
   "time": {
     "just_now": "ahora mismo",

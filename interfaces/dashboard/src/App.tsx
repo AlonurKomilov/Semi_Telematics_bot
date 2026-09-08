@@ -10,6 +10,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
 import ExtensionConnect from './pages/ExtensionConnect';
+import CompleteSetup from './pages/CompleteSetup';
 
 /**
  * Apex (``4truck.us``) is the single canonical login host — every
@@ -170,6 +171,9 @@ const PUBLIC_AUTH_ROUTES: Record<string, React.ComponentType> = {
   '/forgot-password': ForgotPassword,
   '/reset-password': ResetPassword,
   '/verify-email': VerifyEmail,
+  // The second half of a Google company sign-up; it holds a setup
+  // token, not a session, so it is reachable while signed out.
+  '/complete-setup': CompleteSetup,
 };
 
 export default function App() {

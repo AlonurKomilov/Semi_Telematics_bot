@@ -355,6 +355,7 @@ const STORAGE_ALLOWED = [
   'features/alerts/sections/LiveAckPanel',  // "what's new since" timestamp
   'features/knowledge/KnowledgeBase',       // 30s view-ping debounce
   'lib/safeReturnTo',                       // explicit-signout, session flow
+  'lib/setupHandoff',                       // 15-min setup token: a credential, not a preference
   'router.tsx',                             // chunk-reload loop breaker
 ];
 

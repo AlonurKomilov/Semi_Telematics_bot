@@ -107,6 +107,12 @@ export interface User {
    *  the verification link yet.  The dashboard surfaces a "verify your
    *  email" notice on the Sign-in methods panel when this is false. */
   email_verified?: boolean;
+  /** Sign in with Google — linked or not, and to which address. */
+  google_linked?: boolean;
+  google_email?: string | null;
+  /** False for a user who arrived through Google or Telegram and never
+   *  chose a password; the profile offers to set one. */
+  has_password?: boolean;
   display_name: string;
   role: string;
   /** Per-user manager tier (orthogonal to role).  A recruiter with

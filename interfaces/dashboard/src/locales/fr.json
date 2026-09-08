@@ -304,7 +304,31 @@
     "login_via_bot": "Connexion via le bot Telegram",
     "waiting_approval": "En attente d’approbation...",
     "bot_link_opened": "Un lien vers <b>@{{bot}}</b> a été ouvert. Appuyez sur <b>Start</b> dans le bot pour approuver la connexion.",
-    "didnt_open": "Pas ouvert ? Cliquez ici pour ouvrir le bot"
+    "didnt_open": "Pas ouvert ? Cliquez ici pour ouvrir le bot",
+    "sign_in_with_telegram": "Se connecter avec Telegram"
+  },
+  "setup": {
+    "tagline": "Une dernière étape et votre entreprise est prête.",
+    "title": "Configurez votre entreprise",
+    "intro": "Connecté avec Google en tant que",
+    "intro_2": "Choisissez un mot de passe pour ce compte et nommez votre entreprise. Rien d'autre n'est nécessaire aujourd'hui.",
+    "company_name": "Nom de l'entreprise",
+    "display_name": "Votre nom",
+    "optional": "facultatif",
+    "password": "Mot de passe",
+    "confirm": "Confirmer le mot de passe",
+    "submit": "Terminer et ouvrir mon tableau de bord",
+    "password_why": "Le mot de passe vous permet de vous connecter même si Google est indisponible, et de déconnecter Google plus tard sans perdre l'accès.",
+    "pw_mismatch": "Les mots de passe ne correspondent pas.",
+    "pw_rule": "Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.",
+    "token_expired": "Ce lien de configuration a expiré. Reconnectez-vous avec Google pour reprendre là où vous en étiez.",
+    "failed": "Impossible de terminer la configuration. Veuillez réessayer."
+  },
+  "login_google": {
+    "label": "Se connecter avec Google",
+    "need_invite": "Saisissez d'abord votre code d'invitation, puis continuez avec Google.",
+    "failed": "Échec de la connexion Google",
+    "verifying": "Vérification…"
   },
   "auth": {
     "login": "Se connecter",
@@ -354,7 +378,8 @@
     "verification_resend_button": "Renvoyer l'email de vérification",
     "verification_resending": "Envoi…",
     "verification_resent": "Email de vérification envoyé. Consultez votre boîte de réception.",
-    "register_check_inbox": "Nous avons envoyé un lien de vérification à {{email}}. Cliquez dessus pour activer votre compte, puis connectez-vous."
+    "register_check_inbox": "Nous avons envoyé un lien de vérification à {{email}}. Cliquez dessus pour activer votre compte, puis connectez-vous.",
+    "error_setup_pending": "Cette entreprise n'est pas encore configurée. Connectez-vous avec Google et terminez la configuration pour continuer."
   },
   "errors": {
     "load_failed": "Échec du chargement",
@@ -940,7 +965,19 @@
     "signin_unverified_chip": "Non vérifié",
     "signin_verify_hint": "Nous avons envoyé un lien de vérification. Tant que vous ne l'avez pas cliqué, cet e-mail ne peut pas servir à se connecter.",
     "signin_resend_verification": "Renvoyer le lien",
-    "signin_verification_sent": "E-mail de vérification envoyé. Vérifiez votre boîte de réception."
+    "signin_verification_sent": "E-mail de vérification envoyé. Vérifiez votre boîte de réception.",
+    "signin_google_label": "Google",
+    "signin_google_linked": "Connecté",
+    "signin_google_not_linked": "Non lié — connectez-le pour vous connecter en un clic.",
+    "signin_link_google": "Connecter Google",
+    "signin_google_link_failed": "Impossible de lier Google.",
+    "confirm_unlink_google": "Déconnecter Google de ce compte ?  Vous pourrez le relier depuis ce même panneau.",
+    "signin_set_password": "Définir un mot de passe",
+    "signin_password_form_intro": "Choisissez un mot de passe pour pouvoir vous connecter avec votre e-mail même si Google ou Telegram est indisponible, et déconnecter l'un ou l'autre plus tard sans perdre l'accès.",
+    "signin_new_password": "Nouveau mot de passe",
+    "signin_confirm_password": "Confirmer le mot de passe",
+    "signin_save_password": "Enregistrer le mot de passe",
+    "signin_password_saved": "Mot de passe enregistré. Vous pouvez désormais aussi vous connecter avec votre e-mail et votre mot de passe."
   },
   "time": {
     "just_now": "à l'instant",

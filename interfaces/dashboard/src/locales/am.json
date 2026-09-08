@@ -304,7 +304,8 @@
     "login_via_bot": "በTelegram ቦት ይግቡ",
     "waiting_approval": "ማረጋገጫ በመጠባበቅ ላይ...",
     "bot_link_opened": "ወደ <b>@{{bot}}</b> ሊንክ ተከፍቷል። መግባትዎን ለማረጋገጥ በቦቱ ውስጥ <b>Start</b>ን ይንኩ።",
-    "didnt_open": "አልተከፈተም? ቦቱን ለመክፈት እዚህ ላይ ጠቅ ያድርጉ"
+    "didnt_open": "አልተከፈተም? ቦቱን ለመክፈት እዚህ ላይ ጠቅ ያድርጉ",
+    "sign_in_with_telegram": "በTelegram ይግቡ"
   },
   "auth": {
     "login": "ግባ",
@@ -354,7 +355,45 @@
     "verification_resend_button": "Resend verification email",
     "verification_resending": "Sending…",
     "verification_resent": "Verification email sent. Check your inbox.",
-    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in."
+    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in.",
+    "error_setup_pending": "ይህ ኩባንያ ገና አልተዋቀረም። ለመቀጠል በGoogle ይግቡ እና ማዋቀሩን ይጨርሱ።"
+  },
+  "profile": {
+    "signin_google_label": "Google",
+    "signin_google_linked": "ተገናኝቷል",
+    "signin_google_not_linked": "አልተገናኘም — በአንድ ጠቅታ ለመግባት ያገናኙ።",
+    "signin_link_google": "Google ያገናኙ",
+    "signin_google_link_failed": "Google ን ማገናኘት አልተቻለም።",
+    "confirm_unlink_google": "Google ን ከዚህ መለያ ያላቅቁ?  ከዚሁ ፓነል እንደገና ማገናኘት ይችላሉ።",
+    "signin_set_password": "የይለፍ ቃል ያዘጋጁ",
+    "signin_password_form_intro": "Google ወይም Telegram በማይገኙበት ጊዜም በኢሜይልዎ መግባት እንዲችሉ የይለፍ ቃል ይምረጡ፣ እና በኋላ ማንኛውንም መዳረሻ ሳያጡ ማላቀቅ ይችላሉ።",
+    "signin_new_password": "አዲስ የይለፍ ቃል",
+    "signin_confirm_password": "የይለፍ ቃል ያረጋግጡ",
+    "signin_save_password": "የይለፍ ቃል አስቀምጥ",
+    "signin_password_saved": "የይለፍ ቃል ተቀምጧል። አሁን በኢሜይልዎ እና በይለፍ ቃልዎም መግባት ይችላሉ።"
+  },
+  "setup": {
+    "tagline": "አንድ ተጨማሪ እርምጃ፣ ኩባንያዎ ዝግጁ ነው።",
+    "title": "ኩባንያዎን ያዘጋጁ",
+    "intro": "በGoogle የገባው",
+    "intro_2": "ለዚህ መለያ የይለፍ ቃል ይምረጡ እና ኩባንያዎን ይሰይሙ። ዛሬ ሌላ ነገር አያስፈልግም።",
+    "company_name": "የኩባንያ ስም",
+    "display_name": "ስምዎ",
+    "optional": "አማራጭ",
+    "password": "የይለፍ ቃል",
+    "confirm": "የይለፍ ቃል ያረጋግጡ",
+    "submit": "ጨርስ እና ዳሽቦርዴን ክፈት",
+    "password_why": "የይለፍ ቃሉ Google በማይገኝበት ጊዜም መግባት ያስችላል፣ እና በኋላ Google ን መዳረሻ ሳያጡ ማላቀቅ ያስችላል።",
+    "pw_mismatch": "የይለፍ ቃላቱ አይዛመዱም።",
+    "pw_rule": "የይለፍ ቃል ቢያንስ 8 ቁምፊዎች ሊኖሩት እና አንድ ፊደል እና አንድ አሃዝ ማካተት አለበት።",
+    "token_expired": "ይህ የማዋቀር አገናኝ ጊዜው አልፎበታል። ካቆሙበት ለመቀጠል በGoogle እንደገና ይግቡ።",
+    "failed": "ማዋቀሩን መጨረስ አልተቻለም። እባክዎ እንደገና ይሞክሩ።"
+  },
+  "login_google": {
+    "label": "በGoogle ይግቡ",
+    "need_invite": "መጀመሪያ የግብዣ ኮድዎን ያስገቡ፣ ከዚያ በGoogle ይቀጥሉ።",
+    "failed": "በGoogle መግባት አልተሳካም",
+    "verifying": "በማረጋገጥ ላይ…"
   },
   "errors": {
     "load_failed": "መጫን አልተሳካም",

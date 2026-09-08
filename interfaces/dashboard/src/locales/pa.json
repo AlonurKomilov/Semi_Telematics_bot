@@ -304,7 +304,8 @@
     "login_via_bot": "Telegram ਬੋਟ ਰਾਹੀਂ ਲੌਗਇਨ",
     "waiting_approval": "ਮਨਜ਼ੂਰੀ ਦੀ ਉਡੀਕ...",
     "bot_link_opened": "<b>@{{bot}}</b> ਦਾ ਲਿੰਕ ਖੁੱਲ੍ਹਿਆ। ਆਪਣੇ ਲੌਗਇਨ ਨੂੰ ਮਨਜ਼ੂਰ ਕਰਨ ਲਈ ਬੋਟ ਵਿੱਚ <b>Start</b> ਛੋਹੋ।",
-    "didnt_open": "ਨਹੀਂ ਖੁੱਲ੍ਹਿਆ? ਬੋਟ ਖੋਲ੍ਹਣ ਲਈ ਇੱਥੇ ਕਲਿਕ ਕਰੋ"
+    "didnt_open": "ਨਹੀਂ ਖੁੱਲ੍ਹਿਆ? ਬੋਟ ਖੋਲ੍ਹਣ ਲਈ ਇੱਥੇ ਕਲਿਕ ਕਰੋ",
+    "sign_in_with_telegram": "Telegram ਨਾਲ ਸਾਈਨ ਇਨ ਕਰੋ"
   },
   "auth": {
     "login": "ਲੌਗਇਨ",
@@ -354,7 +355,45 @@
     "verification_resend_button": "Resend verification email",
     "verification_resending": "Sending…",
     "verification_resent": "Verification email sent. Check your inbox.",
-    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in."
+    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in.",
+    "error_setup_pending": "ਇਹ ਕੰਪਨੀ ਅਜੇ ਸੈੱਟ ਨਹੀਂ ਹੋਈ। ਜਾਰੀ ਰੱਖਣ ਲਈ Google ਨਾਲ ਸਾਈਨ ਇਨ ਕਰੋ ਅਤੇ ਸੈੱਟਅੱਪ ਪੂਰਾ ਕਰੋ।"
+  },
+  "profile": {
+    "signin_google_label": "Google",
+    "signin_google_linked": "ਜੁੜਿਆ ਹੋਇਆ",
+    "signin_google_not_linked": "ਲਿੰਕ ਨਹੀਂ — ਇੱਕ ਕਲਿੱਕ ਨਾਲ ਸਾਈਨ ਇਨ ਕਰਨ ਲਈ ਜੋੜੋ।",
+    "signin_link_google": "Google ਜੋੜੋ",
+    "signin_google_link_failed": "Google ਲਿੰਕ ਨਹੀਂ ਹੋ ਸਕਿਆ।",
+    "confirm_unlink_google": "ਇਸ ਖਾਤੇ ਤੋਂ Google ਡਿਸਕਨੈਕਟ ਕਰੀਏ?  ਤੁਸੀਂ ਇਸੇ ਪੈਨਲ ਤੋਂ ਦੁਬਾਰਾ ਲਿੰਕ ਕਰ ਸਕਦੇ ਹੋ।",
+    "signin_set_password": "ਪਾਸਵਰਡ ਸੈੱਟ ਕਰੋ",
+    "signin_password_form_intro": "ਇੱਕ ਪਾਸਵਰਡ ਚੁਣੋ ਤਾਂ ਜੋ Google ਜਾਂ Telegram ਉਪਲਬਧ ਨਾ ਹੋਣ 'ਤੇ ਵੀ ਤੁਸੀਂ ਆਪਣੀ ਈਮੇਲ ਨਾਲ ਸਾਈਨ ਇਨ ਕਰ ਸਕੋ, ਅਤੇ ਬਾਅਦ ਵਿੱਚ ਪਹੁੰਚ ਗੁਆਏ ਬਿਨਾਂ ਕਿਸੇ ਨੂੰ ਵੀ ਡਿਸਕਨੈਕਟ ਕਰ ਸਕੋ।",
+    "signin_new_password": "ਨਵਾਂ ਪਾਸਵਰਡ",
+    "signin_confirm_password": "ਪਾਸਵਰਡ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ",
+    "signin_save_password": "ਪਾਸਵਰਡ ਸੰਭਾਲੋ",
+    "signin_password_saved": "ਪਾਸਵਰਡ ਸੰਭਾਲ ਲਿਆ ਗਿਆ। ਹੁਣ ਤੁਸੀਂ ਆਪਣੀ ਈਮੇਲ ਅਤੇ ਪਾਸਵਰਡ ਨਾਲ ਵੀ ਸਾਈਨ ਇਨ ਕਰ ਸਕਦੇ ਹੋ।"
+  },
+  "setup": {
+    "tagline": "ਇੱਕ ਹੋਰ ਕਦਮ, ਅਤੇ ਤੁਹਾਡੀ ਕੰਪਨੀ ਤਿਆਰ ਹੈ।",
+    "title": "ਆਪਣੀ ਕੰਪਨੀ ਸੈੱਟ ਕਰੋ",
+    "intro": "Google ਨਾਲ ਸਾਈਨ ਇਨ ਕੀਤਾ",
+    "intro_2": "ਇਸ ਖਾਤੇ ਲਈ ਪਾਸਵਰਡ ਚੁਣੋ ਅਤੇ ਆਪਣੀ ਕੰਪਨੀ ਦਾ ਨਾਮ ਦਿਓ। ਅੱਜ ਹੋਰ ਕੁਝ ਦੀ ਲੋੜ ਨਹੀਂ।",
+    "company_name": "ਕੰਪਨੀ ਦਾ ਨਾਮ",
+    "display_name": "ਤੁਹਾਡਾ ਨਾਮ",
+    "optional": "ਵਿਕਲਪਿਕ",
+    "password": "ਪਾਸਵਰਡ",
+    "confirm": "ਪਾਸਵਰਡ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ",
+    "submit": "ਪੂਰਾ ਕਰੋ ਅਤੇ ਮੇਰਾ ਡੈਸ਼ਬੋਰਡ ਖੋਲ੍ਹੋ",
+    "password_why": "ਪਾਸਵਰਡ ਤੁਹਾਨੂੰ Google ਉਪਲਬਧ ਨਾ ਹੋਣ 'ਤੇ ਵੀ ਸਾਈਨ ਇਨ ਕਰਨ ਦਿੰਦਾ ਹੈ, ਅਤੇ ਬਾਅਦ ਵਿੱਚ ਪਹੁੰਚ ਗੁਆਏ ਬਿਨਾਂ Google ਨੂੰ ਡਿਸਕਨੈਕਟ ਕਰਨ ਦਿੰਦਾ ਹੈ।",
+    "pw_mismatch": "ਪਾਸਵਰਡ ਮੇਲ ਨਹੀਂ ਖਾਂਦੇ।",
+    "pw_rule": "ਪਾਸਵਰਡ ਘੱਟੋ-ਘੱਟ 8 ਅੱਖਰਾਂ ਦਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ ਅਤੇ ਇੱਕ ਅੱਖਰ ਤੇ ਇੱਕ ਅੰਕ ਸ਼ਾਮਲ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।",
+    "token_expired": "ਇਹ ਸੈੱਟਅੱਪ ਲਿੰਕ ਦੀ ਮਿਆਦ ਪੁੱਗ ਗਈ ਹੈ। ਜਿੱਥੇ ਛੱਡਿਆ ਸੀ ਉੱਥੋਂ ਜਾਰੀ ਰੱਖਣ ਲਈ Google ਨਾਲ ਦੁਬਾਰਾ ਸਾਈਨ ਇਨ ਕਰੋ।",
+    "failed": "ਸੈੱਟਅੱਪ ਪੂਰਾ ਨਹੀਂ ਹੋ ਸਕਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
+  },
+  "login_google": {
+    "label": "Google ਨਾਲ ਸਾਈਨ ਇਨ ਕਰੋ",
+    "need_invite": "ਪਹਿਲਾਂ ਆਪਣਾ ਸੱਦਾ ਕੋਡ ਦਰਜ ਕਰੋ, ਫਿਰ Google ਨਾਲ ਜਾਰੀ ਰੱਖੋ।",
+    "failed": "Google ਸਾਈਨ-ਇਨ ਅਸਫਲ",
+    "verifying": "ਤਸਦੀਕ ਹੋ ਰਹੀ ਹੈ…"
   },
   "errors": {
     "load_failed": "ਲੋਡ ਅਸਫਲ",

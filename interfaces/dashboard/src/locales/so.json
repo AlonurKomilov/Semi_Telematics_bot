@@ -304,7 +304,8 @@
     "login_via_bot": "Gal Bot Telegram",
     "waiting_approval": "Sugaya ansixinta...",
     "bot_link_opened": "Linki loo furay <b>@{{bot}}</b>. Taabo <b>Start</b> bot-ka si aad u ansixiso galitaankaaga.",
-    "didnt_open": "Ma furmin? Riix halkan si aad u furto bot-ka"
+    "didnt_open": "Ma furmin? Riix halkan si aad u furto bot-ka",
+    "sign_in_with_telegram": "Ku gal Telegram"
   },
   "auth": {
     "login": "Gal",
@@ -354,7 +355,45 @@
     "verification_resend_button": "Resend verification email",
     "verification_resending": "Sending…",
     "verification_resent": "Verification email sent. Check your inbox.",
-    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in."
+    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in.",
+    "error_setup_pending": "Shirkaddan weli lama dejin. Ku gal Google oo dhammee dejinta si aad u sii wadato."
+  },
+  "profile": {
+    "signin_google_label": "Google",
+    "signin_google_linked": "Waa ku xiran",
+    "signin_google_not_linked": "Kuma xirna — ku xir si aad hal guji ku gasho.",
+    "signin_link_google": "Ku xir Google",
+    "signin_google_link_failed": "Google lama xiri karin.",
+    "confirm_unlink_google": "Ma ka saartaa Google akoonkan?  Waad ku xiri kartaa mar kale isla guddigan.",
+    "signin_set_password": "Deji eray sir ah",
+    "signin_password_form_intro": "Dooro eray sir ah si aad emailkaaga ugu gasho xitaa marka Google ama Telegram aan la heli karin, oo aad hadhow midkood ka saarto adigoon lumin galitaanka.",
+    "signin_new_password": "Eray sir ah oo cusub",
+    "signin_confirm_password": "Xaqiiji erayga sirta ah",
+    "signin_save_password": "Kaydi erayga sirta ah",
+    "signin_password_saved": "Erayga sirta ah waa la kaydiyay. Hadda waxaad sidoo kale ku geli kartaa emailkaaga iyo erayga sirta ah."
+  },
+  "setup": {
+    "tagline": "Hal tallaabo oo kale, shirkaddaadu waa diyaar.",
+    "title": "Deji shirkaddaada",
+    "intro": "Waxaad ku gashay Google sida",
+    "intro_2": "Dooro eray sir ah akoonkan oo magac u bixi shirkaddaada. Maanta wax kale looma baahna.",
+    "company_name": "Magaca shirkadda",
+    "display_name": "Magacaaga",
+    "optional": "ikhtiyaari",
+    "password": "Erayga sirta ah",
+    "confirm": "Xaqiiji erayga sirta ah",
+    "submit": "Dhammee oo fur dashboard-kayga",
+    "password_why": "Erayga sirta ahi wuxuu kuu oggolaanayaa inaad gasho xitaa marka Google aan la heli karin, iyo inaad Google ka saarto hadhow adigoon lumin galitaanka.",
+    "pw_mismatch": "Erayada sirta ahi isma waafaqaan.",
+    "pw_rule": "Erayga sirta ahi waa inuu ugu yaraan 8 xaraf yahay oo ay ku jiraan hal xaraf iyo hal lambar.",
+    "token_expired": "Xiriirkan dejinta wuu dhacay. Mar kale ku gal Google si aad uga sii wado meeshii aad joogtay.",
+    "failed": "Dejinta lama dhammayn karin. Fadlan mar kale isku day."
+  },
+  "login_google": {
+    "label": "Ku gal Google",
+    "need_invite": "Marka hore geli koodhka casuumaadda, kadibna sii wad Google.",
+    "failed": "Galitaanka Google waa fashilmay",
+    "verifying": "Waa la xaqiijinayaa…"
   },
   "errors": {
     "load_failed": "Soo dejinta ayaa fashilantay",

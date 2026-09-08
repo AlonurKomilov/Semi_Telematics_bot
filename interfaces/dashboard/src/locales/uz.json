@@ -321,7 +321,48 @@
     "verification_resend_button": "Resend verification email",
     "verification_resending": "Sending…",
     "verification_resent": "Verification email sent. Check your inbox.",
-    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in."
+    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in.",
+    "error_setup_pending": "Bu kompaniya hali sozlanmagan. Davom etish uchun Google orqali kiring va sozlashni yakunlang."
+  },
+  "profile": {
+    "signin_google_label": "Google",
+    "signin_google_linked": "Ulangan",
+    "signin_google_not_linked": "Ulanmagan — bir bosishda kirish uchun ulang.",
+    "signin_link_google": "Google'ni ulash",
+    "signin_google_link_failed": "Google'ni ulab bo'lmadi.",
+    "confirm_unlink_google": "Google'ni bu hisobdan uzasizmi?  Uni shu paneldan qayta ulash mumkin.",
+    "signin_set_password": "Parol o'rnatish",
+    "signin_password_form_intro": "Google yoki Telegram ishlamay qolganda ham email orqali kira olishingiz uchun parol tanlang, keyinroq ulardan istalganini kirishni yo'qotmasdan uzishingiz mumkin.",
+    "signin_new_password": "Yangi parol",
+    "signin_confirm_password": "Parolni tasdiqlang",
+    "signin_save_password": "Parolni saqlash",
+    "signin_password_saved": "Parol saqlandi. Endi email va parol bilan ham kira olasiz."
+  },
+  "setup": {
+    "tagline": "Yana bitta qadam, va kompaniyangiz tayyor.",
+    "title": "Kompaniyangizni sozlang",
+    "intro": "Google orqali kirildi:",
+    "intro_2": "Bu hisob uchun parol tanlang va kompaniyangizga nom bering. Bugun boshqa hech narsa kerak emas.",
+    "company_name": "Kompaniya nomi",
+    "display_name": "Ismingiz",
+    "optional": "ixtiyoriy",
+    "password": "Parol",
+    "confirm": "Parolni tasdiqlang",
+    "submit": "Yakunlash va panelni ochish",
+    "password_why": "Parol Google ishlamay qolganda ham kirish imkonini beradi, va keyinroq Google'ni kirishni yo'qotmasdan uzish mumkin bo'ladi.",
+    "pw_mismatch": "Parollar mos kelmadi.",
+    "pw_rule": "Parol kamida 8 belgidan iborat bo'lishi va bitta harf hamda bitta raqamni o'z ichiga olishi kerak.",
+    "token_expired": "Bu sozlash havolasining muddati tugagan. Davom etish uchun Google orqali qayta kiring.",
+    "failed": "Sozlashni yakunlab bo'lmadi. Qayta urinib ko'ring."
+  },
+  "login_google": {
+    "label": "Google orqali kirish",
+    "need_invite": "Avval taklif kodini kiriting, keyin Google bilan davom eting.",
+    "failed": "Google orqali kirish amalga oshmadi",
+    "verifying": "Tekshirilmoqda…"
+  },
+  "login_tg": {
+    "sign_in_with_telegram": "Telegram orqali kirish"
   },
   "errors": {
     "load_failed": "Yuklab boʻlmadi",
