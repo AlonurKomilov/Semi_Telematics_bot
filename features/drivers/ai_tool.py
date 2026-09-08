@@ -9,7 +9,7 @@ remains blocked for scoped users by the gate.
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from capabilities.ai.tools.scope import filter_to_scope
+from capabilities.ai.tools.scope import filter_to_scope, scope_vehicle_set
 from features.vehicles.warehouse.service import get_driver_efficiency as _svc_drv_eff
 
 
@@ -147,6 +147,21 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
     }
 
 
+def _scope_trucks(tool_args: dict) -> list[str] | None:
+    """The caller's allowed trucks for the efficiency service, or ``None``.
+
+    ``None`` = unrestricted (the service reads the warehouse, account-wide).
+    A list — even empty — makes the service filter to drivers whose
+    ``_vehicle_summaries`` name one of these trucks, reading live because
+    the warehouse rollup carries no vehicle join; ``[]`` returns nobody.
+    Same contract as every other scope-aware tool: the orchestrator
+    injects ``_scope_vehicles`` from Team Management's Vehicle Access,
+    and the model can never supply it.
+    """
+    allowed = scope_vehicle_set(tool_args)
+    return None if allowed is None else sorted(allowed)
+
+
 @register_tool({
     "name": "get_driver_efficiency",
     "description": (
@@ -169,7 +184,7 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
     days = tool_args.get("days", 7)
     if account_id is None:
         return {"error": "This tool requires account context."}
-    drivers = await _svc_drv_eff(account_id, days=days)
+    drivers = await _svc_drv_eff(account_id, days=days, vehicle_nums=_scope_trucks(tool_args))
     return {
         "period_days": days,
         "drivers": [
@@ -216,7 +231,11 @@ async def get_driver_scorecard(tool_args: dict, samsara_client,
     driver_filter = tool_args.get("driver_name", "").strip().lower()
     if account_id is None:
         return {"error": "This tool requires account context."}
-    drivers = await _svc_drv_eff(account_id, days=days)
+    # Scope FIRST, name second.  "Omit for all drivers" was literally the
+    # whole account: a driver scoped to one truck who left the name out
+    # got every colleague's scorecard.  With the scope applied, "all"
+    # means all drivers on the trucks this caller can see.
+    drivers = await _svc_drv_eff(account_id, days=days, vehicle_nums=_scope_trucks(tool_args))
     if driver_filter:
         drivers = [
             d for d in drivers

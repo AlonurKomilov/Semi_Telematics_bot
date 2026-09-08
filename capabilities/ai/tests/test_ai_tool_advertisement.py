@@ -17,7 +17,7 @@ import pytest
 
 from adapters.storage import Database
 import capabilities.permissions.roles as perms_mod
-from capabilities.permissions.roles import ACCOUNT_WIDE_TOOLS
+from capabilities.permissions.roles import ACCOUNT_WIDE_TOOLS, SCOPE_AWARE_TOOLS
 from capabilities.ai.tools.registry import (
     filter_tools_for_role,
     get_anthropic_tools,
@@ -57,7 +57,12 @@ class TestScopeAwareAdvertisement:
         full = _names(await filter_tools_for_role("fleet", scoped=False))
         scoped = _names(await filter_tools_for_role("fleet", scoped=True))
         assert full & ACCOUNT_WIDE_TOOLS          # sanity: some were present
-        assert scoped.isdisjoint(ACCOUNT_WIDE_TOOLS)  # all dropped for scoped user
+        # Only the tools the gate would BLOCK are dropped: account-wide and
+        # not scope-aware.  Scope-aware rollups filter themselves and the
+        # gate allows them, so they must be OFFERED — hiding them left the
+        # whole scope-aware mechanism dead at the menu.
+        assert scoped.isdisjoint(ACCOUNT_WIDE_TOOLS - SCOPE_AWARE_TOOLS)
+        assert scoped & SCOPE_AWARE_TOOLS         # e.g. get_parked_vehicles
         assert "get_vehicle_detail" in scoped     # vehicle-specific tools remain
 
 

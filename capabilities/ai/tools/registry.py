@@ -179,10 +179,15 @@ async def filter_tools_for_role(
     Falls back to role defaults when no account_id is available.
 
     **Scope-aware:** when ``scoped`` (a vehicle/company-restricted user), the
-    account-wide aggregate tools are dropped too, since the gate blocks them
-    for that user anyway — no point advertising them.
+    account-wide tools the gate would BLOCK are dropped — no point advertising
+    them.  Tools in ``SCOPE_AWARE_TOOLS`` stay: they filter their own results
+    to the caller's trucks and the gate allows them, so hiding them here would
+    contradict the gate (which it did, for every scope-aware tool, until this
+    read the same rule).
     """
-    from capabilities.permissions.roles import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS
+    from capabilities.permissions.roles import (
+        TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, SCOPE_AWARE_TOOLS,
+    )
 
     all_schemas = get_all_tool_schemas()
     if not role_str:
@@ -198,8 +203,14 @@ async def filter_tools_for_role(
     filtered = []
     for tool_def in all_schemas:
         name = tool_def["name"]
-        if scoped and name in ACCOUNT_WIDE_TOOLS:
-            continue  # the gate blocks account-wide tools for scoped users
+        # Drop only what the gate would BLOCK.  A scope-aware tool filters
+        # itself to the caller's trucks and the gate allows it — but this
+        # line hid every account-wide tool regardless, so the whole
+        # scope-aware mechanism was dead at the menu: a company-scoped
+        # dispatcher was never offered a rollup the gate would have let
+        # through.  Advertisement and gate now read the same rule.
+        if scoped and name in ACCOUNT_WIDE_TOOLS and name not in SCOPE_AWARE_TOOLS:
+            continue
         required = TOOL_PERMISSIONS.get(name)
         if required is None:
             filtered.append(tool_def)

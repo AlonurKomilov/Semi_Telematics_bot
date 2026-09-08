@@ -1775,6 +1775,10 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     # single vehicle to gate on, so scoped callers are blocked outright.
     # Deliberately NOT in SCOPE_AWARE_TOOLS (the guard test enforces this).
     "import_inventory_items",
+    # Driver KPI rollups — account-wide by nature, and scope-aware (see
+    # SCOPE_AWARE_TOOLS): the service narrows them to the caller's trucks.
+    "get_driver_efficiency",
+    "get_driver_scorecard",
 })
 
 # Account-wide tools that have been taught to FILTER their results to a
@@ -1805,6 +1809,17 @@ SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
     # Write action: validates its alert ids against the injected scope at
     # propose time; the executor + storage re-enforce it at approve time.
     "acknowledge_alerts",
+    # Driver KPI rollups.  These sat in NO scope set, so the gate passed
+    # them for every restricted caller and the handlers read the whole
+    # account: a company-scoped dispatcher got every company's drivers,
+    # and a driver — who holds can_view_scorecards by default — got every
+    # other driver's scorecard by omitting the name.  The REST scorecards
+    # endpoints filter by company; the AI now filters by the same Team
+    # Management scope every other tool uses.  The service's own
+    # ``vehicle_nums`` filter does the narrowing (a driver's row is in
+    # scope when a truck they drove is), and it fails closed on ``[]``.
+    "get_driver_efficiency",
+    "get_driver_scorecard",
 })
 
 # Tools that accept a vehicle_name param and must enforce driver vehicle isolation.
