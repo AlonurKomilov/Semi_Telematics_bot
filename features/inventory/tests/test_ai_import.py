@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 import capabilities.ai.tools  # noqa: F401 — load the hub FIRST (registers everything fully)
 from capabilities.permissions.roles import Role
-from features.vehicles.inventory.ai_actions import (
+from features.inventory.ai_actions import (
     _build_rows,
     _execute_import_inventory,
     import_inventory_items,

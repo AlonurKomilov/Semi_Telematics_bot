@@ -206,6 +206,24 @@ if py:
 deleted_now = set(
     sh("git", "diff", "--cached", "--diff-filter=D", "--name-only").splitlines()
 )
+# A RENAME removes its source path exactly as a delete does, and
+# `--diff-filter=D` does not list it.  Moving a package together with
+# its own tests — the ordinary way a feature moves house — therefore
+# read as "you deleted a module that files still import", naming the
+# very files that moved WITH it.  Same shape as the delete-a-module-
+# with-its-own-test case recorded above, one step further along.
+#
+# Adding the sources here does two things, both wanted: a file this
+# commit moves away is no longer accused of importing what it no longer
+# is, and the module it moved OUT of is now checked for importers left
+# behind.  Nothing is loosened — rule 5a still reads every staged file
+# at its new path and refuses an import that will not resolve.
+for _line in sh("git", "diff", "--cached", "--diff-filter=R",
+                "--name-status").splitlines():
+    _parts = _line.split("\t")
+    if len(_parts) >= 3:
+        deleted_now.add(_parts[1])          # the path it moved FROM
+
 deleted_py = [f for f in deleted_now if f.endswith(".py")]
 for f in deleted_py:
     parts = f[:-3].split("/")

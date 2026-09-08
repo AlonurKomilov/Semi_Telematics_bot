@@ -35,6 +35,13 @@ It checks both directions, because the obvious half misses the incident:
   importers are usually *not* in the commit, which is exactly why
   checking only what you staged let the real one through
 
+A RENAME counts as a deletion of its source path. Moving a package and
+its own tests together — the ordinary way a feature moves house — used
+to read as "you deleted a module these files still import", naming the
+very files that moved with it. The exemption loosens nothing: 5a still
+reads every staged file at its NEW path and refuses an import that will
+not resolve.
+
 Module paths only, never the imported names: `from a.b import c` is
 satisfied by `a/b` existing, because `c` may be a name rather than a
 submodule. Imports guarded by `try/except ImportError` are exempt —

@@ -1,4 +1,4 @@
-"""Onboard Inventory API — a component of the Vehicle feature.
+"""Onboard Inventory API.
 
 router.py is interface-layer code co-located with its feature — only
 router.py may import interfaces.api.deps.
@@ -41,7 +41,14 @@ from interfaces.api.deps import (
     resolve_user_id,
 )
 
-router = APIRouter(prefix="/vehicles", tags=["vehicle-inventory"])
+# The prefix is still ``/vehicles``.  The package moved to
+# features/inventory/ (its own feature); the URL is a WIRE identifier —
+# the dashboard calls it, the audit trail records it, and a bookmark
+# holds it — so it moves the way this repo moves wire names: a new
+# primary with the old one kept as a deprecated same-object alias, and a
+# test that proves the two answer identically.  That is its own change,
+# not a side effect of moving files.
+router = APIRouter(prefix="/vehicles", tags=["inventory"])
 
 _VIEW = require_permission("can_view_vehicles")
 _MANAGE = require_permission("can_manage_vehicles")

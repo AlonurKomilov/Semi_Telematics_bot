@@ -50,7 +50,7 @@ from capabilities.object_storage import router as object_storage_routes
 # Feature-owned routers live with their feature (vertical slice):
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
-from features.vehicles.inventory import router as vehicle_inventory_routes
+from features.inventory import router as vehicle_inventory_routes
 from features.cameras import router as cameras_routes
 from features.location import router as maps
 from features.location import config as location_config

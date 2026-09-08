@@ -54,7 +54,7 @@ from features.work_orders import ai_tool as work_orders                      # n
 from features.work_orders import ai_actions as work_order_actions            # noqa: F401
 from features.applications import ai_tool as applications              # noqa: F401
 from features.inspections import ai_tool as pti                                      # noqa: F401
-from features.vehicles.inventory import ai_actions as inventory_import       # noqa: F401
+from features.inventory import ai_actions as inventory_import       # noqa: F401
 from features.vehicles.documents import ai_tool as vehicle_documents          # noqa: F401
 from features.vehicles.documents import ai_actions as vehicle_doc_actions     # noqa: F401
 

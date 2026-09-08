@@ -153,7 +153,7 @@ class TestTheSharedVerdict:
         import inspect
         from features.vehicles import router as reg
         from features.vehicles.documents import router as doc
-        from features.vehicles.inventory import router as inv
+        from features.inventory import router as inv
         assert "company_allows" in inspect.getsource(reg._wall_registry_vehicle)
         assert "company_allows" in inspect.getsource(inv._resolve_vehicle)
         assert "company_allows" in inspect.getsource(doc._vehicle_or_404)

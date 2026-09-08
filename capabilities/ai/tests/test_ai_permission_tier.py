@@ -173,7 +173,7 @@ class TestManagerTierAdvertisement:
     """
 
     async def test_manager_sees_the_tool_the_base_tier_lacks(self, seeded_db, monkeypatch):
-        import features.vehicles.inventory.ai_actions  # noqa: F401 — registers the tool
+        import features.inventory.ai_actions  # noqa: F401 — registers the tool
         import capabilities.permissions.roles as R
         from capabilities.ai.tools.registry import (
             filter_tools_for_role, get_cached_vertex_tools, invalidate_tool_cache,

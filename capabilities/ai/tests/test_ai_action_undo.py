@@ -23,7 +23,7 @@ from capabilities.ai.actions import (
     undoable,
 )
 from capabilities.permissions.roles import Role
-from features.vehicles.inventory.ai_actions import _build_rows
+from features.inventory.ai_actions import _build_rows
 
 
 @pytest.fixture(autouse=True)
