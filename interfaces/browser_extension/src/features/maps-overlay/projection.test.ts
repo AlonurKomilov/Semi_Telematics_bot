@@ -5,10 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import {
-  cameraFromUrl, isStreetView, isVisible, latToWorldY, lngToWorldX,
-  project, sameCamera, showsLabels, worldSize, LABEL_MIN_ZOOM, MAX_LAT,
-} from './projection';
+import { LABEL_MIN_ZOOM, MAX_LAT, cameraDrawable, cameraFromUrl, isStreetView, isVisible, latToWorldY, lngToWorldX, project, sameCamera, showsLabels, worldSize } from './projection';
 
 describe('Web Mercator, the arithmetic every slippy map shares', () => {
   it('puts null island in the middle of the world at every zoom', () => {
@@ -135,5 +132,51 @@ describe('a name beside every truck stops being information', () => {
   it('brings them back once there is room', () => {
     expect(showsLabels(LABEL_MIN_ZOOM)).toBe(true);
     expect(showsLabels(14)).toBe(true);
+  });
+});
+
+describe('cameraFromUrl — the satellite form', () => {
+  // The owner's own screenshot: satellite view of the eastern US, a
+  // 900px-tall map, 1966123 metres of ground in view at latitude 37.
+  const url = 'https://www.google.com/maps/@37.3283564,-86.6378989,1966123m/data=!3m1!1e3';
+
+  it('turns metres of visible ground into a zoom, given the viewport height', () => {
+    const cam = cameraFromUrl(url, 900);
+    expect(cam).not.toBeNull();
+    expect(cam!.lat).toBeCloseTo(37.3283564, 6);
+    expect(cam!.lng).toBeCloseTo(-86.6378989, 6);
+    // log2(156543.03 · cos(37.33°) · 900 / 1966123) ≈ 5.83 — the whole
+    // eastern seaboard, which is what the screenshot shows.
+    expect(cam!.zoom).toBeGreaterThan(5.5);
+    expect(cam!.zoom).toBeLessThan(6.2);
+  });
+
+  it('is not a camera without a viewport height to measure against', () => {
+    expect(cameraFromUrl(url)).toBeNull();
+    expect(cameraFromUrl(url, 0)).toBeNull();
+  });
+
+  it('rounds the derived zoom so an altitude jitter is not a redraw', () => {
+    const a = cameraFromUrl(url, 900)!, b = cameraFromUrl(url.replace('1966123m', '1966125m'), 900)!;
+    expect(a.zoom).toBe(b.zoom);
+  });
+
+  it('still reads the map form exactly as before', () => {
+    expect(cameraFromUrl('https://www.google.com/maps/@35.5,-93.7,12z', 900)).toEqual({ lat: 35.5, lng: -93.7, zoom: 12 });
+  });
+
+  it('refuses a tilted 3D pose and Street View', () => {
+    expect(cameraFromUrl('https://www.google.com/maps/@37.3,-86.6,1000a,35y,90h,60t/data=!3m1!1e3', 900)).toBeNull();
+    expect(cameraFromUrl('https://www.google.com/maps/@37.3,-86.6,3a,75y,90h,90t/data=!3m6!1e1', 900)).toBeNull();
+  });
+});
+
+describe('cameraDrawable', () => {
+  it('knows a map or satellite camera from a view it cannot draw', () => {
+    expect(cameraDrawable('https://www.google.com/maps/@35.5,-93.7,12z')).toBe(true);
+    expect(cameraDrawable('https://www.google.com/maps/@37.3,-86.6,1966123m/data=!3m1!1e3')).toBe(true);
+    expect(cameraDrawable('https://www.google.com/maps/@37.3,-86.6,1000a,35y,90h,60t/data=!3m1!1e3')).toBe(false);
+    expect(cameraDrawable('https://www.google.com/maps/@37.3,-86.6,3a,75y,90h,90t/data=!3m6!1e1')).toBe(false);
+    expect(cameraDrawable('https://www.google.com/maps')).toBe(false);
   });
 });

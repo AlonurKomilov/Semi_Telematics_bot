@@ -50,7 +50,7 @@ import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
-import { cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
+import { cameraDrawable, cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
 import { colourFor, findMapCanvas, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
@@ -133,6 +133,10 @@ let canvasWatch: ResizeObserver | null = null;
 /** Set when something that can move or resize the map's box happened.
  *  Until one does, the box measured last time is still the box. */
 let geometryDirty = true;
+/** The URL names a view this overlay cannot draw (3D, Street View).
+ *  Shown on the switch in words, so a wait that will never end is not
+ *  dressed as loading. */
+let viewUndrawable = false;
 let measuredUrl = '';
 let measuredAt = -Infinity;
 /** Waiting for Google to write the camera after an interaction. */
@@ -271,6 +275,8 @@ function updateChip(inView: number | null): void {
   if (enabled) {
     if (dataState === 'error') {
       label.textContent = 'can\u2019t reach 4truck';
+    } else if (inView === null && viewUndrawable) {
+      label.textContent = '3D view \u2014 switch to Map';
     } else if (inView === null || dataState === 'loading') {
       // A spinner is a promise that something is coming; a zero is a
       // statement that nothing is there.  Only one of those is true
@@ -509,9 +515,14 @@ function refreshView(): boolean {
   measuredAt = now;
   geometryDirty = false;
 
-  const nextCamera = cameraFromUrl(url);
+  // The canvas first: a satellite URL carries metres, not a zoom, and
+  // becomes a camera only against the canvas's height.
   const found = findMapCanvas(Array.from(document.querySelectorAll('canvas')));
   const nextSurface = found?.surface ?? null;
+  const nextCamera = cameraFromUrl(url, nextSurface?.height);
+  // Coordinates the parser cannot turn into a camera — a tilted 3D
+  // view, a Street View pose — are not "not yet"; they are "not here".
+  viewUndrawable = !nextCamera && /@-?\d/.test(url) && !cameraDrawable(url);
   const canvasChanged = (found?.el ?? null) !== canvasEl;
   canvasEl = found?.el ?? null;
   if (canvasChanged) watchCanvas();
