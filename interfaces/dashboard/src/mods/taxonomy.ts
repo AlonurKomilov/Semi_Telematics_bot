@@ -100,8 +100,11 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
     title: 'Interface',
     panel: true,
     items: [
+      // The palette: mode, the accent, and a brand colour. The page's
+      // own colour is NOT here — it is a half of the ground and lives
+      // with the wallpaper, beside the places it applies to.
       { id: 'theme',    title: 'Color',    heading: 'Color',
-        axes: ['mode', 'accent', 'brand', 'canvas', 'surfaces'],
+        axes: ['mode', 'accent', 'brand'],
         keep: ['mode'], modFields: ['accent'] },
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modFields: ['radius'] },
       { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modFields: ['material'] },
@@ -116,8 +119,12 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // derives from it, while a wallpaper is one pattern on one
       // surface. Folding it into Color would put a decision about the
       // chrome inside the question that repaints the whole app.
+      // The GROUND, in two places: the frame (the pattern, and whether
+      // it moves) and the page (its colour, for the whole app or for one
+      // named place). One item, one reset.
       { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
-        axes: ['wallpaper', 'wallpaperLive'], modFields: ['wallpaper', 'wallpaperLive'] },
+        axes: ['wallpaper', 'wallpaperLive', 'canvas', 'surfaces'],
+        modFields: ['wallpaper', 'wallpaperLive'] },
       { id: 'cursor', title: 'Cursor', heading: 'Cursor',
         axes: ['cursor'], modFields: ['cursor'] },
     ],
