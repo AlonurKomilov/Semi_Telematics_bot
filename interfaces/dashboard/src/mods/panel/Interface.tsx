@@ -16,6 +16,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Switch } from '../../components/ui/switch';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
 import { MOD_ICONS, type ModIcons } from '../catalogue';
 import { MATERIAL_PACKS, materialPackById } from '../packs/material';
@@ -434,6 +435,9 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   const current = theme.wallpaper ?? 'none';
+  const worn = wallpaperById(current);
+  const canLive = worn?.kind === 'live';
+  const movers = WALLPAPERS.filter((w) => w.kind === 'live').map((w) => w.label);
   return (
     <div>
       <p className={`${label} mb-1.5`}>
@@ -442,16 +446,33 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <div className="flex flex-wrap gap-1">
         {WALLPAPERS.map((w) => (
           <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
+            live={w.kind === 'live' ? (current === w.id && theme.wallpaperLive ? 'on' : 'off') : undefined}
             onClick={(v) => setTheme({ wallpaper: v })} />
         ))}
       </div>
       <p className="text-2xs text-muted-foreground mt-1.5">
-        {wallpaperById(current)?.description}
-        {/* Said only for a live one, because it is the one thing a
-            person cannot tell from a still chip: it keeps moving. */}
-        {wallpaperById(current)?.kind === 'live' && (
-          <> {t('mods.wallpaper_live_note', 'Moves slowly, and holds still when your system asks for less motion.')}</>
-        )}
+        {worn?.description}
+      </p>
+      {/* One switch for the whole row, not a twin chip per pattern:
+          "live" is a state of a pattern that can move, and the light on
+          its chip is where a person sees which ones can. Disabled with
+          the reason rather than hidden, so the switch is learned once. */}
+      <div className="flex items-center justify-between gap-2 mt-2">
+        <span className={canLive ? 'text-xs text-foreground' : 'text-xs text-muted-foreground'}>
+          {t('mods.wallpaper_live', 'Live')}
+        </span>
+        <Switch
+          size="sm"
+          checked={canLive && theme.wallpaperLive}
+          disabled={!canLive}
+          onCheckedChange={(next) => setTheme({ wallpaperLive: next })}
+          aria-label={t('mods.wallpaper_live', 'Live')}
+        />
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1">
+        {canLive
+          ? t('mods.wallpaper_live_hint', 'Moves slowly, and holds still when your system asks for less motion.')
+          : t('mods.wallpaper_live_only', 'Only {{names}} can move.', { names: movers.join(', ') })}
       </p>
     </div>
   );

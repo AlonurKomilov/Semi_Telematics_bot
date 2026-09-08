@@ -13,6 +13,7 @@ export function Chip<T extends string>({
   current,
   label,
   dot,
+  live,
   onClick,
 }: {
   value: T;
@@ -24,6 +25,10 @@ export function Chip<T extends string>({
    *  choose; a raw hex only where the person chose it, which is the
    *  one thing no token can name. */
   dot?: string;
+  /** A small light after the label, on every option that CAN run —
+   *  lit while it is. Structural rather than a word in the label, so
+   *  a person learns "this one can move" once and reads it everywhere. */
+  live?: 'on' | 'off';
   onClick: (v: T) => void;
 }) {
   const active = value === current;
@@ -47,6 +52,16 @@ export function Chip<T extends string>({
         />
       )}
       {label}
+      {live && (
+        <span
+          role="img"
+          aria-label={live === 'on' ? 'Live' : 'Can be live'}
+          className={cn(
+            'size-1.5 rounded-full shrink-0',
+            live === 'on' ? 'bg-ok animate-pulse' : 'bg-muted-foreground/40',
+          )}
+        />
+      )}
     </button>
   );
 }

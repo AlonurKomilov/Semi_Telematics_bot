@@ -577,7 +577,9 @@ describe('theme-boot source', () => {
     // could make it arrive sooner. Listing them here rather than letting the loop above
     // simply not reach them is what makes the NEXT axis a decision: add
     // it to PREPAINT_AXES, or add it here and say why.
-    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance'];
+    // `wallpaperLive` starts an animation whose first frame is the
+    // still state, so a late stamp changes nothing a person can see.
+    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'wallpaperLive'];
     for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),

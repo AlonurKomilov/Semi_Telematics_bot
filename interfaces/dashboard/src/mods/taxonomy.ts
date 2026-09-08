@@ -117,7 +117,7 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // surface. Folding it into Color would put a decision about the
       // chrome inside the question that repaints the whole app.
       { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
-        axes: ['wallpaper'], modFields: ['wallpaper'] },
+        axes: ['wallpaper', 'wallpaperLive'], modFields: ['wallpaper', 'wallpaperLive'] },
       { id: 'cursor', title: 'Cursor', heading: 'Cursor',
         axes: ['cursor'], modFields: ['cursor'] },
     ],

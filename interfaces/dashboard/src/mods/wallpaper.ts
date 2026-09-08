@@ -42,11 +42,15 @@ import type { PackMeta } from './packs/meta';
  * both, which is the same guarantee a `color-mix` stop gives. A network
  * URL is still refused: that is a picture nobody here has seen.
  *
- * SOME OF THEM MOVE, and it is the same axis. Still and live paint the
- * same place — the ground under the chrome — so two axes would be two
- * claims on one set of pixels; whether it moves is a property of the
- * pack, the way it is in GX's wallpaper list, not a second decision a
- * person makes. "Live" stays a word for a background that keeps
+ * SOME OF THEM CAN MOVE, and it is the same axis. Still and live paint
+ * the same place — the ground under the chrome — so two axes would be
+ * two claims on one set of pixels. `kind: 'live'` says a pattern CAN
+ * move; whether it IS moving is the person's Live switch
+ * (`wallpaperLive`), stamped as `data-wallpaper-live`. One pack, two
+ * states — not two packs — so the chip row does not grow a twin for
+ * every pattern that learns to drift, and a look carries one id and one
+ * flag. The chip shows a small light on every pattern that can move,
+ * lit while it is. "Live" stays a word for a background that keeps
  * running: a still texture is never called it.
  */
 export type WallpaperKind = 'still' | 'live';
@@ -54,6 +58,11 @@ export type WallpaperKind = 'still' | 'live';
 export interface Wallpaper extends PackMeta {
   readonly kind: WallpaperKind;
 }
+
+/** The attribute a live pattern's animation is gated on. A live pack's
+ *  keyframes may play under this and nowhere else — `wallpaper.test.ts`
+ *  holds it — so a pattern that can move never moves unasked. */
+export const WALLPAPER_LIVE_ATTR = 'data-wallpaper-live';
 
 /**
  * What a live pattern's keyframes may animate — and nothing else.

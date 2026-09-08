@@ -71,6 +71,7 @@ const rendered = walk(SRC).map((f) => code(readFileSync(f, 'utf8'))).join('\n');
 const HTML_AXES = new Set([
   ...PREPAINT_AXES.map((a) => `data-${a}`),
   'data-icons', 'data-iconpack', 'data-entrance',
+  'data-wallpaper-live', // present while a pattern that can move is moving; not pre-paint
   'data-theme',       // the deprecated mode+accent alias
   'data-mod-accent',  // the stand-down flag an injected accent stamps
   'data-ambient',     // the mode, written by useAmbient

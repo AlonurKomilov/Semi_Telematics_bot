@@ -14,10 +14,9 @@ export const WALLPAPERS: readonly Wallpaper[] = [
   { id: 'grid',   label: 'Grid',   kind: 'still', description: 'Fine ruled lines, like engineering paper' },
   { id: 'grain',  label: 'Grain',  kind: 'still', description: 'A fine tooth, the way paper stock has one' },
   { id: 'paper',  label: 'Paper',  kind: 'still', description: 'Drawn fibres, as if the chrome were pressed sheet' },
-  { id: 'plasma', label: 'Plasma', kind: 'still', description: 'Soft accent clouds under a fine tooth' },
-  // Live: the same clouds, drifting. Same axis, same chips, same gate —
-  // the pack moves a layer the gate has already measured.
-  { id: 'plasma-live', label: 'Plasma live', kind: 'live', description: 'The accent clouds, drifting slowly under the tooth' },
+  // Can move: with Live on, the clouds drift. Same pack, same chip,
+  // same gate — the live state moves a layer the gate has measured.
+  { id: 'plasma', label: 'Plasma', kind: 'live', description: 'Soft accent clouds under a fine tooth' },
 ];
 
 export const WALLPAPER_IDS = WALLPAPERS.map((w) => w.id);

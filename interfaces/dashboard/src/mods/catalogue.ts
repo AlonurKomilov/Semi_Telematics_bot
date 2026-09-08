@@ -207,6 +207,10 @@ export interface Mod extends PackMeta {
    *  most visibly a LOOK through: it changes the ground the whole app
    *  sits on without touching a single surface the work happens on. */
   readonly wallpaper?: string;
+  /** Whether that pattern moves, if it can. A look that wants a
+   *  drifting ground says so here; a person's own switch is the same
+   *  bit under their own name. */
+  readonly wallpaperLive?: boolean;
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
@@ -289,7 +293,7 @@ export const MOD_FIELD_APPLIER: Record<
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
-  wallpaper: 'theme', cursor: 'theme', shader: 'theme',
+  wallpaper: 'theme', wallpaperLive: 'theme', cursor: 'theme', shader: 'theme',
   size: 'size', sound: 'sound',
 };
 

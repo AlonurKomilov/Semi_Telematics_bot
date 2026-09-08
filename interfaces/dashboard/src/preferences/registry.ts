@@ -210,6 +210,10 @@ export interface ModSetting {
   font: string;
   /** Whether the routed page animates in. Mod-only, and off by default. */
   entrance: boolean;
+  /** Whether a wallpaper that CAN move is moving. Off by default: a
+   *  pattern that can drift never drifts unasked. Meaningless — and
+   *  ignored by the stylesheet — under a pattern whose kind is still. */
+  wallpaperLive: boolean;
   /**
    * The light the interface sits in — a `SHADER_PACKS` id.
    *
@@ -363,7 +367,7 @@ export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
-  wallpaper: 'none', cursor: 'system', shader: 'flat',
+  wallpaper: 'none', wallpaperLive: false, cursor: 'system', shader: 'flat',
   color: 'dark-blue',
 };
 
@@ -589,6 +593,7 @@ export const DEFS = {
       // chrome, not to a stamp nothing in the stylesheet answers.
       const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
         ? o.wallpaper as string : MOD_DEFAULT.wallpaper;
+      const wallpaperLive = typeof o.wallpaperLive === 'boolean' ? o.wallpaperLive : MOD_DEFAULT.wallpaperLive;
       // A pack that was removed falls back to the OS pointer, which is
       // the one thing always available — an unanswered stamp would
       // leave the app with whatever the last rule happened to set.
@@ -667,7 +672,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance,
-        wallpaper, cursor, shader,
+        wallpaper, wallpaperLive, cursor, shader,
         ...(mod ? { mod } : {}),
         // Omitted when empty rather than stored as `{}`: "no custom
         // tokens" and "an empty set of them" should not be two states.

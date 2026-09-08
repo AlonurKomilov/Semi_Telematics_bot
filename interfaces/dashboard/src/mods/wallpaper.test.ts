@@ -20,7 +20,7 @@ import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
 import { assembledCss } from '../test/stylesheet';
 import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, type RGB } from './theme/contrast';
-import { LIVE_ANIMATES } from './wallpaper';
+import { LIVE_ANIMATES, WALLPAPER_LIVE_ATTR } from './wallpaper';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -329,6 +329,11 @@ describe('the sidebar stays readable over any of them', () => {
  * same stops at every frame. Everything here is held against the
  * shipped packs by `kind`, both ways — a still pack with keyframes is a
  * live pack lying about its cost.
+ *
+ * And it plays ONLY under `data-wallpaper-live`. A pattern that can move
+ * is one pack in two states, not two packs; the stylesheet must draw the
+ * still state whenever the switch is off, and a keyframe played from an
+ * ungated rule would be a pattern moving unasked.
  */
 describe('a live pattern moves only what the gate has already measured', () => {
   const live = WALLPAPERS.filter((w) => w.kind === 'live');
@@ -351,6 +356,17 @@ describe('a live pattern moves only what the gate has already measured', () => {
     for (const w of live) {
       expect(fileOf(w.id), `${w.id} is "live" and has no keyframes`).toMatch(/@keyframes/);
       expect(fileOf(w.id), `${w.id} declares keyframes and never plays them`).toMatch(/animation:/);
+    }
+  });
+
+  it('and plays them only while the Live switch is on', () => {
+    for (const w of live) {
+      const rules = [...fileOf(w.id).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter(([, , decls]) => /animation:/.test(decls) && !/animation:\s*none/.test(decls));
+      expect(rules.length, `${w.id}: no rule plays the animation`).toBeGreaterThan(0);
+      for (const [, selector] of rules)
+        expect(selector, `${w.id} moves without the switch: ${selector.trim()}`)
+          .toContain(`[${WALLPAPER_LIVE_ATTR}]`);
     }
   });
 

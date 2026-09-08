@@ -78,6 +78,11 @@ export function applyTheme(theme: Theme) {
   // it a frame late reflows the page rather than recolouring it.
   root.dataset.font = theme.font;
   root.dataset.wallpaper = theme.wallpaper;
+  // Present or absent, not true/false: the stylesheet gates a live
+  // pattern's animation on the attribute existing, and a `"false"` would
+  // still exist.
+  if (theme.wallpaperLive) root.dataset.wallpaperLive = '';
+  else delete root.dataset.wallpaperLive;
   root.dataset.cursor = theme.cursor;
   root.dataset.shader = theme.shader;
 }
