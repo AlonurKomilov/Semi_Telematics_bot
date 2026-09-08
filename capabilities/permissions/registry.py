@@ -109,6 +109,10 @@ ENTRIES: tuple[Entry, ...] = (
     _e("scheduled_reports", tier="shared", modules=["core"], opens=["can_view_reports"], flags=[],
        nav=False, parent="reports",
        note="the Reports service's sub-feature (capabilities/reporting/scheduled/); route /reports/scheduled-reports"),
+    _e("dot_binder", tier="shared", modules=["fleet"], opens=["can_manage_maintenance"], flags=[],
+       nav=False, parent="reports",
+       note="the hub's DOT Binder tab (features/reports/DotBinder.tsx, route /reports/dot-binder); "
+            "rides Maintenance's manage verb — a page without a registry id is one the plan mask cannot see"),
     _e("knowledge_base", tier="shared", modules=["core"]),
     _e("tours", tier="shared", modules=["core"]),
     _e("live_map", tier="shared", modules=["core"], opens=["can_view_location"],

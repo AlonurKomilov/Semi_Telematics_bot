@@ -11,7 +11,7 @@ from telegram import (
 
 from capabilities.localization.i18n import LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from adapters.storage import Role
-from capabilities.permissions.roles import get_permissions, can_access_company_submenu
+from capabilities.permissions.roles import current_permissions, can_access_company_submenu
 from capabilities.permissions.fold import builtin_width
 from infra.context import get_company_display
 
@@ -36,7 +36,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None,
     empty), all fleet buttons are hidden and a prominent
     'Integrate Samsara API' button is shown instead.
     """
-    perms = get_permissions(role)
+    perms = current_permissions(role)
     has_api = bool(company_codes)
     rows = []
 
@@ -52,8 +52,13 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None,
         # top-level instead of forcing the user through an empty
         # wrapper.  The submenu_* builders below still exist as
         # fallbacks for cached buttons.
-        has_reports = ((perms.can_view_vehicles and _is_wide(role, wide))
-                       or perms.can_view_events)
+        # Reports is a SERVICE the role holds or not (can_view_reports,
+        # per role since 2026-09-06); what the menu lists inside it still
+        # follows the features.  The handler refuses without the verb —
+        # the button must not offer what the handler will refuse.
+        has_reports = perms.can_view_reports and (
+            (perms.can_view_vehicles and _is_wide(role, wide))
+            or perms.can_view_events)
         has_parking = perms.can_view_parking
         has_fuel_cost = perms.can_view_fuel_cost
 
@@ -68,14 +73,14 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None,
         row2 = []
         if has_fuel_cost:
             row2.append(InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost"))
-        if perms.can_view_vehicles:
+        if perms.can_view_alerts:
             row2.append(InlineKeyboardButton(t("menu.alerts"), callback_data="cmd_alerts"))
         if row2:
             rows.append(row2)
 
-        # AI Assistant (visible when API key is configured)
+        # AI Assistant: configured on the platform AND granted to the role
         import capabilities.ai as ai
-        if ai.is_configured():
+        if ai.is_configured() and perms.can_view_ai_assistant:
             rows.append([InlineKeyboardButton(t("menu.ai_assistant"), callback_data="cmd_ai")])
 
         # Live Map Mini App (visible when WEBAPP_URL is configured)
@@ -135,7 +140,7 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None,
     the moment-shaped stuff: a single-event browse and a single-
     truck lookup.
     """
-    perms = get_permissions(role)
+    perms = current_permissions(role)
     rows = []
 
     if perms.can_view_events:
@@ -156,7 +161,7 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     stays here is the per-driver / per-event view that the bot is
     actually useful for.
     """
-    perms = get_permissions(role)
+    perms = current_permissions(role)
     rows = []
 
     # Parking — driver-scoped event view (Parking's own permission)
@@ -174,7 +179,7 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
     kept because the *Add fill-up* step is a driver-at-the-pump
     moment (pump receipt in hand, quick entry, done).
     """
-    perms = get_permissions(role)
+    perms = current_permissions(role)
     rows = []
 
     if perms.can_view_fuel_cost:
@@ -186,7 +191,7 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
 
 def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
     """Team & Management sub-menu — account, invite, audit."""
-    perms = get_permissions(role)
+    perms = current_permissions(role)
     rows = []
 
     # ── Main sections ───────────────────────────────────
