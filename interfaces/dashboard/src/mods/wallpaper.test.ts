@@ -19,8 +19,8 @@ import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
 import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
 import { assembledCss } from '../test/stylesheet';
 import { THEME_PACKS } from './packs/theme';
-import { oklchToSrgb, contrastRatio, type RGB } from './theme/contrast';
-import { LIVE_ANIMATES, WALLPAPER_LIVE_ATTR } from './wallpaper';
+import { oklchToSrgb, contrastRatio, distance, type RGB } from './theme/contrast';
+import { LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE } from './wallpaper';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -401,5 +401,46 @@ describe('a live pattern moves only what the gate has already measured', () => {
     for (const w of live)
       expect(stopsOf(w.id).some((s) => s.token === '--primary'),
         `${w.id}: no accent stop measured — the clouds are on a rule the gate does not read`).toBe(true);
+  });
+});
+
+/**
+ * The floor. The ceiling above says a pattern may not drown the ink;
+ * this says it must at least be there. Every pattern shipped at a
+ * strength the ink cleared fifteen times over — the gate was satisfied
+ * and the owner asked how to see the wallpaper. So the strongest stop
+ * of each pattern, in each mode, has to move the ground by
+ * `WALLPAPER_VISIBLE` ΔE against the plain sidebar.
+ */
+describe('and every one of them can actually be seen', () => {
+  /** The furthest any of a pattern's stops moves the ground, in a mode. */
+  const reach = (id: string, mode: 'light' | 'dark'): number => {
+    const base = token(body(MODE_CELL[mode]), WALLPAPER_BASE)!.rgb;
+    let best = 0;
+    for (const stop of stopsOf(id)) {
+      const colours = stop.token === '--primary'
+        ? THEME_PACKS.map((p) => token(body(packCell(p.id, mode)), '--primary') ?? token(body(MODE_CELL[mode]), '--primary')!)
+        : stop.token.startsWith('#') ? [{ rgb: hex(stop.token), alpha: 1 }]
+          : [token(body(MODE_CELL[mode]), stop.token)!];
+      // The LEAST any accent moves it: a pattern that shows on green and
+      // vanishes on blue vanishes for whoever chose blue.
+      const least = Math.min(...colours.map((c) => distance(base, mix(base, c.rgb, stop.pct * c.alpha))));
+      best = Math.max(best, least);
+    }
+    return best;
+  };
+
+  it('the strongest stop of every pattern moves the ground, in both modes', () => {
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none'))
+      for (const mode of ['light', 'dark'] as const)
+        expect(reach(w.id, mode), `${w.id}/${mode} is invisible — ΔE ${reach(w.id, mode).toFixed(2)} against the plain chrome`)
+          .toBeGreaterThanOrEqual(WALLPAPER_VISIBLE);
+  });
+
+  it('and the floor can be missed — a whisper of a stop does not clear it', () => {
+    const base = token(body(MODE_CELL.dark), WALLPAPER_BASE)!.rgb;
+    const primary = token(body(MODE_CELL.dark), '--primary')!.rgb;
+    expect(distance(base, mix(base, primary, 1))).toBeLessThan(WALLPAPER_VISIBLE);
+    expect(distance(base, mix(base, primary, 18))).toBeGreaterThanOrEqual(WALLPAPER_VISIBLE);
   });
 });

@@ -8,9 +8,9 @@
     background-color: var(--sidebar);
     background-image:
       linear-gradient(to right,
-        color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px),
+        color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px),
       linear-gradient(to bottom,
-        color-mix(in oklab, var(--sidebar-border) 55%, transparent) 1px, transparent 1px);
+        color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px);
     background-size: 24px 24px;
   }
 }

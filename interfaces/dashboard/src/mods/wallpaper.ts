@@ -109,3 +109,15 @@ export const WALLPAPER_INK = '--sidebar-foreground';
  * paints it.
  */
 export const WALLPAPER_AA = 4.5;
+
+/**
+ * The FLOOR — a pattern must be visible, not only safe.
+ *
+ * The gate above only ever said "not too strong", and every pattern
+ * shipped at a strength the ink cleared fifteen times over, which is
+ * how the first one reached the owner as "how do I see the wallpaper?".
+ * So the strongest stop of every pattern, in each mode, must move the
+ * ground by at least this much (ΔE2000 against the plain sidebar) —
+ * a texture nobody can see is a chip that does nothing.
+ */
+export const WALLPAPER_VISIBLE = 3;
