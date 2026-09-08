@@ -101,6 +101,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // Reading aids for a sixty-row page: bands fold, a search narrows.  A
   // search opens every band it touches, so a fold never hides a hit.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // A feature with sub-features folds too.  It never folds over a
+  // pending change in a child — the ring on that tick must stay on
+  // screen until it is saved or discarded.
+  const [famClosed, setFamClosed] = useState<Record<string, boolean>>({});
+  const toggleFam = (id: string) => setFamClosed((p) => ({ ...p, [id]: !p[id] }));
   const { query, setQuery } = api.search;
   const q = query.trim();
   const isOpen = (band: string): boolean => (q ? true : !collapsed[band]);
@@ -256,19 +261,55 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     // The chip names what the tier adds, so it belongs to the row whose
     // OWN flag differs — never to a parent whose child's flag differs.
     const ownDelta = seniorView && rowDelta(fam.parent);
+    const id = rowId(fam.parent);
+    const kidsId = `perm-fam-${id}`;
+    const hasKids = fam.children.length > 0;
+    const kidChanged = fam.children.some((c) => api.changed(col.key, c.row));
+    const kidsOpen = hasKids && (q ? true : (kidChanged || !famClosed[id]));
+    const kidsGranted = fam.children.filter((c) => api.granted(col.key, c.row)).length;
     return (
-      <div key={rowId(fam.parent)}>
-        <div className={rowCls()}>
-          <div className="min-w-0">
-            <span className="text-sm font-semibold">
-              {fam.parent.label}
-              {isScoped(fam.parent) && <span className="text-2xs text-muted-foreground ml-1">*</span>}
-              {ownDelta && <DeltaChip />}
-              {alsoChip(fam.parent)}
-            </span>
-            {fam.parent.description && (
-              <div className="text-2xs text-muted-foreground/70">{fam.parent.description}</div>
+      <div key={id}>
+        {/* A feature that holds sub-features is a container, and looks
+            like one: a disclosure chevron, a faint fill, and a summary of
+            what is inside — so Vehicles reads as a different kind of row
+            from Geofences before its children are even seen.  Features
+            without children keep the chevron's slot, so every name
+            starts on the same line. */}
+        <div className={`${rowCls()} ${hasKids ? 'bg-muted/10' : ''}`}>
+          <div className="min-w-0 flex items-start gap-1">
+            {hasKids ? (
+              <button
+                type="button"
+                onClick={() => toggleFam(id)}
+                aria-expanded={kidsOpen}
+                aria-controls={kidsId}
+                aria-label={`${kidsOpen ? 'Hide' : 'Show'} the sub-features of ${fam.parent.label}`}
+                disabled={kidChanged && kidsOpen}
+                className="inline-flex items-center justify-center min-h-tap min-w-tap -my-1 -ml-1.5 shrink-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
+              >
+                {kidsOpen
+                  ? <ChevronDown className="size-3.5" aria-hidden />
+                  : <ChevronRight className="size-3.5" aria-hidden />}
+              </button>
+            ) : (
+              <span aria-hidden className="w-3.5 shrink-0" />
             )}
+            <div className="min-w-0">
+              <span className="text-sm font-semibold">
+                {fam.parent.label}
+                {isScoped(fam.parent) && <span className="text-2xs text-muted-foreground ml-1">*</span>}
+                {ownDelta && <DeltaChip />}
+                {alsoChip(fam.parent)}
+                {hasKids && (
+                  <span className="ml-2 text-2xs font-normal text-muted-foreground/70 tabular-nums">
+                    {kidsGranted} of {fam.children.length} sub-features granted
+                  </span>
+                )}
+              </span>
+              {fam.parent.description && (
+                <div className="text-2xs text-muted-foreground/70">{fam.parent.description}</div>
+              )}
+            </div>
           </div>
           {fam.merged ? (
             <>{verbCell(fam.parent, 'view', undefined, false, closed)}{linkedCell(fam.parent, closed)}</>
@@ -277,7 +318,9 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           )}
           {configCells(fam)}
         </div>
-        {fam.children.length > 0 && (
+        {hasKids && (
+          <div id={kidsId} hidden={!kidsOpen}>
+          {kidsOpen && (
           // The sub-features are a region INSIDE the feature: the whole
           // block steps in from the left, wears a tinted fill and a bar
           // on its left edge, and a little air separates it from the
@@ -311,6 +354,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             </div>
               );
             })}
+          </div>
+          )}
           </div>
         )}
       </div>
