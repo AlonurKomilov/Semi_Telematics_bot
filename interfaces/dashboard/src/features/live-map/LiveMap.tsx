@@ -400,7 +400,18 @@ export default function LiveMap() {
   async function loadVehicles(Leaf: typeof L) {
     try {
       const data = await apiJSON<MapVehiclesResponse>('/map/vehicles');
-      const features = data.features || [];
+      // One row per provider id even if the feed repeats one.  Markers
+      // are keyed by that id and so is every list row; a duplicate id
+      // is a duplicate React key, and React answers that by leaving
+      // ghost rows behind that survive every filter.  First wins — the
+      // row the server ranks first.
+      const idsInFeed = new Set<VehicleId>();
+      const features = (data.features || []).filter((f) => {
+        const id: VehicleId = f.properties.id ?? f.properties.name;
+        if (idsInFeed.has(id)) return false;
+        idsInFeed.add(id);
+        return true;
+      });
       const seenIds = new Set<VehicleId>();
 
       features.forEach((f) => {

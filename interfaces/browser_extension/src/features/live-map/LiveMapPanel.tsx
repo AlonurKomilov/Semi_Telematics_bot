@@ -219,8 +219,21 @@ export default function LiveMapPanel() {
   async function loadVehicles() {
     try {
       const data = await apiJSON<MapVehiclesResponse>('/map/vehicles');
-      const seen = new Set<string>();
+      // One row per provider id even if the feed repeats one: rows are
+      // keyed by that id, and React answers a duplicate key by leaving
+      // ghost rows behind that survive every filter — the "229" that
+      // appeared three times under a search for "43".  First wins,
+      // which is the row the server ranks first too.
+      const unique: MapVehicleFeature[] = [];
+      const seenIds = new Set<string>();
       for (const f of data.features ?? []) {
+        const id = idOf(f);
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        unique.push(f);
+      }
+      const seen = new Set<string>();
+      for (const f of unique) {
         const id = idOf(f); seen.add(id);
         latest.current.set(id, f);
         const [lng, lat] = f.geometry.coordinates;
@@ -248,7 +261,7 @@ export default function LiveMapPanel() {
         iconKeys.current.delete(id); arrows.current.delete(id); warns.current.delete(id);
         phys.current.delete(id);
       });
-      setVehicles(data.features ?? []);
+      setVehicles(unique);
       setError('');
       setAnswered(true);
     } catch (e) {
