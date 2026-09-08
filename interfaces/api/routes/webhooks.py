@@ -288,7 +288,13 @@ async def resend_webhook(
     # 200 instead of 400 so we don't burn through 6 retries trying
     # to re-process the same bad payload.  Mark the svix_id seen
     # BEFORE returning so the retries hit the duplicate gate.
-    db = await _get_platform_db()
+    # NOT awaited: get_platform_db() is a sync accessor returning the
+    # shared Database.  This line has been here since the webhook was
+    # written and had never run — every correctly-signed event 500'd on
+    # it, invisibly, because the endpoint URL was not configured until
+    # the notification-bounce work needed it.  A handler nothing calls
+    # is a handler nobody has tested.
+    db = _get_platform_db()
     try:
         event = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
