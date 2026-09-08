@@ -19,7 +19,9 @@ import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
 import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
 import { assembledCss, engineCss } from '../test/stylesheet';
 import { THEME_PACKS } from './packs/theme';
-import { oklchToSrgb, contrastRatio, distance, type RGB } from './theme/contrast';
+import { oklchToSrgb, contrastRatio, distance, parseHex, type RGB } from './theme/contrast';
+import { derivePalette, patternGrounds, PATTERN_STOPS } from './theme/palette';
+import { fitCanvas, paletteTokens, WALLPAPER_BREAK } from './theme/canvas';
 import {
   LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
   WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, WALLPAPER_PAGE_ATTR, pageWallpaperFor,
@@ -469,12 +471,13 @@ describe('and every one of them can actually be seen', () => {
  * be removed without this noticing.
  */
 describe('the page can wear it too, and stays readable', () => {
-  const pageInk = (mode: 'light' | 'dark', name: string) => {
-    const stepped = mode === 'light'
-      ? token(body(`:root:not(.dark)[${WALLPAPER_PAGE_ATTR}]:not([${WALLPAPER_PAGE_ATTR}="none"]) .page-ground`), name)
-      : null;
-    return stepped ?? token(body(MODE_CELL[mode]), name)!;
-  };
+  /** The ink the page ground actually reads under a pattern: the muted
+   *  ink is swapped for `--muted-foreground-on-pattern`, declared in the
+   *  mode's own cell for the shipped palettes and derived for a custom
+   *  canvas. */
+  const pageInk = (mode: 'light' | 'dark', name: string) =>
+    (name === '--muted-foreground' ? token(body(MODE_CELL[mode]), '--muted-foreground-on-pattern') : null)
+      ?? token(body(MODE_CELL[mode]), name)!;
 
   it('both grounds paint the same variable, and the engine names both', () => {
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
@@ -550,7 +553,11 @@ describe('the page can wear it too, and stays readable', () => {
     const base = token(body(MODE_CELL.light), WALLPAPER_PAGE_BASE)!.rgb;
     const raw = token(body(MODE_CELL.light), '--muted-foreground')!.rgb;
     const stepped = pageInk('light', '--muted-foreground').rgb;
-    expect(stepped, 'no light step on the page ground — the test above is measuring the raw ink').not.toEqual(raw);
+    expect(stepped, 'no on-pattern muted ink declared for light — the test above is measuring the raw ink').not.toEqual(raw);
+    // And the page ground must READ it — a literal step there was right
+    // for the shipped white page and wrong for every other canvas.
+    const rule = body(`:root[${WALLPAPER_PAGE_ATTR}]:not([${WALLPAPER_PAGE_ATTR}="none"]) .page-ground`);
+    expect(rule, 'the page ground does not swap in the on-pattern ink').toMatch(/--muted-foreground:\s*var\(--muted-foreground-on-pattern\)/);
     let worst = Infinity;
     for (const w of WALLPAPERS.filter((x) => x.id !== 'none'))
       for (const stop of stopsOf(w.id).filter((s) => s.token === '--primary'))
@@ -559,5 +566,73 @@ describe('the page can wear it too, and stays readable', () => {
           worst = Math.min(worst, contrastRatio(raw, mix(base, c.rgb, stop.pct * c.alpha)));
         }
     expect(worst, 'the raw muted ink clears every stop — the step is decoration').toBeLessThan(WALLPAPER_AA);
+  });
+});
+
+/**
+ * A pattern over a CUSTOM canvas. The palette derives every ink from the
+ * canvas a person picked, and it puts the muted ink at the AA edge by
+ * design — so under any pattern stop it would fail, on every custom
+ * light canvas, unless a second ink is derived against the worst the
+ * pattern can make of that canvas. This is that ink, measured over a
+ * sweep of canvases; the raw one is shown to fail, so the derivation is
+ * load-bearing. And the frame: its ink is already the palette's
+ * strongest, so a canvas whose sidebar cannot carry it under the
+ * pattern is refused by name while a wallpaper is worn.
+ */
+describe('a pattern over a custom canvas', () => {
+  const GREYS = Array.from({ length: 64 }, (_, i) => `#${(i * 4).toString(16).padStart(2, '0').repeat(3)}`);
+  const TINTS = ['#f4f1ea', '#e8f0f7', '#f7e8e8', '#1a1f2b', '#20261e', '#c8d3e0', '#3a3f4a', '#d9d2c5', '#101418', '#5a5a5a'];
+  const CANVASES = [...GREYS, ...TINTS];
+
+  it('the packs stay within the stops the palette derives against', () => {
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none'))
+      for (const s of stopsOf(w.id)) {
+        const cap = s.token === '--primary' ? PATTERN_STOPS.brand
+          : s.token === '#000000' ? PATTERN_STOPS.black
+            : s.token === '#ffffff' ? PATTERN_STOPS.white : 100;
+        expect(s.pct, `${w.id} ${s.token}@${s.pct}% is stronger than the palette assumes (${cap}%)`)
+          .toBeLessThanOrEqual(cap);
+      }
+  });
+
+  it('the on-pattern muted ink clears AA over every pattern ground, on every canvas, and the raw one does not', () => {
+    let measured = 0, rawFails = 0;
+    for (const mode of ['light', 'dark'] as const)
+      for (const p of THEME_PACKS)
+        for (const c of CANVASES) {
+          if (!fitCanvas(c, mode).rgb) continue;
+          const pal = derivePalette({ mode, canvas: c, brand: p.seed[mode] })!;
+          const onPattern = parseHex(pal['--muted-foreground-on-pattern'])!;
+          const raw = parseHex(pal['--muted-foreground'])!;
+          for (const g of patternGrounds(parseHex(c)!, parseHex(p.seed[mode])!)) {
+            measured++;
+            expect(contrastRatio(onPattern, g), `${mode}/${p.id}/${c}: on-pattern muted ink under a stop`)
+              .toBeGreaterThanOrEqual(WALLPAPER_AA);
+            if (contrastRatio(raw, g) < WALLPAPER_AA) rawFails++;
+          }
+        }
+    expect(measured, 'nothing measured').toBeGreaterThan(300);
+    expect(rawFails, 'the raw muted ink clears every stop on every canvas — the derived ink is decoration').toBeGreaterThan(0);
+  });
+
+  it('a canvas whose frame cannot carry its ink under the pattern is refused by name, and only while a wallpaper is worn', () => {
+    let refused = 0, kept = 0;
+    for (const mode of ['light', 'dark'] as const)
+      for (const p of THEME_PACKS)
+        for (const c of CANVASES) {
+          const plain = paletteTokens(c, p.seed[mode], mode, false);
+          const under = paletteTokens(c, p.seed[mode], mode, true);
+          if (!plain.tokens) continue;
+          if (under.tokens) { kept++; continue; }
+          refused++;
+          expect(under.breaks, `${mode}/${c}: refused for a reason that is not the wallpaper`).toBe(WALLPAPER_BREAK);
+          expect(under.ratio!, `${mode}/${c}: refused while the frame's ink still clears AA`).toBeLessThan(WALLPAPER_AA);
+        }
+    expect(kept, 'every canvas refused under a pattern — the check is too strict').toBeGreaterThan(100);
+    expect(refused, 'no canvas refused under a pattern — the check holds nothing').toBeGreaterThan(0);
+    // The shipped grounds themselves are never refused.
+    expect(paletteTokens('#ffffff', THEME_PACKS[0].seed.light, 'light', true).tokens).not.toBeNull();
+    expect(paletteTokens('#0a0a0a', THEME_PACKS[0].seed.dark, 'dark', true).tokens).not.toBeNull();
   });
 });

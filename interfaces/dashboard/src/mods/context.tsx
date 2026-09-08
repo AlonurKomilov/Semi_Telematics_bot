@@ -185,7 +185,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
     const seedBrand = theme.brand
       ?? (packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode];
     const full = theme.canvas
-      ? paletteTokens(theme.canvas, seedBrand, theme.mode).tokens
+      ? paletteTokens(theme.canvas, seedBrand, theme.mode, theme.wallpaper !== 'none').tokens
       : null;
     const picked = full
       ?? (theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null);
@@ -199,11 +199,11 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // look rather than to half a palette.
     const scoped: Record<string, Record<string, string>> = {};
     for (const [id, hex] of Object.entries(theme.surfaces ?? {})) {
-      const t = surfaceTokens(hex, seedBrand, theme.mode).tokens;
+      const t = surfaceTokens(hex, seedBrand, theme.mode, theme.wallpaper !== 'none').tokens;
       if (t) scoped[id] = t;
     }
     applyModTokens(merged, document, Object.keys(scoped).length ? scoped : null);
-  }, [theme.tokens, theme.brand, theme.canvas, theme.surfaces, theme.accent, theme.mode]);
+  }, [theme.tokens, theme.brand, theme.canvas, theme.surfaces, theme.accent, theme.mode, theme.wallpaper]);
 
   useEffect(() => {
     applyTheme(theme);

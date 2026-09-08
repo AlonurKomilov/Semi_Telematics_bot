@@ -116,6 +116,7 @@ export const MOD_TOKENS: readonly string[] = [
   '--background', '--foreground',
   '--card', '--card-foreground', '--popover', '--popover-foreground',
   '--secondary', '--secondary-foreground', '--muted', '--muted-foreground',
+  '--muted-foreground-on-pattern',
   '--accent', '--accent-foreground',
   '--border', '--input',
   '--sidebar', '--sidebar-foreground', '--sidebar-accent',

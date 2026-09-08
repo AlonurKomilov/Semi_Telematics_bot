@@ -23,7 +23,7 @@ import { MATERIAL_PACKS, materialPackById } from '../packs/material';
 import { THEME_PACKS, packById, accentSeed } from '../packs/theme';
 import { FONT_PACKS } from '../packs/font';
 import { accentTokens } from '../theme/accent';
-import { fitCanvas } from '../theme/canvas';
+import { paletteTokens } from '../theme/canvas';
 import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
@@ -173,9 +173,9 @@ function writeCanvas(
  * look — so showing its dot would point at a colour nobody can see,
  * the same mistake `brandWorn` exists to avoid on the pack chips.
  */
-function wornCanvas(hex: string | undefined, mode: Mode): string | undefined {
+function wornCanvas(hex: string | undefined, mode: Mode, brand: string, underPattern: boolean): string | undefined {
   if (!hex) return undefined;
-  return fitCanvas(hex, mode).rgb ? hex : undefined;
+  return paletteTokens(hex, brand, mode, underPattern).tokens ? hex : undefined;
 }
 
 export function ColorGroup({ label }: { label: LabelClass }) {
@@ -206,12 +206,17 @@ export function ColorGroup({ label }: { label: LabelClass }) {
    *  otherwise say two things at once — no colour set, or one set and
    *  standing down — and the difference is what somebody needs to know
    *  before picking again over the top of it. */
+  /** The brand the palette is derived against, and whether a wallpaper
+   *  is worn — a canvas that reads fine on its own may not under the
+   *  pattern's strongest stop, and the dot must say what actually paints. */
+  const seedBrand = theme.brand ?? (packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode];
+  const underPattern = (theme.wallpaper ?? 'none') !== 'none';
   const unworn = useMemo(
     () => SURFACES.filter((s) => {
       const hex = theme.surfaces?.[s.id];
-      return Boolean(hex) && !wornCanvas(hex, theme.mode);
+      return Boolean(hex) && !wornCanvas(hex, theme.mode, seedBrand, underPattern);
     }),
-    [theme.surfaces, theme.mode],
+    [theme.surfaces, theme.mode, seedBrand, underPattern],
   );
   const brandWorn = useMemo(
     () => (theme.brand ? accentTokens(theme.brand, theme.mode).tokens !== null : false),
@@ -293,11 +298,11 @@ export function ColorGroup({ label }: { label: LabelClass }) {
       </p>
       <div className="flex flex-wrap gap-1">
         <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
-          dot={wornCanvas(theme.canvas, theme.mode)}
+          dot={wornCanvas(theme.canvas, theme.mode, seedBrand, underPattern)}
           onClick={() => setTarget('')} />
         {offered.map((s) => (
           <Chip key={s.id} value={s.id} current={target} label={s.title}
-            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode)}
+            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode, seedBrand, underPattern)}
             onClick={(v) => setTarget(v)} />
         ))}
       </div>
@@ -305,8 +310,9 @@ export function ColorGroup({ label }: { label: LabelClass }) {
         {target
           ? `${surfaceById(target)?.title} — ${surfaceById(target)?.why}.`
           : unworn.length
-            ? `${t('theme.scope_unworn', 'Not worn in {{mode}} mode')
-                .replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
+            ? `${underPattern
+                ? t('theme.scope_unworn_wallpaper', 'Not worn under the wallpaper')
+                : t('theme.scope_unworn', 'Not worn in {{mode}} mode').replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
             : t('theme.scope_all_hint', 'One background for the whole app.')}
       </p>
       </>)}

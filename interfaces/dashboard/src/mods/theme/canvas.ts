@@ -35,9 +35,9 @@
  * to call that broken.
  */
 import {
-  parseHex, oklchToSrgb, contrastRatio, AA_LARGE, type RGB,
+  parseHex, oklchToSrgb, contrastRatio, AA_LARGE, AA_TEXT, type RGB,
 } from './contrast';
-import { derivePalette, DERIVED_TOKENS } from './palette';
+import { derivePalette, patternGrounds, DERIVED_TOKENS } from './palette';
 import { TONES, type AccentMode } from './accent';
 
 /**
@@ -100,6 +100,10 @@ export function worstTone(canvas: RGB, mode: AccentMode): { name: string; ratio:
  * them to the body-copy floor would refuse most of the interesting
  * colours for a rule that does not describe how they are used.
  */
+/** What `paletteTokens` names when the wallpaper, not a tone, is what a
+ *  canvas would make unreadable. */
+export const WALLPAPER_BREAK = 'wallpaper';
+
 export function fitCanvas(hex: string, mode: AccentMode): {
   rgb: RGB | null; breaks?: string; ratio?: number;
 } {
@@ -121,10 +125,20 @@ export function paletteTokens(
   canvas: string,
   brand: string,
   mode: AccentMode,
+  /** A wallpaper is worn on the frame. The sidebar's ink is already the
+   *  palette's strongest — there is nothing to derive darker — so a
+   *  canvas whose sidebar cannot carry it under the pattern's strongest
+   *  stop is refused, by name, the way a tone refuses it. */
+  underPattern = false,
 ): CanvasResult {
   const fit = fitCanvas(canvas, mode);
   if (!fit.rgb) return { tokens: null, breaks: fit.breaks, ratio: fit.ratio };
   const palette = derivePalette({ mode, canvas, brand });
+  if (palette && underPattern) {
+    const sidebar = parseHex(palette['--sidebar'])!, ink = parseHex(palette['--sidebar-foreground'])!;
+    const worst = Math.min(...patternGrounds(sidebar, parseHex(brand)!).map((g) => contrastRatio(ink, g)));
+    if (worst < AA_TEXT) return { tokens: null, breaks: WALLPAPER_BREAK, ratio: worst };
+  }
   // `derivePalette` returns null only on an unparseable seed, and the
   // canvas has already parsed — so this guards the BRAND the caller
   // resolved, which is the one it did not check.
@@ -165,8 +179,9 @@ export function surfaceTokens(
   canvas: string,
   brand: string,
   mode: AccentMode,
+  underPattern = false,
 ): CanvasResult {
-  const full = paletteTokens(canvas, brand, mode);
+  const full = paletteTokens(canvas, brand, mode, underPattern);
   if (!full.tokens) return full;
   const out: Record<string, string> = {};
   for (const t of SURFACE_TOKENS) if (full.tokens[t]) out[t] = full.tokens[t];

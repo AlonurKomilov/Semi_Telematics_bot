@@ -163,6 +163,8 @@
        roughly 2187 call sites, which is the rare retune where the wide
        blast radius is the argument FOR it rather than against. */
     --muted-foreground: oklch(0.545 0 0);
+    /* The muted ink under a page pattern — see the page-ground rule. */
+    --muted-foreground-on-pattern: oklch(0.48 0 0);
 
     --accent: oklch(0.97 0 0);
 
@@ -430,6 +432,8 @@
     /* 0.70: --popover is the lightest dark surface, and at 0.68 this
        read 4.38 on it — the secondary text inside every dialog. */
     --muted-foreground: oklch(0.70 0 0);
+    /* Dark has the headroom: the same ink under a pattern. */
+    --muted-foreground-on-pattern: oklch(0.70 0 0);
 
     --accent: oklch(0.34 0.015 240);
 
@@ -745,6 +749,7 @@
     --secondary-foreground:       oklch(0.205 0 0);
     --muted:                      oklch(0.97 0 0);
     --muted-foreground:           oklch(0.545 0 0);
+    --muted-foreground-on-pattern: oklch(0.48 0 0);
     --accent:                     oklch(0.97 0 0);
     --accent-foreground:          oklch(0.205 0 0);
     --destructive:                oklch(0.577 0.245 27.325);
@@ -1000,14 +1005,16 @@
      so a person picks twice, and the two never have to agree. */
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
-  /* The page's small text, under a pattern, in light mode. At its
-     normal lightness `--muted-foreground` clears the plain light page
-     by a hair (4.96), and every stop darkens the page — the strongest
-     took it to 3.67. Stepped here, on the page ground only, to the
-     lightness the gate measured; dark mode has the headroom and is
-     left alone. `wallpaper.test.ts` holds the number. */
-  :root:not(.dark)[data-wallpaper-page]:not([data-wallpaper-page="none"]) .page-ground {
-    --muted-foreground: oklch(0.48 0 0);
+  /* The page's small text, under a pattern. At its normal lightness
+     `--muted-foreground` clears the plain light page by a hair (4.96),
+     and every stop darkens the page — the strongest took it to 3.67.
+     Under a page pattern the page ground reads `--muted-foreground-on-
+     pattern` instead: declared below for the shipped palettes, DERIVED
+     by `derivePalette` for a custom canvas, measured against the worst
+     the pattern can make of that canvas. A literal step was right for
+     the shipped white page and wrong for every other canvas. */
+  :root[data-wallpaper-page]:not([data-wallpaper-page="none"]) .page-ground {
+    --muted-foreground: var(--muted-foreground-on-pattern);
   }
 
   /* GLASS IS NOT HERE. `mods/packs/material/glass.css` carries the

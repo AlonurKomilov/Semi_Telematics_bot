@@ -175,6 +175,7 @@ const pickInk = (ground: RGB): RGB => {
  *  assert the set has not silently grown into the tones or the ramp. */
 export const DERIVED_TOKENS = [
   '--background', '--foreground',
+  '--muted-foreground-on-pattern',
   '--card', '--card-foreground', '--popover', '--popover-foreground',
   '--secondary', '--secondary-foreground', '--muted', '--muted-foreground',
   '--accent', '--accent-foreground',
@@ -195,6 +196,26 @@ export const DERIVED_TOKENS = [
  * stopping the moment the target would be broken. The result is the
  * quietest legible value rather than the loudest.
  */
+/**
+ * The strongest stop any shipped wallpaper lays over a ground: a fifth
+ * of the accent (the clouds), a tenth toward black or white (the
+ * tooth). The palette derives one ink against these so a page pattern
+ * over ANY canvas stays readable; `wallpaper.test.ts` holds every pack
+ * under them, so the number the palette assumes is the number the
+ * packs keep.
+ */
+export const PATTERN_STOPS = { brand: 20, black: 9, white: 9 } as const;
+
+const mixRgb = (a: RGB, b: RGB, pct: number): RGB =>
+  a.map((v, i) => v * (1 - pct / 100) + b[i] * (pct / 100)) as RGB;
+
+/** The three grounds a pattern can turn a canvas into, at its strongest. */
+export const patternGrounds = (canvas: RGB, brand: RGB): RGB[] => [
+  mixRgb(canvas, brand, PATTERN_STOPS.brand),
+  mixRgb(canvas, [0, 0, 0], PATTERN_STOPS.black),
+  mixRgb(canvas, [1, 1, 1], PATTERN_STOPS.white),
+];
+
 const dimTo = (ink: RGB, ground: RGB, target: number): RGB => {
   const I = srgbToOklch(ink), G = srgbToOklch(ground);
   const at = (t: number) => srgbInGamut(I.L + (G.L - I.L) * t, I.C, I.H);
@@ -295,6 +316,8 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   // target would be reading the symptom and re-deriving three colours
   // where the design has one.
   const softInk = dimTo(ink, secondary, T.recessed);
+  const worstPatternGround = patternGrounds(canvas, brand)
+    .reduce((w, g) => (contrastRatio(ink, g) < contrastRatio(ink, w) ? g : w));
   const hover = shift((labelIsDark ? 1 : -1) * PRIMARY_HOVER[seed.mode]);
 
   return {
@@ -308,6 +331,12 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
     '--secondary-foreground': hex(softInk),
     '--muted': hex(muted),
     '--muted-foreground': hex(dimTo(ink, muted, T.muted)),
+    // The same ink, measured against the worst a wallpaper can make of
+    // the page: dimmed toward whichever pattern ground the full ink
+    // clears least, so it clears every one of them by the same target.
+    // The engine swaps it in under a page pattern — a literal step was
+    // right for the shipped white page and wrong for every other canvas.
+    '--muted-foreground-on-pattern': hex(dimTo(ink, worstPatternGround, T.muted)),
     '--accent': hex(accent),
     '--accent-foreground': hex(softInk),
     '--border': edge(canvas, B.border),
