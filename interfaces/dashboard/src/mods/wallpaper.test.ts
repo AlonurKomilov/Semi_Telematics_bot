@@ -20,6 +20,7 @@ import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
 import { assembledCss } from '../test/stylesheet';
 import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, type RGB } from './theme/contrast';
+import { LIVE_ANIMATES } from './wallpaper';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -62,8 +63,19 @@ const mix = (a: RGB, b: RGB, pct: number): RGB =>
  * which is how this returned an empty list and reported the patterns as
  * painting images.
  */
+/**
+ * Everything a pattern paints — the ground's own rule AND any layer it
+ * hangs off it. A live pattern keeps its clouds on a `::before` that
+ * only transforms; the stops live there, and a gate that read the
+ * ground alone would measure a live pattern's tooth and call it safe.
+ */
+function paintOf(id: string): string {
+  const ground = `:root[data-wallpaper="${id}"] .chrome-ground`;
+  return body(ground) + body(`${ground}::before`) + body(`${ground}::after`);
+}
+
 function stopsOf(id: string): { token: string; pct: number }[] {
-  const block = body(`:root[data-wallpaper="${id}"] .chrome-ground`);
+  const block = paintOf(id);
   const mixes = [...block.matchAll(/var\((--[a-z-]+)\)\s+(\d+(?:\.\d+)?)%/g)]
     .map((m) => ({ token: m[1], pct: +m[2] }));
   // A generated texture is greyscale by construction (`saturate 0`), so
@@ -304,5 +316,74 @@ describe('the sidebar stays readable over any of them', () => {
     const ink = token(body(MODE_CELL.dark), WALLPAPER_INK)!.rgb;
     const primary = token(body(MODE_CELL.dark), '--primary')!.rgb;
     expect(contrastRatio(ink, mix(base, primary, 95))).toBeLessThan(WALLPAPER_AA);
+  });
+});
+
+/**
+ * A live pattern is a still one that moves a layer — and only moves it.
+ *
+ * The contrast gate above measures stops. It cannot measure a colour
+ * that appears mid-animation, so a live pattern's keyframes may touch
+ * the compositor's properties and nothing else: a layer that only
+ * transforms is drawn once and moved by the GPU, and its stops are the
+ * same stops at every frame. Everything here is held against the
+ * shipped packs by `kind`, both ways — a still pack with keyframes is a
+ * live pack lying about its cost.
+ */
+describe('a live pattern moves only what the gate has already measured', () => {
+  const live = WALLPAPERS.filter((w) => w.kind === 'live');
+  const still = WALLPAPERS.filter((w) => w.kind === 'still' && w.id !== 'none');
+  const fileOf = (id: string) =>
+    readFileSync(join(__dirname, 'packs', 'wallpaper', `${id}.css`), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  /** Property names set inside every `@keyframes` block of a file. */
+  const animated = (css: string): string[] =>
+    [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\}\s*\}/g)]
+      .flatMap((m) => [...m[1].matchAll(/([a-z-]+)\s*:/g)].map((p) => p[1]));
+
+  it('there is at least one of each, or the rules below hold nothing', () => {
+    expect(live.length).toBeGreaterThan(0);
+    expect(still.length).toBeGreaterThan(0);
+  });
+
+  it('still packs have no keyframes; live packs do', () => {
+    for (const w of still)
+      expect(fileOf(w.id), `${w.id} is "still" and animates`).not.toMatch(/@keyframes|animation/);
+    for (const w of live) {
+      expect(fileOf(w.id), `${w.id} is "live" and has no keyframes`).toMatch(/@keyframes/);
+      expect(fileOf(w.id), `${w.id} declares keyframes and never plays them`).toMatch(/animation:/);
+    }
+  });
+
+  it('keyframes animate only the compositor properties', () => {
+    for (const w of live) {
+      const props = animated(fileOf(w.id));
+      expect(props.length, `${w.id}: no property parsed from its keyframes`).toBeGreaterThan(0);
+      for (const p of props)
+        expect(LIVE_ANIMATES as readonly string[], `${w.id} animates "${p}" — an extreme the gate never measured`)
+          .toContain(p);
+    }
+  });
+
+  it('and the parser can fail', () => {
+    expect(animated('@keyframes x { from { opacity: 0 } to { opacity: 1; transform: none } }'))
+      .toEqual(['opacity', 'opacity', 'transform']);
+  });
+
+  it('holds still under prefers-reduced-motion, and follows the Motion axis', () => {
+    for (const w of live) {
+      const css = fileOf(w.id);
+      const reduced = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\}\s*\}/.exec(css)?.[1] ?? '';
+      expect(reduced, `${w.id} keeps moving for somebody who asked for less motion`).toMatch(/animation:\s*none/);
+      expect(css, `${w.id} ignores the Motion axis — every duration in the app scales by it`)
+        .toMatch(/animation:[^;]*var\(--motion-scale/);
+      expect(css, `${w.id} moves a layer without promoting it — that is a repaint per frame`)
+        .toMatch(/will-change:\s*transform/);
+    }
+  });
+
+  it('the gate reads the moving layer, not only the ground', () => {
+    for (const w of live)
+      expect(stopsOf(w.id).some((s) => s.token === '--primary'),
+        `${w.id}: no accent stop measured — the clouds are on a rule the gate does not read`).toBe(true);
   });
 });

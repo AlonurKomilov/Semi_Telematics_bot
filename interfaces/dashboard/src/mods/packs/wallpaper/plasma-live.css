@@ -1,0 +1,47 @@
+/* Plasma live — the same clouds as Plasma, drifting. */
+@media screen {
+  /* The ground keeps the tooth and becomes a stacking context of its
+     own, so the moving layer below can sit UNDER the panes and OVER this
+     colour: `z-index: -1` on the pseudo-element would otherwise put it
+     behind the ground's own paint, where nobody would see it. */
+  :root[data-wallpaper="plasma-live"] .chrome-ground {
+    background-color: var(--sidebar);
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23q)' opacity='0.04'/%3E%3C/svg%3E");
+    position: relative;
+    isolation: isolate;
+  }
+  /* The clouds, on a layer of their own that only TRANSFORMS. Drawn
+     once, moved by the compositor: a repaint-per-frame gradient across
+     the whole viewport is the cost this file exists to avoid. Larger
+     than the viewport by the drift, so no edge ever shows. The stops
+     are Plasma's, and the gate measures them here, on this rule. */
+  :root[data-wallpaper="plasma-live"] .chrome-ground::before {
+    content: '';
+    position: absolute;
+    inset: -12%;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(70% 60% at 20% 15%,
+        color-mix(in oklab, var(--primary) 9%, transparent) 0%, transparent 100%),
+      radial-gradient(65% 55% at 85% 80%,
+        color-mix(in oklab, var(--primary) 7%, transparent) 0%, transparent 100%);
+    will-change: transform;
+    /* One and a half minutes end to end, scaled by the Motion axis the
+       way every duration in the app is — Calm drifts slower, Snappy
+       faster. */
+    animation: plasma-live-drift calc(90s * var(--motion-scale, 1)) ease-in-out infinite alternate;
+  }
+  @keyframes plasma-live-drift {
+    from { transform: translate3d(0, 0, 0) rotate(0deg); }
+    to   { transform: translate3d(-4%, 3%, 0) rotate(2deg); }
+  }
+  /* Somebody who asked their system for less motion gets Plasma: the
+     same clouds, still. */
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-wallpaper="plasma-live"] .chrome-ground::before {
+      animation: none;
+    }
+  }
+}

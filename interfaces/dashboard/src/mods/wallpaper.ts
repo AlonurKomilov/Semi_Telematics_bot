@@ -42,17 +42,36 @@ import type { PackMeta } from './packs/meta';
  * both, which is the same guarantee a `color-mix` stop gives. A network
  * URL is still refused: that is a picture nobody here has seen.
  *
- * And none of them MOVES. "Live" is the word for a background that
- * keeps running, and nothing here does — calling a still texture live
- * would be a promise the thing does not keep, and it would spend the
- * name the moving one will need.
+ * SOME OF THEM MOVE, and it is the same axis. Still and live paint the
+ * same place — the ground under the chrome — so two axes would be two
+ * claims on one set of pixels; whether it moves is a property of the
+ * pack, the way it is in GX's wallpaper list, not a second decision a
+ * person makes. "Live" stays a word for a background that keeps
+ * running: a still texture is never called it.
  */
+export type WallpaperKind = 'still' | 'live';
+
 export interface Wallpaper extends PackMeta {
+  readonly kind: WallpaperKind;
 }
+
+/**
+ * What a live pattern's keyframes may animate — and nothing else.
+ *
+ * These are the compositor's properties: a layer that only transforms
+ * is drawn once and moved by the GPU, so a live wallpaper costs a
+ * texture and not a repaint per frame. They are also the properties the
+ * contrast gate does not need to see change: moving a layer moves the
+ * stops around, it does not create a stop. A keyframe that touched
+ * `opacity`, a colour or a gradient would have an extreme the gate never
+ * measured — so it is refused, by `wallpaper.test.ts`, not by taste.
+ */
+export const LIVE_ANIMATES = ['transform', 'translate', 'rotate', 'scale'] as const;
 
 // The patterns themselves — the list and the CSS — live in
 // `mods/packs/wallpaper/`. This file is the mechanism: what a wallpaper
-// IS, where it paints, and what it must not make unreadable.
+// IS, where it paints, what a live one may move, and what it must not
+// make unreadable.
 
 /** The base every pattern tints. Named here so the guard measures the
  *  same ground the stylesheet paints. */

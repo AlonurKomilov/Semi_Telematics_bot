@@ -447,6 +447,11 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       </div>
       <p className="text-2xs text-muted-foreground mt-1.5">
         {wallpaperById(current)?.description}
+        {/* Said only for a live one, because it is the one thing a
+            person cannot tell from a still chip: it keeps moving. */}
+        {wallpaperById(current)?.kind === 'live' && (
+          <> {t('mods.wallpaper_live_note', 'Moves slowly, and holds still when your system asks for less motion.')}</>
+        )}
       </p>
     </div>
   );
