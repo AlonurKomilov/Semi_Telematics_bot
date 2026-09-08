@@ -11,7 +11,8 @@
      every tile boundary and the chrome shows a visible grid of seams —
      the one artefact that reads as a rendering bug rather than a
      texture. */
-  :root[data-wallpaper="grain"] :is(.chrome-ground, .page-ground) {
+  :root[data-wallpaper="grain"] .chrome-ground,
+  :root[data-wallpaper-page="grain"] .page-ground {
     background-color: var(--ground);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23g)' opacity='0.09'/%3E%3C/svg%3E");
   }

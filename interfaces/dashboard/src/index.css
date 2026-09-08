@@ -995,8 +995,9 @@
 
   /* Two grounds, one variable. A pack paints `var(--ground)` and does
      not know which it is on: the frame's ground is the sidebar colour,
-     the page's is the page colour, so a page colour picked under
-     Wallpaper › Page and a pattern shown there never fight. */
+     the page's is the page colour. Each ground wears its OWN pattern —
+     `data-wallpaper` for the frame, `data-wallpaper-page` for the page —
+     so a person picks twice, and the two never have to agree. */
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
   /* The page's small text, under a pattern, in light mode. At its
@@ -1005,7 +1006,9 @@
      took it to 3.67. Stepped here, on the page ground only, to the
      lightness the gate measured; dark mode has the headroom and is
      left alone. `wallpaper.test.ts` holds the number. */
-  :root:not(.dark) .page-ground { --muted-foreground: oklch(0.48 0 0); }
+  :root:not(.dark)[data-wallpaper-page]:not([data-wallpaper-page="none"]) .page-ground {
+    --muted-foreground: oklch(0.48 0 0);
+  }
 
   /* GLASS IS NOT HERE. `mods/packs/material/glass.css` carries the
      translucent surface — its tokens, the backdrop filter, and the

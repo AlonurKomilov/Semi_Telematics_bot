@@ -211,8 +211,8 @@ export interface Mod extends PackMeta {
    *  drifting ground says so here; a person's own switch is the same
    *  bit under their own name. */
   readonly wallpaperLive?: boolean;
-  /** Whether that pattern shows on the page as well as the frame. */
-  readonly wallpaperPage?: boolean;
+  /** The page's own pattern — a `WALLPAPERS` id, apart from the frame's. */
+  readonly wallpaperPage?: string;
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */

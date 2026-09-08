@@ -28,8 +28,10 @@ import type { PackMeta } from './packs/meta';
  * paints `bg-sidebar`. It is the same relationship GX has: the wallpaper
  * is behind the browser, and the page sits on top of it.
  *
- * And, if a person asks, the PAGE: the content card can wear the same
- * pattern over its OWN colour (`.page-ground`, one switch, `wallpaperPage`). Around the cards, never under the words — every
+ * And the PAGE: the content card is a ground of its own (`.page-ground`)
+ * and wears its OWN pattern — `wallpaperPage`, a pack id, stamped as
+ * `data-wallpaper-page` — chosen apart from the frame's. Two places, two
+ * choices, and they never have to agree. Around the cards, never under the words — every
  * table and card stays solid — and the page's small text steps darker
  * under it in light mode, because the gate measured that it had to.
  * Both grounds paint `var(--ground)`: the frame's is `--sidebar`, the
@@ -64,6 +66,11 @@ export type WallpaperKind = 'still' | 'live';
 export interface Wallpaper extends PackMeta {
   readonly kind: WallpaperKind;
 }
+
+/** The attribute the page's pattern is keyed on — the frame's is
+ *  `data-wallpaper`. Every pack rule names both grounds, each under
+ *  its own attribute, so one pack file serves either place. */
+export const WALLPAPER_PAGE_ATTR = 'data-wallpaper-page';
 
 /** The attribute a live pattern's animation is gated on. A live pack's
  *  keyframes may play under this and nowhere else — `wallpaper.test.ts`

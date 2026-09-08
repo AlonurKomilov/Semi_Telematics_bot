@@ -444,10 +444,23 @@ export function CursorGroup({ label }: { label: LabelClass }) {
 export function WallpaperGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
-  const current = theme.wallpaper ?? 'none';
-  const worn = wallpaperById(current);
-  const canLive = worn?.kind === 'live';
+  const frame = theme.wallpaper ?? 'none';
+  const page = theme.wallpaperPage ?? 'none';
+  const wornFrame = wallpaperById(frame);
+  const wornPage = wallpaperById(page);
+  // Live is one switch for both grounds: it applies to whichever of
+  // them wears a pattern that can move.
+  const canLive = wornFrame?.kind === 'live' || wornPage?.kind === 'live';
   const movers = WALLPAPERS.filter((w) => w.kind === 'live').map((w) => w.label);
+  const chips = (current: string, write: (v: string) => void) => (
+    <div className="flex flex-wrap gap-1">
+      {WALLPAPERS.map((w) => (
+        <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
+          live={w.kind === 'live' ? (current === w.id && theme.wallpaperLive ? 'on' : 'off') : undefined}
+          onClick={write} />
+      ))}
+    </div>
+  );
   return (
     <div>
       <p className={`${label} mb-1.5`}>
@@ -456,25 +469,31 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       {/* Two plain sub-labels, NOT the caps group class: Frame and Page
           are halves of one question, and giving them a heading's weight
           made a sub-row read as a peer of Corners and Material once
-          already — the section guard caught it. */}
+          already — the section guard caught it. Each half picks its own
+          pattern; the two never have to agree. */}
       <p className="text-xs text-foreground mb-1.5">
         {t('mods.wallpaper_frame', 'Frame')}
       </p>
-      <div className="flex flex-wrap gap-1">
-        {WALLPAPERS.map((w) => (
-          <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
-            live={w.kind === 'live' ? (current === w.id && theme.wallpaperLive ? 'on' : 'off') : undefined}
-            onClick={(v) => setTheme({ wallpaper: v })} />
-        ))}
-      </div>
+      {chips(frame, (v) => setTheme({ wallpaper: v }))}
       <p className="text-2xs text-muted-foreground mt-1.5">
-        {worn?.description}
+        {wornFrame?.description}
       </p>
-      {/* One switch for the whole row, not a twin chip per pattern:
+
+      <p className="text-xs text-foreground mt-3 mb-1.5">
+        {t('mods.wallpaper_page', 'Page')}
+      </p>
+      {chips(page, (v) => setTheme({ wallpaperPage: v }))}
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {page === 'none'
+          ? t('mods.wallpaper_page_none', 'The page stays plain.')
+          : `${wornPage?.description ?? ''} ${t('mods.wallpaper_page_hint', 'Around the cards — tables and cards stay solid.')}`}
+      </p>
+
+      {/* One switch for both grounds, not a twin chip per pattern:
           "live" is a state of a pattern that can move, and the light on
           its chip is where a person sees which ones can. Disabled with
           the reason rather than hidden, so the switch is learned once. */}
-      <div className="flex items-center justify-between gap-2 mt-2">
+      <div className="flex items-center justify-between gap-2 mt-3">
         <span className={canLive ? 'text-xs text-foreground' : 'text-xs text-muted-foreground'}>
           {t('mods.wallpaper_live', 'Live')}
         </span>
@@ -490,30 +509,6 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
         {canLive
           ? t('mods.wallpaper_live_hint', 'Moves slowly, and holds still when your system asks for less motion.')
           : t('mods.wallpaper_live_only', 'Only {{names}} can move.', { names: movers.join(', ') })}
-      </p>
-
-      <p className="text-xs text-foreground mt-3 mb-1.5">
-        {t('mods.wallpaper_page', 'Page')}
-      </p>
-      {/* The pattern on the page — one switch, the whole app. Disabled
-          with the reason when no pattern is worn: there is nothing to
-          show. The page's COLOUR is not here; see the note above. */}
-      <div className="flex items-center justify-between gap-2">
-        <span className={current !== 'none' ? 'text-xs text-foreground' : 'text-xs text-muted-foreground'}>
-          {t('mods.wallpaper_page_show', 'Show the pattern on the page')}
-        </span>
-        <Switch
-          size="sm"
-          checked={current !== 'none' && theme.wallpaperPage}
-          disabled={current === 'none'}
-          onCheckedChange={(next) => setTheme({ wallpaperPage: next })}
-          aria-label={t('mods.wallpaper_page_show', 'Show the pattern on the page')}
-        />
-      </div>
-      <p className="text-2xs text-muted-foreground mt-1">
-        {current === 'none'
-          ? t('mods.wallpaper_page_none', 'Pick a pattern above first.')
-          : t('mods.wallpaper_page_hint', 'Around the cards — tables and cards stay solid.')}
       </p>
     </div>
   );

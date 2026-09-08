@@ -69,7 +69,8 @@ const rendered = walk(SRC).map((f) => code(readFileSync(f, 'utf8'))).join('\n');
  * not axes are listed with what they are.
  */
 const HTML_AXES = new Set([
-  ...PREPAINT_AXES.map((a) => `data-${a}`),
+  // `dataset.wallpaperPage` is `data-wallpaper-page` on the element.
+  ...PREPAINT_AXES.map((a) => `data-${a.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}`),
   'data-icons', 'data-iconpack', 'data-entrance',
   'data-wallpaper-live', // present while a pattern that can move is moving; not pre-paint
   'data-theme',       // the deprecated mode+accent alias

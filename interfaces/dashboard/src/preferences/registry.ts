@@ -304,10 +304,10 @@ export interface ModSetting {
    * products. Seeds again, re-derived per mode like the global one.
    */
   surfaces?: Record<string, string>;
-  /** Whether the frame's pattern also shows on the PAGE — around the
-   *  cards, over the page's own colour. Off by default: the page has
-   *  always been plain. */
-  wallpaperPage: boolean;
+  /** The PAGE's own pattern — a `WALLPAPERS` id, chosen apart from the
+   *  frame's. `none` by default: the page has always been plain. Paints
+   *  around the cards, over the page's own colour. */
+  wallpaperPage: string;
   /** @deprecated Derived from mode+accent; never read it to decide anything. */
   color: ThemeColor;
 }
@@ -371,7 +371,7 @@ export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
-  wallpaper: 'none', wallpaperLive: false, wallpaperPage: false, cursor: 'system', shader: 'flat',
+  wallpaper: 'none', wallpaperLive: false, wallpaperPage: 'none', cursor: 'system', shader: 'flat',
   color: 'dark-blue',
 };
 
@@ -440,7 +440,7 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * whole page rather than a flash of the wrong shade.
  */
 export const PREPAINT_AXES = [
-  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'cursor',
+  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'wallpaperPage', 'cursor',
   'shader', 'color',
 ] as const;
 
@@ -598,7 +598,8 @@ export const DEFS = {
       const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
         ? o.wallpaper as string : MOD_DEFAULT.wallpaper;
       const wallpaperLive = typeof o.wallpaperLive === 'boolean' ? o.wallpaperLive : MOD_DEFAULT.wallpaperLive;
-      const wallpaperPage = typeof o.wallpaperPage === 'boolean' ? o.wallpaperPage : MOD_DEFAULT.wallpaperPage;
+      const wallpaperPage = WALLPAPER_IDS.includes(o.wallpaperPage as string)
+        ? o.wallpaperPage as string : MOD_DEFAULT.wallpaperPage;
       // A pack that was removed falls back to the OS pointer, which is
       // the one thing always available — an unanswered stamp would
       // leave the app with whatever the last rule happened to set.

@@ -66,6 +66,7 @@
         // over the same inputs and fails when the two disagree.
         var font = pick(t.font, ['geist', 'system', 'serif', 'mono', 'rounded'], 'geist');
         var wallpaper = pick(t.wallpaper, ['none', 'mesh', 'grid', 'grain', 'paper', 'plasma'], 'none');
+        var wallpaperPage = pick(t.wallpaperPage, ['none', 'mesh', 'grid', 'grain', 'paper', 'plasma'], 'none');
         var cursor = pick(t.cursor, ['system', 'sharp'], 'system');
         var shader = pick(t.shader, ['flat', 'soft', 'studio'], 'flat');
 
@@ -102,6 +103,7 @@
         root.dataset.motion = motion;
         root.dataset.font = font;
         root.dataset.wallpaper = wallpaper;
+        root.dataset.wallpaperPage = wallpaperPage;
         root.dataset.cursor = cursor;
         root.dataset.shader = shader;
 

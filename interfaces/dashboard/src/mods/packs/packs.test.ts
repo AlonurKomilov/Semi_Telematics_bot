@@ -183,7 +183,9 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
             .toMatch(/^@media screen\s*\{[\s\S]*\}\s*$/);
         // One file, one pack: a rule for a sibling in here is the old
         // shared block reassembling itself.
-        for (const m of code.matchAll(new RegExp(`\\[data-${axis}="([^"]+)"\\]`, 'g')))
+        // Either attribute the axis stamps — the wallpaper axis has two,
+        // one per ground — must name this pack and no other.
+        for (const m of code.matchAll(new RegExp(`\\[data-${axis}(?:-page)?="([^"]+)"\\]`, 'g')))
           expect(m[1], `packs/${folder}/${id}.css addresses "${m[1]}"`).toBe(id);
         expect(code, `packs/${folder}/${id}.css reaches for !important`).not.toMatch(/!important/);
       }

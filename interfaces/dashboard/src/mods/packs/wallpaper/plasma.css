@@ -4,7 +4,8 @@
      context of its own so the cloud layer below can sit UNDER the
      panes and OVER this colour: `z-index: -1` on the pseudo-element
      would otherwise put it behind the ground's own paint. */
-  :root[data-wallpaper="plasma"] :is(.chrome-ground, .page-ground) {
+  :root[data-wallpaper="plasma"] .chrome-ground,
+  :root[data-wallpaper-page="plasma"] .page-ground {
     background-color: var(--ground);
     background-image:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23q)' opacity='0.06'/%3E%3C/svg%3E");
@@ -16,7 +17,8 @@
      The colour comes from `color-mix` where the gate can read it; the
      texture above stays greyscale, so its extremes are knowable.
      Larger than the viewport by the drift, so no edge ever shows. */
-  :root[data-wallpaper="plasma"] :is(.chrome-ground, .page-ground)::before {
+  :root[data-wallpaper="plasma"] .chrome-ground::before,
+  :root[data-wallpaper-page="plasma"] .page-ground::before {
     content: '';
     position: absolute;
     inset: -12%;
@@ -33,7 +35,8 @@
      is the cost this rule exists to avoid, and the layer is promoted
      only while it moves. Ninety seconds end to end, scaled by the
      Motion axis the way every duration in the app is. */
-  :root[data-wallpaper="plasma"][data-wallpaper-live] :is(.chrome-ground, .page-ground)::before {
+  :root[data-wallpaper="plasma"][data-wallpaper-live] .chrome-ground::before,
+  :root[data-wallpaper-page="plasma"][data-wallpaper-live] .page-ground::before {
     will-change: transform;
     animation: plasma-drift calc(90s * var(--motion-scale, 1)) ease-in-out infinite alternate;
   }
@@ -44,7 +47,8 @@
   /* Somebody who asked their system for less motion gets the still
      state, whatever the switch says. */
   @media (prefers-reduced-motion: reduce) {
-    :root[data-wallpaper="plasma"][data-wallpaper-live] :is(.chrome-ground, .page-ground)::before {
+    :root[data-wallpaper="plasma"][data-wallpaper-live] .chrome-ground::before,
+  :root[data-wallpaper-page="plasma"][data-wallpaper-live] .page-ground::before {
       animation: none;
     }
   }

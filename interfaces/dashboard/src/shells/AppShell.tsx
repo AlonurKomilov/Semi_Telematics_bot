@@ -183,13 +183,11 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             in it, which is what the outline says. */}
         <main
           style={sizeRegion('text')}
-          className={`flex-1 bg-background border border-border rounded-xl overflow-hidden ${dockedContentClass}${
-            // The page wears the frame's pattern when a person asked for
-            // it, over the page's own colour. `bg-background` stays: with
-            // no pattern worn there is no rule for the class to reach,
-            // and the card paints itself.
-            theme.wallpaperPage ? ' page-ground' : ''
-          }`}
+          // Always a page ground: the class only says which colour is the
+          // ground here. A pattern reaches it through `data-wallpaper-page`
+          // on <html>, and with `none` there is no rule — `bg-background`
+          // paints the card as it always has.
+          className={`flex-1 bg-background border border-border rounded-xl overflow-hidden page-ground ${dockedContentClass}`}
         >
           <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
             {/* An entrance for the routed page, when a mod asks for one.

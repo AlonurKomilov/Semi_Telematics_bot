@@ -22,16 +22,19 @@ import { THEME_PACKS } from './packs/theme';
 import { oklchToSrgb, contrastRatio, distance, type RGB } from './theme/contrast';
 import {
   LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
-  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS,
+  WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, WALLPAPER_PAGE_ATTR,
 } from './wallpaper';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
+/** The declarations of every rule whose selector LIST names `selector`
+ *  — a pack rule names both grounds in one list, each under its own
+ *  attribute, and either name reaches the same declarations. */
 function body(selector: string): string {
   let out = '';
   for (const m of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g))
-    if (m[1].trim().replace(/\s+/g, ' ') === selector) out += m[2];
+    if (m[1].split(',').some((s) => s.trim().replace(/\s+/g, ' ') === selector)) out += m[2];
   return out;
 }
 /**
@@ -72,9 +75,10 @@ const mix = (a: RGB, b: RGB, pct: number): RGB =>
  * only transforms; the stops live there, and a gate that read the
  * ground alone would measure a live pattern's tooth and call it safe.
  */
-/** The one selector a pack paints its ground with — BOTH grounds, so a
- *  page wearing the pattern paints the same stops the frame does. */
-const groundOf = (id: string) => `:root[data-wallpaper="${id}"] :is(.chrome-ground, .page-ground)`;
+/** The frame's ground under a pattern; the page's is its twin under
+ *  `data-wallpaper-page`, and `pageGroundOf` names it. */
+const groundOf = (id: string) => `:root[data-wallpaper="${id}"] .chrome-ground`;
+const pageGroundOf = (id: string) => `:root[${WALLPAPER_PAGE_ATTR}="${id}"] .page-ground`;
 
 function paintOf(id: string): string {
   const ground = groundOf(id);
@@ -374,8 +378,9 @@ describe('a live pattern moves only what the gate has already measured', () => {
         .filter(([, , decls]) => /animation:/.test(decls) && !/animation:\s*none/.test(decls));
       expect(rules.length, `${w.id}: no rule plays the animation`).toBeGreaterThan(0);
       for (const [, selector] of rules)
-        expect(selector, `${w.id} moves without the switch: ${selector.trim()}`)
-          .toContain(`[${WALLPAPER_LIVE_ATTR}]`);
+        for (const name of selector.split(','))
+          expect(name, `${w.id} moves without the switch: ${name.trim()}`)
+            .toContain(`[${WALLPAPER_LIVE_ATTR}]`);
     }
   });
 
@@ -465,7 +470,9 @@ describe('and every one of them can actually be seen', () => {
  */
 describe('the page can wear it too, and stays readable', () => {
   const pageInk = (mode: 'light' | 'dark', name: string) => {
-    const stepped = mode === 'light' ? token(body(':root:not(.dark) .page-ground'), name) : null;
+    const stepped = mode === 'light'
+      ? token(body(`:root:not(.dark)[${WALLPAPER_PAGE_ATTR}]:not([${WALLPAPER_PAGE_ATTR}="none"]) .page-ground`), name)
+      : null;
     return stepped ?? token(body(MODE_CELL[mode]), name)!;
   };
 
@@ -481,11 +488,23 @@ describe('the page can wear it too, and stays readable', () => {
     expect(engine).toMatch(/\.page-ground\s*\{\s*--ground:\s*var\(--background\)/);
   });
 
-  it('the shell makes the content card a page ground only where asked', () => {
+  it('the content card is always a page ground, and the page pattern is stamped apart from the frame\'s', () => {
     const shell = readFileSync(join(__dirname, '..', 'shells', 'AppShell.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(shell, 'the content card never becomes a page ground').toMatch(/page-ground/);
-    expect(shell, 'the class is not gated on the preference').toMatch(/theme\.wallpaperPage\s*\?/);
+    expect(shell, 'the content card is not a page ground').toMatch(/\bpage-ground\b/);
+    const engine = readFileSync(join(__dirname, 'context.tsx'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(engine, 'the page pattern is never stamped').toMatch(/dataset\.wallpaperPage\s*=\s*theme\.wallpaperPage/);
+  });
+
+  it('every pack paints the page ground under its OWN attribute, with the frame\'s stops', () => {
+    for (const w of WALLPAPERS.filter((x) => x.id !== 'none')) {
+      const page = body(pageGroundOf(w.id)) + body(`${pageGroundOf(w.id)}::before`);
+      expect(page, `${w.id} has no rule for the page ground`).not.toBe('');
+      // The same declarations: one rule, two names. A page ground that
+      // paints different stops would be a second pattern the frame's
+      // measurements say nothing about.
+      expect(page).toBe(paintOf(w.id));
+    }
   });
 
   it('every declared stop clears AA under the page inks, in both modes, under every accent', () => {

@@ -205,7 +205,7 @@ describe('theme-boot ↔ applyTheme', () => {
   const AXIS_VALUES: Record<string, readonly string[]> = {
     mode: THEME_MODES, accent: THEME_ACCENTS, radius: MOD_RADII,
     material: MOD_MATERIAL_LIST, motion: MOD_MOTION_LIST,
-    font: MOD_FONTS, wallpaper: WALLPAPER_IDS, cursor: CURSOR_IDS,
+    font: MOD_FONTS, wallpaper: WALLPAPER_IDS, wallpaperPage: WALLPAPER_IDS, cursor: CURSOR_IDS,
     shader: SHADER_IDS,
     // Derived from mode+accent rather than stored on its own; the
     // legacy migration is swept by its own test.
@@ -579,7 +579,7 @@ describe('theme-boot source', () => {
     // it to PREPAINT_AXES, or add it here and say why.
     // `wallpaperLive` starts an animation whose first frame is the
     // still state, so a late stamp changes nothing a person can see.
-    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'wallpaperLive', 'wallpaperPage'];
+    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'wallpaperLive'];
     for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),
