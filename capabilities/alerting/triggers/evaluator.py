@@ -103,12 +103,39 @@ async def _latest_per_vehicle(tenant, account_id: int, columns: list[str]) -> li
     warehouse reads are off, which would put this sweep on the customer's
     Samsara quota.
     """
-    cols = ", ".join(columns)
+    # ONE index lookup per vehicle, not a walk over every row.
+    #
+    # ``DISTINCT ON`` reads the right index but Postgres has no loose
+    # index scan, so it visits EVERY row and discards all but the first
+    # per vehicle: on this account that is 1,047,233 rows and the whole
+    # 714 MB table to produce 101, taking 4.2s and growing with history.
+    # The sweep runs every 5 minutes under a 120s per-account budget, and
+    # it had started blowing it.
+    #
+    # Driving the lateral from ``vehicle_state_live`` — one row per
+    # vehicle — turns that into ~100 index lookups: 87ms, and flat as the
+    # minute table grows.
+    #
+    # It also drops two rows the old query returned, and dropping them is
+    # the POINT rather than the cost: one is an ARCHIVED truck and one is
+    # a device with no registry row at all. ``_target_scope`` already
+    # states the rule — "a retired truck must not resolve into an
+    # allow-set, or the sweep keeps judging the one that left" — and this
+    # query was quietly breaking it. Verified against live data: no
+    # ACTIVE vehicle is in the minute table but absent from live.
+    cols = ", ".join(f"m.{c}" for c in columns)
     cur = await tenant._db.execute(
-        f"""SELECT DISTINCT ON (vehicle_id) {cols}
-              FROM warehouse.vehicle_state_minute
-             WHERE account_id = ?
-             ORDER BY vehicle_id, captured_at DESC""",
+        f"""SELECT s.*
+              FROM warehouse.vehicle_state_live l
+              CROSS JOIN LATERAL (
+                  SELECT {cols}
+                    FROM warehouse.vehicle_state_minute m
+                   WHERE m.account_id = l.account_id
+                     AND m.vehicle_id = l.vehicle_id
+                   ORDER BY m.captured_at DESC
+                   LIMIT 1
+              ) s
+             WHERE l.account_id = ?""",
         (account_id,),
     )
     return [dict(r) for r in await cur.fetchall()]
