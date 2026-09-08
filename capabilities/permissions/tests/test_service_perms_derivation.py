@@ -28,6 +28,9 @@ class TestServiceSeeds:
         for role, fs in ROLE_PERMISSIONS.items():
             assert fs.can_view_ai_assistant is True, role
             assert fs.can_view_reports is True, role
+            assert fs.can_view_notifications is True, role
+        # the field default carries every stored row that predates it
+        assert FeatureSet().can_view_notifications is True
 
     def test_the_inbox_seed_follows_vehicle_visibility(self):
         # What the derivation used to compute is a seed now — and only

@@ -47,7 +47,7 @@ export default function NotificationCenter() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { hasAny, ready: permsReady } = useViewPermissions();
-  const canAlerts = hasAny('can_view_vehicles');
+  const canAlerts = hasAny('can_view_alerts');
 
   // Remembered per user (server-backed, localStorage fast-paint) — a
   // dispatcher who lives in one bucket shouldn't re-pick it every visit.

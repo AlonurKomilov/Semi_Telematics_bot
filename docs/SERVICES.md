@@ -36,7 +36,7 @@ route + nav registry. A service carries **no `tier`** — the type makes that
 impossible (`CatalogEntry`'s service arm declares `tier?: never`), because a
 value inside the tier union would claim services sit on an axis they don't.
 
-## The four services
+## The five services
 
 ### 🔔 Alerts
 - **Surface**: the Alerts inbox (dashboard) · bot `/alerts` · *My Notifications*.
@@ -83,6 +83,27 @@ value inside the tier union would claim services sit on an axis they don't.
   Efficiency) live under Vehicles. So the report **engine** is a service; the
   report **types** are features.
 - **Contribution pattern**: each feature component owns a `report.py`.
+
+### 🔔 Notifications
+- **Surface**: the top-bar bell and its dropdown, the `/notifications`
+  centre, the `/notifications/preferences` settings (Telegram, email, push
+  and per-category cadence), and delivery itself on every channel. Dashboard,
+  bot DMs, push.
+- **Access**: `can_view_notifications`, granted per role (seeded for every
+  role, 2026-09-08; the field default carries every stored row that predates
+  it). Withheld from a role: no bell, no centre, no settings, every
+  notifications API door answers 403, and **nothing is delivered** to that
+  person on any channel — broadcast (`_filter_recipients`) and targeted
+  (`notify_user`) both ask the verb. The one exception is a **mandatory**
+  category (security, billing): it passes the service gate as it passes a
+  mute, because a payment problem must reach somebody.
+- **Content gate**: what a person is notified ABOUT still follows the
+  feature grants (a category's `requires_permission`, the alert-type map):
+  the service is the channel, the features decide the content.
+- **Alerts vs Notifications**: Alerts is the vehicle-alert inbox and its
+  board (`can_view_alerts`); Notifications is the delivery machinery every
+  notice rides, alerts included. A role with Alerts but without
+  Notifications sees the board and receives no DM.
 
 ### 🎨 Mods
 - **Surface**: the top-bar palette popover, the `/mods` page, the *Modifications*

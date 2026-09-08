@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from interfaces.api.deps import get_current_db_user, get_current_user
+from interfaces.api.deps import get_current_db_user, get_current_user, require_permission
 from interfaces.api.rate_limit import limiter
 
 from capabilities.notifications.categories import categories_for_source
@@ -59,7 +59,7 @@ class ConnectEmailRequest(BaseModel):
 @limiter.limit("5/minute")
 async def connect_email(
     request: Request, body: ConnectEmailRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Store the caller's alert email (unverified) + send a verification
     link.  Self-scoped: every role manages its own address, no extra
@@ -75,7 +75,7 @@ async def connect_email(
 
 @router.get("/channels")
 @limiter.limit("30/minute")
-async def list_channels(request: Request, user: dict = Depends(get_current_user)):
+async def list_channels(request: Request, user: dict = Depends(require_permission("can_view_notifications"))):
     """The caller's channel connections (address + verified + master), for
     the preferences UI to render 'connected ✓' vs 'connect →'."""
     from infra.platform import get_platform_db
@@ -145,7 +145,7 @@ async def channel_health(db, account_id: int, user_id: int,
 @limiter.limit("30/minute")
 async def get_channel_prefs(
     request: Request, channel: MatrixChannel,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """The caller's preferences for one matrix channel: the role-tailored
     alert types, which are on, the channel cadence, and the connection
@@ -208,7 +208,7 @@ class ChannelTypeRequest(BaseModel):
 @limiter.limit("60/minute")
 async def set_channel_type(
     request: Request, channel: MatrixChannel, body: ChannelTypeRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Toggle one alert type for a matrix channel.  Role-gated: a type the
     caller's role can't see is rejected (defence in depth — the UI
@@ -248,7 +248,7 @@ class ChannelCadenceRequest(BaseModel):
 @limiter.limit("60/minute")
 async def set_channel_cadence_route(
     request: Request, channel: MatrixChannel, body: ChannelCadenceRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Set a matrix channel's delivery cadence (applies to every one of
     its types at once)."""
@@ -283,7 +283,7 @@ AccountActivityChannel = Literal["telegram_dm", "email", "web_push", "in_app"]
 @router.get("/preferences/account-activity")
 @limiter.limit("30/minute")
 async def get_account_activity_prefs(
-    request: Request, user: dict = Depends(get_current_user),
+    request: Request, user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Targeted categories with each personal channel's on/off + connection
     state.  Opt-out: a category is ON for a channel unless a pref row
@@ -380,7 +380,7 @@ class AccountActivityRequest(BaseModel):
 @limiter.limit("60/minute")
 async def set_account_activity_pref(
     request: Request, body: AccountActivityRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Mute / un-mute one targeted category on one personal channel.
 
@@ -422,7 +422,7 @@ async def get_inbox(
     exclude_category: str = "",
     before_id: int | None = None,
     limit: int = 30,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Newest-first page of the caller's notices + their unread count.
     ``source`` filters to one namespace tab, or a comma-separated bucket of
@@ -488,7 +488,7 @@ class InboxReadRequest(BaseModel):
 @limiter.limit("60/minute")
 async def mark_inbox_read_route(
     request: Request, body: InboxReadRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Mark specific notices read.  Storage scopes the UPDATE to the
     caller's own rows, so a foreign id silently matches nothing."""
@@ -505,7 +505,7 @@ async def mark_inbox_read_route(
 @router.post("/inbox/read-all")
 @limiter.limit("30/minute")
 async def mark_inbox_all_read_route(
-    request: Request, user: dict = Depends(get_current_user),
+    request: Request, user: dict = Depends(require_permission("can_view_notifications")),
 ):
     from infra.platform import get_platform_db
     db = get_platform_db()
@@ -535,7 +535,7 @@ def _device_label(request: Request) -> str:
 
 @router.get("/push/vapid-key")
 @limiter.limit("30/minute")
-async def get_vapid_key(request: Request, user: dict = Depends(get_current_user)):
+async def get_vapid_key(request: Request, user: dict = Depends(require_permission("can_view_notifications"))):
     """The application-server public key the browser needs to subscribe.
     Generated once and stable forever (subscriptions are bound to it)."""
     from infra.platform import get_platform_db
@@ -559,7 +559,7 @@ class PushSubscribeRequest(BaseModel):
 @limiter.limit("10/minute")
 async def push_subscribe(
     request: Request, body: PushSubscribeRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Store this browser's push subscription for the caller.  The
     permission grant in the browser IS the verification (unlike email
@@ -632,7 +632,7 @@ class PushUnsubscribeRequest(BaseModel):
 @limiter.limit("10/minute")
 async def push_unsubscribe(
     request: Request, body: PushUnsubscribeRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_notifications")),
 ):
     """Remove one device (scoped to the caller — you can only ever drop
     your own).  When the LAST device goes, the channel row un-verifies so

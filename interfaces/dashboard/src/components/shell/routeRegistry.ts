@@ -24,6 +24,8 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Status at a glance — adapts to your role', keywords: ['home','dashboard','start'] },
   { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             group: 'Home',   permission: 'can_view_ai_assistant',
     description: 'Ask AI about vehicles, faults, trips, and events', keywords: ['chat','assistant','gpt'] },
+  { label: 'Notifications', path: '/notifications', icon: Bell, group: 'Home', permission: 'can_view_notifications',
+    description: 'Every notice sent to you — alerts, applications, account activity', keywords: ['bell','inbox','notices','push','digest'] },
   { label: 'Mods',         path: '/mods',    icon: Palette,         group: 'Home',   permission: 'can_view_mods',
     description: 'Your look — colour, corners, sound, effects, wallpaper', keywords: ['theme','appearance','dark','light','wallpaper','sound'] },
 

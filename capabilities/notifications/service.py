@@ -157,7 +157,8 @@ async def dispatch(
 
         subs = await _filter_recipients(
             db, subs, audience, recipient_filter,
-            requires_permission=(cat.requires_permission if cat else None))
+            requires_permission=(cat.requires_permission if cat else None),
+            service_gate=not bool(cat and cat.mandatory))
 
         for s in subs:
             cadence = s.get("cadence") or IMMEDIATE
@@ -266,8 +267,12 @@ async def _holders_of(db, tiers: dict, permission: str) -> set[int]:
     return keep
 
 
+SERVICE_FLAG = "can_view_notifications"
+
+
 async def _filter_recipients(db, subs, audience, recipient_filter,
-                             requires_permission: str | None = None) -> list[dict]:
+                             requires_permission: str | None = None,
+                             service_gate: bool = True) -> list[dict]:
     """Drop broadcast ``user`` recipients failing the category's role
     ``audience`` and/or a caller-supplied ``recipient_filter`` — in ONE
     role-fetch pass.  ``audience`` is ``None`` for categories with no role
@@ -278,7 +283,7 @@ async def _filter_recipients(db, subs, audience, recipient_filter,
     The predicate is FAIL-OPEN: if it raises, the recipient is kept — a
     scoping bug must not silently swallow notifications."""
     if (audience is None and recipient_filter is None
-            and not requires_permission):
+            and not requires_permission and not service_gate):
         return subs
     ids = [int(s["recipient_id"]) for s in subs
            if s["recipient_type"] == "user"
@@ -287,14 +292,25 @@ async def _filter_recipients(db, subs, audience, recipient_filter,
     # The permission gate needs the TIER, not just the word: a co-owner
     # and the primary owner share a role and read different rows.
     allowed_ids: set[int] | None = None
-    if requires_permission and ids:
+    # The SERVICE gate: Notifications is granted per role
+    # (can_view_notifications, 2026-09-08).  A person whose role does not
+    # hold it receives nothing on any channel — the same door the bell,
+    # the centre and the settings close behind.  Mandatory categories
+    # (security, billing) pass, as they pass mutes: a payment problem
+    # must reach somebody.  Fail-open like every predicate here.
+    held_ids: set[int] | None = None
+    if ids and (requires_permission or service_gate):
         try:
             tiers = await db.get_permission_tiers_for_users(ids)
-            allowed_ids = await _holders_of(db, tiers, requires_permission)
+            if requires_permission:
+                allowed_ids = await _holders_of(db, tiers, requires_permission)
+            if service_gate:
+                held_ids = await _holders_of(db, tiers, SERVICE_FLAG)
         except Exception as e:
             logger.error("dispatch: tier fetch failed (%s) — keeping all: %s",
-                         requires_permission, e)
+                         requires_permission or SERVICE_FLAG, e)
             allowed_ids = None
+            held_ids = None
 
     def keep(s: dict) -> bool:
         if s["recipient_type"] != "user":
@@ -304,6 +320,8 @@ async def _filter_recipients(db, subs, audience, recipient_filter,
         role = roles.get(uid) if uid is not None else None
         if audience is not None and not (role is not None and audience(role)):
             return False
+        if held_ids is not None and uid is not None and uid not in held_ids:
+            return False                       # the service is withheld from this role
         if allowed_ids is not None and uid is not None and uid not in allowed_ids:
             return False
         if recipient_filter is not None and uid is not None:
@@ -316,6 +334,19 @@ async def _filter_recipients(db, subs, audience, recipient_filter,
         return True
 
     return [s for s in subs if keep(s)]
+
+
+async def _service_held(db, account_id: int, user_id: int) -> bool:
+    """Whether ONE person's role holds the Notifications service — the
+    targeted path's half of the gate ``_filter_recipients`` applies to a
+    broadcast.  Fail-open, for the same reason."""
+    try:
+        tiers = await db.get_permission_tiers_for_users([int(user_id)])
+        held = await _holders_of(db, tiers, SERVICE_FLAG)
+        return int(user_id) in held if tiers else True
+    except Exception as e:
+        logger.error("notify_user: service gate unresolvable for user %s — sending: %s", user_id, e)
+        return True
 
 
 async def notify_user(
@@ -346,6 +377,8 @@ async def notify_user(
             f"notify_user() is targeted-only; {content.category!r} is "
             "broadcast — use dispatch()")
     mandatory = bool(cat and cat.mandatory)
+    if not mandatory and not await _service_held(db, account_id, user_id):
+        return []                              # withheld from the role: nothing is sent
     if correlation_key:
         content.meta.setdefault("correlation_key", correlation_key)
     keys = list(channels) if channels is not None else [c.key for c in list_channels()]

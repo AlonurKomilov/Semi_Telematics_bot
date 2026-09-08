@@ -21,14 +21,15 @@ import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { NotificationsPanel } from './NotificationsPanel';
 import { useInboxUnread } from './useInbox';
 
-const P_ALERTS = ['can_view_vehicles'];
+const P_ALERTS = ['can_view_alerts'];
 
 export function AlertsLauncher() {
   const { hasAny } = useViewPermissions();
-  // The bell is the universal Notifications door — every authenticated user
-  // gets it (even vehicle-less roles like recruiter/HR who have no alerts,
-  // so they can still reach their notification preferences).  Its alert
-  // GLANCE stays permission-scoped inside the panel.
+  // The bell is the Notifications SERVICE's door — granted per role
+  // (can_view_notifications) since 2026-09-08; a role without it has no
+  // bell, no centre, no settings, and receives nothing.  Its alert
+  // GLANCE stays scoped inside the panel on the Alerts service's verb.
+  if (!hasAny('can_view_notifications')) return null;
   return <AlertsBell canAlerts={hasAny(...P_ALERTS)}
                      canApplications={hasAny('can_manage_applications')} />;
 }
