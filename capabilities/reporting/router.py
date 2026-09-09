@@ -5,7 +5,6 @@
 
 
 import asyncio
-from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -196,7 +195,7 @@ async def export_report(
     """Download a report as PDF or CSV file."""
     from fastapi import HTTPException
     spec = REPORTS_BY_KEY.get(report_type)
-    if spec is None or spec.data_method is None:
+    if spec is None or not spec.api_export:
         raise HTTPException(400, f"Unknown report type: {report_type}")
 
     # Enforce per-type permission so callers can only export what they can read.
@@ -206,18 +205,23 @@ async def export_report(
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
 
-    # ── PDF path delegates to the shared data_fetch.build_report_pdf
-    #    so the dashboard download and the bot's scheduled delivery
-    #    use the same upstream — eliminates the data drift previously
-    #    audited.  CSV path still uses the API-direct samsara client
-    #    because the bot doesn't have a CSV channel today; folding CSV
-    #    in is a follow-up once we add streaming-CSV support to the
-    #    data_fetch module.
+    # Both formats come through data_fetch now, so the dashboard
+    # download, the bot's scheduled delivery and the CSV export share
+    # one upstream per report.  They also share one narrowing: what
+    # this caller may see is decided here, once, and handed down —
+    # every OTHER endpoint in this file applies these two filters
+    # inline, and the export endpoint applied them on the CSV branch
+    # only, so a driver restricted to two trucks could download a PDF
+    # of the whole account.
+    async def _viewer_scope(rows: list[dict]) -> list[dict]:
+        rows = filter_by_allowed_companies(rows, allowed)
+        return await filter_by_assigned_trucks(rows, user)
+
     if fmt == "pdf":
         from capabilities.reporting.data_fetch import build_report_pdf
         buf, _caption, filename_stem = await build_report_pdf(
             user["account_id"], report_type,
-            company=company, days=days,
+            company=company, days=days, scope=_viewer_scope,
         )
         if buf is None:
             from fastapi import HTTPException
@@ -227,23 +231,18 @@ async def export_report(
         filename = f"{filename_stem or report_type}.pdf"
         content_type = "application/pdf"
     else:
-        # CSV path — keep the old direct-samsara flow.
-        client = await get_client(user["account_id"])
-        method = getattr(client, spec.data_method)
-        if report_type == "efficiency":
-            vehicles = await method(days=days, company=company)
-        elif company:
-            vehicles = await method(company=company)
-        else:
-            vehicles = await method()
-        vehicles = filter_by_allowed_companies(vehicles, allowed)
-        vehicles = await filter_by_assigned_trucks(vehicles, user)
-        gen: Any = spec.csv_generator
-        if report_type == "efficiency":
-            buf = await asyncio.to_thread(gen, vehicles, days, company)
-        else:
-            buf = await asyncio.to_thread(gen, vehicles, company)
-        filename = f"{report_type}_report.csv"
+        # CSV comes through the SAME services as the PDF above.  It used
+        # to reach for the Samsara client by a method NAME stored in the
+        # registry, and the client's methods were renamed underneath it:
+        # faults and fuel exported an AttributeError while their PDFs
+        # kept working, because nothing tied those strings to the real
+        # methods.  One upstream, one place to rename.
+        from capabilities.reporting.data_fetch import build_report_csv
+        buf, filename_stem = await build_report_csv(
+            user["account_id"], report_type,
+            company=company, days=days, scope=_viewer_scope,
+        )
+        filename = f"{filename_stem or report_type}.csv"
         content_type = "text/csv; charset=utf-8"
 
     return StreamingResponse(

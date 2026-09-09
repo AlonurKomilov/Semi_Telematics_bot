@@ -45,11 +45,13 @@ class ReportSpec:
     callback_data, and the ``digest_subscriptions.report_type`` column —
     never rename without a migration.
 
-    ``data_method`` is a tenant_db method name resolved at call time
-    (string indirection keeps this module free of warehouse imports
-    so it can be imported anywhere without cycles).  ``None`` means
-    the report doesn't have a generic data path (e.g. Camera Check
-    pulls media-server snapshots, not warehouse rows).
+    ``api_export`` says whether ``/api/reports/export`` can serve this
+    report.  It replaced a ``data_method`` STRING that the router used
+    to resolve with ``getattr`` — the named methods were renamed
+    underneath it and nothing failed until a user asked for the CSV,
+    because a string names nothing the interpreter will check.  What
+    each report actually reads now lives in
+    ``capabilities.reporting.data_fetch``, wired by reference.
     """
 
     key: str
@@ -59,7 +61,7 @@ class ReportSpec:
     permission: str           # gate flag for the API export endpoint
     pdf_generator: Callable
     csv_generator: Callable
-    data_method: Optional[str]
+    api_export: bool
 
     @property
     def label_with_emoji(self) -> str:
@@ -74,7 +76,7 @@ REPORTS: tuple[ReportSpec, ...] = (
         permission="can_view_faults",
         pdf_generator=generate_fault_report_pdf,
         csv_generator=generate_fault_csv,
-        data_method="get_fault_codes",
+        api_export=True,
     ),
     ReportSpec(
         key="fuel", emoji="⛽",
@@ -82,7 +84,7 @@ REPORTS: tuple[ReportSpec, ...] = (
         permission="can_view_fuel",
         pdf_generator=generate_fuel_report_pdf,
         csv_generator=generate_fuel_csv,
-        data_method="get_fuel_levels",
+        api_export=True,
     ),
     ReportSpec(
         key="health", emoji="🏥",
@@ -90,7 +92,7 @@ REPORTS: tuple[ReportSpec, ...] = (
         permission="can_view_health",
         pdf_generator=generate_vehicle_health_pdf,
         csv_generator=generate_health_csv,
-        data_method="get_vehicle_health",
+        api_export=True,
     ),
     ReportSpec(
         key="efficiency", emoji="📊",
@@ -98,7 +100,7 @@ REPORTS: tuple[ReportSpec, ...] = (
         permission="can_view_efficiency",
         pdf_generator=generate_fleet_efficiency_pdf,
         csv_generator=generate_efficiency_csv,
-        data_method="get_fleet_efficiency",
+        api_export=True,
     ),
     ReportSpec(
         key="camera", emoji="📷",
@@ -106,7 +108,7 @@ REPORTS: tuple[ReportSpec, ...] = (
         permission="can_view_cameras",
         pdf_generator=generate_camera_check_pdf,
         csv_generator=generate_camera_check_csv,
-        data_method=None,
+        api_export=False,
     ),
 )
 
@@ -124,7 +126,8 @@ def report_keys() -> list[str]:
 
 
 def keys_with_api_export() -> list[str]:
-    """Report keys that have a data_method (i.e. can be served by the
-    generic ``/api/reports/export`` endpoint).  Camera Check is the
-    one current exception."""
-    return [r.key for r in REPORTS if r.data_method is not None]
+    """Report keys the generic ``/api/reports/export`` endpoint serves.
+
+    Camera Check is the one current exception — it pulls media-server
+    snapshots, so it has a PDF but no downloadable export path."""
+    return [r.key for r in REPORTS if r.api_export]
