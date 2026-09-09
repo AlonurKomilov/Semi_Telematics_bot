@@ -9,13 +9,16 @@
  * dashcam missing while the panel is open.  So it is cached with a life,
  * not for the life of the panel.
  */
-import { apiFetch } from '../../api/client';
+import { apiFetch, apiJSON } from '../../api/client';
 
 export interface InventoryItem {
   id: number;
   category: string;
   label: string;
   status: string;
+  /** When somebody last looked.  Empty means nobody ever has — which is
+   *  itself worth saying on a row. */
+  last_verified_at?: string;
 }
 
 export interface Onboard {
@@ -109,3 +112,34 @@ export async function inventoryFor(
     return null;
   }
 }
+
+
+/** Forget ONE truck, so the next read is the truth rather than what was
+ *  true before somebody changed it.  Called after every write: a cache
+ *  that outlives the thing it describes is how a panel starts lying. */
+export function forgetVehicle(registryId: number | null | undefined): void {
+  if (registryId != null) cache.delete(registryId);
+}
+
+/** The two verbs the panel may perform.  Add, transfer and remove are
+ *  office actions and are not reachable from here at all — the server's
+ *  route allow-list decides that, not this file. */
+export async function verifyItem(itemId: number): Promise<void> {
+  await apiJSON('/extension/inventory-verify', {
+    method: 'POST', body: { item_id: itemId },
+  });
+}
+
+export async function setItemStatus(
+  itemId: number, status: string, note = '',
+): Promise<void> {
+  await apiJSON('/extension/inventory-status', {
+    method: 'POST', body: { item_id: itemId, status, note },
+  });
+}
+
+/** What the panel offers, worst last so the strip reads as a ladder from
+ *  "fine" to "gone".  ``spare`` and ``in_repair`` are deliberately not
+ *  here: they are bookkeeping states somebody sets at a desk, not what
+ *  a person standing at a truck reports. */
+export const PANEL_STATUSES = ['installed', 'needs_check', 'damaged', 'missing'] as const;

@@ -22,7 +22,7 @@
  */
 import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
-import { OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
+import { ACTIVE_FEATURE_KEY, OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type InventoryCounts, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
 import { makeShared } from './features/maps-overlay/dedupe';
 import type { LiveVehiclesResponse } from './features/live-map/types';
 
@@ -32,6 +32,10 @@ import type { LiveVehiclesResponse } from './features/live-map/types';
  *  outlive the connection that earned it — see dedupe.ts. */
 const sharedLive = makeShared<LiveVehiclesResponse>(4_000);
 const sharedList = makeShared<{ features?: unknown[] }>(25_000);
+/** Its own window: the counts and the truck list are different answers
+ *  with different shapes, and one shared cache cannot hold both. */
+type FleetCounts = { vehicles?: { vehicle_id: number; total: number; attention: number }[] };
+const sharedInventory = makeShared<FleetCounts>(25_000);
 
 /** The one fetcher both askers share, typed as the API really answers.
  *  The panel is handed this payload whole and reads each reading's AGE
@@ -104,13 +108,42 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
     try {
       const data = await sharedList('list', token,
         () => apiJSON<{ features?: unknown[] }>('/map/vehicles'));
-      sendResponse({ ok: true, vehicles: toOverlayVehicles((data.features ?? []) as never) } satisfies OverlayReply);
+      sendResponse({
+        ok: true,
+        vehicles: toOverlayVehicles((data.features ?? []) as never, await inventoryCounts(token)),
+      } satisfies OverlayReply);
     } catch (e) {
       sendResponse({ ok: false, reason: 'error', detail: e instanceof Error ? e.message : 'failed' } satisfies OverlayReply);
     }
   })();
   return true;                            // the response is async
 });
+
+/** What is aboard each truck — asked ONLY while the panel is showing
+ *  Inventory.  On Live Map this costs nothing and sends nothing: a page
+ *  we do not own has no business carrying our inventory when nobody is
+ *  looking at inventory.
+ *
+ *  Shared with the list's own de-duplication, so thirty tabs on
+ *  google.com/maps ask once. */
+async function inventoryCounts(token: string): Promise<InventoryCounts | undefined> {
+  try {
+    const got = await chrome.storage.local.get(ACTIVE_FEATURE_KEY);
+    if (got[ACTIVE_FEATURE_KEY] !== 'inventory') return undefined;
+    const out = await sharedInventory('inventory', token,
+      () => apiJSON<FleetCounts>('/extension/inventory-fleet'));
+    const counts: InventoryCounts = new Map();
+    for (const v of out.vehicles ?? []) {
+      counts.set(Number(v.vehicle_id), { total: Number(v.total) || 0, attention: Number(v.attention) || 0 });
+    }
+    return counts;
+  } catch {
+    // A truck list that arrives without its counts is still a truck
+    // list.  Losing the markers to a slow inventory read would be a
+    // strange way to answer "where are my trucks".
+    return undefined;
+  }
+}
 
 chrome.runtime.onMessageExternal.addListener((msg: unknown, sender, sendResponse) => {
   (async () => {

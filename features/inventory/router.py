@@ -36,6 +36,7 @@ from adapters.storage.vehicle_inventory import (
     normalize_inventory_category,
     INVENTORY_STATUSES,
 )
+from features.inventory import service
 from features.vehicles.scope import company_allows
 from interfaces.api.deps import (
     get_platform_db,
@@ -100,13 +101,13 @@ async def _resolve_vehicle(
 
 
 async def _item_or_404(tenant, user: dict, item_id: int) -> dict:
-    account_id = int(user["account_id"])
-    item = await tenant.get_inventory_item(account_id, item_id)
+    # The wall itself lives in the service, because the browser
+    # extension's write routes apply the same one and two copies of a
+    # wall is one chance to forget a brick.
+    item = await service.item_if_visible(
+        int(user["account_id"]), item_id, await get_user_company_codes(user),
+    )
     if item is None:
-        raise HTTPException(404, "Inventory item not found")
-    vehicle = await tenant.get_vehicle(account_id, int(item["vehicle_id"]))
-    allowed = await get_user_company_codes(user)
-    if vehicle is not None and allowed and vehicle.company_code and vehicle.company_code not in allowed:
         raise HTTPException(404, "Inventory item not found")
     return item
 
@@ -114,12 +115,7 @@ async def _item_or_404(tenant, user: dict, item_id: int) -> dict:
 async def _driver_snapshot(tenant, account_id: int, vehicle_id: int) -> int | None:
     """Driver assigned to the item's truck right now — stamped onto the
     event for accountability."""
-    vehicle = await tenant.get_vehicle(account_id, vehicle_id)
-    if vehicle is None:
-        return None
-    return await tenant.get_assigned_driver_for_truck(
-        account_id, vehicle.unit_number,
-    )
+    return await service.driver_on_truck(account_id, vehicle_id)
 
 
 def _summary(items: list[dict]) -> dict:

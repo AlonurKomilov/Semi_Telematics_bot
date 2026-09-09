@@ -18,8 +18,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
-import { inventoryFor, type Onboard } from './data';
+import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Onboard } from './data';
 import ItemRows from './ItemRows';
+import type { PanelFeatureProps } from '../../shell/registry';
 
 /** One truck's line in the fleet answer — counts and a name, never
  *  contents.  An item's own label arrives when a truck is chosen. */
@@ -36,7 +37,8 @@ interface FleetRow {
  *  open all morning is not lying by lunchtime. */
 const FLEET_REFRESH_MS = 60_000;
 
-export default function InventoryPanel() {
+export default function InventoryPanel({ abilities }: PanelFeatureProps) {
+  const canWrite = abilities.includes('inventory.write');
   const [fleet, setFleet] = useState<FleetRow[] | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -46,6 +48,10 @@ export default function InventoryPanel() {
    *  them — the storage listener is attached once. */
   const selectedRef = useRef<FleetRow | null>(null);
   selectedRef.current = selected;
+  /** The fleet read, reachable from outside its own effect: a write
+   *  changes a count, and a count that waits up to a minute to catch up
+   *  reads as a press that did nothing. */
+  const reload = useRef<() => void>(() => {});
 
   // ── the fleet answer ────────────────────────────────────────────
   useEffect(() => {
@@ -71,6 +77,7 @@ export default function InventoryPanel() {
         setError(e instanceof Error ? e.message : 'Could not read inventory');
       }
     };
+    reload.current = () => { void load(); };
     void load();
     const t = setInterval(() => { void load(); }, FLEET_REFRESH_MS);
     return () => { stopped = true; clearInterval(t); };
@@ -110,6 +117,16 @@ export default function InventoryPanel() {
     return () => chrome.storage.onChanged.removeListener(onChange);
   }, [fleet]);
 
+  /** After a write: this truck's contents are stale, and so is its line
+   *  in the fleet answer.  Both are re-read, in that order, so the list
+   *  and the card cannot disagree about the truck in front of you. */
+  const afterWrite = async (vehicleId: number) => {
+    forgetVehicle(vehicleId);
+    const ob = await inventoryFor(vehicleId);
+    if (selectedRef.current?.vehicle_id === vehicleId) setItems(ob);
+    reload.current();
+  };
+
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return fleet ?? [];
@@ -144,7 +161,7 @@ export default function InventoryPanel() {
               : `${fleet.length} truck${fleet.length === 1 ? '' : 's'} carry items`
                 + (attentionTrucks === 0
                   ? ' · all settled'
-                  : ` · ${attentionTrucks} need attention`)}
+                  : ` · ${attentionTrucks} need${attentionTrucks === 1 ? 's' : ''} attention`)}
           </p>
         )}
         {error && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{error}</p>}
@@ -170,7 +187,21 @@ export default function InventoryPanel() {
           </p>
           {items === null
             ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>Reading…</p>
-            : <ItemRows items={items.items} />}
+            : <ItemRows items={items.items}
+                         // Taller than the map card's seven rows: there
+                         // the ceiling keeps a natural-height card from
+                         // pushing the map to its floor, but HERE the
+                         // card is the main event and the truck list
+                         // below it is the region that gives.
+                         maxHeight={280}
+                         onVerify={canWrite ? async (id) => {
+                           await verifyItem(id);
+                           await afterWrite(selected.vehicle_id);
+                         } : undefined}
+                         onStatus={canWrite ? async (id, st) => {
+                           await setItemStatus(id, st);
+                           await afterWrite(selected.vehicle_id);
+                         } : undefined} />}
           {/* Read here, changed there.  The link goes to /inventory
               rather than the truck's own page: that page is gated on
               can_view_vehicles, the one grant this reader may not have

@@ -109,6 +109,12 @@ export interface OverlayVehicle {
   company: string;
   speed_mph: number;
   updated_at: string;
+  /** What is aboard — present ONLY while the panel is on Inventory, so
+   *  the Live Map's pages never carry it.  Counts, never contents: a
+   *  label or a serial number answers the dashboard's questions, and
+   *  this is a page we do not own. */
+  inventory_total?: number;
+  inventory_attention?: number;
 }
 
 /** One live fix.  The wire shape of `/map/vehicles/live`, trimmed the
@@ -183,7 +189,15 @@ interface MapFeature {
 }
 
 /** The map payload, trimmed. Shared by the worker and its tests. */
-export function toOverlayVehicles(features: MapFeature[]): OverlayVehicle[] {
+/** ``registry id -> counts``, supplied by the worker ONLY while the panel
+ *  is showing Inventory.  On Live Map the fields are absent, so a page
+ *  belonging to somebody else never carries what is aboard our trucks
+ *  when nobody asked what is aboard our trucks. */
+export type InventoryCounts = Map<number, { total: number; attention: number }>;
+
+export function toOverlayVehicles(
+  features: MapFeature[], inventory?: InventoryCounts,
+): OverlayVehicle[] {
   const out: OverlayVehicle[] = [];
   for (const f of features ?? []) {
     const c = f.geometry?.coordinates;
@@ -193,6 +207,7 @@ export function toOverlayVehicles(features: MapFeature[]): OverlayVehicle[] {
     const p = f.properties ?? {};
     const heading = typeof p.heading === 'number' && Number.isFinite(p.heading) ? p.heading : null;
     const speed = Number(p.speed_mph);
+    const inv = inventory?.get(Number(p.registry_id));
     out.push({
       id: String(p.id ?? p.name ?? `${lat},${lng}`),
       name: String(p.name ?? ''),
@@ -202,6 +217,11 @@ export function toOverlayVehicles(features: MapFeature[]): OverlayVehicle[] {
       company: String(p.company ?? ''),
       speed_mph: Number.isFinite(speed) ? speed : 0,
       updated_at: String(p.updated_at ?? ''),
+      // The join happens HERE so registry_id stays behind: it is the
+      // key, never the payload.  Absent rather than zero when the truck
+      // carries nothing — a card should say "3 items" or say nothing,
+      // not announce an emptiness nobody asked about.
+      ...(inv ? { inventory_total: inv.total, inventory_attention: inv.attention } : {}),
     });
   }
   return out;

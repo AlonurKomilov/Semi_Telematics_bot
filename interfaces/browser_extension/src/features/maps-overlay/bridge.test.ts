@@ -168,3 +168,36 @@ describe('the truck handed from the map to the panel', () => {
     }
   });
 });
+
+describe('what is aboard, on a page we do not own', () => {
+  const feature = (registry_id: number) => ({
+    geometry: { coordinates: [-93.72, 35.5] },
+    properties: { id: '42', name: '103', status: 'moving', registry_id },
+  });
+
+  it('carries counts when the panel is on Inventory — and never the key it joined on', () => {
+    const counts = new Map([[9001, { total: 3, attention: 1 }]]);
+    const [v] = toOverlayVehicles([feature(9001)] as never, counts);
+    expect(v.inventory_total).toBe(3);
+    expect(v.inventory_attention).toBe(1);
+    // registry_id is how the join was made; it is not payload.
+    expect('registry_id' in v).toBe(false);
+    // Counts, never contents: no label, no serial, no note.
+    for (const forbidden of ['label', 'identifier', 'notes', 'items']) {
+      expect(forbidden in v, forbidden).toBe(false);
+    }
+  });
+
+  it('says nothing at all when the panel is not on Inventory', () => {
+    const [v] = toOverlayVehicles([feature(9001)] as never);
+    expect('inventory_total' in v).toBe(false);
+    expect(Object.keys(v)).toHaveLength(9);
+  });
+
+  it('leaves a truck the counts do not mention alone', () => {
+    // Absent, not zero: a card should say "3 items" or say nothing —
+    // announcing an emptiness nobody asked about is noise.
+    const [v] = toOverlayVehicles([feature(7)] as never, new Map([[9001, { total: 3, attention: 1 }]]));
+    expect('inventory_total' in v).toBe(false);
+  });
+});

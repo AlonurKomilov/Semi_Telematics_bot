@@ -14,8 +14,9 @@ import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
-import { inventoryFor, type Onboard } from '../inventory/data';
+import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Onboard } from '../inventory/data';
 import ItemRows from '../inventory/ItemRows';
+import type { PanelFeatureProps } from '../../shell/registry';
 import { PANEL_LIVE, PENDING_SELECT_KEY, readPendingSelect, sharedOrOwn,
          type PanelLiveReply } from '../maps-overlay/bridge';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
@@ -47,7 +48,11 @@ const INV_BODY_ID = 'live-map-vehicle-onboard';
 const FILTER_KEY = 'liveMapFilter';
 type Filter = 'all' | VehicleStatus;
 
-export default function LiveMapPanel() {
+export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
+  // The same two verbs the Inventory feature offers.  Somebody peeking
+  // at the map card who sees "Dashcam — Missing" should not have to
+  // switch features to say so.
+  const canWriteInventory = abilities.includes('inventory.write');
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const markers = useRef<Map<string, L.Marker>>(new Map());
@@ -122,6 +127,15 @@ export default function LiveMapPanel() {
   selectedIdRef.current = selected ? idOf(selected) : null;
   const selectedRef = useRef<MapVehicleFeature | null>(null);
   selectedRef.current = selected;
+
+  /** After a write: this truck's cached contents are a minute out of
+   *  date the moment somebody flags an item, so they are dropped and
+   *  read again rather than left to expire on their own. */
+  const refreshOnboard = async (registryId: number | null | undefined) => {
+    forgetVehicle(registryId);
+    const ob = await inventoryFor(registryId);
+    if (selectedRef.current?.properties.registry_id === registryId) setOnboard(ob);
+  };
 
   /** Where the vehicle IS right now: the marker, which the 5-second poll
    *  and the physics keep moving — not the 30-second list snapshot. */
@@ -733,7 +747,15 @@ export default function LiveMapPanel() {
                   </button>
                   {/* The rows carry their own ceiling — see ItemRows. */}
                   <div id={INV_BODY_ID} hidden={!invOpen} style={{ display: 'grid', gap: 4 }}>
-                    <ItemRows items={onboard.items} />
+                    <ItemRows items={onboard.items}
+                              onVerify={canWriteInventory ? async (id) => {
+                                await verifyItem(id);
+                                await refreshOnboard(selected.properties.registry_id);
+                              } : undefined}
+                              onStatus={canWriteInventory ? async (id, st) => {
+                                await setItemStatus(id, st);
+                                await refreshOnboard(selected.properties.registry_id);
+                              } : undefined} />
                     {/* The panel can READ this and never write it — the
                         manage grant is deliberately outside the token's
                         scope, so a key living in a browser cannot mark a

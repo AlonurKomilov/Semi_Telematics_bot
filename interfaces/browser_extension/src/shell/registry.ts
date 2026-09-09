@@ -5,10 +5,18 @@
  */
 import { lazy, type LazyExoticComponent, type ComponentType } from 'react';
 
+/** What every panel feature is handed.  Abilities rather than flags:
+ *  the server answers in the panel's vocabulary (/extension/me), so a
+ *  feature hides a control the server would refuse instead of offering
+ *  it and answering 403 on the press. */
+export interface PanelFeatureProps {
+  abilities: string[];
+}
+
 export interface PanelFeature {
   id: string;
   label: string;
-  Component: LazyExoticComponent<ComponentType>;
+  Component: LazyExoticComponent<ComponentType<PanelFeatureProps>>;
 }
 
 export const FEATURES: PanelFeature[] = [

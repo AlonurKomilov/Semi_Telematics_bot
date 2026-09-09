@@ -422,6 +422,17 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
         ? '<span style="opacity:.6"> \u00b7 no position time</span>'
         : `<span style="${old_ ? 'color:#fbbf24' : 'opacity:.6'}" title="${esc(describeAge(age))}"> \u00b7 ${esc(formatAge(age))} old</span>`)
     + '</div>'
+    // What is aboard, when the panel is on Inventory — and only then,
+    // because that is the only time the worker sends it.  Counts, never
+    // contents: "1 needs attention" is the answer to "is this truck
+    // right"; WHICH item it is belongs behind the button.
+    + (v.inventory_total == null ? '' :
+        '<div style="font-size:11px;margin-bottom:6px">'
+        + `<span style="opacity:.6">${v.inventory_total} item${v.inventory_total === 1 ? '' : 's'}</span>`
+        + (v.inventory_attention
+            ? `<span style="color:#fbbf24;font-weight:600"> \u00b7 ${v.inventory_attention} need${v.inventory_attention === 1 ? 's' : ''} attention</span>`
+            : '<span style="opacity:.6"> \u00b7 all settled</span>')
+        + '</div>')
     // Fuel, DEF, the address, the faults: all one button away, in the
     // panel, which is where they live — see bridge.ts on what does not
     // cross into a page we do not own.

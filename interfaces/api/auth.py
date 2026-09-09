@@ -171,14 +171,15 @@ KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 # ``can_view_inventory`` joined them when the panel learned to answer
 # "what is ON this truck" for the vehicle in hand.  It is a WIDENING of
 # what a stolen panel key reads — from where the trucks are to where
-# they are plus what is aboard — and it is deliberate: the question is
+# they are plus what is aboard, and since 2026-09-09 what a person may
+# say about it — and it is deliberate: the question is
 # asked standing next to the truck, which is exactly where a phone or a
 # laptop showing Google Maps is.  It is not an escalation: the scope is
 # an intersection, so a person the owner never granted Inventory still
 # reads False for it (deps._narrow_to_token_scope).
 EXTENSION_SCOPE: tuple[str, ...] = (
     "can_view_location", "can_location_map", "can_location_vehicle",
-    "can_view_inventory",
+    "can_view_inventory", "can_manage_inventory",
 )
 #: Where a scoped token may go AT ALL — matched exactly by
 #: deps.get_current_user after the /api and /api/v1 mount prefixes and a
@@ -191,6 +192,10 @@ EXTENSION_SCOPE: tuple[str, ...] = (
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
     "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
+    # The two write verbs the panel may perform, and only these: add,
+    # transfer and remove are office actions and are NOT listed, so the
+    # manage flag in the scope above cannot reach them.
+    "/extension/inventory-verify", "/extension/inventory-status",
     "/auth/refresh", "/auth/logout",
 })
 

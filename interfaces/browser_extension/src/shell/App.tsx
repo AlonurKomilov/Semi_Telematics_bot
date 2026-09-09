@@ -18,6 +18,8 @@ interface MeWire {
    *  panel's vocabulary.  Absent from an older API: then the panel shows
    *  what it has always shown rather than nothing. */
   features?: string[] | null;
+  /** Verbs the panel may offer, in its own vocabulary. */
+  abilities?: string[] | null;
   /** True when this token was minted before the audience's scope last
    *  changed — the panel heals it with one refresh rather than asking a
    *  person to reconnect, which nobody would think to do. */
@@ -37,6 +39,7 @@ export default function App() {
    *  the first feature, which is what this panel showed before there was
    *  a choice.  A failed /me must not empty the panel. */
   const [allowed, setAllowed] = useState<string[] | null>(null);
+  const [abilities, setAbilities] = useState<string[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   // Why the connect screen is showing again — a session disconnected
   // from the profile (or expired) looks different from a first run.
@@ -111,6 +114,7 @@ export default function App() {
       }
       setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null });
       setAllowed(Array.isArray(w.features) ? w.features : null);
+      setAbilities(Array.isArray(w.abilities) ? w.abilities : []);
     };
     read().catch(() => { if (!cancelled) setMe(null); });
     return () => { cancelled = true; };
@@ -148,6 +152,7 @@ export default function App() {
     // grants: what one truck's inventory was, and whether Inventory was
     // permitted at all, are answers to THAT session's key, not this one's.
     forgetInventory();
+    setAbilities([]);
     setMe(null); setView('feature'); setPhase('login');
   };
 
@@ -164,7 +169,7 @@ export default function App() {
           <Settings onBack={() => setView('feature')} />
         ) : (
           <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
-            <feature.Component />
+            <feature.Component abilities={abilities} />
           </Suspense>
         )}
       </main>

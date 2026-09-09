@@ -4,8 +4,8 @@ vi.mock('../../api/client', () => ({ apiFetch: vi.fn() }));
 
 import { apiFetch } from '../../api/client';
 import {
-  forgetInventory, humanize, inventoryFor, isAttention, sortForPanel, statusTone,
-  type InventoryItem,
+  PANEL_STATUSES, forgetInventory, forgetVehicle, humanize, inventoryFor, isAttention,
+  sortForPanel, statusTone, type InventoryItem,
 } from './data';
 
 const mocked = vi.mocked(apiFetch);
@@ -143,5 +143,34 @@ describe('inventoryFor', () => {
   it('survives a payload that is missing its fields', async () => {
     mocked.mockResolvedValue(reply({}));
     expect(await inventoryFor(1, 1000)).toEqual({ items: [], attention: 0 });
+  });
+});
+
+describe('after a write', () => {
+  it('forgets ONE truck, not the whole panel', async () => {
+    mocked.mockResolvedValue(reply({ items: [item(1, 'installed')], attention: 0 }));
+    await inventoryFor(1, 1000);
+    await inventoryFor(2, 1000);
+    expect(mocked).toHaveBeenCalledTimes(2);
+
+    forgetVehicle(1);
+    await inventoryFor(1, 1000);          // re-read: it was just changed
+    await inventoryFor(2, 1000);          // still cached: nobody touched it
+    expect(mocked).toHaveBeenCalledTimes(3);
+  });
+
+  it('survives being handed nothing', () => {
+    expect(() => forgetVehicle(null)).not.toThrow();
+    expect(() => forgetVehicle(undefined)).not.toThrow();
+  });
+});
+
+describe('what the panel offers to set', () => {
+  it('is what a person reports standing at a truck, and nothing else', () => {
+    expect([...PANEL_STATUSES]).toEqual(['installed', 'needs_check', 'damaged', 'missing']);
+    // Bookkeeping states somebody sets at a desk stay at the desk.
+    for (const deskOnly of ['spare', 'in_repair']) {
+      expect(PANEL_STATUSES).not.toContain(deskOnly);
+    }
   });
 });

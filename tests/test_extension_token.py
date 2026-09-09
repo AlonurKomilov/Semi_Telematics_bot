@@ -111,12 +111,51 @@ def test_refresh_reissues_the_audiences_scope_of_today():
     assert _scope_for_audience({"aud": "somebody-elses", "scope": ["x"]}) == ["x"]
 
 
-def test_the_panel_key_may_read_inventory_and_may_not_change_it():
-    """Inventory joined the scope so the panel can answer "what is on
-    this truck".  The write half deliberately did not: a key that lives
-    in a browser must not be able to mark a dashcam missing."""
+def test_the_panel_may_flag_an_item_and_may_not_retire_one():
+    """The owner asked for the write half on 2026-09-09, and it arrived
+    NARROW — which is what having two lists is for.
+
+    The SCOPE opens ``can_manage_inventory``; the ROUTE LIST decides
+    where that flag may be used.  Verify and status are listed; add,
+    transfer and remove are not, so the panel's key cannot reach them
+    however senior the person holding it.  Moving an item between trucks
+    or retiring it is done at a desk with the registry in front of you.
+
+    If a future route makes those reachable, this test is the argument
+    it has to answer."""
     assert "can_view_inventory" in EXTENSION_SCOPE
-    assert "can_manage_inventory" not in EXTENSION_SCOPE
+    assert "can_manage_inventory" in EXTENSION_SCOPE
+    from interfaces.api.auth import EXTENSION_ROUTES
+    assert "/extension/inventory-verify" in EXTENSION_ROUTES
+    assert "/extension/inventory-status" in EXTENSION_ROUTES
+    for office_only in ("transfer", "remove", "items"):
+        assert not any(office_only in r for r in EXTENSION_ROUTES), office_only
+
+
+def test_the_write_verbs_share_the_dashboards_wall_rather_than_copying_it():
+    """Two routers, one company wall and one driver snapshot.  A second
+    copy of a wall is a second chance to forget a brick — so both reach
+    features.inventory.service, and the dashboard's own helpers were
+    rewritten to delegate rather than the extension growing its own."""
+    import inspect
+    from interfaces.api.routes import extension
+    from features.inventory import router as dash
+    ext = inspect.getsource(extension._writable_item)
+    assert "inventory_service.item_if_visible(" in ext
+    assert "item_if_visible(" in inspect.getsource(dash._item_or_404)
+    assert "driver_on_truck(" in inspect.getsource(dash._driver_snapshot)
+
+
+def test_the_panel_is_told_what_it_may_do_not_which_flag_says_so():
+    """``abilities`` is the panel's vocabulary, like ``features``: it
+    hides a control the server would refuse instead of offering it and
+    answering 403 on the press."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_me)
+    assert '"inventory.write"' in src
+    body = src.split("return {", 1)[1]
+    assert "can_" not in body
 
 
 # ── The consent flow: one mint, no password in the panel ─────────────
@@ -360,7 +399,10 @@ def test_the_panel_is_told_what_is_aboard_not_what_it_is_worth():
     from interfaces.api.routes import extension
     src = inspect.getsource(extension.extension_inventory)
     body = src.split("rows = await tenant.list_vehicle_inventory", 1)[1]
-    for key in ('"id"', '"category"', '"label"', '"status"'):
+    # The line moved once, by exactly one field: last_verified_at, so the
+    # panel's Verify button has a visible result.  A timestamp is the
+    # least of what this record holds.
+    for key in ('"id"', '"category"', '"label"', '"status"', '"last_verified_at"'):
         assert key in body, key
     for withheld in ('"identifier"', '"notes"', 'r["identifier"]', 'r["notes"]'):
         assert withheld not in body, f"{withheld} has no business in a panel key"

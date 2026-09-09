@@ -31,7 +31,10 @@ from interfaces.api.deps import (
     effective_perms, get_current_db_user, get_current_user, require_permission,
 )
 from interfaces.api.rate_limit import limiter
+from pydantic import BaseModel, Field
+
 from adapters.storage import Role
+from features.inventory import service as inventory_service
 from capabilities.permissions.roles import get_user_permissions
 
 logger = logging.getLogger(__name__)
@@ -175,11 +178,18 @@ async def extension_me(user: dict = Depends(get_current_user)):
                               ("inventory", "can_view_inventory"))
         if getattr(perms, flag, False)
     ]
+    # What the panel may DO, in the panel's vocabulary.  Kept apart from
+    # ``features`` because a feature is a place you go and an ability is
+    # a verb you may perform there — and because the panel must be able
+    # to hide a control the server would refuse, rather than offering it
+    # and answering 403 on the press.
+    abilities = ["inventory.write"] if getattr(perms, "can_manage_inventory", False) else []
     return {
         "display_name": db_user.display_name or "",
         "role": str(user.get("role") or ""),
         "account_name": account_name,
         "features": features,
+        "abilities": abilities,
         "scope_stale": scope_stale,
     }
 
@@ -279,6 +289,13 @@ async def extension_inventory(
             "category": str(r["category"] or ""),
             "label": str(r["label"] or ""),
             "status": str(r["status"] or ""),
+            # WHEN somebody last looked, so the panel's Verify button has
+            # a visible result.  Without it the primary write verb closed
+            # a strip and changed nothing on screen — and on an item
+            # already flagged missing it saved a check that the row went
+            # on contradicting.  A timestamp is the least of what this
+            # record holds; the label and the serial still stay behind.
+            "last_verified_at": str(r["last_verified_at"] or ""),
         }
         for r in rows
     ]
@@ -340,6 +357,77 @@ async def extension_inventory_fleet(
     return {"vehicles": sorted(
         fleet.values(), key=lambda v: (-v["attention"], v["name"]),
     )}
+
+
+class _ItemRef(BaseModel):
+    item_id: int
+
+
+class _StatusBody(BaseModel):
+    item_id: int
+    status: str
+    note: str = Field("", max_length=500)
+
+
+async def _writable_item(user: dict, item_id: int) -> dict:
+    """The item this caller may write to, or a 404 that says nothing."""
+    from interfaces.api.deps import get_user_company_codes
+    item = await inventory_service.item_if_visible(
+        int(user["account_id"]), item_id, await get_user_company_codes(user),
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    return item
+
+
+@router.post("/inventory-verify")
+async def extension_verify_item(
+    body: _ItemRef,
+    user: dict = Depends(require_permission("can_manage_inventory")),
+):
+    """"I looked, it is here."
+
+    The first thing the panel may WRITE, and the narrowest verb there
+    is: it appends a check to the accountability trail and destroys
+    nothing.  It is also the one somebody actually performs standing
+    beside the truck, which is where a phone showing Google Maps is.
+
+    The item id travels in the BODY.  ``EXTENSION_ROUTES`` matches paths
+    exactly, so a path carrying an id could not be listed there — the
+    same reason /extension/inventory takes its vehicle as a query.
+    """
+    from interfaces.api.deps import resolve_user_id
+    item = await _writable_item(user, body.item_id)
+    ok = await inventory_service.verify_item(
+        int(user["account_id"]), item, actor_user_id=await resolve_user_id(user),
+    )
+    return {"ok": ok}
+
+
+@router.post("/inventory-status")
+async def extension_set_item_status(
+    body: _StatusBody,
+    user: dict = Depends(require_permission("can_manage_inventory")),
+):
+    """Flag what is not right: missing, damaged, needs a check.
+
+    Deliberately NOT here, and not listed in EXTENSION_ROUTES either:
+    add, transfer and remove.  Those are office actions — moving an item
+    between trucks or retiring it is done at a desk with the registry in
+    front of you, and a key that lives in a browser has no business
+    doing them.  The scope opens the flag; the route list decides where
+    the flag may be used, which is the whole point of keeping two lists.
+    """
+    from interfaces.api.deps import resolve_user_id
+    item = await _writable_item(user, body.item_id)
+    try:
+        ok = await inventory_service.set_item_status(
+            int(user["account_id"]), item, body.status,
+            note=body.note, actor_user_id=await resolve_user_id(user),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": ok}
 
 
 @router.get("/download")
