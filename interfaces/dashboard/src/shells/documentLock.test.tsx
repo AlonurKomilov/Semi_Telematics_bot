@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DocumentLock, DOCUMENT_LOCK_CLASS } from './DocumentLock';
 
@@ -76,18 +76,63 @@ describe('nothing in flow sits above the shell', () => {
       .toMatch(/className="flex flex-col h-screen overflow-hidden/);
   });
 
-  it('nothing inside the shell claims the viewport — the shell owns it', () => {
-    // A `h-screen` child is exactly 100vh no matter what rows sit above
-    // it, so with the banner up its foot lands outside the shell and the
-    // shell's own `overflow-hidden` cuts it off. Everything inside sizes
-    // to its parent; only the shell root names the viewport.
-    const INSIDE = ['shells/AppShell.tsx', 'components/Sidebar.tsx', 'components/PendingInviteBanner.tsx'];
-    for (const f of INSIDE) {
-      const hits = [...src(f).matchAll(/\b(h-screen|min-h-screen|h-\[100vh\])\b/g)].map((m) => m[1]);
-      const allowed = f === 'shells/AppShell.tsx' ? 1 : 0;
-      expect(hits.length, `${f} claims the viewport ${hits.length}× (allowed ${allowed}): ${hits.join(', ')}`)
-        .toBe(allowed);
+  /**
+   * Only these may name the viewport, each with the reason it is not
+   * inside the shell. A `h-screen` child of the shell is exactly 100vh
+   * however many rows sit above it, so its foot lands outside the box
+   * and the shell's own `overflow-hidden` cuts it off — that is how the
+   * sidebar lost its last nav items the moment a banner appeared, with
+   * its own scroller powerless because the overflow was the root's.
+   *
+   * A list rather than a folder rule: `pages/` and `features/` hold both
+   * kinds, and which side of the shell a route renders on is decided in
+   * `router.tsx`, not by where the file lives.
+   */
+  const VIEWPORT_OK: Record<string, string> = {
+    'shells/AppShell.tsx': 'the shell root — the one box that IS the viewport',
+    'App.tsx': 'the pre-shell states (checking session, loading, error) render INSTEAD of a shell',
+    'components/ui/dialog.tsx': 'a max-height on a fixed overlay, not a box in the document',
+    'features/inspections/MediaGallery.tsx': 'the lightbox is a fixed dialog filling the window',
+    'features/applications/ApplyPreview.tsx': 'routed OUTSIDE the shell so it renders exactly like the real form',
+    'features/applications/public/ApplyStatus.tsx': 'a public page, no shell',
+    'features/applications/public/PublicApply.tsx': 'a public page, no shell',
+    'features/carrier-directory/PublicCarrierIntake.tsx': 'a public page, no shell',
+    'pages/CompleteSetup.tsx': 'signed out or mid-setup, no shell',
+    'pages/ExtensionConnect.tsx': 'a consent page outside the shell',
+    'pages/ForgotPassword.tsx': 'signed out, no shell',
+    'pages/Login.tsx': 'signed out, no shell',
+    'pages/ResetPassword.tsx': 'signed out, no shell',
+    'pages/VerifyEmail.tsx': 'signed out, no shell',
+  };
+
+  const CLAIM = /\b(h-screen|min-h-screen)\b|100vh|100dvh/;
+
+  const walk = (dir: string, acc: string[] = []): string[] => {
+    for (const e of readdirSync(join(SRC, dir), { withFileTypes: true })) {
+      const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(rel, acc);
+      else if (/\.tsx?$/.test(e.name) && !e.name.includes('.test.')) acc.push(rel);
     }
+    return acc;
+  };
+
+  it('only what renders outside the shell names the viewport', () => {
+    const files = walk('');
+    expect(files.length, 'no files walked — this would pass on nothing').toBeGreaterThan(300);
+    const claimers = files.filter((f) => CLAIM.test(src(f)));
+    expect(claimers.length, 'no viewport claims found at all — the pattern stopped matching')
+      .toBeGreaterThan(5);
+    expect(claimers.filter((f) => !(f in VIEWPORT_OK)),
+      'these render inside the shell and claim the whole viewport — size to the parent instead')
+      .toEqual([]);
+  });
+
+  it('and every exemption is still real', () => {
+    // An exemption for a file that no longer names the viewport is a
+    // hole nobody is watching.
+    expect(Object.keys(VIEWPORT_OK).filter((f) => !CLAIM.test(src(f))),
+      'listed as allowed to name the viewport, but no longer does — drop the entry')
+      .toEqual([]);
   });
 
   it('App renders no element of its own height beside the router', () => {
