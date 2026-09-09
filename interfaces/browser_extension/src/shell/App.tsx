@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { apiFetch, apiJSON, clearToken, getToken, refreshIfNeeded, UnauthorizedError } from '../api/client';
+import { apiFetch, apiJSON, clearToken, getToken, refreshIfNeeded, refreshNow, UnauthorizedError } from '../api/client';
 import { FEATURES } from './registry';
 import Connect from './Connect';
 import Settings from './Settings';
@@ -18,6 +18,10 @@ interface MeWire {
    *  panel's vocabulary.  Absent from an older API: then the panel shows
    *  what it has always shown rather than nothing. */
   features?: string[] | null;
+  /** True when this token was minted before the audience's scope last
+   *  changed — the panel heals it with one refresh rather than asking a
+   *  person to reconnect, which nobody would think to do. */
+  scope_stale?: boolean;
 }
 
 /** The chosen feature, remembered like every other working preference
@@ -89,13 +93,26 @@ export default function App() {
   useEffect(() => {
     if (phase !== 'ready') return;
     let cancelled = false;
-    apiJSON<MeWire>('/extension/me')
-      .then((w) => {
+    // Once per mount, and once only: a server that kept saying "stale"
+    // would otherwise be a refresh loop.
+    let healed = false;
+    const read = async (): Promise<void> => {
+      const w = await apiJSON<MeWire>('/extension/me');
+      if (cancelled) return;
+      if (w.scope_stale && !healed) {
+        healed = true;
+        // The token is behind the scope its audience now declares — a
+        // panel that shipped with a feature this key cannot reach.  One
+        // refresh re-mints it against today's scope AND stores it; then
+        // ask again with the key that came back.
+        await refreshNow();
         if (cancelled) return;
-        setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null });
-        setAllowed(Array.isArray(w.features) ? w.features : null);
-      })
-      .catch(() => { if (!cancelled) setMe(null); });
+        return read();
+      }
+      setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null });
+      setAllowed(Array.isArray(w.features) ? w.features : null);
+    };
+    read().catch(() => { if (!cancelled) setMe(null); });
     return () => { cancelled = true; };
   }, [phase]);
 

@@ -157,6 +157,19 @@ async def extension_me(user: dict = Depends(get_current_user)):
     # verdict is the SCOPED one — a token that may not reach a feature
     # must not be offered it either.
     perms = await effective_perms(user)
+    # Whether this token was minted before the audience's scope last
+    # changed.  A panel holding a stale one is told so, and heals itself
+    # with a single refresh — /auth/refresh re-reads the audience's
+    # scope, so the answer comes back complete on the next ask.
+    #
+    # Without this the person has to Disconnect and connect again, and
+    # nobody thinks to do that: they see a feature the build has and the
+    # server will not offer, and read it as broken.  The alternative —
+    # waiting for the ordinary refresh — is up to eight hours.
+    claim = user.get("scope")
+    scope_stale = (
+        isinstance(claim, list) and set(claim) != set(EXTENSION_SCOPE)
+    )
     features = [
         fid for fid, flag in (("live-map", "can_view_location"),
                               ("inventory", "can_view_inventory"))
@@ -167,6 +180,7 @@ async def extension_me(user: dict = Depends(get_current_user)):
         "role": str(user.get("role") or ""),
         "account_name": account_name,
         "features": features,
+        "scope_stale": scope_stale,
     }
 
 

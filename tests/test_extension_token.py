@@ -383,6 +383,24 @@ def test_the_panel_is_told_features_not_flags():
     assert "can_" not in body, "a flag name has no business in /me's answer"
 
 
+def test_a_panel_is_told_when_its_key_is_behind():
+    """A token carries the scope of the day it was minted.  Widen the
+    audience's scope and every installed panel is holding a key that
+    cannot reach the feature its build now ships — and nobody thinks to
+    Disconnect and connect again, so it reads as broken.
+
+    /me says so, the panel spends ONE refresh (which re-mints against
+    today's scope) and asks again.  The person sees nothing, which is
+    the point."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_me)
+    assert "set(claim) != set(EXTENSION_SCOPE)" in src
+    assert '"scope_stale": scope_stale' in src
+    # An unscoped token has no audience scope to be behind.
+    assert 'isinstance(claim, list)' in src
+
+
 def test_the_fleet_list_is_gated_and_walled():
     """The Inventory feature's opening screen is a fleet-wide read, so it
     carries both guards: the grant, and the company wall.  The

@@ -85,6 +85,15 @@ export async function apiJSON<T>(path: string, opts: ApiFetchOpts = {}): Promise
   return res.json() as Promise<T>;
 }
 
+/** Mint a fresh token from this one and KEEP it.  Two callers: the
+ *  ordinary end-of-life refresh below, and the panel healing a token
+ *  whose scope is behind the audience's — both must store the answer,
+ *  and forgetting to is invisible until a feature quietly stays shut. */
+export async function refreshNow(): Promise<void> {
+  const out = await apiJSON<{ access_token: string }>('/auth/refresh', { method: 'POST' });
+  await setToken(out.access_token);
+}
+
 /** Refresh when the token is inside its last quarter of life. */
 export async function refreshIfNeeded(): Promise<void> {
   const token = await getToken();
@@ -95,8 +104,7 @@ export async function refreshIfNeeded(): Promise<void> {
   const remaining = exp - Date.now();
   if (remaining > (exp - iatGuess) / 4) return;
   try {
-    const out = await apiJSON<{ access_token: string }>('/auth/refresh', { method: 'POST' });
-    await setToken(out.access_token);
+    await refreshNow();
   } catch {
     /* the next 401 will send the user to login */
   }
