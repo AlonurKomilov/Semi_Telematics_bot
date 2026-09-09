@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from constants import METERS_PER_MILE
+from adapters.telematics.errors import NoTelematicsClientError
 
 from cachetools import TTLCache
 
@@ -2240,7 +2241,12 @@ class MultiCompanyClient:
         if company:
             client = self.clients.get(company)
             if not client:
-                raise ValueError(f"Unknown company: {company}")
+                # Not necessarily unknown — see NoTelematicsClientError.
+                # ``self.clients`` was built by SKIPPING every company
+                # whose API key is unset, so the most common way to get
+                # here is a real company the operator has not finished
+                # connecting yet.
+                raise NoTelematicsClientError(company, self.company_codes)
             return {company: await coro_fn(client, *args)}
 
         tasks = {code: asyncio.create_task(coro_fn(client, *args))

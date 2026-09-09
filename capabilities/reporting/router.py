@@ -13,6 +13,7 @@ from interfaces.api.deps import require_permission, get_user_company_codes, vali
 from interfaces.api.deps import require_any_or_wide  # noqa: E402
 from capabilities.activity_trail import record_simple
 from infra.services import get_client
+from adapters.telematics.errors import NoTelematicsClientError
 from features.vehicles.warehouse.service import (
     get_vehicle_health as _svc_vehicle_health,
     get_fleet_efficiency as _svc_fleet_efficiency,
@@ -204,6 +205,35 @@ async def export_report(
 
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
+
+    if company:
+        # Resolve the code against the companies this account can
+        # actually REACH, and answer here if it cannot.  Two reasons
+        # this is not left to the layers below:
+        #
+        # A company with no API key is absent from the client map, so
+        # ``_run_per_company`` raised on it — but only the reports that
+        # pass ``company`` downstream got that far.  The ones that
+        # fetch account-wide and filter locally returned an empty file
+        # instead, so the same unreachable company was a 400 in PDF and
+        # a silent zero-row CSV.  One answer per request, whichever
+        # report it is.
+        #
+        # And the client map is keyed by EXACT code while every filter
+        # in this codebase compares uppercased, so a differently-cased
+        # code that filtering accepted did not resolve a client.  The
+        # canonical spelling goes downstream from here.
+        # ``prefetch=False``: this needs the client's company KEYS, a
+        # plain dict lookup.  The default prefetch fans out to Samsara
+        # for org ids, which the CSV path never touched before — a
+        # network round-trip added to resolve a string would be a
+        # strange price for a validation.
+        _client = await get_client(user["account_id"], prefetch=False)
+        _canon = next((c for c in _client.company_codes
+                       if c.upper() == company.upper()), None)
+        if _canon is None:
+            raise NoTelematicsClientError(company, _client.company_codes)
+        company = _canon
 
     # Both formats come through data_fetch now, so the dashboard
     # download, the bot's scheduled delivery and the CSV export share

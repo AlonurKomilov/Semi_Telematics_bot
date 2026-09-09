@@ -87,6 +87,7 @@ from features.coaching import router as coaching_routes
 from features.drivers import router as drivers_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
+from adapters.telematics.errors import NoTelematicsClientError
 
 logger = logging.getLogger(__name__)
 
@@ -383,6 +384,29 @@ def create_api() -> FastAPI:
     # The runtime contract is fine — slowapi only fires this for its own
     # exception type — so silence the Pylance arg-type complaint here.
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+    # A company with no telematics connection is the CALLER's problem
+    # to fix, not a server fault.  Registered app-wide rather than in
+    # each router because ~44 endpoints take a ``company`` parameter and
+    # hand it to the per-company client; every one of them could turn a
+    # half-connected company into a 500, and one of them did — the
+    # reports export, on a company that exists and is offered in the
+    # dashboard's own filter but has no API key yet.
+    @app.exception_handler(NoTelematicsClientError)
+    async def no_telematics_client_handler(
+        request: Request, exc: NoTelematicsClientError,
+    ):
+        request_id = getattr(request.state, "request_id", "unknown")
+        logger.warning(
+            "No telematics client [request_id=%s] %s %s: company=%s "
+            "connected=%s",
+            request_id, request.method, request.url.path,
+            exc.company, ",".join(exc.known) or "none",
+        )
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc), "request_id": request_id},
+        )
 
     # Global exception handler — structured JSON for unhandled errors
     @app.exception_handler(Exception)
