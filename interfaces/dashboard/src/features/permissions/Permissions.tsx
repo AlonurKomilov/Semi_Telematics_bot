@@ -37,6 +37,7 @@ import type { ModulesData, PermFlag } from './permRows';
 import { DRIVER_KEY } from './verbGrid';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { SectionHeader } from '@/components/shell';
+import { scrollIntoScrollport } from '../../lib/scrollport';
 
 
 interface PermsData {
@@ -373,7 +374,10 @@ export default function Permissions() {
                         // put the band back, then go there.
                         onClick={() => {
                           setQuery('');
-                          setTimeout(() => document.getElementById(bandAnchor(title))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+                          setTimeout(() => {
+                            const el = document.getElementById(bandAnchor(title));
+                            if (el) scrollIntoScrollport(el, { block: 'start' });
+                          }, 0);
                         }}
                         aria-label={`Go to the ${title} section`}
                         className={`text-xs hover:underline decoration-dotted min-h-tap ${on ? 'text-foreground' : 'text-muted-foreground'}`}

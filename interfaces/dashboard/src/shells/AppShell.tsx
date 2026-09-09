@@ -41,6 +41,7 @@ import { useDockedContentClass } from '../features/ai/AssistantContext';
 import { shortcut } from '../utils/platform';
 import { sizeRegion } from '@/lib/sizeRegion';
 import ShellHero from './heroes/ShellHero';
+import { SHELL_SCROLLPORT_ATTR } from '../lib/scrollport';
 
 export default function AppShell({ hero }: { hero?: ReactNode }) {
   const { theme } = useMods();
@@ -208,7 +209,12 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             // paints the card as it always has.
             className={`flex-1 bg-background border border-border rounded-xl overflow-hidden page-ground ${dockedContentClass}`}
           >
-            <div className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6">
+          {/* THE page scrollport, named so a caller with no element in
+              hand can reach it — see lib/scrollport. */}
+          <div
+            {...{ [SHELL_SCROLLPORT_ATTR]: "" }}
+            className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6"
+          >
               {/* An entrance for the routed page, when a mod asks for one.
                   Off by default and on purpose: this app is navigated
                   dozens of times an hour, and a slide-in on every one of

@@ -38,6 +38,7 @@ import {
   type IncentiveConfig, type IncentiveTier, type RulesPreview,
 } from '../api';
 import { Card } from '@/components/ui/card';
+import { scrollIntoScrollport } from '../../../lib/scrollport';
 
 const EMPTY: IncentiveConfig = {
   model: 'ladder',
@@ -554,7 +555,10 @@ export default function IncentiveEditor({ onDirtyChange }: {
               {t('kpi_config.tiers_hint2',
                 'A truck earns every row whose conditions it meets — the highest % pays; each dispatcher is paid the sum of their trucks. An empty condition means no requirement; “weekly target met” compares against the ')}
               <button type="button"
-                onClick={() => document.getElementById('cfg-targets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                onClick={() => {
+                  const el = document.getElementById('cfg-targets');
+                  if (el) scrollIntoScrollport(el, { block: 'start' });
+                }}
                 className="underline underline-offset-4 hover:text-foreground">
                 {t('kpi_config.tiers_hint_link', 'company weekly targets')}
               </button>
@@ -581,7 +585,7 @@ export default function IncentiveEditor({ onDirtyChange }: {
               const el = document.querySelector<HTMLInputElement>(
                 `[data-tier-row="${at}"] input`);
               el?.focus();
-              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              if (el) scrollIntoScrollport(el, { block: 'center' });
             });
           }}>
             <Plus /> {t('kpi_config.add_tier', 'Add tier')}

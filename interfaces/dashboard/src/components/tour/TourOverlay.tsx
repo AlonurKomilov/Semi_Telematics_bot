@@ -21,6 +21,7 @@ import { CheckCircle2, X } from '../../lib/icons';
 import { cn } from '@/lib/utils';
 import { cardVariants } from '@/components/ui/card';
 import type { TourSpec } from './types';
+import { scrollIntoScrollport } from '../../lib/scrollport';
 
 /** How long a step's anchor may stay absent before the tour exits. */
 const ANCHOR_TIMEOUT_MS = 15_000;
@@ -104,7 +105,10 @@ export default function TourOverlay({
       if (el) {
         stop();                       // found — nothing left to watch
         elRef.current = el;
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        // The page's own scroller only. A tour that brought its anchor
+        // into view by scrolling the shell as well would leave the app
+        // shifted for the rest of the session.
+        scrollIntoScrollport(el, { block: 'center' });
         setRect(measure(el));
         // Hand the keyboard the control the step is pointing at.  A
         // mouse user notices nothing; a keyboard user was otherwise

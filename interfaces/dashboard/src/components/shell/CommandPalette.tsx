@@ -5,6 +5,7 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { ROUTE_ENTRIES, type RouteEntry } from './routeRegistry';
 import { shortcut } from '../../utils/platform';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
+import { scrollIntoScrollport } from '../../lib/scrollport';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -92,7 +93,10 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     if (!keyboardNav.current) return;
     // ``nearest`` scrolls the minimum needed — ``center`` would jump the
     // list on every keystroke even when the row was already visible.
-    activeRef.current?.scrollIntoView({ block: 'nearest' });
+    // The list's own scroller, never the shell's: the palette is an
+    // overlay, and `scrollIntoView` would walk past it into ancestors
+    // the user cannot scroll back.
+    if (activeRef.current) scrollIntoScrollport(activeRef.current, { block: 'nearest', behavior: 'auto' });
   }, [activeIdx]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {

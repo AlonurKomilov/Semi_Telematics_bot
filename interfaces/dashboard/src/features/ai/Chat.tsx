@@ -29,6 +29,7 @@ import { sizeRegion } from '@/lib/sizeRegion';
 import { Card } from '@/components/ui/card';
 import { usePreference } from '../../preferences';
 import { scaledPx } from '@/lib/scaledLength';
+import { scrollIntoScrollport } from '../../lib/scrollport';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -644,9 +645,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     // Firing a smooth scroll per streamed token starts an animation the
     // next token restarts, so the view chases the text and never
     // settles; ``auto`` keeps the tail pinned exactly while it streams.
-    bottomRef.current?.scrollIntoView({
-      behavior: streamingText ? 'auto' : 'smooth',
-    });
+    // The transcript's own scroller, never the shell's: `scrollIntoView`
+    // walks every ancestor, and the ones above are `overflow: hidden` —
+    // scrolled once, they never come back.
+    if (bottomRef.current) {
+      scrollIntoScrollport(bottomRef.current, {
+        behavior: streamingText ? 'auto' : 'smooth', block: 'end',
+      });
+    }
   }, [messages, loading, liveSteps, streamingText]);
 
   /** Live status label: the CURRENT step's identity, not canned filler —

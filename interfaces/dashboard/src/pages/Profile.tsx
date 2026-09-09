@@ -56,6 +56,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
+import { scrollIntoScrollport } from '../lib/scrollport';
 
 // HOURS array removed in the migration-100 cleanup — the user no
 // longer picks shift hours from Profile (admin-managed in Team
@@ -97,13 +98,20 @@ export default function Profile() {
   // Bring a #hash section into view. The browser cannot do this itself
   // here: the page mounts empty and fills in after /user/me resolves, so
   // by the time the target exists the navigation is long over — and the
-  // scrollport is the shell's own div, not the document. `scroll-mt-*` on
-  // the target handles the sticky header offset.
+  // scrollport is the shell's own div, not the document.
+  //
+  // The scrollport, and nothing above it: `scrollIntoView` moves every
+  // scrollable ancestor, and the shell's are `overflow: hidden`, which
+  // the user cannot scroll back. Opening this page from the avatar menu
+  // (`/profile#modifications`) pushed the whole app up by the header and
+  // left it there until a reload. `scroll-mt-*` on the target still
+  // handles the sticky offset — the helper reads it.
   useEffect(() => {
     const id = window.location.hash.slice(1);
     if (!id) return;
     const t = window.setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      const el = document.getElementById(id);
+      if (el) scrollIntoScrollport(el, { block: 'start' });
     }, 0);
     return () => window.clearTimeout(t);
   }, []);
@@ -1146,7 +1154,8 @@ function ActiveSessions() {
     window.history.replaceState(null, '', window.location.pathname);
     const s = rows.find((r) => r.id === askedId);
     if (!s) { alert('That session is already signed out.'); return; }
-    document.getElementById(`session-${s.id}`)?.scrollIntoView({ block: 'center' });
+    const row = document.getElementById(`session-${s.id}`);
+    if (row) scrollIntoScrollport(row, { block: 'center', behavior: 'auto' });
     if (s.jti === currentJti) { alert('That is this device — sign out from the menu instead.'); return; }
     if (window.confirm(`Disconnect ${s.device_label || 'this device'}? It will be signed out at its next request.`)) {
       void revokeNow(s);

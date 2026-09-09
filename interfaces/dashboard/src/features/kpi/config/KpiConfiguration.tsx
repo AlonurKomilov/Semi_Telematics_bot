@@ -24,6 +24,7 @@ import { PageHeader } from '../../../components/shell';
 import KpiConfigPanel from './KpiConfigPanel';
 import IncentiveEditor from './IncentiveEditor';
 import { Card } from '@/components/ui/card';
+import { scrollIntoScrollport } from '../../../lib/scrollport';
 
 export default function KpiConfiguration() {
   const { t } = useTranslation();
@@ -99,7 +100,10 @@ export default function KpiConfiguration() {
           </span>
           {dirtyList.map((d) => (
             <button key={d.id} type="button"
-              onClick={() => document.getElementById(d.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() => {
+                const el = document.getElementById(d.id);
+                if (el) scrollIntoScrollport(el, { block: 'start' });
+              }}
               className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:border-ring transition min-h-tap">
               {d.label}
             </button>

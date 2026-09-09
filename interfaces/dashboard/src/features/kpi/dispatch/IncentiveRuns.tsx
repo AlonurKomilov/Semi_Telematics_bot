@@ -57,6 +57,7 @@ import {
   type RunDetail, type RunLoad, type RunRow, type RunSummary,
 } from '../api';
 import { Card } from '@/components/ui/card';
+import { scrollIntoScrollport, scrollShellTop } from '../../../lib/scrollport';
 
 
 /** Days a DRAFT has sat past its period end — money payroll cannot see
@@ -603,7 +604,7 @@ export default function IncentiveRuns() {
         <MonthlyPayoutsPanel allRuns={allRuns}
           onSelectRun={(id) => {
             setSelected(id);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            scrollShellTop();
           }} />
       )}
 
@@ -699,7 +700,7 @@ export default function IncentiveRuns() {
                   /* Opened from a board chip: bring THAT load into view
                      and mark it, so a 9-load row doesn't make the user
                      hunt for the one they clicked. */
-                  ref={focused ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                  ref={focused ? (el) => { if (el) scrollIntoScrollport(el, { block: 'nearest', behavior: 'auto' }); } : undefined}
                   className={`py-2 text-sm flex items-center justify-between gap-3 ${
                     focused ? 'bg-muted rounded px-2 -mx-2' : ''}`}>
                   <span className="min-w-0">
