@@ -104,7 +104,14 @@ export default function Sidebar({ forceExpanded = false }: {
       // the ENTIRE content area every frame for the whole duration —
       // measured at ~39 dropped frames (~400ms of stutter) per toggle
       // with a large board open.  An instant snap costs one relayout.
-      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar chrome-pane text-sidebar-foreground flex flex-col shrink-0 h-screen`}
+      // `h-full`, never `h-screen`: the shell owns the viewport and this
+      // fills whatever row is left of it. With a banner above, a 100vh rail
+      // inside a shorter row has its foot clipped by the shell's own
+      // overflow — the last nav items simply gone, with the rail's own
+      // scroller unable to help because the overflow is the ROOT's. In the
+      // mobile drawer the sheet panel is `inset-y-0 h-full`, so this
+      // resolves there too.
+      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar chrome-pane text-sidebar-foreground flex flex-col shrink-0 h-full`}
     >
       {/* Logo row + collapse toggle.  Expanded: one h-12 row carries the
           brand text, persona selector, and collapse button — plenty of

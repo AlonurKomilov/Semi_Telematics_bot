@@ -89,6 +89,22 @@
   html, body {
     overscroll-behavior-y: none;
   }
+
+  /* THE DASHBOARD DOCUMENT DOES NOT SCROLL — see shells/DocumentLock.
+     The shell is a fixed viewport box with its own scrollers, so a
+     document scroll can only ever be a position it picked up by
+     accident and kept: this app has no scroll restoration, and a
+     position survives every client-side navigation after it. Twice in
+     one day that put the header and the sidebar's logo row above the
+     fold with no way back.
+
+     Scoped to the class the shell mounts, never global: the public
+     pages are ordinary documents and must scroll. */
+  html.shell-locked,
+  html.shell-locked body {
+    height: 100%;
+    overflow: hidden;
+  }
   :root {
     color-scheme: light;
 

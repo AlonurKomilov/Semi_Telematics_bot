@@ -3,7 +3,6 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN, explicitSignoutActive } from './lib/safeReturnTo';
 import AppRouter from './router';
-import PendingInviteBanner from './components/PendingInviteBanner';
 import LiveAlertWatcher from './features/alerts/LiveAlertWatcher';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
@@ -266,9 +265,9 @@ export default function App() {
   // (legitimate scenario: fleet owner invited to a customer's
   // account; accountant invited across multiple client accounts).
   // We forward to / with the code as ?pending_invite= so the
-  // dashboard's PendingInviteBanner can surface "You're signed in
+  // dashboard's invite banner (shells/AppShell) can surface "You're signed in
   // to X — sign out to accept this invite for Y" rather than
-  // silently dropping the link.  PendingInviteBanner reads the
+  // silently dropping the link.  That banner reads the
   // query param, fetches /auth/invite-preview, and renders the
   // affordance.
   if (location.pathname.startsWith('/signup/')) {
@@ -297,10 +296,16 @@ export default function App() {
 
   return (
     <>
-      <PendingInviteBanner />
       {/* App-wide, authed-only: pops new alerts on screen (gated inside on
           the alerts permission + the user's level preference). */}
       <LiveAlertWatcher />
+      {/* NOTHING IN FLOW BELONGS HERE. The shell is exactly one viewport
+          tall, so a sibling with height makes the document taller than
+          the window — and a document scroll, once picked up, survives
+          every navigation after it. The invite banner used to sit here
+          and lives inside the shell now; anything else that needs to sit
+          across the top goes there too. `shells/documentLock.test.tsx`
+          holds this. */}
       <AppRouter />
     </>
   );
