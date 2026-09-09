@@ -31,6 +31,7 @@ from interfaces.api.deps import (
     effective_perms, get_current_db_user, get_current_user, require_permission,
 )
 from interfaces.api.rate_limit import limiter
+from fastapi import Query
 from pydantic import BaseModel, Field
 
 from adapters.storage import Role
@@ -308,25 +309,41 @@ async def extension_inventory(
 
 @router.get("/inventory-fleet")
 async def extension_inventory_fleet(
+    include_empty: bool = Query(False, alias="all"),
     user: dict = Depends(require_permission("can_view_inventory")),
 ):
-    """Which trucks have something aboard, and which want somebody.
+    """Which vehicles the caller may see, and what is aboard each.
 
-    The Inventory feature's opening screen.  A flat path, like every
-    other route the panel may knock on — ``EXTENSION_ROUTES`` matches
-    exactly, so there is nowhere to put an id.
+    A flat path, like every other route the panel may knock on —
+    ``EXTENSION_ROUTES`` matches exactly, so there is nowhere to put an
+    id.  Counts and a unit number, nothing else: an item's own label
+    arrives when a vehicle is chosen, and its identifier and notes never
+    do.
 
-    One query (items joined with their truck) folded to one row per
-    vehicle.  The alternative — the dashboard's ``/inventory/alerts`` —
-    answers ``vehicle_id -> counts`` with no names and no company wall,
-    which is safe on a page whose vehicle list is already scoped and
-    would be a hole here.
+    ``?all=1`` is the panel's question — "every vehicle I may see" — and
+    the bare path is the MAP's — "which vehicles have something aboard".
+    They are different questions and the flag keeps them apart, which is
+    also what makes this deployable: the overlay card renders a count
+    line whenever one is present, so a server that began answering with
+    ``total: 0`` rows would make every marker on google.com/maps read
+    "0 items · all settled" for anyone whose extension had not updated
+    yet.  The map asks without the flag and is unaffected; the panel
+    asks with it.  (The client refuses a zero as well — belt and
+    braces, since the two ship on different clocks.)
 
-    Counts and a unit number, nothing else: an item's own label arrives
-    when a truck is chosen, and its identifier and notes never do.
+    Scope, in the order the Live Map applies it:
+    * the grant (``can_view_inventory``, via the dependency);
+    * the company wall, per row, with ``company_allows`` — NOT
+      ``filter_by_allowed_companies``, which reads a blank company as
+      denied and would drop the registry-only trailers and manual units
+      that make up nearly half this fleet;
+    * Team Management's unit width, via ``filter_by_assigned_trucks`` —
+      the same helper and the same answer the Live Map beside it gives,
+      so a driver does not see one truck on the map and two hundred
+      here.
     """
     from infra.platform import get_tenant_db
-    from interfaces.api.deps import get_user_company_codes
+    from interfaces.api.deps import filter_by_assigned_trucks, get_user_company_codes
     from features.vehicles.scope import company_allows
     from adapters.storage.vehicle_inventory import ATTENTION_STATUSES
 
@@ -334,29 +351,67 @@ async def extension_inventory_fleet(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(status_code=503, detail="tenant DB unavailable")
-    rows = await tenant.list_account_inventory(account_id)
     allowed = await get_user_company_codes(user)
 
-    fleet: dict[int, dict] = {}
-    for r in rows:
-        if not company_allows(str(r.get("company_code") or ""), allowed):
-            continue
-        vid = int(r["vehicle_id"])
-        seen = fleet.get(vid)
-        if seen is None:
-            seen = fleet[vid] = {
-                "vehicle_id": vid,
-                "name": str(r.get("unit_number") or ""),
-                "company": str(r.get("company_code") or ""),
-                "total": 0,
-                "attention": 0,
-            }
-        seen["total"] += 1
-        if str(r.get("status") or "") in ATTENTION_STATUSES:
-            seen["attention"] += 1
-    return {"vehicles": sorted(
-        fleet.values(), key=lambda v: (-v["attention"], v["name"]),
-    )}
+    if include_empty:
+        # REGISTRY-FIRST.  The old shape folded
+        # ``list_account_inventory`` — items JOIN vehicles — so a vehicle
+        # with nothing recorded could not appear at all, and the panel
+        # could not answer "is anything aboard 117?".  ``list_vehicles``
+        # is active-only, so a retired truck stops being listed the day
+        # it is archived.
+        counts = await inventory_service.get_attention_map(account_id)
+        rows = []
+        for v in await tenant.list_vehicles(account_id):
+            if not company_allows(getattr(v, "company_code", "") or "", allowed):
+                continue
+            c = counts.get(int(v.id)) or {}
+            rows.append({
+                # ``registry_id`` is for the SCOPE, not the wire — it is
+                # projected away below.  Without it the identity ladder
+                # falls to its second rung, which reads a row's
+                # ``vehicle_id`` as the PROVIDER id; ours is the registry
+                # id, so a driver would be matched in the wrong id space
+                # — missing their own truck, or worse, matching somebody
+                # else's whose provider id happened to collide.
+                "registry_id": int(v.id),
+                "vehicle_id": int(v.id),
+                "name": str(v.unit_number or ""),
+                "company": str(getattr(v, "company_code", "") or ""),
+                "total": int(c.get("total") or 0),
+                "attention": int(c.get("attention") or 0),
+            })
+    else:
+        # The map's question, unchanged — see the docstring.
+        fleet: dict[int, dict] = {}
+        for r in await tenant.list_account_inventory(account_id):
+            if not company_allows(str(r.get("company_code") or ""), allowed):
+                continue
+            vid = int(r["vehicle_id"])
+            seen = fleet.get(vid)
+            if seen is None:
+                seen = fleet[vid] = {
+                    "registry_id": vid,
+                    "vehicle_id": vid,
+                    "name": str(r.get("unit_number") or ""),
+                    "company": str(r.get("company_code") or ""),
+                    "total": 0,
+                    "attention": 0,
+                }
+            seen["total"] += 1
+            if str(r.get("status") or "") in ATTENTION_STATUSES:
+                seen["attention"] += 1
+        rows = list(fleet.values())
+
+    rows = await filter_by_assigned_trucks(rows, user)
+    # Wanting somebody first, then carrying anything, then by name —
+    # without the middle key ~180 empty vehicles bury the interesting
+    # ones the moment ?all=1 is asked.
+    rows.sort(key=lambda v: (-v["attention"], v["total"] == 0, v["name"]))
+    # Scoped on a domain row, PROJECTED to the wire: registry_id did its
+    # work above and has no business on a page we do not own.
+    wire = ("vehicle_id", "name", "company", "total", "attention")
+    return {"vehicles": [{k: r[k] for k in wire} for r in rows]}
 
 
 class _ItemRef(BaseModel):

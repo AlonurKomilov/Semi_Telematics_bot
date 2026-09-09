@@ -221,7 +221,7 @@ export function toOverlayVehicles(
       // key, never the payload.  Absent rather than zero when the truck
       // carries nothing — a card should say "3 items" or say nothing,
       // not announce an emptiness nobody asked about.
-      ...(inv ? { inventory_total: inv.total, inventory_attention: inv.attention } : {}),
+      ...(inv && inv.total > 0 ? { inventory_total: inv.total, inventory_attention: inv.attention } : {}),
     });
   }
   return out;

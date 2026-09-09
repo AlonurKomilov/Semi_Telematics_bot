@@ -1,5 +1,5 @@
 /**
- * Onboard Inventory, in the side panel.
+ * Inventory, in the side panel.
  *
  * The Live Map's card answers "what is on THIS truck" while you are
  * looking at the map.  This is the feature's own home: which trucks
@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
-import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Onboard } from './data';
+import { forgetVehicle, inventoryFor, retryInventory, setItemStatus, verifyItem, type Onboard } from './data';
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
 
@@ -43,7 +43,13 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<FleetRow | null>(null);
-  const [items, setItems] = useState<Onboard | null>(null);
+  /** THREE states, not two.  ``null`` used to mean both "still asking"
+   *  and "the answer never came" — and data.ts returns null for a 403
+   *  as well, which latches process-wide, so after one refusal every
+   *  vehicle a person clicked said "Reading…" for the life of the
+   *  panel.  A failure has to be a value, or it wears the label of
+   *  whatever state it was folded into. */
+  const [items, setItems] = useState<Onboard | 'loading' | 'failed'>('loading');
   /** The chosen truck, for handlers that outlive the render that made
    *  them — the storage listener is attached once. */
   const selectedRef = useRef<FleetRow | null>(null);
@@ -58,7 +64,11 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
     let stopped = false;
     const load = async () => {
       try {
-        const out = await apiJSON<{ vehicles?: FleetRow[] }>('/extension/inventory-fleet');
+        // ?all=1 — every vehicle this person may see, carrying items or
+        // not.  Without it the answer is the MAP's question (only what
+        // has something aboard), and a truck missing from the list read
+        // as a truck that does not exist.
+        const out = await apiJSON<{ vehicles?: FleetRow[] }>('/extension/inventory-fleet?all=1');
         if (stopped) return;
         const rows = out.vehicles ?? [];
         setFleet(rows);
@@ -86,11 +96,11 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
   // ── one truck's contents ────────────────────────────────────────
   const select = (row: FleetRow | null) => {
     setSelected(row);
-    setItems(null);
+    setItems('loading');
     if (!row) return;
     void inventoryFor(row.vehicle_id).then((ob) => {
       // Drop an answer that belongs to a truck the person has left.
-      if (selectedRef.current?.vehicle_id === row.vehicle_id) setItems(ob);
+      if (selectedRef.current?.vehicle_id === row.vehicle_id) setItems(ob ?? 'failed');
     });
   };
 
@@ -103,10 +113,14 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
       // Matched by unit number within its company: this surface has no
       // map ids, and the two together are what makes a unit unique when
       // an account runs several companies.
+      // Consumed whatever happens.  Left in storage, a click that names
+      // no row here is re-read on every fleet refresh and on every
+      // remount, so a vehicle the person has moved on from keeps trying
+      // to select itself.
+      void chrome.storage.local.remove(PENDING_SELECT_KEY);
       const row = fleet.find((r) =>
         r.name === want.name && (!want.company || !r.company || r.company === want.company));
       if (!row) return;
-      void chrome.storage.local.remove(PENDING_SELECT_KEY);
       select(row);
     };
     void chrome.storage.local.get(PENDING_SELECT_KEY).then((got) => take(got[PENDING_SELECT_KEY]));
@@ -123,7 +137,7 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
   const afterWrite = async (vehicleId: number) => {
     forgetVehicle(vehicleId);
     const ob = await inventoryFor(vehicleId);
-    if (selectedRef.current?.vehicle_id === vehicleId) setItems(ob);
+    if (selectedRef.current?.vehicle_id === vehicleId) setItems(ob ?? 'failed');
     reload.current();
   };
 
@@ -135,6 +149,7 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
   }, [fleet, search]);
 
   const attentionTrucks = (fleet ?? []).filter((r) => r.attention > 0).length;
+  const withItems = (fleet ?? []).filter((r) => r.total > 0).length;
   const openDashboard = () => { void chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` }); };
 
   return (
@@ -142,26 +157,48 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
     // that gives — here the truck list, since there is no map to be it.
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
       <div style={{ padding: '8px 10px 0', display: 'grid', gap: 6 }}>
-        <input className="input" placeholder="Search trucks…" value={search}
+        <input className="input" placeholder="Search vehicles…" value={search}
                onChange={(e) => setSearch(e.target.value)} />
         {/* The one number worth reading before anything is chosen. */}
-        {fleet !== null && (
+        {/* Suppressed entirely when the first read failed: `fleet` is
+            [] then, and "No vehicles to show" would be a confident
+            falsehood printed directly above the red line saying we
+            could not read the list at all. */}
+        {fleet !== null && !(error && fleet.length === 0) && (
           <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-            {/* "carry items", not "tracked": this list holds the trucks
-                that HAVE something recorded, and a truck missing from it
-                has an empty inventory, not a missing existence.  Without
-                that word somebody hunting truck 117 reads its absence as
-                "no such truck".
+            {/* The list holds every vehicle this person may see now, so
+                the first number is the fleet and the second is how much
+                of it carries anything.  "Vehicles", not "trucks": the
+                registry holds trailers and manual units too.
 
-                And the count keeps its unit.  A bare "2 of 23" here and
-                a bare "2 of 7" in a row below would be the same shape
+                Each count keeps its unit — a bare "2 of 23" here and a
+                bare "2 of 7" in a row below would be the same shape
                 counting two different things a few pixels apart. */}
-            {fleet.length === 0
-              ? 'No items recorded on any truck yet'
-              : `${fleet.length} truck${fleet.length === 1 ? '' : 's'} carry items`
-                + (attentionTrucks === 0
-                  ? ' · all settled'
-                  : ` · ${attentionTrucks} need${attentionTrucks === 1 ? 's' : ''} attention`)}
+            {/* Two rules this line kept breaking.
+                ONE: a count carries its unit.  "N need attention" counts
+                ITEMS in the card below and in the map card; here it
+                counts VEHICLES, and the bare phrase made one screen say
+                the same words about two different things.
+                TWO: a claim may not outrun what was inspected.  "all
+                settled" hung off the FLEET count, so twenty-one vehicles
+                nobody has ever inventoried were declared settled — the
+                exact assertion the row dot refuses to make one region
+                below, where an empty vehicle is muted on purpose. */}
+            {/* While a search runs the headline describes the LIST, not
+                the fleet: "23 vehicles" sitting over a single row is a
+                number about something the reader cannot see. */}
+            {search.trim()
+              ? `${shown.length} of ${fleet.length} vehicle${fleet.length === 1 ? '' : 's'} match`
+              : fleet.length === 0
+              ? 'No vehicles to show'
+              : `${fleet.length} vehicle${fleet.length === 1 ? '' : 's'}`
+                + (withItems === 0
+                  ? ''
+                  : ` · ${withItems} with items`
+                    + (attentionTrucks === 0
+                      ? ', none flagged'
+                      : `, ${attentionTrucks} flagged`))}
+
           </p>
         )}
         {error && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{error}</p>}
@@ -180,13 +217,36 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
                     title="Clear the selection">Close</button>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-            {selected.total} item{selected.total === 1 ? '' : 's'}
+            {selected.total === 0 ? 'Nothing recorded' : `${selected.total} item${selected.total === 1 ? '' : 's'}`}
             {selected.attention > 0 && (
-              <span style={{ color: 'var(--warn)', fontWeight: 600 }}> · {selected.attention} need attention</span>
+              <span style={{ color: 'var(--warn)', fontWeight: 600 }}>
+                {' · '}{selected.attention} flagged
+              </span>
             )}
           </p>
-          {items === null
+          {items === 'loading'
             ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>Reading…</p>
+            : items === 'failed'
+            // Named, not hidden.  It covers a refusal, a timeout and an
+            // unreachable API alike — all three are "we do not know",
+            // and none of them is "there is nothing aboard".
+            ? <p style={{ margin: 0, fontSize: 12 }}>
+                <span style={{ color: 'var(--danger)' }}>Could not read what is aboard.</span>{' '}
+                <button type="button" className="link"
+                        onClick={() => { retryInventory(); select(selected); }}
+                        style={{ background: 'none', border: 0, padding: 0, font: 'inherit',
+                                 fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                  Try again
+                </button>
+              </p>
+            : items.items.length === 0
+            // Only when the read SUCCEEDED and came back empty — the
+            // failure has its own value above, so this can no longer
+            // claim "nothing recorded" about a vehicle we could not
+            // read at all.
+            ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                Nothing recorded on this vehicle yet.
+              </p>
             : <ItemRows items={items.items}
                          // Taller than the map card's seven rows: there
                          // the ceiling keeps a natural-height card from
@@ -218,12 +278,16 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
       <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto',
                     borderTop: '1px solid var(--border)' }}>
         {fleet === null && <p className="muted" style={{ padding: 10, margin: 0 }}>Loading…</p>}
-        {fleet !== null && fleet.length === 0 && (
+        {/* It is a HEADER now, not an empty state: the list below it is
+            full of vehicles, they simply have nothing recorded.  And it
+            stands down while a search is running, so the reason the list
+            looks empty is never stated twice in two voices. */}
+        {fleet !== null && fleet.length > 0 && withItems === 0 && !search.trim() && (
           // An empty state that names the way forward, not just the void.
           <div style={{ padding: 10, display: 'grid', gap: 6 }}>
             <p className="muted" style={{ margin: 0 }}>
-              Nothing is recorded on any truck yet — dashcams, fuel cards,
-              toll transponders and ELDs are added on the dashboard.
+              Nothing has been recorded on any of these vehicles yet — dashcams,
+              fuel cards, toll transponders and ELDs are added on the dashboard.
             </p>
             <button type="button" className="link" onClick={openDashboard}
                     style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
@@ -235,7 +299,7 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
         {/* "Nothing here" would be false: the search is what emptied it. */}
         {fleet !== null && fleet.length > 0 && shown.length === 0 && (
           <p className="muted" style={{ padding: 10, margin: 0 }}>
-            No truck matching “{search.trim()}” carries any items.
+            No vehicle matches “{search.trim()}”.
           </p>
         )}
         {shown.map((r) => {
@@ -250,16 +314,29 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
                              background: chosen ? 'rgba(255,255,255,.06)' : 'transparent',
                              border: 0, borderBottom: '1px solid var(--border)',
                              color: 'var(--fg)', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
-              <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                                         background: r.attention > 0 ? 'var(--warn)' : 'var(--ok)' }} />
+              {/* Three states, not two.  Green says "aboard and settled";
+                  on a vehicle nobody has ever inventoried it would be
+                  asserting a check that never happened, so an empty one
+                  is muted — no claim either way. */}
+              <span aria-hidden
+                    title={r.total === 0 ? 'Nothing recorded'
+                      : r.attention > 0 ? `${r.attention} of ${r.total} items flagged` : 'Nothing flagged'}
+                    style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                             background: r.total === 0 ? 'var(--muted)'
+                               : r.attention > 0 ? 'var(--warn)' : 'var(--ok)' }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 <span style={{ fontWeight: 600 }}>{r.name}</span>
                 {r.company && <span className="muted" style={{ fontWeight: 400 }}> · {r.company}</span>}
               </span>
               <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 12,
                              color: r.attention > 0 ? 'var(--warn)' : 'var(--muted)',
+                             fontStyle: r.total === 0 ? 'italic' : undefined,
                              fontWeight: r.attention > 0 ? 600 : 400 }}>
-                {r.attention > 0 ? `${r.attention} of ${r.total} items` : `${r.total} items`}
+                {/* "2 of 7" states a fraction with no verb — 2 of 7
+                    what?  The word lived only in a colour and in a
+                    tooltip on an aria-hidden span. */}
+                {r.total === 0 ? 'nothing recorded'
+                  : r.attention > 0 ? `${r.attention} flagged of ${r.total}` : `${r.total} items`}
               </span>
             </button>
           );

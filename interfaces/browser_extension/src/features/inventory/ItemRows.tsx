@@ -80,9 +80,24 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
   };
 
   return (
+    // The 4px BLEED lives here and nowhere else.  It used to sit on each
+    // open row's wrapper, where a negative margin on a stretched grid
+    // item makes the item WIDER than its track (used width = track + 8)
+    // — 4px of real horizontal overflow, and the scrollbar the owner
+    // photographed.  On the root the same trick costs nothing: the root
+    // is itself the scroll container, so its own margin box is not its
+    // content, and the bleed lands inside the .sheet's 10px padding.
+    //
+    // overflowX is declared INSIDE the ceiling branch on purpose.  Given
+    // alone beside an implied `overflow-y: visible`, `overflow-x: hidden`
+    // promotes the other axis to `auto` — which would turn the
+    // maxHeight === null mode, documented above as the one that must NOT
+    // scroll, into a scroller.
     <div id={id} style={{
-      display: 'grid', gap: 3,
-      ...(maxHeight === null ? {} : { maxHeight, overflowY: 'auto' as const }),
+      display: 'grid', gap: 3, margin: '0 -4px', padding: '0 4px',
+      ...(maxHeight === null ? {} : {
+        maxHeight, overflowY: 'auto' as const, overflowX: 'hidden' as const,
+      }),
     }}>
       {sortForPanel(items).map((it) => {
         const tone = statusTone(it.status);
@@ -117,6 +132,10 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                style={{ display: 'grid', gap: 3, borderRadius: 4,
                         ...(open ? {
                           background: 'rgba(255,255,255,.06)',
+                          // Reaches the root's padding edge exactly — its
+                          // margin box is 288 in a 288 padding box, so it
+                          // fills without overflowing, and the content
+                          // inside it does not shift on open.
                           margin: '0 -4px 6px', padding: '0 4px',
                         } : {}) }}>
             {canWrite ? (
@@ -126,11 +145,32 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
               <button type="button" className="row rowbtn"
                       aria-expanded={open}
                       title={open ? 'Hide the actions' : 'Verify or flag this item'}
-                      onClick={() => setOpenId(open ? null : it.id)}
-                      style={{ gap: 6, fontSize: 12, minWidth: 0, width: '100%', minHeight: 24,
+                      onClick={() => {
+                        const next = open ? null : it.id;
+                        setOpenId(next);
+                        // A row grows from 24px to ~88 inside a 168px
+                        // scroller: opened near the fold, everything it
+                        // just revealed is below it.  Next frame, once
+                        // the strip has rendered.
+                        if (next !== null) {
+                          requestAnimationFrame(() => {
+                            rowEls.current.get(it.id)?.scrollIntoView({ block: 'nearest' });
+                          });
+                        }
+                      }}
+                      // No width and no margin: as a stretched grid item
+                      // it fills its track exactly, in both states, so
+                      // the dot does not jump 4px when the row opens.
+                      // `font` BEFORE `fontSize`: the shorthand resets
+                      // every longhand it covers, and React writes these
+                      // in insertion order — declared after, it silently
+                      // undid the 12px and left the row a step larger
+                      // than the read-only branch beside it.
+                      style={{ gap: 6, minWidth: 0, minHeight: 24,
                                background: 'transparent',
-                               border: 0, padding: '2px 4px', margin: open ? 0 : '0 -4px', borderRadius: 4,
-                               color: 'var(--fg)', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+                               border: 0, padding: '2px 4px', margin: 0, borderRadius: 4,
+                               color: 'var(--fg)', cursor: 'pointer', font: 'inherit',
+                               fontSize: 12, textAlign: 'left' }}>
                 {line}
               </button>
             ) : (
@@ -142,11 +182,19 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
               </p>
             )}
             {open && (
-              // Two meaning classes, two shapes — the panel's own rule.
-              // Verify is an ACTION (a bordered button, like Close);
-              // the statuses are a SELECTION, so they are chips and the
-              // current one is pressed.
-              <div className="row" style={{ flexWrap: 'wrap', gap: 6, padding: '0 0 2px 14px' }}>
+              // TWO explicit lines, not one wrapping row.  Five controls
+              // need ~500px at the panel's 320px floor, so a single row
+              // survived only by accidental wrap — and a 32px .btn sat
+              // on the same line as 24px chips, aligning nothing.  Line
+              // A says what is known and offers the check; line B is the
+              // ladder of what it could be instead.
+              //
+              // Each line is guarded by the prop that fills it: the two
+              // are independent, and a verify-only caller would
+              // otherwise render an empty flex row.
+              <>
+              {onVerify && (
+              <div className="row" style={{ gap: 6, padding: '0 0 0 14px' }}>
                 {/* WHAT VERIFY CHANGES, said where Verify is pressed.
                     ``verify_inventory_item`` stamps the check and leaves
                     the status alone, so without this the button closed a
@@ -162,22 +210,33 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                     return age === null ? 'never checked' : `checked ${formatAge(age)} ago`;
                   })()}
                 </span>
-                {onVerify && (
-                  <button className="btn" disabled={busy === it.id}
-                          title="Record that you checked it and it is aboard"
-                          onClick={() => void act(it.id, () => onVerify(it.id), false)}>
-                    {busy === it.id ? 'Saving…' : 'Verify'}
-                  </button>
-                )}
-                {onStatus && PANEL_STATUSES.map((st) => (
-                  <button key={st} className={`chip ${st === it.status ? 'on' : ''}`}
-                          disabled={busy === it.id || st === it.status}
-                          aria-pressed={st === it.status}
+                <button className="btn" disabled={busy === it.id}
+                        title="Record that you checked it and it is aboard"
+                        onClick={() => void act(it.id, () => onVerify(it.id), false)}>
+                  {busy === it.id ? 'Saving…' : 'Verify'}
+                </button>
+              </div>
+              )}
+              {onStatus && (
+              // A grid, not a wrapping flex: with `flex:1 1 auto` a
+              // wrapped last chip stretches into a full-width danger
+              // bar, which is the loudest thing on the card for the
+              // quietest reason.  Equal columns, and they reflow.
+              <div style={{ display: 'grid', gap: 6, padding: '0 0 2px 14px',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))' }}>
+                {/* Only what it is NOT.  A permanently disabled chip
+                    restating the status written two lines up is a
+                    control that can never be pressed, taking a column
+                    from three that can. */}
+                {PANEL_STATUSES.filter((st) => st !== it.status).map((st) => (
+                  <button key={st} className="chip" disabled={busy === it.id}
                           onClick={() => void act(it.id, () => onStatus(it.id, st))}>
                     {humanize(st)}
                   </button>
                 ))}
               </div>
+              )}
+              </>
             )}
           </div>
         );

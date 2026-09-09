@@ -72,6 +72,11 @@ describe('command palette route coverage', () => {
     ['hos',      '/team'],
     ['samsara',  '/integrations'],
     ['vendor',   '/vendors'],
+    // "Onboard Inventory" was the name in production for a week.  The
+    // label is "Inventory" now; a search for the old word must still
+    // land here rather than on Drivers → Onboarding.
+    ['onboard',  '/inventory'],
+    ['inventory', '/inventory'],
     ['kpi',      '/kpi'],
   ])('finds %s', (query, path) => {
     const q = query.toLowerCase();
@@ -91,5 +96,33 @@ describe('command palette route coverage', () => {
       .filter((r) => !r.description && !r.keywords?.length)
       .map((r) => r.path);
     expect(bare).toEqual([]);
+  });
+});
+
+describe('one feature, one English name', () => {
+  // The name has no SSOT: it is five independent literals — the nav
+  // locale, the palette label, both permission lenses, and the browser
+  // panel's feature menu.  That is the mechanism behind every naming
+  // drift this project has had; the name went Inventory → Onboard
+  // Inventory → Inventory inside two days and each hop left a surface
+  // behind.  This is the cheapest thing that would have caught it.
+  it('says the same thing in the nav, the palette and the matrix', async () => {
+    const en = (await import('../../locales/en.json')).default as { nav: Record<string, string> };
+    const { PERM_GROUPS, DRIVER_TRUCK } = await import('../../features/permissions/permRows');
+    const NAME = en.nav.inventory;
+
+    expect(ROUTE_ENTRIES.find((e) => e.path === '/inventory')?.label).toBe(NAME);
+
+    const rows = [
+      ...PERM_GROUPS.flatMap((g) => g.flags),
+      ...DRIVER_TRUCK,
+    ] as { key?: string; label?: string }[];
+    const mine = rows.filter((r) => r.key === 'can_view_inventory');
+    // Both lenses carry the row: the staff matrix and the Driver panel.
+    // Asserted so this can never pass by finding nothing — the first
+    // draft read `g.rows`, which does not exist, and went green while
+    // checking zero labels.
+    expect(mine).toHaveLength(2);
+    for (const r of mine) expect(r.label, 'permission row label').toBe(NAME);
   });
 });

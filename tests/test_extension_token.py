@@ -456,6 +456,66 @@ def test_the_fleet_list_is_gated_and_walled():
     assert "company_allows(" in src and "get_user_company_codes(" in src
 
 
+def test_the_fleet_list_starts_from_the_registry_when_asked_for_all():
+    """The panel's question is "every vehicle I may see", and the old
+    shape could not answer it: folding ``list_account_inventory`` (items
+    JOIN vehicles) means a vehicle with nothing recorded cannot appear,
+    so its absence read as "no such vehicle".
+
+    ``?all=1`` takes the registry as the spine and left-joins the counts.
+    The bare path keeps the MAP's question — only what has something
+    aboard — because the overlay card renders a count line whenever one
+    is present, and a server that began answering with zeros would put
+    "0 items" on every marker of every not-yet-updated extension."""
+    import inspect
+    from interfaces.api.routes import extension
+    body = inspect.getsource(extension.extension_inventory_fleet).split('"""', 2)[2]
+    assert 'alias="all"' in inspect.getsource(extension.extension_inventory_fleet)
+    assert "tenant.list_vehicles(" in body, "the spine is the registry"
+    assert "get_attention_map(" in body, "counts are left-joined, not the spine"
+    # …and the map's branch is still there, unchanged in shape.
+    assert "list_account_inventory(" in body
+
+
+def test_the_fleet_list_applies_the_unit_width_the_live_map_applies():
+    """A driver who sees one truck on the Live Map must not see two
+    hundred in the panel beside it.  Same helper, same answer — and the
+    company wall stays ``company_allows`` rather than
+    ``filter_by_allowed_companies``, which reads a blank company code as
+    denied and would drop the registry-only trailers and manual units
+    that are nearly half this fleet."""
+    import inspect
+    from interfaces.api.routes import extension
+    # The BODY, not the docstring — which names the rejected helper in
+    # order to say why it is rejected, and would otherwise fail a guard
+    # written to forbid it.
+    body = inspect.getsource(extension.extension_inventory_fleet).split('"""', 2)[2]
+    assert "filter_by_assigned_trucks(" in body
+    assert "company_allows(" in body
+    assert "filter_by_allowed_companies" not in body
+
+
+def test_the_unit_scope_is_decided_on_the_registry_id_not_the_provider_id():
+    """The identity ladder's second rung reads a row's ``vehicle_id`` as
+    the PROVIDER id (vehicle_scope.allows_row's external_key default).
+    These rows carry the REGISTRY id under that name, so without a
+    ``registry_id`` the ladder would compare two different id spaces —
+    a driver missing their own truck, or matching somebody else's on a
+    collision.  Supplying registry_id makes rung ONE decide, and rung
+    one is authoritative including when it says no.
+
+    It is then projected off the wire: it did its work in the scope and
+    has no business on a page we do not own."""
+    import inspect
+    from interfaces.api.routes import extension
+    body = inspect.getsource(extension.extension_inventory_fleet).split('"""', 2)[2]
+    assert '"registry_id": int(v.id)' in body or '"registry_id": vid' in body
+    # …and both branches must carry it, or the map's rows scope wrongly.
+    assert body.count('"registry_id"') >= 2
+    # The wire keeps the five it always kept.
+    assert 'wire = ("vehicle_id", "name", "company", "total", "attention")' in body
+
+
 def test_the_fleet_list_carries_counts_not_contents():
     """One row per truck: what it is called and how much is aboard.  An
     item's own label arrives only when a truck is chosen, and its

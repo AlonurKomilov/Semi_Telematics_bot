@@ -105,6 +105,16 @@ export function colourFor(status: string): string {
 /** How near a click must land to count as hitting a marker.  The dot is
  *  12px across; this is its radius plus a thumb's worth of forgiveness. */
 export const HIT_RADIUS = 16;
+/** A finger is not a mouse.  Chrome on a 2-in-1 reports pointerType per
+ *  EVENT, which is the only reliable signal here — `matchMedia('(pointer:
+ *  coarse)')` answers for the PRIMARY pointer, so on the one class of
+ *  device this matters for (a touchscreen laptop) it says "mouse" and
+ *  the branch never fires. */
+export const TOUCH_HIT_RADIUS = 26;
+
+export function hitRadiusFor(pointerType?: string): number {
+  return pointerType === 'touch' || pointerType === 'pen' ? TOUCH_HIT_RADIUS : HIT_RADIUS;
+}
 
 /**
  * The marker under a point, or null.

@@ -14,7 +14,7 @@ from capabilities.data_lifecycle.retention.registry import (
 )
 
 register_target(RetentionTarget(
-    "vehicles.inventory_events", "Onboard-inventory event trail", "tenant",
+    "vehicles.inventory_events", "Inventory event trail", "tenant",
     lambda db, acct, days: db.prune_inventory_events(acct, days_keep=days),
 ))
 

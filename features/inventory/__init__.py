@@ -1,4 +1,4 @@
-"""Onboard Inventory — what physically lives in each truck.
+"""Inventory — what physically lives in each truck.
 
 Dashcam, fuel card, toll transponder, ELD, tablet and the rest, each with
 a status lifecycle and an immutable accountability trail: who did what,

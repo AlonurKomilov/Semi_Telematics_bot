@@ -82,7 +82,7 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
     expect(flat.map((i) => i.path)).not.toContain('/vehicles/documents');
   });
 
-  it('Onboard Inventory stands on its own, not under Vehicles', () => {
+  it('Inventory stands on its own, not under Vehicles', () => {
     const nav = generateNav('fleet', grants(
       'can_view_vehicles', 'can_view_inventory', 'can_view_location',
     ), undefined);

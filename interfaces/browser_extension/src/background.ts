@@ -134,7 +134,15 @@ async function inventoryCounts(token: string): Promise<InventoryCounts | undefin
       () => apiJSON<FleetCounts>('/extension/inventory-fleet'));
     const counts: InventoryCounts = new Map();
     for (const v of out.vehicles ?? []) {
-      counts.set(Number(v.vehicle_id), { total: Number(v.total) || 0, attention: Number(v.attention) || 0 });
+      const total = Number(v.total) || 0;
+      // A vehicle with nothing aboard contributes NOTHING.  The card
+      // renders its line whenever a count is present, so a zero here
+      // would put "0 items · all settled" on every marker — announcing
+      // an emptiness nobody asked about, on a page we do not own.  The
+      // server does not send zeros to this caller either; both, because
+      // the two ship on different clocks.
+      if (!total) continue;
+      counts.set(Number(v.vehicle_id), { total, attention: Number(v.attention) || 0 });
     }
     return counts;
   } catch {

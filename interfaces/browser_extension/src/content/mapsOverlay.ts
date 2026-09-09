@@ -52,7 +52,7 @@ import {
 } from '../features/maps-overlay/gesture';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraDrawable, cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
-import { cardAnchor, colourFor, findMapCanvas, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
+import { cardAnchor, colourFor, findMapCanvas, hitRadiusFor, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
 
 const ROOT_ID = '4truck-maps-overlay';
 const CHIP_ID = '4truck-maps-chip';
@@ -199,6 +199,7 @@ function closeCard(): void {
   card?.remove();
   card = null;
   cardId = null;
+  cardHtmlShown = '';
 }
 
 function removeAll(): void {
@@ -345,10 +346,18 @@ function markerFor(v: OverlayVehicle): MarkerParts {
     // trucks in view that is the difference between a moving map and a
     // stuttering one.  ``placeAt`` is the only writer.
     el.style.cssText =
-      'position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:none;' +
+      `position:absolute;left:0;top:0;transform:translate(-${GLYPH_HALF}px,-50%);pointer-events:none;` +
       'will-change:transform;display:flex;align-items:center;gap:4px;' +
-      'font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
-    el.innerHTML = `<span data-glyphwrap style="display:flex">${glyphHtml(moving, colourFor(v.status))}</span>`
+      // direction:ltr because the anchor is the row's LEFT edge.  Google
+      // serves an RTL document in Arabic and Hebrew; there the flex row
+      // reverses, the glyph moves to the right edge, and every truck
+      // would sit a full row-width east of where it is.
+      'direction:ltr;font:600 11px/1 system-ui,sans-serif;white-space:nowrap';
+    // The wrapper is a FIXED 18px box so GLYPH_HALF is true by
+    // construction: the arrow draws 18 and the dot 16 (12 + 2px border,
+    // content-box), and a page-level border-box from Google would make
+    // the dot 12 — three different halves for one constant.
+    el.innerHTML = `<span data-glyphwrap style="display:flex;width:18px;justify-content:center">${glyphHtml(moving, colourFor(v.status))}</span>`
       + '<span data-name style="background:rgba(17,20,26,.86);color:#fff;padding:2px 5px;border-radius:4px"></span>';
     ensureRoot().appendChild(el);
     m = { el, glyph: el.querySelector<HTMLElement>('[data-glyphwrap]')!,
@@ -369,11 +378,23 @@ function markerFor(v: OverlayVehicle): MarkerParts {
   return m;
 }
 
-/** The marker's centre, in layer pixels.  The trailing translate keeps
- *  the glyph centred on the point, which is what the base style used to
- *  say on its own. */
+/** Half the glyph box — the marker's anchor along x.
+ *
+ *  It used to be -50%, which centres the WHOLE ROW: glyph, gap and name
+ *  pill.  The truck the person sees is the glyph, at the row's left
+ *  edge, so with a label showing it was drawn 20-40px west of the point
+ *  the hit test used — and `markerAt`'s 16px radius could not span that.
+ *  Every press on a truck missed and fell through to Google, which
+ *  answered it as a click on the map.  The hover cursor never fired for
+ *  the same reason.  At national zoom the label is hidden, the row IS
+ *  the glyph, and clicking worked — which is why this looked like a
+ *  zoom-dependent mystery rather than an anchor. */
+const GLYPH_HALF = 9;
+
+/** The marker's glyph, on the point.  ``placeAt`` is the only writer,
+ *  and it must state the same anchor as the base cssText above. */
 function placeAt(m: MarkerParts, x: number, y: number): void {
-  m.el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+  m.el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-${GLYPH_HALF}px, -50%)`;
 }
 
 /** The arrow turns; the marker itself must not, or the name pill would
@@ -424,14 +445,19 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
     + '</div>'
     // What is aboard, when the panel is on Inventory — and only then,
     // because that is the only time the worker sends it.  Counts, never
-    // contents: "1 needs attention" is the answer to "is this truck
-    // right"; WHICH item it is belongs behind the button.
+    // contents: "1 flagged" is the answer to "is this truck right";
+    // WHICH item it is belongs behind the button.
+    //
+    // "flagged", not "needs attention": it is the word the panel's own
+    // rows and its summary use, and it names what a person DID — tapped
+    // Missing, Damaged or Needs check — rather than inventing a fifth
+    // vocabulary for the same four statuses.
     + (v.inventory_total == null ? '' :
         '<div style="font-size:11px;margin-bottom:6px">'
         + `<span style="opacity:.6">${v.inventory_total} item${v.inventory_total === 1 ? '' : 's'}</span>`
         + (v.inventory_attention
-            ? `<span style="color:#fbbf24;font-weight:600"> \u00b7 ${v.inventory_attention} need${v.inventory_attention === 1 ? 's' : ''} attention</span>`
-            : '<span style="opacity:.6"> \u00b7 all settled</span>')
+            ? `<span style="color:#fbbf24;font-weight:600"> \u00b7 ${v.inventory_attention} flagged</span>`
+            : '<span style="opacity:.6"> \u00b7 none flagged</span>')
         + '</div>')
     // Fuel, DEF, the address, the faults: all one button away, in the
     // panel, which is where they live — see bridge.ts on what does not
@@ -461,6 +487,11 @@ function esc(v: string): string {
 /** Draw or move the open card.  Called from every place that moves a
  *  marker, so the card follows its truck rather than floating where the
  *  truck used to be. */
+/** The card's last written markup and the height it measured, so the
+ *  frame loop can move the card without rebuilding it. */
+let cardHtmlShown = '';
+let cardHeight = 120;
+
 function placeCard(): void {
   if (!cardId || !surface || !root) { closeCard(); return; }
   const v = vehicles.find((x) => x.id === cardId);
@@ -476,6 +507,12 @@ function placeCard(): void {
       + 'padding:8px 10px;border-radius:10px;background:rgba(17,20,26,.94);color:#fff;'
       + 'font:400 12px/1.35 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.45);'
       + 'backdrop-filter:blur(2px)';
+    // A fresh element carries none of the old one's content, so the
+    // cache must forget it here too — not only in closeCard().  Google
+    // swaps its scene container on some navigations, ensureRoot rebuilds
+    // and the card is orphaned WITHOUT closeCard ever running; a stale
+    // cache would then leave the new card permanently empty.
+    cardHtmlShown = '';
     // The card is ours; a click inside it is never a map gesture.
     card.addEventListener('pointerdown', (e) => e.stopPropagation());
     card.addEventListener('click', (e) => {
@@ -486,11 +523,23 @@ function placeCard(): void {
     });
     root.appendChild(card);
   }
-  card.innerHTML = cardHtml(v, performance.now());
-  // Measured after the content is in: a two-line unit number makes a
-  // taller card, and a card placed against last frame's height sits
-  // wrong by exactly that difference.
-  const box = { width: CARD_W, height: card.offsetHeight || 120 };
+  // Written ONLY when it actually differs.  ``placeCard`` is called from
+  // the frame loop so the card follows its truck, and an unconditional
+  // innerHTML there destroyed and rebuilt the [data-panel] button about
+  // sixty times a second: a press landed on a node that no longer
+  // existed by the time the click resolved, so the button worked by
+  // luck.  Position every frame, content on change.
+  const html = cardHtml(v, performance.now());
+  if (html !== cardHtmlShown) {
+    card.innerHTML = html;
+    cardHtmlShown = html;
+    // Measured after the content is in: a two-line unit number makes a
+    // taller card, and a card placed against last frame's height sits
+    // wrong by exactly that difference.  Cached with it, since the
+    // measurement is only stale when the content is.
+    cardHeight = card.offsetHeight || 120;
+  }
+  const box = { width: CARD_W, height: cardHeight };
   const pos = cardAnchor(at, box, surface);
   card.style.left = `${pos.left}px`;
   card.style.top = `${pos.top}px`;
@@ -729,8 +778,20 @@ function onMapControl(target: EventTarget | null): boolean {
 }
 
 function onPointerDown(e: PointerEvent): void {
+  // Cleared FIRST, above every early return: a stamp that outlives its
+  // own press would eat the next click, and the next click is as likely
+  // to be Google's search box as ours.
+  pressedTruckAt = null;
   if (chip && e.target instanceof Node && chip.contains(e.target)) return;
   if (!root) return;
+  // Our own card sits INSIDE Google's map container, so `onMap` says yes
+  // to it — pressing the card began a fake map drag and the release
+  // closed the card before its click could resolve.  The card's own
+  // stopPropagation cannot help: this listener is capture-phase and runs
+  // first.
+  if (e.target instanceof Node && root.contains(e.target)) return;
+  // A right-press is not a selection and must not arm anything.
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (onMap(e.target)) {
     pointersDown++;
     if (pointersDown > 1) {               // a second finger: pinch zoom
@@ -750,9 +811,16 @@ function onPointerDown(e: PointerEvent): void {
  *  takes no pointer events, so a `cursor` on a marker never applies.
  *  The rule is ours and is removed again the moment the pointer leaves
  *  a truck, so the page is left as we found it. */
+let canvasCursorWas: string | null = null;
+
 function setHoverCursor(hit: boolean): void {
   if (!canvasEl) return;
-  const want = hit ? 'pointer' : '';
+  // Remembered the first time we touch it.  Writing '' to un-hover would
+  // delete whatever inline cursor Google had put there itself — leaving
+  // the page WORSE than we found it, which is the one thing this layer
+  // must never do.
+  if (canvasCursorWas === null) canvasCursorWas = canvasEl.style.cursor;
+  const want = hit ? 'pointer' : canvasCursorWas;
   if (canvasEl.style.cursor !== want) canvasEl.style.cursor = want;
 }
 
@@ -761,7 +829,8 @@ function onPointerMove(e: PointerEvent): void {
   if (!drag) {
     // Not dragging: say whether there is a truck under the pointer.
     if (enabled && signedIn && surface) {
-      setHoverCursor(!!markerAt(drawnAt, e.clientX - surface.left, e.clientY - surface.top));
+      setHoverCursor(!!markerAt(drawnAt, e.clientX - surface.left, e.clientY - surface.top,
+                               hitRadiusFor(e.pointerType)));
     }
     return;
   }
@@ -773,10 +842,11 @@ function onPointerMove(e: PointerEvent): void {
  *  The markers themselves stay pointer-events:none — taking the click
  *  would take the DRAG too, and a drag that starts on a truck must
  *  still move Google's map. */
-function selectAt(clientX: number, clientY: number): void {
+function selectAt(clientX: number, clientY: number, pointerType?: string): void {
   if (!enabled || !signedIn) return;
   if (!surface) return;
-  const id = markerAt(drawnAt, clientX - surface.left, clientY - surface.top);
+  const id = markerAt(drawnAt, clientX - surface.left, clientY - surface.top,
+                      hitRadiusFor(pointerType));
   if (!id) {
     // A press on empty map closes the card, the way every map dismisses
     // a popup — without swallowing the press, which is Google's.
@@ -785,6 +855,35 @@ function selectAt(clientX: number, clientY: number): void {
   }
   cardId = id;
   placeCard();
+  // We answered this press, so Google must not answer it too — otherwise
+  // one tap opens our card AND drops Google's pin.  Stamped, not
+  // swallowed here: the `click` has not happened yet, and swallowing
+  // pointerup would take the map's own gesture handling with it.
+  pressedTruckAt = { x: clientX, y: clientY };
+}
+
+/** Where a press just selected one of our trucks, waiting for the click
+ *  that follows it.  Deliberately narrow: it is cleared as the first act
+ *  of the next pointerdown, it only ever arms on a primary button, and
+ *  the click must land within a few pixels of the press.  A stamp that
+ *  survives its own gesture would eat one of Google's clicks. */
+let pressedTruckAt: { x: number; y: number } | null = null;
+const CLICK_SLOP_PX = 8;
+
+/** The terminal click of a press we already answered.
+ *
+ *  Non-passive and capture-phase, unlike the pointer listeners beside it
+ *  — `click` is not a scroll-blocking event, so taking it costs the page
+ *  nothing, and we have to run before Google to stop it at all.  If it
+ *  turns out Google acts on `mouseup` rather than `click`, this is inert
+ *  rather than wrong: nothing else depends on it. */
+function onClickCapture(e: MouseEvent): void {
+  const at = pressedTruckAt;
+  if (!at) return;
+  pressedTruckAt = null;
+  if (Math.abs(e.clientX - at.x) > CLICK_SLOP_PX || Math.abs(e.clientY - at.y) > CLICK_SLOP_PX) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
 }
 
 function onPointerUp(e?: PointerEvent): void {
@@ -796,7 +895,7 @@ function onPointerUp(e?: PointerEvent): void {
   if (!root) return;
   if (release.kind === 'still') {
     root.style.transform = '';
-    if (e) selectAt(e.clientX, e.clientY);
+    if (e) selectAt(e.clientX, e.clientY, e.pointerType);
     return;
   }
   // Keep following through the settle; the map is where the hand left
@@ -907,14 +1006,22 @@ function start(): void {
   }, { passive: true, signal });
 
   // Capture on window: we see the gesture before Google's own handlers
-  // and never interfere with them — every listener is passive.
+  // and never interfere with them.  The POINTER listeners are passive;
+  // keydown and click are not, and cannot be — one reads a key we may
+  // need to swallow, the other IS the swallow.  The old blanket claim
+  // here is what hid the missing click interception for a release.
   const opts: AddEventListenerOptions = { capture: true, passive: true, signal };
   window.addEventListener('pointerdown', onPointerDown, opts);
   window.addEventListener('pointermove', onPointerMove, opts);
   window.addEventListener('pointerup', onPointerUp, opts);
-  window.addEventListener('pointercancel', onPointerUp, opts);
+  // A CANCEL is not a release — passing the event through would let a
+  // gesture the browser took away (a scroll takeover, a context menu)
+  // finish as a selection.
+  window.addEventListener('pointercancel', () => onPointerUp(), opts);
   window.addEventListener('wheel', onWheel, opts);
   window.addEventListener('keydown', onKeyDown, { capture: true, signal });
+  // NOT passive, unlike the pointer listeners above — see onClickCapture.
+  window.addEventListener('click', onClickCapture, { capture: true, signal });
 
   // Which feature the card's button will land on.  Read once, then kept
   // in step below — the person switches in the panel, not on this page.

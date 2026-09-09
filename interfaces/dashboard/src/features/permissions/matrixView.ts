@@ -39,12 +39,19 @@ export function bandSummary(
 const norm = (s: string | undefined): string => (s ?? '').toLowerCase();
 
 /** A family matches when the query appears in its own label or
- *  description, or in one of its children's. */
+ *  description, in its MANAGE verb's, or in one of its children's.
+ *
+ *  The manage row used to be missing from this list while `bandRows`
+ *  counted it — so a band could report a row the find box could not
+ *  reach, and a search for a verb only the manage row names came back
+ *  empty against a matrix that plainly contained it. */
 export function familyMatches(fam: VerbFamily, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  if (norm(fam.parent.label).includes(q) || norm(fam.parent.description).includes(q)) return true;
-  return fam.children.some((c) => norm(c.row.label).includes(q) || norm(c.row.description).includes(q));
+  const hit = (r?: { label?: string; description?: string }) =>
+    !!r && (norm(r.label).includes(q) || norm(r.description).includes(q));
+  if (hit(fam.parent) || hit(fam.manage)) return true;
+  return fam.children.some((c) => hit(c.row));
 }
 
 /** The element id a band header carries, and a department chip scrolls to. */

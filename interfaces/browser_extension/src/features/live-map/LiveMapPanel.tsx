@@ -706,7 +706,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
 
                   Rendered only when the truck HAS recorded items.  An
                   account that does not use Inventory would otherwise
-                  carry an "Onboard 0" line on every selection forever,
+                  carry an "Inventory 0" line on every selection forever,
                   and a truck with nothing recorded is something to fix
                   on the dashboard, not to report on a map. */}
               {onboard && onboard.items.length > 0 && (
@@ -729,10 +729,13 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                     {/* The caret LEADS what it opens — the card above and
                         the list below both point the same way. */}
                     <span aria-hidden style={{ width: 12, flexShrink: 0 }}>{invOpen ? '\u25be' : '\u25b4'}</span>
-                    {/* The dashboard's nav, its permission row and the
-                        command palette all call this "Onboard Inventory".
-                        A shorter third name here would be a third name. */}
-                    <span style={{ fontWeight: 600, fontSize: 12 }}>Onboard Inventory</span>
+                    {/* One name in every surface: the dashboard's nav, its
+                        permission row, the command palette and the panel's
+                        own feature menu all say "Inventory".  It was
+                        "Onboard Inventory" for a week — the longer name
+                        was there to separate it from Parts, and Parts has
+                        since stopped claiming the word instead. */}
+                    <span style={{ fontWeight: 600, fontSize: 12 }}>Inventory</span>
                     <span className="muted" style={{ fontSize: 12 }}>{onboard.items.length}</span>
                     {/* Folding may take away detail; it may not take away
                         a warning.  The card's own fold obeys the same
@@ -741,7 +744,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                         anything on this truck wants somebody. */}
                     {onboard.attention > 0 && (
                       <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--warn)', fontWeight: 600 }}>
-                        {onboard.attention} need{onboard.attention === 1 ? 's' : ''} attention
+                        {onboard.attention} flagged
                       </span>
                     )}
                   </button>

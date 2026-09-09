@@ -127,8 +127,11 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     keywords: ['dvir', 'inspect', 'defect', 'pti'] },
   { label: 'Parts', path: '/parts', icon: Cog, group: 'Fleet',
     permission: 'can_manage_parts',
-    description: 'Parts catalogue and stock',
-    keywords: ['part', 'inventory', 'stock', 'sku'] },
+    // Not "stock": nothing in features/parts/ holds an on-hand
+    // quantity.  Claiming 'inventory' and 'stock' as keywords put Parts
+    // on top of a search for the feature that DOES answer them.
+    description: 'Parts catalogue — what each shop charged, and which trucks keep needing it',
+    keywords: ['part', 'sku', 'catalog', 'catalogue'] },
   { label: 'Vendors', path: '/vendors', icon: Store, group: 'Fleet',
     permission: 'can_manage_work_orders',
     description: 'Repair shops and suppliers',
@@ -137,10 +140,14 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     permission: 'can_manage_service_tasks',
     description: 'The shared job vocabulary behind maintenance and work orders',
     keywords: ['task', 'service', 'job', 'pm'] },
-  { label: 'Onboard Inventory', path: '/inventory', icon: Boxes, group: 'Fleet',
+  { label: 'Inventory', path: '/inventory', icon: Boxes, group: 'Fleet',
     permission: ['can_view_inventory'],
     description: 'Onboard items per truck — cameras, fuel cards, ELDs',
-    keywords: ['inventory', 'item', 'camera', 'eld', 'fuel card', 'toll'] },
+    // 'onboard' stays a keyword though it left the label: it was the
+    // name in production for a week, and a search for it must not
+    // land on Drivers → Onboarding, which is what it would find
+    // otherwise.  A wrong hit is worse than an empty one.
+    keywords: ['inventory', 'onboard', 'item', 'camera', 'eld', 'fuel card', 'toll'] },
   { label: 'Vehicle Documents', path: '/vehicles/documents', icon: FileText, group: 'Fleet',
     permission: ['can_view_vehicle_docs'],
     description: "Registration, title, insurance and annual inspections — every truck's papers",

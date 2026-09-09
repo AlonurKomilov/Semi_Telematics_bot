@@ -194,6 +194,18 @@ describe('what is aboard, on a page we do not own', () => {
     expect(Object.keys(v)).toHaveLength(9);
   });
 
+  it('refuses a ZERO, not only an absence', () => {
+    // The endpoint can now answer "every vehicle, carrying or not".  A
+    // zero reaching here would put "0 items · all settled" on every
+    // marker on a page we do not own — announcing an emptiness nobody
+    // asked about.  The previous case only covered an ABSENT key, which
+    // is why this would have shipped green.
+    const [v] = toOverlayVehicles([feature(9001)] as never,
+      new Map([[9001, { total: 0, attention: 0 }]]));
+    expect('inventory_total' in v).toBe(false);
+    expect(Object.keys(v)).toHaveLength(9);
+  });
+
   it('leaves a truck the counts do not mention alone', () => {
     // Absent, not zero: a card should say "3 items" or say nothing —
     // announcing an emptiness nobody asked about is noise.

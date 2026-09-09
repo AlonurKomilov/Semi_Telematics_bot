@@ -121,6 +121,14 @@ export function forgetVehicle(registryId: number | null | undefined): void {
   if (registryId != null) cache.delete(registryId);
 }
 
+/** An explicit "try again" forgets what it thought it knew — including a
+ *  refusal.  The 403 latch exists so a withheld grant is not rediscovered
+ *  once per vehicle; a person pressing a button is not that, and an
+ *  owner may have granted it a moment ago. */
+export function retryInventory(): void {
+  forgetInventory();
+}
+
 /** The two verbs the panel may perform.  Add, transfer and remove are
  *  office actions and are not reachable from here at all — the server's
  *  route allow-list decides that, not this file. */

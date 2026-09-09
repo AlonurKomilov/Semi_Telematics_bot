@@ -21,7 +21,7 @@ export interface PanelFeature {
 
 export const FEATURES: PanelFeature[] = [
   { id: 'live-map', label: 'Live Map', Component: lazy(() => import('../features/live-map/LiveMapPanel')) },
-  { id: 'inventory', label: 'Onboard Inventory', Component: lazy(() => import('../features/inventory/InventoryPanel')) },
+  { id: 'inventory', label: 'Inventory', Component: lazy(() => import('../features/inventory/InventoryPanel')) },
 ];
 
 /** Which of these a person may open is the SERVER's answer — /extension/me

@@ -184,7 +184,11 @@ export const PERM_GROUPS: PermGroup[] = [
       // row under Vehicles: chasing a missing extinguisher is not
       // administering the truck registry, and an owner can now grant one
       // without the other.
-      { key: 'can_view_inventory', kind: 'feature', label: 'Onboard Inventory', description: "What lives in each truck — dashcam, fuel card, toll transponder, ELD — and who touched it" },
+      // "Onboard" stays in the DESCRIPTION though it left the label:
+      // matrixView's find box searches label or description, and after
+      // the rename a search for the word people used all week would
+      // otherwise return Drivers → Onboarding.
+      { key: 'can_view_inventory', kind: 'feature', label: 'Inventory', description: "What is onboard each vehicle — dashcam, fuel card, toll transponder, ELD — and who touched it" },
       { key: 'can_manage_inventory', kind: 'action', label: 'Manage', indented: true, description: 'Add, edit, verify, transfer and remove items' },
       { key: 'can_view_geofence', kind: 'feature', label: 'Geofences' },
       { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
@@ -369,7 +373,7 @@ export const DRIVER_TRUCK: (ScopedFlag | SimpleFlag)[] = [
   // feature with its own flag (2026-09-08).  Without a row here the
   // driver keeps the grant and the owner loses the only place to see or
   // revoke it — the staff matrix has no Driver column.
-  { key: 'can_view_inventory', kind: 'feature',    label: 'Onboard Inventory',   description: 'What is on their assigned truck — dashcam, fuel card, toll transponder, ELD' },
+  { key: 'can_view_inventory', kind: 'feature',    label: 'Inventory',           description: 'What is onboard their assigned truck — dashcam, fuel card, toll transponder, ELD' },
   { key: 'can_manage_inspections', kind: 'action', label: 'Manage', indented: true, description: 'Review submissions and edit the checklist' },
   { key: 'can_view_routes', kind: 'feature',       label: 'Routes',              description: 'Their own assigned routes' },
   { key: 'can_view_scorecards', kind: 'feature',   label: 'Scorecard',           description: 'Their own safety scorecard' },

@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-import { HIT_RADIUS, cardAnchor, colourFor, findMapSurface, markerAt, needsRemeasure, sameSurface } from './surface';
+// Imported as text, not read from disk: the tests run in jsdom, where
+// `import.meta.url` is an http URL and node's file helpers refuse it.
+import overlaySrc from '../../content/mapsOverlay.ts?raw';
+
+import { HIT_RADIUS, TOUCH_HIT_RADIUS, cardAnchor, colourFor, findMapSurface, hitRadiusFor, markerAt, needsRemeasure, sameSurface } from './surface';
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   getBoundingClientRect: () => ({ left, top, width, height }) as DOMRectReadOnly,
@@ -144,5 +148,62 @@ describe('cardAnchor', () => {
     const a = cardAnchor({ x: 100, y: 50 }, box, tiny);
     expect(a.left).toBe(4);
     expect(a.top).toBe(4);
+  });
+});
+
+describe('how big the target is, per pointer', () => {
+  it('gives a finger more room than a mouse', () => {
+    expect(hitRadiusFor('touch')).toBe(TOUCH_HIT_RADIUS);
+    expect(hitRadiusFor('pen')).toBe(TOUCH_HIT_RADIUS);
+    expect(hitRadiusFor('touch')).toBeGreaterThan(hitRadiusFor('mouse'));
+  });
+
+  it('falls back to the mouse radius when the kind is unknown', () => {
+    // pointercancel and the synthetic paths hand us nothing.
+    expect(hitRadiusFor(undefined)).toBe(HIT_RADIUS);
+    expect(hitRadiusFor('mouse')).toBe(HIT_RADIUS);
+    expect(hitRadiusFor('')).toBe(HIT_RADIUS);
+  });
+
+  it('stays big enough for the glyph it is aimed at', () => {
+    // The arrow draws 18px across, so a radius under 9 could not cover
+    // the thing the person can see.  This is the number the anchor
+    // below is measured against.
+    expect(HIT_RADIUS).toBeGreaterThanOrEqual(9);
+  });
+});
+
+describe('the marker anchor — the bug this file exists to prevent', () => {
+  // A marker is a flex ROW: glyph, gap, name pill.  It was anchored with
+  // translate(-50%,-50%), which centres the ROW — so the glyph, at the
+  // row's left edge, was drawn 20-40px west of the point markerAt tests
+  // against.  Every press missed and fell through to Google; the hover
+  // cursor never fired.  With the label hidden at national zoom the row
+  // IS the glyph and it worked, which is why it read as a zoom mystery.
+  //
+  // Two places state the anchor — the base cssText and placeAt — and
+  // they must never disagree, so this reads the source rather than the
+  // behaviour: jsdom performs no layout and could not see it.
+  const src = overlaySrc as unknown as string;
+
+  it('anchors on the glyph in both places, through one constant', () => {
+    expect(src).toMatch(/const GLYPH_HALF = \d+;/);
+    expect(src).toContain('translate(-${GLYPH_HALF}px,-50%)');
+    expect(src).toContain('translate(-${GLYPH_HALF}px, -50%)');
+    // The row-centring form must not come back.
+    expect(src).not.toContain('translate(-50%, -50%)');
+    expect(src).not.toContain('translate(-50%,-50%)');
+  });
+
+  it('pins the glyph box the constant is half of', () => {
+    // The arrow draws 18 and the dot 16; a fixed box makes the half true
+    // by construction rather than by whichever glyph is showing.
+    expect(src).toContain('width:18px;justify-content:center');
+  });
+
+  it('keeps the row left-to-right, whatever language Google serves', () => {
+    // The anchor is the row's LEFT edge; on an RTL document the flex row
+    // reverses and every truck would sit a row-width east.
+    expect(src).toContain('direction:ltr');
   });
 });

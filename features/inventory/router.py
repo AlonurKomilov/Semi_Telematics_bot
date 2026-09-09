@@ -1,4 +1,4 @@
-"""Onboard Inventory API.
+"""Inventory API.
 
 router.py is interface-layer code co-located with its feature — only
 router.py may import interfaces.api.deps.
