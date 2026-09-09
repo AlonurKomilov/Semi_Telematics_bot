@@ -28,7 +28,7 @@ from interfaces.api.auth import (
     EXTENSION_AUDIENCE, EXTENSION_SCOPE, AuthResponse, mint_session_token,
 )
 from interfaces.api.deps import (
-    get_current_db_user, get_current_user, require_permission,
+    effective_perms, get_current_db_user, get_current_user, require_permission,
 )
 from interfaces.api.rate_limit import limiter
 from adapters.storage import Role
@@ -150,10 +150,23 @@ async def extension_me(user: dict = Depends(get_current_user)):
         account_name = getattr(acct, "name", None) or None
     except Exception:
         logger.debug("account name lookup failed", exc_info=True)
+    # Which of the panel's features this person may open.  Feature IDS,
+    # not permission flags: the panel has no business learning the
+    # permission vocabulary, and the mapping from grant to feature is a
+    # decision, so it lives on the server where it can be tested.  The
+    # verdict is the SCOPED one — a token that may not reach a feature
+    # must not be offered it either.
+    perms = await effective_perms(user)
+    features = [
+        fid for fid, flag in (("live-map", "can_view_location"),
+                              ("inventory", "can_view_inventory"))
+        if getattr(perms, flag, False)
+    ]
     return {
         "display_name": db_user.display_name or "",
         "role": str(user.get("role") or ""),
         "account_name": account_name,
+        "features": features,
     }
 
 
@@ -260,6 +273,59 @@ async def extension_inventory(
         "items": items,
         "attention": sum(1 for i in items if i["status"] in ATTENTION_STATUSES),
     }
+
+
+@router.get("/inventory-fleet")
+async def extension_inventory_fleet(
+    user: dict = Depends(require_permission("can_view_inventory")),
+):
+    """Which trucks have something aboard, and which want somebody.
+
+    The Inventory feature's opening screen.  A flat path, like every
+    other route the panel may knock on — ``EXTENSION_ROUTES`` matches
+    exactly, so there is nowhere to put an id.
+
+    One query (items joined with their truck) folded to one row per
+    vehicle.  The alternative — the dashboard's ``/inventory/alerts`` —
+    answers ``vehicle_id -> counts`` with no names and no company wall,
+    which is safe on a page whose vehicle list is already scoped and
+    would be a hole here.
+
+    Counts and a unit number, nothing else: an item's own label arrives
+    when a truck is chosen, and its identifier and notes never do.
+    """
+    from infra.platform import get_tenant_db
+    from interfaces.api.deps import get_user_company_codes
+    from features.vehicles.scope import company_allows
+    from adapters.storage.vehicle_inventory import ATTENTION_STATUSES
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    rows = await tenant.list_account_inventory(account_id)
+    allowed = await get_user_company_codes(user)
+
+    fleet: dict[int, dict] = {}
+    for r in rows:
+        if not company_allows(str(r.get("company_code") or ""), allowed):
+            continue
+        vid = int(r["vehicle_id"])
+        seen = fleet.get(vid)
+        if seen is None:
+            seen = fleet[vid] = {
+                "vehicle_id": vid,
+                "name": str(r.get("unit_number") or ""),
+                "company": str(r.get("company_code") or ""),
+                "total": 0,
+                "attention": 0,
+            }
+        seen["total"] += 1
+        if str(r.get("status") or "") in ATTENTION_STATUSES:
+            seen["attention"] += 1
+    return {"vehicles": sorted(
+        fleet.values(), key=lambda v: (-v["attention"], v["name"]),
+    )}
 
 
 @router.get("/download")

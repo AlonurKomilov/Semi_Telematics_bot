@@ -6,7 +6,7 @@ import { apiFetch } from '../../api/client';
 import {
   forgetInventory, humanize, inventoryFor, isAttention, sortForPanel, statusTone,
   type InventoryItem,
-} from './inventory';
+} from './data';
 
 const mocked = vi.mocked(apiFetch);
 

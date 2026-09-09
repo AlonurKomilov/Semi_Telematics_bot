@@ -366,6 +366,51 @@ def test_the_panel_is_told_what_is_aboard_not_what_it_is_worth():
         assert withheld not in body, f"{withheld} has no business in a panel key"
 
 
+def test_the_panel_is_told_features_not_flags():
+    """/me answers with the panel's own vocabulary — feature ids — never
+    with the permission matrix.  The mapping from grant to feature is a
+    decision, so it lives here where it can be read and tested, and the
+    panel stays ignorant of what a flag is called.  The verdict is the
+    SCOPED one: a token that may not reach a feature is not offered it."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_me)
+    assert "effective_perms(user)" in src, "the scope must narrow this too"
+    assert '"features": features' in src
+    # The three display strings plus the feature list, and nothing that
+    # names a permission in the answer itself.
+    body = src.split("return {", 1)[1]
+    assert "can_" not in body, "a flag name has no business in /me's answer"
+
+
+def test_the_fleet_list_is_gated_and_walled():
+    """The Inventory feature's opening screen is a fleet-wide read, so it
+    carries both guards: the grant, and the company wall.  The
+    dashboard's own /inventory/alerts skips the wall because the page's
+    vehicle list is already scoped — here there is no such list, so
+    skipping it would be a hole."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_inventory_fleet)
+    assert 'require_permission("can_view_inventory")' in src
+    assert "company_allows(" in src and "get_user_company_codes(" in src
+
+
+def test_the_fleet_list_carries_counts_not_contents():
+    """One row per truck: what it is called and how much is aboard.  An
+    item's own label arrives only when a truck is chosen, and its
+    identifier and notes never do — same line the per-vehicle endpoint
+    draws, drawn once more where it would be easiest to forget."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_inventory_fleet)
+    body = src.split("fleet: dict[int, dict] = {}", 1)[1]
+    for key in ('"vehicle_id"', '"name"', '"company"', '"total"', '"attention"'):
+        assert key in body, key
+    for withheld in ('"identifier"', '"notes"', '"label"'):
+        assert withheld not in body, f"{withheld} is not a count"
+
+
 def test_the_signin_notice_points_at_the_one_session_to_disconnect():
     from interfaces.api.security_notifications import signin_notice_action
     assert signin_notice_action(91) == {

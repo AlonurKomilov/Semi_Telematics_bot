@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { sharedOrOwn, toOverlayFixes, toOverlayVehicles } from './bridge';
+import { readPendingSelect, sharedOrOwn, toOverlayFixes, toOverlayVehicles } from './bridge';
 
 describe('what crosses into a page we do not own', () => {
   it('carries a marker and its card, and nothing else', () => {
@@ -141,5 +141,30 @@ describe('toOverlayVehicles — the card\'s fields', () => {
     expect(v.speed_mph).toBe(0);
     expect(v.company).toBe('');
     expect(v.updated_at).toBe('');
+  });
+});
+
+describe('the truck handed from the map to the panel', () => {
+  it('carries an identity each feature can resolve', () => {
+    expect(readPendingSelect({ id: '42', name: '103', company: 'PTG' }))
+      .toEqual({ id: '42', name: '103', company: 'PTG' });
+  });
+
+  it('still reads the bare string the key held before Inventory existed', () => {
+    // An update lands while a click may already be sitting in storage.
+    // Dropping it would eat that click, and the person would press the
+    // button twice and blame the panel.
+    expect(readPendingSelect('42')).toEqual({ id: '42', name: '', company: '' });
+  });
+
+  it('accepts a name with no id — the half Inventory actually matches on', () => {
+    expect(readPendingSelect({ name: '103' }))
+      .toEqual({ id: '', name: '103', company: '' });
+  });
+
+  it('refuses everything that identifies nothing', () => {
+    for (const v of [undefined, null, '', 0, {}, { id: '' }, { id: 7 }, []]) {
+      expect(readPendingSelect(v), JSON.stringify(v) ?? 'undefined').toBeNull();
+    }
   });
 });

@@ -44,6 +44,37 @@ export const OVERLAY_LIVE = '4truck:overlay-live';
  *  never leaves the extension. */
 export const PANEL_LIVE = '4truck:panel-live';
 
+/** A truck chosen on google.com/maps, waiting for the panel to read it.
+ *  Storage rather than a message, so it works whether the panel was
+ *  already open or is opening because of that very click.
+ *
+ *  It carries an identity for each reader.  Live Map matches the map's
+ *  own id; Inventory has no map and matches the unit number within its
+ *  company — the fleet answer it opens on is keyed that way, and it
+ *  cannot ask /map/vehicles for a translation because that route needs
+ *  the location grant this reader may not have. */
+export const PENDING_SELECT_KEY = 'pendingSelectVehicle';
+
+export interface PendingSelect { id: string; name: string; company: string }
+
+/** Read whatever is in the key.  Tolerant of the BARE STRING the key
+ *  held before Inventory existed: an update lands while a click may
+ *  already be sitting there, and dropping it would eat that click. */
+export function readPendingSelect(v: unknown): PendingSelect | null {
+  if (typeof v === 'string') return v ? { id: v, name: '', company: '' } : null;
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const id = typeof o.id === 'string' ? o.id : '';
+  const name = typeof o.name === 'string' ? o.name : '';
+  if (!id && !name) return null;
+  return { id, name, company: typeof o.company === 'string' ? o.company : '' };
+}
+
+/** Which feature the panel is showing, so the overlay's card can say
+ *  where its button goes.  A label promising fuel levels while the
+ *  panel is on Inventory reads as a bug, and it is one. */
+export const ACTIVE_FEATURE_KEY = 'panelFeature';
+
 /** One vehicle, trimmed to what the overlay draws AND what its card
  *  answers.  Still not the full map payload — the page is Google's, not
  *  ours — and every field below earns its place:

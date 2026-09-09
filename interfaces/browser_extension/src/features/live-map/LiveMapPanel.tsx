@@ -14,8 +14,10 @@ import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
-import { humanize, inventoryFor, sortForPanel, statusTone, type Onboard } from './inventory';
-import { PANEL_LIVE, sharedOrOwn, type PanelLiveReply } from '../maps-overlay/bridge';
+import { inventoryFor, type Onboard } from '../inventory/data';
+import ItemRows from '../inventory/ItemRows';
+import { PANEL_LIVE, PENDING_SELECT_KEY, readPendingSelect, sharedOrOwn,
+         type PanelLiveReply } from '../maps-overlay/bridge';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
 import { getFlag, setFlag } from '../../prefs';
 import { DASHBOARD_BASE } from '../../connect';
@@ -40,17 +42,9 @@ const CARD_BODY_ID = 'live-map-vehicle-detail';
  *  the height the card's own fold was built to save. */
 const INV_OPEN_KEY = 'liveMapOnboardOpen';
 const INV_BODY_ID = 'live-map-vehicle-onboard';
-/** A status's colour, in the panel's own tokens. */
-const TONE_VAR: Record<string, string> = {
-  danger: 'var(--danger)', warn: 'var(--warn)', ok: 'var(--ok)', muted: 'var(--muted)',
-};
 /** The filter is a working preference, not a fresh decision every time:
  *  a dispatcher who watches Moving watched it yesterday too. */
 const FILTER_KEY = 'liveMapFilter';
-/** A vehicle chosen on google.com/maps, waiting for the panel to open.
- *  Storage rather than a message, so it works whether the panel was
- *  already open or is opening because of that very click. */
-const PENDING_SELECT_KEY = 'pendingSelectVehicle';
 type Filter = 'all' | VehicleStatus;
 
 export default function LiveMapPanel() {
@@ -441,9 +435,14 @@ export default function LiveMapPanel() {
   // works either way round — the panel already open, or opening because
   // of that very click and mounting after the message would have gone.
   useEffect(() => {
-    const take = (id: unknown) => {
-      if (typeof id !== 'string' || !id) return;
-      const f = vehicles.find((v) => idOf(v) === id);
+    const take = (raw: unknown) => {
+      const want = readPendingSelect(raw);
+      if (!want) return;
+      // By id, which is what this surface is keyed on; by name only if
+      // the id finds nothing, so a click is never eaten by two feeds
+      // disagreeing about which id a truck has.
+      const f = vehicles.find((v) => idOf(v) === want.id)
+        ?? (want.name ? vehicles.find((v) => String(v.properties.name) === want.name) : undefined);
       if (!f) return;
       void chrome.storage.local.remove(PENDING_SELECT_KEY);
       select(f, true);
@@ -732,37 +731,9 @@ export default function LiveMapPanel() {
                       </span>
                     )}
                   </button>
-                  {/* A CEILING, because the panel's contract is that one
-                      region absorbs growth and it is the map.  The card
-                      is natural-height, so an expanded list of twelve
-                      items adds ~200px, pushes the map to its 220px
-                      floor, squeezes the list to nothing and then
-                      overflows a column that has no scroll of its own.
-                      Seven rows, and the rest scrolls in here. */}
-                  <div id={INV_BODY_ID} hidden={!invOpen}
-                       style={{ display: 'grid', gap: 3, maxHeight: 168, overflowY: 'auto' }}>
-                    {sortForPanel(onboard.items).map((it) => {
-                      const tone = statusTone(it.status);
-                      const settled = tone === 'ok' || tone === 'muted';
-                      return (
-                        <div key={it.id} className="row" style={{ gap: 6, fontSize: 12, minWidth: 0 }}>
-                          <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
-                                                     background: TONE_VAR[tone], flexShrink: 0 }} />
-                          {/* minWidth 0 so a long label ellipsises instead
-                              of widening the whole panel. */}
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis',
-                                         whiteSpace: 'nowrap', minWidth: 0 }}>{it.label}</span>
-                          <span className="muted" style={{ flexShrink: 0 }}>{humanize(it.category)}</span>
-                          {/* A settled item states its status quietly; one
-                              that wants attention says so in colour. */}
-                          <span style={{ marginLeft: 'auto', flexShrink: 0,
-                                         color: settled ? 'var(--muted)' : TONE_VAR[tone],
-                                         fontWeight: settled ? 400 : 600 }}>
-                            {humanize(it.status)}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  {/* The rows carry their own ceiling — see ItemRows. */}
+                  <div id={INV_BODY_ID} hidden={!invOpen} style={{ display: 'grid', gap: 4 }}>
+                    <ItemRows items={onboard.items} />
                     {/* The panel can READ this and never write it — the
                         manage grant is deliberately outside the token's
                         scope, so a key living in a browser cannot mark a

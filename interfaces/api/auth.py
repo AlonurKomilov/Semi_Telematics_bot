@@ -190,7 +190,7 @@ EXTENSION_SCOPE: tuple[str, ...] = (
 #: are listed for intent.
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
-    "/extension/vehicle-link", "/extension/inventory",
+    "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
     "/auth/refresh", "/auth/logout",
 })
 

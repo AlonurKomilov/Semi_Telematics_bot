@@ -4,18 +4,35 @@ import { FEATURES } from './registry';
 import Connect from './Connect';
 import Settings from './Settings';
 import UserMenu, { type Me } from './UserMenu';
-import { forgetInventory } from '../features/live-map/inventory';
+import FeatureMenu from './FeatureMenu';
+import { ACTIVE_FEATURE_KEY } from '../features/maps-overlay/bridge';
+import { forgetInventory } from '../features/inventory/data';
 
 type Phase = 'loading' | 'login' | 'ready';
 type View = 'feature' | 'settings';
 
 /** GET /extension/me — an avatar's worth, by design nothing more. */
-interface MeWire { display_name?: string | null; role?: string | null; account_name?: string | null }
+interface MeWire {
+  display_name?: string | null; role?: string | null; account_name?: string | null;
+  /** Feature ids this person may open — the server's answer, in the
+   *  panel's vocabulary.  Absent from an older API: then the panel shows
+   *  what it has always shown rather than nothing. */
+  features?: string[] | null;
+}
+
+/** The chosen feature, remembered like every other working preference
+ *  here — somebody who works from Inventory works from it tomorrow.
+ *  Declared with the overlay's contracts because it has two readers. */
+const FEATURE_KEY = ACTIVE_FEATURE_KEY;
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [view, setView] = useState<View>('feature');
-  const [featureId] = useState(FEATURES[0].id);
+  const [featureId, setFeatureId] = useState(FEATURES[0].id);
+  /** null = not answered yet (or an API without the field): fall back to
+   *  the first feature, which is what this panel showed before there was
+   *  a choice.  A failed /me must not empty the panel. */
+  const [allowed, setAllowed] = useState<string[] | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   // Why the connect screen is showing again — a session disconnected
   // from the profile (or expired) looks different from a first run.
@@ -59,11 +76,25 @@ export default function App() {
   // panel works without it, the avatar just shows "4".  Not /user/me:
   // that answer is the whole account profile, and this token is a
   // live-map key — /extension/me returns three display strings.
+  // The remembered choice, read once.  Applied only if that feature is
+  // still one this person may open — grants change, and a stored id must
+  // never reopen a door the server has since closed.
+  useEffect(() => {
+    void chrome.storage.local.get(FEATURE_KEY).then((got) => {
+      const id = got[FEATURE_KEY];
+      if (typeof id === 'string' && FEATURES.some((f) => f.id === id)) setFeatureId(id);
+    });
+  }, []);
+
   useEffect(() => {
     if (phase !== 'ready') return;
     let cancelled = false;
     apiJSON<MeWire>('/extension/me')
-      .then((w) => { if (!cancelled) setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null }); })
+      .then((w) => {
+        if (cancelled) return;
+        setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null });
+        setAllowed(Array.isArray(w.features) ? w.features : null);
+      })
       .catch(() => { if (!cancelled) setMe(null); });
     return () => { cancelled = true; };
   }, [phase]);
@@ -73,7 +104,21 @@ export default function App() {
     return <Connect disconnected={disconnected} onDone={() => { setDisconnected(false); setPhase('ready'); }} />;
   }
 
-  const feature = FEATURES.find((f) => f.id === featureId) ?? FEATURES[0];
+  const available = allowed === null
+    ? FEATURES.slice(0, 1)
+    : FEATURES.filter((f) => allowed.includes(f.id));
+  // An account whose grants match nothing still gets a surface rather
+  // than a blank panel; Live Map says its own "this connection cannot
+  // read the live map" when that is the truth.
+  const offered = available.length > 0 ? available : FEATURES.slice(0, 1);
+  const feature = offered.find((f) => f.id === featureId) ?? offered[0];
+  const pickFeature = (id: string) => {
+    setFeatureId(id);
+    // One key, two readers: the panel remembers the choice and the
+    // overlay's card on google.com/maps reads it to label its button —
+    // "for levels & more" is a lie while the panel is on Inventory.
+    void chrome.storage.local.set({ [FEATURE_KEY]: id });
+  };
   // Own choice, not a revocation: the session is ended on the server
   // too (the Active Sessions row goes), then the token is dropped
   // whatever the server said, and the connect screen reads as a first run.
@@ -92,7 +137,9 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header className="row" style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', justifyContent: 'space-between' }}>
-        <strong>4truck · {view === 'settings' ? 'Settings' : feature.label}</strong>
+        {view === 'settings'
+          ? <strong>4truck · Settings</strong>
+          : <FeatureMenu features={offered} current={feature} onPick={pickFeature} />}
         <UserMenu me={me} onSettings={() => setView('settings')} onDisconnect={() => void disconnect()} />
       </header>
       <main style={{ flex: 1, minHeight: 0, overflowY: view === 'settings' ? 'auto' : undefined }}>

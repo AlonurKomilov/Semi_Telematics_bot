@@ -42,7 +42,7 @@
  * and the right answer to each is to disappear rather than draw wrong.
  */
 import {
-  OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES,
+  ACTIVE_FEATURE_KEY, OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, PENDING_SELECT_KEY,
   type LiveReply, type OverlayReply, type OverlayVehicle,
 } from '../features/maps-overlay/bridge';
 import { applyFix, positionAt, shortestAngleDiff, type Phys } from '../features/live-map/physics';
@@ -56,10 +56,6 @@ import { cardAnchor, colourFor, findMapCanvas, markerAt, needsRemeasure, sameSur
 
 const ROOT_ID = '4truck-maps-overlay';
 const CHIP_ID = '4truck-maps-chip';
-/** A vehicle picked here, for the panel to open on.  Storage rather than
- *  a message: the panel may be closed at the moment of the click and
- *  would never receive one. */
-const PENDING_SELECT_KEY = 'pendingSelectVehicle';
 /** Positions are 30s fresh on the server; asking faster spends quota
  *  for numbers that have not changed. */
 const POLL_MS = 30_000;
@@ -431,7 +427,19 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
     // cross into a page we do not own.
     + '<button data-panel style="all:unset;box-sizing:border-box;display:block;width:100%;text-align:center;'
     +   'cursor:pointer;margin-top:2px;padding:6px 8px;border-radius:6px;background:#2563eb;color:#fff;'
-    +   'font:600 11px/1 system-ui,sans-serif">Open in 4truck for levels &amp; more</button>';
+    +   `font:600 11px/1 system-ui,sans-serif">${esc(panelButtonLabel())}</button>`;
+}
+
+/** Which feature the panel will land on, so the button can say what it
+ *  actually opens.  Read from storage as the person switches, because a
+ *  card promising "levels & more" that opens an inventory list is a bug
+ *  the person meets before we do. */
+let panelFeature = 'live-map';
+
+function panelButtonLabel(): string {
+  return panelFeature === 'inventory'
+    ? "Open in 4truck to see what is aboard"
+    : 'Open in 4truck for levels & more';
 }
 
 function esc(v: string): string {
@@ -462,7 +470,8 @@ function placeCard(): void {
     card.addEventListener('click', (e) => {
       const t = e.target as HTMLElement | null;
       if (t?.closest('[data-close]')) { closeCard(); return; }
-      if (t?.closest('[data-panel]') && cardId) openInPanel(cardId);
+      const picked = cardId ? vehicles.find((x) => x.id === cardId) : undefined;
+      if (t?.closest('[data-panel]') && picked) openInPanel(picked);
     });
     root.appendChild(card);
   }
@@ -476,10 +485,17 @@ function placeCard(): void {
   card.style.top = `${pos.top}px`;
 }
 
-function openInPanel(id: string): void {
+function openInPanel(v: OverlayVehicle): void {
   // Written first, then the panel is asked to open: whichever arrives
   // first, the panel finds the choice waiting for it.
-  void chrome.storage.local.set({ [PENDING_SELECT_KEY]: id });
+  //
+  // Three fields, not one id: Live Map resolves the map's id, and
+  // Inventory — which has no map and cannot ask for one, since
+  // /map/vehicles needs the location grant its reader may not hold —
+  // resolves the unit number inside its company.
+  void chrome.storage.local.set({
+    [PENDING_SELECT_KEY]: { id: v.id, name: v.name || '', company: v.company || '' },
+  });
   try { chrome.runtime.sendMessage({ type: OPEN_PANEL }); } catch { /* worker asleep; storage still carries it */ }
 }
 
@@ -889,9 +905,23 @@ function start(): void {
   window.addEventListener('wheel', onWheel, opts);
   window.addEventListener('keydown', onKeyDown, { capture: true, signal });
 
+  // Which feature the card's button will land on.  Read once, then kept
+  // in step below — the person switches in the panel, not on this page.
+  void chrome.storage.local.get(ACTIVE_FEATURE_KEY).then((got) => {
+    const f = got[ACTIVE_FEATURE_KEY];
+    if (!torn && typeof f === 'string' && f) panelFeature = f;
+  });
+
   // The panel's own switch reaches here without a reload.
   onPrefChanged = (changes, area) => {
-    if (torn || area !== 'local' || !(OVERLAY_PREF_KEY in changes)) return;
+    if (torn || area !== 'local') return;
+    if (ACTIVE_FEATURE_KEY in changes) {
+      const f = changes[ACTIVE_FEATURE_KEY].newValue;
+      panelFeature = typeof f === 'string' && f ? f : 'live-map';
+      // An open card is showing the old promise; rewrite it in place.
+      if (cardId) placeCard();
+    }
+    if (!(OVERLAY_PREF_KEY in changes)) return;
     enabled = changes[OVERLAY_PREF_KEY].newValue !== false;
     if (enabled) { geometryDirty = true; refreshView(); void refreshData(); } else draw();
   };
