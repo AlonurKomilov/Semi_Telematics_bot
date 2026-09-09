@@ -88,12 +88,35 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
     assert await deps.require_permission("can_manage_vehicles")(user=dict(user_full))
 
 
-def test_refresh_keeps_the_scope_it_was_given():
-    """A refresh that dropped aud/scope would widen a truck-list key into
-    an account key every eight hours.  Pinned at the call site."""
+def test_refresh_never_drops_the_audience():
+    """A refresh that dropped aud would widen a truck-list key into an
+    account key every eight hours.  Pinned at the call site."""
     import inspect
     src = inspect.getsource(auth_mod.refresh_token)
-    assert 'aud=payload.get("aud")' in src and 'scope=payload.get("scope")' in src
+    assert 'aud=payload.get("aud")' in src
+
+
+def test_refresh_reissues_the_audiences_scope_of_today():
+    """The scope belongs to what the token IS, not to the day it was
+    minted.  Copying the old claim froze every installed extension at
+    the scope it connected with -- the panel grew Inventory and no
+    existing installation could reach it.  Re-reading the audience also
+    means a NARROWING reaches live tokens on the next refresh."""
+    from interfaces.api.auth import _scope_for_audience
+    stale = {"aud": EXTENSION_AUDIENCE, "scope": ["can_view_location"]}
+    assert tuple(_scope_for_audience(stale)) == tuple(EXTENSION_SCOPE)
+    # An unscoped token stays unscoped -- this must never MINT a scope.
+    assert _scope_for_audience({"scope": None}) is None
+    # A scope this module does not own is not ours to rewrite.
+    assert _scope_for_audience({"aud": "somebody-elses", "scope": ["x"]}) == ["x"]
+
+
+def test_the_panel_key_may_read_inventory_and_may_not_change_it():
+    """Inventory joined the scope so the panel can answer "what is on
+    this truck".  The write half deliberately did not: a key that lives
+    in a browser must not be able to mark a dashcam missing."""
+    assert "can_view_inventory" in EXTENSION_SCOPE
+    assert "can_manage_inventory" not in EXTENSION_SCOPE
 
 
 # ── The consent flow: one mint, no password in the panel ─────────────
@@ -310,6 +333,37 @@ def test_the_panels_data_path_is_the_dashboards_gates_not_its_own():
     # Both apply Team Management's company scope and the unit scope.
     assert "filter_by_allowed_companies(" in src
     assert "filter_by_assigned_trucks(" in src and "member_unit_scope(user, \"location\")" in src
+
+
+def test_the_inventory_endpoint_is_gated_on_the_inventory_grant():
+    """/vehicle-link rides the map the panel already shows and needs no
+    gate of its own.  Inventory is a feature an owner may withhold, so a
+    dispatcher denied it on the dashboard is denied it here -- which
+    works only because the flag is in EXTENSION_SCOPE (the narrowing is
+    an intersection, so an unlisted flag reads False for everyone)."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_inventory)
+    assert 'require_permission("can_view_inventory")' in src
+
+
+def test_the_panel_is_told_what_is_aboard_not_what_it_is_worth():
+    """The payload line, drawn on purpose and pinned so it stays drawn.
+
+    A category, a name and a status answer "what is on this truck and
+    does any of it need attention".  ``identifier`` (a fuel-card or
+    serial number) and ``notes`` (free text) answer the dashboard's
+    questions, and a key that lives in a browser extension should not
+    carry them.  Widening this line is a decision, not a refactor -- if
+    you mean to, move this test's list rather than deleting it."""
+    import inspect
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_inventory)
+    body = src.split("rows = await tenant.list_vehicle_inventory", 1)[1]
+    for key in ('"id"', '"category"', '"label"', '"status"'):
+        assert key in body, key
+    for withheld in ('"identifier"', '"notes"', 'r["identifier"]', 'r["notes"]'):
+        assert withheld not in body, f"{withheld} has no business in a panel key"
 
 
 def test_the_signin_notice_points_at_the_one_session_to_disconnect():

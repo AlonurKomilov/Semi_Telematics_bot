@@ -4,6 +4,7 @@ import { FEATURES } from './registry';
 import Connect from './Connect';
 import Settings from './Settings';
 import UserMenu, { type Me } from './UserMenu';
+import { forgetInventory } from '../features/live-map/inventory';
 
 type Phase = 'loading' | 'login' | 'ready';
 type View = 'feature' | 'settings';
@@ -81,6 +82,10 @@ export default function App() {
     setDisconnected(false);
     try { await apiFetch('/auth/logout', { method: 'POST' }); } catch { /* the token is dropped either way; the row expires on its own */ }
     finally { await clearToken(); }
+    // The next person to connect may be a different one with different
+    // grants: what one truck's inventory was, and whether Inventory was
+    // permitted at all, are answers to THAT session's key, not this one's.
+    forgetInventory();
     setMe(null); setView('feature'); setPhase('login');
   };
 

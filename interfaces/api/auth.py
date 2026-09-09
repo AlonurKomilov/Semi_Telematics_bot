@@ -168,7 +168,18 @@ KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 # an installed extension that still checks the old scope string keeps
 # connecting (interfaces/browser_extension/src/connect.ts moved to the
 # canonical one).  Drop the legacy pair with the alias layer.
-EXTENSION_SCOPE: tuple[str, ...] = ("can_view_location", "can_location_map", "can_location_vehicle")
+# ``can_view_inventory`` joined them when the panel learned to answer
+# "what is ON this truck" for the vehicle in hand.  It is a WIDENING of
+# what a stolen panel key reads — from where the trucks are to where
+# they are plus what is aboard — and it is deliberate: the question is
+# asked standing next to the truck, which is exactly where a phone or a
+# laptop showing Google Maps is.  It is not an escalation: the scope is
+# an intersection, so a person the owner never granted Inventory still
+# reads False for it (deps._narrow_to_token_scope).
+EXTENSION_SCOPE: tuple[str, ...] = (
+    "can_view_location", "can_location_map", "can_location_vehicle",
+    "can_view_inventory",
+)
 #: Where a scoped token may go AT ALL — matched exactly by
 #: deps.get_current_user after the /api and /api/v1 mount prefixes and a
 #: trailing slash are removed; anything else is 403.  Not a prefix list:
@@ -179,9 +190,21 @@ EXTENSION_SCOPE: tuple[str, ...] = ("can_view_location", "can_location_map", "ca
 #: are listed for intent.
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
-    "/extension/vehicle-link",
+    "/extension/vehicle-link", "/extension/inventory",
     "/auth/refresh", "/auth/logout",
 })
+
+
+def _scope_for_audience(payload: dict) -> "list[str] | tuple[str, ...] | None":
+    """The scope a refreshed token should carry.
+
+    A known audience gets the scope that audience declares TODAY; anything
+    else keeps whatever claim it arrived with (an unscoped dashboard token
+    has none, and a scope this module does not own is not ours to rewrite).
+    """
+    if payload.get("aud") == EXTENSION_AUDIENCE:
+        return EXTENSION_SCOPE
+    return payload.get("scope")
 
 
 def create_jwt(
@@ -662,7 +685,16 @@ async def refresh_token(request: Request, response: Response, authorization: str
         is_primary_owner=user.is_primary_owner,
         # Scope survives refresh: dropping it here would silently widen a
         # truck-list key into an account key every eight hours.
-        aud=payload.get("aud"), scope=payload.get("scope"),
+        #
+        # It is re-read from the AUDIENCE rather than copied from the old
+        # claim, because the scope is a property of what the token IS,
+        # not of the moment it was minted.  Copying froze every installed
+        # extension at the scope of the day it connected: the panel grew
+        # Inventory and no existing installation could reach it, since
+        # refresh handed back the same three location flags forever.  A
+        # narrowing propagates the same way, on the next refresh, which
+        # is the direction that matters most.
+        aud=payload.get("aud"), scope=_scope_for_audience(payload),
     )
     try:
         from datetime import datetime, timezone

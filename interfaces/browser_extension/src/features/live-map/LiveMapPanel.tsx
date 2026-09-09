@@ -14,9 +14,11 @@ import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
+import { humanize, inventoryFor, sortForPanel, statusTone, type Onboard } from './inventory';
 import { PANEL_LIVE, sharedOrOwn, type PanelLiveReply } from '../maps-overlay/bridge';
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
 import { getFlag, setFlag } from '../../prefs';
+import { DASHBOARD_BASE } from '../../connect';
 import { directionsUrl, followInGoogleMaps, getFollowPref, markFollowWarned, openInGoogleMaps, searchUrl, setFollowPref, wasFollowWarned } from './googleMaps';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
@@ -31,6 +33,17 @@ const LIST_OPEN_KEY = 'liveMapListOpen';
 const CARD_OPEN_KEY = 'liveMapCardOpen';
 /** The folded part, named so the control that folds it can say so. */
 const CARD_BODY_ID = 'live-map-vehicle-detail';
+/** What is aboard the truck.  Folded by DEFAULT, unlike the card: the
+ *  card answers "where is it and can it get there", which is why the
+ *  panel is open; this answers "is the dashcam still on it", which is
+ *  asked sometimes.  A section that arrives expanded would give back
+ *  the height the card's own fold was built to save. */
+const INV_OPEN_KEY = 'liveMapOnboardOpen';
+const INV_BODY_ID = 'live-map-vehicle-onboard';
+/** A status's colour, in the panel's own tokens. */
+const TONE_VAR: Record<string, string> = {
+  danger: 'var(--danger)', warn: 'var(--warn)', ok: 'var(--ok)', muted: 'var(--muted)',
+};
 /** The filter is a working preference, not a fresh decision every time:
  *  a dispatcher who watches Moving watched it yesterday too. */
 const FILTER_KEY = 'liveMapFilter';
@@ -72,6 +85,11 @@ export default function LiveMapPanel() {
   const [tileNotice, setTileNotice] = useState('');
   // The selected truck's provider links, fetched once per truck.
   const [links, setLinks] = useState<ProviderLink[]>([]);
+  // …and what is aboard it.  null covers three cases that all mean the
+  // same thing for the surface — not asked yet, not permitted, not
+  // answered — so the section simply is not there.
+  const [onboard, setOnboard] = useState<Onboard | null>(null);
+  const [invOpen, setInvOpen] = useState(false);
   // Ages are read against ONE clock per render, so two rows can never
   // disagree by the milliseconds between their own Date.now() calls.
   // The 30-second reload re-renders, which is how the ages advance.
@@ -143,6 +161,12 @@ export default function LiveMapPanel() {
     void linksFor(rid).then((ls) => {
       // Ignore an answer that arrived after the person moved on.
       if (selectedIdRef.current === idOf(cur)) setLinks(ls);
+    });
+    // Same rule for what is aboard: clear first, and drop an answer that
+    // belongs to a truck the person has already left.
+    setOnboard(null);
+    void inventoryFor(rid).then((ob) => {
+      if (selectedIdRef.current === idOf(cur)) setOnboard(ob);
     });
     setKeep(true);              // a fresh choice always starts centred
     const [lat, lng] = liveLatLng(cur);
@@ -362,6 +386,7 @@ export default function LiveMapPanel() {
     void getFollowPref().then((on) => { setFollow(on); followRef.current = on; });
     void getFlag(LIST_OPEN_KEY, true).then(setListOpen);
     void getFlag(CARD_OPEN_KEY, true).then(setCardOpen);
+    void getFlag(INV_OPEN_KEY, false).then(setInvOpen);
     void chrome.storage.local.get(FILTER_KEY).then((got) => {
       const f = got[FILTER_KEY];
       if (f === 'all' || f === 'moving' || f === 'idle' || f === 'stopped') setFilter(f);
@@ -462,6 +487,11 @@ export default function LiveMapPanel() {
     const open = !cardOpen;
     setCardOpen(open);
     void setFlag(CARD_OPEN_KEY, open);
+  };
+  const toggleInv = () => {
+    const open = !invOpen;
+    setInvOpen(open);
+    void setFlag(INV_OPEN_KEY, open);
   };
 
   return (
@@ -654,6 +684,108 @@ export default function LiveMapPanel() {
                 <button className="btn primary" onClick={() => void openInGoogleMaps(searchUrl(lat, lng))}>Open in Google Maps</button>
                 <button className="btn" onClick={() => void openInGoogleMaps(directionsUrl(lat, lng))}>Directions</button>
               </div>
+              {/* What is aboard this truck.
+
+                  It sits AFTER the two actions on purpose: those are
+                  what the card is for and they hold the position people
+                  learned them in.  This is the answer to a question
+                  asked standing next to the truck.
+
+                  Rendered only when the truck HAS recorded items.  An
+                  account that does not use Inventory would otherwise
+                  carry an "Onboard 0" line on every selection forever,
+                  and a truck with nothing recorded is something to fix
+                  on the dashboard, not to report on a map. */}
+              {onboard && onboard.items.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 6, display: 'grid', gap: 4 }}>
+                  {/* The header carries a RESTING fill, not just the
+                      .rowbtn hover.  The list's header gets away with a
+                      bare glyph because its bar wears var(--card) on the
+                      page ground; this bar is already ON var(--card), so
+                      that step is invisible here and it needs one of its
+                      own.  It buys two things at once: the bar reads as
+                      a control, and it reads as the header OF the rows
+                      under it rather than as the first of them. */}
+                  <button type="button" onClick={toggleInv}
+                          aria-expanded={invOpen} aria-controls={INV_BODY_ID}
+                          className="row rowbtn"
+                          title={invOpen ? 'Hide what is aboard' : 'Show what is aboard'}
+                          style={{ gap: 6, background: 'rgba(255,255,255,.04)', border: 0, padding: '2px 4px',
+                                   margin: '0 -4px', borderRadius: 4, minHeight: 24,
+                                   color: 'var(--fg)', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+                    {/* The caret LEADS what it opens — the card above and
+                        the list below both point the same way. */}
+                    <span aria-hidden style={{ width: 12, flexShrink: 0 }}>{invOpen ? '\u25be' : '\u25b4'}</span>
+                    {/* The dashboard's nav, its permission row and the
+                        command palette all call this "Onboard Inventory".
+                        A shorter third name here would be a third name. */}
+                    <span style={{ fontWeight: 600, fontSize: 12 }}>Onboard Inventory</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{onboard.items.length}</span>
+                    {/* Folding may take away detail; it may not take away
+                        a warning.  The card's own fold obeys the same
+                        rule, and this is the whole reason the section is
+                        worth having closed: one glance says whether
+                        anything on this truck wants somebody. */}
+                    {onboard.attention > 0 && (
+                      <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--warn)', fontWeight: 600 }}>
+                        {onboard.attention} need{onboard.attention === 1 ? 's' : ''} attention
+                      </span>
+                    )}
+                  </button>
+                  {/* A CEILING, because the panel's contract is that one
+                      region absorbs growth and it is the map.  The card
+                      is natural-height, so an expanded list of twelve
+                      items adds ~200px, pushes the map to its 220px
+                      floor, squeezes the list to nothing and then
+                      overflows a column that has no scroll of its own.
+                      Seven rows, and the rest scrolls in here. */}
+                  <div id={INV_BODY_ID} hidden={!invOpen}
+                       style={{ display: 'grid', gap: 3, maxHeight: 168, overflowY: 'auto' }}>
+                    {sortForPanel(onboard.items).map((it) => {
+                      const tone = statusTone(it.status);
+                      const settled = tone === 'ok' || tone === 'muted';
+                      return (
+                        <div key={it.id} className="row" style={{ gap: 6, fontSize: 12, minWidth: 0 }}>
+                          <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
+                                                     background: TONE_VAR[tone], flexShrink: 0 }} />
+                          {/* minWidth 0 so a long label ellipsises instead
+                              of widening the whole panel. */}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis',
+                                         whiteSpace: 'nowrap', minWidth: 0 }}>{it.label}</span>
+                          <span className="muted" style={{ flexShrink: 0 }}>{humanize(it.category)}</span>
+                          {/* A settled item states its status quietly; one
+                              that wants attention says so in colour. */}
+                          <span style={{ marginLeft: 'auto', flexShrink: 0,
+                                         color: settled ? 'var(--muted)' : TONE_VAR[tone],
+                                         fontWeight: settled ? 400 : 600 }}>
+                            {humanize(it.status)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {/* The panel can READ this and never write it — the
+                        manage grant is deliberately outside the token's
+                        scope, so a key living in a browser cannot mark a
+                        dashcam missing.  That is the right call and it
+                        leaves somebody standing at the truck with an
+                        answer and nowhere to put it.  A quiet link, not
+                        a third button: the two actions above are what
+                        this card is for.
+
+                        It goes to /inventory rather than the truck's own
+                        page, because the truck page is gated on
+                        can_view_vehicles — the one grant this reader may
+                        not have, and the whole reason Inventory became a
+                        feature of its own. */}
+                    <button type="button" className="link"
+                            onClick={() => { void chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` }); }}
+                            style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
+                                     font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                      Manage on 4truck →
+                    </button>
+                  </div>
+                </div>
+              )}
               </div>
             </div>
           );

@@ -27,7 +27,9 @@ from fastapi.responses import StreamingResponse
 from interfaces.api.auth import (
     EXTENSION_AUDIENCE, EXTENSION_SCOPE, AuthResponse, mint_session_token,
 )
-from interfaces.api.deps import get_current_db_user, get_current_user
+from interfaces.api.deps import (
+    get_current_db_user, get_current_user, require_permission,
+)
 from interfaces.api.rate_limit import limiter
 from adapters.storage import Role
 from capabilities.permissions.roles import get_user_permissions
@@ -195,6 +197,69 @@ async def extension_vehicle_link(
         # confirm the id belongs to a company the caller may not see.
         raise HTTPException(status_code=404, detail="Vehicle not found")
     return {"links": await build_provider_links(account_id, v)}
+
+
+@router.get("/inventory")
+async def extension_inventory(
+    vehicle: int,
+    user: dict = Depends(require_permission("can_view_inventory")),
+):
+    """What is aboard ONE truck — the panel's answer beside the map.
+
+    Its own endpoint for the same reason ``/vehicle-link`` has one: the
+    feature's route (``/inventory/vehicle/{name}``) is addressed by NAME
+    and would need prefix matching to sit in ``EXTENSION_ROUTES``, which
+    is exactly what that allow-list exists to avoid.  The vehicle is a
+    QUERY parameter here, and the path stays constant.
+
+    Unlike ``/vehicle-link`` this one IS permission-gated.  Provider
+    links are part of the map the panel already shows; inventory is a
+    feature of its own that an owner may deliberately withhold, and a
+    dispatcher denied it on the dashboard must be denied it here.  The
+    gate works because ``can_view_inventory`` is in ``EXTENSION_SCOPE``;
+    the scope is an intersection, so listing it there widens nobody --
+    it only stops the narrowing from answering False for everyone.
+
+    What it deliberately does NOT return: ``notes`` and ``identifier``.
+    The question the panel asks is "what is on this truck, and does any
+    of it need attention" -- a category, a name and a status answer it.
+    A fuel-card number answers a different question, the dashboard's,
+    and a key that lives in a browser extension should not carry it.
+
+    The company wall still applies, and a truck behind it answers 404 --
+    the same as one that does not exist, so an id cannot be probed.
+    """
+    from infra.platform import get_tenant_db
+    from interfaces.api.deps import get_user_company_codes
+    from features.vehicles.scope import company_allows
+    from adapters.storage.vehicle_inventory import ATTENTION_STATUSES
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    v = await tenant.get_vehicle(account_id, vehicle)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    allowed = await get_user_company_codes(user)
+    if not company_allows(getattr(v, "company_code", "") or "", allowed):
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    rows = await tenant.list_vehicle_inventory(account_id, vehicle)
+    items = [
+        {
+            "id": int(r["id"]),
+            "category": str(r["category"] or ""),
+            "label": str(r["label"] or ""),
+            "status": str(r["status"] or ""),
+        }
+        for r in rows
+    ]
+    return {
+        "vehicle_id": vehicle,
+        "items": items,
+        "attention": sum(1 for i in items if i["status"] in ATTENTION_STATUSES),
+    }
 
 
 @router.get("/download")
