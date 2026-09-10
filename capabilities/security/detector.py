@@ -30,6 +30,7 @@ result by weight.  Nothing here writes.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 from dataclasses import dataclass, field
@@ -121,6 +122,30 @@ def _cutoff(hours: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(hours=int(hours))).isoformat()
 
 
+def _is_public_ip(value: str | None) -> bool:
+    """True only for an address a client could not have invented.
+
+    Private, loopback, link-local, multicast and the reserved
+    documentation ranges are all values a spoofed header can carry and
+    a real internet client never has.
+    """
+    if not value:
+        return False
+    try:
+        addr = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return False
+    if not addr.is_global or addr.is_private or addr.is_loopback:
+        return False
+    # 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 (RFC 5737) and
+    # 2001:db8::/32 (RFC 3849) are documentation-only.
+    doc = (ipaddress.ip_network("192.0.2.0/24"),
+           ipaddress.ip_network("198.51.100.0/24"),
+           ipaddress.ip_network("203.0.113.0/24"),
+           ipaddress.ip_network("2001:db8::/32"))
+    return not any(addr in n for n in doc if addr.version == n.version)
+
+
 def _suspect_domain(email: str | None) -> bool:
     if not email or "@" not in email:
         return False
@@ -209,27 +234,42 @@ async def rule_non_browser_auth(db, hours: int) -> list[Signal]:
 
 
 async def rule_ip_rotation(db, hours: int) -> list[Signal]:
-    """One email tried from many IPs — credential stuffing behind rotation.
+    """One email tried from many PUBLIC IPs — credential stuffing.
 
-    The inverse of ``signup_burst``.  On 2026-09-10 one address was tried
-    from fifty distinct IPs in fourteen seconds, every one of them inside
-    a private range no internet client can hold: a spoofed
-    ``X-Forwarded-For``, rotated to defeat the per-IP rate limit.  A real
-    person logs in from a handful of addresses — home, phone, office —
-    over a week.
+    Counts only addresses a client cannot invent.  On 2026-09-10 one
+    address was tried from seventy distinct values in fourteen seconds
+    and every one was fabricated — fifty inside 10.20.0.0/24, twenty
+    more as 1.2.3.x — because ``X-Forwarded-For`` was still trusted as
+    the client wrote it.  A rule that counted those would have been
+    counting the attacker's own input: evade it by using five values,
+    or weaponise it by spoofing fifty against a real person's address
+    to have the platform flag its own owner.
+
+    Since the realip fix nginx sends a single true value and Cloudflare
+    supplies it, so a genuine client IP is always public; anything
+    private, loopback, link-local or reserved-for-documentation is a
+    leftover of the spoofable era or a probe still trying. Filtering
+    them is what makes the count mean machines again.
     """
     cur = await db.execute(
-        "SELECT email, COUNT(DISTINCT ip_address) AS ips, COUNT(*) AS n "
-        "FROM login_attempts WHERE attempted_at >= ? AND email IS NOT NULL "
-        "GROUP BY email HAVING COUNT(DISTINCT ip_address) > ?",
-        (_cutoff(hours), T_IPS_PER_EMAIL))
-    out: list[Signal] = []
+        "SELECT email, ip_address, COUNT(*) AS n FROM login_attempts "
+        "WHERE attempted_at >= ? AND email IS NOT NULL AND ip_address IS NOT NULL "
+        "GROUP BY email, ip_address",
+        (_cutoff(hours),))
+    per_email: dict[str, tuple[set[str], int]] = {}
     for r in await cur.fetchall():
-        out.append(Signal(
-            rule="ip_rotation", severity="high", account_id=None, ip=None,
-            count=int(r["ips"]), subject=r["email"],
-            evidence=f"tried from {r['ips']} IPs ({r['n']} attempts)"))
-    return out
+        if not _is_public_ip(r["ip_address"]):
+            continue
+        ips, n = per_email.get(r["email"], (set(), 0))
+        ips.add(r["ip_address"])
+        per_email[r["email"]] = (ips, n + int(r["n"]))
+    return [
+        Signal(rule="ip_rotation", severity="high", account_id=None, ip=None,
+               count=len(ips), subject=email,
+               evidence=f"tried from {len(ips)} public IPs ({n} attempts)")
+        for email, (ips, n) in per_email.items()
+        if len(ips) > T_IPS_PER_EMAIL
+    ]
 
 
 async def rule_reset_flood(db, hours: int) -> list[Signal]:
@@ -361,6 +401,13 @@ async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
         for c in cands.values():
             if c.account_id in meta:
                 c.name, c.kind = meta[c.account_id]
+        # An account we have already classified as ours is not a finding:
+        # the rules describe our own fixtures exactly as well as they
+        # describe a stranger, so without this the page shows the same
+        # test accounts forever and stops being read.  ``monitored``
+        # deliberately STAYS — seeing that a rule still fires on someone
+        # we are watching is the entire point of watching them.
+        cands = {k: c for k, c in cands.items() if c.kind != "test"}
 
     ranked = sorted(cands.values(), key=lambda c: (c.weight, len(c.signals)), reverse=True)
     return [_as_dict(c) for c in ranked]

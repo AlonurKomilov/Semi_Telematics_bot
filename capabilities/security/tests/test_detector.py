@@ -238,15 +238,13 @@ async def test_every_rule_failing_is_logged_as_an_error(seeded_db, monkeypatch, 
 # ── noise discipline: what opens a candidate, and what merely sharpens one ──
 
 @pytest.mark.asyncio
-async def test_ip_rotation_fires_on_one_email_from_many_ips(seeded_db):
-    """The 2026-09-10 pattern: fifty IPs for one address in fourteen
-    seconds, every one inside a private range — a spoofed XFF rotated to
-    defeat the per-IP limit."""
+async def test_ip_rotation_fires_on_many_PUBLIC_ips(seeded_db):
+    """Real machines: a botnet trying one address from many real IPs."""
     db = seeded_db["db"]
     for i in range(D.T_IPS_PER_EMAIL + 2):
         await db.record_login_attempt(
             user_id=None, email="victim@targetcompany.com", success=False,
-            failure_reason="no_such_email", ip_address=f"10.20.0.{i}",
+            failure_reason="no_such_email", ip_address=f"144.124.198.{i}",
             user_agent="python-requests/2.32.5")
     sigs = await D.rule_ip_rotation(db._db, hours=24)
     hit = next(s for s in sigs if s.subject == "victim@targetcompany.com")
@@ -254,9 +252,40 @@ async def test_ip_rotation_fires_on_one_email_from_many_ips(seeded_db):
 
 
 @pytest.mark.asyncio
+async def test_ip_rotation_ignores_addresses_a_client_could_invent(seeded_db):
+    """The 2026-09-10 values were fabricated, not machines.
+
+    Counting them would let an attacker do two things: evade the rule by
+    using five values, and — worse — spoof fifty against a real person's
+    address so the platform flags its own owner. Only addresses a client
+    cannot invent are counted.
+    """
+    db = seeded_db["db"]
+    for i in range(D.T_IPS_PER_EMAIL + 20):
+        await db.record_login_attempt(
+            user_id=None, email="owner@premiertruckinggroup.com", success=False,
+            failure_reason="no_such_email", ip_address=f"10.20.0.{i}",
+            user_agent="python-requests/2.32.5")
+    sigs = await D.rule_ip_rotation(db._db, hours=24)
+    assert not [s for s in sigs if s.subject == "owner@premiertruckinggroup.com"], (
+        "a spoofable range must not be able to make anyone a candidate")
+
+
+@pytest.mark.parametrize("addr,public", [
+    ("144.124.198.67", True), ("87.192.238.227", True), ("8.8.8.8", True),
+    ("10.20.0.5", False), ("192.168.1.1", False), ("172.16.0.1", False),
+    ("127.0.0.1", False), ("169.254.1.1", False),
+    ("203.0.113.9", False), ("192.0.2.1", False), ("2001:db8::1", False),
+    ("", False), (None, False), ("not-an-ip", False),
+])
+def test_public_ip_test(addr, public):
+    assert D._is_public_ip(addr) is public
+
+
+@pytest.mark.asyncio
 async def test_a_person_logging_in_from_a_few_places_is_not_flagged(seeded_db):
     db = seeded_db["db"]
-    for ip in ("87.192.238.227", "70.61.187.233", "2603:6013:7d00::1"):
+    for ip in ("87.192.238.227", "70.61.187.233", "144.124.198.67"):
         await db.record_login_attempt(
             user_id=None, email="adam@premiertruckinggroup.com", success=True,
             ip_address=ip, user_agent="Mozilla/5.0 (Windows NT 10.0)")
@@ -302,8 +331,30 @@ async def test_an_account_less_hit_is_named_not_nameless(seeded_db):
     for i in range(D.T_IPS_PER_EMAIL + 1):
         await db.record_login_attempt(
             user_id=None, email="stuffed@x.com", success=False,
-            ip_address=f"10.20.1.{i}", user_agent="curl/8.19.0")
+            ip_address=f"144.124.199.{i}", user_agent="curl/8.19.0")
 
     subjects = {c["subject"] for c in await D.find_candidates(db, hours=24) if c["subject"]}
     assert "GET /api/reports/export" in subjects
     assert "stuffed@x.com" in subjects
+
+
+@pytest.mark.asyncio
+async def test_our_own_test_accounts_are_never_candidates(seeded_db):
+    """A rule describes our fixtures exactly as well as a stranger.
+
+    Left in, the page shows the same accounts forever and stops being
+    read. `monitored` deliberately stays: seeing a rule still fire on
+    someone we are watching is the point of watching them.
+    """
+    db = seeded_db["db"]
+    ours = await _signup(db, "Our Fixture", "203.0.113.40", "f@guerrillamailblock.com")
+    watched = await _signup(db, "Watched Co", "203.0.113.40", "w@guerrillamailblock.com")
+    for i in range(D.T_SIGNUPS_PER_IP):
+        await _signup(db, f"Pad{i}", "203.0.113.40", f"p{i}@guerrillamailblock.com")
+
+    await db.update_account(ours.id, kind="test")
+    await db.update_account(watched.id, kind="monitored")
+
+    ids = {c["account_id"] for c in await D.find_candidates(db, hours=24)}
+    assert ours.id not in ids, "a test account is ours by definition"
+    assert watched.id in ids, "a watched account must keep surfacing"
