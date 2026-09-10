@@ -176,9 +176,11 @@ function writeCanvas(
  * look — so showing its dot would point at a colour nobody can see,
  * the same mistake `brandWorn` exists to avoid on the pack chips.
  */
-function wornCanvas(hex: string | undefined, mode: Mode, brand: string, underPattern: boolean): string | undefined {
+function wornCanvas(
+  hex: string | undefined, mode: Mode, brand: string, underPattern: boolean, sidebarSeed?: string,
+): string | undefined {
   if (!hex) return undefined;
-  return paletteTokens(hex, brand, mode, underPattern).tokens ? hex : undefined;
+  return paletteTokens(hex, brand, mode, underPattern, sidebarSeed).tokens ? hex : undefined;
 }
 
 /**
@@ -256,7 +258,7 @@ export function AccentGroup({ label }: { label: LabelClass }) {
   const unworn = useMemo(
     () => SURFACES.filter((s) => {
       const hex = theme.surfaces?.[s.id];
-      return Boolean(hex) && !wornCanvas(hex, theme.mode, seedBrand, underPattern);
+      return Boolean(hex) && !wornCanvas(hex, theme.mode, seedBrand, underPattern, theme.grounds?.sidebar);
     }),
     [theme.surfaces, theme.mode, seedBrand, underPattern],
   );
@@ -300,7 +302,14 @@ export function AccentGroup({ label }: { label: LabelClass }) {
           surface in the app, and putting it in the accent row would
           make the two look like the same size of decision. */}
       <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        {/* Keyed: the refusal message is local state, and it used to
+            outlive the thing it was about — aim at Loads, be refused,
+            click Everywhere, and the line was still there naming a tone
+            broken by a colour that was never offered to the global
+            canvas. A mode change was worse, because the gate is
+            mode-dependent and the named tone could be the wrong one. */}
         <CanvasChip
+          key={`${target || 'all'}:${theme.mode}`}
           canvas={target ? theme.surfaces?.[target] : theme.canvas}
           mode={theme.mode}
           onPick={(hex) => setTheme(writeCanvas(theme, target, hex))}
@@ -331,11 +340,11 @@ export function AccentGroup({ label }: { label: LabelClass }) {
       </p>
       <div className="flex flex-wrap gap-1">
         <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
-          dot={wornCanvas(theme.canvas, theme.mode, seedBrand, underPattern)}
+          dot={wornCanvas(theme.canvas, theme.mode, seedBrand, underPattern, theme.grounds?.sidebar)}
           onClick={() => setTarget('')} />
         {offered.map((s) => (
           <Chip key={s.id} value={s.id} current={target} label={s.title}
-            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode, seedBrand, underPattern)}
+            dot={wornCanvas(theme.surfaces?.[s.id], theme.mode, seedBrand, underPattern, theme.grounds?.sidebar)}
             onClick={(v) => setTarget(v)} />
         ))}
       </div>
@@ -366,6 +375,7 @@ export function AccentGroup({ label }: { label: LabelClass }) {
         {GROUNDS.map((g) => (
           <div key={g.id} className="flex flex-wrap items-center gap-1">
           <GroundChip
+            key={`${g.id}:${theme.mode}`}
             ground={g}
             hex={theme.grounds?.[g.id]}
             mode={theme.mode}

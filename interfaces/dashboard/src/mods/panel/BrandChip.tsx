@@ -7,7 +7,7 @@
  * the one control that can REFUSE what a person asked for — which is
  * enough behaviour to be worth finding on its own.
  */
-import { useState, useMemo } from 'react';
+import { useId, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from '../../lib/icons';
 import { cn } from '../../lib/utils';
@@ -60,6 +60,14 @@ export function BrandChip({ brand, mode, wearing, onPick, onClear }: {
   onClear: () => void;
 }) {
   const { t } = useTranslation();
+  // ONE announced control. The swatch button used to be a dead tab stop
+  // — no handler — in front of an `opacity-0` input with the same name,
+  // so a keyboard user tabbed twice, pressed Enter on nothing, and got
+  // no focus ring at all on the control that works. The button opens the
+  // picker now and keeps its pressed state; the input is reachable only
+  // through it.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const noteId = useId();
   const [refused, setRefused] = useState<string | null>(null);
 
   // What the stored colour actually does in the mode being worn. A hex
@@ -99,7 +107,9 @@ export function BrandChip({ brand, mode, wearing, onPick, onClear }: {
         <button
           type="button"
           aria-pressed={active}
+          onClick={() => inputRef.current?.click()}
           className={cn(
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
             active
               ? 'bg-primary/15 text-foreground ring-1 ring-primary/40'
@@ -116,6 +126,10 @@ export function BrandChip({ brand, mode, wearing, onPick, onClear }: {
         {/* Over the whole chip, invisible, so the chip IS the control.
             `sr-only` would take it out of the pointer's way entirely. */}
         <input
+          ref={inputRef}
+          tabIndex={-1}
+          aria-hidden
+          aria-describedby={note ? noteId : undefined}
           type="color"
           value={brand ?? wearing}
           onChange={(e) => pick(e.target.value)}
@@ -155,7 +169,12 @@ export function BrandChip({ brand, mode, wearing, onPick, onClear }: {
         </button>
       )}
       {note && (
-        <p className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5">
+        <p
+          id={noteId}
+          role="status"
+          aria-live="polite"
+          className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5"
+        >
           {note}
         </p>
       )}

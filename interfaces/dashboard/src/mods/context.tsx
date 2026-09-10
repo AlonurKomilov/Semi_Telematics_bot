@@ -189,7 +189,8 @@ export function ModProvider({ children }: { children: ReactNode }) {
     const seedBrand = theme.brand
       ?? (packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode];
     const full = theme.canvas
-      ? paletteTokens(theme.canvas, seedBrand, theme.mode, theme.wallpaper !== 'none').tokens
+      ? paletteTokens(theme.canvas, seedBrand, theme.mode, theme.wallpaper !== 'none',
+        theme.grounds?.sidebar).tokens
       : null;
     const picked = full
       ?? (theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null);
@@ -216,7 +217,8 @@ export function ModProvider({ children }: { children: ReactNode }) {
 
     const scoped: Record<string, Record<string, string>> = {};
     for (const [id, hex] of Object.entries(theme.surfaces ?? {})) {
-      const t = surfaceTokens(hex, seedBrand, theme.mode, theme.wallpaper !== 'none').tokens;
+      const t = surfaceTokens(hex, seedBrand, theme.mode, theme.wallpaper !== 'none',
+        theme.grounds?.sidebar).tokens;
       if (t) scoped[id] = hasGrounds ? { ...t, ...grounds } : t;
     }
     applyModTokens(derived, document, Object.keys(scoped).length ? scoped : null);

@@ -13,7 +13,7 @@
  * canvas. So a canvas chosen against its mode leaves them unreadable,
  * measured as low as 1.56:1. The refusal names which one.
  */
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from '../../lib/icons';
 import { cn } from '../../lib/utils';
@@ -36,6 +36,14 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
   onClear: () => void;
 }) {
   const { t } = useTranslation();
+  // ONE announced control. The swatch button used to be a dead tab stop
+  // — no handler — in front of an `opacity-0` input with the same name,
+  // so a keyboard user tabbed twice, pressed Enter on nothing, and got
+  // no focus ring at all on the control that works. The button opens the
+  // picker now and keeps its pressed state; the input is reachable only
+  // through it.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const noteId = useId();
   const [refused, setRefused] = useState<{ tone: string; ratio: number } | null>(null);
 
   /** Whether the stored canvas is wearable in the mode being worn. The
@@ -78,7 +86,9 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
         <button
           type="button"
           aria-pressed={worn}
+          onClick={() => inputRef.current?.click()}
           className={cn(
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
             worn
               ? 'bg-primary/15 text-foreground ring-1 ring-primary/40'
@@ -93,6 +103,10 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
           {t('theme.canvas_label', 'Background')}
         </button>
         <input
+          ref={inputRef}
+          tabIndex={-1}
+          aria-hidden
+          aria-describedby={note ? noteId : undefined}
           type="color"
           value={canvas ?? CANVAS_SEED[mode]}
           onChange={(e) => pick(e.target.value)}
@@ -119,7 +133,12 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
         </button>
       )}
       {note && (
-        <p className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5">
+        <p
+          id={noteId}
+          role="status"
+          aria-live="polite"
+          className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5"
+        >
           {note}
         </p>
       )}

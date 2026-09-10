@@ -10,7 +10,7 @@
  * so a colour that stops being wearable in the other mode simply is not
  * worn.
  */
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from '../../lib/icons';
 import { cn } from '../../lib/utils';
@@ -37,6 +37,14 @@ export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
   onClear: () => void;
 }) {
   const { t } = useTranslation();
+  // ONE announced control. The swatch button used to be a dead tab stop
+  // — no handler — in front of an `opacity-0` input with the same name,
+  // so a keyboard user tabbed twice, pressed Enter on nothing, and got
+  // no focus ring at all on the control that works. The button opens the
+  // picker now and keeps its pressed state; the input is reachable only
+  // through it.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const noteId = useId();
   const [refused, setRefused] = useState<{ tone: string; ratio: number } | null>(null);
 
   const worn = useMemo(
@@ -78,7 +86,10 @@ export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
       <span className="relative inline-flex">
         <button
           type="button"
+          onClick={() => inputRef.current?.click()}
+          aria-pressed={Boolean(hex) && worn}
           className={cn(
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
             hex && worn
               ? 'bg-primary/15 text-foreground ring-1 ring-primary/40'
@@ -93,6 +104,10 @@ export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
           {t(`theme.ground_${ground.id}`, ground.label)}
         </button>
         <input
+          ref={inputRef}
+          tabIndex={-1}
+          aria-hidden
+          aria-describedby={note ? noteId : undefined}
           type="color"
           value={hex ?? fallback}
           onChange={(e) => pick(e.target.value)}
@@ -119,7 +134,12 @@ export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
         </button>
       )}
       {note && (
-        <p className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5">
+        <p
+          id={noteId}
+          role="status"
+          aria-live="polite"
+          className="basis-full text-2xs leading-snug text-muted-foreground mt-0.5"
+        >
           {note}
         </p>
       )}

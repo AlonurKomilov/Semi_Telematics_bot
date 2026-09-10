@@ -4,7 +4,7 @@
  * Shell only. Everything inside it is `ModControls compact`, which is
  * the same component the profile card and the /mods page render.
  */
-import { useState, useRef, useEffect, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Palette } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
@@ -20,6 +20,28 @@ export function ModPanel() {
   const { t } = useTranslation();
   const { size } = useMods();
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /**
+   * How much room this popover actually has, measured rather than
+   * guessed.
+   *
+   * `calc(100vh - 4rem)` would encode today's header and gutter, and
+   * both move with the Size axis — `chrome.test.ts` refuses a viewport
+   * calc that subtracts the shell frame for exactly that reason. The
+   * panel's own top edge is the honest input, so it is read from the
+   * element after it opens and again on a resize.
+   */
+  const [maxH, setMaxH] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const fit = () => {
+      const el = panelRef.current;
+      if (el) setMaxH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 16));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [open]);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on click outside
@@ -63,14 +85,22 @@ export function ModPanel() {
           // without this the slider grows and slides under the pointer
           // mid-drag. A browser audit measured the same runaway here as
           // on /profile. The page behind the popover still previews.
+          ref={panelRef}
           style={{
+            maxHeight: maxH,
             '--size-region': 1,
             '--size-text': size.text * size.global,
             '--size-control': size.control * size.global,
             '--size-layout': size.layout * size.global,
             '--size-panel': size.panel * size.global,
           } as CSSProperties}
-          className="absolute right-0 top-10 z-50 w-56 bg-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
+          // Scrollable, capped by MEASUREMENT — see `maxH` above. It is a
+          // column of groups that grows every time an axis is added, and
+          // at 706px it already clipped a 1366x768 laptop, taking the
+          // Size slider and the door to the rest of the axes with it.
+          // `overscroll-contain` keeps a scroll inside it from moving
+          // whatever is behind.
+          className="absolute right-0 top-10 z-50 w-56 overflow-y-auto overscroll-contain bg-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
         >
           <ModControls compact onNavigate={() => setOpen(false)} />
         </div>

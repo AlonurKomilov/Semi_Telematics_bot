@@ -37,7 +37,7 @@
 import {
   parseHex, oklchToSrgb, contrastRatio, AA_LARGE, AA_TEXT, type RGB,
 } from './contrast';
-import { derivePalette, patternGrounds, DERIVED_TOKENS } from './palette';
+import { derivePalette, deriveGround, patternGrounds, DERIVED_TOKENS } from './palette';
 import { TONES, type AccentMode } from './accent';
 
 /**
@@ -130,12 +130,23 @@ export function paletteTokens(
    *  canvas whose sidebar cannot carry it under the pattern's strongest
    *  stop is refused, by name, the way a tone refuses it. */
   underPattern = false,
+  /** A sidebar the person seeded themselves. The check below has to
+   *  measure the plane that will PAINT: with a seeded sidebar the
+   *  derived one never reaches the screen, and refusing a canvas over a
+   *  rail nobody will see is a refusal about nothing. It cannot widen
+   *  the gate — `groundTokens` measures a seeded plane on its own terms
+   *  before it is worn at all. */
+  sidebarSeed?: string,
 ): CanvasResult {
   const fit = fitCanvas(canvas, mode);
   if (!fit.rgb) return { tokens: null, breaks: fit.breaks, ratio: fit.ratio };
   const palette = derivePalette({ mode, canvas, brand });
   if (palette && underPattern) {
-    const sidebar = parseHex(palette['--sidebar'])!, ink = parseHex(palette['--sidebar-foreground'])!;
+    const seeded = sidebarSeed && fitCanvas(sidebarSeed, mode).rgb
+      ? deriveGround('sidebar', sidebarSeed, mode)
+      : null;
+    const effective = seeded ?? palette;
+    const sidebar = parseHex(effective['--sidebar'])!, ink = parseHex(effective['--sidebar-foreground'])!;
     const worst = Math.min(...patternGrounds(sidebar, parseHex(brand)!).map((g) => contrastRatio(ink, g)));
     if (worst < AA_TEXT) return { tokens: null, breaks: WALLPAPER_BREAK, ratio: worst };
   }
@@ -180,8 +191,9 @@ export function surfaceTokens(
   brand: string,
   mode: AccentMode,
   underPattern = false,
+  sidebarSeed?: string,
 ): CanvasResult {
-  const full = paletteTokens(canvas, brand, mode, underPattern);
+  const full = paletteTokens(canvas, brand, mode, underPattern, sidebarSeed);
   if (!full.tokens) return full;
   const out: Record<string, string> = {};
   for (const t of SURFACE_TOKENS) if (full.tokens[t]) out[t] = full.tokens[t];

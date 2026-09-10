@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { GROUNDS, GROUND_IDS, GROUND_TOKENS, groundById, groundTokens } from './grounds';
 import { deriveGround, derivePalette, patternGrounds, GROUND_PLANES, DERIVED_TOKENS } from './palette';
-import { CANVAS_SEED, worstTone } from './canvas';
+import { CANVAS_SEED, worstTone, paletteTokens } from './canvas';
 import { parseHex, distance, contrastRatio, AA_TEXT, AA_LARGE, toHex } from './contrast';
 import { THEME_PACKS } from '../packs/theme';
 import { isModToken, isSafeValue } from '../inject';
@@ -189,6 +189,27 @@ describe('the gate', () => {
         }
     expect(tested, 'no wearable sidebar seed was measured').toBeGreaterThan(100);
     expect(worst, `worst is ${at} at ${worst.toFixed(2)}`).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it('and the page\'s wallpaper gate measures the rail that will actually paint', () => {
+    // `paletteTokens` refuses a canvas whose SIDEBAR cannot carry the
+    // frame pattern. With a seeded sidebar the derived one never reaches
+    // the screen, so measuring it refuses a canvas over a rail nobody
+    // will see. 21 dark canvases sat in exactly that gap.
+    const brand = THEME_PACKS[0].seed.dark;
+    const freed = Array.from({ length: 256 }, (_, i) => `#${i.toString(16).padStart(2, '0').repeat(3)}`)
+      .filter((hex) => paletteTokens(hex, brand, 'dark', false).tokens
+        && !paletteTokens(hex, brand, 'dark', true).tokens
+        && paletteTokens(hex, brand, 'dark', true, '#0b0f14').tokens);
+    expect(freed.length, 'no canvas is freed by seeding the rail — the override is not read')
+      .toBeGreaterThan(10);
+
+    // And it cannot WIDEN the gate: a seeded rail the tones refuse is
+    // not a rail, so the derived one is measured as before.
+    const refusedSeed = Array.from({ length: 256 }, (_, i) => `#${i.toString(16).padStart(2, '0').repeat(3)}`)
+      .find((h) => groundTokens('sidebar', h, 'dark').tokens === null)!;
+    expect(paletteTokens(freed[0], brand, 'dark', true, refusedSeed).tokens,
+      'an unwearable seed was allowed to speak for the rail').toBeNull();
   });
 
   it('refuses what is not a colour at all', () => {
