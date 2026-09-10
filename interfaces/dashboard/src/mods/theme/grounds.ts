@@ -43,9 +43,19 @@ export const GROUNDS: readonly Ground[] = [
   // Live Map, Loads and Work Orders, and those are what `surfaces` names
   // everywhere else in this engine.
   { id: 'card', label: 'Cards', description: 'The boxes the work sits in, and the dialogs above them' },
-  // The same region Wallpaper calls "Frame". One region, two names, and
-  // whether they should become one word is a decision, not an oversight.
-  { id: 'sidebar', label: 'Sidebar', description: 'The rail and the header the page sits in' },
+  // FRAME, not "Sidebar", and the id stays `sidebar` on purpose.
+  //
+  // The word is the one Wallpaper already uses for this region, because
+  // one region with two names is two regions to a person reading the
+  // panel. It is also the accurate half of the trade: these tokens paint
+  // the rail, the header AND the gutters — everything `chrome-pane`
+  // covers — so "Sidebar" named a third of what the colour changes.
+  //
+  // The ID keeps the token family's own name (`--sidebar-*`), which is
+  // what the stylesheet calls them and what a stored value already says.
+  // Size's "Sidebar" is a different thing and keeps its word: it scales
+  // the nav rail alone, which is exactly what it sounds like.
+  { id: 'sidebar', label: 'Frame', description: 'The rail, the header and the gutters the page sits in' },
 ];
 
 export const GROUND_IDS: readonly GroundId[] = GROUNDS.map((g) => g.id);

@@ -50,7 +50,7 @@ import { ModControls } from './ModControls';
 import { groundTokens } from '../theme/grounds';
 
 /** Every picker the panel offers, by the name it announces. */
-const PICKERS = ['Background', 'Custom', 'Cards', 'Sidebar'];
+const PICKERS = ['Background', 'Custom', 'Cards', 'Frame'];
 
 const mount = (over: Record<string, unknown> = {}) => {
   theme = {

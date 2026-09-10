@@ -287,3 +287,30 @@ describe('the row asks the place first, then the colour', () => {
     expect(screen.getByText(/in dark mode/i), 'the refusal never says which mode refused it').toBeTruthy();
   });
 });
+
+/**
+ * One region, one word.
+ *
+ * The chrome — the rail, the header, the gutters — takes a colour under
+ * Color and a pattern under Wallpaper. It used to be called "Sidebar"
+ * in one and "Frame" in the other, a few hundred pixels apart, which
+ * reads as two regions rather than one thing with two properties. And
+ * "Sidebar" was the inaccurate half: these tokens paint all three.
+ */
+describe('the chrome has one name on this page', () => {
+  it('and both sections use it', () => {
+    mount({}, false);
+    const ground = GROUNDS.find((g) => g.id === 'sidebar')!;
+    expect(ground.label, 'the ground went back to naming a third of what it paints').toBe('Frame');
+    // Wallpaper's sub-label for the same region, rendered on the same page.
+    expect(screen.getAllByText(ground.label).length,
+      'only one section names the chrome — the other calls it something else')
+      .toBeGreaterThan(1);
+  });
+
+  it('while Size keeps "Sidebar" for the rail it actually scales', () => {
+    // Not a collision to fix: that one means the nav rail alone, which
+    // is what the word says.
+    expect(GROUNDS.some((g) => g.label === 'Sidebar')).toBe(false);
+  });
+});
