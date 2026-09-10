@@ -46,3 +46,51 @@ Internal alerting (thresholds, ingest stalls, error tracebacks)
 stays in the bot + operator console — richer, faster, but alive only
 while the bot is. External monitoring answers exactly one question
 from the outside: "is anyone home?"
+
+## The public status page (owner, ~5 minutes)
+
+The three pages a customer can land on when something is wrong now form
+one story, and this is the piece that lives outside our infrastructure:
+
+| Where the failure is | What the customer sees | Who serves it |
+|---|---|---|
+| Their network or the route to us | `interfaces/dashboard/public/offline.html` | their own browser, from the service worker's cache |
+| Cloudflare up, our origin down | `ops/cloudflare/error-5xx.html` | Cloudflare |
+| Everything down, or they are on a new device | the status page | UptimeRobot |
+
+The first two say "check the status page", so the link has to answer
+when we cannot — which is the whole reason it is somebody else's server.
+
+1. UptimeRobot → **Status Pages** → *Add New Status Page*.
+2. Add the `dash.4truck.us` monitor (created in the section above).
+3. Name it `4truck`. A custom domain would defeat the point: it must not
+   resolve through our DNS or our origin, so keep the
+   `stats.uptimerobot.com/…` address.
+4. Paste that address into `STATUS_PAGE_URL` in **both** files:
+   - `interfaces/dashboard/public/offline.html`
+   - `ops/cloudflare/error-5xx.html`
+
+   Until it is set, both files hide every reference to the status page —
+   a "Status page" button that opens a vendor's marketing homepage is
+   worse than no button, and the offline page's third check would be
+   sending a stranded customer to a page we never made.
+   `src/test/offlineShell.test.ts` asserts that pairing: empty means
+   hidden, set means an `https://` address.
+
+## Uploading the Cloudflare error page (owner, ~2 minutes)
+
+Cloudflare's stock page for an unreachable origin says *"Error 521 Web
+server is down"* over a Cloudflare logo, which tells a dispatcher
+nothing and reads as a product nobody finished.
+
+1. Cloudflare dashboard → the `4truck.us` zone → **Rules → Custom Pages**.
+2. **5xx Errors** → *Custom Pages* → paste the contents of
+   `ops/cloudflare/error-5xx.html`.
+3. Cloudflare requires the `::CLOUDFLARE_ERROR_500S_BOX::` token to be
+   present; it is at the foot of that file, styled down, so the machine
+   detail sits under the human sentence rather than over it.
+
+The page is self-contained on purpose: Cloudflare serves it precisely
+when our origin is unreachable, so anything it pulled from the origin
+would be a hole in the page. The favicon is the one exception and is
+allowed to fail.

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>4truck — connection problem</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<!--
+  The page a customer sees INSTEAD of the browser's own error.
+
+  It exists because a raw ERR_CONNECTION_RESET reads as "this product is
+  broken" to everyone who sees it — nobody suspects their own browser
+  when every other site works. So this page does the one thing the
+  browser's cannot: it says which side the problem is on, states that
+  the customer's data is untouched, and gives three checks that actually
+  separate the causes.
+
+  Served by the service worker from cache, so it must be entirely
+  self-contained: no stylesheet, no font, no script, no image beyond the
+  favicon the SW precaches alongside it. Every byte here works with the
+  network down.
+-->
+<script>
+  // Same theme read as index.html's pre-paint stamp, reduced to the one
+  // axis this page needs. Kept separate rather than imported for the
+  // same reason that one is inline: there is no module system before
+  // the app, and this page must render with the app never having
+  // loaded. Mode only — an error page that leans on the accent colour
+  // is decorating a failure.
+  (function () {
+    try {
+      if (location.hostname.toLowerCase().indexOf('apply.') === 0) return; // apply host is light
+    } catch (e) { /* fall through to the dark default */ }
+    var read = function (k) {
+      try { var r = localStorage.getItem(k); if (!r) return null;
+            var v = JSON.parse(r); return (v && typeof v === 'object') ? v : null; }
+      catch (e) { return null; }
+    };
+    var t = read('4truck.pref.mods.theme') || read('4truck.pref.theme') || read('dashboard-theme') || {};
+    var mode = t.mode;
+    if (mode !== 'light' && mode !== 'dark') {
+      mode = ({ 'light': 'light' })[t.color] || 'dark';   // pre-split key; default dark
+    }
+    if (mode === 'dark') document.documentElement.classList.add('dark');
+  })();
+</script>
+<style>
+  :root {
+    --bg: oklch(1 0 0);
+    --fg: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.545 0 0);
+    --border: oklch(0.922 0 0);
+    --primary: oklch(0.52 0.2 264);
+    --primary-fg: oklch(0.985 0 0);
+    --ok: oklch(0.49 0.132 150);
+    --warn: oklch(0.50 0.11 70);
+    --rule: oklch(0.96 0 0);
+  }
+  html.dark {
+    --bg: oklch(0.10 0 0);
+    --fg: oklch(0.985 0 0);
+    --card: oklch(0.16 0 0);
+    --muted: oklch(0.70 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --primary: oklch(0.62 0.21 264);
+    --primary-fg: oklch(0.145 0 0);
+    --ok: oklch(0.76 0.17 150);
+    --warn: oklch(0.82 0.14 80);
+    --rule: oklch(1 0 0 / 7%);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 400 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .shell { width: 100%; max-width: 33rem; }
+
+  .brand {
+    display: flex; align-items: center; gap: 9px;
+    margin-bottom: 28px;
+  }
+  .brand img { width: 22px; height: 22px; border-radius: 5px; display: block; }
+  .brand span { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .state {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--warn) 18%, transparent);
+  }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ok) 18%, transparent); }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: 25px; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .lede { margin: 0 0 6px; color: var(--muted); }
+  .safe { margin: 0 0 26px; color: var(--muted); }
+  .safe b { color: var(--fg); font-weight: 600; }
+
+  .checks {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card);
+    padding: 4px 18px;
+    margin: 0 0 22px;
+    list-style: none;
+    counter-reset: step;
+  }
+  .checks li {
+    counter-increment: step;
+    display: grid; grid-template-columns: 26px 1fr; gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .checks li:last-child { border-bottom: 0; }
+  .checks li::before {
+    content: counter(step);
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; margin-top: 1px;
+    border: 1px solid var(--border); border-radius: 50%;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+  }
+  .checks b { display: block; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .checks p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  button, .link {
+    font: inherit; font-size: 14px; font-weight: 500;
+    border-radius: 8px; cursor: pointer;
+    padding: 9px 16px; min-height: 40px;
+    display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none;
+  }
+  button {
+    background: var(--primary); color: var(--primary-fg); border: 1px solid transparent;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.55; cursor: default; filter: none; }
+  .link { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .link:hover { border-color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  .auto { font-size: 13px; color: var(--muted); margin-left: auto; }
+  @media (max-width: 480px) { .auto { margin-left: 0; width: 100%; } }
+
+  .foot {
+    margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--rule);
+    font-size: 12px; color: var(--muted);
+  }
+  .foot code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <main class="shell">
+    <div class="brand">
+      <img src="/favicon-32.png" alt="" />
+      <span>4truck</span>
+    </div>
+
+    <p class="state"><span class="dot" id="dot"></span><span id="state">Checking</span></p>
+    <h1 id="title">Can’t reach 4truck</h1>
+    <p class="lede" id="lede">
+      This device can’t open a connection to our servers right now.
+    </p>
+    <p class="safe">
+      <b>Your data is safe.</b> Nothing was lost, and nothing was sent anywhere. This
+      page is stored on your device, which is why it still opens.
+    </p>
+
+    <ol class="checks" id="checks">
+      <li>
+        <div>
+          <b>Try mobile data</b>
+          <p>Turn Wi-Fi off on your phone and open 4truck. If it loads, your network or
+             internet provider is blocking the connection, not us.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <b>Open a private window</b>
+          <p>Ctrl+Shift+N in Chrome, or Ctrl+Shift+P in Firefox. If it loads there, a
+             browser extension is interfering.</p>
+        </div>
+      </li>
+      <li id="check-status" hidden>
+        <div>
+          <b>Check the status page</b>
+          <p>It runs outside our servers, so it answers even when this page can’t —
+             it will say whether 4truck itself is down.</p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="actions">
+      <button type="button" id="retry">Try again</button>
+      <a class="link" id="status" href="#" rel="noopener" hidden>Status page</a>
+      <span class="auto" id="auto"></span>
+    </div>
+
+    <p class="foot">
+      Still stuck? Send us this line: <code id="diag">—</code>
+    </p>
+  </main>
+
+<script>
+// The public status page, hosted OUTSIDE our infrastructure so it can
+// answer when this page cannot. Set it once here and in
+// ops/cloudflare/error-5xx.html; docs/runbooks/uptime-monitoring.md has
+// the ten-minute setup. Left empty until it exists, and every reference
+// to it hides itself — a "Status page" button that opens a vendor's
+// marketing homepage is worse than no button, and the third check would
+// be telling a stranded customer to visit a page we never made.
+var STATUS_PAGE_URL = '';
+
+(function () {
+  if (STATUS_PAGE_URL) {
+    var link = document.getElementById('status');
+    link.href = STATUS_PAGE_URL;
+    link.hidden = false;
+    document.getElementById('check-status').hidden = false;
+  }
+})();
+
+(function () {
+  var dot = document.getElementById('dot');
+  var stateEl = document.getElementById('state');
+  var title = document.getElementById('title');
+  var lede = document.getElementById('lede');
+  var retry = document.getElementById('retry');
+  var auto = document.getElementById('auto');
+  var diag = document.getElementById('diag');
+
+  // The distinction the browser refuses to draw, and the whole reason
+  // this page is worth serving: a device with no connection is the
+  // customer's own network, while a device that IS online and still
+  // cannot reach us is a route, DNS or provider problem between us —
+  // two different sentences, two different things to try.
+  function offlineCopy() {
+    stateEl.textContent = 'No connection';
+    title.textContent = 'No internet connection';
+    lede.textContent = 'This device is not connected to a network. 4truck will open again '
+                     + 'by itself once the connection comes back.';
+  }
+  function unreachableCopy() {
+    stateEl.textContent = 'Cannot reach 4truck';
+    title.textContent = 'Can’t reach 4truck';
+    lede.textContent = 'Your internet is working, but this device can’t open a connection '
+                     + 'to our servers. That is usually a network, DNS or provider problem '
+                     + 'on the way to us.';
+  }
+  (navigator.onLine === false ? offlineCopy : unreachableCopy)();
+
+  diag.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z · '
+                   + location.host + ' · ' + (navigator.onLine === false ? 'device-offline' : 'unreachable');
+
+  // A probe, not a reload: reloading to find out costs the customer a
+  // second browser error page every time. This asks quietly and only
+  // reloads once the answer is yes.
+  var probing = false;
+  function probe() {
+    if (probing) return Promise.resolve(false);
+    probing = true;
+    return fetch('/api/health?probe=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok; })
+      .catch(function () { return false; })
+      .then(function (ok) {
+        probing = false;
+        if (ok) {
+          dot.className = 'dot live';
+          stateEl.textContent = 'Back online';
+          title.textContent = 'Connection restored';
+          lede.textContent = 'Reopening 4truck…';
+          auto.textContent = '';
+          setTimeout(function () { location.reload(); }, 700);
+        }
+        return ok;
+      });
+  }
+
+  retry.addEventListener('click', function () {
+    retry.disabled = true;
+    retry.textContent = 'Checking…';
+    probe().then(function (ok) {
+      if (!ok) {
+        retry.disabled = false;
+        retry.textContent = 'Try again';
+        (navigator.onLine === false ? offlineCopy : unreachableCopy)();
+      }
+    });
+  });
+
+  // Backs off 10s → 60s so a long outage does not hammer a network that
+  // is already struggling, and so the countdown stays honest instead of
+  // promising a check every few seconds it will not make.
+  var delay = 10;
+  var left = delay;
+  setInterval(function () {
+    if (retry.disabled) return;
+    left -= 1;
+    if (left > 0) {
+      auto.textContent = 'Checking again in ' + left + 's';
+      return;
+    }
+    auto.textContent = 'Checking…';
+    probe().then(function (ok) {
+      if (ok) return;
+      delay = Math.min(60, Math.round(delay * 1.6));
+      left = delay;
+    });
+  }, 1000);
+
+  // The browser tells us the moment a network returns; take it.
+  window.addEventListener('online', function () { left = 1; });
+  window.addEventListener('offline', offlineCopy);
+})();
+</script>
+</body>
+</html>

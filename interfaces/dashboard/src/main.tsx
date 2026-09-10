@@ -82,6 +82,27 @@ const _host = window.location.hostname.toLowerCase();
 const _isApply = _host.startsWith('apply.') || new URLSearchParams(window.location.search).has('apply');
 const _root = ReactDOM.createRoot(document.getElementById('root')!);
 
+// The offline fallback, registered for EVERYONE — not just the people
+// who turned push notifications on, which is who had a service worker
+// until now. It is what puts our own page in front of a customer whose
+// network dies mid-shift, instead of the browser's ERR_CONNECTION_RESET,
+// which reads as "this product is broken" to everyone who sees it.
+//
+// Registering a worker prompts for nothing; only
+// Notification.requestPermission() does, and that stays behind the
+// explicit "Enable on this device" click in PushChannelCard. The path
+// matches push.ts's SW_PATH on purpose: one scope, one worker, both
+// jobs (see public/push-sw.js).
+//
+// Deliberately after the first paint and failure-silent: a browser that
+// refuses (private mode, an enterprise policy, an insecure origin) must
+// lose the fallback and nothing else.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/push-sw.js').catch(() => { /* fallback unavailable; app unaffected */ });
+  });
+}
+
 // Lazy so the public form is its OWN chunk — dashboard users never pay
 // for it, and apply.* visitors never load the auth/router/shell graph.
 // /status[/<ref>] renders the self-service status checker instead;

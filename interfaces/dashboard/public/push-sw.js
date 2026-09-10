@@ -1,8 +1,21 @@
 /**
- * Web-push service worker — receives pushes for a CLOSED dashboard and
- * shows the OS notification (notifications phase 6). "Closed" is now
- * something it CHECKS rather than assumes: a visible tab is already
- * announcing the alert itself, so the push arrives quietly.
+ * The dashboard's service worker. Two jobs that share one registration
+ * because a scope may only have one worker:
+ *
+ *   1. WEB PUSH — receives pushes for a CLOSED dashboard and shows the OS
+ *      notification (below). Registered on push opt-in since it shipped.
+ *   2. OFFLINE FALLBACK — serves our own page when a navigation cannot
+ *      reach the network, instead of the browser's ERR_CONNECTION_RESET.
+ *      That error reads as "this product is broken" to every customer
+ *      who sees it; nobody suspects their own browser when other sites
+ *      work. Registered for EVERYONE at app boot (main.tsx), which is
+ *      safe: registering a worker never prompts for anything — only
+ *      Notification.requestPermission() does, and that stays behind the
+ *      explicit opt-in click.
+ *
+ * "Closed" is now something the push handler CHECKS rather than assumes:
+ * a visible tab is already announcing the alert itself, so the push
+ * arrives quietly.
  *
  * Lives in public/ so Vite serves it verbatim from the origin root (a
  * service worker's scope can't exceed its own path).  The payload is the
@@ -91,3 +104,68 @@ function sameOriginPath(raw) {
     return '/alerts';
   }
 }
+
+
+// ── Offline fallback ──────────────────────────────────────────────
+//
+// The rules this half must never break, because a service worker that
+// gets them wrong serves a stale app to every customer until they clear
+// site data — a failure far worse than the one it prevents:
+//
+//   · NAVIGATIONS ONLY. Never an API call, never a script, never a
+//     style. Anything else keeps its normal path to the network.
+//   · NETWORK FIRST, ALWAYS. The network's answer wins whenever there
+//     is one, so a deploy is live on the next navigation and this
+//     worker can never pin an old build.
+//   · THE CACHE HOLDS ONLY THIS PAGE. No app HTML, no bundle, no API
+//     response. There is nothing here that can go stale except the
+//     error page itself.
+//
+// To retire it: ship a worker whose `install` calls
+// self.registration.unregister(), or bump SHELL and drop the fetch
+// handler. Clients pick either up on their next navigation.
+var SHELL = '4truck-shell-v1';
+var OFFLINE_URL = '/offline.html';
+
+self.addEventListener('install', function (event) {
+  event.waitUntil(
+    caches.open(SHELL).then(function (cache) {
+      // The favicon rides along: the page shows our mark, and fetching
+      // it at display time is exactly what will not work.
+      return cache.addAll([OFFLINE_URL, '/favicon-32.png']);
+    }).then(function () {
+      return self.skipWaiting();
+    }).catch(function () {
+      // A failed precache must not block activation — the push half of
+      // this worker still has to install.
+      return self.skipWaiting();
+    })
+  );
+});
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(
+    caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (k) {
+        return k !== SHELL && k.indexOf('4truck-') === 0 ? caches.delete(k) : null;
+      }));
+    }).then(function () {
+      return self.clients.claim();
+    }).catch(function () { return self.clients.claim(); })
+  );
+});
+
+self.addEventListener('fetch', function (event) {
+  var req = event.request;
+  if (req.method !== 'GET' || req.mode !== 'navigate') return;
+  event.respondWith(
+    fetch(req).catch(function () {
+      return caches.match(OFFLINE_URL, { ignoreSearch: true }).then(function (hit) {
+        // 503, not 200: this is not the page that was asked for, and a
+        // crawler or a monitor must not read it as a healthy answer.
+        return hit || new Response(
+          'Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+      });
+    })
+  );
+});

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>4truck — temporarily unavailable</title>
+<link rel="icon" type="image/png" sizes="32x32" href="https://dash.4truck.us/favicon-32.png" />
+<!--
+  Cloudflare custom error page — the OTHER half of the offline story.
+
+  public/offline.html covers the customer who cannot reach Cloudflare.
+  This covers the reverse: Cloudflare is reachable and our origin is not,
+  which is the case where the customer is right that something is wrong
+  on our side. Cloudflare's stock page for that says "Error 521 Web
+  server is down" over a Cloudflare logo, which tells a trucking
+  dispatcher nothing and looks like a page we never finished.
+
+  Upload: Cloudflare dashboard → the 4truck.us zone → Rules → Custom
+  Pages → "5xx Errors" → this file's contents. Cloudflare requires the
+  ::CLOUDFLARE_ERROR_500S_BOX:: token to be present somewhere in the
+  body; it is at the foot, styled down, because the machine detail
+  belongs under the human sentence rather than over it.
+
+  Self-contained by necessity: Cloudflare serves this when our origin is
+  unreachable, so anything it pulls FROM the origin would be a hole in
+  the page. The favicon is the one exception and is allowed to fail.
+-->
+<style>
+  :root {
+    --bg: oklch(0.10 0 0);
+    --fg: oklch(0.985 0 0);
+    --card: oklch(0.16 0 0);
+    --muted: oklch(0.70 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --primary: oklch(0.62 0.21 264);
+    --primary-fg: oklch(0.145 0 0);
+    --warn: oklch(0.82 0.14 80);
+    --rule: oklch(1 0 0 / 7%);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: oklch(1 0 0);
+      --fg: oklch(0.145 0 0);
+      --card: oklch(1 0 0);
+      --muted: oklch(0.545 0 0);
+      --border: oklch(0.922 0 0);
+      --primary: oklch(0.52 0.2 264);
+      --primary-fg: oklch(0.985 0 0);
+      --warn: oklch(0.50 0.11 70);
+      --rule: oklch(0.96 0 0);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 400 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .shell { width: 100%; max-width: 33rem; }
+  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 28px; }
+  .brand img { width: 22px; height: 22px; border-radius: 5px; display: block; }
+  .brand span { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .state {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 12px;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--warn);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--warn) 18%, transparent);
+  }
+  h1 { margin: 0 0 10px; font-size: 25px; line-height: 1.2; font-weight: 600;
+       letter-spacing: -0.02em; text-wrap: balance; }
+  .lede { margin: 0 0 6px; color: var(--muted); }
+  .safe { margin: 0 0 26px; color: var(--muted); }
+  .safe b { color: var(--fg); font-weight: 600; }
+  .panel {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+    padding: 16px 18px; margin: 0 0 22px;
+  }
+  .panel b { display: block; font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+  .panel p { margin: 0; font-size: 13px; color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button, .link {
+    font: inherit; font-size: 14px; font-weight: 500; border-radius: 8px; cursor: pointer;
+    padding: 9px 16px; min-height: 40px;
+    display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+  }
+  button { background: var(--primary); color: var(--primary-fg); border: 1px solid transparent; }
+  button:hover { filter: brightness(1.08); }
+  .link { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .link:hover { border-color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .auto { font-size: 13px; color: var(--muted); margin-left: auto; }
+  @media (max-width: 480px) { .auto { margin-left: 0; width: 100%; } }
+  .foot { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--rule);
+          font-size: 12px; color: var(--muted); }
+  /* Cloudflare's own diagnostic block, kept small and last. */
+  .foot :is(h2, h3) { font-size: 12px; font-weight: 600; margin: 0 0 4px; color: var(--muted); }
+  .foot * { font-size: 12px !important; color: var(--muted) !important; max-width: 100%; }
+</style>
+</head>
+<body>
+  <main class="shell">
+    <div class="brand">
+      <img src="https://dash.4truck.us/favicon-32.png" alt="" />
+      <span>4truck</span>
+    </div>
+
+    <p class="state"><span class="dot"></span><span>Service interrupted</span></p>
+    <h1>4truck is temporarily unavailable</h1>
+    <p class="lede">
+      Our servers are not responding right now. This one is on us, not on your
+      connection or your browser.
+    </p>
+    <p class="safe">
+      <b>Your data is safe.</b> Loads, drivers, inspections and documents are stored
+      separately from the part that is down. Nothing has been lost.
+    </p>
+
+    <div class="panel">
+      <b>What happens next</b>
+      <p>We are alerted automatically when this page appears, so nobody needs to report
+         it. Most interruptions clear within a few minutes. This page checks by itself
+         and returns you to 4truck the moment it is back.</p>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="retry">Try again</button>
+      <a class="link" id="status" href="#" rel="noopener" hidden>Status page</a>
+      <span class="auto" id="auto">Checking again in 15s</span>
+    </div>
+
+    <div class="foot">
+      ::CLOUDFLARE_ERROR_500S_BOX::
+    </div>
+  </main>
+<script>
+// Same constant as interfaces/dashboard/public/offline.html — set both
+// when the status page exists (docs/runbooks/uptime-monitoring.md).
+// Hidden while empty rather than pointed at a vendor homepage.
+var STATUS_PAGE_URL = '';
+
+(function () {
+  if (STATUS_PAGE_URL) {
+    var link = document.getElementById('status');
+    link.href = STATUS_PAGE_URL;
+    link.hidden = false;
+  }
+})();
+
+(function () {
+  var retry = document.getElementById('retry');
+  var auto = document.getElementById('auto');
+  retry.addEventListener('click', function () { location.reload(); });
+  // A plain countdown reload: unlike the offline page, the network here
+  // demonstrably works — it delivered this page — so there is nothing to
+  // probe around, and a reload is the honest test.
+  var left = 15;
+  setInterval(function () {
+    left -= 1;
+    if (left <= 0) { location.reload(); return; }
+    auto.textContent = 'Checking again in ' + left + 's';
+  }, 1000);
+})();
+</script>
+</body>
+</html>
