@@ -363,13 +363,20 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
                   apart only by placeholder stop telling anything apart
                   the moment one is filled — the placeholder goes, and a
                   person who paused cannot re-read what they answered. */}
+              {/* The vocabulary is OPEN, so the placeholder teaches the
+                  BEHAVIOUR rather than listing three of six built-ins —
+                  a list reads as the only choices, which this is not. */}
               <Field label="Category" required>
                 {/* An OPEN vocabulary, so a list of what this account
                     already uses AND a free field — a datalist is both,
                     and it is one control rather than a select plus an
                     "other…" escape nobody finds. */}
+                {/* Two domain examples AND the openness, in one line.
+                    "Choose one" alone pointed at a list that is invisible
+                    until the field is focused; a bare list alone read as
+                    the only choices, which it is not. */}
                 <input className="input" list="fourtruck-inv-categories"
-                       placeholder="camera, fuel card, ELD…"
+                       placeholder="Camera, fuel card… or type a new one"
                        value={draft.category} disabled={saving}
                        onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))} />
                 <datalist id="fourtruck-inv-categories">
@@ -385,8 +392,17 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
                   </p>
                 )}
               </Field>
-              <Field label="What it is" required>
-                <input className="input" placeholder="e.g. Samsara CM32"
+              {/* "Name", a noun, like every other label here — "What it
+                  is" was a question among nouns, and the dashboard
+                  called the same field "Label".  One field, one name.
+
+                  The example names no vendor.  This product talks to
+                  Samsara, Motive and Datatruck; putting one of them in
+                  the placeholder makes the form read as built for that
+                  one, which is exactly how it read.  It shows what the
+                  field is FOR instead: telling two of a kind apart. */}
+              <Field label="Name" required>
+                <input className="input" placeholder="e.g. Front dashcam"
                        value={draft.label} disabled={saving}
                        onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))} />
               </Field>
@@ -397,11 +413,14 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
                   that decides whether a missing dashcam can be shown to
                   have been theirs. */}
               <Field label="Serial or card number">
-                <input className="input" placeholder="e.g. GJ8-4471 or ••••7213"
+                {/* Spelled out, and no invented serial: a made-up
+                    "GJ8-4471" teaches nothing, and bullet-masked digits
+                    imply the field masks what is typed.  It does not. */}
+                <input className="input" placeholder="Serial, card last 4, transponder no."
                        value={draft.identifier} disabled={saving}
                        onChange={(e) => setDraft((d) => ({ ...d, identifier: e.target.value }))} />
                 <p className="muted" style={{ margin: 0, fontSize: 11 }}>
-                  Without it, a missing item cannot be shown to have been yours.
+                  This is what proves a missing item was yours.
                 </p>
               </Field>
               {addError && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{addError}</p>}

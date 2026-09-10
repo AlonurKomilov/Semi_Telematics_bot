@@ -68,7 +68,13 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
   const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
   const targetVehicle = vehicleName ?? pickedName.trim();
   const { add } = useInventoryMutations(targetVehicle, company ?? pickedCompany);
-  const [category, setCategory] = useState(categories[0] ?? 'other');
+  // UNSELECTED, not "whatever is first".  It used to default to
+  // categories[0] — usually Camera — and the submit checked only the
+  // name, so anybody adding a fuel card without touching this field
+  // filed it as a camera.  Most people never change a default, which
+  // makes a wrong one the answer rather than a suggestion.  The panel
+  // starts blank and requires a choice; this now agrees with it.
+  const [category, setCategory] = useState('');
   const [label, setLabel] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [notes, setNotes] = useState('');
@@ -81,6 +87,14 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
   // safety_equipment).
   const CUSTOM = '__custom__';
   const [customCategory, setCustomCategory] = useState('');
+  /** Everything the submit is waiting for, in one place so the button
+   *  and the sentence explaining it cannot drift apart. */
+  const canSubmit = Boolean(
+    targetVehicle
+    && label.trim()
+    && category
+    && (category !== CUSTOM || customCategory.trim()),
+  );
   const items = [
     ...categories.map((c) => ({ value: c, label: categoryMeta(c).label })),
     { value: CUSTOM, label: 'Add category…' },
@@ -106,7 +120,7 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent size="lg">
-        <DialogHeader><DialogTitle>Add inventory item</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Add item</DialogTitle></DialogHeader>
         <div className="space-y-3">
           {vehicleName == null && (
             <div>
@@ -122,7 +136,7 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
             </div>
           )}
           <label className="block">
-            <span className={labelCls}>Category</span>
+            <span className={labelCls}>Category *</span>
             <Select value={category} onValueChange={setCategory} items={items}>
               <SelectTrigger className="w-full mt-1" aria-label="Category"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -136,24 +150,36 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
               <input
                 value={customCategory}
                 onChange={(e) => setCustomCategory(e.target.value)}
-                placeholder="e.g. Safety Equipment"
+                placeholder="e.g. Safety equipment"
                 className={`mt-1 ${inputCls}`}
               />
             </label>
           )}
           <label className="block">
-            <span className={labelCls}>Label</span>
+            {/* "Name", not "Label": a label is a sticker, and the panel
+                calls this the same thing.  The example names no vendor —
+                this product talks to Samsara, Motive and Datatruck, and
+                one of them in the placeholder makes the form read as
+                built for that one.  It shows what the field is FOR
+                instead: telling two of the same kind apart. */}
+            {/* The asterisk inherits labelCls's muted — the panel marks
+                required the same way, and a semantic colour here would
+                give that token a second meaning. */}
+            <span className={labelCls}>Name *</span>
             <input value={label} onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. Samsara CM32, EFS card…" className={`mt-1 ${inputCls}`} />
+              placeholder="e.g. Front dashcam" className={`mt-1 ${inputCls}`} />
           </label>
           {/* col-reverse: input FIRST in DOM so the implicit label keeps
               targeting it — an InfoTip <button> before the input would
               steal the association (label click toggles the tip). */}
           <label className="flex flex-col-reverse">
             <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="serial · card last-4 · transponder №" className={`mt-1 ${inputCls}`} />
+              placeholder="Serial, card last 4, transponder no." className={`mt-1 ${inputCls}`} />
+            {/* "Serial or card number", not "Identifier": the second is
+                our word for it, not the reader's.  And no № — a numero
+                sign is not what a US dispatcher types or reads. */}
             <span className={`${labelCls} inline-flex items-center gap-1`}>
-              Identifier <InfoTip size={12} label="The serial number, card last-4 or transponder № — what proves THIS unit is the one that went missing or was damaged." />
+              Serial or card number <InfoTip size={12} label="This is what proves a missing item was yours." />
             </span>
           </label>
           <label className="block">
@@ -164,8 +190,14 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={add.isPending || !label.trim() || !targetVehicle}>
-            {add.isPending ? 'Adding…' : 'Add item'}
+          {/* "Add", like the panel's — the dialog it sits in is already
+              called "Add item", and one action does not need two names.
+              Disabled WITH a reason, which is this project's rule
+              everywhere else: a grey button that will not say what it is
+              waiting for is a dead end. */}
+          <Button onClick={submit} disabled={add.isPending || !canSubmit}
+            title={canSubmit ? 'Record this item' : 'Vehicle, category and name are required'}>
+            {add.isPending ? 'Adding…' : 'Add'}
           </Button>
         </DialogFooter>
       </DialogContent>
