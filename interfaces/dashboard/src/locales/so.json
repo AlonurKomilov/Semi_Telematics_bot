@@ -1005,6 +1005,15 @@
       "status_new": "Cusub",
       "status_done": "Dhammaystiran",
       "status_skipped": "La booday",
+      "status_adopted": "Horeba waad samaysaa",
+      "progress": "{{done}} ka mid ah {{total}} la dhammeeyey",
+      "all_done": "Dhammaan safarradii waa la dhammeeyey — hadda halkan wax la barto ma jiro.",
+      "next_title": "Kan kuu xiga",
+      "show_me": "I tus",
+      "hide_label": "Qari calaamadaha safarka ee bogagga",
+      "hide_hint": "Casuumaad kale ma jirto inta aad shaqaynayso. Maktabaddu halkan ayay ku sii jirtaa, iyo furahanba.",
+      "footer_kb": "Saldhigga aqoonta",
+      "footer_ai": "Safar maqan? Weydii kaaliyaha",
       "empty": "Weli socdaallo uma jiraan boggaga doorkaagu furi karo."
     }
   }

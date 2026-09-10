@@ -1233,6 +1233,15 @@
       "status_new": "Nouveau",
       "status_done": "Terminé",
       "status_skipped": "Ignoré",
+      "status_adopted": "Vous le faites déjà",
+      "progress": "{{done}} sur {{total}} terminés",
+      "all_done": "Toutes les visites sont terminées — plus rien à apprendre ici pour l'instant.",
+      "next_title": "Prochaine pour vous",
+      "show_me": "Montrez-moi",
+      "hide_label": "Masquer les balises de visite sur les pages",
+      "hide_hint": "Plus d'invitations pendant que vous travaillez. La bibliothèque reste ici, et cet interrupteur aussi.",
+      "footer_kb": "Base de connaissances",
+      "footer_ai": "Il manque une visite ? Demandez à l'assistant",
       "empty": "Aucun guide pour les pages que votre rôle peut ouvrir pour l'instant."
     }
   }

@@ -870,6 +870,15 @@
       "status_new": "Yangi",
       "status_done": "Bajarildi",
       "status_skipped": "O'tkazib yuborilgan",
+      "status_adopted": "Siz buni allaqachon qilasiz",
+      "progress": "{{total}} tadan {{done}} tasi bajarildi",
+      "all_done": "Hamma turlar bajarildi — hozircha bu yerda o'rganadigan narsa qolmadi.",
+      "next_title": "Siz uchun keyingisi",
+      "show_me": "Ko'rsat",
+      "hide_label": "Sahifalardagi tur belgilarini yashirish",
+      "hide_hint": "Ish paytida boshqa taklif chiqmaydi. Kutubxona shu yerda qoladi, bu tugma ham.",
+      "footer_kb": "Bilimlar bazasi",
+      "footer_ai": "Tur yetishmayaptimi? Yordamchidan so'rang",
       "empty": "Rolingiz ochadigan sahifalar uchun hozircha turlar yo'q."
     }
   }

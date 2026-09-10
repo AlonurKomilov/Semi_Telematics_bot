@@ -131,13 +131,17 @@ export function generateNav(
     if (unitViews.length > 0) {
       return isWideScope(vehicleScope) && has(...unitViews);
     }
-    // A PERSON view verb ("my paystubs") surfaces cross-department only
+    // A PERSON feature ("my paystubs") surfaces cross-department only
     // for a persona whose person width is 'all' — the role's answer:
     // a driver holds these verbs at self width and never gets the
-    // staff pages for them.
-    const personViews = flags.filter((k) => PERSON_VIEW_VERBS.includes(k));
-    if (personViews.length > 0) {
-      return personWidthOf(activeView) === 'all' && has(...personViews);
+    // staff pages for them.  The rule is the FEATURE's, so its manage
+    // verb rides it too: the consoles' signs name the manage verb
+    // (2026-09-10), and a driver granted one must not see the console
+    // for it any more than the view.
+    const personFlags = flags.filter((k) =>
+      PERSON_VIEW_VERBS.includes(k) || PERSON_VIEW_VERBS.includes(k.replace(/^can_manage_/, 'can_view_')));
+    if (personFlags.length > 0) {
+      return personWidthOf(activeView) === 'all' && has(...personFlags);
     }
     const accountWide = flags.filter((k) => !OWN_SCOPE_FLAG.test(k));
     return accountWide.length > 0 && has(...accountWide);

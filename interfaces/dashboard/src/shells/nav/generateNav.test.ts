@@ -14,8 +14,10 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
   it('surfaces cross-department features on an ACCOUNT-WIDE grant (Safety → fleet tools)', () => {
     // Safety's real defaults include account-wide maintenance / work-orders /
     // inspections — those fleet-module features must appear in its sidebar.
+    // The Inspections PAGE is the management console (2026-09-10: its sign
+    // names the manage verb; the view verb opens the bot / mini-app).
     const nav = paths(generateNav('safety', grants(
-      'can_view_maintenance', 'can_view_work_orders', 'can_view_inspections',
+      'can_view_maintenance', 'can_view_work_orders', 'can_manage_inspections',
       'can_view_events', 'can_view_scorecards', 'can_view_location', 'can_view_vehicles',
     ), undefined));
     expect(nav).toContain('/maintenance');
@@ -129,10 +131,12 @@ describe('generateNav — role manager reaches Settings (parent-only group)', ()
   });
 
   it('a person view verb surfaces cross-department at person width all — never for a driver', () => {
-    // A driver holds can_view_coaching / can_view_driver_pay at SELF
-    // width (the role's): the staff pages must not appear in their
-    // sidebar.  A dispatcher holding the same verbs reads the account.
-    const held = grants('can_view_coaching', 'can_view_driver_pay', 'can_view_driver_docs', 'can_view_vehicles');
+    // A driver holds the coaching / driver-pay verbs at SELF width (the
+    // role's): the staff pages must not appear in their sidebar.  A
+    // dispatcher holding the same verbs reads the account.  Coaching and
+    // Driver Pay PAGES are management consoles (2026-09-10): their signs
+    // name the manage verb; Drivers opens on the docs' view verb.
+    const held = grants('can_manage_coaching', 'can_manage_driver_pay', 'can_view_driver_docs', 'can_view_vehicles');
     const driver = paths(generateNav('driver', held, undefined, 'assigned'));
     expect(driver).not.toContain('/coaching');
     expect(driver).not.toContain('/driver-pay');

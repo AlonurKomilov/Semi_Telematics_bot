@@ -1233,6 +1233,15 @@
       "status_new": "Nuevo",
       "status_done": "Hecho",
       "status_skipped": "Omitido",
+      "status_adopted": "Ya lo haces",
+      "progress": "{{done}} de {{total}} completados",
+      "all_done": "Todos los recorridos completados — nada más que aprender aquí por ahora.",
+      "next_title": "Siguiente para ti",
+      "show_me": "Muéstrame",
+      "hide_label": "Ocultar las señales de recorrido en las páginas",
+      "hide_hint": "Sin más invitaciones mientras trabajas. La biblioteca sigue aquí, y este interruptor también.",
+      "footer_kb": "Base de conocimiento",
+      "footer_ai": "¿Falta un recorrido? Pregunta al asistente",
       "empty": "Aún no hay tours para las páginas que su rol puede abrir."
     }
   }
