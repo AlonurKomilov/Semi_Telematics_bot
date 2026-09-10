@@ -351,6 +351,32 @@ async def get_user_vehicle_num(user: dict) -> str | None:
     return db_user.truck_num if db_user else None
 
 
+async def get_user_vehicle_assignments(user: dict) -> list[tuple[str, int | None]]:
+    """``[(truck_num, registry_id | None), ...]`` — what ``build_vehicle_scope``
+    wants.  Same source and fallback as ``get_user_vehicle_nums`` (which
+    stays, as the names-only contract), but an assignment that names ONE
+    registry truck keeps that identity, so a scope built from it admits
+    that truck and not its same-number twin in another company."""
+    platform_db = _get_router().platform
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        return []
+    try:
+        pairs = await platform_db.get_user_vehicle_assignments(db_user.id)
+        if not isinstance(pairs, list):
+            raise TypeError("assignments must be a list")
+    except Exception:
+        # A database double that predates the column (a test's fake, or
+        # a mock whose attribute is truthy but not awaitable): names
+        # only, each meaning every truck answering to it — the old rule.
+        pairs = [(n, None) for n in await platform_db.get_user_vehicle_nums(db_user.id)]
+    if pairs:
+        return pairs
+    if db_user.truck_num:
+        return [(db_user.truck_num, None)]
+    return []
+
+
 async def get_user_vehicle_nums(user: dict) -> list[str]:
     """Look up all assigned vehicle_nums for a driver from driver_trucks table.
 

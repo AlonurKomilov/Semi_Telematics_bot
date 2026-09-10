@@ -232,6 +232,7 @@ async def run_all(conn) -> None:
     await migrate_plans(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
+    await migrate_driver_trucks_registry_id(conn)
 
 
 async def migrate_alert_vehicle_documents_column(conn) -> None:
@@ -4960,6 +4961,57 @@ async def migrate_inventory_own_flags(conn) -> None:
         except Exception:
             pass
 
+
+async def migrate_driver_trucks_registry_id(conn) -> None:
+    """``driver_trucks.registry_id`` — an assignment names ONE truck.
+
+    A Vehicle-Access assignment was a bare ``truck_num`` string, and a
+    unit number is a reusable LABEL: two live trucks can share "103"
+    across a customer's companies.  ``build_vehicle_scope`` therefore
+    admitted every twin ("narrowing that is the assignment model's
+    problem"), so a dispatcher assigned OSY's 103 could read G1's — on
+    every surface, REST and AI alike.
+
+    Nullable, and NULL means exactly what the row meant yesterday: the
+    name, every truck answering to it.  Nothing here guesses a twin —
+    the backfill (scripts/backfill_driver_trucks_registry_id.py) sets the
+    id only where the name resolves to ONE registry row, archived
+    included, and leaves an ambiguous one for a human to pick in Team
+    Management.  ``truck_num`` stays: it is the wire contract the
+    extension and the bot still send.
+
+    The unique index moves from (user_id, truck_num) to
+    (user_id, truck_num, COALESCE(registry_id, 0)) so both twins CAN be
+    assigned to one person explicitly.  Created here, never in
+    platform_schema.py — an index there on a migration-added column
+    crashes boot on upgrade (this repo's recorded trap).
+    """
+    try:
+        await conn.execute("ALTER TABLE driver_trucks ADD COLUMN registry_id INTEGER")
+        await conn.commit()
+        logger.info("Platform migration: driver_trucks.registry_id added")
+    except Exception as e:
+        logger.debug("driver_trucks.registry_id ADD skipped (%s)", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+    for stmt in (
+        "DROP INDEX IF EXISTS idx_driver_trucks_user_truck",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_trucks_user_truck_registry "
+        "ON driver_trucks(user_id, truck_num, COALESCE(registry_id, 0))",
+    ):
+        try:
+            await conn.execute(stmt)
+            await conn.commit()
+        except Exception as e:
+            logger.debug("driver_trucks index step skipped (%s): %s", stmt[:40], e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+
+
 async def migrate_plans(conn) -> None:
     """``plans`` — what each plan includes, as data the operator edits.
 
@@ -5012,4 +5064,3 @@ async def migrate_plans(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
-
