@@ -900,6 +900,37 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_error_log_source
             ON error_log(source, created_at DESC);
 
+        -- security_requests: the request ledger the security console reads.
+        -- Two populations land here: every 401/403/429 from ANY account
+        -- (the denial signal the detector was missing — the 2026-09-08
+        -- probe's 17 /system/* refusals and 25 admin sweeps lived only in
+        -- a log file), and EVERYTHING from accounts of kind=monitored.
+        -- Never a request body: /api/auth/* carries passwords, and the
+        -- query is dropped on those paths too.  Pruned by
+        -- capabilities/security/retention.py.
+        CREATE TABLE IF NOT EXISTS security_requests (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            account_id  INTEGER,
+            user_id     INTEGER,
+            role        TEXT,
+            kind        TEXT,
+            method      TEXT    NOT NULL,
+            path        TEXT    NOT NULL,
+            query       TEXT,
+            status      INTEGER NOT NULL,
+            duration_ms INTEGER,
+            ip          TEXT,
+            ua          TEXT,
+            request_id  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_security_requests_created
+            ON security_requests(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_security_requests_account
+            ON security_requests(account_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_security_requests_status
+            ON security_requests(status, created_at DESC);
+
         CREATE TABLE IF NOT EXISTS account_persona_groups (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id  INTEGER NOT NULL,

@@ -255,6 +255,11 @@ async def get_current_user(
         # customer without re-decoding the JWT.
         try:
             request.state.account_id = payload.get("account_id")
+            # ...and who, for the security ledger: a monitored account's
+            # timeline is only readable per person.  Same trust as the
+            # account stamp — it comes from the verified token.
+            request.state.user_id = payload.get("uid")
+            request.state.role = payload.get("role")
         except Exception:
             pass
         return payload

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -170,6 +171,7 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        started = time.perf_counter()
         response = await call_next(request)
         path = request.url.path
         if (
@@ -183,6 +185,29 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
                     request.headers.get("host", ""),
                     getattr(request.state, "account_id", None),
                     path,
+                )
+            except Exception:
+                pass
+            # The security ledger rides the same seam: post-handler, with
+            # the verified account/user already on request.state.  The
+            # recorder decides what to keep (every refusal; everything
+            # from a monitored account) and never raises — a customer's
+            # request must not fail because we were writing about it.
+            try:
+                from capabilities.security.recorder import record_request
+                from interfaces.api.rate_limit import client_ip
+                await record_request(
+                    method=request.method,
+                    path=path,
+                    status=response.status_code,
+                    query=request.url.query or None,
+                    account_id=getattr(request.state, "account_id", None),
+                    user_id=getattr(request.state, "user_id", None),
+                    role=getattr(request.state, "role", None),
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                    ip=client_ip(request),
+                    ua=request.headers.get("user-agent"),
+                    request_id=getattr(request.state, "request_id", None),
                 )
             except Exception:
                 pass
@@ -630,7 +655,23 @@ def create_api() -> FastAPI:
             headers={"Cache-Control": "public, max-age=3600"},
         )
 
-    @app.get("/privacy", include_in_schema=False)
+    @app.api_route("/about", methods=["GET", "HEAD"], include_in_schema=False)
+    async def about_page():
+        return FileResponse(
+            os.path.join(_landing_dir, "about.html"),
+            media_type="text/html",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.api_route("/contact", methods=["GET", "HEAD"], include_in_schema=False)
+    async def contact_page():
+        return FileResponse(
+            os.path.join(_landing_dir, "contact.html"),
+            media_type="text/html",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.api_route("/privacy", methods=["GET", "HEAD"], include_in_schema=False)
     async def privacy_policy():
         return FileResponse(
             os.path.join(_legal_dir, "privacy.html"),
@@ -638,7 +679,7 @@ def create_api() -> FastAPI:
             headers={"Cache-Control": "public, max-age=3600"},
         )
 
-    @app.get("/terms", include_in_schema=False)
+    @app.api_route("/terms", methods=["GET", "HEAD"], include_in_schema=False)
     async def terms_of_service():
         return FileResponse(
             os.path.join(_legal_dir, "terms.html"),
@@ -650,7 +691,7 @@ def create_api() -> FastAPI:
     # public pages, sitemap.xml enumerates them (this is the URL to
     # submit in Google Search Console, NOT a subdomain root), and the
     # OG image feeds link previews (social shares + AI-answer cards).
-    @app.get("/robots.txt", include_in_schema=False)
+    @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
     async def robots_txt():
         return FileResponse(
             os.path.join(_landing_dir, "robots.txt"),
@@ -658,7 +699,7 @@ def create_api() -> FastAPI:
             headers={"Cache-Control": "public, max-age=3600"},
         )
 
-    @app.get("/sitemap.xml", include_in_schema=False)
+    @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
     async def sitemap_xml():
         return FileResponse(
             os.path.join(_landing_dir, "sitemap.xml"),

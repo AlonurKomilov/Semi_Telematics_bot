@@ -107,6 +107,7 @@ from .notification_deliveries import NotificationDeliveriesMixin
 from .alert_triggers import AlertTriggersMixin
 from .push_subscriptions import PushSubscriptionsMixin
 from .errors import ErrorLogMixin
+from .security_requests import SecurityRequestsMixin
 from .scan_log import ScanLogMixin
 from .applications import ApplicationsMixin
 from .application_drafts import ApplicationDraftsMixin
@@ -184,6 +185,7 @@ class Database(
     AlertTriggersMixin,
     PushSubscriptionsMixin,
     ErrorLogMixin,
+    SecurityRequestsMixin,
     ScanLogMixin,
     ApplicationsMixin,
     ApplicationDraftsMixin,

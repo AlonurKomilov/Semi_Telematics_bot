@@ -14,5 +14,13 @@ def _get_real_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# The one client-IP reading the API trusts.  Since nginx sends
+# `X-Forwarded-For $remote_addr` (a single value, post-realip), the
+# leftmost entry IS the client — the append-and-read-leftmost hole the
+# 2026-09-08 probe walked through (five signups on five invented IPs) is
+# closed upstream.  The security recorder reads the same function so the
+# limiter and the ledger can never disagree about who a request was.
+client_ip = _get_real_ip
+
 # Keyed by real client IP via X-Forwarded-For; default 60 req/min per IP
 limiter = Limiter(key_func=_get_real_ip, default_limits=["60/minute"])

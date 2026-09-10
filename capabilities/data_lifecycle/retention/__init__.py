@@ -31,6 +31,7 @@ _CONTRIBUTORS = (
     "capabilities.ai.retention",          # owns ai.chat_history (age-cap)
     "capabilities.notifications.retention",  # owns notifications.digest_queue (undeliverable residue)
     "capabilities.activity_trail.retention",  # owns activity_trail.events (who-did-what + deletion recovery)
+    "capabilities.security.retention",   # owns security.requests (refusal ledger + monitored timelines)
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
     "capabilities.platform.capacity.retention",  # owns system.metrics_* + account_usage_daily (capacity monitoring)
 )
