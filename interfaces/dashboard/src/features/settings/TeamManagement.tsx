@@ -30,6 +30,7 @@ import { ActionMenu } from '../../components/ui/context-menu';
 import { ActivityTrailDialog, ActivityTrailTrigger } from '../../components/activity-trail/ActivityTrailDialog';
 import { useTeamMembersQuery } from '../../hooks/useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';
+import { Badge } from '../../components/ui/badge';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -1404,9 +1405,9 @@ export default function TeamManagement() {
                                               <span className="text-sm font-medium">{v.name}</span>
                                               {v.company && <span className="text-xs text-muted-foreground ml-2">{v.company}</span>}
                                               {unpinnedTwin && (
-                                                <span className={`ml-2 text-2xs px-1.5 py-0.5 rounded-full ${toneClasses('warn')}`}>
+                                                <Badge tone="warn" className="ml-2 text-2xs">
                                                   which company? — pick one
-                                                </span>
+                                                </Badge>
                                               )}
                                             </div>
                                           </div>

@@ -118,7 +118,6 @@ const TITLE_NOT_YET_CONVERTED: string[] = [
   'components/datagrid/ColumnFilterMenu.tsx',
   'components/datagrid/ManageColumnsMenu.tsx',
   'components/datagrid/pivot/PivotView.tsx',
-  'components/shell/LastUpdated.tsx',
   'features/applications/Applications.tsx',
   'features/applications/ApplyPreview.tsx',
   'features/drivers/Drivers.tsx',
