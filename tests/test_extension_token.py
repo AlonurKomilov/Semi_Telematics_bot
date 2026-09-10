@@ -591,7 +591,8 @@ def test_the_download_is_the_same_file_every_time(tmp_path, monkeypatch):
 
     dist = tmp_path / "dist"
     (dist / "icons").mkdir(parents=True)
-    (dist / "manifest.json").write_text(_json.dumps({"version": "0.5.0.0"}))
+    (dist / "manifest.json").write_text(
+        _json.dumps({"version": "0.5.0.0", "key": "AAAB"}))
     (dist / "sidepanel.js").write_text("console.log('hi')")
     (dist / "icons" / "icon16.png").write_bytes(b"\x89PNG\r\n")
     monkeypatch.setattr(ext, "_DIST", dist)
@@ -607,7 +608,41 @@ def test_the_download_is_the_same_file_every_time(tmp_path, monkeypatch):
     # …and the name says WHICH build it is.  It used to be
     # "4truck-extension.zip" for every version, which is how a person
     # ends up with "4truck-extension (8).zip" and no idea which is which.
-    assert ext._download_name() == "4truck-extension-0.5.0.0.zip"
+    # The manifest carries a `key`, so this is the sideload flavour.
+    assert ext._download_name() == "4truck-extension-sideload-0.5.0.0.zip"
+
+
+def test_the_download_is_named_like_the_file_on_the_shelf(tmp_path, monkeypatch):
+    """One artifact, one name.
+
+    ``build_packages.py`` writes two zips from one tree and has always
+    called them ``…-sideload-<v>.zip`` and ``…-store-<v>.zip``.
+    /extension/download streams the SAME sideload artifact, so it says
+    the same word — otherwise one file has two names, and a person
+    holding a download and a shelf copy cannot tell they are the same
+    build.  The flavour is read from the manifest, never assumed: the
+    `key` is exactly what separates the two.
+    """
+    import importlib.util as _ilu
+    import json as _json
+    from interfaces.api.routes import extension as ext
+    from tests._repo import REPO
+
+    spec = _ilu.spec_from_file_location(
+        "_build_packages", REPO / "interfaces/browser_extension/build_packages.py")
+    packager = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(packager)          # module level is constants only
+
+    dist = tmp_path / "dist"; dist.mkdir()
+    monkeypatch.setattr(ext, "_VERSION_FILE", dist / "manifest.json")
+
+    (dist / "manifest.json").write_text(_json.dumps({"version": "9.9.9.9", "key": "AAAB"}))
+    assert ext._download_name() == f"{packager.PREFIX}sideload-9.9.9.9.zip"
+
+    # Strip the key and it is, by definition, the store flavour — the
+    # same rule build_packages.py applies when it stages that build.
+    (dist / "manifest.json").write_text(_json.dumps({"version": "9.9.9.9"}))
+    assert ext._download_name() == f"{packager.PREFIX}store-9.9.9.9.zip"
 
 
 def test_a_download_with_no_manifest_still_has_a_name():

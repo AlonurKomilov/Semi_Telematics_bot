@@ -80,10 +80,20 @@ def test_the_route_is_login_gated():
 
 
 @pytest.mark.asyncio
-async def test_extension_me_is_three_display_strings_and_nothing_else(monkeypatch):
-    """The panel's token is a live-map key.  /user/me would hand it the
-    permission matrix, the email and the company list; this endpoint
-    hands it an avatar's worth and no more."""
+async def test_extension_me_answers_the_panel_and_leaks_nothing_else(monkeypatch):
+    """The panel's token is a key to the live map, so the panel must not
+    read ``/user/me``: that answer carries the whole permission matrix,
+    the email and the company list.  This one carries an avatar's worth,
+    plus which features the panel may OPEN and which verbs it may PRESS
+    — feature ids, never permission flags, because the panel has no
+    business learning the permission vocabulary.
+
+    The key set is asserted EXACTLY, so a field added to the answer has
+    to be added here too.  This guard went stale once — it still read
+    "three display strings" after the feature switcher landed, and sat
+    red where nobody was watching it.  A privacy wall only works while
+    somebody notices it move.
+    """
     from types import SimpleNamespace
 
     db_user = SimpleNamespace(id=7, account_id=42, display_name="Allen Klein",
@@ -100,8 +110,58 @@ async def test_extension_me_is_three_display_strings_and_nothing_else(monkeypatc
     import infra.platform as _cp
     monkeypatch.setattr(_cp, "get_platform_db", lambda: _DB())
 
+    # Location granted, Inventory not — so the panel is offered exactly
+    # one feature and no write verb.  Stated here rather than read from
+    # a database, so the answer is about the MAPPING and not about
+    # whichever seed the fixture happened to carry.
+    async def _perms(_user):
+        return SimpleNamespace(can_view_location=True, can_view_inventory=False,
+                               can_manage_inventory=False)
+    monkeypatch.setattr(ext, "effective_perms", _perms)
+
     out = await ext.extension_me(user={"sub": "1", "uid": 7, "account_id": 42, "role": "owner",
-                                       "aud": "extension", "scope": ["can_location_map"]})
+                                       "aud": "extension", "scope": list(ext.EXTENSION_SCOPE)})
     assert out == {"display_name": "Allen Klein", "role": "owner",
-                   "account_name": "Premier Trucking Group"}
-    assert "email" not in out and "permissions" not in out
+                   "account_name": "Premier Trucking Group",
+                   "features": ["live-map"], "abilities": [], "scope_stale": False}
+
+    # The three things a lifted token must never learn from this route.
+    assert "email" not in out and "permissions" not in out and "companies" not in out
+    # …and no permission flag reaches the wire under any key.
+    assert not any("can_" in str(v) for v in out.values())
+
+
+@pytest.mark.asyncio
+async def test_a_token_minted_before_the_scope_changed_is_told_to_refresh(monkeypatch):
+    """A panel holding a stale token sees a feature the build has and
+    the server will not offer, and reads it as broken.  It is told, and
+    heals itself with one /auth/refresh — the alternative is waiting up
+    to eight hours, or a Disconnect nobody thinks to perform."""
+    from types import SimpleNamespace
+
+    async def _db_user(user, db):
+        return SimpleNamespace(id=7, account_id=42, display_name="A", email="a@b.c")
+    monkeypatch.setattr(ext, "get_current_db_user", _db_user)
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "get_platform_db",
+                        lambda: SimpleNamespace(get_account=_no_account))
+
+    async def _perms(_user):
+        return SimpleNamespace(can_view_location=True, can_view_inventory=True,
+                               can_manage_inventory=True)
+    monkeypatch.setattr(ext, "effective_perms", _perms)
+
+    base = {"sub": "1", "uid": 7, "account_id": 42, "role": "owner", "aud": "extension"}
+
+    stale = await ext.extension_me(user={**base, "scope": ["can_location_map"]})
+    assert stale["scope_stale"] is True
+
+    fresh = await ext.extension_me(user={**base, "scope": list(ext.EXTENSION_SCOPE)})
+    assert fresh["scope_stale"] is False
+    # A granted manage flag reaches the panel as a VERB, not as a flag.
+    assert fresh["abilities"] == ["inventory.write"]
+    assert sorted(fresh["features"]) == ["inventory", "live-map"]
+
+
+async def _no_account(_account_id):
+    raise RuntimeError("no account row — the avatar degrades, the route does not")

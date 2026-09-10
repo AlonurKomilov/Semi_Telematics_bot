@@ -53,7 +53,11 @@ Two causes, both ours, both fixed:
 - **Every download was called `4truck-extension.zip`.** Same name, new
   contents each time — which is how a Downloads folder ends up holding
   `4truck-extension (8).zip` with no way to tell the builds apart. The
-  name now carries the version.
+  name now carries the flavour and the version, and it is the SAME name
+  `build_packages.py` writes on the shelf — `4truck-extension-sideload-
+  0.5.0.1.zip` — so a download and a shelf copy are visibly one build.
+  The flavour is read from the manifest's `key`, never assumed, and
+  `tests/test_extension_token.py` holds the two names to each other.
 
 The thing neither fixes: a sideloaded zip has almost no prevalence by
 definition. **The real answer is the Chrome Web Store** — a store install

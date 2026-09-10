@@ -155,18 +155,31 @@ def _build_zip() -> bytes:
 
 
 def _download_name() -> str:
-    """The zip's filename, carrying the version it actually is.
+    """The zip's filename: which flavour it is, and which version.
 
     It used to be ``4truck-extension.zip`` for every build, which is why
     a person who had downloaded it a few times had
     ``4truck-extension (8).zip`` in Downloads and no way to tell which
     was which — and why no single name ever corresponded to one file.
+
+    The flavour word is the one ``build_packages.py`` already uses for
+    the same two artifacts, so the file that lands in Downloads is named
+    like the file on the shelf: **sideload** carries the manifest ``key``
+    (Chrome then gives it the store's id), **store** does not.  It is
+    read from the manifest rather than assumed — this endpoint streams
+    ``dist/`` exactly as it was last built, and a name that guessed
+    would eventually be wrong about a build nobody remembers making.
     """
+    flavour = version = ""
     try:
-        version = str(json.loads(_VERSION_FILE.read_text()).get("version") or "").strip()
+        manifest = json.loads(_VERSION_FILE.read_text())
+        version = str(manifest.get("version") or "").strip()
+        # An unreadable manifest claims NOTHING — not a flavour it might
+        # have guessed wrong, not a version it never read.
+        flavour = "sideload" if manifest.get("key") else "store"
     except Exception:
-        version = ""
-    return f"4truck-extension-{version}.zip" if version else "4truck-extension.zip"
+        pass
+    return "-".join(p for p in ("4truck-extension", flavour, version) if p) + ".zip"
 
 
 @router.get("/me")
@@ -175,8 +188,9 @@ async def extension_me(user: dict = Depends(get_current_user)):
 
     The panel's token is a key to the live map, so the panel must not
     read ``/user/me``: that answer carries the whole permission matrix,
-    the email, the company list.  Three display strings is all an
-    avatar needs, and all a lifted panel token can learn here.
+    the email, the company list.  This one carries an avatar's worth,
+    plus which features the panel may open and which verbs it may press
+    — and that is all a lifted panel token can learn here.
     """
     from infra.platform import get_platform_db
     db = get_platform_db()
