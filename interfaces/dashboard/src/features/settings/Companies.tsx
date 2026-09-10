@@ -20,6 +20,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { Card } from '@/components/ui/card';
 import { iconSizeClass } from '@/lib/iconSize';
+import { toast } from '../../lib/toast';
 
 // Company logo (authed) — fetched as a blob since the serve endpoint
 // needs the Bearer token (an <img src> can't carry it).
@@ -154,7 +155,15 @@ export default function Companies() {
 
   const removeLogo = async () => {
     if (!selected) return;
-    await apiFetch(`/admin/companies/${selected.id}/logo`, { method: 'DELETE' }).catch(() => {});
+    // The screen used to say the logo was gone whatever the server
+    // answered — the row cleared, the person moved on, and the logo was
+    // still there on the next load.
+    const res = await apiFetch(`/admin/companies/${selected.id}/logo`, { method: 'DELETE' })
+      .catch(() => null);
+    if (!res || !res.ok) {
+      toast.error('Could not remove the logo');
+      return;
+    }
     setSelected((s) => (s ? { ...s, has_logo: false } : s));
     setLogoVersion((v) => v + 1); load();
   };

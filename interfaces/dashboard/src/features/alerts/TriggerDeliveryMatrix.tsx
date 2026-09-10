@@ -191,7 +191,10 @@ export default function TriggerDeliveryMatrix({
     }).finally(() => mark(cell, false));
     // The CHAIN must never reject, or every later write on this row is
     // skipped; the per-call catch above already reported the failure.
-    chains.current.set(t.id, run.catch(() => {}));
+    chains.current.set(t.id, run.catch(() => {
+      /* the per-call catch above already reported it; this keeps the
+         CHAIN alive, or every later write on this row is skipped */
+    }));
   };
 
   const columns = CHANNEL_META.filter((c) => channelKeys.includes(c.key));

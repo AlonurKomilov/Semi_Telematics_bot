@@ -53,7 +53,7 @@ export default function Routes() {
   useEffect(() => {
     apiJSON<DispatchVehiclesResponse>('/routes')
       .then((d) => setVehicles(d.vehicles || []))
-      .catch(() => {});
+      .catch(() => { /* the list stays empty; its own empty state speaks */ });
   }, []);
 
   // Draw route on map

@@ -106,7 +106,7 @@ export default function BotHealthSection({ hasBot }: { hasBot: boolean }) {
         } catch { /* stays "Not checked yet"; the button remains */ }
         finally { if (!cancelled) setChecking(false); }
       })
-      .catch(() => {});
+      .catch(() => { /* the inner finally already cleared `checking` */ });
     return () => { cancelled = true; };
   }, [hasBot]);
 

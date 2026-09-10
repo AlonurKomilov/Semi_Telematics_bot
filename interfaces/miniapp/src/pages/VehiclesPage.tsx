@@ -147,7 +147,7 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   useEffect(() => {
     apiJSON<{ tasks: MaintenanceTask[] }>('/api/maintenance/tasks?status=pending&page_size=10')
       .then(d => setMaintenanceTasks(d.tasks ?? []))
-      .catch(() => {});
+      .catch(() => { /* the maintenance strip stays hidden; the page is the vehicles */ });
   }, []);
 
   useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load]);

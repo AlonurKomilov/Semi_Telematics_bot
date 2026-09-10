@@ -224,7 +224,8 @@ export default function MyNotifications() {
               type="checkbox"
               checked={prefs.alerts_on}
               disabled={saving === 'alerts_on'}
-              onChange={e => { void setField('alerts_on', e.target.checked).catch(() => {}); }}
+              onChange={e => { void setField('alerts_on', e.target.checked)
+                .catch(() => { /* setField toasts and rolls back; this only stops the rethrow */ }); }}
               className="accent-primary cursor-pointer mt-0.5"
             />
             <span className="flex-1 min-w-0">
@@ -243,7 +244,8 @@ export default function MyNotifications() {
               type="checkbox"
               checked={prefs.alert_resolve_receipts}
               disabled={saving === 'alert_resolve_receipts'}
-              onChange={e => { void setField('alert_resolve_receipts', e.target.checked).catch(() => {}); }}
+              onChange={e => { void setField('alert_resolve_receipts', e.target.checked)
+                .catch(() => { /* setField toasts and rolls back; this only stops the rethrow */ }); }}
               className="accent-primary cursor-pointer mt-0.5"
             />
             <span className="flex-1 min-w-0">

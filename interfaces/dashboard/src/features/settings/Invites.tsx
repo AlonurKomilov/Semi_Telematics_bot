@@ -328,7 +328,7 @@ export function InvitesPanel() {
         } catch { /* no read access or no bot — login bot below */ }
         if (d.bot_username) setBotUsername(d.bot_username);
       })
-      .catch(() => {});
+      .catch(() => { /* no bot username: the invite link falls back to the apex form */ });
   }, []);
 
   async function create() {

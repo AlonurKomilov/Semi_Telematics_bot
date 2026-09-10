@@ -247,7 +247,8 @@ export default function CapacityPage() {
   const load = useCallback(() => {
     apiJSON<Overview>('/system/capacity/overview').then(setOverview)
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'failed'));
-    apiJSON<AccountsUsage>('/system/capacity/accounts?days=30').then(setUsage).catch(() => {});
+    apiJSON<AccountsUsage>('/system/capacity/accounts?days=30').then(setUsage)
+      .catch(() => { /* the overview above carries the error for this page */ });
   }, []);
 
   useEffect(() => {
@@ -260,9 +261,11 @@ export default function CapacityPage() {
   // breakdowns; today's slice stays live via the same 60s cadence.
   useEffect(() => {
     const fetchWin = () => {
-      apiJSON<Series>(`/system/capacity/series?window=${win}`).then(setSeries).catch(() => {});
+      apiJSON<Series>(`/system/capacity/series?window=${win}`).then(setSeries)
+        .catch(() => { /* the chart keeps its last window rather than blanking */ });
       apiJSON<Breakdown>(`/system/capacity/breakdown?days=${WIN_DAYS[win]}`)
-        .then(setBreakdown).catch(() => {});
+        .then(setBreakdown)
+        .catch(() => { /* the breakdown keeps its last window rather than blanking */ });
     };
     fetchWin();
     const t = setInterval(fetchWin, 60_000);

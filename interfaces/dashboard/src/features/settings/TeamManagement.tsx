@@ -129,7 +129,7 @@ function UserAvatar({ userId, name, size = 48, active = true }: { userId: number
         revoke = url;
         setSrc(url);
       }
-    }).catch(() => {});
+    }).catch(() => { /* no avatar: the initials fallback is already rendered */ });
     return () => { cancelled = true; if (revoke) URL.revokeObjectURL(revoke); };
   }, [userId]);
 

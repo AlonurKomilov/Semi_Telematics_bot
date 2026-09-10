@@ -263,7 +263,8 @@ export default function Geofences() {
 
   useEffect(() => {
     if (!isReady || !leafletMap.current) return;
-    fetchGeofences(window.L as typeof L).catch(() => {});
+    fetchGeofences(window.L as typeof L)
+      .catch(() => { /* fetchGeofences sets its own error state */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 

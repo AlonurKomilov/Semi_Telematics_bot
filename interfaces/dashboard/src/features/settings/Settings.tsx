@@ -205,7 +205,7 @@ export default function Settings() {
     // overwrite this from /admin/timezone below).
     apiJSON<User>('/user/me').then((u) => {
       if (u.account_timezone) setAccountTz(u.account_timezone);
-    }).catch(() => {});
+    }).catch(() => { /* the account default stands; every date helper has one */ });
   }, []);
 
   // Load account-level timezone (only when the user can edit it; for
@@ -216,7 +216,7 @@ export default function Settings() {
     if (!canManageAccount) return;
     apiJSON<{ timezone: string }>('/admin/timezone')
       .then((r) => setAccountTz(r.timezone || 'America/New_York'))
-      .catch(() => {});
+      .catch(() => { /* the value already on screen stays; the PUT below reports its own */ });
   }, [canManageAccount]);
 
   const handleSaveAccountTz = async () => {
@@ -239,7 +239,7 @@ export default function Settings() {
       setPublicName(r.public_display_name || '');
       setRegisteredName(r.registered_name || '');
       setPublicNameLoaded(true);
-    }).catch(() => {});
+    }).catch(() => { /* `publicNameLoaded` stays false, which is what gates the form */ });
   }, [canManageAccount]);
 
   const handleSavePublicName = async () => {

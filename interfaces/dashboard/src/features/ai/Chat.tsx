@@ -30,6 +30,7 @@ import { Card } from '@/components/ui/card';
 import { usePreference } from '../../preferences';
 import { scaledPx } from '@/lib/scaledLength';
 import { scrollIntoScrollport } from '../../lib/scrollport';
+import { toast } from '../../lib/toast';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -619,7 +620,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         setTiers(d.tiers || []);
         setCurrentTier(d.current_tier);
       })
-      .catch(() => {});
+      .catch(() => { /* the tier picker keeps its default; a chat still sends */ });
     // Mount-only: the ?tab=briefing read is a one-shot legacy-link honour,
     // not a value we re-run on navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1080,7 +1081,16 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   /** Per-chat delete — called by the armed row's explicit Delete button. */
   async function deleteConversation(conv: AIConversation) {
     setDeleteConfirmId(null);
-    await apiJSON(`/ai/conversations/${conv.id}`, { method: 'DELETE' }).catch(() => {});
+    // The LOCAL clean-up below is irreversible, so it only runs if the
+    // server actually deleted the row.  It used to run either way: a
+    // refused delete threw away the device's thought logs and files for
+    // a conversation that was still on the server, and said nothing.
+    try {
+      await apiJSON(`/ai/conversations/${conv.id}`, { method: 'DELETE' });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete that conversation');
+      return;
+    }
     deleteThoughtsForConversation(conv.id);  // local thought logs go with it
     clearConversationAttachments(conv.id);   // and its device-held files
     if (conv.id === conversationId) setConvoFiles([]);
@@ -1110,9 +1120,16 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     const plain = (div.textContent || div.innerText || '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
-    navigator.clipboard.writeText(plain).catch(() => {});
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 1500);
+    // "Copied!" only if it WAS.  The write can be refused — a page
+    // without focus, a browser that gates the clipboard — and the tick
+    // used to appear anyway, so somebody pasted nothing and had been
+    // told the copy succeeded.
+    navigator.clipboard.writeText(plain).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 1500);
+    }).catch(() => {
+      toast.error('Could not copy — your browser refused clipboard access');
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1156,7 +1173,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       // Fire-and-forget the dissatisfaction signal — if it fails,
       // the regenerate still proceeds; we just lose this one
       // telemetry row.
-      apiJSON('/ai/feedback/regenerate', { method: 'POST', body: {} }).catch(() => {});
+      apiJSON('/ai/feedback/regenerate', { method: 'POST', body: {} })
+        .catch(() => { /* telemetry; the regenerate itself proceeds either way */ });
       await send(priorUserText);
     } finally {
       setRegeneratingIdx(null);
@@ -1190,7 +1208,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     // Switching from down to up (or vice-versa) closes any open form.
     setDislikeFormFor(kind === 'down' ? aiIdx : null);
     const endpoint = kind === 'up' ? '/ai/feedback/thumbs-up' : '/ai/feedback/thumbs-down';
-    apiJSON(endpoint, { method: 'POST', body: {} }).catch(() => {});
+    apiJSON(endpoint, { method: 'POST', body: {} })
+      .catch(() => { /* telemetry; the thumb is already drawn and stays drawn */ });
   }
 
   function editMessage(text: string) {
