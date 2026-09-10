@@ -7,6 +7,7 @@ import UserMenu, { type Me } from './UserMenu';
 import FeatureMenu from './FeatureMenu';
 import { ACTIVE_FEATURE_KEY } from '../features/maps-overlay/bridge';
 import { forgetInventory } from '../features/inventory/data';
+import { forgetPositions } from '../features/live-map/locate';
 
 type Phase = 'loading' | 'login' | 'ready';
 type View = 'feature' | 'settings';
@@ -152,6 +153,7 @@ export default function App() {
     // grants: what one truck's inventory was, and whether Inventory was
     // permitted at all, are answers to THAT session's key, not this one's.
     forgetInventory();
+    forgetPositions();
     setAbilities([]);
     setMe(null); setView('feature'); setPhase('login');
   };
@@ -169,7 +171,7 @@ export default function App() {
           <Settings onBack={() => setView('feature')} />
         ) : (
           <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
-            <feature.Component abilities={abilities} />
+            <feature.Component abilities={abilities} features={offered.map((f) => f.id)} />
           </Suspense>
         )}
       </main>

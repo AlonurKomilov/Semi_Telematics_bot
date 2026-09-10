@@ -11,6 +11,11 @@ import { lazy, type LazyExoticComponent, type ComponentType } from 'react';
  *  it and answering 403 on the press. */
 export interface PanelFeatureProps {
   abilities: string[];
+  /** The feature ids this person may open.  A feature sometimes needs
+   *  to know what ANOTHER one is allowed to do — Inventory offers to
+   *  point Google's map at a vehicle only when the person may see
+   *  positions at all, which is exactly `live-map`. */
+  features: string[];
 }
 
 export interface PanelFeature {

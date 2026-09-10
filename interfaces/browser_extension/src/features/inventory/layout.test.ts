@@ -1,5 +1,6 @@
 /**
- * The panel's flex contract, read from the source.
+ * The panel's structural contracts, read from the source — the flex
+ * column, and the one grant it must not assume it has.
  *
  * jsdom performs no layout, so none of this can be asserted by
  * rendering: a squeezed card and a healthy one have identical DOM.  The
@@ -59,5 +60,30 @@ describe('the Inventory panel holds its shape', () => {
     // …and NOT minHeight:0, which is what removed its automatic minimum
     // and let the list crush it.
     expect(card.slice(0, card.indexOf('>'))).not.toContain('minHeight: 0');
+  });
+});
+
+describe('the panel does not assume a grant it was split away from', () => {
+  it('offers to move Google\u2019s map only to somebody who may see positions', () => {
+    // A position is a LOCATION read whoever asks for it.  Inventory was
+    // split out of Vehicles precisely so it could be granted to a person
+    // with no business seeing where the trucks are — so the control is
+    // not drawn, and `positionOf` is not called, unless /extension/me
+    // said this person may open Live Map.
+    expect(src).toContain("features.includes('live-map')");
+    // The gate guards BOTH the control and the call.
+    const call = src.slice(src.indexOf('positionOf('));
+    expect(src.slice(0, src.indexOf('positionOf('))).toContain('canLocate');
+    expect(call.length).toBeGreaterThan(0);
+    expect(src).toMatch(/if \(canLocate && follow\)/);
+    expect(src).toMatch(/\{canLocate && \(/);
+  });
+
+  it('keeps the position read in the location feature, not in this one', () => {
+    // It lives in features/live-map/locate.ts: the route it uses is
+    // gated on can_view_location, and putting it under features/
+    // inventory/ would file a location read under the feature that must
+    // not need one.
+    expect(src).toContain("from '../live-map/locate'");
   });
 });

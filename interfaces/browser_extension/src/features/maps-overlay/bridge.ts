@@ -44,6 +44,29 @@ export const OVERLAY_LIVE = '4truck:overlay-live';
  *  never leaves the extension. */
 export const PANEL_LIVE = '4truck:panel-live';
 
+/** "What is aboard THIS truck" — asked by the card when it opens, and
+ *  only while the panel is on Inventory.
+ *
+ *  On demand and one vehicle at a time, deliberately: the counts ride
+ *  the whole list because two integers per truck are cheap, but an
+ *  item's NAME is content, and content reaches a page we do not own
+ *  only for the truck somebody actually opened.
+ *
+ *  The message carries the MAP's id.  The worker translates it to a
+ *  registry id from the list it already holds, so that id — the key our
+ *  own scope decisions turn on — never enters the page. */
+export const OVERLAY_INVENTORY = '4truck:overlay-inventory';
+
+export interface OverlayItem { label: string; status: string }
+
+export type InventoryReply =
+  | { ok: true; items: OverlayItem[]; more: number }
+  | { ok: false };
+
+/** How many names a card will show before it stops listing and counts.
+ *  A card is a glance, not the panel. */
+export const CARD_ITEMS_MAX = 5;
+
 /** A truck chosen on google.com/maps, waiting for the panel to read it.
  *  Storage rather than a message, so it works whether the panel was
  *  already open or is opening because of that very click.

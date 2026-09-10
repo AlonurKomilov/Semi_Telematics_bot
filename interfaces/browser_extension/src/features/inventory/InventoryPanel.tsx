@@ -22,6 +22,9 @@ import { addItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItem
          type Inventory } from './data';
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
+import { positionOf } from '../live-map/locate';
+import { followInGoogleMaps, getFollowPref, markFollowWarned, searchUrl, setFollowPref,
+         wasFollowWarned } from '../live-map/googleMaps';
 
 /** One truck's line in the fleet answer — counts and a name, never
  *  contents.  An item's own label arrives when a truck is chosen. */
@@ -57,8 +60,15 @@ function Field({ label, required, children }: {
  *  open all morning is not lying by lunchtime. */
 const FLEET_REFRESH_MS = 60_000;
 
-export default function InventoryPanel({ abilities }: PanelFeatureProps) {
+export default function InventoryPanel({ abilities, features }: PanelFeatureProps) {
   const canWrite = abilities.includes('inventory.write');
+  /** Only when this person may see positions AT ALL.  A position is a
+   *  location read whoever asks for it, and Inventory was split out of
+   *  Vehicles precisely so it could be granted to somebody who has no
+   *  business seeing where the trucks are. */
+  const canLocate = features.includes('live-map');
+  const [follow, setFollow] = useState(false);
+  const [followNotice, setFollowNotice] = useState('');
   const [fleet, setFleet] = useState<FleetRow[] | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -87,6 +97,25 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
   const [addError, setAddError] = useState('');
   /** The item just recorded, so the list can show it landing. */
   const [justAdded, setJustAdded] = useState<number | null>(null);
+
+  // The SAME switch the Live Map keeps — one preference, so a person who
+  // turned this on there is not asked again here.
+  useEffect(() => {
+    if (!canLocate) return;
+    void getFollowPref().then(setFollow);
+  }, [canLocate]);
+
+  const toggleFollow = () => {
+    const on = !follow;
+    setFollow(on);
+    void setFollowPref(on);
+    if (!on) { setFollowNotice(''); return; }
+    void wasFollowWarned().then((warned) => {
+      if (warned) return;
+      setFollowNotice('Selecting a vehicle will replace whatever is open in your Google Maps tab.');
+      void markFollowWarned();
+    });
+  };
 
   // ── the fleet answer ────────────────────────────────────────────
   useEffect(() => {
@@ -137,7 +166,23 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
       // Drop an answer that belongs to a truck the person has left.
       if (selectedRef.current?.vehicle_id === row.vehicle_id) setItems(ob ?? 'failed');
     });
+    // …and point Google's map at it, the way the Live Map does — so a
+    // unit picked here does not have to be hunted for over there.
+    if (canLocate && follow) {
+      void positionOf(row.vehicle_id).then((at) => {
+        if (at && selectedRef.current?.vehicle_id === row.vehicle_id) {
+          void followInGoogleMaps(searchUrl(at[0], at[1]));
+        }
+      });
+    }
   };
+
+  /** The current `select`, for the storage listener that is attached
+   *  once.  It closes over the follow switch now, so the effect cannot
+   *  simply capture it and stay correct — and re-subscribing on every
+   *  change would drop a click that arrived mid-swap. */
+  const selectRef = useRef(select);
+  selectRef.current = select;
 
   // ── a truck clicked on Google's map ─────────────────────────────
   useEffect(() => {
@@ -156,7 +201,7 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
       const row = fleet.find((r) =>
         r.name === want.name && (!want.company || !r.company || r.company === want.company));
       if (!row) return;
-      select(row);
+      selectRef.current(row);
     };
     void chrome.storage.local.get(PENDING_SELECT_KEY).then((got) => take(got[PENDING_SELECT_KEY]));
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
@@ -438,6 +483,17 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
 
           </p>
         )}
+        {/* Offered only to somebody who may see positions.  Showing it
+            and then refusing at the press is worse than not showing it,
+            and this is the one grant Inventory was split away from. */}
+        {canLocate && (
+          <label className="row" style={{ gap: 8, cursor: 'pointer', minHeight: 24, padding: '2px 0' }}
+                 title="Picking a vehicle here moves your Google Maps tab to it">
+            <input type="checkbox" role="switch" checked={follow} onChange={toggleFollow} />
+            <span className="small">Follow in Google Maps</span>
+          </label>
+        )}
+        {followNotice && <p className="muted small" style={{ margin: 0 }}>{followNotice}</p>}
         {error && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{error}</p>}
       </div>
 

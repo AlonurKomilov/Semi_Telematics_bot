@@ -22,7 +22,7 @@
  */
 import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
-import { ACTIVE_FEATURE_KEY, OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type InventoryCounts, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
+import { ACTIVE_FEATURE_KEY, CARD_ITEMS_MAX, OPEN_PANEL, OVERLAY_INVENTORY, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type InventoryCounts, type InventoryReply, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
 import { makeShared } from './features/maps-overlay/dedupe';
 import type { LiveVehiclesResponse } from './features/live-map/types';
 
@@ -93,6 +93,40 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
     })();
     return true;
   }
+  if (m?.type === OVERLAY_INVENTORY) {
+    // One truck, asked for.  The page hands us the MAP's id; the
+    // registry id it resolves to stays here, because that is the key
+    // every scope decision in this product turns on.
+    if (!sender.tab?.id) { sendResponse({ ok: false } satisfies InventoryReply); return true; }
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token) { sendResponse({ ok: false } satisfies InventoryReply); return; }
+        const got = await chrome.storage.local.get(ACTIVE_FEATURE_KEY);
+        if (got[ACTIVE_FEATURE_KEY] !== 'inventory') { sendResponse({ ok: false } satisfies InventoryReply); return; }
+        const list = await sharedList('list', token,
+          () => apiJSON<{ features?: unknown[] }>('/map/vehicles'));
+        const rid = registryIdFor(list.features ?? [], String((m as { id?: unknown }).id ?? ''));
+        if (rid == null) { sendResponse({ ok: false } satisfies InventoryReply); return; }
+        const out = await apiJSON<{ items?: { label?: unknown; status?: unknown }[] }>(
+          `/extension/inventory?vehicle=${encodeURIComponent(String(rid))}`);
+        const all = out.items ?? [];
+        sendResponse({
+          ok: true,
+          // Names and states.  NOT the identifier — the serial is what
+          // makes a loss provable and it has no business on somebody
+          // else's page, however narrow the moment.
+          items: all.slice(0, CARD_ITEMS_MAX).map((i) => ({
+            label: String(i.label ?? ''), status: String(i.status ?? ''),
+          })),
+          more: Math.max(0, all.length - CARD_ITEMS_MAX),
+        } satisfies InventoryReply);
+      } catch {
+        sendResponse({ ok: false } satisfies InventoryReply);
+      }
+    })();
+    return true;
+  }
   if (m?.type !== OVERLAY_VEHICLES) return false;
   // Only from a tab we injected into.  A message with no tab is not a
   // content script; nothing else in this extension sends this type.
@@ -152,6 +186,18 @@ async function inventoryCounts(token: string): Promise<InventoryCounts | undefin
     // strange way to answer "where are my trucks".
     return undefined;
   }
+}
+
+/** The map id the page knows → the registry id we key on.  Kept here so
+ *  the translation, and the registry id, stay out of the page. */
+function registryIdFor(features: unknown[], id: string): number | null {
+  for (const f of features) {
+    const p = (f as { properties?: Record<string, unknown> })?.properties ?? {};
+    if (String(p.id ?? p.name ?? '') !== id) continue;
+    const rid = Number(p.registry_id);
+    return Number.isFinite(rid) ? rid : null;
+  }
+  return null;
 }
 
 chrome.runtime.onMessageExternal.addListener((msg: unknown, sender, sendResponse) => {

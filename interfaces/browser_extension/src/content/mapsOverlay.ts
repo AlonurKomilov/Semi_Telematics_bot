@@ -42,8 +42,8 @@
  * and the right answer to each is to disappear rather than draw wrong.
  */
 import {
-  ACTIVE_FEATURE_KEY, OPEN_PANEL, OVERLAY_LIVE, OVERLAY_VEHICLES, PENDING_SELECT_KEY,
-  type LiveReply, type OverlayReply, type OverlayVehicle,
+  ACTIVE_FEATURE_KEY, OPEN_PANEL, OVERLAY_INVENTORY, OVERLAY_LIVE, OVERLAY_VEHICLES, PENDING_SELECT_KEY,
+  type InventoryReply, type LiveReply, type OverlayReply, type OverlayItem, type OverlayVehicle,
 } from '../features/maps-overlay/bridge';
 import { applyFix, positionAt, shortestAngleDiff, type Phys } from '../features/live-map/physics';
 import { ageMs, describeAge, formatAge, stalenessOf } from '../features/live-map/freshness';
@@ -200,6 +200,7 @@ function closeCard(): void {
   card = null;
   cardId = null;
   cardHtmlShown = '';
+  cardItems = null;
 }
 
 function removeAll(): void {
@@ -465,6 +466,22 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
                   ? `<span style="color:#fbbf24;font-weight:600"> \u00b7 ${v.inventory_attention} flagged</span>`
                   : '<span style="opacity:.6"> \u00b7 none flagged</span>'))
         + '</div>')
+    // …and WHAT is aboard, once it has arrived.  Names and states, the
+    // same words the panel's rows use.  Never the identifier: the
+    // serial is what makes a loss provable and it stays behind the
+    // button, however narrow this moment is.
+    + (cardItems?.id !== v.id || cardItems.items.length === 0 ? '' :
+        '<div style="font-size:11px;margin-bottom:6px;display:grid;gap:2px">'
+        + cardItems.items.map((it) =>
+            '<div style="display:flex;gap:6px;align-items:center">'
+            + `<span aria-hidden style="width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:${itemDot(it.status)}"></span>`
+            + `<span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.label)}</span>`
+            + `<span style="opacity:.6;flex:0 0 auto">${esc(humanStatus(it.status))}</span>`
+            + '</div>').join('')
+        + (cardItems.more > 0
+            ? `<div style="opacity:.6">+${cardItems.more} more</div>`
+            : '')
+        + '</div>')
     // Fuel, DEF, the address, the faults: all one button away, in the
     // panel, which is where they live — see bridge.ts on what does not
     // cross into a page we do not own.
@@ -485,6 +502,22 @@ function panelButtonLabel(): string {
     : 'Open in 4truck for levels & more';
 }
 
+/** The same three tones the panel's rows wear, in the card's own
+ *  literal colours — this page has none of our tokens. */
+function itemDot(status: string): string {
+  if (status === 'missing' || status === 'damaged') return '#ef4444';
+  if (status === 'in_repair' || status === 'needs_check') return '#fbbf24';
+  if (status === 'installed') return '#22c55e';
+  return '#8b92a5';
+}
+
+/** ``needs_check`` → ``Needs check``, the panel's own wording. */
+function humanStatus(status: string): string {
+  const parts = String(status || '').split('_').filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts.map((w, i) => (w === 'eld' ? 'ELD' : i === 0 ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+}
+
 function esc(v: string): string {
   return String(v).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -497,6 +530,27 @@ function esc(v: string): string {
  *  frame loop can move the card without rebuilding it. */
 let cardHtmlShown = '';
 let cardHeight = 120;
+
+/** What is aboard the truck whose card is open — asked for ONE truck,
+ *  when its card opens, and only on the Inventory feature.  The counts
+ *  ride the whole list because two integers are cheap; a name is
+ *  content, and content reaches this page only for the truck somebody
+ *  actually opened. */
+let cardItems: { id: string; items: OverlayItem[]; more: number } | null = null;
+
+function askInventory(id: string): void {
+  if (panelFeature !== 'inventory') return;
+  if (cardItems?.id === id) return;
+  cardItems = null;
+  try {
+    chrome.runtime.sendMessage({ type: OVERLAY_INVENTORY, id }, (reply?: InventoryReply) => {
+      // The card may have closed or moved on while this was in the air.
+      if (torn || cardId !== id || !reply?.ok) return;
+      cardItems = { id, items: reply.items, more: reply.more };
+      placeCard();
+    });
+  } catch { /* worker asleep; the card simply shows its counts */ }
+}
 
 function placeCard(): void {
   if (!cardId || !surface || !root) { closeCard(); return; }
@@ -897,6 +951,7 @@ function selectAt(clientX: number, clientY: number, pointerType?: string): void 
   }
   cardId = id;
   placeCard();
+  askInventory(id);
 }
 
 /** A press that landed on one of OUR trucks, held from `pointerdown`
@@ -1133,7 +1188,8 @@ function start(): void {
       // switched features to get did not arrive for up to thirty
       // seconds.  refreshData ends in draw(), which redraws the card.
       void refreshData();
-      if (cardId) placeCard();
+      cardItems = null;
+      if (cardId) { placeCard(); askInventory(cardId); }
     }
     if (!(OVERLAY_PREF_KEY in changes)) return;
     enabled = changes[OVERLAY_PREF_KEY].newValue !== false;
