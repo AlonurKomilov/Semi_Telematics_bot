@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from capabilities.ai.tools.registry import register_tool
+from features.vehicles.resolve import resolve_for_tool, company_of, row_company
 
 logger = logging.getLogger("bot.ai.tools")
 
@@ -32,6 +33,13 @@ logger = logging.getLogger("bot.ai.tools")
                 "type": "string",
                 "description": "The vehicle name or number",
             },
+            "company": {
+                "type": "string",
+                "description": (
+                    "Optional company code (e.g. 'OSY', 'G1') — needed only "
+                    "when more than one truck shares the number."
+                ),
+            },
         },
         "required": ["vehicle_name"],
     },
@@ -43,6 +51,10 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         from capabilities.ai.vision import analyze_camera_image
         if account_id is None:
             return {"vehicle": vehicle, "error": "Camera check requires account context."}
+        resolved, err = await resolve_for_tool(db, account_id, tool_args)
+        if err:
+            return err
+        co = company_of(resolved)
         # Route through the cached MultiCompanyClient pool so this
         # request shares the connection pool, circuit breaker, and
         # rate-limit retries with the rest of the app.  Keys come from
@@ -56,6 +68,7 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         match = [
             s for s in snaps
             if s["vehicle_name"].lower() == vehicle.lower()
+            and (not co or row_company(s) == co)
         ]
         snap = match[0] if match else None
         if not snap or not snap.get("image_bytes"):

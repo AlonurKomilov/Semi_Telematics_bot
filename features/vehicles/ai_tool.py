@@ -16,6 +16,7 @@ from features.vehicles.service import (
     get_vehicle_detail as _svc_detail,
 )
 from features.vehicles.warehouse.service import get_engine_states as _svc_engine_states
+from features.vehicles.resolve import resolve_for_tool, company_of
 
 
 @register_tool({
@@ -38,6 +39,13 @@ from features.vehicles.warehouse.service import get_engine_states as _svc_engine
                 "type": "string",
                 "description": "The vehicle name or number",
             },
+            "company": {
+                "type": "string",
+                "description": (
+                    "Optional company code (e.g. 'OSY', 'G1') — needed only "
+                    "when more than one truck shares the number."
+                ),
+            },
         },
         "required": ["vehicle_name"],
     },
@@ -47,7 +55,12 @@ async def get_vehicle_detail(tool_args: dict, samsara_client,
     vehicle = tool_args.get("vehicle_name", "")
     if account_id is None:
         return {"error": "This tool requires account context."}
-    detail = await _svc_detail(account_id, vehicle)
+    # Which "103"?  The client returns "0, 1, or 2+ matches" and this took
+    # the first — see features/vehicles/resolve.py.
+    resolved, err = await resolve_for_tool(db, account_id, tool_args)
+    if err:
+        return err
+    detail = await _svc_detail(account_id, vehicle, company=company_of(resolved))
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail

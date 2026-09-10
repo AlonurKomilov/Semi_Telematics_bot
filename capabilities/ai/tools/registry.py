@@ -539,8 +539,12 @@ async def execute_tool(tool_name: str, tool_args: dict,
         tool_args = {k: v for k, v in tool_args.items()
                      if k != "_scope_identities"}
     if scope_vehicles is not None:
-        from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
-        if tool_name in SCOPE_AWARE_TOOLS:
+        from capabilities.permissions.roles import SCOPE_AWARE_TOOLS, VEHICLE_SPECIFIC_TOOLS
+        # VEHICLE_SPECIFIC tools get the rungs too.  The gate admits them
+        # by NAME, which cannot split same-number twins across companies;
+        # the executor's resolver (features/vehicles/resolve.py) can —
+        # but only with the identities in hand.
+        if tool_name in SCOPE_AWARE_TOOLS or tool_name in VEHICLE_SPECIFIC_TOOLS:
             tool_args = {**tool_args, "_scope_vehicles": list(scope_vehicles)}
             # Identity rungs ride beside the names so the shared filter
             # can decide by registry/provider id where rows carry one —

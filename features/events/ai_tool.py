@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from features.vehicles.resolve import resolve_for_tool, company_of, row_company
 from capabilities.ai.tools.scope import filter_to_scope
 from features.events.service import get_events as _svc_events
 
@@ -22,6 +23,13 @@ from features.events.service import get_events as _svc_events
                 "type": "string",
                 "description": "The vehicle name or number",
             },
+            "company": {
+                "type": "string",
+                "description": (
+                    "Optional company code (e.g. 'OSY', 'G1') — needed only "
+                    "when more than one truck shares the number."
+                ),
+            },
             "days": {
                 "type": "integer",
                 "description": "Number of days to look back (1-30, default 7)",
@@ -38,10 +46,15 @@ async def get_vehicle_events(tool_args: dict, samsara_client,
         return {"error": "Please specify a vehicle name to get its safety events."}
     if account_id is None:
         return {"error": "This tool requires account context."}
+    resolved, err = await resolve_for_tool(db, account_id, tool_args)
+    if err:
+        return err
+    co = company_of(resolved)
     events = await _svc_events(account_id, days=days)
     vehicle_events = [
         e for e in events
         if e.get("vehicle_name", "").lower() == vehicle.lower()
+        and (not co or row_company(e) == co)
     ]
     return {
         "vehicle": vehicle,

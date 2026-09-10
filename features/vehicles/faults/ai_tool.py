@@ -7,6 +7,7 @@ from features.vehicles.warehouse.service import (
     get_vehicles_with_faults as _svc_with_faults,
 )
 from features.vehicles.service import get_vehicle_detail as _svc_detail
+from features.vehicles.resolve import resolve_for_tool, company_of, row_company
 
 
 @register_tool({
@@ -32,6 +33,13 @@ from features.vehicles.service import get_vehicle_detail as _svc_detail
                 "type": "string",
                 "description": "The vehicle name or number, e.g. '101' or 'Truck 205'. Omit for account-wide results.",
             },
+            "company": {
+                "type": "string",
+                "description": (
+                    "Optional company code (e.g. 'OSY', 'G1') — needed only "
+                    "when more than one truck shares the number."
+                ),
+            },
             "critical_only": {
                 "type": "boolean",
                 "description": "If true, return only vehicles with critical warning lights (STOP/PROTECT/EMISSIONS).",
@@ -49,11 +57,21 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
         # Per-vehicle fault detail
         if account_id is None:
             return {"error": "This tool requires account context."}
-        detail = await _svc_detail(account_id, vehicle)
+        resolved, err = await resolve_for_tool(db, account_id, tool_args)
+        if err:
+            return err
+        co = company_of(resolved)
+        detail = await _svc_detail(account_id, vehicle, company=co)
         if not detail:
             return {"error": f"Vehicle '{vehicle}' not found. Check the name/number and try again."}
         faulted, _total, _bd = await _svc_with_faults(account_id)
-        matches = [v for v in faulted if v.get("name", "").lower() == vehicle.lower()]
+        # Same name AND, when the registry could say, the same company —
+        # a twin's faults must never be read as this truck's.
+        matches = [
+            v for v in faulted
+            if v.get("name", "").lower() == vehicle.lower()
+            and (not co or row_company(v) == co)
+        ]
         if not matches:
             return {
                 "vehicle": vehicle, "fault_count": 0, "faults": [],
