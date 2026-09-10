@@ -227,6 +227,9 @@ async def run_all(conn) -> None:
     # The Alerts inbox is a stored grant now; rows whose stored vehicle
     # visibility diverged from the seed get what the derivation computed.
     await migrate_backfill_alerts_grant(conn)
+    # Plans as data: the four tiers, everything included, until the
+    # operator narrows one from the system console.
+    await migrate_plans(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
 
@@ -4956,3 +4959,57 @@ async def migrate_inventory_own_flags(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+async def migrate_plans(conn) -> None:
+    """``plans`` — what each plan includes, as data the operator edits.
+
+    Creates the table and seeds the four tiers — and any other value an
+    account's ``tier`` already carries — with ``["*"]``, everything
+    included, so the plan mask's arrival changes nothing for anyone: an
+    account on any tier holds exactly what it held (the mask is
+    fail-closed, so a tier WITHOUT a row would hold nothing sellable).
+    The operator narrows a plan from the system console; a row that
+    already exists is never rewritten here.  Idempotent.
+    """
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS plans (
+                tier        TEXT PRIMARY KEY,
+                label       TEXT NOT NULL,
+                included    TEXT NOT NULL DEFAULT '["*"]',
+                quotas      TEXT NOT NULL DEFAULT '{}',
+                updated_at  TEXT NOT NULL,
+                updated_by  TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        now = _dt.now(_tz.utc).isoformat()
+        tiers = [("free", "Free"), ("starter", "Starter"),
+                 ("pro", "Pro"), ("enterprise", "Enterprise")]
+        cur = await conn.execute(
+            "SELECT DISTINCT tier FROM accounts WHERE tier IS NOT NULL AND tier != ''")
+        known = {t for t, _ in tiers}
+        for r in await cur.fetchall():
+            if r[0] not in known:
+                tiers.append((r[0], str(r[0]).replace("_", " ").title()))
+                known.add(r[0])
+        # ON CONFLICT DO NOTHING: the API's workers, the bot and the queue
+        # may all boot at once — a row that exists (seeded or narrowed by
+        # the operator) is never touched, and no two boots race a SELECT.
+        for tier, label in tiers:
+            await conn.execute(
+                "INSERT INTO plans (tier, label, included, quotas, updated_at, updated_by) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (tier) DO NOTHING",
+                (tier, label, _json.dumps(["*"]), _json.dumps({}), now, "migration"),
+            )
+        await conn.commit()
+        logger.info("Migration: plans seeded — %d tier(s) offered, everything included, "
+                    "existing rows kept", len(tiers))
+    except Exception as e:
+        logger.error("plans migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+

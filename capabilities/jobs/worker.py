@@ -47,6 +47,12 @@ async def on_startup(ctx):
     import infra.startup as _startup
     if _startup.tenant_registry is None:
         await _startup.initialize()
+    # The plan table into its last-known cache: a job asks
+    # feature_available with no user in hand, and the sync answer is
+    # fail-closed — a worker that never warmed would hold every sellable
+    # feature closed for its whole life.
+    from capabilities.permissions.plans import refresh_plans as _refresh_plans
+    await _refresh_plans()
     logger.info("ARQ worker startup complete")
 
 

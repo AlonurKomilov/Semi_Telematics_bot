@@ -99,6 +99,11 @@ def feature_available(acct, feature_id: str) -> bool:
     column = ACCOUNT_FEATURE_SWITCHES.get(feature_id)
     if column is not None and not getattr(acct, column, False):
         return False
+    # Layer 1: the plan.  From the last-known table, fail-closed, the
+    # same answer the resolver's plan mask gives a user.
+    from capabilities.permissions.plans import plan_includes, tier_of
+    if not plan_includes(tier_of(acct), feature_id):
+        return False
     return True
 
 

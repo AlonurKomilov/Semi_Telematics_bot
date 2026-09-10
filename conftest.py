@@ -101,6 +101,24 @@ def _reset_rate_limiter():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _plans_warm(_isolate_process_caches):
+    """Every process warms the plan table at boot — the API lifespan, the
+    bot's post_init — before it serves, because the plan mask is
+    FAIL-CLOSED: a never-loaded table closes every sellable feature.
+    The harness does the same with the seed (every tier includes
+    everything), so a test that never wires the platform DB sees
+    production's answer.  Runs AFTER the cache clearing (declared as a
+    dependency, not by position) so the prime is what a test sees.  The
+    closed states are tested by clearing it
+    (capabilities/permissions/tests/test_plan_mask.py)."""
+    from capabilities.permissions import plans
+    plans.load_rows([{"tier": t, "included": ["*"], "quotas": {}}
+                     for t in ("free", "starter", "pro", "enterprise")])
+    yield
+    plans.forget()
+
+
 @pytest_asyncio.fixture
 async def db(pg_db):
     """Postgres-backed ``Database`` (legacy ``db`` fixture alias).
@@ -461,6 +479,11 @@ async def tenant_registry(core_platform):
 # leaves the same leak open on the third.
 _PROCESS_CACHES = (
     ("adapters.storage.object_storage", "_per_account_stores"),
+    # the plan table's last-known cache + the last-known tier per account
+    # (account ids repeat across template copies); re-primed by _plans_warm
+    ("capabilities.permissions.plans", "_PLANS"),
+    ("capabilities.permissions.plans", "_QUOTAS"),
+    ("capabilities.permissions.plans", "_TIER_OF"),
     ("capabilities.permissions.scope", "_role_scope_cache"),
     ("adapters.storage.platform_settings", "_settings_cache"),
     ("capabilities.ai.cache", "_response_cache"),

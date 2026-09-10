@@ -113,7 +113,7 @@ value inside the tier union would claim services sit on an axis they don't.
   data, withheld per role — without the grant no beacon shows, the library
   redirects and `/me/tour-signals` answers 403.
 - **Content gate**: each tour still needs the feature it walks through
-  (`features/tours/reachable.ts`); the service is the door, the features
+  (`interfaces/dashboard/src/features/tours/reachable.ts`); the service is the door, the features
   decide which tours exist behind it.
 
 ### 🎨 Mods

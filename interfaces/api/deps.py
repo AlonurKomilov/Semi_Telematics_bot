@@ -844,8 +844,9 @@ async def enforce_user_quota(account_id: int, platform_db=None) -> None:
     if platform_db is None:
         platform_db = _get_router().platform
     account = await platform_db.get_account(account_id)
-    tier = (account.tier if account else None) or "free"
-    limit = QUOTA_MAX_USERS.get(tier, QUOTA_MAX_USERS.get("free", 0))
+    from capabilities.permissions.plans import quota_for, tier_of
+    tier = tier_of(account)
+    limit = quota_for(tier, "max_users", QUOTA_MAX_USERS.get(tier, QUOTA_MAX_USERS.get("free", 0)))
     if limit == 0:
         return  # unlimited
     count = await platform_db.count_account_users(account_id)
@@ -868,8 +869,9 @@ async def enforce_company_quota(account_id: int, tenant_db=None) -> None:
     from infra.config import QUOTA_MAX_COMPANIES
     platform_db = _get_router().platform
     account = await platform_db.get_account(account_id)
-    tier = (account.tier if account else None) or "free"
-    limit = QUOTA_MAX_COMPANIES.get(tier, QUOTA_MAX_COMPANIES.get("free", 1))
+    from capabilities.permissions.plans import quota_for, tier_of
+    tier = tier_of(account)
+    limit = quota_for(tier, "max_companies", QUOTA_MAX_COMPANIES.get(tier, QUOTA_MAX_COMPANIES.get("free", 1)))
     if limit == 0:
         return  # unlimited
     if tenant_db is None:

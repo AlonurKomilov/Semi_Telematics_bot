@@ -244,6 +244,27 @@ permission. A service or a job with no user in hand asks
 reads the column; `capabilities/permissions/tests/test_account_mask.py`
 holds that.
 
+**The plan mask.** Above the account's switches sits the account's PLAN,
+and the plan is data, never code: one `plans` row per tier (`accounts.tier`
+is the key) names what the plan includes — registry ids, `["*"]` meaning
+everything — and its quotas; the operator edits it from the system
+console, and no route ever asks whether the plan is Pro. The resolver
+applies it first (`capabilities/permissions/plans.py`, layer 1, before
+the department mask): every flag of every registry entry the plan leaves
+out is forced off, so nav, API, bot and AI close through the permission,
+and `feature_available` gives a job the same answer. What a plan may
+leave out is the sellable set — every feature and service except what
+an owner must always reach: the administration tier, Billing (the way
+back to a wider plan) and Overview. Config-family flags are never
+masked. The mask is FAIL-CLOSED against a live platform: an unknown
+tier closes the sellable set, an unreadable table keeps the last-known
+one (warmed at API and bot start), an unreadable account row falls back
+to that account's last-known tier. The seed puts every tier — and any
+value an account already carries — on `["*"]`, so the mask's arrival
+changes nothing until the operator narrows a plan.
+`capabilities/permissions/tests/test_plan_mask.py` and
+`adapters/storage/tests/test_migration_plans.py` hold all of it.
+
 ### The platform sub-family — audience split inside capabilities/
 
 `capabilities/` holds two audiences, made structural on 2026-07-10:

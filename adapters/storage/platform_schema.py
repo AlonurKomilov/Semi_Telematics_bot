@@ -604,6 +604,19 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_push_subs_user
             ON push_subscriptions(account_id, user_id);
 
+        -- Plans: what each plan INCLUDES, as data the operator edits
+        -- (system console).  tier = accounts.tier.  included = JSON list
+        -- of registry ids; ["*"] = everything.  The resolver's plan mask
+        -- reads it fail-closed (capabilities/permissions/plans.py).
+        CREATE TABLE IF NOT EXISTS plans (
+            tier        TEXT PRIMARY KEY,
+            label       TEXT NOT NULL,
+            included    TEXT NOT NULL DEFAULT '["*"]',
+            quotas      TEXT NOT NULL DEFAULT '{}',
+            updated_at  TEXT NOT NULL,
+            updated_by  TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

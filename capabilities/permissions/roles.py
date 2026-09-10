@@ -1059,6 +1059,37 @@ def get_permissions(role: Role) -> FeatureSet:
     return ROLE_PERMISSIONS.get(role, FeatureSet())
 
 
+async def _apply_plan_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
+    """Layer 1: what the account's PLAN includes (capabilities/permissions/plans.py).
+
+    FAIL-CLOSED against a live platform that fails, unlike the account
+    mask: the plan table is reloaded when stale (a failed read keeps the
+    last-known table); the account's tier is read from its row, else the
+    last-known tier for that account; with no plan answer at all the
+    sellable set is closed.  A process with no platform at all (a unit
+    test, a script) has no plan to apply and is skipped, as the account
+    mask skips it.  Runs after owner-protect — the escape-hatch flags
+    are not sellable — and before the department mask.
+    """
+    from infra import platform as _platform
+    if _platform._db is None:
+        # No platform in this process (a unit test, a script): there is
+        # no plan to apply — the same skip the account mask makes.  A
+        # LIVE platform that fails is the fail-closed path below.
+        return fs
+    from capabilities.permissions import plans as _plans
+    await _plans.refresh_plans()
+    tier = None
+    try:
+        acct = await _platform.get_platform_db().get_account(account_id)
+        tier = _plans.tier_of(acct) if acct else None
+        _plans.remember_tier(account_id, tier)
+    except Exception as e:
+        tier = _plans.last_known_tier(account_id)
+        logger.debug("Plan mask: account unreadable, last-known tier %r (%s)", tier, e)
+    return _plans.apply_plan_mask(fs, tier)
+
+
 async def _apply_account_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
     """The account-level mask (one hiding mechanism).
 
@@ -1150,6 +1181,7 @@ async def _resolve_perms(
             filtered = {k: v for k, v in perm_dict.items() if k in known_fields}
             merged = {**seed, **filtered}
             fs = _protect_owner(protect_role, FeatureSet(**merged))
+            fs = await _apply_plan_mask(fs, account_id)
             fs = await _apply_account_mask(fs, account_id)
             _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
             return fs
@@ -1157,6 +1189,7 @@ async def _resolve_perms(
         logger.debug("Could not load permissions from DB (using defaults): %s", e)
 
     fs = _protect_owner(protect_role, default_fs)
+    fs = await _apply_plan_mask(fs, account_id)
     fs = await _apply_account_mask(fs, account_id)
     _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
     return fs

@@ -20,6 +20,7 @@ from .drivers import (
 )
 from .user_companies import UserCompaniesMixin
 from .billing import BillingMixin
+from .plans import PlansMixin
 from .ai_chat import AIChatHistoryMixin
 from .errors import ErrorLogMixin
 from . import platform_schema
@@ -41,6 +42,7 @@ class PlatformDB(
     DriverDocumentsMixin,
     UserCompaniesMixin,
     BillingMixin,
+    PlansMixin,
     AIChatHistoryMixin,
     ErrorLogMixin,
     _DatabaseCore,

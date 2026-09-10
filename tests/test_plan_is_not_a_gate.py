@@ -33,9 +33,10 @@ _MAY_NAME_A_PLAN = {
     "adapters/storage/billing.py": "the plan table (prices, included units)",
     "interfaces/api/routes/system.py": "the operator console filters accounts by plan",
     "interfaces/api/auth.py": "signup starts the trial on a named plan",
-    # Quotas by plan live here until step 6 folds them into the mask —
+    # Quotas: the plan row's number first (capabilities/permissions/plans
+    # .quota_for), the QUOTA_MAX_* table by plan when the row sets none —
     # a lookup by plan for a NUMBER (seats, companies), not a gate on a feature.
-    "interfaces/api/deps.py": "QUOTA_MAX_* by plan — a number, not a feature gate (step 6 moves it)",
+    "interfaces/api/deps.py": "QUOTA_MAX_* by plan — a number, not a feature gate",
     "features/settings/account/config.py": "shows the account's plan on the page",
 }
 

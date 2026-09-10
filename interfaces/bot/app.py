@@ -103,6 +103,10 @@ async def post_init(app: Application):
     if _platform._db is None:
         import infra.startup
         await infra.startup.initialize()
+    # The plan table into its last-known cache before the first update
+    # (the scheduler's jobs ask feature_available with no user in hand).
+    from capabilities.permissions.plans import refresh_plans as _refresh_plans
+    await _refresh_plans()
 
     # Capture bot username for deep-link generation
     me = await app.bot.get_me()
