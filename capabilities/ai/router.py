@@ -232,8 +232,12 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
     )
     user_context["scoped_vehicle_nums"] = scope
     from capabilities.ai.scope import resolve_scope_ladder
+    try:
+        assignments = await platform_db.get_user_vehicle_assignments(user_obj.id)
+    except Exception:  # pragma: no cover - defensive: names still work
+        assignments = None
     user_context["scoped_vehicle_ladder"] = await resolve_scope_ladder(
-        user_obj.account_id, scope,
+        user_obj.account_id, scope, assignments=assignments,
     )
 
     # Snapshot scoping mirrors the gate.  ``[]`` (restricted-to-none) must

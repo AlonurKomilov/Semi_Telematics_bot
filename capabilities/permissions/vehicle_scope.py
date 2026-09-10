@@ -191,8 +191,11 @@ class VehicleScope:
         )
 
 
+Assigned = "str | tuple[str, int | None]"
+
+
 async def build_vehicle_scope(
-    tenant, account_id: int, assigned_names: list[str],
+    tenant, account_id: int, assigned_names: list,
 ) -> VehicleScope:
     """Resolve assignment strings into a full-ladder scope.
 
@@ -208,18 +211,56 @@ async def build_vehicle_scope(
     a SIBLING assignment did resolve to a provider id.
 
     One unit number can resolve to more than one registry row — numbers
-    are reused across companies — and every one of them joins the
-    scope, exactly as before.  Narrowing that is the assignment model's
-    problem, not this function's.
+    are reused across companies.  An element may therefore be a plain
+    name OR a ``(name, registry_id)`` pair.  A pair names ONE truck: that
+    row alone joins the scope, and NO name-only rung is added for it —
+    otherwise the twin walks straight back in through rung 3.  A bare
+    name keeps the old meaning: every row answering to it joins, exactly
+    as before, until a human picks in Team Management.
     """
-    names = sorted({
-        n.strip().lower() for n in (assigned_names or []) if n and n.strip()
-    })
-    if not names:
+    pinned: dict[int, str] = {}      # registry_id -> the name it was assigned as
+    loose: set[str] = set()
+    for a in (assigned_names or []):
+        if isinstance(a, (tuple, list)):
+            n = str(a[0] or "").strip().lower()
+            rid = a[1] if len(a) > 1 else None
+            if not n:
+                continue
+            if rid is not None:
+                pinned[int(rid)] = n
+            else:
+                loose.add(n)
+        elif a and str(a).strip():
+            loose.add(str(a).strip().lower())
+    names = sorted(loose)
+    if not names and not pinned:
         return VehicleScope()
 
     identities: list[VehicleIdentity] = []
     resolved: set[str] = set()
+    if pinned:
+        ph = ", ".join("?" for _ in pinned)
+        # archived-ok: a scope is a PERMISSION, not a liveness check —
+        # same stance as the name query below; a pinned truck that has
+        # since been retired must keep answering for its history.
+        cur = await tenant._db.execute(
+            f"SELECT id, telematics_ref, lower(unit_number) FROM vehicles "
+            f"WHERE account_id = ? AND id IN ({ph})",
+            (account_id, *pinned),
+        )
+        found = set()
+        for row in await cur.fetchall():
+            found.add(int(row[0]))
+            identities.append(VehicleIdentity.make(
+                registry_id=row[0], external_id=row[1], name=str(row[2] or "")))
+        # A pinned id the registry no longer has (hard-deleted) falls back
+        # to its name — the assignment still means what it said.
+        for rid, n in pinned.items():
+            if rid not in found:
+                loose.add(n)
+        names = sorted(loose)
+    if not names:
+        return VehicleScope.of(*identities)
     placeholders = ", ".join("?" for _ in names)
     # archived-ok: a scope is a PERMISSION, not a liveness check.
     # Someone scoped to a truck must keep reaching its records after it

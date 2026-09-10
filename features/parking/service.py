@@ -259,8 +259,17 @@ async def scope_for(user: dict, deps: Any):
         )
         if truck_names:
             tenant = await get_tenant_db(user["account_id"])
+            # The scope is built from ASSIGNMENTS — (name, registry_id) —
+            # so a pinned "103" is one truck; ``truck_names`` stays the
+            # names-only contract this function returns.
+            try:
+                assignments = await deps.get_user_vehicle_assignments(user)
+                if not isinstance(assignments, list):
+                    raise TypeError("assignments must be a list")
+            except Exception:
+                assignments = None    # names below still mean what they said
             scope = await build_vehicle_scope(
-                tenant, user["account_id"], truck_names,
+                tenant, user["account_id"], assignments or truck_names,
             )
         else:
             scope = VehicleScope()

@@ -247,10 +247,10 @@ async def map_vehicles_live(
     # of dependency ordering.  member_unit_scope asks it directly
     # and additionally honours a member-level override.
     if await member_unit_scope(user, "location") == "assigned":
-        from interfaces.api.deps import get_user_vehicle_nums
+        from interfaces.api.deps import get_user_vehicle_assignments
         from infra.platform import get_router as _get_router
         from capabilities.permissions.vehicle_scope import build_vehicle_scope
-        trucks = await get_user_vehicle_nums(user)
+        trucks = await get_user_vehicle_assignments(user)   # (name, registry_id)
         if not trucks:
             return {"positions": {}}
         # Membership by the identity ladder, never by substring.  This

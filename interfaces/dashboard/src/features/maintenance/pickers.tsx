@@ -4,6 +4,10 @@ import { Card } from '@/components/ui/card';
 export interface VehicleSummary {
   name: string;
   company: string;
+  /** Registry id — what an assignment PINS to.  A unit number is reused
+   *  across companies ("103" in OSY and in G1), so a name alone cannot
+   *  say which truck; the id can.  Present on every registry-backed row. */
+  registry_id?: number | null;
   status: string;
   fuel_percent: number | null;
   speed_mph: number;

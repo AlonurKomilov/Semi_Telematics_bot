@@ -32,6 +32,11 @@ class DriverVehicle:
     is_primary: bool
     assigned_by: int
     assigned_at: str
+    # WHICH truck the name means, when the assignment can say.  ``None``
+    # = the name alone, every registry row answering to it — a unit
+    # number is reused across companies, and until a human picks, the
+    # twin stays in scope exactly as it always was.
+    registry_id: int | None = None
 
 
 class DriverVehiclesMixin(_MixinBase):
@@ -41,12 +46,29 @@ class DriverVehiclesMixin(_MixinBase):
         """Get all vehicle assignments for a user, primary first."""
         async with self.acquire() as conn:
             cur = await conn.execute(
-                "SELECT * FROM driver_trucks "
+                "SELECT id, user_id, account_id, truck_num, is_primary, assigned_by, assigned_at, registry_id FROM driver_trucks "
                 "WHERE user_id = ? ORDER BY is_primary DESC, truck_num",
                 (user_id,),
             )
             rows = await cur.fetchall()
         return [self._row_to_driver_vehicle(r) for r in rows]
+
+    async def get_user_vehicle_assignments(
+        self, user_id: int,
+    ) -> list[tuple[str, int | None]]:
+        """``[(truck_num, registry_id | None), ...]`` — what the scope
+        builder needs.  ``get_user_vehicle_nums`` keeps returning names
+        (the wire contract everywhere); this carries the identity beside
+        each name so ``build_vehicle_scope`` can resolve ONE truck where
+        a human has said which."""
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT truck_num, registry_id FROM driver_trucks "
+                "WHERE user_id = ? ORDER BY is_primary DESC, truck_num",
+                (user_id,),
+            )
+            rows = await cur.fetchall()
+        return [(str(r[0]), (int(r[1]) if r[1] is not None else None)) for r in rows]
 
     async def get_user_vehicle_nums(self, user_id: int) -> list[str]:
         """Get just the vehicle_num strings for a user."""
@@ -116,8 +138,16 @@ class DriverVehiclesMixin(_MixinBase):
         truck_num: str,
         assigned_by: int = 0,
         is_primary: bool = False,
+        registry_id: int | None = None,
     ) -> DriverVehicle:
-        """Assign a vehicle to a user. If is_primary, demote other primaries."""
+        """Assign a vehicle to a user. If is_primary, demote other primaries.
+
+        ``registry_id`` says WHICH truck the name means; ``None`` keeps
+        the name-only meaning.  The upsert key is (user, name, id) so a
+        person can hold both twins of one number explicitly — written as
+        select-then-write rather than ON CONFLICT, because the key is an
+        expression index (COALESCE) and the two engines spell conflict
+        targets on those differently."""
         now = self._now()
         truck_num = truck_num.strip()
         async with self.transaction():
@@ -127,15 +157,26 @@ class DriverVehiclesMixin(_MixinBase):
                     (user_id,),
                 )
             cur = await self._db.execute(
-                "INSERT INTO driver_trucks "
-                "(user_id, account_id, truck_num, is_primary, assigned_by, assigned_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(user_id, truck_num) "
-                "DO UPDATE SET is_primary = ?, assigned_by = ?, assigned_at = ?",
-                (user_id, account_id, truck_num,
-                 int(is_primary), assigned_by, now,
-                 int(is_primary), assigned_by, now),
+                "SELECT id FROM driver_trucks WHERE user_id = ? AND truck_num = ? "
+                "AND COALESCE(registry_id, 0) = COALESCE(?, 0)",
+                (user_id, truck_num, registry_id),
             )
+            existing = await cur.fetchone()
+            if existing:
+                row_id = int(existing[0])
+                await self._db.execute(
+                    "UPDATE driver_trucks SET is_primary = ?, assigned_by = ?, assigned_at = ? "
+                    "WHERE id = ?",
+                    (int(is_primary), assigned_by, now, row_id),
+                )
+            else:
+                ins = await self._db.execute(
+                    "INSERT INTO driver_trucks "
+                    "(user_id, account_id, truck_num, is_primary, assigned_by, assigned_at, registry_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, account_id, truck_num, int(is_primary), assigned_by, now, registry_id),
+                )
+                row_id = getattr(ins, "lastrowid", None) or 0
         # Also keep users.truck_num in sync (primary truck)
         if is_primary:
             await self._db.execute(
@@ -149,9 +190,9 @@ class DriverVehiclesMixin(_MixinBase):
             user_id, truck_num, is_primary,
         )
         return DriverVehicle(
-            id=cur.lastrowid, user_id=user_id, account_id=account_id,
+            id=row_id, user_id=user_id, account_id=account_id,
             vehicle_num=truck_num, is_primary=is_primary,
-            assigned_by=assigned_by, assigned_at=now,
+            assigned_by=assigned_by, assigned_at=now, registry_id=registry_id,
         )
 
     async def unassign_vehicle(self, user_id: int, truck_num: str) -> bool:
@@ -192,9 +233,15 @@ class DriverVehiclesMixin(_MixinBase):
         account_id: int,
         vehicle_nums: list[str],
         assigned_by: int = 0,
+        registry_ids: list[int | None] | None = None,
     ) -> list[DriverVehicle]:
-        """Replace all vehicle assignments for a user. First in list is primary."""
+        """Replace all vehicle assignments for a user. First in list is primary.
+
+        ``registry_ids`` aligns with ``vehicle_nums`` by position; a
+        ``None`` (or a missing list) keeps that name's old meaning —
+        every truck answering to it."""
         now = self._now()
+        ids = list(registry_ids or [])
         async with self.transaction():
             await self._db.execute(
                 "DELETE FROM driver_trucks WHERE user_id = ?",
@@ -204,11 +251,13 @@ class DriverVehiclesMixin(_MixinBase):
                 tn = tn.strip()
                 if not tn:
                     continue
+                rid = ids[i] if i < len(ids) else None
                 await self._db.execute(
                     "INSERT INTO driver_trucks "
-                    "(user_id, account_id, truck_num, is_primary, assigned_by, assigned_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (user_id, account_id, tn, int(i == 0), assigned_by, now),
+                    "(user_id, account_id, truck_num, is_primary, assigned_by, assigned_at, registry_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, account_id, tn, int(i == 0), assigned_by, now,
+                     (int(rid) if rid is not None else None)),
                 )
 
         # Sync users.truck_num with primary
@@ -271,4 +320,5 @@ class DriverVehiclesMixin(_MixinBase):
             is_primary=bool(row[4]),
             assigned_by=row[5],
             assigned_at=row[6],
+            registry_id=(int(row[7]) if len(row) > 7 and row[7] is not None else None),
         )

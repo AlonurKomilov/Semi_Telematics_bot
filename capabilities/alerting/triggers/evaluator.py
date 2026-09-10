@@ -213,11 +213,19 @@ async def _owner_scope(tenant, account_id: int, owner_user_id: int):
 
         if role != "driver":
             return _AllOf(walls) if walls else None
-        trucks = await db.get_user_vehicle_nums(owner_user_id)
+        # (name, registry_id) pairs: a pinned twin stays one truck.
+        try:
+            trucks = await db.get_user_vehicle_assignments(owner_user_id)
+            if not isinstance(trucks, list):
+                raise TypeError("assignments must be a list")
+        except Exception:
+            # A double that predates the column: names, each meaning
+            # every truck answering to it — the old rule, no worse.
+            trucks = [(n, None) for n in await db.get_user_vehicle_nums(owner_user_id)]
         if not trucks:
             # The legacy single-truck column, which invite redemption
             # still writes before the junction row exists.
-            trucks = [getattr(user, "truck_num", "")] if getattr(user, "truck_num", "") else []
+            trucks = [(getattr(user, "truck_num", ""), None)] if getattr(user, "truck_num", "") else []
         if not trucks:
             # No assignment at all: restricted to nothing, matching
             # deps.get_user_vehicle_scope.  A driver-owned trigger has

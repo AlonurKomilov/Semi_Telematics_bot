@@ -15,6 +15,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret-32-chars-or-more-please-aaaaaaa
 os.environ.setdefault("OBJECT_STORE_BACKEND", "disk")
 os.environ.setdefault("OBJECT_STORE_ROOT", "/tmp/driver_mgmt_test_store")
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
@@ -81,3 +82,50 @@ class TestDriverManagement:
             r = await c.post("/api/admin/drivers/invite", headers=ho, json={"role": "admin"})
             assert r.status_code == 200, r.text
             assert r.json()["role"] == "driver"
+
+
+@pytest.mark.asyncio
+class TestAssignmentNamesOneTruck:
+    """A unit number is reused across companies.  ``vehicle_ids`` says
+    WHICH truck each name means; omitted, the name keeps meaning every
+    truck answering to it — the wire the extension and bot still send."""
+
+    async def test_vehicle_ids_round_trip(self, api):
+        app, db = api
+        acct = await db.create_account("Twins Co")
+        owner = await db.create_user(700030, acct.id, role=Role.OWNER)
+        drv = await db.create_user(700031, acct.id, role=Role.DRIVER)
+        osy = await db.add_vehicle(acct.id, unit_number="103", company_code="OSY")
+        g1 = await db.add_vehicle(acct.id, unit_number="103", company_code="G1")
+        osy_id = getattr(osy, "id", osy); g1_id = getattr(g1, "id", g1)
+        ho = _headers(owner, acct, "owner")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            # Both twins, explicitly — a duplicate NAME is fine when the ids differ.
+            r = await c.put(f"/api/admin/users/{drv.id}/trucks", headers=ho,
+                            json={"trucks": ["103", "103", "229"], "vehicle_ids": [osy_id, g1_id, None]})
+            assert r.status_code == 200, r.text
+            got = {(t["vehicle_num"], t["registry_id"]) for t in r.json()["trucks"]}
+            assert got == {("103", osy_id), ("103", g1_id), ("229", None)}
+            r = await c.get(f"/api/admin/users/{drv.id}/trucks", headers=ho)
+            assert {(t["vehicle_num"], t["registry_id"]) for t in r.json()["trucks"]} == got
+            # Names only still works, and means the name.
+            r = await c.put(f"/api/admin/users/{drv.id}/trucks", headers=ho, json={"trucks": ["103"]})
+            assert r.status_code == 200 and r.json()["trucks"][0]["registry_id"] is None
+
+    async def test_bad_ids_are_refused(self, api):
+        app, db = api
+        acct = await db.create_account("Twins Co2")
+        owner = await db.create_user(700040, acct.id, role=Role.OWNER)
+        drv = await db.create_user(700041, acct.id, role=Role.DRIVER)
+        ho = _headers(owner, acct, "owner")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.put(f"/api/admin/users/{drv.id}/trucks", headers=ho,
+                            json={"trucks": ["103", "229"], "vehicle_ids": [1]})
+            assert r.status_code == 400
+            r = await c.put(f"/api/admin/users/{drv.id}/trucks", headers=ho,
+                            json={"trucks": ["103"], "vehicle_ids": [999999]})
+            assert r.status_code == 400
+            # The same (name, id) twice is a duplicate; two names are not.
+            r = await c.put(f"/api/admin/users/{drv.id}/trucks", headers=ho,
+                            json={"trucks": ["103", "103"], "vehicle_ids": [None, None]})
+            assert r.status_code == 400

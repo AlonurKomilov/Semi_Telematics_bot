@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from interfaces.api.deps import (
     member_unit_scope,
     require_permission, require_permission_any, get_tenant_db, get_platform_db,
-    get_user_vehicle_nums, get_user_company_codes,
+    get_user_vehicle_nums, get_user_vehicle_assignments, get_user_company_codes,
     validate_company_access, filter_by_allowed_companies,
 )
 from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
@@ -52,7 +52,7 @@ async def _events_vehicle_scope(user: dict, tenant_db):
     # and additionally honours a member-level override.
     if await member_unit_scope(user, "events") != "assigned":
         return None
-    trucks = await get_user_vehicle_nums(user)
+    trucks = await get_user_vehicle_assignments(user)   # (name, registry_id) — a pinned twin stays one truck
     if not trucks:
         return VehicleScope()
     return await build_vehicle_scope(tenant_db, user["account_id"], trucks)

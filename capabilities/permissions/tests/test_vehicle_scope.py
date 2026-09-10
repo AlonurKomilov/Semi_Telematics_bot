@@ -126,10 +126,15 @@ class TestWallIntegration:
             return ["230", "229"]
 
         async def _build(tenant_db, account_id, trucks):
-            assert trucks == ["230", "229"], trucks
+            # The router now hands the ladder (name, registry_id) pairs —
+            # an assignment may pin one truck.  Unpinned here, so ids are None.
+            assert [t[0] if isinstance(t, tuple) else t for t in trucks] == ["230", "229"], trucks
             return built
 
         monkeypatch.setattr(mr, "get_user_vehicle_nums", _nums)
+        async def _asg(user):
+            return [(t, None) for t in await _nums(user)]
+        monkeypatch.setattr(mr, "get_user_vehicle_assignments", _asg)
         monkeypatch.setattr(mr, "build_vehicle_scope", _build)
 
         # A _own caller gets the ladder...
@@ -167,6 +172,7 @@ class TestWallIntegration:
         async def _none(user):
             return []
         monkeypatch.setattr(mr, "get_user_vehicle_nums", _none)
+        monkeypatch.setattr(mr, "get_user_vehicle_assignments", _none)
 
         scope = await mr._maintenance_vehicle_scope(
             {"role": "driver", "account_id": 1}, object(),
@@ -252,3 +258,35 @@ async def test_builder_resolves_assignments_through_the_registry(pg_db):
     # exact name, so a typo'd roster doesn't blank a driver's view.
     assert scope.allows(name="ghost-77")
     assert not scope.allows(name="ghost-777")
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_assignment_admits_one_twin_only(pg_db):
+    """The one-twin scope upstream could never produce before.
+
+    Two live trucks share "103".  A bare-name assignment admits both, as
+    always.  An assignment that names a registry id admits THAT truck and
+    adds no name rung for it — so the sibling cannot walk back in through
+    the name."""
+    acct = 43
+    a = await pg_db.add_vehicle(acct, unit_number="103", company_code="OSY")
+    b = await pg_db.add_vehicle(acct, unit_number="103", company_code="G1")
+    a_id = getattr(a, "id", a); b_id = getattr(b, "id", b)
+
+    both = await build_vehicle_scope(pg_db, acct, ["103"])
+    assert both.registry_ids == frozenset({a_id, b_id})
+
+    one = await build_vehicle_scope(pg_db, acct, [("103", a_id)])
+    assert one.registry_ids == frozenset({a_id})
+    assert one.allows(registry_id=a_id, name="103")
+    assert not one.allows(registry_id=b_id, name="103")   # the twin, by id
+    # A row carrying NO id still falls through to the name rung — the
+    # ladder's documented pre-backfill behaviour ("no worse, gone once
+    # ids exist").  Every registry row carries one, so the twin is
+    # refused where it matters: by id, above.
+    assert one.allows(name="103")
+
+    # Mixed: one pinned, one loose — the loose name still means every row.
+    mixed = await build_vehicle_scope(pg_db, acct, [("103", a_id), "229"])
+    assert mixed.registry_ids == frozenset({a_id})
+    assert mixed.allows(name="229")

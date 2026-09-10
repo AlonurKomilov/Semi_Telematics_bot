@@ -9401,3 +9401,27 @@ async def migrate_member_vehicle_scope(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 205: users.vehicle_scope — scope leaves the flags")
+
+
+@_register("206_driver_trucks_registry_id")
+async def migrate_driver_trucks_registry_id_legacy(conn) -> None:
+    """``driver_trucks.registry_id`` — twin of the migration in
+    ``platform_migrations.py``, for legacy single-file SQLite databases.
+    An assignment may name ONE truck; NULL keeps the name-only meaning.
+    The unique key becomes (user_id, truck_num, COALESCE(registry_id, 0))
+    so both twins of a number can be assigned explicitly.  Idempotent."""
+    try:
+        await conn.execute("ALTER TABLE driver_trucks ADD COLUMN registry_id INTEGER")
+        await conn.commit()
+    except Exception:
+        pass
+    for stmt in (
+        "DROP INDEX IF EXISTS idx_driver_trucks_user_truck",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_trucks_user_truck_registry "
+        "ON driver_trucks(user_id, truck_num, COALESCE(registry_id, 0))",
+    ):
+        try:
+            await conn.execute(stmt)
+            await conn.commit()
+        except Exception:
+            pass

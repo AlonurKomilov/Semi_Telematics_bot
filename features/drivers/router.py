@@ -994,7 +994,8 @@ async def get_user_vehicles(
     return {
         "user_id": user_id,
         "trucks": [
-            {"vehicle_num": t.vehicle_num, "is_primary": t.is_primary, "assigned_at": t.assigned_at}
+            {"vehicle_num": t.vehicle_num, "is_primary": t.is_primary,
+             "assigned_at": t.assigned_at, "registry_id": t.registry_id}
             for t in vehicles
         ],
         "legacy_truck_num": target.truck_num,
@@ -1003,6 +1004,12 @@ async def get_user_vehicles(
 
 class VehicleAssignment(BaseModel):
     trucks: list[str] = Field(..., max_length=200)  # kept as 'trucks' for API compat
+    # Positional with ``trucks``: the registry id each name MEANS, or null
+    # for "the name, every truck answering to it".  A unit number is
+    # reused across companies, so without this "103" was every 103.
+    # Optional so the extension and the bot, which send names only, keep
+    # working unchanged.
+    vehicle_ids: list[int | None] | None = Field(default=None, max_length=200)
 
 
 @admin_router.put("/users/{user_id}/trucks")
@@ -1017,13 +1024,28 @@ async def set_user_vehicles(
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
-    cleaned = [t.strip() for t in body.trucks if t.strip()]
-    if len(cleaned) != len(set(cleaned)):
-        raise HTTPException(status_code=400, detail="Duplicate vehicle numbers")
+    ids = list(body.vehicle_ids or [])
+    if ids and len(ids) != len(body.trucks):
+        raise HTTPException(status_code=400, detail="vehicle_ids must align with trucks")
+    pairs = [
+        (t.strip(), (ids[i] if i < len(ids) else None))
+        for i, t in enumerate(body.trucks) if t.strip()
+    ]
+    cleaned = [t for t, _ in pairs]
+    # Duplicate NAMES are fine when they name different trucks (both
+    # twins of "103"); the same (name, id) twice is not.
+    if len(pairs) != len(set(pairs)):
+        raise HTTPException(status_code=400, detail="Duplicate vehicle assignments")
+    if ids:
+        for rid in {r for r in ids if r is not None}:
+            v = await tenant_db.get_vehicle(target.account_id, int(rid))
+            if v is None:
+                raise HTTPException(status_code=400, detail=f"Unknown vehicle id {rid}")
     old_trucks = [t.vehicle_num for t in
                   await platform_db.get_user_vehicles(user_id)]
     vehicles = await platform_db.set_user_vehicles(
         user_id, target.account_id, cleaned, assigned_by=int(user["sub"]),
+        registry_ids=[rid for _, rid in pairs],
     )
     await record_simple(
         tenant_db, user["account_id"], await resolve_user_id(user),
@@ -1032,7 +1054,8 @@ async def set_user_vehicles(
     )
     return {
         "ok": True,
-        "trucks": [{"vehicle_num": t.vehicle_num, "is_primary": t.is_primary} for t in vehicles],
+        "trucks": [{"vehicle_num": t.vehicle_num, "is_primary": t.is_primary,
+                    "registry_id": t.registry_id} for t in vehicles],
     }
 
 

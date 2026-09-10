@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
-from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope, holds, effective_perms
+from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, get_user_vehicle_assignments, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope, holds, effective_perms
 from capabilities.activity_trail import new_group_id
 from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
 from features.maintenance.service import apply_live_readings, spawn_recurring_if_completed
@@ -218,7 +218,7 @@ async def _maintenance_vehicle_scope(user: dict, tenant_db):
     # Verbs stay permissions; WIDTH is Team Management's question.
     if await member_unit_scope(user, "maintenance") == "all":
         return None
-    trucks = await get_user_vehicle_nums(user)
+    trucks = await get_user_vehicle_assignments(user)   # (name, registry_id) — a pinned twin stays one truck
     if not trucks:
         return VehicleScope()
     return await build_vehicle_scope(tenant_db, user["account_id"], trucks)

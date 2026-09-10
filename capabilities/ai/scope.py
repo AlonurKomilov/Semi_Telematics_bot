@@ -140,6 +140,7 @@ async def resolve_vehicle_scope(
 
 async def resolve_scope_ladder(
     account_id: int, names: Optional[list[str]],
+    assignments: Optional[list] = None,
 ) -> Optional[dict]:
     """Resolve a name scope's identity rungs via the registry.
 
@@ -160,7 +161,21 @@ async def resolve_scope_ladder(
         from capabilities.permissions.vehicle_scope import build_vehicle_scope
         from infra.platform import get_tenant_db as _get_tenant
         tenant = await _get_tenant(account_id)
-        scope = await build_vehicle_scope(tenant, account_id, list(names))
+        # Names are the wire contract (``scoped_vehicle_nums``); the
+        # assignments carry WHICH truck a name means when a human has
+        # said.  Build from the pairs where we have them so a pinned
+        # "103" resolves to one identity, not to every 103.
+        wanted = {str(n).strip().lower() for n in names if n}
+        if assignments:
+            pinned = [
+                (n, rid) for n, rid in assignments
+                if str(n).strip().lower() in wanted
+            ]
+            covered = {str(n).strip().lower() for n, _ in pinned}
+            assigned = pinned + [n for n in names if str(n).strip().lower() not in covered]
+        else:
+            assigned = list(names)
+        scope = await build_vehicle_scope(tenant, account_id, assigned)
         return {"identities": sorted(
             [v.registry_id, v.external_id, v.name] for v in scope.vehicles)}
     except Exception as e:  # pragma: no cover - defensive

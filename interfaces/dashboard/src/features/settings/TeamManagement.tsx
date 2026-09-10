@@ -147,6 +147,8 @@ function UserAvatar({ userId, name, size = 48, active = true }: { userId: number
 }
 
 interface VehicleSummary {
+  /** Registry id — what an assignment pins to; a unit number alone is reused across companies. */
+  registry_id?: number | null;
   name: string;
   company?: string;
 }
@@ -359,7 +361,14 @@ export default function TeamManagement() {
   // legacy ``setEditVehicles`` setter on an ``editVehicles`` state was
   // confusing to readers).  Same applies to the search input + saving
   // flag — renamed for consistency with the rest of the feature.
-  const [editVehicles, setEditVehicles] = useState<string[]>([]);
+  // One entry per ASSIGNMENT, not per name: ``id`` pins the truck a name
+  // means.  A unit number is reused across companies, so "103" alone
+  // used to check — and grant — every 103.  ``id: null`` keeps the old
+  // meaning (the name, every truck answering to it).
+  type VehiclePick = { name: string; id: number | null };
+  const [editVehicles, setEditVehicles] = useState<VehiclePick[]>([]);
+  const pickMatches = (pick: VehiclePick, v: { name: string; registry_id?: number | null }) =>
+    pick.id != null && v.registry_id != null ? pick.id === v.registry_id : pick.name === v.name;
   const [vehicleQuery, setVehicleQuery] = useState('');
   const [savingVehicles, setSavingVehicles] = useState(false);
 
@@ -691,7 +700,14 @@ export default function TeamManagement() {
   useEffect(() => {
     if (selected) {
       const trucks = selected.trucks?.length ? [...selected.trucks] : selected.truck_num ? [selected.truck_num] : [];
-      setEditVehicles(trucks);
+      // Names first (what the list carries), then the assignment rows
+      // themselves, which say WHICH truck each name is pinned to.
+      setEditVehicles(trucks.map((name) => ({ name, id: null })));
+      void apiJSON<{ trucks: Array<{ vehicle_num: string; registry_id?: number | null }> }>(
+        '/admin/users/' + selected.id + '/trucks',
+      ).then((r) => {
+        setEditVehicles(r.trucks.map((t) => ({ name: t.vehicle_num, id: t.registry_id ?? null })));
+      }).catch(() => { /* names already shown; ids are a refinement */ });
       setVehicleQuery('');
       setDetailTab('profile');
       setConfirmAction(null);
@@ -753,7 +769,14 @@ export default function TeamManagement() {
       // (unrestricted, company_ids, trucks) shape.  Driver flow
       // still uses ``unrestricted`` + ``editCompanyIds`` directly
       // because the driver UI doesn't render the scope picker.
-      const uniqueTrucks = [...new Set(editVehicles)];
+      // Dedupe by (name, id): both twins of "103" are two assignments.
+      const seenPick = new Set<string>();
+      const uniquePicks = editVehicles.filter((p) => {
+        const k = `${p.name}#${p.id ?? ''}`;
+        if (seenPick.has(k)) return false;
+        seenPick.add(k); return true;
+      });
+      const uniqueTrucks = [...new Set(uniquePicks.map((p) => p.name))];
       let companyIdsForSave: number[];
       if (isDriver) {
         companyIdsForSave = unrestricted ? [] : editCompanyIds;
@@ -785,7 +808,10 @@ export default function TeamManagement() {
           body: { company_ids: sendUnrestricted ? [] : companyIdsForSave },
         },
       );
-      await apiJSON('/admin/users/' + userId + '/trucks', { method: 'PUT', body: { trucks: uniqueTrucks } });
+      await apiJSON('/admin/users/' + userId + '/trucks', {
+        method: 'PUT',
+        body: { trucks: uniquePicks.map((p) => p.name), vehicle_ids: uniquePicks.map((p) => p.id) },
+      });
       const archived = res.archived_companies || [];
       setSuccess(
         archived.length
@@ -1310,7 +1336,7 @@ export default function TeamManagement() {
                                     type="button"
                                     onClick={() => {
                                       if (editVehicles.length === vehicleList.length) setEditVehicles([]);
-                                      else setEditVehicles(vehicleList.map(v => v.name));
+                                      else setEditVehicles(vehicleList.map(v => ({ name: v.name, id: v.registry_id ?? null })));
                                     }}
                                     className="text-2xs text-primary hover:text-primary/80 uppercase tracking-wider py-1 -my-1 min-h-tap"
                                   >
@@ -1345,14 +1371,23 @@ export default function TeamManagement() {
                                           </p>
                                         );
                                       }
+                                      // Names that more than one truck answers to.  An
+                                      // assignment to such a name with no id is the
+                                      // pre-pin state: it grants EVERY twin until a
+                                      // human picks one here.
+                                      const twinNames = new Set(
+                                        vehicleList.map(v => v.name).filter((n, i, a) => a.indexOf(n) !== i),
+                                      );
                                       return filtered.map(v => {
-                                        const checked = editVehicles.includes(v.name);
+                                        const checked = editVehicles.some(p => pickMatches(p, v));
+                                        const unpinnedTwin = twinNames.has(v.name)
+                                          && editVehicles.some(p => p.name === v.name && p.id == null);
                                         return (
                                           <div
-                                            key={`${v.company ?? ''}::${v.name}`}
+                                            key={`${v.company ?? ''}::${v.name}::${v.registry_id ?? ''}`}
                                             onClick={() => {
-                                              if (checked) setEditVehicles(editVehicles.filter(t => t !== v.name));
-                                              else setEditVehicles([...editVehicles, v.name]);
+                                              if (checked) setEditVehicles(editVehicles.filter(p => !pickMatches(p, v)));
+                                              else setEditVehicles([...editVehicles, { name: v.name, id: v.registry_id ?? null }]);
                                             }}
                                             className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition border ${
                                               checked
@@ -1368,6 +1403,11 @@ export default function TeamManagement() {
                                             <div className="flex-1">
                                               <span className="text-sm font-medium">{v.name}</span>
                                               {v.company && <span className="text-xs text-muted-foreground ml-2">{v.company}</span>}
+                                              {unpinnedTwin && (
+                                                <span className={`ml-2 text-2xs px-1.5 py-0.5 rounded-full ${toneClasses('warn')}`}>
+                                                  which company? — pick one
+                                                </span>
+                                              )}
                                             </div>
                                           </div>
                                         );
