@@ -7,6 +7,8 @@ mint, refresh, and the permission gate.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi import HTTPException
 
@@ -569,6 +571,57 @@ def test_the_fleet_list_carries_counts_not_contents():
         assert key in body, key
     for withheld in ('"identifier"', '"notes"', '"label"'):
         assert withheld not in body, f"{withheld} is not a count"
+
+
+def test_the_download_is_the_same_file_every_time(tmp_path, monkeypatch):
+    """One version, one file — and therefore one SHA-256.
+
+    ``ZipFile.write`` stamps every entry with the source file's mtime, and
+    ``npm run build`` refreshes those on every run, so identical code was
+    producing a different archive each time it was downloaded.  Windows
+    Defender scores a download partly by how many machines have seen that
+    exact hash; a hash that is unique on every download can never earn a
+    reputation, stays "unknown", and Windows keeps offering to submit it
+    as a sample.  The owner's users read that prompt as "unsafe".
+
+    It also makes "is this the build I think it is?" a question two
+    people can answer by comparing hashes."""
+    import json as _json
+    from interfaces.api.routes import extension as ext
+
+    dist = tmp_path / "dist"
+    (dist / "icons").mkdir(parents=True)
+    (dist / "manifest.json").write_text(_json.dumps({"version": "0.5.0.0"}))
+    (dist / "sidepanel.js").write_text("console.log('hi')")
+    (dist / "icons" / "icon16.png").write_bytes(b"\x89PNG\r\n")
+    monkeypatch.setattr(ext, "_DIST", dist)
+    monkeypatch.setattr(ext, "_VERSION_FILE", dist / "manifest.json")
+
+    first = ext._build_zip()
+    # A rebuild touches every file; only the timestamps change.
+    for f in dist.rglob("*"):
+        if f.is_file():
+            os.utime(f, (1_800_000_000, 1_800_000_000))
+    assert ext._build_zip() == first, "the same build must be the same bytes"
+
+    # …and the name says WHICH build it is.  It used to be
+    # "4truck-extension.zip" for every version, which is how a person
+    # ends up with "4truck-extension (8).zip" and no idea which is which.
+    assert ext._download_name() == "4truck-extension-0.5.0.0.zip"
+
+
+def test_a_download_with_no_manifest_still_has_a_name():
+    """The version is read best-effort: a server whose extension has not
+    been built answers 503 from _build_zip, and the name must not be the
+    thing that raises."""
+    from interfaces.api.routes import extension as ext
+    import pathlib as _p
+    original = ext._VERSION_FILE
+    try:
+        ext._VERSION_FILE = _p.Path("/nonexistent/manifest.json")
+        assert ext._download_name() == "4truck-extension.zip"
+    finally:
+        ext._VERSION_FILE = original
 
 
 def test_the_signin_notice_points_at_the_one_session_to_disconnect():

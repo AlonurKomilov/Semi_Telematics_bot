@@ -31,11 +31,33 @@ ARCHIVE = VERSIONS / "_archive"
 PREFIX = "4truck-extension-"
 
 
+#: The zip format's own epoch, and the convention for "this timestamp
+#: carries no information".  Every entry gets it, so ONE version is ONE
+#: file: rebuild the same code and you get the same bytes and the same
+#: SHA-256.
+#:
+#: Without it `ZipFile.write` stamps each entry with the source file's
+#: mtime, which `npm run build` refreshes every time — so identical code
+#: produced a different archive on every run.  That is what stops a
+#: download ever earning a reputation with Windows Defender, which scores
+#: partly by how many machines have seen that exact hash; ours was unique
+#: every time, so it stayed "unknown" and Windows kept offering to submit
+#: it as a sample.  A person reading that prompt reads "unsafe".
+#:
+#: It also makes "is this the build I think it is?" answerable: two
+#: people can hash the same version and compare.
+ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
+
 def _zip_dir(src: pathlib.Path, out: pathlib.Path) -> None:
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(src.rglob("*")):
-            if f.is_file():
-                z.write(f, f.relative_to(src).as_posix())
+            if not f.is_file():
+                continue
+            info = zipfile.ZipInfo(f.relative_to(src).as_posix(), date_time=ZIP_EPOCH)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16      # a mode, not this machine's umask
+            z.writestr(info, f.read_bytes())
 
 
 def archive_older(version: str) -> list[pathlib.Path]:

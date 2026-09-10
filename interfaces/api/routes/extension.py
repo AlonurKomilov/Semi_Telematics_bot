@@ -120,6 +120,22 @@ _DIST = Path(__file__).resolve().parents[3] / "interfaces" / "browser_extension"
 _VERSION_FILE = _DIST / "manifest.json"
 
 
+#: A fixed timestamp for every entry, so the same build is the same FILE.
+#:
+#: ``ZipFile.write`` stamps each entry with the source file's mtime, and a
+#: rebuild gives every file a fresh one — so identical code produced a
+#: different archive, and a different SHA-256, every single time.  That is
+#: precisely the shape that can never earn a reputation: Microsoft's cloud
+#: scores a download partly by how many machines have seen that exact
+#: hash, and ours was unique on every download.  Windows then asks to
+#: submit it as an unknown sample, and a person reading that prompt reads
+#: "unsafe".
+#:
+#: 1980-01-01 is the zip format's own epoch — the lowest value it can
+#: store, and the convention for "this timestamp carries no information".
+_ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
+
 def _build_zip() -> bytes:
     if not (_DIST / "manifest.json").is_file():
         raise HTTPException(
@@ -129,9 +145,28 @@ def _build_zip() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(_DIST.rglob("*")):
-            if f.is_file():
-                z.write(f, f.relative_to(_DIST).as_posix())
+            if not f.is_file():
+                continue
+            info = zipfile.ZipInfo(f.relative_to(_DIST).as_posix(), date_time=_ZIP_EPOCH)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16      # a mode, not this machine's umask
+            z.writestr(info, f.read_bytes())
     return buf.getvalue()
+
+
+def _download_name() -> str:
+    """The zip's filename, carrying the version it actually is.
+
+    It used to be ``4truck-extension.zip`` for every build, which is why
+    a person who had downloaded it a few times had
+    ``4truck-extension (8).zip`` in Downloads and no way to tell which
+    was which — and why no single name ever corresponded to one file.
+    """
+    try:
+        version = str(json.loads(_VERSION_FILE.read_text()).get("version") or "").strip()
+    except Exception:
+        version = ""
+    return f"4truck-extension-{version}.zip" if version else "4truck-extension.zip"
 
 
 @router.get("/me")
@@ -567,7 +602,7 @@ async def download_extension(user: dict = Depends(get_current_user)):
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="4truck-extension.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="{_download_name()}"'},
     )
 
 

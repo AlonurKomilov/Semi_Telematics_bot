@@ -34,6 +34,33 @@ version waits for it or the owner cancels the pending review — say which.
 Never delete the reviewer account (`test@premiertruckinggroup.com`)
 between reviews.
 
+## Why Windows offers to "send this file to Microsoft"
+
+It is a SAMPLE-SUBMISSION prompt, not a detection: Defender's cloud could
+not classify the file and wants to upload it. Unknown, not malicious —
+but a person reading it reads "unsafe", so it is worth not causing.
+
+Two causes, both ours, both fixed:
+
+- **The zips were not reproducible.** `ZipFile.write` stamps each entry
+  with the source file's mtime and `npm run build` refreshes those, so
+  identical code produced a different archive — and a different
+  SHA-256 — on every run. Microsoft scores a download partly by how many
+  machines have seen that exact hash; a hash that is unique every time
+  can never earn a reputation. Every entry now carries the zip epoch
+  (1980-01-01) in both `build_packages.py` and the API's `_build_zip`,
+  so one version is one file.
+- **Every download was called `4truck-extension.zip`.** Same name, new
+  contents each time — which is how a Downloads folder ends up holding
+  `4truck-extension (8).zip` with no way to tell the builds apart. The
+  name now carries the version.
+
+The thing neither fixes: a sideloaded zip has almost no prevalence by
+definition. **The real answer is the Chrome Web Store** — a store install
+is not a downloaded file at all, so Defender never sees one. Until the
+first upload, expect the prompt on the sideload path and say so rather
+than treating it as a defect.
+
 ## Reading the URL
 
 Google's URL carries a zoom only on the map (`…12z`). Satellite and the globe
