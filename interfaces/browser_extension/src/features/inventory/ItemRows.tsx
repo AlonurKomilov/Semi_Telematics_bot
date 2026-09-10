@@ -240,6 +240,22 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                   `compact` so a 32px button does not sit on a 24px row.
                   It ends at a FIXED x on every row: the status word to
                   its left comes and goes, the button never moves. */}
+              {/* Verify joins Edit on the ROW, and only while the row is
+                  OPEN.  Closed, the list stays one control per row —
+                  190 rows each offering two actions is a wall, and a
+                  check is not something you press without first seeing
+                  how long it has been.  Open, both sit together at the
+                  same x rather than one on the row and one on a line
+                  below it, which read as two different kinds of thing
+                  when they are the same kind. */}
+              {open && onVerify && (
+                <button className="btn compact" disabled={busy === it.id}
+                        style={{ flexShrink: 0 }}
+                        title="Record that you checked it and it is aboard"
+                        onClick={() => void act(it.id, () => onVerify(it.id), false)}>
+                  {busy === it.id ? 'Saving…' : 'Verify'}
+                </button>
+              )}
               {onEdit && (
                 <button className="btn compact" disabled={busy === it.id}
                         style={{ flexShrink: 0 }}
@@ -326,17 +342,10 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                     return age === null ? 'never checked' : `checked ${formatAge(age)} ago`;
                   })()}
                 </span>
-                {/* `compact`, like Edit on the row and like the status
-                    chips below — every action INSIDE an item is one
-                    24px step.  The full 32px `.btn` stays for the
-                    panel's own form actions (Add, Save, Cancel), which
-                    sit on lines of their own. */}
-                <button className="btn compact" disabled={busy === it.id}
-                        style={{ marginLeft: 'auto', flexShrink: 0 }}
-                        title="Record that you checked it and it is aboard"
-                        onClick={() => void act(it.id, () => onVerify(it.id), false)}>
-                  {busy === it.id ? 'Saving…' : 'Verify'}
-                </button>
+                {/* This line is FACTS now — the serial the record was
+                    made against and how long since anybody looked.  Its
+                    button moved up beside Edit, where the two actions
+                    on an item belong together. */}
                 {/* Edit is NOT here.  It sits on the ROW itself, one
                     press from the list.  A second copy in the strip
                     would be the same control twice — the rule this

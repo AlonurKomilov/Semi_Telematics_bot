@@ -30,17 +30,25 @@ describe('the edit control', () => {
     expect(panel).toContain("canWrite = abilities.includes('inventory.write')");
   });
 
-  it('sits on the ROW, one press from the list, and only there', () => {
-    // It used to live inside the strip a row opens, so correcting a
-    // record cost two presses — and it took the slot where "Installed"
-    // was repeating what the green dot already said.
+  it('puts BOTH actions on the row, and leaves the strip to facts', () => {
+    // Edit used to live inside the strip, so correcting a record cost
+    // two presses and the row's trailing slot was spent on "Installed"
+    // — the word the green dot already says.  Verify then sat one line
+    // below Edit, which read as two different kinds of thing when they
+    // are the same kind.
     expect(rows).toContain('className="btn compact"');
-    // The row is a CONTAINER now: a button inside a button is invalid
-    // HTML that keyboards and screen readers cannot untangle.
+    // The row is a CONTAINER: a button inside a button is invalid HTML
+    // that keyboards and screen readers cannot untangle.
     expect(rows).toContain('<div className="row" style={{ gap: 6 }}>');
-    // …and the strip does not carry a second copy.
-    const strip = rows.slice(rows.indexOf('Record that you checked it'));
-    expect(strip).not.toContain('>\n                  Edit\n');
+    // Verify appears only while the row is OPEN — 190 closed rows each
+    // offering two actions is a wall, and a check is not something you
+    // press before seeing how long it has been.
+    expect(rows).toContain('{open && onVerify && (');
+    // The strip carries no button of its own any more: it is the serial
+    // and the age, which is what the check is made against.
+    const strip = rows.slice(rows.indexOf('This line is FACTS now'),
+                             rows.indexOf('{onStatus && ('));
+    expect(strip).not.toContain('<button');
   });
 
   it('gives the trailing slot up only where the dot can say it', () => {

@@ -24,6 +24,7 @@ import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
 import { ACTIVE_FEATURE_KEY, CARD_ITEMS_MAX, OPEN_PANEL, OVERLAY_INVENTORY, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type InventoryCounts, type InventoryReply, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
 import { makeShared } from './features/maps-overlay/dedupe';
+import { DASHBOARD_BASE } from './connect';
 import type { LiveVehiclesResponse } from './features/live-map/types';
 
 /** Both windows sit just under the poll they serve, so one tab alone
@@ -53,12 +54,34 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
   const m = msg as { type?: unknown } | null;
   if (m?.type === OPEN_PANEL) {
-    // Opening a side panel needs a user gesture, and the click that
-    // sent this is one.  If Chrome disagrees the choice is already in
-    // storage, so the panel shows it the next time it is opened.
+    // Opening a side panel needs a USER GESTURE, and a gesture does not
+    // reliably survive the hop from a content-script click through
+    // `sendMessage` to here — Chrome refuses, the promise rejects, and
+    // the old `.catch(() => {})` swallowed it.  The owner pressed the
+    // card's button and watched nothing happen but the map redraw, and
+    // there was no way to tell why, because the only record of the
+    // refusal was discarded.
+    //
+    // So: the press always does SOMETHING.  The panel is the better
+    // answer — it sits beside the map, which is this product's whole
+    // idea — and a tab is the honest fallback when Chrome will not
+    // open it.
     const tabId = sender.tab?.id;
-    if (tabId !== undefined) void chrome.sidePanel.open({ tabId }).catch(() => {});
-    sendResponse({ ok: true });
+    (async () => {
+      if (tabId !== undefined) {
+        try {
+          await chrome.sidePanel.open({ tabId });
+          sendResponse({ ok: true, opened: 'panel' });
+          return;
+        } catch { /* fall through to the tab */ }
+      }
+      try {
+        await chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` });
+        sendResponse({ ok: true, opened: 'tab' });
+      } catch {
+        sendResponse({ ok: false, opened: 'nothing' });
+      }
+    })();
     return true;
   }
   if (m?.type === PANEL_LIVE) {
@@ -102,8 +125,12 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
       try {
         const token = await getToken();
         if (!token) { sendResponse({ ok: false } satisfies InventoryReply); return; }
-        const got = await chrome.storage.local.get(ACTIVE_FEATURE_KEY);
-        if (got[ACTIVE_FEATURE_KEY] !== 'inventory') { sendResponse({ ok: false } satisfies InventoryReply); return; }
+        // The PAGE already decided this — it only asks while its panel
+        // is on Inventory.  Re-reading the key here decided it a second
+        // time, from a different moment, and a switch landing between
+        // the two dropped the answer with nothing said.  It was never a
+        // wall either: /extension/inventory is permission-gated on the
+        // server, which is where a wall belongs.
         const list = await sharedList('list', token,
           () => apiJSON<{ features?: unknown[] }>('/map/vehicles'));
         const rid = registryIdFor(list.features ?? [], String((m as { id?: unknown }).id ?? ''));

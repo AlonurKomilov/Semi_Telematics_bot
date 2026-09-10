@@ -201,6 +201,7 @@ function closeCard(): void {
   cardId = null;
   cardHtmlShown = '';
   cardItems = null;
+  cardItemsFailed = null;
 }
 
 function removeAll(): void {
@@ -470,6 +471,12 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
     // same words the panel's rows use.  Never the identifier: the
     // serial is what makes a loss provable and it stays behind the
     // button, however narrow this moment is.
+    // Said out loud, because a list that is simply absent is the same
+    // picture as a list that is still loading.
+    + (cardItemsFailed !== v.id ? '' :
+        '<div style="font-size:11px;margin-bottom:6px;opacity:.6">'
+        + 'Could not read what is aboard \u2014 open the panel'
+        + '</div>')
     + (cardItems?.id !== v.id || cardItems.items.length === 0 ? '' :
         '<div style="font-size:11px;margin-bottom:6px;display:grid;gap:2px">'
         + cardItems.items.map((it) =>
@@ -537,19 +544,35 @@ let cardHeight = 120;
  *  content, and content reaches this page only for the truck somebody
  *  actually opened. */
 let cardItems: { id: string; items: OverlayItem[]; more: number } | null = null;
+/** Which card's item read FAILED.  It used to fail silently — three
+ *  separate paths returned without a word (a worker that never woke, a
+ *  reply that came back not-ok, a throw) — so a card that said "2 items"
+ *  and listed none looked identical whether the answer was still in the
+ *  air, refused, or never asked for.  The owner could not tell us which,
+ *  and neither could we. */
+let cardItemsFailed: string | null = null;
 
 function askInventory(id: string): void {
   if (panelFeature !== 'inventory') return;
   if (cardItems?.id === id) return;
   cardItems = null;
+  cardItemsFailed = null;
+  const fail = () => {
+    if (torn || cardId !== id) return;
+    cardItemsFailed = id;
+    placeCard();
+  };
   try {
     chrome.runtime.sendMessage({ type: OVERLAY_INVENTORY, id }, (reply?: InventoryReply) => {
       // The card may have closed or moved on while this was in the air.
-      if (torn || cardId !== id || !reply?.ok) return;
+      if (torn || cardId !== id) return;
+      // `lastError` must be READ or Chrome logs it as unchecked — and it
+      // is the only evidence that the worker never answered at all.
+      if (chrome.runtime.lastError || !reply?.ok) { fail(); return; }
       cardItems = { id, items: reply.items, more: reply.more };
       placeCard();
     });
-  } catch { /* worker asleep; the card simply shows its counts */ }
+  } catch { fail(); }
 }
 
 function placeCard(): void {
@@ -1189,6 +1212,7 @@ function start(): void {
       // seconds.  refreshData ends in draw(), which redraws the card.
       void refreshData();
       cardItems = null;
+      cardItemsFailed = null;
       if (cardId) { placeCard(); askInventory(cardId); }
     }
     if (!(OVERLAY_PREF_KEY in changes)) return;

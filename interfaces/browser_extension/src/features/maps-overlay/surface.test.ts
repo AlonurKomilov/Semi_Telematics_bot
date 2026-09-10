@@ -281,3 +281,31 @@ describe('the card follows the feature, data and all', () => {
     expect(src).toContain('Nothing recorded');
   });
 });
+
+describe("the card's button always does something", () => {
+  const src = overlaySrc as unknown as string;
+
+  it('falls back to a tab when Chrome will not open the panel', async () => {
+    // `chrome.sidePanel.open()` needs a USER GESTURE, and a gesture does
+    // not reliably survive the hop from a content-script click through
+    // sendMessage to the worker.  The rejection used to be swallowed by
+    // `.catch(() => {})`, so the owner pressed the card's button, saw
+    // the map redraw and nothing else, and there was no record of the
+    // refusal anywhere.  A press must never be a no-op.
+    const bg = (await import('../../background.ts?raw')).default as unknown as string;
+    expect(bg).toContain("await chrome.sidePanel.open({ tabId })");
+    expect(bg).toContain("chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` })");
+    expect(bg).not.toContain('chrome.sidePanel.open({ tabId }).catch(() => {})');
+  });
+
+  it('says so when it cannot read what is aboard', () => {
+    // Three paths returned without a word — a worker that never woke, a
+    // reply that came back not-ok, a throw — so a card saying "2 items"
+    // and listing none looked the same whether the answer was in the
+    // air, refused, or never asked for.
+    expect(src).toContain('cardItemsFailed');
+    expect(src).toContain('Could not read what is aboard');
+    // Reading lastError is the only evidence the worker never answered.
+    expect(src).toContain('chrome.runtime.lastError');
+  });
+});
