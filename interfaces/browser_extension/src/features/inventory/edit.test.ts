@@ -30,6 +30,38 @@ describe('the edit control', () => {
     expect(panel).toContain("canWrite = abilities.includes('inventory.write')");
   });
 
+  it('sits on the ROW, one press from the list, and only there', () => {
+    // It used to live inside the strip a row opens, so correcting a
+    // record cost two presses — and it took the slot where "Installed"
+    // was repeating what the green dot already said.
+    expect(rows).toContain('className="btn compact"');
+    // The row is a CONTAINER now: a button inside a button is invalid
+    // HTML that keyboards and screen readers cannot untangle.
+    expect(rows).toContain('<div className="row" style={{ gap: 6 }}>');
+    // …and the strip does not carry a second copy.
+    const strip = rows.slice(rows.indexOf('Record that you checked it'));
+    expect(strip).not.toContain('>\n                  Edit\n');
+  });
+
+  it('gives the trailing slot up only where the dot can say it', () => {
+    // `installed` IS what a green dot means, so the word was the same
+    // fact twice.  `missing` and `damaged` both draw a RED dot — there
+    // the word is the only thing separating "broken" from "gone".
+    expect(rows).toContain("it.status === 'installed' ? '' : humanize(it.status)");
+  });
+
+  it('lets a form have its own height instead of squeezing it', () => {
+    // The form is ~200px; the list's ceiling is sized for rows and drops
+    // to 96 while Add is open.  Inside it the form became a ~90px
+    // scroller showing one field at a time, with its own scrollbar.
+    expect(panel).toContain('maxHeight={editing ? null : (adding ? 96 : 280)}');
+    expect(panel).toContain('onEditingChange');
+    // Two forms at once is a wall at 320px — and it is what made the
+    // squeeze visible in the first place.
+    expect(panel).toContain('if (on) setAdding(false);');
+    expect(rows).toContain('onEditingChange?.(id !== null)');
+  });
+
   it('replaces the strip instead of adding a third line to it', () => {
     // At the panel's 320px floor a form plus five controls is a wall,
     // and the two are different jobs: reporting what you found, and
@@ -48,9 +80,24 @@ describe('the edit control', () => {
 });
 
 describe('what the panel still sends to the desk', () => {
-  it('no longer promises editing over there, because editing is here', () => {
-    expect(panel).not.toContain('Edit or retire on 4truck');
-    expect(panel).toContain('Retire or move on 4truck →');
+  it('sends nobody to the dashboard from the vehicle card', () => {
+    // The card carried a hand-off link only because correcting a record
+    // was a dashboard errand.  It is not any more, so the link pointed
+    // at retiring and moving alone — desk actions nobody opens this
+    // panel to perform, costing a line in a 320px column on every view.
+    for (const gone of ['Edit or retire on 4truck', 'Retire or move on 4truck']) {
+      expect(panel).not.toContain(gone);
+    }
+  });
+
+  it('still shows the way out when the panel itself can do nothing', () => {
+    // The ONE hand-off that survives: a reader with no write grant
+    // looking at an account where nothing has been recorded anywhere.
+    // Telling them to press Add item would offer a button they do not
+    // have — the empty state says it only to somebody who does.
+    expect(panel).toContain('Open Inventory on 4truck →');
+    expect(panel).toContain('{!canWrite && (');
+    expect(panel).toContain('Pick one below and press Add item.');
   });
 
   it('offers no retire and no transfer of its own', () => {

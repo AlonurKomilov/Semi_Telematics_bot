@@ -78,6 +78,8 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
    *  answer people come for; a form standing open above them would make
    *  every visit start with an empty question. */
   const [adding, setAdding] = useState(false);
+  /** Raised by ItemRows while one of its rows is being corrected. */
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ category: '', label: '', identifier: '' });
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState('');
@@ -310,7 +312,22 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
                          // while the form is open: what is aboard matters
                          // less, for that moment, than what is being
                          // recorded.
-                         maxHeight={adding ? 96 : 280}
+                         // While a row is being CORRECTED the list drops
+                         // its ceiling entirely: the form is ~200px and
+                         // this ceiling is sized for rows, so inside it
+                         // the form became a ~90px scroller showing one
+                         // field at a time, with its own scrollbar,
+                         // stacked under an open Add form.  The card
+                         // above already scrolls (maxHeight 70%), so
+                         // lifting it gives ONE scroller instead of two
+                         // nested ones.
+                         maxHeight={editing ? null : (adding ? 96 : 280)}
+                         onEditingChange={(on) => {
+                           setEditing(on);
+                           // Two forms at once is a wall at 320px, and
+                           // it is what made the squeeze visible.
+                           if (on) setAdding(false);
+                         }}
                          onVerify={canWrite ? async (id) => {
                            await verifyItem(id);
                            await afterWrite(selected.vehicle_id);
@@ -417,19 +434,13 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
               </div>
             </div>
           )}
-          {/* What this key may NOT do — move an item to another vehicle,
-              retire one — is over there.  Both END an item's story
-              rather than correcting it, which is why correcting is now
-              done here and these two are not.  The link goes to
-              /inventory rather than the vehicle's own page: that page is
-              gated on can_view_vehicles, the one grant this reader may
-              not have and the whole reason Inventory became its own
-              feature. */}
-          <button type="button" className="link" onClick={openDashboard}
-                  style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
-                           font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
-            Retire or move on 4truck →
-          </button>
+          {/* No hand-off link on the card.  It existed because
+              correcting a record used to be a dashboard errand, and
+              correcting is the one thing somebody standing at a truck
+              actually needs — that is here now.  What the link still
+              pointed at was retiring and moving alone: two desk actions
+              nobody opens this panel to perform, taking a line in a
+              320px column every time anyone looked at a vehicle. */}
         </div>
       )}
 
@@ -502,17 +513,24 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
             stands down while a search is running, so the reason the list
             looks empty is never stated twice in two voices. */}
         {fleet !== null && fleet.length > 0 && withItems === 0 && !search.trim() && (
-          // An empty state that names the way forward, not just the void.
+          // An empty state that names the way forward, not just the void
+          // — and the way forward changed.  It used to send everybody to
+          // the dashboard because adding was only possible there; a
+          // person who may write now does it here, and telling them
+          // otherwise sends them away from the panel they opened.
           <div style={{ padding: 10, display: 'grid', gap: 6 }}>
             <p className="muted" style={{ margin: 0 }}>
-              Nothing has been recorded on any of these vehicles yet — dashcams,
-              fuel cards, toll transponders and ELDs are added on the dashboard.
+              {canWrite
+                ? 'Nothing has been recorded on any of these vehicles yet. Pick one below and press Add item.'
+                : 'Nothing has been recorded on any of these vehicles yet — dashcams, fuel cards, toll transponders and ELDs are added on the dashboard.'}
             </p>
-            <button type="button" className="link" onClick={openDashboard}
-                    style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
-                             font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
-              Open Inventory on 4truck →
-            </button>
+            {!canWrite && (
+              <button type="button" className="link" onClick={openDashboard}
+                      style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
+                               font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                Open Inventory on 4truck →
+              </button>
+            )}
           </div>
         )}
         {/* "Nothing here" would be false: the search is what emptied it. */}

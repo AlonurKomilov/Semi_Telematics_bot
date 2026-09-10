@@ -10,6 +10,10 @@ button, input { font: inherit; }
           of its group (the groups wrap); it never folds its own words. */
        white-space:nowrap; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color:#fff; }
+/* Same shape, smaller step — for a `.btn` sharing a line with 24px row
+   content.  A 32px button on a 24px row aligns with nothing and pushes
+   the whole list a step taller. */
+.btn.compact { padding:2px 8px; font-size:12px; }
 .btn:disabled { opacity:.6; cursor: default; }
 .input { width:100%; border:1px solid var(--border); background: var(--card); color: var(--fg);
          border-radius:6px; padding:7px 9px; min-height:24px; }

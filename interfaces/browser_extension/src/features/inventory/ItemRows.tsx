@@ -49,9 +49,15 @@ export interface ItemRowsProps {
   /** A row to bring into view once — a just-added item, which sorts to
    *  the bottom because nothing is wrong with it. */
   focusId?: number | null;
+  /** Raised while a row is being corrected.  The edit form is ~200px and
+   *  the list's ceiling is sized for ROWS — inside it the form became a
+   *  90px scroller showing one field at a time, with its own scrollbar,
+   *  under whatever else the panel had open.  The parent owns the
+   *  region, so the parent is told and lifts the ceiling. */
+  onEditingChange?: (editing: boolean) => void;
 }
 
-export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVerify, onStatus, onEdit, categories, focusId }: ItemRowsProps) {
+export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVerify, onStatus, onEdit, categories, focusId, onEditingChange }: ItemRowsProps) {
   const canWrite = Boolean(onVerify || onStatus || onEdit);
   /** Which row has its actions showing.  One at a time: four controls
    *  under every row would bury the list they belong to. */
@@ -62,6 +68,10 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
    *  five controls at once is a wall, and the two are different jobs —
    *  reporting what you found, and fixing what the record says. */
   const [editId, setEditId] = useState<number | null>(null);
+  const startEdit = (id: number | null) => {
+    setEditId(id);
+    onEditingChange?.(id !== null);
+  };
   /** Which row's action failed, and why.  Held per ROW rather than per
    *  list: the map card scrolls this list inside 168px, so a message
    *  parked at the bottom is a message somebody never sees — and they
@@ -130,6 +140,20 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
         const open = openId === it.id;
         const line = (
           <>
+            {/* The caret LEADS what it opens — the panel's own rule, kept
+                by the Live Map's card and list headers.  The row carried
+                `aria-expanded` and nothing a person could see, which was
+                survivable while the trailing slot held a status word and
+                the row read as "information you can press".  It holds a
+                BUTTON now, and a row whose only visible affordance is
+                Edit reads as a row where Edit is all there is — while
+                Verify, and every way to flag a problem, are behind the
+                press.  Read-only rows get no caret: nothing opens. */}
+            {canWrite && (
+              <span aria-hidden className="muted" style={{ flexShrink: 0, fontSize: 10, width: 8 }}>
+                {open ? '▾' : '▴'}
+              </span>
+            )}
             <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
                                        background: TONE_VAR[tone], flexShrink: 0 }} />
             {/* minWidth 0 so a long label ellipsises instead of widening
@@ -137,10 +161,17 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis',
                            whiteSpace: 'nowrap', minWidth: 0 }}>{it.label}</span>
             <span className="muted" style={{ flexShrink: 0 }}>{humanize(it.category)}</span>
+            {/* The word appears only when the DOT cannot say it.
+                `installed` is what the green dot already means, so
+                "Installed" on every settled row was the same fact
+                twice and the widest thing competing with the item's
+                own name.  `missing` and `damaged` both draw a RED dot
+                — there the word is the only thing separating "it is
+                broken" from "it is gone", so it stays. */}
             <span style={{ marginLeft: 'auto', flexShrink: 0,
                            color: settled ? 'var(--muted)' : TONE_VAR[tone],
                            fontWeight: settled ? 400 : 600 }}>
-              {humanize(it.status)}
+              {it.status === 'installed' ? '' : humanize(it.status)}
             </span>
           </>
         );
@@ -162,9 +193,11 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                           margin: '0 -4px 6px', padding: '0 4px',
                         } : {}) }}>
             {canWrite ? (
-              // Only a row that DOES something becomes a button.  A
-              // read-only list of buttons would promise an action that
-              // is not there.
+              // A ROW, not a button: Edit sits on it, and a button
+              // inside a button is invalid HTML that keyboards and
+              // screen readers cannot untangle.  The identity half is
+              // the press target; Edit is its sibling.
+              <div className="row" style={{ gap: 6 }}>
               <button type="button" className="row rowbtn"
                       aria-expanded={open}
                       title={open ? 'Hide the actions' : 'Verify or flag this item'}
@@ -174,7 +207,7 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                         // A row closed mid-edit must not reopen still in
                         // the form: the person left it, and coming back
                         // to an abandoned draft reads as unsaved work.
-                        setEditId(null);
+                        startEdit(null);
                         // A row grows from 24px to ~88 inside a 168px
                         // scroller: opened near the fold, everything it
                         // just revealed is below it.  Next frame, once
@@ -193,13 +226,35 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                       // in insertion order — declared after, it silently
                       // undid the 12px and left the row a step larger
                       // than the read-only branch beside it.
-                      style={{ gap: 6, minWidth: 0, minHeight: 24,
+                      style={{ flex: '1 1 0', gap: 6, minWidth: 0, minHeight: 24,
                                background: 'transparent',
                                border: 0, padding: '2px 4px', margin: 0, borderRadius: 4,
                                color: 'var(--fg)', cursor: 'pointer', font: 'inherit',
                                fontSize: 12, textAlign: 'left' }}>
                 {line}
               </button>
+              {/* Correcting a record is one press from the list, not two.
+                  It used to live inside the strip the row opens, which
+                  meant opening a row to reach it — and it took the slot
+                  where "Installed" was saying what the dot already said.
+                  `compact` so a 32px button does not sit on a 24px row.
+                  It ends at a FIXED x on every row: the status word to
+                  its left comes and goes, the button never moves. */}
+              {onEdit && (
+                <button className="btn compact" disabled={busy === it.id}
+                        style={{ flexShrink: 0 }}
+                        title="Correct this item's name, serial or category"
+                        onClick={() => {
+                          setOpenId(it.id);
+                          startEdit(it.id);
+                          requestAnimationFrame(() => {
+                            rowEls.current.get(it.id)?.scrollIntoView({ block: 'nearest' });
+                          });
+                        }}>
+                  Edit
+                </button>
+              )}
+              </div>
             ) : (
               <div className="row" style={{ gap: 6, fontSize: 12, minWidth: 0 }}>{line}</div>
             )}
@@ -210,10 +265,10 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
             )}
             {open && editId === it.id && onEdit && (
               <EditForm item={it} categories={categories ?? []} busy={busy === it.id}
-                        onCancel={() => setEditId(null)}
+                        onCancel={() => startEdit(null)}
                         onSave={(patch) => void act(it.id, async () => {
                           await onEdit(it.id, patch);
-                          setEditId(null);
+                          startEdit(null);
                         }, false)} />
             )}
             {open && editId !== it.id && (
@@ -228,8 +283,13 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
               // are independent, and a verify-only caller would
               // otherwise render an empty flex row.
               <>
-              {(onVerify || onEdit) && (
-              <div className="row" style={{ gap: 6, padding: '0 0 0 14px' }}>
+              {onVerify && (
+              // 28px, not 14: this indent is measured to land under the
+              // item's NAME, not under its dot.  The name starts at
+              // 4 (button padding) + 8 (caret) + 6 + 8 (dot) + 6 = 32,
+              // and the block's own 4px padding makes 28 the number
+              // that reaches it.  It was 14 when there was no caret.
+              <div className="row" style={{ gap: 6, padding: '0 0 0 28px' }}>
                 {/* WHAT VERIFY CHANGES, said where Verify is pressed.
                     ``verify_inventory_item`` stamps the check and leaves
                     the status alone, so without this the button closed a
@@ -266,42 +326,21 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                     return age === null ? 'never checked' : `checked ${formatAge(age)} ago`;
                   })()}
                 </span>
-                {onVerify && (
-                  <button className="btn" disabled={busy === it.id}
-                          style={{ marginLeft: 'auto', flexShrink: 0 }}
-                          title="Record that you checked it and it is aboard"
-                          onClick={() => void act(it.id, () => onVerify(it.id), false)}>
-                    {busy === it.id ? 'Saving…' : 'Verify'}
-                  </button>
-                )}
-                {/* Quieter than Verify, and deliberately.  Checking is
-                    what a person came to do; correcting the record is
-                    the rarer errand, and the ranking should say so. */}
-                {onEdit && (
-                  // A `.btn`, like Verify — because it is the same KIND
-                  // of thing: an action on this row.  It was a `.link`
-                  // for one draft, which is the shape this panel uses
-                  // for leaving it (the dashboard hand-off two regions
-                  // down), so the underline promised navigation.
-                  // Prominence comes from ORDER instead: Verify is what
-                  // a person came to do, Edit is the rarer errand.
-                  <button className="btn" disabled={busy === it.id}
-                          style={{ flexShrink: 0, ...(onVerify ? {} : { marginLeft: 'auto' }) }}
-                          title="Correct this item's name, serial or category"
-                          onClick={() => {
-                            setEditId(it.id);
-                            // The strip is ~56px tall and the form ~200:
-                            // pressed near the fold of a 280px scroller,
-                            // everything the press revealed is below it.
-                            // Same reason the row's own open scrolls —
-                            // next frame, once the form has rendered.
-                            requestAnimationFrame(() => {
-                              rowEls.current.get(it.id)?.scrollIntoView({ block: 'nearest' });
-                            });
-                          }}>
-                    Edit
-                  </button>
-                )}
+                {/* `compact`, like Edit on the row and like the status
+                    chips below — every action INSIDE an item is one
+                    24px step.  The full 32px `.btn` stays for the
+                    panel's own form actions (Add, Save, Cancel), which
+                    sit on lines of their own. */}
+                <button className="btn compact" disabled={busy === it.id}
+                        style={{ marginLeft: 'auto', flexShrink: 0 }}
+                        title="Record that you checked it and it is aboard"
+                        onClick={() => void act(it.id, () => onVerify(it.id), false)}>
+                  {busy === it.id ? 'Saving…' : 'Verify'}
+                </button>
+                {/* Edit is NOT here.  It sits on the ROW itself, one
+                    press from the list.  A second copy in the strip
+                    would be the same control twice — the rule this
+                    panel just finished applying to Follow. */}
               </div>
               )}
               {onStatus && (
@@ -309,7 +348,7 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
               // wrapped last chip stretches into a full-width danger
               // bar, which is the loudest thing on the card for the
               // quietest reason.  Equal columns, and they reflow.
-              <div style={{ display: 'grid', gap: 6, padding: '0 0 2px 14px',
+              <div style={{ display: 'grid', gap: 6, padding: '0 0 2px 28px',
                             gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))' }}>
                 {/* Only what it is NOT.  A permanently disabled chip
                     restating the status written two lines up is a
