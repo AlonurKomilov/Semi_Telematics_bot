@@ -674,6 +674,50 @@ async def holds(user: dict, flag: str) -> bool:
     return bool(getattr(await effective_perms(user), flag, False))
 
 
+async def _denial(user: dict, *flags: str, perms=None):
+    """The 403's ``detail``: when the account's PLAN is what withholds
+    one of *flags*, say so — ``{"code": "plan_excluded", "feature": id,
+    "message": …}`` — so the dashboard can point at Billing instead of
+    at the matrix.  Otherwise the plain string every other denial
+    carries.
+
+    Told only to a caller who can act on it (holds can_manage_billing,
+    read from the set this request resolved): a plain member is not
+    handed the name of what the company did not buy.  The tier is read
+    fresh from the account row — a denial is the rare path, and one read
+    there beats a remembered value that a concurrent upgrade could have
+    moved; if the row cannot be read the resolver's last-known tier
+    answers, and with none the plan is not blamed."""
+    from capabilities.permissions import plans as _plans
+    effective = perms if perms is not None else user.get("_perms")
+    if not getattr(effective, "can_manage_billing", False):
+        return "Insufficient permissions"
+    account_id = user.get("account_id")
+    if account_id is None:
+        return "Insufficient permissions"
+    tier = None
+    try:
+        acct = await _get_router().platform.get_account(int(account_id))
+        tier = _plans.tier_of(acct) if acct else None
+    except Exception:
+        tier = _plans.last_known_tier(int(account_id))
+    if tier:
+        for f in flags:
+            fid = _plans.excludes_flag(tier, f)
+            if fid:
+                return {"code": "plan_excluded", "feature": fid,
+                        "message": "Not in your plan"}
+    return "Insufficient permissions"
+
+
+async def deny(user: dict, *flags: str) -> HTTPException:
+    """The 403 a handler raises by hand when its own access helper said
+    no — ``raise await deny(user, "can_view_maintenance")`` — so a door
+    the PLAN closed says so exactly as a ``require_permission`` door
+    does.  Name the flag(s) the helper asked about, never a guess."""
+    return HTTPException(status_code=403, detail=await _denial(user, *flags))
+
+
 def require_permission(feature: str):
     """Dependency factory: check the user's role has a specific permission."""
     async def _check(user: dict = Depends(get_current_user)):
@@ -683,7 +727,7 @@ def require_permission(feature: str):
             is_primary_owner=bool(user.get("is_primary_owner")),
         ), user)
         if not getattr(perms, feature, False):
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
+            raise HTTPException(status_code=403, detail=await _denial(user, feature, perms=perms))
         # Parity with require_permission_any: the effective FeatureSet
         # and the matched flag ride the user dict.  The alerting
         # router's alert-TYPE filter reads ``_perms`` and fails OPEN
@@ -780,7 +824,7 @@ def require_permission_any(*features: str):
                 # filters alert TYPES to what the caller may access).
                 user["_perms"] = perms
                 return user
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise HTTPException(status_code=403, detail=await _denial(user, *features, perms=perms))
     return _check
 
 

@@ -1020,5 +1020,15 @@
       "footer_ai": "Safar maqan? Weydii kaaliyaha",
       "empty": "Weli socdaallo uma jiraan boggaga doorkaagu furi karo."
     }
+  },
+  "plan": {
+    "not_in_plan": "Kuma jiro qorshahaaga",
+    "upgrade": "Kor u qaad qorshaha",
+    "locked_nav": "Kuma jiro qorshahaaga — kor u qaad qorshaha si aad u isticmaasho",
+    "matrix_hint": "Kuma jiro qorshahaaga",
+    "route_title": "{{feature}} kuma jiro qorshahaaga",
+    "route_body": "Shirkaddaadu waxay ku jirtaa qorshaha {{plan}}. Kor u qaad qorshaha si aad u isticmaasho astaantan.",
+    "this_feature": "Astaantan",
+    "current_plan": "hadda"
   }
 }

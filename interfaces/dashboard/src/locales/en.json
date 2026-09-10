@@ -1535,5 +1535,15 @@
       "footer_ai": "Missing a tour? Ask the assistant",
       "empty": "No tours available for the pages your role can open yet."
     }
+  },
+  "plan": {
+    "not_in_plan": "Not in your plan",
+    "upgrade": "Upgrade plan",
+    "locked_nav": "Not in your plan — upgrade to use it",
+    "matrix_hint": "Not in your plan",
+    "route_title": "{{feature}} is not in your plan",
+    "route_body": "Your company is on the {{plan}} plan. Upgrade to use this feature.",
+    "this_feature": "This feature",
+    "current_plan": "current"
   }
 }

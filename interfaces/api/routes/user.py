@@ -18,6 +18,21 @@ from interfaces.api.deps import (
 from capabilities.permissions.roles import get_account_permissions, get_user_permissions
 from capabilities.permissions.modules import enabled_modules as _enabled_modules
 from capabilities.permissions.modules import feature_available as _feature_available
+from capabilities.permissions import plans as _plans
+
+
+def _plan_block(acct, can_change_plan: bool) -> dict:
+    """The plan as the caller may know it.  Its name is everyone's; what
+    it LEAVES OUT is told only to whoever can change it (can_manage_billing)
+    — a plain member simply does not see the feature, and is not handed
+    a list of what the company did not buy."""
+    tier = _plans.tier_of(acct)
+    return {
+        "tier": tier,
+        "label": _plans.plan_label(tier),
+        "excluded": _plans.excluded_for(tier) if can_change_plan else [],
+        "excluded_flags": _plans.excluded_flags_for(tier) if can_change_plan else [],
+    }
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
 
@@ -184,6 +199,13 @@ async def user_me(
         # Drives module-aware sidebar filtering; Core + Account admin are
         # always on and not listed.  See capabilities/permissions/modules.py.
         "enabled_modules": _enabled_modules(getattr(acct, "disabled_modules", "")),
+        # The account's PLAN, as the resolver read it a moment ago
+        # (get_user_permissions above refreshed the table): what it is
+        # called, the sellable features and services it leaves out, and
+        # the exact flags the plan mask forced off.  A surface that hides
+        # by flag already hides these; this is how the owner's surfaces
+        # tell "not in your plan" from "not granted" and point at Billing.
+        "plan": _plan_block(acct, bool(getattr(perms, "can_manage_billing", False))),
     }
 
 

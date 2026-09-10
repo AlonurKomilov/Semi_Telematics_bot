@@ -1,6 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { useRoleView } from '../context/RoleViewContext';
+import { useAuth } from '../context/AuthContext';
 import { CardSkeleton } from './shell';
+import { NotInPlan } from './NotInPlan';
 import type { ReactNode } from 'react';
 
 interface ProtectedRouteProps {
@@ -18,6 +20,7 @@ export default function ProtectedRoute({ permission, children }: ProtectedRouteP
   // an owner on their own view are unaffected.  The backend still enforces
   // every endpoint independently.
   const { viewHasAny, viewPermsReady } = useRoleView();
+  const { user } = useAuth();
 
   // "Not loaded yet" is NOT "not allowed".  On a preview view the role
   // permission sets arrive from a second request, and viewPerms stays
@@ -30,6 +33,17 @@ export default function ProtectedRoute({ permission, children }: ProtectedRouteP
   if (!viewPermsReady) return <CardSkeleton message="Checking access…" />;
 
   const flags = Array.isArray(permission) ? permission : [permission];
-  if (!viewHasAny(...flags)) return <Navigate to="/" replace />;
-  return children;
+  if (viewHasAny(...flags)) return children;
+  // Not granted — or not in the PLAN.  The plan's answer is the exact
+  // flag list the mask forced off (``/me``), so a door whose sign is
+  // one of them is the plan's doing.  Whoever can change the plan is
+  // told so and pointed at Billing; everyone else is redirected, as
+  // for any door they do not hold — for them the feature is simply
+  // absent.
+  const planFlags = user?.plan?.excluded_flags ?? [];
+  const byPlan = flags.some((f) => planFlags.includes(f));
+  if (byPlan && user?.permissions?.can_manage_billing) {
+    return <NotInPlan flags={flags} planLabel={user?.plan?.label ?? ''} />;
+  }
+  return <Navigate to="/" replace />;
 }

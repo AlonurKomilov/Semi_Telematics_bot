@@ -1248,5 +1248,15 @@
       "footer_ai": "¿Falta un recorrido? Pregunta al asistente",
       "empty": "Aún no hay tours para las páginas que su rol puede abrir."
     }
+  },
+  "plan": {
+    "not_in_plan": "No está en su plan",
+    "upgrade": "Mejorar plan",
+    "locked_nav": "No está en su plan — mejore el plan para usarlo",
+    "matrix_hint": "No está en su plan",
+    "route_title": "{{feature}} no está en su plan",
+    "route_body": "Su empresa tiene el plan {{plan}}. Mejore el plan para usar esta función.",
+    "this_feature": "Esta función",
+    "current_plan": "actual"
   }
 }

@@ -235,6 +235,26 @@ def test_last_known_tier_per_account():
     assert plans.last_known_tier(8) is None
 
 
+# ── the customer's view of a plan ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_excluded_view_is_what_the_mask_does_and_names_the_feature_behind_a_flag():
+    inc = [i for i in plans.EXCLUDABLE if i != "maintenance"]
+    await _load(_plan("free", inc), _plan("pro", ["*"]))
+    assert plans.excluded_for("free") == ["maintenance"]
+    assert plans.excluded_for("pro") == []
+    assert plans.excluded_for("gold") == list(plans.EXCLUDABLE)        # unknown → closed → all
+    assert plans.excluded_flags_for("free") == sorted(plans._FLAGS_OF["maintenance"])
+    assert plans.excluded_flags_for("pro") == []
+    assert plans.excludes_flag("free", "can_view_maintenance") == "maintenance"
+    assert plans.excludes_flag("free", "can_manage_maintenance") == "maintenance"
+    assert plans.excludes_flag("free", "can_view_vehicles") is None
+    assert plans.excludes_flag("free", "can_manage_billing") is None    # never a plan line
+    assert plans.excludes_flag("free", "no_such_flag") is None
+    assert plans.excludes_flag("gold", "can_view_vehicles") == "vehicles"
+    assert plans.plan_label("free") == "Free" and plans.plan_label("gold") == "Gold" and plans.plan_label(None) == ""
+
+
 # ── quotas ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

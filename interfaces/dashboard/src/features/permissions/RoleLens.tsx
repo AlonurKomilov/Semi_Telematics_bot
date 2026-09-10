@@ -7,6 +7,8 @@
  * dialog exactly like a matrix tick.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Eye, Link2, Lock, Search } from '../../lib/icons';
 import { InfoTip, Tip } from '../../components/tooltip';
@@ -61,9 +63,15 @@ export interface RoleLensApi {
    *  department name can clear it before scrolling to a band the search
    *  had hidden. */
   search: { query: string; setQuery: (q: string) => void };
+  /** The catalog id of the feature the account's PLAN leaves this row
+   *  out through (''/null when the plan does not): the ticks are locked
+   *  (the resolver would force them off anyway) and the row says so,
+   *  pointing at Billing for that feature. */
+  planExcluded?: (f: PermFlag) => string | null;
 }
 
 export function RoleLens({ api }: { api: RoleLensApi }) {
+  const { t } = useTranslation();
   const { setRoleView, canSwitchView } = useSafeRoleSwitch();
   // Last role opened, per device — an owner returning to the page almost
   // always continues on the role they were editing.
@@ -298,6 +306,15 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               <span className="text-sm font-semibold">
                 {fam.parent.label}
                 {isScoped(fam.parent) && <span className="text-2xs text-muted-foreground ml-1">*</span>}
+                {api.planExcluded?.(fam.parent) && (
+                  <Link
+                    to={`/billing?upgrade=${api.planExcluded(fam.parent)}`}
+                    className="ml-2 inline-flex items-center gap-1 align-middle text-2xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <Lock className="size-3" aria-hidden />
+                    {t('plan.matrix_hint')}
+                  </Link>
+                )}
                 {ownDelta && <DeltaChip />}
                 {alsoChip(fam.parent)}
                 {hasKids && (

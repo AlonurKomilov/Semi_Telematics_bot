@@ -1248,5 +1248,15 @@
       "footer_ai": "Il manque une visite ? Demandez à l'assistant",
       "empty": "Aucun guide pour les pages que votre rôle peut ouvrir pour l'instant."
     }
+  },
+  "plan": {
+    "not_in_plan": "Pas dans votre forfait",
+    "upgrade": "Changer de forfait",
+    "locked_nav": "Pas dans votre forfait — passez à un forfait supérieur pour l'utiliser",
+    "matrix_hint": "Pas dans votre forfait",
+    "route_title": "{{feature}} n'est pas dans votre forfait",
+    "route_body": "Votre entreprise est sur le forfait {{plan}}. Passez à un forfait supérieur pour utiliser cette fonction.",
+    "this_feature": "Cette fonction",
+    "current_plan": "actuel"
   }
 }

@@ -21,6 +21,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from interfaces.api.deps import (
+    deny,
     filter_by_allowed_companies, get_current_user, get_tenant_db,
     get_user_company_codes, resolve_user_id,
 )
@@ -120,7 +121,7 @@ async def entity_history(
         is_primary_owner=bool(user.get("is_primary_owner")),
     )
     if not any(getattr(perms, p, False) for p in d.view_permissions):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, *d.view_permissions)
 
     events = await tenant_db.list_activity_events(
         user["account_id"],
@@ -183,7 +184,7 @@ async def restore_entity(
         is_primary_owner=bool(user.get("is_primary_owner")),
     )
     if not any(getattr(perms, p, False) for p in d.restore_permissions):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, *d.restore_permissions)
     if not await _in_company_scope(d, event, user):
         # 404, not 403 — the sibling routes hide existence from callers
         # outside the company, and so must this one.
@@ -237,9 +238,7 @@ async def restore_group(
             skipped += 1
             continue
         if not any(getattr(perms, p, False) for p in d.restore_permissions):
-            raise HTTPException(
-                status_code=403, detail="Insufficient permissions",
-            )
+            raise await deny(user, *d.restore_permissions)
         if not await _in_company_scope(d, ev, user):
             # Counted as skipped, not denied: the count stays honest
             # without telling the caller what sits outside its scope.

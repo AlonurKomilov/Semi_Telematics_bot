@@ -260,7 +260,15 @@ its own: one that rides another entry's verb (Scheduled Reports under
 Reports, DOT Binder, My payouts under KPI) is governed by what it rides
 and is not a plan line. The operator edits plans from the system
 console (`/plans`; `GET/PUT /system/plans`), audited as
-`plan.updated`. Config-family flags are never masked. The mask is FAIL-CLOSED against a live platform: an unknown
+`plan.updated`. Config-family flags are never masked. The customer's
+surfaces tell "not in your plan" from "not granted" by one block on
+`/me` — `plan: {tier, label, excluded, excluded_flags}` — and by the
+403 a plan-closed door returns: `{"code": "plan_excluded", "feature":
+id}` from every `require_permission*` gate and from `deps.deny(user,
+flag)`, which a handler that denies by hand raises instead of a bare
+403. Only whoever holds `can_manage_billing` is shown the lock (nav,
+route, matrix) and pointed at Billing; every other member simply does
+not see the feature. The mask is FAIL-CLOSED against a live platform: an unknown
 tier closes the sellable set, an unreadable table keeps the last-known
 one (warmed at API and bot start), an unreadable account row falls back
 to that account's last-known tier. The seed puts every tier — and any

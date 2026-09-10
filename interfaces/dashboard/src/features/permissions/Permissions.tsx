@@ -5,6 +5,7 @@ import { Shield, Check, X } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
+import { FEATURE_CATALOG } from '../../config/featureCatalog';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { InfoTip } from '../../components/tooltip';
 import { toneClasses } from '../../lib/status';
@@ -127,6 +128,23 @@ export default function Permissions() {
   // Owner cells for the escape-hatch perms are locked on (never editable).
   const ownerLocked = (role: string, f: PermFlag) =>
     role === 'owner' && !isHeader(f) && !isScoped(f) && OWNER_PROTECTED.has(f.key);
+  // The plan's answer is the exact flag list the mask forced off (``/me``).
+  const planFlags = new Set(authUser?.plan?.excluded_flags ?? []);
+  const planIds = authUser?.plan?.excluded ?? [];
+  // The row's flag → the catalog feature the plan leaves out (the id
+  // Billing is asked about), or null when the plan does not touch it.
+  const planExcluded = (f: PermFlag): string | null => {
+    if (isHeader(f)) return null;
+    const keys = isScoped(f) ? [f.allKey, f.vehicleKey] : [f.key];
+    if (!keys.some((k) => planFlags.has(k))) return null;
+    const owner = FEATURE_CATALOG.find((c) => {
+      if (!planIds.includes(c.id)) return false;
+      const p = c.permission;
+      const ps = p == null ? [] : Array.isArray(p) ? p : [p];
+      return ps.some((x) => keys.includes(x));
+    });
+    return owner?.id ?? planIds[0] ?? '';
+  };
 
   // Manager tier — "manager" is a per-user is_manager tier on the base role,
   // not a separate role/column.  The matrix MARKS the flags a manager gains
@@ -286,7 +304,11 @@ export default function Permissions() {
     tierCols: (r) => roleColumns(r as RoleId).map((c) => ({ key: c.key, label: c.label })),
     granted: (k, f) => isGranted(k, f),
     changed: (k, f) => cellChanged(k, f),
-    locked: (k, f) => ownerLocked(k, f),
+    // A row the plan leaves out is locked for every role: the resolver
+    // forces its flags off whatever the matrix stores, and a tick that
+    // "saved" but never took would be a lie.
+    locked: (k, f) => ownerLocked(k, f) || !!planExcluded(f),
+    planExcluded,
     onToggle: (k, f) => toggle(k, f),
     // Owner powers are is_primary_owner gates, not flags — the lens shows
     // them read-only on the Owner tab (where an owner looks for them).

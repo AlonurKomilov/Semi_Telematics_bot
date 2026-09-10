@@ -134,6 +134,11 @@ export interface User {
    *  Core + Account are always on and not listed.  Drives module-aware
    *  sidebar filtering.  Absent → treat as all-on. */
   enabled_modules?: string[];
+  /** The account's plan as the resolver read it: what it is called,
+   *  the sellable features/services it leaves out (catalog ids), and
+   *  the exact flags the plan mask forced off.  "Not in your plan" is
+   *  told apart from "not granted" by these, nowhere else. */
+  plan?: { tier: string; label: string; excluded: string[]; excluded_flags: string[] };
   /** Team Management's unit width for THIS member (three layers resolved) — nav reads it. */
   vehicle_scope?: 'all' | 'assigned';
   truck_num?: string;

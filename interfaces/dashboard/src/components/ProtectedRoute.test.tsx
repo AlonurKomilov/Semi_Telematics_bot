@@ -23,6 +23,15 @@ const state = {
 
 vi.mock('react-router-dom', () => ({
   Navigate: ({ to }: { to: string }) => <div data-testid="redirect">{to}</div>,
+  Link: ({ to, children }: { to: string; children?: React.ReactNode }) => <a data-testid="upgrade" href={to}>{children}</a>,
+}));
+
+const auth = { plan: { excluded_flags: [] as string[], label: 'Starter' }, billing: false };
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { plan: auth.plan, permissions: { can_manage_billing: auth.billing } } }),
+}));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string, o?: Record<string, string>) => (o ? `${k}:${Object.values(o).join(',')}` : k) }),
 }));
 
 vi.mock('../context/RoleViewContext', () => ({
@@ -76,5 +85,37 @@ describe('ProtectedRoute', () => {
     state.perms = ['can_alerts_all'];
     renderGuard();
     expect(screen.queryByTestId('page')).toBeNull();
+  });
+});
+
+describe('ProtectedRoute — a door the PLAN closed', () => {
+  it('tells whoever can change the plan, and points at Billing', () => {
+    state.ready = true;
+    state.perms = [];
+    auth.billing = true;
+    auth.plan = { excluded_flags: ['can_alerts_all', 'can_alerts_vehicle'], label: 'Starter' };
+    renderGuard();
+    expect(screen.queryByTestId('page')).toBeNull();
+    expect(screen.queryByTestId('redirect')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('plan.route_title');
+    expect(screen.getByTestId('upgrade').getAttribute('href')).toContain('/billing');
+  });
+
+  it('redirects everyone else, exactly as for a door they do not hold', () => {
+    state.ready = true;
+    state.perms = [];
+    auth.billing = false;
+    auth.plan = { excluded_flags: ['can_alerts_all', 'can_alerts_vehicle'], label: 'Starter' };
+    renderGuard();
+    expect(screen.getByTestId('redirect')).toBeTruthy();
+  });
+
+  it('a door the plan did NOT close still redirects a billing holder who lacks it', () => {
+    state.ready = true;
+    state.perms = [];
+    auth.billing = true;
+    auth.plan = { excluded_flags: [], label: 'Pro' };
+    renderGuard();
+    expect(screen.getByTestId('redirect')).toBeTruthy();
   });
 });

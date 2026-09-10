@@ -27,6 +27,12 @@ export interface NavItem {
   path: string;
   icon: LucideIcon;
   permission: string | string[] | null;
+  /** Not in the account's PLAN.  Drawn only for a view that can change
+   *  the plan (holds can_manage_billing): a lock, and the path leads to
+   *  Billing.  Every other view simply does not see the entry. */
+  locked?: boolean;
+  /** The catalog id behind a locked entry (Billing reads it). */
+  featureId?: string;
   /** Indented sub-entries (Settings-style) — folded from catalog
    *  entries whose ``parentId`` points at this item's feature. */
   children?: NavItem[];
@@ -102,6 +108,10 @@ export function generateNav(
    *  own.  Narrowing the nav on a missing value would hide granted
    *  features from a wide member during the first paint. */
   vehicleScope?: 'all' | 'assigned',
+  /** The account's plan (from ``/me``): the catalog ids it leaves out,
+   *  and whether THIS view may change the plan.  A locked entry is a
+   *  marketing point for the owner, not a door: it leads to Billing. */
+  plan?: { excluded: string[]; canUpgrade: boolean },
 ): NavGroup[] {
   const visibleModules = new Set(PERSONA_MODULES[activeView] ?? ['core']);
   // Department personas surface CROSS-DEPARTMENT features they hold an
@@ -147,12 +157,41 @@ export function generateNav(
     return accountWide.length > 0 && has(...accountWide);
   };
 
+  // "Not in your plan": a feature the plan leaves out is masked off, so
+  // inScope never admits it.  For a view that can change the plan it
+  // is shown anyway — locked, leading to Billing — where its department
+  // would have listed it.  A hidden or module-off entry stays hidden.
+  const excluded = new Set(plan?.canUpgrade ? plan.excluded : []);
+  const lockedInScope = (f: CatalogFeature): boolean =>
+    excluded.has(f.id) && !f.navHidden
+    && isPathModuleEnabled(f.path, enabledModules)
+    && f.modules.some((m) => visibleModules.has(m));
+
   const groups: NavGroup[] = [];
   for (const g of NAV_GROUP_ORDER) {
     const inGroup = FEATURE_CATALOG.filter((f) => f.navGroup === g.key && inScope(f));
     const byId = new Map(inGroup.map((f) => [f.id, f]));
     const itemOf = (f: (typeof inGroup)[number]): NavItem =>
       ({ labelKey: f.labelKey, path: f.path, icon: f.icon, permission: f.permission });
+    const lockedOf = (f: CatalogFeature): NavItem => ({
+      labelKey: f.labelKey, path: `/billing?upgrade=${f.id}`, icon: f.icon,
+      permission: f.permission, locked: true, featureId: f.id,
+    });
+    const lockedAll = FEATURE_CATALOG.filter((f) => f.navGroup === g.key && !byId.has(f.id) && lockedInScope(f));
+    const lockedById = new Map(lockedAll.map((f) => [f.id, f]));
+    // A locked child folds under its parent exactly as a granted child
+    // does — under a visible parent, or under a locked one; an orphan
+    // stays a flat entry.
+    const lockedKidsOf = (parentId: string): NavItem[] =>
+      lockedAll.filter((c) => c.parentId === parentId).map(lockedOf);
+    const lockedItems: NavItem[] = lockedAll
+      .filter((f) => !(f.parentId && (byId.has(f.parentId) || lockedById.has(f.parentId))))
+      .map((f) => {
+        const item = lockedOf(f);
+        const kids = lockedKidsOf(f.id);
+        if (kids.length) item.children = kids;
+        return item;
+      });
     // Children fold under their parent when the parent is visible for
     // this persona; an orphaned child stays a flat entry (a grant must
     // never become unreachable because its parent was filtered out).
@@ -160,10 +199,11 @@ export function generateNav(
       .filter((f) => !(f.parentId && byId.has(f.parentId)))
       .map((f) => {
         const item = itemOf(f);
-        const kids = inGroup.filter((c) => c.parentId === f.id).map(itemOf);
+        const kids = [...inGroup.filter((c) => c.parentId === f.id).map(itemOf), ...lockedKidsOf(f.id)];
         if (kids.length) item.children = kids;
         return item;
       });
+    items.push(...lockedItems);
     if (items.length) {
       let parentItem: NavItem | undefined;
       let rest = items;

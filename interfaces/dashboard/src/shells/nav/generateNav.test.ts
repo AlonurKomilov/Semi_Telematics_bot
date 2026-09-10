@@ -147,3 +147,59 @@ describe('generateNav — role manager reaches Settings (parent-only group)', ()
     expect(dispatcher).toContain('/workforce/drivers');
   });
 });
+
+describe('generateNav — "not in your plan" is drawn only for whoever can change the plan', () => {
+  const items = (groups: ReturnType<typeof generateNav>) =>
+    groups.flatMap((g) => [...(g.parentItem ? [g.parentItem] : []), ...g.items]);
+  const ownerFlags = grants('can_view_vehicles', 'can_view_location', 'can_manage_billing');
+
+  it("the owner's own view locks an account-side feature (KPI) where it would sit", () => {
+    const nav = items(generateNav('owner', ownerFlags, undefined, 'all',
+      { excluded: ['kpi'], canUpgrade: true }));
+    const locked = nav.find((i) => i.locked);
+    expect(locked?.featureId).toBe('kpi');
+    expect(locked?.path).toBe('/billing?upgrade=kpi');
+    expect(nav.filter((i) => i.locked)).toHaveLength(1);
+  });
+
+  it('an owner PREVIEWING Fleet sees the lock where Maintenance would sit — the power is the person\'s, not the view\'s', () => {
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location'), undefined, 'all',
+      { excluded: ['maintenance'], canUpgrade: true }));
+    const locked = nav.find((i) => i.locked);
+    expect(locked?.featureId).toBe('maintenance');
+    expect(locked?.path).toBe('/billing?upgrade=maintenance');
+  });
+
+  it('a view that cannot change the plan sees nothing — the feature is simply absent', () => {
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location'), undefined, 'all',
+      { excluded: ['maintenance'], canUpgrade: false }));
+    expect(nav.some((i) => i.locked)).toBe(false);
+    expect(nav.map((i) => i.path)).not.toContain('/maintenance');
+  });
+
+  it('a plan that includes everything draws no lock, and a held feature is never locked', () => {
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location', 'can_view_maintenance'),
+      undefined, 'all', { excluded: [], canUpgrade: true }));
+    expect(nav.some((i) => i.locked)).toBe(false);
+    const both = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location', 'can_view_maintenance'),
+      undefined, 'all', { excluded: ['maintenance'], canUpgrade: true }));
+    // held AND excluded cannot happen (the mask forces the flag off) — but if the
+    // two ever disagree the held entry wins and no duplicate lock is drawn
+    expect(both.filter((i) => i.path.startsWith('/maintenance') || i.featureId === 'maintenance')).toHaveLength(1);
+  });
+
+  it('a locked child folds under its visible parent, as a granted child does', () => {
+    const groups = generateNav('owner', grants('can_view_vehicles', 'can_view_location', 'can_manage_billing'), undefined, 'all',
+      { excluded: ['vehicle_documents'], canUpgrade: true });
+    const all = items(groups);
+    const vehicles = all.find((i) => i.path === '/vehicles');
+    expect(vehicles?.children?.some((k) => k.locked && k.featureId === 'vehicle_documents')).toBe(true);
+    expect(all.some((i) => i.locked && i.featureId === 'vehicle_documents')).toBe(false);   // not a flat entry
+  });
+
+  it('a department switched off hides the lock too', () => {
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location'), ['core', 'account'], 'all',
+      { excluded: ['maintenance'], canUpgrade: true }));
+    expect(nav.some((i) => i.locked)).toBe(false);
+  });
+});

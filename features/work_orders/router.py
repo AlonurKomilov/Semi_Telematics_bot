@@ -41,6 +41,7 @@ from interfaces.api.rate_limit import limiter
 from adapters.storage.work_orders import normalize_wo_status
 
 from interfaces.api.deps import (
+    deny,
     member_unit_scope,
     get_current_user, get_platform_db, get_tenant_db,
     get_user_vehicle_nums, require_permission, resolve_user_id,
@@ -226,7 +227,7 @@ async def _require_visible_work_order(
     """
     wide, has_access = await _wo_access(user)
     if not has_access:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_view_work_orders")
     wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -267,7 +268,7 @@ async def list_work_orders(
     """List work orders for the account with optional filters."""
     wide, has_access = await _wo_access(user)
     if not has_access:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_view_work_orders")
     rows = await tenant_db.list_work_orders(
         user["account_id"],
         status=status, payment_status=payment_status, vehicle_name=vehicle,

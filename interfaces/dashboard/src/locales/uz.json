@@ -885,5 +885,15 @@
       "footer_ai": "Tur yetishmayaptimi? Yordamchidan so'rang",
       "empty": "Rolingiz ochadigan sahifalar uchun hozircha turlar yo'q."
     }
+  },
+  "plan": {
+    "not_in_plan": "Rejangizda yo'q",
+    "upgrade": "Rejani yangilash",
+    "locked_nav": "Rejangizda yo'q — ishlatish uchun rejani yangilang",
+    "matrix_hint": "Rejangizda yo'q",
+    "route_title": "{{feature}} rejangizda yo'q",
+    "route_body": "Kompaniyangiz {{plan}} rejasida. Bu imkoniyatdan foydalanish uchun rejani yangilang.",
+    "this_feature": "Bu imkoniyat",
+    "current_plan": "joriy"
   }
 }

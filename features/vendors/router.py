@@ -21,7 +21,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
+from interfaces.api.deps import deny, get_current_user, get_tenant_db, require_permission, resolve_user_id
 from capabilities.permissions.roles import can_for_account, Role
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -66,7 +66,7 @@ async def list_vendors(
     """Registry list with usage rollups (WO count, total spend, last
     visit) — powers the Vendors page and the form picker."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     return {"vendors": await tenant_db.list_vendors(user["account_id"])}
 
 
@@ -79,7 +79,7 @@ async def search_directory(
     """ACTIVE global-directory entries (identity fields only) for the
     link picker.  No account transaction data crosses here, ever."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     return {"entries": await tenant_db.search_directory_active(q)}
 
 
@@ -94,7 +94,7 @@ async def browse_directory(
     links to each entry.  Nothing account-attributable beyond the
     caller's own link status."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     return {"entries": await tenant_db.browse_directory(user["account_id"], q)}
 
 
@@ -111,7 +111,7 @@ async def get_identity_sharing(
 ):
     """Directory-contribution consent state (default ON)."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     return {"enabled": await tenant_db.get_identity_sharing(user["account_id"])}
 
 
@@ -140,7 +140,7 @@ async def get_market_sharing(
     """Give-to-get consent state for this account + whether the
     feature is live at all (flag)."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     return {
         "available": await tenant_db.market_intel_enabled(),
         "enabled": await tenant_db.get_market_sharing(user["account_id"]),
@@ -175,7 +175,7 @@ async def get_vendor(
     'every part bought, at what price, with what labor' view — parts
     detail hangs off each WO in the standard detail endpoint)."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     vendor = await tenant_db.get_vendor(vendor_id, user["account_id"])
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -219,7 +219,7 @@ async def create_vendor(
     """Create (idempotent on the normalized name — re-submitting an
     existing name returns that vendor, mirroring custom task types)."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     vendor = await tenant_db.create_vendor(
         user["account_id"], body.name,
         address=body.address, phone=body.phone,
@@ -241,7 +241,7 @@ async def update_vendor(
     """Edit contact/notes/name.  NEVER rewrites work-order snapshots —
     historical invoices keep saying what they said."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
@@ -272,7 +272,7 @@ async def merge_vendors(
     """Fold a typo-duplicate into the real vendor.  Both ids are
     validated against the caller's account before anything moves."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     if loser_id == winner_id:
         raise HTTPException(status_code=422, detail="Cannot merge a vendor into itself")
     ok = await tenant_db.merge_vendors(
@@ -303,7 +303,7 @@ async def link_directory(
     its work orders stay; identity links + empty contact fields fill
     from the verified entry.  Reversible via Unlink."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     if not await tenant_db.get_vendor(vendor_id, user["account_id"]):
         raise HTTPException(status_code=404, detail="Vendor not found")
     ok = await tenant_db.link_vendor_to_directory(
@@ -322,7 +322,7 @@ async def unlink_directory(
     tenant_db=Depends(get_tenant_db),
 ):
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     ok = await tenant_db.link_vendor_to_directory(
         user["account_id"], vendor_id, None,
         actor_user_id=await resolve_user_id(user),
@@ -352,7 +352,7 @@ async def review_directory_entry(
     review is displayed with NO attribution; account_id exists solely
     for uniqueness + operator audit."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     if not await tenant_db.review_eligible(user["account_id"], entry_id):
         raise HTTPException(
             status_code=403,
@@ -385,7 +385,7 @@ async def market_for_entry(
     is the published rollup shape only — counts + p25/p75, nothing
     joinable back to any account."""
     if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+        raise await deny(user, "can_manage_work_orders")
     if not await tenant_db.market_intel_enabled():
         return {"available": False, "reason": "disabled", "rows": []}
     if not await tenant_db.get_market_sharing(user["account_id"]):

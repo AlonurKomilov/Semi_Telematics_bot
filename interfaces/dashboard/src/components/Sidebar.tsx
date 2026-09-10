@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Tip } from './tooltip';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from '../lib/icons';
+import { ChevronDown, ChevronRight, Lock, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from '../lib/icons';
 import { useAuth } from '../context/AuthContext';
 import { usePreference } from '../preferences';
 import { useRoleView } from '../context/RoleViewContext';
@@ -72,7 +72,15 @@ export default function Sidebar({ forceExpanded = false }: {
   // Width follows the VIEW, as the verbs do: a preview of a narrowed
   // role must not surface the cross-department items the real member
   // never sees.
-  const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules, viewVehicleScope);
+  // The plan's "not in your plan" entries are drawn only for the PERSON
+  // who can change the plan — the logged-in user's own power, not the
+  // previewed view's: an owner previewing Fleet still owns the plan and
+  // sees the lock where Maintenance would sit; a real fleet member
+  // never does, for them the feature is simply absent.
+  const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules, viewVehicleScope, {
+    excluded: user?.plan?.excluded ?? [],
+    canUpgrade: !!user?.permissions?.can_manage_billing,
+  });
 
   const settingsGroup = navConfig.find((g) => g.collapsible);
   const inSettingsArea = !!settingsGroup && (
@@ -322,6 +330,21 @@ export default function Sidebar({ forceExpanded = false }: {
                       </NavLink>
                       {open && kids.map((k) => {
                         const KIcon = k.icon;
+                        if (k.locked) {
+                          return (
+                            <Tip key={k.featureId ?? k.path} label={t('plan.locked_nav')}>
+                              <Link
+                                to={k.path}
+                                aria-label={`${t(k.labelKey)} — ${t('plan.locked_nav')}`}
+                                className="flex items-center gap-3 pl-9 pr-3 mx-2 my-0.5 rounded-md py-1.5 text-sm text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+                              >
+                                <KIcon className="shrink-0 size-3.5" />
+                                <span className="flex-1">{t(k.labelKey)}</span>
+                                <Lock className="shrink-0 size-3" aria-hidden />
+                              </Link>
+                            </Tip>
+                          );
+                        }
                         return (
                           <NavLink
                             key={k.path}
@@ -340,6 +363,24 @@ export default function Sidebar({ forceExpanded = false }: {
                         );
                       })}
                     </div>
+                  );
+                }
+                if (item.locked) {
+                  // Not in the plan: a lock where the entry would sit, and
+                  // the path leads to Billing.  Never "active" — it is not
+                  // a page, it is the way to one.
+                  return (
+                    <Tip key={item.featureId ?? item.path} label={t('plan.locked_nav')}>
+                      <Link
+                        to={item.path}
+                        aria-label={`${label} — ${t('plan.locked_nav')}`}
+                        className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 mx-2 my-0.5 rounded-md py-2 text-sm text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors`}
+                      >
+                        <Icon className="shrink-0 size-4" />
+                        {!collapsed && <span className="flex-1">{label}</span>}
+                        {!collapsed && <Lock className="shrink-0 size-3.5" aria-hidden />}
+                      </Link>
+                    </Tip>
                   );
                 }
                 return (

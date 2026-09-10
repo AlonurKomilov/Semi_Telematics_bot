@@ -113,7 +113,7 @@ def _plans_warm(_isolate_process_caches):
     closed states are tested by clearing it
     (capabilities/permissions/tests/test_plan_mask.py)."""
     from capabilities.permissions import plans
-    plans.load_rows([{"tier": t, "included": ["*"], "quotas": {}}
+    plans.load_rows([{"tier": t, "label": t.title(), "included": ["*"], "quotas": {}}
                      for t in ("free", "starter", "pro", "enterprise")])
     yield
     plans.forget()

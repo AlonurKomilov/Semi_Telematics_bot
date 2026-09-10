@@ -111,6 +111,10 @@ _PLANS: dict[str, frozenset[str] | str] = {}
 _LOADED_AT: float | None = None      # monotonic; None = never loaded
 # the last-known quotas per tier (a plan's numbers, beside its ids)
 _QUOTAS: dict[str, dict] = {}
+# the last-known label per tier (what the customer's page calls it)
+_LABELS: dict[str, str] = {}
+#: flag → the sellable entry that owns it (the 403's "which feature")
+_OWNER_OF_FLAG: dict[str, str] = {f: fid for fid, fl in _FLAGS_OF.items() for f in fl}
 # the last-known tier per account, for the resolver when the account
 # row itself cannot be read
 _TIER_OF: dict[int, str] = {}
@@ -169,20 +173,61 @@ def load_rows(rows) -> None:
     global _LOADED_AT
     fresh: dict[str, frozenset[str] | str] = {}
     quotas: dict[str, dict] = {}
+    labels: dict[str, str] = {}
     for r in rows:
         inc = r.get("included") or []
         fresh[r["tier"]] = EVERYTHING if EVERYTHING in inc else frozenset(inc)
         quotas[r["tier"]] = dict(r.get("quotas") or {})
+        labels[r["tier"]] = str(r.get("label") or "").strip() or str(r["tier"]).replace("_", " ").title()
     _PLANS.clear(); _PLANS.update(fresh)
     _QUOTAS.clear(); _QUOTAS.update(quotas)
+    _LABELS.clear(); _LABELS.update(labels)
     _LOADED_AT = time.monotonic()
 
 
 def forget() -> None:
     """Back to never-loaded: no table, no remembered tiers (closed)."""
     global _LOADED_AT
-    _PLANS.clear(); _QUOTAS.clear(); _TIER_OF.clear()
+    _PLANS.clear(); _QUOTAS.clear(); _LABELS.clear(); _TIER_OF.clear()
     _LOADED_AT = None
+
+
+def plan_label(tier: Optional[str]) -> str:
+    """What the plan is called on the customer's page — the row's label,
+    else the key itself, readable."""
+    if not tier:
+        return ""
+    return _LABELS.get(tier) or tier.replace("_", " ").title()
+
+
+def excluded_for(tier: Optional[str]) -> list[str]:
+    """The sellable ids the plan leaves out, in registry order — what
+    the customer's surfaces draw as "not in your plan".  Empty for a
+    plan that includes everything; the whole sellable set for a plan
+    that is unknown (closed)."""
+    inc = included_for(tier)
+    if inc == EVERYTHING:
+        return []
+    if inc is None:
+        return list(EXCLUDABLE)
+    return [i for i in EXCLUDABLE if i not in inc]
+
+
+def excluded_flags_for(tier: Optional[str]) -> list[str]:
+    """Every flag the plan mask forces off for this tier, sorted — the
+    exact answer the resolver gives, for a surface that locks by flag
+    (the matrix, a route guard)."""
+    return sorted(plan_flags_off(included_for(tier)))
+
+
+def excludes_flag(tier: Optional[str], flag: str) -> Optional[str]:
+    """The sellable entry through which the plan withholds *flag*, or
+    ``None`` when the plan does not — the 403's reason.  A flag no
+    plan line owns is never the plan's doing."""
+    fid = _OWNER_OF_FLAG.get(flag)
+    if fid is None:
+        return None
+    return fid if flag in plan_flags_off(included_for(tier)) else None
 
 
 def tier_of(acct) -> str:
