@@ -114,7 +114,17 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
       // decision and produced an extra flash of the wrong route on
       // every cross-host auth handoff.
       clearToken();
-      throw new Error('Unauthorized');
+      // The server's OWN WORDS when it has them.  A 401 answering a
+      // LOGIN attempt is not "your session expired" — it is the answer
+      // to the question just asked, and the bare status text threw it
+      // away.  Google sign-in refuses an unlinked address with a
+      // sentence saying exactly what to do next; the person saw the
+      // word "Unauthorized" instead, and the real reason
+      // (`google_no_account`) reached only the login-attempt log.
+      const said = await res.clone().json()
+        .then((b: { detail?: unknown }) => (typeof b?.detail === 'string' ? b.detail : ''))
+        .catch(() => '' /* not JSON: a blob endpoint or an empty body — the word stands */);
+      throw new Error(said || 'Unauthorized');
     }
     if (res.status === 502 || res.status === 503 || res.status === 504) {
       // Gateway-level failure — the API is restarting (make restart) or
@@ -161,10 +171,16 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
  */
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** A structured reason when the server gives one — ``plan_excluded``
+   *  on a 403 the account's plan caused (with ``feature`` naming it). */
+  code?: string;
+  feature?: string;
+  constructor(status: number, message: string, code?: string, feature?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    if (code) this.code = code;
+    if (feature) this.feature = feature;
   }
 }
 
@@ -180,7 +196,12 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
       : (detail && typeof detail === 'object' && typeof (detail as { message?: unknown }).message === 'string')
         ? (detail as { message: string }).message
       : res.statusText;
-    throw new ApiError(res.status, msg);
+    const structured = detail && typeof detail === 'object' ? (detail as { code?: unknown; feature?: unknown }) : undefined;
+    throw new ApiError(
+      res.status, msg,
+      typeof structured?.code === 'string' ? structured.code : undefined,
+      typeof structured?.feature === 'string' ? structured.feature : undefined,
+    );
   }
   // 204 No Content carries no body by definition — parsing it throws
   // "Unexpected end of JSON input" AFTER the server already succeeded
