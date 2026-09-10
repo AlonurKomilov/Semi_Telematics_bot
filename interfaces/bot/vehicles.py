@@ -153,6 +153,24 @@ async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
 
+def _row_truck(v: dict) -> str:
+    """The unit name a warehouse row carries, whichever shape it came in."""
+    name = (v.get("vehicle_name")
+            or (v.get("vehicle") or {}).get("name")
+            or v.get("name") or "")
+    return str(name).strip().lower()
+
+
+def _narrow_rows(rows: list[dict], truck: str | None) -> list[dict]:
+    """Assigned width: only the member's own truck — exact lowercased
+    equality, never a substring (230 must not read 2303).  No truck →
+    nothing, never the account."""
+    if not truck:
+        return []
+    want = truck.strip().lower()
+    return [v for v in rows if _row_truck(v) == want]
+
+
 @_require_registered
 async def cmd_vehicle_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           vehicle_name: str = "", company: str = ""):
@@ -162,6 +180,18 @@ async def cmd_vehicle_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
+
+    # Assigned width (Team Management's answer, not the role): the report
+    # is of the member's own truck, whatever name the button or the typed
+    # command carried — a narrow member could type any unit number here
+    # and take its PDF.
+    if await _unit_width(user.account_id, user.role, user, "vehicles") != "all":
+        if not user.truck_num:
+            await _show(update, context,
+                        [t('vehicle.no_vehicle_assigned')],
+                        keyboard=back_kb())
+            return
+        vehicle_name = user.truck_num
 
     await prepare_companies(user.account_id)
 
@@ -248,6 +278,13 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         critical, total, breakdown = await _svc_with_faults(user.account_id, company=company)
         critical = [v for v in critical if v.get("_severity") == "critical"]
+        # Assigned width: the member's own truck only.  The totals speak
+        # of what the member may see — one truck, no company breakdown —
+        # or the health percentage would leak the account's size.
+        if await _unit_width(user.account_id, user.role, user, "vehicles") != "all":
+            critical = _narrow_rows(critical, user.truck_num)
+            total = 1 if user.truck_num else 0
+            breakdown = {}
 
         if not critical:
             kb = await _user_menu_kb(user)
