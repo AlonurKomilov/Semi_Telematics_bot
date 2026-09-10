@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 
-from adapters.storage.vehicle_inventory import (
+from adapters.storage.inventory import (
     INVENTORY_CATEGORIES,
     INVENTORY_STATUSES,
     normalize_inventory_category,

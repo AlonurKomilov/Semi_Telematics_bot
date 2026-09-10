@@ -142,7 +142,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     keywords: ['task', 'service', 'job', 'pm'] },
   { label: 'Inventory', path: '/inventory', icon: Boxes, group: 'Fleet',
     permission: ['can_view_inventory'],
-    description: 'Onboard items per truck — cameras, fuel cards, ELDs',
+    description: 'What is aboard each vehicle — cameras, fuel cards, transponders, ELDs',
     // 'onboard' stays a keyword though it left the label: it was the
     // name in production for a week, and a search for it must not
     // land on Drivers → Onboarding, which is what it would find

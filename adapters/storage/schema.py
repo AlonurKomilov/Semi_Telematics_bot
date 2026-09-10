@@ -936,7 +936,7 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_work_order_labor_wo
             ON work_order_labor(account_id, work_order_id);
 
-        -- Onboard inventory: what physically lives in each truck
+        -- Inventory: what physically lives in each vehicle
         -- (dashcam / fuel card / toll transponder / ELD / tablet / other)
         -- + the immutable accountability event trail.
         CREATE TABLE IF NOT EXISTS vehicle_inventory_items (

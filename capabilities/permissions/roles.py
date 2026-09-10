@@ -102,7 +102,7 @@ class FeatureSet:
     can_manage_vehicle_docs: bool = False # upload / delete them
     can_view_vehicles: bool = False      # /vehicle <any>
 
-    # Onboard Inventory — what physically lives in a truck (dashcam,
+    # Inventory — what physically lives in a vehicle (dashcam,
     # fuel card, toll transponder, ELD).  Its own pair since the feature
     # left features/vehicles/: reading what is in a truck and
     # administering the truck registry are different jobs, and a safety

@@ -270,7 +270,7 @@ async def extension_inventory(
     from infra.platform import get_tenant_db
     from interfaces.api.deps import get_user_company_codes
     from features.vehicles.scope import company_allows
-    from adapters.storage.vehicle_inventory import ATTENTION_STATUSES
+    from adapters.storage.inventory import ATTENTION_STATUSES
 
     account_id = int(user["account_id"])
     tenant = await get_tenant_db(account_id)
@@ -345,7 +345,7 @@ async def extension_inventory_fleet(
     from infra.platform import get_tenant_db
     from interfaces.api.deps import filter_by_assigned_trucks, get_user_company_codes
     from features.vehicles.scope import company_allows
-    from adapters.storage.vehicle_inventory import ATTENTION_STATUSES
+    from adapters.storage.inventory import ATTENTION_STATUSES
 
     account_id = int(user["account_id"])
     tenant = await get_tenant_db(account_id)

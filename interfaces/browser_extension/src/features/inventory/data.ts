@@ -21,7 +21,7 @@ export interface InventoryItem {
   last_verified_at?: string;
 }
 
-export interface Onboard {
+export interface Inventory {
   items: InventoryItem[];
   /** How many of them are in a status that wants somebody's attention. */
   attention: number;
@@ -31,7 +31,7 @@ export interface Onboard {
  *  enough that a truck someone is working on tells the truth. */
 const TTL_MS = 60_000;
 
-const cache = new Map<number, { at: number; data: Onboard }>();
+const cache = new Map<number, { at: number; data: Inventory }>();
 
 /** A 403 means the owner did not grant this person Inventory.  That is
  *  not an error to retry — it is an answer, and it will be the same
@@ -91,7 +91,7 @@ export function forgetInventory(): void {
 export async function inventoryFor(
   registryId: number | null | undefined,
   now: number = Date.now(),
-): Promise<Onboard | null> {
+): Promise<Inventory | null> {
   if (denied || registryId == null) return null;
   const hit = cache.get(registryId);
   if (hit && now - hit.at < TTL_MS) return hit.data;
@@ -101,7 +101,7 @@ export async function inventoryFor(
     if (res.status === 403) { denied = true; return null; }
     if (!res.ok) return null;                      // transient: ask again next time
     const out = (await res.json()) as { items?: InventoryItem[]; attention?: number };
-    const data: Onboard = {
+    const data: Inventory = {
       items: Array.isArray(out.items) ? out.items : [],
       attention: typeof out.attention === 'number' ? out.attention : 0,
     };

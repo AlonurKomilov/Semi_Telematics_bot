@@ -1,4 +1,4 @@
-"""Onboard Inventory — a component of the Vehicle feature.
+"""Inventory — a feature of its own since 2026-09-08.
 
 Proves: CRUD + the accountability contract (every write appends an event
 with the actor AND the driver assigned to the truck at that moment),

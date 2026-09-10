@@ -15,6 +15,19 @@ changed six times while the store still served 0.4.0, and the owner tested a
 store install against a sideload and read the difference as a bug. Same code
 would have been the same behaviour.
 
+### Which digit moves
+
+**PATCH (0.10.x) for a fix**, however deep the diagnosis was: a bug, a
+layout correction, copy, a guard.  **MINOR (0.x.0) for a feature** — a new
+panel surface, a new endpoint the panel calls, a new permission it reads.
+Four fixes in one afternoon are 0.10.1 … 0.10.4, not 0.14.0; the owner
+reads the minor digit as "something new to look at", and burning it on
+fixes makes the number say nothing.
+
+A version is SPENT once its zip has been installed or uploaded — not
+merely built.  A number that was named in a message but never installed
+can be reused: delete its zips and rebuild.
+
 Recipe, every time:
 1. bump `version` in `public/manifest.json` AND `package.json` (the store refuses
    a seen version, drafts included);

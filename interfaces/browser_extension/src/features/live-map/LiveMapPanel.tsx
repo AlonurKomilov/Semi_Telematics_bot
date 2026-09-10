@@ -14,7 +14,7 @@ import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
-import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Onboard } from '../inventory/data';
+import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Inventory } from '../inventory/data';
 import ItemRows from '../inventory/ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
 import { PANEL_LIVE, PENDING_SELECT_KEY, readPendingSelect, sharedOrOwn,
@@ -41,8 +41,8 @@ const CARD_BODY_ID = 'live-map-vehicle-detail';
  *  panel is open; this answers "is the dashcam still on it", which is
  *  asked sometimes.  A section that arrives expanded would give back
  *  the height the card's own fold was built to save. */
-const INV_OPEN_KEY = 'liveMapOnboardOpen';
-const INV_BODY_ID = 'live-map-vehicle-onboard';
+const INV_OPEN_KEY = 'liveMapInventoryOpen';
+const INV_BODY_ID = 'live-map-vehicle-inventory';
 /** The filter is a working preference, not a fresh decision every time:
  *  a dispatcher who watches Moving watched it yesterday too. */
 const FILTER_KEY = 'liveMapFilter';
@@ -87,7 +87,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // …and what is aboard it.  null covers three cases that all mean the
   // same thing for the surface — not asked yet, not permitted, not
   // answered — so the section simply is not there.
-  const [onboard, setOnboard] = useState<Onboard | null>(null);
+  const [inventory, setInventory] = useState<Inventory | null>(null);
   const [invOpen, setInvOpen] = useState(false);
   // Ages are read against ONE clock per render, so two rows can never
   // disagree by the milliseconds between their own Date.now() calls.
@@ -131,10 +131,10 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   /** After a write: this truck's cached contents are a minute out of
    *  date the moment somebody flags an item, so they are dropped and
    *  read again rather than left to expire on their own. */
-  const refreshOnboard = async (registryId: number | null | undefined) => {
+  const refreshInventory = async (registryId: number | null | undefined) => {
     forgetVehicle(registryId);
     const ob = await inventoryFor(registryId);
-    if (selectedRef.current?.properties.registry_id === registryId) setOnboard(ob);
+    if (selectedRef.current?.properties.registry_id === registryId) setInventory(ob);
   };
 
   /** Where the vehicle IS right now: the marker, which the 5-second poll
@@ -172,9 +172,9 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     });
     // Same rule for what is aboard: clear first, and drop an answer that
     // belongs to a truck the person has already left.
-    setOnboard(null);
+    setInventory(null);
     void inventoryFor(rid).then((ob) => {
-      if (selectedIdRef.current === idOf(cur)) setOnboard(ob);
+      if (selectedIdRef.current === idOf(cur)) setInventory(ob);
     });
     setKeep(true);              // a fresh choice always starts centred
     const [lat, lng] = liveLatLng(cur);
@@ -709,7 +709,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                   carry an "Inventory 0" line on every selection forever,
                   and a truck with nothing recorded is something to fix
                   on the dashboard, not to report on a map. */}
-              {onboard && onboard.items.length > 0 && (
+              {inventory && inventory.items.length > 0 && (
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 6, display: 'grid', gap: 4 }}>
                   {/* The header carries a RESTING fill, not just the
                       .rowbtn hover.  The list's header gets away with a
@@ -736,28 +736,28 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                         was there to separate it from Parts, and Parts has
                         since stopped claiming the word instead. */}
                     <span style={{ fontWeight: 600, fontSize: 12 }}>Inventory</span>
-                    <span className="muted" style={{ fontSize: 12 }}>{onboard.items.length}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{inventory.items.length}</span>
                     {/* Folding may take away detail; it may not take away
                         a warning.  The card's own fold obeys the same
                         rule, and this is the whole reason the section is
                         worth having closed: one glance says whether
                         anything on this truck wants somebody. */}
-                    {onboard.attention > 0 && (
+                    {inventory.attention > 0 && (
                       <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--warn)', fontWeight: 600 }}>
-                        {onboard.attention} flagged
+                        {inventory.attention} flagged
                       </span>
                     )}
                   </button>
                   {/* The rows carry their own ceiling — see ItemRows. */}
                   <div id={INV_BODY_ID} hidden={!invOpen} style={{ display: 'grid', gap: 4 }}>
-                    <ItemRows items={onboard.items}
+                    <ItemRows items={inventory.items}
                               onVerify={canWriteInventory ? async (id) => {
                                 await verifyItem(id);
-                                await refreshOnboard(selected.properties.registry_id);
+                                await refreshInventory(selected.properties.registry_id);
                               } : undefined}
                               onStatus={canWriteInventory ? async (id, st) => {
                                 await setItemStatus(id, st);
-                                await refreshOnboard(selected.properties.registry_id);
+                                await refreshInventory(selected.properties.registry_id);
                               } : undefined} />
                     {/* The panel can READ this and never write it — the
                         manage grant is deliberately outside the token's

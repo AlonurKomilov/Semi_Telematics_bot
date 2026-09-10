@@ -92,7 +92,7 @@ TAXONOMY: dict[str, Verdict] = {
         "DARK feature — stays in DARK_FEATURE_FIELDS under the new name."),
     "can_carrier_directory": Verdict(V, "can_view_carrier_directory"),
     "can_vehicle_docs":  Verdict(V, "can_view_vehicle_docs"),
-    # Onboard Inventory left features/vehicles/ with its own pair; both
+    # Inventory left features/vehicles/ with its own pair; both
     # names are already grammatical, so nothing renames and no alias is
     # owed.
     "can_view_inventory": Verdict(V, "can_view_inventory"),

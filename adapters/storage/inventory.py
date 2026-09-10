@@ -1,4 +1,10 @@
-"""Vehicle onboard inventory — what physically lives in each truck.
+"""Inventory — what physically lives in each vehicle.
+
+The module and its mixin took the feature's name on 2026-09-10.  The
+TABLES did not, and will not: their names are written into every
+migration that has already run and into the ``retention_runs`` history
+that records what was pruned from them.  Renaming them orphans that
+history for a word nobody outside this file reads.
 
 Two tables:
 
@@ -68,7 +74,7 @@ def _row_to_dict(row) -> dict | None:
     return dict(row) if row is not None else None
 
 
-class VehicleInventoryMixin(_MixinBase):
+class InventoryMixin(_MixinBase):
     """CRUD + event trail for per-vehicle onboard inventory."""
 
     # ── reads ────────────────────────────────────────────────────

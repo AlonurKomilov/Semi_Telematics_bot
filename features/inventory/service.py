@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from infra.services import get_tenant_db
 
-from adapters.storage.vehicle_inventory import (  # re-exported contract
+from adapters.storage.inventory import (  # re-exported contract
     ATTENTION_STATUSES,
     INVENTORY_CATEGORIES,
     INVENTORY_STATUSES,

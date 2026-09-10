@@ -6544,7 +6544,7 @@ async def migrate_vendors_global_link(conn) -> None:
 
 @_register("152_vehicle_inventory")
 async def migrate_vehicle_inventory(conn) -> None:
-    """Onboard inventory — what physically lives in each truck.
+    """Inventory — what physically lives in each vehicle.
 
     Two tables: ``vehicle_inventory_items`` (one row per tracked item,
     anchored to the vehicles registry) and ``vehicle_inventory_events``

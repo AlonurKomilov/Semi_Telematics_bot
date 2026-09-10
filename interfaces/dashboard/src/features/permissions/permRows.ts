@@ -180,15 +180,11 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_fuel',       kind: 'subfeature', label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
       { key: 'can_view_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
       { key: 'can_view_vehicle_docs', kind: 'subfeature', label: 'Documents', indented: true, description: "Registration, title, insurance, annual inspections — read + download" },
-      // Onboard Inventory — a feature of its own since 2026-09-08, not a
-      // row under Vehicles: chasing a missing extinguisher is not
-      // administering the truck registry, and an owner can now grant one
-      // without the other.
-      // "Onboard" stays in the DESCRIPTION though it left the label:
-      // matrixView's find box searches label or description, and after
-      // the rename a search for the word people used all week would
-      // otherwise return Drivers → Onboarding.
-      { key: 'can_view_inventory', kind: 'feature', label: 'Inventory', description: "What is onboard each vehicle — dashcam, fuel card, toll transponder, ELD — and who touched it" },
+      // Inventory — a feature of its own since 2026-09-08, not a row
+      // under Vehicles: chasing a missing extinguisher is not
+      // administering the vehicle registry, and an owner can now grant
+      // one without the other.
+      { key: 'can_view_inventory', kind: 'feature', label: 'Inventory', description: "What is aboard each vehicle — dashcam, fuel card, toll transponder, ELD — and who touched it" },
       { key: 'can_manage_inventory', kind: 'action', label: 'Manage', indented: true, description: 'Add, edit, verify, transfer and remove items' },
       { key: 'can_view_geofence', kind: 'feature', label: 'Geofences' },
       { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
@@ -369,11 +365,11 @@ export const DRIVER_TRUCK: (ScopedFlag | SimpleFlag)[] = [
   { key: 'can_view_maintenance', kind: 'feature', label: 'Maintenance',         description: 'Their truck’s maintenance schedule' },
   { key: 'can_manage_maintenance', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit, complete & delete tasks and templates — for the trucks this member sees' },
   { key: 'can_view_inspections', kind: 'feature', label: 'PTI Inspections',     description: 'Do & review pre-trip inspections on their truck' },
-  // Onboard Inventory rode the Vehicle grant until inventory became a
+  // Inventory rode the Vehicle grant until it became a
   // feature with its own flag (2026-09-08).  Without a row here the
   // driver keeps the grant and the owner loses the only place to see or
   // revoke it — the staff matrix has no Driver column.
-  { key: 'can_view_inventory', kind: 'feature',    label: 'Inventory',           description: 'What is onboard their assigned truck — dashcam, fuel card, toll transponder, ELD' },
+  { key: 'can_view_inventory', kind: 'feature',    label: 'Inventory',           description: 'What is aboard their assigned vehicle — dashcam, fuel card, toll transponder, ELD' },
   { key: 'can_manage_inspections', kind: 'action', label: 'Manage', indented: true, description: 'Review submissions and edit the checklist' },
   { key: 'can_view_routes', kind: 'feature',       label: 'Routes',              description: 'Their own assigned routes' },
   { key: 'can_view_scorecards', kind: 'feature',   label: 'Scorecard',           description: 'Their own safety scorecard' },

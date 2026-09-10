@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
-import { forgetVehicle, inventoryFor, retryInventory, setItemStatus, verifyItem, type Onboard } from './data';
+import { forgetVehicle, inventoryFor, retryInventory, setItemStatus, verifyItem, type Inventory } from './data';
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
 
@@ -49,7 +49,7 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
    *  vehicle a person clicked said "Reading…" for the life of the
    *  panel.  A failure has to be a value, or it wears the label of
    *  whatever state it was folded into. */
-  const [items, setItems] = useState<Onboard | 'loading' | 'failed'>('loading');
+  const [items, setItems] = useState<Inventory | 'loading' | 'failed'>('loading');
   /** The chosen truck, for handlers that outlive the render that made
    *  them — the storage listener is attached once. */
   const selectedRef = useRef<FleetRow | null>(null);

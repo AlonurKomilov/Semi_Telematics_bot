@@ -31,7 +31,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from adapters.storage.vehicle_inventory import (
+from adapters.storage.inventory import (
     INVENTORY_CATEGORIES,
     normalize_inventory_category,
     INVENTORY_STATUSES,
@@ -119,7 +119,7 @@ async def _driver_snapshot(tenant, account_id: int, vehicle_id: int) -> int | No
 
 
 def _summary(items: list[dict]) -> dict:
-    from adapters.storage.vehicle_inventory import ATTENTION_STATUSES
+    from adapters.storage.inventory import ATTENTION_STATUSES
     attention = [i for i in items if i["status"] in ATTENTION_STATUSES]
     return {"total": len(items), "attention": len(attention)}
 
