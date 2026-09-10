@@ -231,6 +231,7 @@ async def run_all(conn) -> None:
     # Plans as data: the four tiers, everything included, until the
     # operator narrows one from the system console.
     await migrate_plans(conn)
+    await migrate_plans_catalog(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
     await migrate_driver_trucks_registry_id(conn)
@@ -5099,6 +5100,53 @@ async def migrate_plans(conn) -> None:
                     "existing rows kept", len(tiers))
     except Exception as e:
         logger.error("plans migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_plans_catalog(conn) -> None:
+    """The plan row carries its price catalog: monthly price, trucks
+    included, the per-extra-truck price, the Stripe price id, whether
+    the customer's page shows it, and its order.  Seeded from the code
+    table that used to be the only catalog (free / starter $49 / pro $99
+    / enterprise), only into rows the seed itself signed (updated_by =
+    'migration') — a row the operator has saved is never rewritten,
+    whatever values they chose.  Idempotent.
+    """
+    cols = (
+        "price_monthly_cents INTEGER NOT NULL DEFAULT 0",
+        "base_vehicles INTEGER NOT NULL DEFAULT 0",
+        "extra_vehicle_cents INTEGER NOT NULL DEFAULT 0",
+        "stripe_price_id TEXT NOT NULL DEFAULT ''",
+        "public INTEGER NOT NULL DEFAULT 0",
+        "sort INTEGER NOT NULL DEFAULT 0",
+    )
+    try:
+        for c in cols:
+            await conn.execute(f"ALTER TABLE plans ADD COLUMN IF NOT EXISTS {c}")
+        seed = {
+            # tier: (price cents, trucks included, extra truck cents, public, sort)
+            "free":       (0,    0,  0,   0, 0),
+            "starter":    (4900, 10, 299, 1, 1),
+            "pro":        (9900, 10, 299, 1, 2),
+            "enterprise": (0,    0,  0,   0, 3),
+        }
+        # "untouched" = still signed by the seed (updated_by = 'migration');
+        # a row the operator saved from the console carries their id, and
+        # is left exactly as they left it — even when what they chose
+        # happens to equal a default (an Enterprise reordered to 0).
+        for tier, (price, base, extra, public, sort) in seed.items():
+            await conn.execute(
+                "UPDATE plans SET price_monthly_cents = ?, base_vehicles = ?, extra_vehicle_cents = ?, "
+                "public = ?, sort = ? WHERE tier = ? AND updated_by = 'migration'",
+                (price, base, extra, public, sort, tier),
+            )
+        await conn.commit()
+        logger.info("Migration: plans catalog columns present; untouched seed rows priced")
+    except Exception as e:
+        logger.error("plans catalog migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

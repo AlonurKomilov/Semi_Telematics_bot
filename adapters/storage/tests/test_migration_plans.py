@@ -36,6 +36,34 @@ async def test_a_tier_an_account_already_carries_gets_a_row_too(db):
 
 
 @pytest.mark.asyncio
+async def test_the_catalog_columns_are_seeded_from_the_code_table_and_never_rewritten(db):
+    from adapters.storage.platform_migrations import migrate_plans_catalog
+    rows = {r["tier"]: r for r in await db.list_plans()}
+    assert (rows["starter"]["price_monthly_cents"], rows["starter"]["base_vehicles"], rows["starter"]["extra_vehicle_cents"]) == (4900, 10, 299)
+    assert (rows["pro"]["price_monthly_cents"], rows["pro"]["public"], rows["pro"]["sort"]) == (9900, True, 2)
+    assert rows["starter"]["public"] is True and rows["free"]["public"] is False and rows["enterprise"]["public"] is False
+    assert rows["free"]["sort"] == 0 and rows["enterprise"]["sort"] == 3 and rows["starter"]["stripe_price_id"] == ""
+    # the operator prices Pro; a re-run keeps it
+    await db.upsert_plan("pro", label="Pro", included=["*"], price_monthly_cents=12900, stripe_price_id="price_abc", public=False, sort=9)
+    await migrate_plans_catalog(db._db)
+    pro = await db.get_plan("pro")
+    assert (pro["price_monthly_cents"], pro["stripe_price_id"], pro["public"], pro["sort"]) == (12900, "price_abc", False, 9)
+    assert pro["base_vehicles"] == 10                          # a field left None keeps the row's value
+
+
+@pytest.mark.asyncio
+async def test_pricing_reads_the_row_first_and_the_code_table_when_the_row_is_unpriced(db):
+    from adapters.storage.billing import BillingMixin
+    assert await db.pricing_for("starter") == {"tier": "starter", "base_vehicles": 10, "monthly_base_cents": 4900, "extra_vehicle_cents": 299}
+    await db.upsert_plan("starter", label="Starter", included=["*"], price_monthly_cents=5900, base_vehicles=12, extra_vehicle_cents=349)
+    assert await db.pricing_for("starter") == {"tier": "starter", "base_vehicles": 12, "monthly_base_cents": 5900, "extra_vehicle_cents": 349}
+    # an unpriced row (a plan the operator just created) → the code table's answer for that key
+    await db.upsert_plan("gold", label="Gold", included=["*"])
+    assert await db.pricing_for("gold") == BillingMixin.tier_pricing("gold")
+    assert await db.pricing_for("nope") == BillingMixin.tier_pricing("nope")
+
+
+@pytest.mark.asyncio
 async def test_rerun_never_rewrites_a_narrowed_plan(db):
     await db.upsert_plan("free", label="Free", included=["vehicles"], quotas={"max_users": 3},
                          updated_by="owner:1")

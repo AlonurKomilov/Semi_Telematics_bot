@@ -1903,11 +1903,22 @@ class PlanBody(BaseModel):
     label: str = Field(..., min_length=1, max_length=60)
     included: list[str] = Field(..., max_length=200, description='registry ids, or ["*"] for everything')
     quotas: dict[str, int] = Field(default_factory=dict, max_length=20)
+    # the price catalog — omitted = keep the row's value
+    price_monthly_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    base_vehicles: int | None = Field(default=None, ge=0, le=100_000)
+    extra_vehicle_cents: int | None = Field(default=None, ge=0, le=1_000_000)
+    stripe_price_id: str | None = Field(default=None, max_length=120)
+    public: bool | None = None
+    sort: int | None = Field(default=None, ge=0, le=1000)
 
 
 class NewPlanBody(BaseModel):
     tier: str = Field(..., min_length=2, max_length=32)
     label: str = Field(..., min_length=1, max_length=60)
+
+
+_AUDITED_PLAN_FIELDS = ("label", "included", "quotas", "price_monthly_cents", "base_vehicles",
+                        "extra_vehicle_cents", "stripe_price_id", "public", "sort")
 
 
 def _label_of(raw: str) -> str:
@@ -1947,8 +1958,8 @@ async def _audit_plan(platform_db, event: str, *, tier: str, actor: str, before,
             event, actor=actor,
             details=json.dumps({
                 "tier": tier, "accounts": accounts,
-                "before": {k: before[k] for k in ("label", "included", "quotas")} if before else None,
-                "after": {"label": row["label"], "included": row["included"], "quotas": row["quotas"]},
+                "before": {k: before.get(k) for k in _AUDITED_PLAN_FIELDS} if before else None,
+                "after": {k: row.get(k) for k in _AUDITED_PLAN_FIELDS},
             }),
         )
     except Exception:
@@ -2026,7 +2037,11 @@ async def system_put_plan(
         raise HTTPException(status_code=404, detail=f"No plan named '{tier}' — create it first")
     actor = f"tg:{user.get('sub')}"
     row = await platform_db.upsert_plan(
-        tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor)
+        tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor,
+        price_monthly_cents=body.price_monthly_cents, base_vehicles=body.base_vehicles,
+        extra_vehicle_cents=body.extra_vehicle_cents,
+        stripe_price_id=body.stripe_price_id.strip() if body.stripe_price_id is not None else None,
+        public=body.public, sort=body.sort)
     invalidate_plans()
     counts = await platform_db.count_accounts_by_tier()
     await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))

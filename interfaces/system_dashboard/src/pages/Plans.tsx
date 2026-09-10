@@ -30,7 +30,24 @@ interface Plan {
   accounts: number;
   updated_at: string;
   updated_by: string;
+  // the price catalog — what the customer's Billing page shows and checkout charges
+  price_monthly_cents: number;
+  base_vehicles: number;
+  extra_vehicle_cents: number;
+  stripe_price_id: string;
+  public: boolean;
+  sort: number;
 }
+
+/** The catalog fields the operator edits per column, as strings while typing. */
+interface CatalogDraft { price: string; base: string; extra: string; stripe: string; pub: boolean; sort: string }
+const CATALOG_ROWS: { key: keyof CatalogDraft; label: string; hint: string }[] = [
+  { key: 'price', label: 'Price / month ($)', hint: '0 = free' },
+  { key: 'base', label: 'Trucks included', hint: '' },
+  { key: 'extra', label: 'Extra truck ($/month)', hint: '' },
+  { key: 'stripe', label: 'Stripe price id', hint: 'blank = STRIPE_PRICE_<TIER> env' },
+  { key: 'sort', label: 'Order on the page', hint: 'lowest first' },
+];
 
 interface PlansResponse {
   plans: Plan[];
@@ -45,6 +62,7 @@ interface Draft {
   everything: boolean;
   included: Set<string>;
   quotas: Record<string, string>; // '' = use the default
+  cat: CatalogDraft;
 }
 
 const inputCls =
@@ -58,6 +76,9 @@ const QUOTA_LABEL: Record<string, string> = {
   max_companies: 'Companies',
 };
 
+const dollars = (cents: number) => (cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2));
+const cents = (s: string) => Math.round(Number(s) * 100);
+
 function draftOf(p: Plan): Draft {
   return {
     label: p.label,
@@ -66,7 +87,23 @@ function draftOf(p: Plan): Draft {
     quotas: Object.fromEntries(
       Object.entries(p.quotas).map(([k, v]) => [k, String(v)]),
     ),
+    cat: {
+      price: dollars(p.price_monthly_cents), base: String(p.base_vehicles),
+      extra: dollars(p.extra_vehicle_cents), stripe: p.stripe_price_id, pub: p.public, sort: String(p.sort),
+    },
   };
+}
+
+/** The catalog as the API wants it; ``null`` when a number does not parse. */
+function catalogOf(d: Draft): {
+  price_monthly_cents: number; base_vehicles: number; extra_vehicle_cents: number;
+  stripe_price_id: string; public: boolean; sort: number;
+} | null {
+  const price = cents(d.cat.price || '0'), extra = cents(d.cat.extra || '0');
+  const base = Number(d.cat.base || '0'), sort = Number(d.cat.sort || '0');
+  if (![price, extra, base, sort].every((n) => Number.isInteger(n) && n >= 0)) return null;
+  return { price_monthly_cents: price, base_vehicles: base, extra_vehicle_cents: extra,
+    stripe_price_id: d.cat.stripe.trim(), public: d.cat.pub, sort };
 }
 
 function includedOf(d: Draft, catalog: CatalogEntry[]): string[] {
@@ -93,7 +130,11 @@ function isDirty(p: Plan, d: Draft, catalog: CatalogEntry[]): boolean {
   const q = quotasOf(d);
   const keys = new Set([...Object.keys(q), ...Object.keys(p.quotas)]);
   for (const k of keys) if (q[k] !== p.quotas[k]) return true;
-  return false;
+  const c = catalogOf(d);
+  if (!c) return true;
+  return c.price_monthly_cents !== p.price_monthly_cents || c.base_vehicles !== p.base_vehicles
+    || c.extra_vehicle_cents !== p.extra_vehicle_cents || c.stripe_price_id !== p.stripe_price_id
+    || c.public !== p.public || c.sort !== p.sort;
 }
 
 function when(iso: string): string {
@@ -214,11 +255,18 @@ export default function PlansPage() {
         return;
       }
     }
+    const cat = catalogOf(d);
+    if (!cat) {
+      setErr('Price, trucks, extra-truck price and order are numbers, 0 or more');
+      return;
+    }
     const lines = [
       `Save "${d.label.trim()}"?  ${p.accounts} account${p.accounts === 1 ? '' : 's'} on this plan will follow at once.`,
       excluded.length ? `\nTaken away: ${excluded.join(', ')}` : '',
       restored.length ? `\nGiven: ${restored.join(', ')}` : '',
       d.everything && !p.everything ? '\nBack to everything included.' : '',
+      cat.public !== p.public ? (cat.public ? '\nShown on the customer Billing page from now on.' : '\nHidden from the customer Billing page (accounts already on it keep it).') : '',
+      cat.price_monthly_cents !== p.price_monthly_cents ? `\nPrice: $${dollars(p.price_monthly_cents)} → $${dollars(cat.price_monthly_cents)} per month (new checkouts only; Stripe is the bill).` : '',
     ];
     if (!window.confirm(lines.join(''))) return;
     setBusy(p.tier);
@@ -226,7 +274,7 @@ export default function PlansPage() {
     try {
       await apiJSON(`/system/plans/${p.tier}`, {
         method: 'PUT',
-        body: { label: d.label.trim(), included, quotas },
+        body: { label: d.label.trim(), included, quotas, ...cat },
       });
       setSaved(p.tier);
       await load(p.tier);
@@ -360,6 +408,45 @@ export default function PlansPage() {
                   ))}
                 </tr>
               ))}
+              <tr className="border-t border-slate-800 bg-slate-900/40">
+                <td className="px-3 py-1.5 text-xs uppercase tracking-wide text-slate-500" colSpan={plans.length + 1}>
+                  Customer Billing page — price, what is included per truck, and whether the plan is offered
+                </td>
+              </tr>
+              <tr className="border-t border-slate-800/70">
+                <td className="px-3 py-1.5 text-slate-300">Offered to customers</td>
+                {plans.map((p) => (
+                  <td key={p.tier} className="px-3 py-1.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={drafts[p.tier]?.cat.pub ?? p.public}
+                      onChange={(e) => setDraft(p.tier, (d) => ({ ...d, cat: { ...d.cat, pub: e.target.checked } }))}
+                      aria-label={`Offer ${p.label} on the customer Billing page`}
+                    />
+                  </td>
+                ))}
+              </tr>
+              {CATALOG_ROWS.map((row) => (
+                <tr key={row.key} className="border-t border-slate-800/70">
+                  <td className="px-3 py-1.5 text-slate-300">
+                    {row.label}
+                    {row.hint && <span className="ml-2 text-[11px] text-slate-500">{row.hint}</span>}
+                  </td>
+                  {plans.map((p) => (
+                    <td key={p.tier} className="px-3 py-1.5">
+                      <input
+                        className={`${inputCls} text-center tabular-nums`}
+                        inputMode={row.key === 'stripe' ? 'text' : 'decimal'}
+                        value={String(drafts[p.tier]?.cat[row.key] ?? '')}
+                        onChange={(e) =>
+                          setDraft(p.tier, (d) => ({ ...d, cat: { ...d.cat, [row.key]: e.target.value } }))
+                        }
+                        aria-label={`${row.label} on ${p.label}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
               <tr className="border-t border-slate-800">
                 <td className="px-3 py-2 text-xs text-slate-500">Last change</td>
                 {plans.map((p) => {
@@ -415,8 +502,8 @@ export default function PlansPage() {
             </button>
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            A plan's price lives in Billing; this page only says what the plan includes.
-            Narrow it here after creating it, then move accounts to it from their detail page.
+            A new plan starts with everything included, no price, and hidden from customers.
+            Set its price and tick "Offered to customers" above when it is ready; Stripe stays the bill.
           </p>
         </div>
       )}

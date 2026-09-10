@@ -614,6 +614,14 @@ async def create_tables(conn) -> None:
             label       TEXT NOT NULL,
             included    TEXT NOT NULL DEFAULT '["*"]',
             quotas      TEXT NOT NULL DEFAULT '{}',
+            -- the price catalog (the customer's page, the checkout):
+            -- edited from the same console panel as the includes
+            price_monthly_cents INTEGER NOT NULL DEFAULT 0,
+            base_vehicles       INTEGER NOT NULL DEFAULT 0,
+            extra_vehicle_cents INTEGER NOT NULL DEFAULT 0,
+            stripe_price_id     TEXT    NOT NULL DEFAULT '',
+            public              INTEGER NOT NULL DEFAULT 0,
+            sort                INTEGER NOT NULL DEFAULT 0,
             updated_at  TEXT NOT NULL,
             updated_by  TEXT NOT NULL DEFAULT ''
         );

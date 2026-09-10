@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 
-from adapters.storage.billing import BillingMixin
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,11 @@ class StubBillingProvider:
             account_id, tier,
         )
         # Stub: immediately upgrade the tier in DB so the UI reflects the change
-        pricing = BillingMixin.tier_pricing(tier)
+        await db.get_or_create_subscription(account_id)
+        plan = await db.get_plan(tier)
+        if plan is None or not plan["public"]:
+            raise ValueError(f"Plan '{tier}' is not available.")
+        pricing = await db.pricing_for(tier)
         await db.update_subscription(
             account_id,
             tier=tier,
@@ -67,8 +70,10 @@ class StubBillingProvider:
             monthly_base_usd=pricing["monthly_base_cents"],
             extra_vehicle_cents=pricing["extra_vehicle_cents"],
         )
-        # Also bump the account tier
+        # Also bump the account tier — and tell the resolver at once
         await db.update_account_tier(account_id, tier)
+        from capabilities.permissions.plans import account_plan_changed
+        account_plan_changed(account_id)
         return {"url": success_url, "session_id": "stub_session"}
 
     async def create_portal_session(

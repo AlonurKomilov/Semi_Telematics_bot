@@ -2126,6 +2126,8 @@ async def complete_setup(
         raise HTTPException(status_code=409, detail=str(e))
     try:
         await db.start_trial(user.account_id, tier="pro", days=_AUTO_TRIAL_DAYS)
+        from capabilities.permissions.plans import account_plan_changed
+        account_plan_changed(user.account_id)
     except Exception as e:
         logging.getLogger("api.auth").warning("Auto-trial start failed for account %s: %s", user.account_id, e)
     try:
@@ -2547,6 +2549,8 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
         trial_expires_iso = await db.start_trial(
             account.id, tier="pro", days=_AUTO_TRIAL_DAYS,
         )
+        from capabilities.permissions.plans import account_plan_changed
+        account_plan_changed(account.id)
     except Exception as e:
         trial_expires_iso = None
         logging.getLogger("api.auth").warning(

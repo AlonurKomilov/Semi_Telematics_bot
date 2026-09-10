@@ -419,7 +419,8 @@
     "cant_invite_higher": "⛔ ከእርስዎ የበለጠ ሚና ያለውን ሰው መጋበዝ አይችሉም።",
     "permission_required_title": "🔒  <b>ፈቃድ ያስፈልጋል</b>",
     "permission_samsara": "Samsara አድሚንዎን በኤፒአይ ቶከን ላይ አስፈላጊውን ፈቃድ እንዲያበራ ይጠይቁ።",
-    "no_parking_access": "⛔ የParking መዳረሻ በሚናዎ የParking ፈቃድ ይወሰናል — የመለያ አስተዳዳሪዎን ያነጋግሩ።"
+    "no_parking_access": "⛔ የParking መዳረሻ በሚናዎ የParking ፈቃድ ይወሰናል — የመለያ አስተዳዳሪዎን ያነጋግሩ።",
+    "not_in_plan": "🔒 በኩባንያዎ እቅድ ውስጥ የለም — ለመጠቀም በBilling ውስጥ እቅድዎን ያሻሽሉ።"
   },
   "user_mgmt": {
     "user_label": "👤 <b>ተጠቃሚ {name}</b>",

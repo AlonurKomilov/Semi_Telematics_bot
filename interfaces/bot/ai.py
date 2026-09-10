@@ -34,16 +34,37 @@ def _require_ai_assistant(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user = context.user_data.get("_db_user")
         if user is None or not can(user.role, "can_view_ai_assistant"):
+            msg = await _denial_text(user, context)
             if update.callback_query:
-                await update.callback_query.answer(t("access.no_access"), show_alert=True)
+                await update.callback_query.answer(msg, show_alert=True)
             else:
-                await _show(update, context, [t("access.no_access")], keyboard=back_kb())
+                await _show(update, context, [msg], keyboard=back_kb())
             return
         return await func(update, context, *args, **kwargs)
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
     wrapper.__wrapped__ = func
     return wrapper
+
+
+async def _denial_text(user, context) -> str:
+    """"No access" — or, for whoever can change the plan, "not in your
+    plan": the same rule the dashboard follows.  Best-effort: any
+    trouble reading the account falls back to the plain answer."""
+    try:
+        if user is not None and can(user.role, "can_manage_billing"):
+            from capabilities.permissions.plans import excludes_flag, tier_of
+            account_id = context.bot_data.get("account_id") or getattr(user, "account_id", None)
+            acct = await get_platform_db().get_account(int(account_id)) if account_id else None
+            if acct is not None and excludes_flag(tier_of(acct), "can_view_ai_assistant"):
+                return t("access.not_in_plan")
+    except Exception:
+        # Deliberately dropped: this lookup only chooses the WORDING of a
+        # denial that already stands.  A failed account read must not
+        # turn "no access" into a crash or a second message; the plain
+        # answer is still true.
+        logger.debug("plan wording lookup failed; plain denial stands", exc_info=True)
+    return t("access.no_access")
 
 
 # ── Helpers ──────────────────────────────────────────────────────

@@ -138,6 +138,41 @@ class CheckoutRequest(BaseModel):
     tier: str = Field(..., pattern="^(starter|pro|enterprise)$")
 
 
+@router.get("/plans")
+async def billing_plans(
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """The plans a customer may pick, from the plan table: every public
+    plan plus the account's current one (public or not), each with its
+    price, the ids it includes (``["*"]`` = everything) and its quotas.
+    The dashboard names the ids from its own catalog, in the reader's
+    language; Billing never reads a feature flag."""
+    from capabilities.permissions.plans import EVERYTHING, EXCLUDABLE, quota_defaults, quota_for
+    account = await platform_db.get_account(user["account_id"])
+    current = (account.tier if account else None) or "free"
+    rows = await platform_db.list_plans()
+    out = []
+    for r in sorted(rows, key=lambda x: (x["sort"], x["tier"])):
+        if not r["public"] and r["tier"] != current:
+            continue
+        inc = r["included"]
+        everything = EVERYTHING in inc
+        out.append({
+            "tier": r["tier"], "label": r["label"],
+            "price_monthly_cents": r["price_monthly_cents"],
+            "base_vehicles": r["base_vehicles"],
+            "extra_vehicle_cents": r["extra_vehicle_cents"],
+            "everything": everything,
+            "included": list(EXCLUDABLE) if everything else [i for i in EXCLUDABLE if i in inc],
+            # the number the API enforces: the row's, else the config table's
+            "quotas": {k: quota_for(r["tier"], k, d) for k, d in quota_defaults(r["tier"]).items()},
+            "public": bool(r["public"]),
+            "current": r["tier"] == current,
+        })
+    return {"plans": out, "current_tier": current}
+
+
 @router.post("/checkout")
 async def billing_checkout(
     body: CheckoutRequest,

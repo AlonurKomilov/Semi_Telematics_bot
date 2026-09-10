@@ -268,6 +268,16 @@ def invalidate_plans() -> None:
     invalidate_permissions_cache()
 
 
+def account_plan_changed(account_id: int) -> None:
+    """The billing contract: whoever moves an account to another plan
+    (checkout, a cancelled subscription, a trial, the operator) calls
+    this, and the resolver answers for the new plan on the next request
+    instead of after its cache TTL."""
+    from capabilities.permissions.roles import invalidate_permissions_cache
+    _TIER_OF.pop(int(account_id), None)
+    invalidate_permissions_cache(int(account_id))
+
+
 def remember_tier(account_id: int, tier: Optional[str]) -> None:
     if tier:
         _TIER_OF[int(account_id)] = tier

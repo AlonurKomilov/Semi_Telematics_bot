@@ -180,6 +180,28 @@ async def test_everything_wins_over_a_list_and_a_stored_stray_id_reads_normalize
 
 
 @pytest.mark.asyncio
+async def test_the_price_catalog_round_trips_and_an_omitted_field_keeps_its_value(system_app):
+    s = system_app
+    r = await s["client"].put("/api/system/plans/starter", headers=s["op"],
+                              json={"label": "Starter", "included": ["*"], "quotas": {},
+                                    "price_monthly_cents": 5900, "stripe_price_id": " price_x ", "public": False, "sort": 7})
+    assert r.status_code == 200, r.text
+    p = r.json()["plan"]
+    assert (p["price_monthly_cents"], p["stripe_price_id"], p["public"], p["sort"]) == (5900, "price_x", False, 7)
+    assert p["base_vehicles"] == 10 and p["extra_vehicle_cents"] == 299       # untouched fields kept
+    # a write that names no catalog field changes none of it
+    r = await s["client"].put("/api/system/plans/starter", headers=s["op"],
+                              json={"label": "Starter+", "included": ["*"], "quotas": {"max_users": 9}})
+    p = r.json()["plan"]
+    assert (p["label"], p["price_monthly_cents"], p["public"], p["sort"], p["quotas"]) == ("Starter+", 5900, False, 7, {"max_users": 9})
+    r = await s["client"].put("/api/system/plans/starter", headers=s["op"],
+                              json={"label": "Starter", "included": ["*"], "quotas": {}, "price_monthly_cents": -1})
+    assert r.status_code == 422
+    rows = await s["db"].list_platform_audit(event="plan.updated", limit=1)
+    assert '"price_monthly_cents": 5900' in rows[0]["details"]
+
+
+@pytest.mark.asyncio
 async def test_accounts_on_a_plan_with_no_row_are_named(system_app):
     s = system_app
     await s["db"].update_account_tier(s["pro"].id, "legacy_gold")

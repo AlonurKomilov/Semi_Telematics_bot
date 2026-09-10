@@ -451,7 +451,8 @@
     "cant_invite_higher": "⛔ You can't invite someone with a higher role than yours.",
     "permission_required_title": "🔒  <b>PERMISSION REQUIRED</b>",
     "permission_samsara": "Ask your Samsara admin to enable the required permission on the API token.",
-    "no_parking_access": "⛔ Parking access is set by your role's Parking permission — ask your account admin."
+    "no_parking_access": "⛔ Parking access is set by your role's Parking permission — ask your account admin.",
+    "not_in_plan": "🔒 Not in your company's plan — upgrade in Billing to use it."
   },
   "user_mgmt": {
     "user_label": "👤 <b>User {name}</b>",

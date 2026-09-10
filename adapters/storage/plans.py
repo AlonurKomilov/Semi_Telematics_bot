@@ -24,10 +24,23 @@ def _row(r) -> dict:
         quotas = json.loads(r["quotas"] or "{}")
     except (ValueError, TypeError):
         quotas = {}
+    keys = r.keys() if hasattr(r, "keys") else ()
+    def _int(k):
+        try:
+            return int(r[k] or 0) if k in keys else 0
+        except (TypeError, ValueError):
+            return 0
     return {
         "tier": r["tier"], "label": r["label"],
         "included": [str(i) for i in included] if isinstance(included, list) else [],
         "quotas": quotas if isinstance(quotas, dict) else {},
+        # the price catalog: what the customer's page shows and checkout charges
+        "price_monthly_cents": _int("price_monthly_cents"),
+        "base_vehicles": _int("base_vehicles"),
+        "extra_vehicle_cents": _int("extra_vehicle_cents"),
+        "stripe_price_id": str(r["stripe_price_id"] or "") if "stripe_price_id" in keys else "",
+        "public": bool(_int("public")),
+        "sort": _int("sort"),
         "updated_at": r["updated_at"], "updated_by": r["updated_by"],
     }
 
@@ -54,14 +67,49 @@ class PlansMixin:
     async def upsert_plan(
         self, tier: str, *, label: str, included: list[str],
         quotas: Optional[dict] = None, updated_by: str = "",
+        price_monthly_cents: Optional[int] = None, base_vehicles: Optional[int] = None,
+        extra_vehicle_cents: Optional[int] = None, stripe_price_id: Optional[str] = None,
+        public: Optional[bool] = None, sort: Optional[int] = None,
     ) -> dict:
+        """Create or replace a plan.  Label, included and quotas are always
+        written; a catalog field left ``None`` keeps the row's value (or the
+        column default for a new row) — the operator edits prices from one
+        panel and the seed never has to know them."""
         now = datetime.now(timezone.utc).isoformat()
+        cur = await self.get_plan(tier) or {}
+        pick = lambda v, k, d: (cur.get(k, d) if v is None else v)  # noqa: E731
         await self._db.execute(
-            "INSERT INTO plans (tier, label, included, quotas, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO plans (tier, label, included, quotas, price_monthly_cents, base_vehicles, "
+            "extra_vehicle_cents, stripe_price_id, public, sort, updated_at, updated_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(tier) DO UPDATE SET label = excluded.label, included = excluded.included, "
-            "quotas = excluded.quotas, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
-            (tier, label, json.dumps(list(included)), json.dumps(quotas or {}), now, updated_by),
+            "quotas = excluded.quotas, price_monthly_cents = excluded.price_monthly_cents, "
+            "base_vehicles = excluded.base_vehicles, extra_vehicle_cents = excluded.extra_vehicle_cents, "
+            "stripe_price_id = excluded.stripe_price_id, public = excluded.public, sort = excluded.sort, "
+            "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+            (tier, label, json.dumps(list(included)), json.dumps(quotas or {}),
+             int(pick(price_monthly_cents, "price_monthly_cents", 0)),
+             int(pick(base_vehicles, "base_vehicles", 0)),
+             int(pick(extra_vehicle_cents, "extra_vehicle_cents", 0)),
+             str(pick(stripe_price_id, "stripe_price_id", "") or ""),
+             1 if pick(public, "public", False) else 0,
+             int(pick(sort, "sort", 0)),
+             now, updated_by),
         )
         await self._db.commit()
         return (await self.get_plan(tier)) or {}
+
+    async def pricing_for(self, tier: str) -> dict:
+        """What a checkout charges and a subscription records for *tier*:
+        the plan row's numbers when the operator has set any, else the
+        code table (``BillingMixin.tier_pricing``) that seeded them."""
+        row = await self.get_plan(tier)
+        if row and (row["price_monthly_cents"] or row["base_vehicles"] or row["extra_vehicle_cents"]):
+            return {
+                "tier": tier,
+                "base_vehicles": row["base_vehicles"],
+                "monthly_base_cents": row["price_monthly_cents"],
+                "extra_vehicle_cents": row["extra_vehicle_cents"],
+            }
+        from .billing import BillingMixin
+        return BillingMixin.tier_pricing(tier)

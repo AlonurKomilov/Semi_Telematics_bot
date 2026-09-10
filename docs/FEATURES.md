@@ -268,7 +268,21 @@ id}` from every `require_permission*` gate and from `deps.deny(user,
 flag)`, which a handler that denies by hand raises instead of a bare
 403. Only whoever holds `can_manage_billing` is shown the lock (nav,
 route, matrix) and pointed at Billing; every other member simply does
-not see the feature. The mask is FAIL-CLOSED against a live platform: an unknown
+not see the feature. The plan row is the price catalog too
+(`price_monthly_cents`, `base_vehicles`, `extra_vehicle_cents`,
+`stripe_price_id`, `public`, `sort`): the customer's Billing page draws
+its cards from `GET /billing/plans` (public plans plus the account's
+own, ids named from the dashboard catalog), checkout charges the row's
+Stripe price (the `STRIPE_PRICE_<TIER>` env only when the row sets
+none) and refuses a hidden plan, and every tier change — checkout,
+cancellation, trial, the operator — calls
+`capabilities.permissions.plans.account_plan_changed` so the resolver
+answers for the new plan on the next request. What a subscription
+RECORDS as its price is what Stripe invoices: the webhook takes each
+item's amount from the expanded subscription when it is a plain
+monthly USD price, logs a warning when the plan row disagrees, and
+falls back to the row otherwise; the trucks included are always the
+row's. The mask is FAIL-CLOSED against a live platform: an unknown
 tier closes the sellable set, an unreadable table keeps the last-known
 one (warmed at API and bot start), an unreadable account row falls back
 to that account's last-known tier. The seed puts every tier — and any

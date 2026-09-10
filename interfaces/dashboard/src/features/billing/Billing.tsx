@@ -2,7 +2,8 @@
 // account, via Stripe) — displayed to customers as "Billing".  Never carrier
 // invoicing (future features/invoicing), never driver pay (Driver Pay).
 // SSOT: docs/FEATURES.md "Money domains".
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
@@ -16,6 +17,8 @@ import type { AnyColumn } from '../../types';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { FEATURE_CATALOG } from '../../config/featureCatalog';
+import { featureLines, money, plansIncluding, type CustomerPlan } from './planCards';
 import { cardVariants } from '@/components/ui/card';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -389,23 +392,28 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
 // ── Plan cards ────────────────────────────────────────────────────
 
 interface PlanCardProps {
-  name: string; price: string; included: number; extraPer: string;
-  features: string[]; current: boolean; onUpgrade: () => void; loading: boolean;
+  name: string; price: string;
+  features: string[]; current: boolean; highlighted: boolean; buyable: boolean;
+  onUpgrade: () => void; loading: boolean;
 }
 
-function PlanCard({ name, price, included, extraPer, features, current, onUpgrade, loading }: PlanCardProps) {
+function PlanCard({ name, price, features, current, highlighted, buyable, onUpgrade, loading }: PlanCardProps) {
   return (
-    <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', current && 'border-primary ring-1 ring-primary/30')}>
+    <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', (current || highlighted) && 'border-primary ring-1 ring-primary/30')}>
       {current && (
         <span className="text-xs bg-primary/15 text-foreground border border-primary rounded-md px-2 py-0.5 self-start mb-2">
           Current Plan
         </span>
       )}
-      <h3 className="text-base font-semibold text-foreground mb-1 capitalize">{name}</h3>
-      <p className="text-2xl font-bold text-ok mb-1">
+      {!current && highlighted && (
+        <span className="text-xs bg-primary/15 text-foreground border border-primary rounded-md px-2 py-0.5 self-start mb-2">
+          Includes what you asked for
+        </span>
+      )}
+      <h3 className="text-base font-semibold text-foreground mb-1">{name}</h3>
+      <p className="text-2xl font-bold text-ok mb-3">
         {price}<span className="text-sm text-muted-foreground font-normal">/mo</span>
       </p>
-      <p className="text-xs text-muted-foreground mb-3">{included} trucks included &middot; {extraPer}/extra truck</p>
       <ul className="text-sm text-foreground/80 space-y-1.5 mb-5 flex-1">
         {features.map((f) => (
           <li key={f} className="flex items-start gap-1.5">
@@ -415,12 +423,12 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
       </ul>
       <button
         onClick={onUpgrade}
-        disabled={current || loading}
+        disabled={current || loading || !buyable}
         className={`w-full py-2 min-h-tap rounded-lg text-sm font-semibold transition ${
-          current ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-primary-foreground'
+          current || !buyable ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-primary-foreground'
         }`}
       >
-        {loading ? 'Redirecting…' : current ? 'Current Plan' : `Switch to ${name}`}
+        {loading ? 'Redirecting…' : current ? 'Current Plan' : !buyable ? 'Contact us' : 'Upgrade'}
       </button>
     </div>
   );
@@ -586,6 +594,7 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
 export default function Billing() {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
+  const [plans, setPlans] = useState<CustomerPlan[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loadingMain, setLoadingMain] = useState(true);
@@ -600,17 +609,37 @@ export default function Billing() {
       apiJSON<BillingSummary>('/billing/summary'),
       apiJSON<{ items: UsageSnapshot[] }>('/billing/usage?limit=12'),
       apiJSON<{ items: Invoice[] }>('/billing/invoices?limit=24'),
+      apiJSON<{ plans: CustomerPlan[] }>('/billing/plans'),
     ])
-      .then(([s, u, i]) => {
+      .then(([s, u, i, p]) => {
         setSummary(s);
         setUsage(u.items ?? []);
         setInvoices(i.items ?? []);
+        setPlans(p.plans ?? []);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoadingMain(false));
   };
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "?upgrade=<feature>": the lock in the sidebar, the matrix or a closed
+  // route brought the owner here for ONE feature — name it, and mark
+  // the plans that include it.
+  const [params] = useSearchParams();
+  const upgradeFor = params.get('upgrade') ?? '';
+  const upgradeFeature = useMemo(() => FEATURE_CATALOG.find((f) => f.id === upgradeFor), [upgradeFor]);
+  const upgradePlans = useMemo(() => (upgradeFor ? plansIncluding(upgradeFor, plans) : []), [upgradeFor, plans]);
+  const labelOf = (id: string) => {
+    const f = FEATURE_CATALOG.find((c) => c.id === id);
+    return f ? t(f.labelKey) : id.replace(/[_-]/g, ' ');
+  };
+  const words = {
+    everything: 'Every feature and service',
+    unlimitedUsers: 'Unlimited users', users: (n: number) => `Up to ${n} users`,
+    unlimitedCompanies: 'Unlimited companies', companies: (n: number) => `Up to ${n} companies`,
+    trucks: (n: number) => `${n} trucks included`, extra: (p: string) => `${p}/month per extra active truck`,
+  };
 
   const handleCheckout = async (tier: string) => {
     setCheckoutLoading(tier);
@@ -700,45 +729,53 @@ export default function Billing() {
         <AiUsageCard ai={summary.ai_usage} />
       )}
 
-      {/* Plans */}
+      {/* Plans — from the plan table the operator edits; the cards say
+          what each plan includes in the reader's language. */}
       <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3 mt-6">
         Available Plans
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <PlanCard
-          name="Starter" price="$49" included={10} extraPer="$2.99"
-          features={[
-            '10 trucks included',
-            'All real-time telematics',
-            'Fault & health alerts',
-            'AI assistant (all models)',
-            '1 Samsara organization',
-          ]}
-          current={summary?.tier === 'starter'}
-          onUpgrade={() => handleCheckout('starter')}
-          loading={checkoutLoading === 'starter'}
-        />
-        <PlanCard
-          name="Pro" price="$99" included={10} extraPer="$2.99"
-          features={[
-            '10 trucks included',
-            'Everything in Starter',
-            'Unlimited Samsara orgs',
-            'Advanced AI reports & vision',
-            'Priority support',
-            'Custom knowledge base',
-          ]}
-          current={summary?.tier === 'pro'}
-          onUpgrade={() => handleCheckout('pro')}
-          loading={checkoutLoading === 'pro'}
-        />
-      </div>
+      {upgradeFor && (
+        <Card className="mb-4 text-sm">
+          {upgradePlans.length > 0 ? (
+            <p>
+              <span className="font-medium text-foreground">{upgradeFeature ? t(upgradeFeature.labelKey) : labelOf(upgradeFor)}</span>
+              {' '}is included in {upgradePlans.map((p) => p.label).join(' and ')} — pick one below.
+            </p>
+          ) : (
+            <p>
+              <span className="font-medium text-foreground">{upgradeFeature ? t(upgradeFeature.labelKey) : labelOf(upgradeFor)}</span>
+              {' '}is not in any plan you can pick here. Contact support to add it.
+            </p>
+          )}
+        </Card>
+      )}
+      {plans.length === 0 ? (
+        <Card className="mb-6 text-sm text-muted-foreground">No plans are offered right now.</Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {plans.map((p) => (
+            <PlanCard
+              key={p.tier}
+              name={p.label}
+              price={money(p.price_monthly_cents)}
+              features={featureLines(p, labelOf, words)}
+              current={p.current}
+              highlighted={upgradePlans.some((u) => u.tier === p.tier)}
+              onUpgrade={() => handleCheckout(p.tier)}
+              loading={checkoutLoading === p.tier}
+              buyable={p.public && p.price_monthly_cents > 0}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Pricing info */}
       <Card className="mb-6 text-sm text-muted-foreground">
         <p className="inline-flex items-center gap-1.5 font-medium text-foreground/80 mb-1.5"><Lightbulb className="size-3.5" aria-hidden />How pricing works</p>
         <ul className="space-y-1 list-disc list-inside text-xs">
-          <li>Each plan includes 10 trucks. Additional <em>active</em> trucks: $2.99/truck/month.</li>
+          {summary && summary.base_vehicles > 0 && (
+            <li>Your plan includes {summary.base_vehicles} trucks. Additional <em>active</em> trucks: {money(summary.extra_vehicle_cents)}/truck/month.</li>
+          )}
           <li>A truck is "active" if it sent any telemetry signal in the last 3 days — parked trucks are automatically excluded.</li>
           <li>AI usage (tokens) is included — no per-query fees on any plan.</li>
           <li>Invoices generated at the end of each billing period, with mid-cycle vehicle changes pro-rated automatically.</li>

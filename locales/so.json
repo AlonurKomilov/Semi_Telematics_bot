@@ -419,7 +419,8 @@
     "cant_invite_higher": "⛔ Ma casuumi kartid qof leh door ka sarreeya kaaga.",
     "permission_required_title": "🔒  <b>OGOLAANSHO AYAA LOO BAAHAN YAHAY</b>",
     "permission_samsara": "Weydii maamulahaaga Samsara inuu daaro oggolaanshaha laga rabo calaamadda API.",
-    "no_parking_access": "⛔ Gelitaanka Parking waxaa go'aamiya ogolaanshaha Parking ee doorkaaga — la xiriir maamulaha akoonkaaga."
+    "no_parking_access": "⛔ Gelitaanka Parking waxaa go'aamiya ogolaanshaha Parking ee doorkaaga — la xiriir maamulaha akoonkaaga.",
+    "not_in_plan": "🔒 Kuma jiro qorshaha shirkaddaada — kor u qaad qorshaha Billing dhexdiisa."
   },
   "user_mgmt": {
     "user_label": "👤 <b>Isticmaale {name}</b>",

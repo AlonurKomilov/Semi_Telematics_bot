@@ -15,7 +15,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from adapters.storage.billing import BillingMixin
+from capabilities.permissions.plans import account_plan_changed
 from capabilities.platform.billing.notifications import (
     notify_checkout_complete as _notify_checkout_complete,
     notify_payment_failed as _notify_payment_failed,
@@ -103,11 +103,17 @@ class StripeBillingProvider:
         stripe = _stripe()
         sub = await db.get_or_create_subscription(account_id)
 
-        base_price_id = _tier_price_id(tier)
+        # The plan row is the catalog: its Stripe price id first, the env
+        # table when the operator has not set one; and a plan the
+        # operator hid from the customer's page cannot be bought by name.
+        plan = await db.get_plan(tier)
+        if plan is None or not plan["public"]:
+            raise ValueError(f"Plan '{tier}' is not available.")
+        base_price_id = (plan or {}).get("stripe_price_id") or _tier_price_id(tier)
         if not base_price_id:
             raise ValueError(
                 f"No Stripe price ID configured for tier '{tier}'. "
-                f"Set STRIPE_PRICE_{tier.upper()} env var."
+                f"Set it on the plan (system console) or the STRIPE_PRICE_{tier.upper()} env var."
             )
 
         # Get or create Stripe customer
@@ -230,7 +236,7 @@ class StripeBillingProvider:
         if event_type == "checkout.session.completed":
             tier = (data.get("metadata") or {}).get("tier", "starter")
             sub_id = data.get("subscription", "")
-            pricing = BillingMixin.tier_pricing(tier)
+            pricing = await db.pricing_for(tier)
             # Pull the line-item ids so ``sync_billing_quantity`` can
             # PATCH the extras quantity later.  The checkout session
             # payload itself doesn't include them; retrieve the full
@@ -240,23 +246,25 @@ class StripeBillingProvider:
             # ``customer.subscription.updated`` event or sync attempt.
             base_item_id = ""
             extra_item_id = ""
+            slots: dict = {}
             if sub_id:
                 try:
                     full_sub = stripe.Subscription.retrieve(sub_id, expand=["items"])
-                    base_item_id, extra_item_id = self._extract_item_ids(full_sub)
+                    slots = self._extract_items(full_sub)
+                    base_item_id, extra_item_id = slots["base"]["id"], slots["extra"]["id"]
                 except Exception:
                     logger.exception(
                         "Stripe Subscription.retrieve(%s) failed during checkout completion; "
-                        "item ids will backfill on the next sync",
+                        "item ids and Stripe's prices will backfill on the next subscription.updated",
                         sub_id,
                     )
             updates = {
                 "tier": tier,
                 "status": "active",
                 "provider_subscription_id": sub_id,
-                "base_vehicles": pricing["base_vehicles"],
-                "monthly_base_usd": pricing["monthly_base_cents"],
-                "extra_vehicle_cents": pricing["extra_vehicle_cents"],
+                # prices as Stripe will invoice them (the plan row when the
+                # retrieve failed or the price is not a plain monthly USD one)
+                **self._priced_updates(tier, pricing, slots),
             }
             if base_item_id:
                 updates["provider_base_item_id"] = base_item_id
@@ -264,6 +272,7 @@ class StripeBillingProvider:
                 updates["provider_extra_item_id"] = extra_item_id
             await db.update_subscription(account_id, **updates)
             await db.update_account_tier(account_id, tier)
+            account_plan_changed(account_id)
             logger.info("Checkout complete: account=%s tier=%s", account_id, tier)
             await self._safe_notify(
                 "checkout", _notify_checkout_complete, account_id, tier,
@@ -281,7 +290,24 @@ class StripeBillingProvider:
             # Maintain the past_due_since invariant — set when entering,
             # clear when leaving — so the enforcement grace check has a
             # reliable timestamp to compare against.
-            updates.update(self._past_due_since_fields(status, await db.get_subscription(account_id)))
+            row = await db.get_subscription(account_id)
+            updates.update(self._past_due_since_fields(status, row))
+            # Backfill, never refresh: a row whose extras item id is still
+            # blank (the checkout-time retrieve failed) takes the item ids
+            # and Stripe's prices from this event's own Subscription
+            # object, which carries items.data[].price without a retrieve.
+            # A row that already has them is left alone here.
+            if row and not (row.get("provider_extra_item_id") or ""):
+                slots = self._extract_items(data)
+                if slots["base"]["id"] or slots["extra"]["id"]:
+                    tier = row.get("tier") or data.get("metadata", {}).get("tier") or "free"
+                    pricing = await db.pricing_for(tier)
+                    updates.update(self._priced_updates(tier, pricing, slots))
+                    if slots["base"]["id"]:
+                        updates["provider_base_item_id"] = slots["base"]["id"]
+                    if slots["extra"]["id"]:
+                        updates["provider_extra_item_id"] = slots["extra"]["id"]
+                    logger.info("Stripe item ids backfilled from subscription.updated: account=%s", account_id)
             await db.update_subscription(account_id, **updates)
 
         elif event_type == "customer.subscription.deleted":
@@ -289,6 +315,7 @@ class StripeBillingProvider:
                 account_id, status="canceled", past_due_since=None
             )
             await db.update_account_tier(account_id, "free")
+            account_plan_changed(account_id)
             logger.info("Subscription canceled: account=%s", account_id)
 
         elif event_type == "invoice.payment_succeeded":
@@ -340,18 +367,17 @@ class StripeBillingProvider:
             logger.exception("billing notification %s raised; ignoring", label)
 
     @staticmethod
-    def _extract_item_ids(stripe_sub: Any) -> tuple[str, str]:
-        """Match subscription items to base / extras prices.
+    def _extract_items(stripe_sub: Any) -> dict:
+        """Match subscription items to the base / extras slots, with the
+        PRICE behind each — id, unit amount, interval, currency — as
+        Stripe carries it on an expanded item.
 
-        The base item is the one whose price id matches the configured
-        tier price (STRIPE_PRICE_STARTER, STRIPE_PRICE_PRO, etc.); the
-        extras item is the one matching STRIPE_PRICE_EXTRA_VEHICLE.
-        Returns ``("", "")`` for either slot we can't match — callers
-        should treat empty strings as "not configured yet" and skip
-        the corresponding sync rather than crash.
+        The extras item is the one whose price id matches
+        STRIPE_PRICE_EXTRA_VEHICLE; the first other item is the base.
+        A slot we cannot match is ``{"id": ""}`` — callers treat a blank
+        id as "not configured yet" and skip the corresponding sync.
         """
-        base_id = ""
-        extra_id = ""
+        slots: dict = {"base": {"id": ""}, "extra": {"id": ""}}
         items = (stripe_sub.get("items") or {}).get("data") if isinstance(stripe_sub, dict) else None
         if items is None and hasattr(stripe_sub, "items"):
             try:
@@ -361,18 +387,75 @@ class StripeBillingProvider:
         extras_price = _extra_vehicle_price_id()
         for item in (items or []):
             price = item.get("price") or {}
-            pid = price.get("id", "") if isinstance(price, dict) else ""
-            item_id = item.get("id", "")
-            if extras_price and pid == extras_price:
-                extra_id = item_id
-            else:
+            if not isinstance(price, dict):
+                price = {}
+            rec = price.get("recurring") or {}
+            slot = {
+                "id": item.get("id", ""),
+                "price_id": price.get("id", ""),
+                "unit_amount": price.get("unit_amount"),
+                "interval": (rec.get("interval") if isinstance(rec, dict) else None),
+                "interval_count": (rec.get("interval_count") if isinstance(rec, dict) else None),
+                "currency": price.get("currency"),
+            }
+            if extras_price and slot["price_id"] == extras_price:
+                slots["extra"] = slot
+            elif not slots["base"]["id"]:
                 # First non-extras item is the base.  Robust to either
                 # ordering Stripe returns the items in, and ignores
                 # any future add-on items we might attach without a
                 # schema column for.
-                if not base_id:
-                    base_id = item_id
-        return base_id, extra_id
+                slots["base"] = slot
+        return slots
+
+    @staticmethod
+    def _extract_item_ids(stripe_sub: Any) -> tuple[str, str]:
+        """``(base_item_id, extras_item_id)`` — see ``_extract_items``."""
+        slots = StripeBillingProvider._extract_items(stripe_sub)
+        return slots["base"]["id"], slots["extra"]["id"]
+
+    @staticmethod
+    def _stripe_monthly_usd(slot: dict) -> int | None:
+        """The amount Stripe will invoice for this slot, when it is the
+        shape our columns mean — a whole number of cents, monthly, USD.
+        Anything else (a yearly price, a tiered or decimal amount, a
+        missing price) is ``None`` and the plan row answers instead;
+        boring wins over clever."""
+        amt = slot.get("unit_amount")
+        if not isinstance(amt, int) or isinstance(amt, bool) or amt < 0:
+            return None
+        if slot.get("interval") != "month" or (slot.get("interval_count") or 1) != 1:
+            return None
+        if str(slot.get("currency") or "").lower() != "usd":
+            return None
+        return amt
+
+    @staticmethod
+    def _priced_updates(tier: str, pricing: dict, slots: dict) -> dict:
+        """What a subscription write records for its prices: Stripe's
+        amount for each slot when it is the shape we mean (that is what
+        the customer is invoiced), else the plan row's; the trucks
+        included are always the row's — Stripe has no such concept.
+        A difference between the two is logged loudly: it is the plan
+        row lying, or the Stripe price swapped under it."""
+        out = {"base_vehicles": pricing["base_vehicles"]}
+        for slot_name, column, row_key in (
+            ("base", "monthly_base_usd", "monthly_base_cents"),
+            ("extra", "extra_vehicle_cents", "extra_vehicle_cents"),
+        ):
+            stripe_amt = StripeBillingProvider._stripe_monthly_usd(slots.get(slot_name) or {})
+            row_amt = int(pricing.get(row_key) or 0)
+            if stripe_amt is None:
+                out[column] = row_amt
+            else:
+                out[column] = stripe_amt
+                if stripe_amt != row_amt:
+                    logger.warning(
+                        "plan price drift tier=%s slot=%s row=%s stripe=%s — the plan row "
+                        "(system console) does not match the Stripe price; Stripe's amount is recorded",
+                        tier, slot_name, row_amt, stripe_amt,
+                    )
+        return out
 
     async def update_billing_email(self, account_id: int, db, email: str) -> dict:
         """Persist the email locally and push it to Stripe's Customer record.

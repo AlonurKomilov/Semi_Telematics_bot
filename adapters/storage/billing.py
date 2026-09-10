@@ -50,6 +50,7 @@ class BillingMixin:
             if sub:
                 return sub
             now = datetime.now(timezone.utc).isoformat()
+            pricing = await self._pricing(tier)
             await self._db.execute(
                 """
                 INSERT INTO subscriptions
@@ -62,9 +63,9 @@ class BillingMixin:
                 (
                     account_id,
                     tier,
-                    _TIER_BASE_VEHICLES.get(tier, 10),
-                    _TIER_MONTHLY_BASE.get(tier, 0),
-                    _TIER_EXTRA_CENTS.get(tier, 0),
+                    pricing["base_vehicles"],
+                    pricing["monthly_base_cents"],
+                    pricing["extra_vehicle_cents"],
                     now,
                     now,
                 ),
@@ -120,14 +121,15 @@ class BillingMixin:
         await self.get_or_create_subscription(account_id)
         ends = datetime.now(timezone.utc) + timedelta(days=days)
         ends_iso = ends.isoformat()
+        pricing = await self._pricing(tier)
         await self.update_subscription(
             account_id,
             tier=tier,
             status="trialing",
             trial_ends_at=ends_iso,
-            base_vehicles=_TIER_BASE_VEHICLES.get(tier, 10),
-            monthly_base_usd=_TIER_MONTHLY_BASE.get(tier, 0),
-            extra_vehicle_cents=_TIER_EXTRA_CENTS.get(tier, 0),
+            base_vehicles=pricing["base_vehicles"],
+            monthly_base_usd=pricing["monthly_base_cents"],
+            extra_vehicle_cents=pricing["extra_vehicle_cents"],
         )
         # accounts.tier is what the operator list renders — keep it in
         # sync with the subscription so a trial shows "Pro" there too.
@@ -154,15 +156,16 @@ class BillingMixin:
             (before_iso,),
         )
         rows = [dict(r) for r in await cur.fetchall()]
+        free = await self._pricing("free")
         for r in rows:
             await self.update_subscription(
                 r["account_id"],
                 tier="free",
                 status="active",
                 trial_ends_at=None,
-                base_vehicles=_TIER_BASE_VEHICLES.get("free", 0),
-                monthly_base_usd=_TIER_MONTHLY_BASE.get("free", 0),
-                extra_vehicle_cents=_TIER_EXTRA_CENTS.get("free", 0),
+                base_vehicles=free["base_vehicles"],
+                monthly_base_usd=free["monthly_base_cents"],
+                extra_vehicle_cents=free["extra_vehicle_cents"],
             )
             # Keep accounts.tier in sync with the subscription tier so the
             # operator list (which reads accounts.tier) shows 'free' too.
@@ -913,6 +916,15 @@ class BillingMixin:
         extra = max(0, vehicle_count - base_vehicles)
         total = monthly_base_cents + extra * extra_vehicle_cents
         return extra, total
+
+    async def _pricing(self, tier: str) -> dict:
+        """What *tier* costs, as every subscription write records it: the
+        plan row's numbers when the operator has set any (PlansMixin
+        .pricing_for, on the same Database), else the code table below."""
+        reader = getattr(self, "pricing_for", None)
+        if reader is not None:
+            return await reader(tier)
+        return self.tier_pricing(tier)
 
     @staticmethod
     def tier_pricing(tier: str) -> dict:

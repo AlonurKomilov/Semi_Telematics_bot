@@ -419,7 +419,8 @@
     "cant_invite_higher": "⛔ O'z rolingizdan yuqori rolga ega foydalanuvchini taklif qila olmaysiz.",
     "permission_required_title": "🔒  <b>RUXSAT KERAK</b>",
     "permission_samsara": "Samsara API kalitingizga ushbu imkoniyatni yoqish so'raladi.",
-    "no_parking_access": "⛔ Parking bo'limiga kirish rolingizning Parking ruxsatiga bog'liq — akkaunt administratoriga murojaat qiling."
+    "no_parking_access": "⛔ Parking bo'limiga kirish rolingizning Parking ruxsatiga bog'liq — akkaunt administratoriga murojaat qiling.",
+    "not_in_plan": "🔒 Kompaniyangiz rejasida yo'q — ishlatish uchun Billing'da rejani yangilang."
   },
   "user_mgmt": {
     "user_label": "👤 <b>Foydalanuvchi {name}</b>",
