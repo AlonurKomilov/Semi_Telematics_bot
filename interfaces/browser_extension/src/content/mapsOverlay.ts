@@ -551,6 +551,9 @@ let cardItems: { id: string; items: OverlayItem[]; more: number } | null = null;
  *  air, refused, or never asked for.  The owner could not tell us which,
  *  and neither could we. */
 let cardItemsFailed: string | null = null;
+/** Long enough for a cold service worker to finish starting, short
+ *  enough that nobody reads it as the card being slow. */
+const WAKE_RETRY_MS = 300;
 
 function askInventory(id: string): void {
   if (panelFeature !== 'inventory') return;
@@ -562,17 +565,41 @@ function askInventory(id: string): void {
     cardItemsFailed = id;
     placeCard();
   };
-  try {
-    chrome.runtime.sendMessage({ type: OVERLAY_INVENTORY, id }, (reply?: InventoryReply) => {
-      // The card may have closed or moved on while this was in the air.
-      if (torn || cardId !== id) return;
-      // `lastError` must be READ or Chrome logs it as unchecked — and it
-      // is the only evidence that the worker never answered at all.
-      if (chrome.runtime.lastError || !reply?.ok) { fail(); return; }
-      cardItems = { id, items: reply.items, more: reply.more };
-      placeCard();
-    });
-  } catch { fail(); }
+  // ONE retry, and only for the first attempt.
+  //
+  // An MV3 service worker idles out after about thirty seconds, and a
+  // message that arrives while it is starting can be dropped — the
+  // callback fires with `lastError` and no reply.  That is the best
+  // explanation for the shape the owner saw: the card's COUNTS arrive
+  // (they ride the overlay's own poll, which keeps the worker warm) but
+  // the item names, asked for once on a click that may land after an
+  // idle, do not.  Nothing else differs — the panel and this card call
+  // the SAME endpoint with the SAME registry id, and the panel's answer
+  // is correct, so the server is not the suspect.
+  //
+  // A second ask costs one message and settles it: if the worker was
+  // asleep, the first one woke it and the second is answered.
+  const ask = (retriesLeft: number): void => {
+    try {
+      chrome.runtime.sendMessage({ type: OVERLAY_INVENTORY, id }, (reply?: InventoryReply) => {
+        // The card may have closed or moved on while this was in the air.
+        if (torn || cardId !== id) return;
+        // `lastError` must be READ or Chrome logs it as unchecked — and
+        // it is the only evidence the worker never answered at all.
+        if (chrome.runtime.lastError || !reply?.ok) {
+          if (retriesLeft > 0) { setTimeout(() => ask(retriesLeft - 1), WAKE_RETRY_MS); return; }
+          fail();
+          return;
+        }
+        cardItems = { id, items: reply.items, more: reply.more };
+        placeCard();
+      });
+    } catch {
+      if (retriesLeft > 0) { setTimeout(() => ask(retriesLeft - 1), WAKE_RETRY_MS); return; }
+      fail();
+    }
+  };
+  ask(1);
 }
 
 function placeCard(): void {

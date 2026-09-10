@@ -298,6 +298,22 @@ describe("the card's button always does something", () => {
     expect(bg).not.toContain('chrome.sidePanel.open({ tabId }).catch(() => {})');
   });
 
+  it('asks twice before believing the worker, once', () => {
+    // An MV3 worker idles out after ~30s and can drop a message that
+    // arrives while it is starting.  The card's COUNTS ride the
+    // overlay's poll and keep it warm; the item names are asked for
+    // once, on a click that may land after an idle — which is exactly
+    // the shape the owner saw (counts present, names absent).  The
+    // panel and this card call the SAME endpoint with the SAME registry
+    // id and the panel's answer is right, so the server is not it.
+    expect(src).toContain('const ask = (retriesLeft: number)');
+    expect(src).toContain('ask(1);');
+    expect(src).toContain('WAKE_RETRY_MS');
+    // …and exactly once: a card that retries forever hides a real
+    // refusal behind a spinner nobody can read.
+    expect(src).not.toContain('ask(2)');
+  });
+
   it('says so when it cannot read what is aboard', () => {
     // Three paths returned without a word — a worker that never woke, a
     // reply that came back not-ok, a throw — so a card saying "2 items"
