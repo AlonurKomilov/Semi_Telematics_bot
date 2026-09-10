@@ -207,3 +207,55 @@ describe('the marker anchor — the bug this file exists to prevent', () => {
     expect(src).toContain('direction:ltr');
   });
 });
+
+describe('whose press it is — the rule the owner asked for', () => {
+  const src = overlaySrc as unknown as string;
+
+  it('stops ALL FIVE events a press fires, not only the click', () => {
+    // A mouse press fires pointerdown, mousedown, pointerup, mouseup,
+    // click.  Google acts on the MOUSE pair; swallowing only the click
+    // changed nothing anyone could see — our card opened and Google
+    // dropped its pin, one press and two answers.
+    for (const ev of ["'pointerdown'", "'mousedown'", "'pointerup'", "'mouseup'", "'click'"]) {
+      expect(src, ev).toContain(`window.addEventListener(${ev}`);
+    }
+    expect(src).toContain('function onMouseCapture');
+  });
+
+  it('stops propagation rather than preventing default on the passive path', () => {
+    // passive:true forbids preventDefault and nothing else, so capture
+    // + stopPropagation is what keeps Google's handlers from running
+    // WITHOUT giving up the passive pointer path panning needs.
+    expect(src).toMatch(/truckPress = \{ id: hit/);
+    const down = src.slice(src.indexOf('function onPointerDown'), src.indexOf('function onMap('));
+    expect(down).not.toContain('preventDefault');
+  });
+
+  it('holds the press through the release so mouseup and click are covered too', () => {
+    // Cleared on the NEXT pointerdown and in the click — not on
+    // pointerup, which fires two events before the gesture is over.
+    const up = src.slice(src.indexOf('function onPointerUp'), src.indexOf('function teardown'));
+    expect(up).toContain('truckPress');
+    expect(up).not.toMatch(/truckPress = null/);
+    // …and cleared as one of pointerdown's FIRST statements, above every
+    // early return: a stamp that outlives its press eats the next click.
+    const down = src.slice(src.indexOf('function onPointerDown'));
+    expect(down.indexOf('truckPress = null')).toBeLessThan(down.indexOf('if (chip'));
+  });
+
+  it('says the hover cursor in CSS, because inline on the canvas loses', () => {
+    // The layer is pointer-events:none, so the element under the pointer
+    // is always one of Google's and which one is not ours to predict.
+    // A rule reaching the container AND its descendants does not have to
+    // guess right.
+    expect(src).toContain('cursor:pointer !important');
+    expect(src).toContain('OVER_TRUCK_CLASS');
+    expect(src).not.toContain("canvasEl.style.cursor");
+  });
+
+  it('takes the rule and the class away again on teardown', () => {
+    const down = src.slice(src.indexOf('function teardown'));
+    expect(down).toContain('classList.remove(OVER_TRUCK_CLASS)');
+    expect(down).toContain('getElementById(CURSOR_STYLE_ID)?.remove()');
+  });
+});

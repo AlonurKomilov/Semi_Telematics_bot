@@ -781,7 +781,7 @@ function onPointerDown(e: PointerEvent): void {
   // Cleared FIRST, above every early return: a stamp that outlives its
   // own press would eat the next click, and the next click is as likely
   // to be Google's search box as ours.
-  pressedTruckAt = null;
+  truckPress = null;
   if (chip && e.target instanceof Node && chip.contains(e.target)) return;
   if (!root) return;
   // Our own card sits INSIDE Google's map container, so `onMap` says yes
@@ -792,6 +792,21 @@ function onPointerDown(e: PointerEvent): void {
   if (e.target instanceof Node && root.contains(e.target)) return;
   // A right-press is not a selection and must not arm anything.
   if (e.pointerType === 'mouse' && e.button !== 0) return;
+  // OURS?  Then Google gets none of it.  This is the owner's rule stated
+  // in code: outside our markers Google wins, on them we do.
+  //
+  // The cost is that a pan can no longer BEGIN on a truck — an 18px
+  // glyph — which is exactly how Google's own markers behave: you
+  // cannot drag the map by grabbing a pin there either.
+  if (enabled && signedIn && surface) {
+    const hit = markerAt(drawnAt, e.clientX - surface.left, e.clientY - surface.top,
+                         hitRadiusFor(e.pointerType));
+    if (hit) {
+      truckPress = { id: hit, x: e.clientX, y: e.clientY };
+      e.stopPropagation();
+      return;
+    }
+  }
   if (onMap(e.target)) {
     pointersDown++;
     if (pointersDown > 1) {               // a second finger: pinch zoom
@@ -811,21 +826,42 @@ function onPointerDown(e: PointerEvent): void {
  *  takes no pointer events, so a `cursor` on a marker never applies.
  *  The rule is ours and is removed again the moment the pointer leaves
  *  a truck, so the page is left as we found it. */
-let canvasCursorWas: string | null = null;
+/** A CLASS, not an inline style on the canvas.
+ *
+ *  Our layer is pointer-events:none, so the element actually under the
+ *  pointer is always Google's — and which of Google's is not ours to
+ *  predict.  An inline `cursor` on the canvas loses to whatever Google
+ *  has on the div above it, which is why the pointer never appeared over
+ *  a truck even after the hit test began working.  A rule that reaches
+ *  the container AND its descendants does not have to win that guess.
+ *
+ *  It is `!important` for the same reason, and scoped to a class we add
+ *  and remove, so the page is left exactly as we found it. */
+const CURSOR_STYLE_ID = '4truck-maps-cursor';
+const OVER_TRUCK_CLASS = 'fourtruck-over-truck';
+let cursorHost: Element | null = null;
+
+function ensureCursorStyle(): void {
+  if (document.getElementById(CURSOR_STYLE_ID)) return;
+  const el = document.createElement('style');
+  el.id = CURSOR_STYLE_ID;
+  el.textContent =
+    `.${OVER_TRUCK_CLASS},.${OVER_TRUCK_CLASS} *{cursor:pointer !important}`;
+  (document.head ?? document.documentElement).appendChild(el);
+}
 
 function setHoverCursor(hit: boolean): void {
-  if (!canvasEl) return;
-  // Remembered the first time we touch it.  Writing '' to un-hover would
-  // delete whatever inline cursor Google had put there itself — leaving
-  // the page WORSE than we found it, which is the one thing this layer
-  // must never do.
-  if (canvasCursorWas === null) canvasCursorWas = canvasEl.style.cursor;
-  const want = hit ? 'pointer' : canvasCursorWas;
-  if (canvasEl.style.cursor !== want) canvasEl.style.cursor = want;
+  const host = canvasEl?.parentElement ?? canvasEl;
+  if (!host) return;
+  if (hit) ensureCursorStyle();
+  if (cursorHost && cursorHost !== host) cursorHost.classList.remove(OVER_TRUCK_CLASS);
+  cursorHost = host;
+  host.classList.toggle(OVER_TRUCK_CLASS, hit);
 }
 
 function onPointerMove(e: PointerEvent): void {
   if (!root) return;
+  if (drag || settling) setHoverCursor(false);
   if (!drag) {
     // Not dragging: say whether there is a truck under the pointer.
     if (enabled && signedIn && surface) {
@@ -855,20 +891,44 @@ function selectAt(clientX: number, clientY: number, pointerType?: string): void 
   }
   cardId = id;
   placeCard();
-  // We answered this press, so Google must not answer it too — otherwise
-  // one tap opens our card AND drops Google's pin.  Stamped, not
-  // swallowed here: the `click` has not happened yet, and swallowing
-  // pointerup would take the map's own gesture handling with it.
-  pressedTruckAt = { x: clientX, y: clientY };
 }
 
-/** Where a press just selected one of our trucks, waiting for the click
- *  that follows it.  Deliberately narrow: it is cleared as the first act
- *  of the next pointerdown, it only ever arms on a primary button, and
- *  the click must land within a few pixels of the press.  A stamp that
- *  survives its own gesture would eat one of Google's clicks. */
-let pressedTruckAt: { x: number; y: number } | null = null;
+/** A press that landed on one of OUR trucks, held from `pointerdown`
+ *  until the `click` that ends it.
+ *
+ *  One press fires five events — pointerdown, mousedown, pointerup,
+ *  mouseup, click — and Google acts on the mouse pair, not on the click.
+ *  Swallowing only the click therefore changed nothing the person could
+ *  see: our card opened AND Google dropped its pin, one press, two
+ *  answers.  While this is armed every one of the five is stopped at
+ *  window capture, so Google's handlers on the map container never run.
+ *
+ *  ``stopPropagation`` works from a PASSIVE listener — passive forbids
+ *  ``preventDefault`` and nothing else — which is what makes this
+ *  possible without giving up the passive pointer path the map's own
+ *  panning needs.
+ *
+ *  Deliberately narrow: it arms only on a primary button over a truck,
+ *  is cleared as the first act of the next pointerdown, and expires on
+ *  distance.  A stamp that outlived its gesture would eat a click meant
+ *  for Google. */
+let truckPress: { id: string; x: number; y: number } | null = null;
 const CLICK_SLOP_PX = 8;
+
+/** Did this event belong to the press we are answering ourselves? */
+function ourPress(e: { clientX: number; clientY: number }): boolean {
+  const at = truckPress;
+  return !!at
+    && Math.abs(e.clientX - at.x) <= CLICK_SLOP_PX
+    && Math.abs(e.clientY - at.y) <= CLICK_SLOP_PX;
+}
+
+/** The mouse pair the pointer events do not cover.  A mouse press fires
+ *  pointerdown THEN mousedown; stopping the first does not stop the
+ *  second, and the second is the one Google reads. */
+function onMouseCapture(e: MouseEvent): void {
+  if (ourPress(e)) e.stopPropagation();
+}
 
 /** The terminal click of a press we already answered.
  *
@@ -878,16 +938,29 @@ const CLICK_SLOP_PX = 8;
  *  turns out Google acts on `mouseup` rather than `click`, this is inert
  *  rather than wrong: nothing else depends on it. */
 function onClickCapture(e: MouseEvent): void {
-  const at = pressedTruckAt;
-  if (!at) return;
-  pressedTruckAt = null;
-  if (Math.abs(e.clientX - at.x) > CLICK_SLOP_PX || Math.abs(e.clientY - at.y) > CLICK_SLOP_PX) return;
+  if (!ourPress(e)) return;
+  truckPress = null;            // the gesture ends here
   e.stopImmediatePropagation();
   e.preventDefault();
 }
 
 function onPointerUp(e?: PointerEvent): void {
   pointersDown = Math.max(0, pointersDown - 1);
+  if (truckPress) {
+    if (e && ourPress(e)) {
+      e.stopPropagation();
+      // A press that did not travel is a press ON the truck.  One that
+      // did is somebody who changed their mind; we still swallow it,
+      // because Google never saw the down and would answer half a
+      // gesture.
+      cardId = truckPress.id;
+      placeCard();
+    }
+    // Held, NOT cleared: mouseup and click are still to come, and both
+    // reach Google unless this is still armed when they arrive.
+    // onPointerDown clears it at the start of the next press.
+    return;
+  }
   if (!drag) return;
   const release = endDrag(drag);
   const finished = drag;
@@ -946,6 +1019,13 @@ function teardown(): void {
     try { chrome.storage.onChanged.removeListener(onPrefChanged); } catch { /* context gone */ }
     onPrefChanged = null;
   }
+  // The cursor rule and the class it needs.  `ensureCursorStyle` returns
+  // early on an existing tag, so an update that left the old one behind
+  // would have the new copy reusing it — and if its text ever differs,
+  // the rule silently would not exist.
+  cursorHost?.classList.remove(OVER_TRUCK_CLASS);
+  cursorHost = null;
+  document.getElementById(CURSOR_STYLE_ID)?.remove();
   canvasWatch?.disconnect();
   canvasWatch = null;
   removeAll();
@@ -1020,7 +1100,11 @@ function start(): void {
   window.addEventListener('pointercancel', () => onPointerUp(), opts);
   window.addEventListener('wheel', onWheel, opts);
   window.addEventListener('keydown', onKeyDown, { capture: true, signal });
-  // NOT passive, unlike the pointer listeners above — see onClickCapture.
+  // The mouse pair and the click.  NOT passive, unlike the pointer
+  // listeners above: the click one has to preventDefault, and these two
+  // are not scroll-blocking so taking them costs the page nothing.
+  window.addEventListener('mousedown', onMouseCapture, { capture: true, signal });
+  window.addEventListener('mouseup', onMouseCapture, { capture: true, signal });
   window.addEventListener('click', onClickCapture, { capture: true, signal });
 
   // Which feature the card's button will land on.  Read once, then kept
@@ -1050,5 +1134,6 @@ function start(): void {
 // re-injection after an extension update, when the old layer is still
 // in the DOM and a second one would double every marker.
 document.getElementById(ROOT_ID)?.remove();
+document.getElementById(CURSOR_STYLE_ID)?.remove();
 document.getElementById(CHIP_ID)?.remove();
 start();
