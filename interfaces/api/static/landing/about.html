@@ -82,6 +82,10 @@
 
         .section { padding: 64px 0; }
         .section, .page-hero { scroll-margin-top: 96px; }
+        /* Paired with .container, so it inherits `margin: 0 auto` and
+           centres at 760px. The page hero uses the SAME pair, or the
+           H1 sits at the 1100px edge while the cards sit at 760 and
+           their left edges disagree. */
         .prose { max-width: 760px; }
         .card {
             background: var(--gray-50);
@@ -174,7 +178,7 @@
 </header>
 
 <section class="page-hero">
-    <div class="container">
+    <div class="container prose">
         <h1>About 4truck</h1>
         <p class="lead">
             4truck is vehicle management and operations software for trucking carriers. One platform
