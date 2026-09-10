@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact — 4truck</title>
+    <meta name="description" content="Contact 4truck — email info@abclegacyllc.com for product questions, sales, or support. Operated by ABC LEGACY LLC, Sheridan, Wyoming, USA.">
+    <link rel="canonical" href="https://4truck.us/contact">
+    <link rel="icon" type="image/png" sizes="32x32" href="/dashboard/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/dashboard/favicon-64.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/dashboard/apple-touch-icon.png">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="4truck">
+    <meta property="og:title" content="Contact — 4truck">
+    <meta property="og:description" content="Contact 4truck — email info@abclegacyllc.com for product questions, sales, or support. Operated by ABC LEGACY LLC, Sheridan, Wyoming, USA.">
+    <meta property="og:url" content="https://4truck.us/contact">
+    <meta property="og:image" content="https://4truck.us/og-image.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Contact — 4truck">
+    <meta name="twitter:description" content="Contact 4truck — email info@abclegacyllc.com for product questions, sales, or support. Operated by ABC LEGACY LLC, Sheridan, Wyoming, USA.">
+    <meta name="twitter:image" content="https://4truck.us/og-image.png">
+    <style>
+        /* Same tokens and chrome as the home page.  Each page on this site
+           carries its own <style> (privacy.html and terms.html do too) —
+           there is no build step or templating for these static files. */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --navy: #0f172a;
+            --blue: #2563eb;
+            --gray-50: #f9fafb;
+            --gray-200: #e5e7eb;
+            --gray-600: #4b5563;
+            --gray-900: #111827;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--navy);
+            background: #ffffff;
+        }
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--gray-200);
+            background: #ffffff;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .nav { display: flex; justify-content: space-between; align-items: center; }
+        .brand {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--navy);
+            text-decoration: none;
+            letter-spacing: -0.02em;
+        }
+        nav ul { list-style: none; display: flex; gap: 24px; flex-wrap: wrap; }
+        nav a { color: var(--gray-600); text-decoration: none; font-size: 15px; font-weight: 500; }
+        nav a:hover { color: var(--navy); }
+        nav a[aria-current="page"] { color: var(--navy); font-weight: 600; }
+
+        /* Page hero — the home page's .hero without the cycler machinery. */
+        .page-hero {
+            padding: 64px 0 40px;
+            background: linear-gradient(180deg, #ffffff 0%, var(--gray-50) 100%);
+        }
+        .page-hero h1 {
+            font-size: 44px;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 20px;
+        }
+        .page-hero .lead {
+            font-size: 19px;
+            color: var(--gray-600);
+            max-width: 760px;
+        }
+
+        .section { padding: 64px 0; }
+        .section, .page-hero { scroll-margin-top: 96px; }
+        .prose { max-width: 760px; }
+        .card {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .card h2 { font-size: 22px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+        .card p { color: var(--gray-600); font-size: 16px; }
+        .card p + p { margin-top: 12px; }
+        .card .who { color: var(--navy); font-weight: 600; font-size: 16px; margin-bottom: 6px; }
+        .card a { color: var(--blue); text-decoration: none; }
+        .card a:hover { text-decoration: underline; }
+        .mission { font-size: 20px; font-weight: 600; color: var(--navy); }
+        .contact-email a { font-size: 20px; font-weight: 600; color: var(--blue); text-decoration: none; }
+        .contact-email a:hover { text-decoration: underline; }
+        address { font-style: normal; color: var(--gray-600); font-size: 16px; }
+        address strong { color: var(--navy); }
+
+        .cta {
+            display: inline-block;
+            padding: 14px 32px;
+            background: var(--navy);
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .cta:hover { background: var(--blue); }
+
+        footer {
+            border-top: 1px solid var(--gray-200);
+            padding: 40px 0;
+            background: var(--gray-50);
+        }
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 32px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 768px) {
+            .footer-grid { grid-template-columns: 1fr; }
+            .page-hero h1 { font-size: 32px; }
+        }
+        footer h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        footer ul { list-style: none; }
+        footer li { padding: 4px 0; }
+        footer a { color: var(--gray-600); text-decoration: none; font-size: 14px; }
+        footer a:hover { color: var(--blue); }
+        .footer-meta {
+            border-top: 1px solid var(--gray-200);
+            padding-top: 24px;
+            text-align: center;
+            color: var(--gray-600);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container nav">
+        <a href="/" class="brand">4truck</a>
+        <nav>
+            <ul>
+                <!-- Home-page anchors are absolute here: a bare #roles on
+                     /about scrolls nowhere because the section is not on
+                     this page. -->
+                <li><a href="/#roles">Teams</a></li>
+                <li><a href="/#modules">Modules</a></li>
+                <li><a href="/#drive">Storage</a></li>
+                <li><a href="/about">About</a></li>
+                <li><a href="/contact" aria-current="page">Contact</a></li>
+                <li><a href="/privacy">Privacy</a></li>
+                <li><a href="/terms">Terms</a></li>
+                <li><a href="/login">Sign in</a></li>
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<section class="page-hero">
+    <div class="container">
+        <h1>Contact</h1>
+        <p class="lead">
+            For product questions, sales, or support, email us &mdash; we reply within one business day.
+        </p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container prose">
+        <div class="card">
+            <h2>Email</h2>
+            <p class="contact-email"><a href="mailto:info@abclegacyllc.com">info@abclegacyllc.com</a></p>
+        </div>
+
+        <div class="card">
+            <h2>Postal address</h2>
+            <address>
+                <strong>ABC LEGACY LLC</strong><br>
+                30 N Gould St Ste R, Sheridan, WY 82801, USA
+            </address>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <div class="footer-grid">
+            <div>
+                <a href="/" class="brand" style="font-size:20px;">4truck</a>
+                <p style="color:var(--gray-600); font-size:14px; margin-top:12px; max-width:380px;">
+                    Operated by <strong>ABC LEGACY LLC</strong>. A vehicle management and operations
+                    platform built for Fleet, Dispatch, Safety, HR, Accounting, Recruiter, and Driver.
+                </p>
+            </div>
+            <div>
+                <h4>Product</h4>
+                <ul>
+                    <li><a href="/#roles">Teams</a></li>
+                    <li><a href="/#modules">Modules</a></li>
+                    <li><a href="/#drive">Storage Options</a></li>
+                    <li><a href="/login">Sign in</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Company</h4>
+                <ul>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="/contact">Contact</a></li>
+                    <li><a href="/privacy">Privacy Policy</a></li>
+                    <li><a href="/terms">Terms of Service</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-meta">
+            &copy; 2026 ABC LEGACY LLC. All rights reserved.
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>

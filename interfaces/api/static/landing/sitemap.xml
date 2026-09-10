@@ -10,6 +10,18 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://4truck.us/about</loc>
+    <lastmod>2026-09-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://4truck.us/contact</loc>
+    <lastmod>2026-09-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://4truck.us/privacy</loc>
     <lastmod>2026-07-09</lastmod>
     <changefreq>yearly</changefreq>
