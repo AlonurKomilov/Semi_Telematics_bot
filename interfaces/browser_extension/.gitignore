@@ -1,2 +1,7 @@
 # Built packages live here (build_packages.py): current version + _archive/.
-versions/
+# The CONTENTS are ignored, not the directory — git cannot descend into an
+# ignored directory, and one file in here must travel with the repo:
+# CLAUDE.md, the versioning rules, which the extension's own CLAUDE.md
+# makes mandatory reading before any version is touched.
+versions/*
+!versions/CLAUDE.md

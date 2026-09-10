@@ -15,28 +15,24 @@ changed six times while the store still served 0.4.0, and the owner tested a
 store install against a sideload and read the difference as a bug. Same code
 would have been the same behaviour.
 
-### Which digit moves
+### Which digit moves — READ `versions/CLAUDE.md` FIRST
 
-**PATCH (0.10.x) for a fix**, however deep the diagnosis was: a bug, a
-layout correction, copy, a guard.  **MINOR (0.x.0) for a feature** — a new
-panel surface, a new endpoint the panel calls, a new permission it reads.
-Four fixes in one afternoon are 0.10.1 … 0.10.4, not 0.14.0; the owner
-reads the minor digit as "something new to look at", and burning it on
-fixes makes the number say nothing.
+**Mandatory, before touching any version number:** open
+[versions/CLAUDE.md](versions/CLAUDE.md).  It holds the four-digit scheme
+the owner agreed — extension · feature · component · fix — the cascade
+rule, which digit a given change moves, and the pin currently holding the
+feature digit at 5.
 
-A version is SPENT once its zip has been installed or uploaded — not
-merely built.  A number that was named in a message but never installed
-can be reused: delete its zips and rebuild.
+This is a rule and not a suggestion because the number was bumped by feel
+four times in one day before the scheme existed, and the minor digit
+walked from 0.7 to 0.12 while saying nothing about what had changed.  A
+version is a message to the owner; guessing at it sends the wrong one.
 
-Recipe, every time:
-1. bump `version` in `public/manifest.json` AND `package.json` (the store refuses
-   a seen version, drafts included);
-2. `npm run build && python3 build_packages.py` → both zips, older ones archived;
-3. the closing message names BOTH files and says "upload the store one".
-
-If a store review is pending, the next version waits for it or the owner cancels
-the pending review — say which. Never delete the reviewer account
-(`test@premiertruckinggroup.com`) between reviews.
+The recipe lives there too.  What stays here, because it is about the
+STORE rather than the number: if a store review is pending, the next
+version waits for it or the owner cancels the pending review — say which.
+Never delete the reviewer account (`test@premiertruckinggroup.com`)
+between reviews.
 
 ## Reading the URL
 

@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 // Imported, not read from disk: the tests run in jsdom, where
 // `import.meta.url` is an http URL and node's file helpers refuse it.
 import raw from '../public/manifest.json';
+import pkg from '../package.json';
 
 const manifest = raw as {
   version: string;
@@ -50,7 +51,25 @@ describe('manifest', () => {
     ]);
   });
 
-  it('carries a version the store will accept as new', () => {
-    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
+  it('carries a version the store will accept, in the agreed shape', () => {
+    // Chrome's own rule: one to four dot-separated integers, each
+    // 0-65535, none padded with a leading zero.
+    expect(manifest.version).toMatch(/^\d{1,5}(\.\d{1,5}){0,3}$/);
+    for (const part of manifest.version.split('.')) {
+      expect(Number(part), part).toBeLessThanOrEqual(65535);
+      expect(part === '0' || !part.startsWith('0'), `${part} is zero-padded`).toBe(true);
+    }
+    // …and the shape THIS project agreed on 2026-09-10:
+    // extension · feature · component · fix.  Three parts would still
+    // load; it would just have nowhere to say which of the middle two
+    // moved, which is the whole reason the fourth exists.
+    // See versions/CLAUDE.md — mandatory reading before a bump.
+    expect(manifest.version.split('.')).toHaveLength(4);
+  });
+
+  it('says the same version as package.json', () => {
+    // They drifted once and the store served a build six versions old
+    // while the owner tested against a sideload — see CLAUDE.md.
+    expect(manifest.version).toBe(pkg.version);
   });
 });
