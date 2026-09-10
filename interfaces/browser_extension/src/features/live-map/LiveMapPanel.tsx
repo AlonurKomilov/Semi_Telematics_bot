@@ -102,10 +102,12 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // Only a ref now — nothing here RENDERS the preference, so it never
   // needed to drive a re-render.
   const followRef = useRef(false);
-  /** How much of the column the vehicle LIST takes, in percent.  It was
-   *  a hardcoded 240px basis, and the fold could only make it that or
-   *  nothing — everything between is what people actually want. */
-  const [listPct, setListPct] = useState(40);
+  /** How much of the column the MAP takes, in percent — the share ABOVE
+   *  the splitter, which is the only thing a Splitter ever reports.  The
+   *  list's share is derived.  Storing the LIST's share and feeding it a
+   *  distance-from-top is what made the first draft drag BACKWARDS: down
+   *  made the list bigger, so the line went up. */
+  const [mapPct, setMapPct] = useState(60);
   const columnRef = useRef<HTMLDivElement>(null);
   // The map is the point of the panel; the list is the index to it.
   // Collapsing gives the map the whole strip, and the choice sticks.
@@ -483,7 +485,12 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     }, 180);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listOpen, cardShown, cardOpen]);
+  // `mapPct` belongs here: Leaflet does not notice its container being
+  // resized, so a drag changed the box and the map kept rendering for
+  // the old one — tiles frozen, the truck off centre.  The 180ms timer
+  // is cleared on every change, so a drag produces ONE re-measure when
+  // it settles rather than sixty while it runs.
+  }, [listOpen, cardShown, cardOpen, mapPct]);
 
   const toggleList = () => {
     const open = !listOpen;
@@ -780,6 +787,15 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
             </div>
           );
         })()}
+      {/* Directly under the MAP, because that is the boundary this
+          moves.  It sat below the search box and the filter chips for one
+          draft, where it read as dividing the search from the list — the
+          two things it does not stand between. */}
+      {listOpen && (
+        <Splitter storageKey="liveMapMapPct" fallback={60}
+                  columnRef={columnRef} onChange={setMapPct}
+                  label="Resize the map" />
+      )}
       <div style={{ padding: '0 10px', display: 'grid', gap: 6 }}>
         <input className="input" placeholder="Search vehicles…" value={search} onChange={(e) => setSearch(e.target.value)} />
         {/* Only ONE kind of control lives here now: a status FILTER,
@@ -806,15 +822,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           column's gap never lands between a group's name and its
           members.  The list gives no space when the card appears: it is
           the only thing here that already scrolls. */}
-      {/* Between the map and the list.  Only while the list is OPEN:
-          folded, it is a header bar and there is nothing to divide. */}
-      {listOpen && (
-        <Splitter storageKey="liveMapListPct" fallback={40}
-                  columnRef={columnRef} onChange={setListPct}
-                  label="Resize the vehicle list" />
-      )}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
-                    flex: listOpen ? `0 1 ${listPct}%` : '0 0 auto',
+                    flex: listOpen ? `0 1 ${100 - mapPct}%` : '0 0 auto',
                     borderTop: '1px solid var(--border)' }}>
         <button type="button" onClick={toggleList} aria-expanded={listOpen}
                 className="row rowbtn"

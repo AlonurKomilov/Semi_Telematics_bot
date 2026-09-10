@@ -36,6 +36,16 @@ function clamp(n: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, Math.round(n)));
 }
 
+/**
+ * The percentage a Splitter reports is ALWAYS the share of the column
+ * ABOVE the line.  One rule, so a caller cannot get it backwards.
+ *
+ * It was got backwards: Live Map stored the share of the region BELOW
+ * (the vehicle list) and fed it the pointer's distance from the TOP, so
+ * dragging down made the list bigger, which pushed the line UP.  A
+ * caller whose region is the lower one derives it — `100 - pct` — where
+ * the compiler and the reader can both see the subtraction.
+ */
 export interface SplitterProps {
   /** Storage key — one per SURFACE.  The map/list ratio and the
    *  card/list ratio are different judgements about different regions;
@@ -106,6 +116,7 @@ export default function Splitter({ storageKey, fallback, columnRef, onChange, la
 
   return (
     <div
+      className="splitter"
       role="separator"
       aria-orientation="horizontal"
       aria-label={label}
@@ -142,8 +153,10 @@ export default function Splitter({ storageKey, fallback, columnRef, onChange, la
         borderRadius: 4,
       }}
     >
-      <div aria-hidden style={{ height: 2, width: '100%', borderRadius: 2,
-                                background: 'var(--border)' }} />
+      {/* An <i>, so CSS can answer hover and focus — an inline style can
+          express neither, and this line has to be able to say "I am the
+          one you are pointing at" or it reads as a border. */}
+      <i aria-hidden />
     </div>
   );
 }

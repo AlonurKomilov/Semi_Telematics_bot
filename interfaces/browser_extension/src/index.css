@@ -14,6 +14,15 @@ button, input { font: inherit; }
    content.  A 32px button on a 24px row aligns with nothing and pushes
    the whole list a step taller. */
 .btn.compact { padding:2px 8px; font-size:12px; }
+/* The resize handle.  A 2px line is easy to miss and easy to mistake for
+   a border, so it answers the cursor: the line thickens and takes the
+   accent while the pointer is on it, which is the only moment the answer
+   is useful.  Focus gets the same treatment — somebody aiming with the
+   arrow keys needs to see which line is listening. */
+.splitter > i { display:block; height:2px; width:100%; border-radius:2px;
+                background: var(--border); transition: background .12s, height .12s; }
+.splitter:hover > i, .splitter:focus-visible > i { height:4px; background: var(--primary); }
+.splitter:focus-visible { outline:none; }
 .btn:disabled { opacity:.6; cursor: default; }
 .input { width:100%; border:1px solid var(--border); background: var(--card); color: var(--fg);
          border-radius:6px; padding:7px 9px; min-height:24px; }
