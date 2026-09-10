@@ -109,7 +109,7 @@ export default function Parking() {
         title={t('pages.parking_title')}
         description="Vehicles parked somewhere unsafe or unverified. Safe stops — truck stops, yards, your geofences — are checked and not listed. Open a row for the AI's reasoning and that vehicle's parking history; past events across the account live on the Alerts page."
         actions={
-          <LastUpdated fetchedAt={dataUpdatedAt} isFetching={isFetching} onRefresh={refetch} />
+          <LastUpdated fetchedAt={dataUpdatedAt} isFetching={isFetching} onRefresh={refetch} error={displayError || undefined} />
         }
       />
 

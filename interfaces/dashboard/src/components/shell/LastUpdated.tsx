@@ -4,11 +4,19 @@ import { RefreshCw } from '../../lib/icons';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import { cn } from '@/lib/utils';
+import { toneText } from '../../lib/status';
 
 interface LastUpdatedProps {
   fetchedAt?: number | null;
   isFetching?: boolean;
   onRefresh?: () => void;
+  /** The last refresh FAILED.  Without this the chip kept counting the
+   *  age up — "Updated 4m ago", then 8m, then 15m — while every click
+   *  on it was silently failing: a positive false claim on the one
+   *  control whose whole job is stating data age.  Pass react-query's
+   *  `error`; the chip then names the failure and dates the last GOOD
+   *  load instead. */
+  error?: unknown;
 }
 
 function formatRelative(ts: number, tz: string): string {
@@ -29,6 +37,7 @@ export default function LastUpdated({
   fetchedAt,
   isFetching,
   onRefresh,
+  error,
 }: LastUpdatedProps) {
   const [, setTick] = useState(0);
   const tz = useTimezone();
@@ -40,18 +49,28 @@ export default function LastUpdated({
   }, [fetchedAt]);
 
   const label = fetchedAt ? formatRelative(fetchedAt, tz) : '—';
+  const failed = error != null && !isFetching;
 
   return (
     <button
       onClick={onRefresh}
       disabled={!onRefresh || isFetching}
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition disabled:opacity-60 disabled:cursor-default py-1 -my-1 min-h-tap"
-      title={fetchedAt ? `Last updated ${label}` : 'Not loaded yet'}
+      className={cn(
+        'inline-flex items-center gap-1.5 text-xs transition disabled:opacity-60 disabled:cursor-default py-1 -my-1 min-h-tap',
+        failed ? toneText('danger') : 'text-muted-foreground hover:text-foreground',
+      )}
+      aria-label={failed
+        ? (fetchedAt ? `Refresh failed. Showing data from ${label}. Retry` : 'Refresh failed. Retry')
+        : (fetchedAt ? `Last updated ${label}. Refresh` : 'Not loaded yet')}
     >
       <RefreshCw
         className={cn(isFetching ? 'animate-spin' : '', 'size-3')}
       />
-      <span>Updated {label}</span>
+      <span>
+        {failed
+          ? (fetchedAt ? `Refresh failed · last good ${label}` : 'Refresh failed')
+          : `Updated ${label}`}
+      </span>
     </button>
   );
 }

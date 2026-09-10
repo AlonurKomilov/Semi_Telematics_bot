@@ -2244,7 +2244,7 @@ function IntegrationLinksPanel({ members, onChanged }: {
   onChanged: () => void;
 }) {
   const qc = useQueryClient();
-  const { data } = useIntegrationLinksQuery();
+  const { data, error, refetch } = useIntegrationLinksQuery();
   const [busy, setBusy] = useState(false);
 
   const act = async (fn: () => Promise<unknown>, okMsg: string) => {
@@ -2444,7 +2444,14 @@ function IntegrationLinksPanel({ members, onChanged }: {
     },
   ];
 
-  if (!data) return <TableSkeleton rows={6} cols={5} />;
+  // ``data`` stays undefined FOREVER after a failed fetch, so this used
+  // to render a skeleton that never resolved — a spinner is not an
+  // answer.  Say the failure, offer the retry.
+  if (!data) {
+    return error != null
+      ? <ErrorState message={error instanceof Error ? error.message : 'Failed to load integration links'} onRetry={() => { void refetch(); }} />
+      : <TableSkeleton rows={6} cols={5} />;
+  }
   if (total === 0) {
     return (
       <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
@@ -2454,6 +2461,8 @@ function IntegrationLinksPanel({ members, onChanged }: {
   }
   return (
     <DataGrid
+      error={error}
+      onRetry={() => { void refetch(); }}
       tableId="integration-links"
       columns={columns}
       data={rows}

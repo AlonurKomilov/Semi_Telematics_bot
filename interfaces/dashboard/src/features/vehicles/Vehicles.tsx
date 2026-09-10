@@ -549,6 +549,7 @@ export default function Vehicles() {
             <LastUpdated
               fetchedAt={dataUpdatedAt}
               isFetching={isFetching}
+              error={error || undefined}
               onRefresh={refetch}
             />
           </div>

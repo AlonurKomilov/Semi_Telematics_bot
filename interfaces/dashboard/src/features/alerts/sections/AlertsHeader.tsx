@@ -18,7 +18,7 @@ import { useAlertsQuery } from '../_shared/useAlertsQuery';
 
 export default function AlertsHeader() {
   const { t } = useTranslation();
-  const { dataUpdatedAt, isFetching, refetch } = useAlertsQuery();
+  const { dataUpdatedAt, isFetching, refetch, error } = useAlertsQuery();
 
   // Notification preferences live on their own top-level door
   // (/notifications/preferences, via the topbar Notifications bell's gear),
@@ -32,6 +32,7 @@ export default function AlertsHeader() {
         <LastUpdated
           fetchedAt={dataUpdatedAt}
           isFetching={isFetching}
+          error={error}
           onRefresh={refetch}
         />
       }

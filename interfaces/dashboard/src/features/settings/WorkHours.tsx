@@ -97,6 +97,10 @@ export function WorkHoursPanel() {
     try {
       const d = await apiJSON<WorkHoursResponse>('/admin/work-hours');
       setSchedules(d.schedules || []);
+      // Cleared on success — it never was, so one transient failure
+      // left a permanent message (and a later save error could not be
+      // told from it).
+      setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -214,6 +218,20 @@ export function WorkHoursPanel() {
         </div>
 
         {loading && <div className="p-8 text-center text-muted-foreground">Loading…</div>}
+
+        {/* A failed RELOAD keeps the previous rows on screen, so the
+            full-page ErrorState above (gated on no rows) never fires
+            and the operator reads a stale schedule as current.  This
+            surface has no grid to carry the band, so it carries its
+            own — above the rows it qualifies. */}
+        {error && schedules.length > 0 && (
+          <div role="alert" className={`mx-3 mb-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${toneClasses('danger')}`}>
+            <span className="flex-1">{error} — the rows below are from the last successful load.</span>
+            <button type="button" onClick={() => { void load(); }} className="font-medium underline underline-offset-2 hover:opacity-80">
+              Retry
+            </button>
+          </div>
+        )}
 
         {!loading && filtered.length === 0 && (
           <div className="p-8 text-center text-muted-foreground">No working hours configured</div>
