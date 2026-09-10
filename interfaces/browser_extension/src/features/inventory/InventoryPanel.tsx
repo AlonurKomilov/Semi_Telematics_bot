@@ -232,7 +232,16 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
         // form open and a full item list: ~615px of card, ~692 with the
         // search block — past a 600px panel the card would simply run
         // off the bottom, since neither it nor the root scrolls.
-        <div className="sheet" style={{ minHeight: 0, maxHeight: '70%', overflowY: 'auto' }}>
+        //
+        // `flexShrink: 0` is what makes the ceiling safe, and its absence
+        // is what broke this once: the truck list's flex-basis is its
+        // CONTENT, and with 190 vehicles that overflows the column by
+        // thousands of pixels.  Flex then distributes the deficit across
+        // every shrinkable item — so a `minHeight: 0` here (added to let
+        // the ceiling work) removed this card's automatic minimum and it
+        // was squeezed to a scrolling sliver showing one line.  It must
+        // not shrink at all; the list below is the one that gives.
+        <div className="sheet" style={{ flexShrink: 0, maxHeight: '70%', overflowY: 'auto' }}>
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6 }}>
             <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
               {selected.name}
@@ -383,7 +392,7 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
           and the summary describe the list under them; a border between
           the two left the filter floating on bare ground between a
           filled card and a bordered region, belonging to neither. */}
-      <div style={{ padding: '8px 10px 0', display: 'grid', gap: 6,
+      <div style={{ padding: '8px 10px 0', display: 'grid', gap: 6, flexShrink: 0,
                     borderTop: '1px solid var(--border)' }}>
         <input className="input" placeholder="Search vehicles…" value={search}
                onChange={(e) => setSearch(e.target.value)} />
@@ -433,7 +442,11 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
       </div>
 
       {/* THE elastic region. */}
-      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
+      {/* basis 0, not auto: with `auto` the basis is the content — 190
+          rows — so the column overflows before anything is laid out and
+          the whole layout becomes a shrink negotiation.  From 0 it is
+          simply "take what is left", which is what this region is. */}
+      <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
         {fleet === null && <p className="muted" style={{ padding: 10, margin: 0 }}>Loading…</p>}
         {/* It is a HEADER now, not an empty state: the list below it is
             full of vehicles, they simply have nothing recorded.  And it
