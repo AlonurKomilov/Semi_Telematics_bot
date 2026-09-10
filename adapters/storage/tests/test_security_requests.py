@@ -71,3 +71,70 @@ async def test_count_and_prune(seeded_db):
     # everything is older than "minus one day in the future" → prune deletes all
     assert await db.prune_security_requests(-1) >= 2
     assert await db.list_security_requests(account_id=acct.id) == []
+
+
+@pytest.mark.asyncio
+async def test_monitored_summary_lists_a_watched_account_even_at_zero(seeded_db):
+    """Watching started is a fact the operator must SEE, not infer."""
+    db, acct = seeded_db["db"], seeded_db["account"]
+    await db.update_account(acct.id, kind="monitored")
+
+    rows = {r["account_id"]: r for r in await db.security_monitored_summary(since_hours=24)}
+    assert acct.id in rows
+    assert rows[acct.id]["requests"] == 0
+    assert rows[acct.id]["refused"] == 0
+    assert rows[acct.id]["broke"] == 0
+    assert rows[acct.id]["last_seen"] is None
+    assert rows[acct.id]["kind"] == "monitored"
+
+
+@pytest.mark.asyncio
+async def test_monitored_summary_counts_the_window_and_only_monitored_accounts(seeded_db):
+    db, acct = seeded_db["db"], seeded_db["account"]
+    await _write(db, acct, status=200)
+    await _write(db, acct, status=403)
+    await _write(db, acct, status=500)
+
+    # a real account with ledger rows must not appear
+    assert await db.security_monitored_summary(since_hours=24) == [] or all(
+        r["account_id"] != acct.id for r in await db.security_monitored_summary(since_hours=24))
+
+    await db.update_account(acct.id, kind="monitored")
+    rows = {r["account_id"]: r for r in await db.security_monitored_summary(since_hours=24)}
+    assert rows[acct.id]["requests"] == 3
+    assert rows[acct.id]["refused"] == 1
+    assert rows[acct.id]["broke"] == 1
+    assert rows[acct.id]["last_seen"] is not None
+
+
+@pytest.mark.asyncio
+async def test_status_class_is_a_range_not_a_list(seeded_db):
+    db, acct = seeded_db["db"], seeded_db["account"]
+    for st in (200, 204, 401, 403, 404, 429, 500, 502):
+        await _write(db, acct, status=st)
+    cls = lambda c: sorted(r["status"] for r in db_rows)  # noqa: E731 — local helper
+    db_rows = await db.list_security_requests(account_id=acct.id, status_class="denied")
+    assert cls("denied") == [401, 403, 429]
+    db_rows = await db.list_security_requests(account_id=acct.id, status_class="broke")
+    assert cls("broke") == [500, 502]
+    db_rows = await db.list_security_requests(account_id=acct.id, status_class="ok")
+    assert cls("ok") == [200, 204]
+    db_rows = await db.list_security_requests(account_id=acct.id, status_class="all")
+    assert len(cls("all")) == 8
+    with pytest.raises(ValueError):
+        await db.list_security_requests(account_id=acct.id, status_class="hostile")
+
+
+@pytest.mark.asyncio
+async def test_rows_carry_the_acting_users_name(seeded_db):
+    """The operator reads a PERSON's timeline; a person has a name."""
+    db, acct = seeded_db["db"], seeded_db["account"]
+    owner = seeded_db.get("owner") or seeded_db.get("user")
+    uid = owner.id if owner is not None else 1
+    await _write(db, acct, user_id=uid, status=403)
+    await _write(db, acct, user_id=999999, status=403)       # a user that no longer exists
+    rows = {r["user_id"]: r for r in await db.list_security_requests(account_id=acct.id)}
+    assert "user_name" in rows[uid]
+    if owner is not None:
+        assert rows[uid]["user_name"] == owner.display_name
+    assert rows[999999]["user_name"] is None                  # LEFT JOIN: the row survives

@@ -10,6 +10,16 @@ import type {
 } from '../types';
 import { ACCOUNT_KINDS, type AccountKind } from '../types';
 
+/** What choosing a kind actually does — shown beside the select, because
+ *  the choice is about a person and takes effect on change.  `quarantined`
+ *  is named honestly: nothing enforces it yet. */
+const KIND_HINT: Record<AccountKind, string> = {
+  real: 'a customer — counted, billed, unrestricted',
+  test: 'ours — not counted, unrestricted',
+  monitored: 'behaves exactly like real; not counted; every request is recorded on the Security page',
+  quarantined: 'NOT ENFORCED YET — behaves like real until the request-time gate lands',
+};
+
 export default function AccountDetailPage() {
   const { id } = useParams<{ id: string }>();
   const accountId = Number(id);
@@ -95,6 +105,7 @@ export default function AccountDetailPage() {
             >
               {ACCOUNT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
+            <span className="text-slate-500">{KIND_HINT[data.account.type]}</span>
           </label>
         </div>
       </header>

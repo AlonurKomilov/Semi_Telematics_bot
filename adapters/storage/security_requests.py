@@ -51,28 +51,45 @@ class SecurityRequestsMixin:
         *,
         account_id: int | None = None,
         statuses: tuple[int, ...] | None = None,
+        status_class: str | None = None,
         since_hours: int | None = None,
         limit: int = 200,
     ) -> list[dict]:
         """Newest first.  ``account_id`` gives one account's timeline;
-        ``statuses`` narrows (e.g. the denials); ``since_hours`` bounds."""
+        ``statuses`` narrows to a list, ``status_class`` to a class —
+        ``denied`` (401/403/429: the wall), ``broke`` (5xx: something
+        they reached), ``ok`` (2xx) — and ``since_hours`` bounds.
+
+        Rows carry the acting user's display name so the console can
+        say WHO, not just which id: the operator is reading a person's
+        timeline, and a person has a name.
+        """
         where: list[str] = []
         params: list = []
         if account_id is not None:
-            where.append("account_id = ?")
+            where.append("r.account_id = ?")
             params.append(account_id)
         if statuses:
-            where.append("status IN (" + ",".join("?" * len(statuses)) + ")")
+            where.append("r.status IN (" + ",".join("?" * len(statuses)) + ")")
             params.extend(int(s) for s in statuses)
+        if status_class == "denied":
+            where.append("r.status IN (401, 403, 429)")
+        elif status_class == "broke":
+            where.append("r.status >= 500")
+        elif status_class == "ok":
+            where.append("r.status BETWEEN 200 AND 299")
+        elif status_class not in (None, "", "all"):
+            raise ValueError(f"unknown status_class: {status_class!r}")
         if since_hours:
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=int(since_hours))).isoformat()
-            where.append("created_at >= ?")
+            where.append("r.created_at >= ?")
             params.append(cutoff)
         params.append(int(limit))
-        sql = ("SELECT id, created_at, account_id, user_id, role, kind, method, path, query, "
-               "status, duration_ms, ip, ua, request_id FROM security_requests "
+        sql = ("SELECT r.id, r.created_at, r.account_id, r.user_id, u.display_name AS user_name, "
+               "r.role, r.kind, r.method, r.path, r.query, r.status, r.duration_ms, r.ip, r.ua, "
+               "r.request_id FROM security_requests r LEFT JOIN users u ON u.id = r.user_id "
                + ("WHERE " + " AND ".join(where) if where else "")
-               + " ORDER BY created_at DESC, id DESC LIMIT ?")
+               + " ORDER BY r.created_at DESC, r.id DESC LIMIT ?")
         cur = await self._db.execute(sql, params)
         return [dict(r) for r in await cur.fetchall()]
 
@@ -105,6 +122,33 @@ class SecurityRequestsMixin:
                + ("WHERE " + " AND ".join(where) if where else "")
                + " GROUP BY method, path ORDER BY broke DESC, refused DESC, total DESC")
         cur = await self._db.execute(sql, params)
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def security_monitored_summary(self, *, since_hours: int = 24) -> list[dict]:
+        """Every monitored account with its ledger counts in the window.
+
+        One query, accounts-first: an account marked monitored an hour
+        ago with nothing recorded yet still appears, at zero — the
+        operator must see that watching started, not infer it from
+        absence.  Ordered so the noisiest sits on top.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=int(since_hours))).isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT a.id AS account_id, a.name, a.kind, a.created_at,
+                   COUNT(r.id) AS requests,
+                   COALESCE(SUM(CASE WHEN r.status IN (401, 403) THEN 1 ELSE 0 END), 0) AS refused,
+                   COALESCE(SUM(CASE WHEN r.status >= 500 THEN 1 ELSE 0 END), 0) AS broke,
+                   MAX(r.created_at) AS last_seen
+              FROM accounts a
+              LEFT JOIN security_requests r
+                     ON r.account_id = a.id AND r.created_at >= ?
+             WHERE a.kind = 'monitored'
+             GROUP BY a.id, a.name, a.kind, a.created_at
+             ORDER BY requests DESC, a.name
+            """,
+            (cutoff,),
+        )
         return [dict(r) for r in await cur.fetchall()]
 
     async def count_security_requests(

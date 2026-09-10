@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList } from 'lucide-react';
+import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList, ShieldAlert } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -10,6 +10,7 @@ import InvoicesPage from './pages/Invoices';
 import HealthPage from './pages/Health';
 import UsersPage from './pages/Users';
 import ErrorsPage from './pages/Errors';
+import SecurityPage from './pages/Security';
 import AIFeedbackPage from './pages/AIFeedback';
 import RetentionPage from './pages/Retention';
 import VendorDirectoryPage from './pages/VendorDirectory';
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="/health" element={<HealthPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/errors" element={<ErrorsPage />} />
+            <Route path="/security" element={<SecurityPage />} />
             <Route path="/ai-feedback" element={<AIFeedbackPage />} />
             <Route path="/retention" element={<RetentionPage />} />
             <Route path="/vendor-directory" element={<VendorDirectoryPage />} />
@@ -114,6 +116,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/capacity', label: 'Capacity', icon: Gauge },
       { to: '/users',  label: 'Users',  icon: Users },
       { to: '/errors', label: 'Errors', icon: AlertTriangle },
+      { to: '/security', label: 'Security', icon: ShieldAlert },
       { to: '/ai-feedback', label: 'AI feedback', icon: MessageSquareWarning },
       { to: '/retention', label: 'Retention', icon: DatabaseBackup },
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },

@@ -1455,6 +1455,89 @@ async def list_errors(
     return {"items": items, "count": len(items)}
 
 
+# ── Security ledger ──────────────────────────────────────────────
+#
+# Read-only views over security_requests: every refusal from anyone, and
+# everything from an account of kind=monitored.  The page these feed is
+# the answer to "what did they try, what held, what broke" — the
+# question the 2026-09-08 audit had to reconstruct from a root-only log
+# file.  Nothing here writes; marking an account monitored is the kind
+# endpoint's job and is audited there.
+
+_DENIAL_STATUSES = (401, 403, 429)
+
+
+@router.get("/security/summary")
+async def security_summary(
+    hours: int = Query(default=24, ge=1, le=24 * 30),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Header tiles: refused (the wall held), throttled, broke (a bug they found)."""
+    refused = await platform_db.count_security_requests(since_hours=hours, statuses=(401, 403))
+    throttled = await platform_db.count_security_requests(since_hours=hours, statuses=(429,))
+    rows = await platform_db.list_security_requests(since_hours=hours, limit=5000)
+    broke = sum(1 for r in rows if int(r["status"]) >= 500)
+    monitored = await platform_db.security_monitored_summary(since_hours=hours)
+    return {
+        "hours": hours,
+        "refused": refused,
+        "throttled": throttled,
+        "broke": broke,
+        "monitored_accounts": len(monitored),
+    }
+
+
+@router.get("/security/monitored")
+async def security_monitored(
+    hours: int = Query(default=24, ge=1, le=24 * 30),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Every monitored account with its counts in the window — zero rows included."""
+    items = await platform_db.security_monitored_summary(since_hours=hours)
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/security/requests")
+async def security_requests(
+    account_id: int | None = Query(default=None, ge=1),
+    cls: str = Query(default="all", pattern="^(all|denied|broke|ok)$",
+                     description="denied = 401/403/429 (the wall held) · broke = 5xx (they reached a bug) · ok = 2xx"),
+    denials: bool = Query(default=False, description="deprecated alias for cls=denied"),
+    hours: int = Query(default=24, ge=1, le=24 * 30),
+    limit: int = Query(default=200, ge=1, le=1000),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """The timeline, newest first.  Without an account: refusals from anyone.
+
+    ``cls`` is the question the page asks — what held, what broke, what
+    got through — as one control, so "Refused" the tile and the filter
+    that narrows to it count the same rows.
+    """
+    status_class = "denied" if (denials and cls == "all") else cls
+    items = await platform_db.list_security_requests(
+        account_id=account_id,
+        status_class=None if status_class == "all" else status_class,
+        since_hours=hours,
+        limit=limit,
+    )
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/security/map")
+async def security_map(
+    account_id: int | None = Query(default=None, ge=1),
+    hours: int = Query(default=24, ge=1, le=24 * 30),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Per endpoint: refused / throttled / rejected / broke / ok — broke first."""
+    items = await platform_db.security_endpoint_map(account_id=account_id, since_hours=hours)
+    return {"items": items, "count": len(items)}
+
+
 # ── Cross-account audit feed ─────────────────────────────────────
 
 

@@ -447,3 +447,56 @@ export interface ScansOverview {
   recent_jobs: RescanJob[];
   quarantine: QuarantinedArticle[];
 }
+
+// ── Security console ───────────────────────────────────────────
+// Read-only views over the security_requests ledger (every refusal from
+// anyone; everything from a monitored account).  Shapes mirror
+// /system/security/* one-to-one.
+
+export interface SecuritySummary {
+  hours: number;
+  refused: number;       // 401 + 403 — the wall held
+  throttled: number;     // 429
+  broke: number;         // 5xx — something they found
+  monitored_accounts: number;
+}
+
+export interface MonitoredAccountRow {
+  account_id: number;
+  name: string;
+  kind: AccountKind;
+  created_at: string | null;
+  requests: number;      // within the window
+  refused: number;
+  broke: number;
+  last_seen: string | null;
+}
+
+export interface SecurityRequestRow {
+  id: number;
+  created_at: string;
+  account_id: number | null;
+  user_id: number | null;
+  user_name: string | null;   // display name when the user still exists
+  role: string | null;
+  kind: AccountKind | null;
+  method: string;
+  path: string;
+  query: string | null;
+  status: number;
+  duration_ms: number | null;
+  ip: string | null;
+  ua: string | null;
+  request_id: string | null;
+}
+
+export interface SecurityEndpointRow {
+  method: string;
+  path: string;
+  ok: number;
+  refused: number;
+  throttled: number;
+  rejected: number;
+  broke: number;
+  total: number;
+}
