@@ -17,6 +17,7 @@ import { Download, ExternalLink, Puzzle } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 
 import { apiFetch, apiJSON } from '../../api/client';
+import { filenameFromDisposition } from '../../api/contentDisposition';
 import { Button } from '../../components/ui/button';
 import { Tip } from '../../components/tooltip';
 import { Card } from '@/components/ui/card';
@@ -45,7 +46,16 @@ export default function BrowserExtensionCard() {
       }
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement('a');
-      a.href = url; a.download = '4truck-extension.zip'; a.click();
+      a.href = url;
+      // The SERVER names the file — it knows which build this is and
+      // stamps the version into Content-Disposition.  A blob URL has no
+      // name of its own, so whatever goes here wins absolutely: the
+      // constant that used to sit here overrode a correct server name
+      // and every download landed as "4truck-extension (10).zip", with
+      // no way to tell one build from another.
+      a.download = filenameFromDisposition(res.headers.get('content-disposition'))
+                 ?? '4truck-extension.zip';
+      a.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Download failed');

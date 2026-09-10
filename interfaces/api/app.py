@@ -496,6 +496,13 @@ def create_api() -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
+        # A download fetched with a bearer token arrives as a blob, and a
+        # blob has no name — the client has to read the one the server
+        # chose.  Content-Disposition is not CORS-safelisted, so without
+        # this a deployment serving the API from another origin (the
+        # VITE_API_BASE path) silently falls back to a constant name and
+        # every build lands in Downloads looking like the last one.
+        expose_headers=["Content-Disposition"],
     )
 
     # API routes — versioned under /api/v1, with /api as backward-compat alias

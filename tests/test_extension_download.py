@@ -38,7 +38,11 @@ async def test_a_signed_in_user_gets_the_built_package(tmp_path, monkeypatch):
     names = zipfile.ZipFile(io.BytesIO(body)).namelist()
     # Paths inside the zip are what Chrome expects: manifest at the root.
     assert "manifest.json" in names and "chunks/a.js" in names
-    assert res.headers["content-disposition"].startswith("attachment")
+    # The header carries the NAME, and the name carries the build — this
+    # is the only thing that tells two downloads apart in a Downloads
+    # folder.  `key` is present, so this is the sideload flavour.
+    assert res.headers["content-disposition"] == (
+        'attachment; filename="4truck-extension-sideload-0.1.0.zip"')
 
     info = await ext.extension_info(user={"account_id": 1, "sub": "1"})
     assert info == {"built": True, "version": "0.1.0", "extension_id": KEY_ID}
@@ -165,3 +169,22 @@ async def test_a_token_minted_before_the_scope_changed_is_told_to_refresh(monkey
 
 async def _no_account(_account_id):
     raise RuntimeError("no account row — the avatar degrades, the route does not")
+
+
+def test_the_name_can_actually_reach_the_browser():
+    """Setting the header is only half of it.
+
+    The dashboard fetches this zip with a bearer token, so it arrives as
+    a blob — and a blob has no name.  The client must READ
+    Content-Disposition, and that header is not CORS-safelisted: an API
+    served from another origin (the VITE_API_BASE deployment) hands the
+    client nothing to read unless it is exposed.
+
+    The near half of this wall lives in the dashboard
+    (``src/api/contentDisposition.ts`` and its guard); this is the far
+    half.  Both were once correct on the server and wrong at the
+    browser, and every build landed as ``4truck-extension (10).zip``.
+    """
+    from tests._repo import REPO
+    app_src = (REPO / "interfaces/api/app.py").read_text()
+    assert 'expose_headers=["Content-Disposition"]' in app_src

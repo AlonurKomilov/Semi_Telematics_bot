@@ -55,9 +55,25 @@ Two causes, both ours, both fixed:
   `4truck-extension (8).zip` with no way to tell the builds apart. The
   name now carries the flavour and the version, and it is the SAME name
   `build_packages.py` writes on the shelf — `4truck-extension-sideload-
-  0.5.0.1.zip` — so a download and a shelf copy are visibly one build.
+  0.5.1.0.zip` — so a download and a shelf copy are visibly one build.
   The flavour is read from the manifest's `key`, never assumed, and
   `tests/test_extension_token.py` holds the two names to each other.
+
+  **Naming it on the server was only half.** The dashboard's Download
+  button fetches the zip through `apiFetch` (a bearer token cannot ride
+  a plain `<a href>`), turns it into a blob, and a blob has NO name —
+  whatever goes in `a.download` wins absolutely. A hardcoded
+  `'4truck-extension.zip'` sat there and overrode a correct server
+  header on every single download; the server was verified working
+  while the owner's folder kept filling with `(8)`, `(9)`, `(10)`. The
+  client now reads the header (`src/api/contentDisposition.ts`), and
+  the API exposes it in CORS (`expose_headers`) because
+  Content-Disposition is not safelisted — a cross-origin deployment
+  would otherwise read `null` and fall back to the constant.
+
+  The lesson worth keeping: for a download, "the endpoint is correct"
+  is not the same claim as "the file lands named correctly". Only the
+  second one is what the owner sees. Check the caller.
 
 The thing neither fixes: a sideloaded zip has almost no prevalence by
 definition. **The real answer is the Chrome Web Store** — a store install
