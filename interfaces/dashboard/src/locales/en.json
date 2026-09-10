@@ -1520,6 +1520,15 @@
       "status_new": "New",
       "status_done": "Done",
       "status_skipped": "Skipped",
+      "status_adopted": "You already do this",
+      "progress": "{{done}} of {{total}} done",
+      "all_done": "Every tour done — nothing left to learn here for now.",
+      "next_title": "Next for you",
+      "show_me": "Show me",
+      "hide_label": "Hide tour beacons on pages",
+      "hide_hint": "No more invitations while you work. The library stays here, and so does this switch.",
+      "footer_kb": "Knowledge Base",
+      "footer_ai": "Missing a tour? Ask the assistant",
       "empty": "No tours available for the pages your role can open yet."
     }
   }

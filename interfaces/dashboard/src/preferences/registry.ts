@@ -816,6 +816,15 @@ export const DEFS = {
     },
   }),
 
+  // The person's own opt-out from tour BEACONS on pages — the library
+  // stays reachable, so the switch can be undone where it was set.  The
+  // role grant (can_view_tours) is the owner's door; this is the person's.
+  'tour.hidden': def<boolean>({
+    default: false,
+    scope: 'synced',
+    sanitize: asBool,
+    note: 'Hides tour beacons on every page; the Tours library still opens.',
+  }),
   'config.moved_notice_dismissed': def<boolean>({
     default: false,
     scope: 'synced',

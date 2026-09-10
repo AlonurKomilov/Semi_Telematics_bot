@@ -9,20 +9,32 @@
  * need to.  Launching navigates to the feature's own page with
  * ?tour=<key>; the walk always happens on the real surface it
  * teaches, never on screenshots of it.
+ *
+ * The page reads as a checklist, not a catalogue: how far along the
+ * person is (counting what they already do on their own, by signal),
+ * ONE next tour chosen for them with a single button, the settled ones
+ * dimmed at the end — and the person's own switch to stop the beacons
+ * on pages, kept here where it can be undone.
  */
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, GraduationCap, Play, RotateCcw } from '../../lib/icons';
+import { BookOpen, CheckCircle2, GraduationCap, MessageSquare, Play, RotateCcw } from '../../lib/icons';
+import { apiJSON } from '../../api/client';
 import { PageHeader } from '@/components/shell';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '../../context/AuthContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { TOUR_CATALOG } from '../../components/tour';
+import type { TourCtx } from '../../components/tour';
 import { useTourState } from '../../components/tour/useTourState';
-import { useSyncLoaded } from '../../preferences';
+import { usePreference, useSyncLoaded } from '../../preferences';
 import { reachableFeature } from './reachable';
+import { libraryModel, signalPairs } from './library';
+import type { LibraryStatus } from './library';
 
 export default function ToursPage() {
   const { t } = useTranslation();
@@ -30,13 +42,14 @@ export default function ToursPage() {
   const { user } = useAuth();
   const { hasAny } = useViewPermissions();
   const { state } = useTourState();
+  const { value: hidden, setValue: setHidden } = usePreference('tour.hidden');
   // Verdict chips wait for the synced preferences to hydrate — the
   // pre-hydration value is empty, and stamping every card "New" for a
   // beat before flipping to Done is the provisional-value flash the
   // preferences contract names (TourHost gates the same read).
   const verdictsReady = useSyncLoaded();
 
-  const rows = useMemo(() => {
+  const reachable = useMemo(() => {
     const access = { hasAny, enabledModules: user?.enabled_modules };
     return TOUR_CATALOG.flatMap((tour) => {
       const feature = reachableFeature(tour.feature, access);
@@ -50,6 +63,37 @@ export default function ToursPage() {
     });
   }, [hasAny, user?.enabled_modules]);
 
+  // The behavioural signals every reachable tour declares, in one
+  // request — the same read TourHost makes per page, so "you already
+  // do this" here is the same fact the beacon retires on.
+  const [signals, setSignals] = useState<TourCtx['signals']>(undefined);
+  const pairs = useMemo(() => signalPairs(reachable), [reachable]);
+  useEffect(() => {
+    let live = true;
+    if (!pairs.length) { setSignals(undefined); return; }
+    apiJSON<{ signals: NonNullable<TourCtx['signals']> }>(
+      `/me/tour-signals?pairs=${encodeURIComponent(pairs.join(','))}`)
+      .then((res) => { if (live) setSignals(res.signals); })
+      .catch(() => { if (live) setSignals(undefined); });   // unknown ≠ adopted
+    return () => { live = false; };
+  }, [pairs]);
+
+  const model = useMemo(
+    () => libraryModel(reachable, verdictsReady ? state : {}, signals),
+    [reachable, state, signals, verdictsReady],
+  );
+
+  const launch = (path: string, key: string) =>
+    navigate(`${path}?tour=${encodeURIComponent(key)}`);
+
+  const statusChip = (status: LibraryStatus) => {
+    if (!verdictsReady) return null;
+    if (status === 'done') return <Badge tone="ok"><CheckCircle2 />{t('tour.page.status_done')}</Badge>;
+    if (status === 'adopted') return <Badge tone="ok"><CheckCircle2 />{t('tour.page.status_adopted')}</Badge>;
+    if (status === 'skipped') return <Badge tone="neutral">{t('tour.page.status_skipped')}</Badge>;
+    return <Badge tone="info">{t('tour.page.status_new')}</Badge>;
+  };
+
   return (
     <div className="p-6">
       <PageHeader
@@ -57,54 +101,112 @@ export default function ToursPage() {
         title={t('nav.tours')}
         description={t('tour.page.description')}
       />
-      {rows.length === 0 ? (
+      {model.total === 0 ? (
         <Card>
           <p className="text-sm text-muted-foreground">{t('tour.page.empty')}</p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {rows.map(({ tour, feature }) => {
-            const verdict = verdictsReady ? state[tour.key]?.s : undefined;
-            const done = verdict === 'done';
-            return (
-              <Card key={tour.key} className="flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {t(feature.labelKey)}
-                    </p>
-                    <h3 className="text-base font-semibold text-foreground">
-                      {t(`tour.${tour.key}.title`)}
-                    </h3>
+        <div className="flex flex-col gap-4">
+          {/* Progress — counted over what the person already does, not
+              only what they ran; the number that makes "3 of 8" a
+              gradient rather than a to-do list. */}
+          {verdictsReady && (
+            <p className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
+              {t('tour.page.progress', { done: model.done, total: model.total })}
+              {model.next === null && model.done === model.total && (
+                <span className="ml-2 text-foreground">{t('tour.page.all_done')}</span>
+              )}
+            </p>
+          )}
+
+          {/* ONE next tour, chosen for the person, with one button —
+              the decision made so they do not have to. */}
+          {verdictsReady && model.next && (
+            <Card className="border-primary/40 bg-primary/5 flex flex-col gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                {t('tour.page.next_title')}
+              </p>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {t(model.next.feature.labelKey)}
+                  </p>
+                  <h3 className="text-base font-semibold text-foreground">
+                    {t(`tour.${model.next.tour.key}.title`)}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">{t(`tour.${model.next.tour.key}.body`)}</p>
+                </div>
+                <Button type="button" size="sm" onClick={() => launch(model.next!.feature.path, model.next!.tour.key)}>
+                  <Play className="size-3.5" aria-hidden />
+                  {t('tour.page.show_me')}
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {model.rows.map(({ tour, feature, status }) => {
+              const settled = status === 'done' || status === 'adopted';
+              return (
+                // A settled card recedes — still here to run again, no
+                // longer asking for attention.
+                <Card key={tour.key} className={`flex flex-col gap-2 ${settled ? 'opacity-70' : ''}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {t(feature.labelKey)}
+                      </p>
+                      <h3 className="text-base font-semibold text-foreground">
+                        {t(`tour.${tour.key}.title`)}
+                      </h3>
+                    </div>
+                    {statusChip(status)}
                   </div>
-                  {!verdictsReady ? null : done ? (
-                    <Badge tone="ok">
-                      <CheckCircle2 />
-                      {t('tour.page.status_done')}
-                    </Badge>
-                  ) : verdict === 'skipped' ? (
-                    <Badge tone="neutral">{t('tour.page.status_skipped')}</Badge>
-                  ) : (
-                    <Badge tone="info">{t('tour.page.status_new')}</Badge>
-                  )}
-                </div>
-                <p className="flex-1 text-sm text-muted-foreground">
-                  {t(`tour.${tour.key}.body`)}
-                </p>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(`${feature.path}?tour=${encodeURIComponent(tour.key)}`)}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition min-h-tap"
-                  >
-                    {done ? <RotateCcw className="size-3.5" /> : <Play className="size-3.5" />}
-                    {done ? t('tour.page.run_again') : t('tour.page.start')}
-                  </button>
-                </div>
-              </Card>
-            );
-          })}
+                  <p className="flex-1 text-sm text-muted-foreground">
+                    {t(`tour.${tour.key}.body`)}
+                  </p>
+                  <div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={settled ? 'outline' : 'default'}
+                      onClick={() => launch(feature.path, tour.key)}
+                    >
+                      {settled ? <RotateCcw className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
+                      {settled ? t('tour.page.run_again') : t('tour.page.start')}
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* The person's own switch — kept here, where it can be undone. */}
+          <Card className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{t('tour.page.hide_label')}</p>
+              <p className="text-xs text-muted-foreground">{t('tour.page.hide_hint')}</p>
+            </div>
+            <Switch
+              checked={!!hidden}
+              onCheckedChange={(next) => setHidden(next)}
+              size="md"
+              aria-label={t('tour.page.hide_label')}
+            />
+          </Card>
+
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {hasAny('can_view_knowledge_base') && (
+              <Link to="/knowledge" className="inline-flex items-center gap-1 text-primary hover:underline">
+                <BookOpen className="size-3.5" aria-hidden /> {t('tour.page.footer_kb')}
+              </Link>
+            )}
+            {hasAny('can_view_ai_assistant') && (
+              <Link to="/ai" className="inline-flex items-center gap-1 text-primary hover:underline">
+                <MessageSquare className="size-3.5" aria-hidden /> {t('tour.page.footer_ai')}
+              </Link>
+            )}
+          </p>
         </div>
       )}
     </div>

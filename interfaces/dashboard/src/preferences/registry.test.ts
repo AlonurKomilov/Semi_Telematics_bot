@@ -34,6 +34,7 @@ const FROZEN_KEYS: readonly string[] = [
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
   'tour.state',
+  'tour.hidden',
   'mods.theme',
   // Size replaced the theme's `density` FIELD. `theme` itself is
   // untouched — removing a field is safe where removing a key is not.

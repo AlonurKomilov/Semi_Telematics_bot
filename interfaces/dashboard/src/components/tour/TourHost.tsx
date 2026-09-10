@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
-import { useSyncLoaded } from '../../preferences';
+import { useSyncLoaded, usePreference } from '../../preferences';
 import { TOUR_CATALOG, eligibleTour } from './tourCatalog';
 import TourBeacon from './TourBeacon';
 import TourIntro from './TourIntro';
@@ -134,6 +134,9 @@ function TourHostInner({
  */
 export default function TourHost(props: { feature: string; ctx: TourCtx }) {
   const { hasAny } = useViewPermissions();
-  if (!hasAny('can_view_tours')) return null;
+  // The person's own switch (Tours page → "Hide tour beacons"): no
+  // invitations on pages, the library still opens.
+  const { value: hidden } = usePreference('tour.hidden');
+  if (!hasAny('can_view_tours') || hidden) return null;
   return <TourHostInner {...props} />;
 }
