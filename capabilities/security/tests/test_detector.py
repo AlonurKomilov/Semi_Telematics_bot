@@ -358,3 +358,77 @@ async def test_our_own_test_accounts_are_never_candidates(seeded_db):
     ids = {c["account_id"] for c in await D.find_candidates(db, hours=24)}
     assert ours.id not in ids, "a test account is ours by definition"
     assert watched.id in ids, "a watched account must keep surfacing"
+
+
+# ── the board: how an operator decides ────────────────────────────
+
+def test_every_rule_describes_itself():
+    """A chip that says signup_burst is a code identifier; the operator
+    needs the sentence — and the sentence must exist for every rule."""
+    ids = {f.__name__.removeprefix("rule_") for f in D.ALL_RULES}
+    assert ids == set(D.RULES), ids ^ set(D.RULES)
+    for rid, meta in D.RULES.items():
+        assert meta["label"] and meta["means"] and meta["seen"], rid
+        assert meta["severity"] in D.SEVERITY_RANK, rid
+
+
+@pytest.mark.asyncio
+async def test_board_folds_a_burst_into_one_row_with_its_members(seeded_db):
+    """N accounts from one address is ONE fact; N rows each saying it is
+    the same fact N times, which is how the page became a wall."""
+    db = seeded_db["db"]
+    made = [await _signup(db, f"Fold{i}", "203.0.113.50", f"fold{i}@guerrillamailblock.com")
+            for i in range(D.T_SIGNUPS_PER_IP + 2)]
+    ids = {a.id for a in made}
+    b = D.board(await D.find_candidates(db, hours=24))
+    groups = [c for c in b["new"] if c.get("group") == "burst" and c["ip"] == "203.0.113.50"]
+    assert len(groups) == 1
+    g = groups[0]
+    assert {m["account_id"] for m in g["members"]} == ids
+    assert "signup_burst" in g["rules"] and "disposable_email" in g["rules"]
+    assert all("signup_burst" not in m["rules"] for m in g["members"]), (
+        "the burst is the group's fact, not repeated on each member")
+    assert g["severity"] == "high"
+    assert not any(c["account_id"] in ids for c in b["new"]), "members live inside the group, not beside it"
+
+
+def test_board_does_not_group_a_burst_of_one():
+    c = {"account_id": 1, "ip": "8.8.8.8", "subject": None, "name": "x", "kind": "real",
+         "severity": "high", "weight": 5, "rules": ["signup_burst"],
+         "signals": [{"rule": "signup_burst", "severity": "high", "count": 4, "evidence": ""}]}
+    assert D.board([c])["new"] == [c]
+
+
+@pytest.mark.asyncio
+async def test_board_moves_a_watched_account_out_of_new_and_into_watching(seeded_db):
+    """An account already monitored is not a candidate for anything; what
+    the rules still say about it belongs beside it in the watching table."""
+    db = seeded_db["db"]
+    w = await _signup(db, "Watched", "203.0.113.51", "w@guerrillamailblock.com")
+    await db.update_account(w.id, kind="monitored")
+    b = D.board(await D.find_candidates(db, hours=24))
+    assert not any(c["account_id"] == w.id for c in b["new"])
+    hit = next(x for x in b["watching"] if x["account_id"] == w.id)
+    assert "disposable_email" in hit["rules"] and hit["severity"] == "med"
+
+
+def test_board_ranks_by_severity_before_weight():
+    base = {"account_id": None, "ip": None, "subject": "s", "name": None, "kind": None, "rules": [], "signals": []}
+    med_heavy = {**base, "subject": "a", "severity": "med", "weight": 9}
+    high_light = {**base, "subject": "b", "severity": "high", "weight": 5}
+    assert [c["subject"] for c in D.board([med_heavy, high_light])["new"]] == ["b", "a"]
+
+
+@pytest.mark.asyncio
+async def test_injection_evidence_does_not_repeat_its_subject(seeded_db):
+    """When the endpoint IS the row's subject, saying it again in every
+    evidence line says nothing."""
+    db = seeded_db["db"]
+    await db.log_error(source="api", error_type="ValueError",
+                       error_msg="Unknown company: ' OR '1'='1",
+                       job_name="GET /api/reports/export")
+    sigs = [s for s in await D.rule_injection_attempt(db._db, hours=24)
+            if s.subject == "GET /api/reports/export"]
+    assert sigs
+    assert "GET /api/reports/export" not in sigs[0].evidence
+    assert "' OR '1'='1" in sigs[0].evidence

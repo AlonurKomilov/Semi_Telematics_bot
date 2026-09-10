@@ -141,3 +141,42 @@ async def test_the_candidates_route_needs_the_operator_gate(api):
     from interfaces.api.deps import require_system_owner
     app.dependency_overrides.pop(require_system_owner, None)
     assert (await _get(app, "/api/system/security/candidates")).status_code == 401
+
+
+async def test_rules_endpoint_describes_every_rule(api):
+    """The legend on the page is generated from this, so it must cover
+    every rule the detector runs — and nothing else."""
+    app, _db, _acct = api
+    r = await _get(app, "/api/system/security/rules")
+    assert r.status_code == 200, r.text
+    from capabilities.security.detector import ALL_RULES
+    items = r.json()["items"]
+    assert {x["id"] for x in items} == {f.__name__.removeprefix("rule_") for f in ALL_RULES}
+    assert all(x["label"] and x["means"] and x["severity"] in ("high", "med", "low") for x in items)
+
+
+async def test_candidates_carry_the_board(api):
+    """`new` folds a burst into one row; `watching` is keyed for the
+    watching table; `items` stays for anyone reading the flat list."""
+    app, db, _acct = api
+    from adapters.storage import Role
+    ids = []
+    for i in range(4):
+        a = await db.create_account(f"Board Co {i}")
+        u = await db.create_user_with_email(
+            email=f"board{i}@guerrillamailblock.com", password_hash="x",
+            account_id=a.id, role=Role.OWNER, display_name="o")
+        await db._db.execute("UPDATE users SET is_primary_owner = 1 WHERE id = ?", (u.id,))
+        await db._db.commit()
+        await db.add_platform_audit(
+            "account_created", account_id=a.id, actor="self-serve",
+            details=f"name='Board Co {i}' owner=board{i}@guerrillamailblock.com ip=203.0.113.88")
+        ids.append(a.id)
+    await db.update_account(ids[0], kind="monitored")
+
+    body = (await _get(app, "/api/system/security/candidates?hours=24")).json()
+    assert {"items", "new", "watching", "count", "hours"} <= set(body)
+    burst = next(c for c in body["new"] if c.get("group") == "burst" and c["ip"] == "203.0.113.88")
+    assert {m["account_id"] for m in burst["members"]} == set(ids[1:]), "the watched one is out of the burst"
+    assert any(w["account_id"] == ids[0] for w in body["watching"])
+    assert all(c["account_id"] != ids[0] for c in body["new"])

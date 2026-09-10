@@ -1543,9 +1543,26 @@ async def security_candidates(
     patient probe spreads over days and only reads as one story at that
     range.
     """
-    from capabilities.security.detector import find_candidates
+    from capabilities.security.detector import board, find_candidates
     items = await find_candidates(platform_db, hours=hours)
-    return {"items": items, "count": len(items), "hours": hours}
+    arranged = board(items)
+    return {
+        "items": items, "count": len(items), "hours": hours,
+        # what needs a decision (bursts folded) / what the rules still say
+        # about accounts already watched — the page's two questions.
+        "new": arranged["new"], "watching": arranged["watching"],
+    }
+
+
+@router.get("/security/rules")
+async def security_rules(_user: dict = Depends(require_system_owner)):
+    """What each detector rule means, in a sentence, with its threshold.
+
+    Served from the detector's own table so the legend on the page and
+    the thresholds in the code cannot drift apart.
+    """
+    from capabilities.security.detector import RULES
+    return {"items": [{"id": rid, **meta} for rid, meta in RULES.items()]}
 
 
 @router.get("/security/map")

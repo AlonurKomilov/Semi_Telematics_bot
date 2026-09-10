@@ -76,6 +76,61 @@ T_SYSTEM_403_PER_SRC = 3    # probe: 17 /system/* refusals
 T_ADMIN_403_PER_USER = 5    # probe: 25 admin PUT + 6 promote-owner refusals
 T_IPS_PER_EMAIL = 5         # probe: 50 IPs for one address in 14 seconds
 
+SEVERITY_RANK = {"high": 3, "med": 2, "low": 1}
+
+# What each rule means, for the person reading its name on a page.  A
+# chip that says ``signup_burst`` is a code identifier; the operator
+# needs the sentence.  Kept beside the thresholds so the two cannot
+# drift, and served as-is by /system/security/rules — the legend is
+# generated, never hand-written twice.
+RULES: dict[str, dict[str, str]] = {
+    "signup_burst": {
+        "label": "Signup burst", "severity": "high",
+        "means": f"More than {T_SIGNUPS_PER_IP} accounts created from one IP address in the window.",
+        "seen": "33 accounts in 47 minutes from one address, 2026-09-08.",
+    },
+    "disposable_email": {
+        "label": "Throwaway email", "severity": "med",
+        "means": "The account's owner signed up with a disposable-mail or reserved test domain.",
+        "seen": "guerrillamailblock, mailinator, wearehackerone, example.com.",
+    },
+    "lockout_storm": {
+        "label": "Lockout storm", "severity": "high",
+        "means": f"More than {T_LOCKOUTS_PER_IP} failed or locked logins from one IP address.",
+        "seen": "69 account_locked against two accounts.",
+    },
+    "non_browser_auth": {
+        "label": "Tool, not browser", "severity": "low",
+        "means": "Login traffic whose user agent is curl, python-requests or similar. Never opens a row on its own — only sharpens one another rule opened.",
+        "seen": "curl/8.19.0 on every login.",
+    },
+    "ip_rotation": {
+        "label": "IP rotation", "severity": "high",
+        "means": f"One email address tried from more than {T_IPS_PER_EMAIL} distinct public IPs. Private and reserved addresses are not counted — a client can write those into a header.",
+        "seen": "70 fabricated addresses for one email in 14 seconds, 2026-09-10.",
+    },
+    "reset_flood": {
+        "label": "Reset flood", "severity": "med",
+        "means": f"More than {T_RESETS_PER_USER} password-reset tokens issued for one user.",
+        "seen": "53 tokens for one user in 16 minutes.",
+    },
+    "injection_attempt": {
+        "label": "Injection payload", "severity": "high",
+        "means": "A captured error carries SQL, shell or path-traversal syntax that no one types into a company or vehicle field.",
+        "seen": "' OR '1'='1 · pg_sleep(5) · UNION SELECT · =cmd|'/C calc.",
+    },
+    "operator_probing": {
+        "label": "Operator door", "severity": "high",
+        "means": f"More than {T_SYSTEM_403_PER_SRC} refused requests to /api/system/* from one source. Ledger-only: counts from the day recording started.",
+        "seen": "17 refused /system/* attempts.",
+    },
+    "privilege_sweep": {
+        "label": "Privilege sweep", "severity": "high",
+        "means": f"More than {T_ADMIN_403_PER_USER} refused admin writes from one source. Ledger-only.",
+        "seen": "25 admin PUTs and 6 promote-owner attempts, all refused.",
+    },
+}
+
 
 @dataclass(frozen=True)
 class Signal:
@@ -107,6 +162,11 @@ class Candidate:
     def weight(self) -> int:
         w = {"high": 5, "med": 3, "low": 1}
         return sum(w.get(s.severity, 1) for s in self.signals)
+
+    @property
+    def severity(self) -> str:
+        """The strongest thing said about this subject."""
+        return max((s.severity for s in self.signals), key=lambda x: SEVERITY_RANK.get(x, 0), default="low")
 
     @property
     def rules(self) -> list[str]:
@@ -294,11 +354,15 @@ async def rule_injection_attempt(db, hours: int) -> list[Signal]:
     out: list[Signal] = []
     for r in await cur.fetchall():
         if INJECTION_MARKERS.search(r["error_msg"] or ""):
+            payload = (r["error_msg"] or "")[:70]
+            where = r["job_name"] or "unattributed"
             out.append(Signal(
                 rule="injection_attempt", severity="high",
                 account_id=r["account_id"], ip=None, count=int(r["n"]),
-                subject=r["job_name"] or "unattributed",
-                evidence=f"payload reached {r['job_name'] or '?'}: {r['error_msg'][:70]}"))
+                subject=where,
+                # The endpoint is the row's subject when no account is
+                # known; repeating it in every evidence line says nothing.
+                evidence=payload if r["account_id"] is None else f"{where}: {payload}"))
     return out
 
 
@@ -420,6 +484,7 @@ def _as_dict(c: Candidate) -> dict[str, Any]:
         "subject": c.subject,
         "name": c.name,
         "kind": c.kind,
+        "severity": c.severity,
         "weight": c.weight,
         "rules": c.rules,
         "signals": [
@@ -427,3 +492,65 @@ def _as_dict(c: Candidate) -> dict[str, Any]:
             for s in c.signals
         ],
     }
+
+
+def board(candidates: list[dict]) -> dict[str, Any]:
+    """Arrange ranked candidates the way an operator decides about them.
+
+    ``new`` is what needs a decision — subjects not already watched.  A
+    signup burst there is ONE row with its members folded inside: the
+    fact is "N accounts from one address", and N rows each saying so is
+    the same fact N times, which is how the page becomes a wall.  A
+    burst of one is not a burst and stays a plain row.
+
+    ``watching`` is what the rules still say about accounts already
+    ``monitored`` — the reason to watch someone is to see this — keyed
+    for the watching table to join, not repeated as candidates.
+    """
+    watching = [
+        {"account_id": c["account_id"], "rules": c["rules"], "severity": c["severity"]}
+        for c in candidates if c.get("kind") == "monitored"
+    ]
+    fresh = [c for c in candidates if c.get("kind") != "monitored"]
+
+    by_ip: dict[str, list[dict]] = {}
+    rest: list[dict] = []
+    for c in fresh:
+        in_burst = c["account_id"] is not None and c["ip"] and any(
+            sig["rule"] == "signup_burst" for sig in c["signals"])
+        if in_burst:
+            by_ip.setdefault(c["ip"], []).append(c)
+        else:
+            rest.append(c)
+
+    groups: list[dict] = []
+    for ip, members in by_ip.items():
+        if len(members) == 1:
+            rest.append(members[0])
+            continue
+        rules: list[str] = []
+        for m in members:
+            for r in m["rules"]:
+                if r not in rules:
+                    rules.append(r)
+        groups.append({
+            "group": "burst",
+            "account_id": None, "ip": ip, "subject": None, "name": None, "kind": None,
+            "severity": "high",
+            "weight": max(m["weight"] for m in members),
+            "rules": rules,
+            "signals": [{
+                "rule": "signup_burst", "severity": "high", "count": len(members),
+                "evidence": f"{len(members)} accounts created from {ip}",
+            }],
+            "members": [
+                {"account_id": m["account_id"], "name": m["name"], "kind": m["kind"],
+                 "rules": [r for r in m["rules"] if r != "signup_burst"], "weight": m["weight"]}
+                for m in members
+            ],
+        })
+
+    new = sorted(groups + rest,
+                 key=lambda c: (SEVERITY_RANK.get(c["severity"], 0), c["weight"]),
+                 reverse=True)
+    return {"new": new, "watching": watching}

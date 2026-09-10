@@ -497,6 +497,26 @@ export interface SecuritySignal {
   evidence: string;
 }
 
+export type SecuritySeverity = 'high' | 'med' | 'low';
+
+/** What a detector rule means, served from the detector's own table so
+ *  the legend on the page cannot drift from the thresholds in the code. */
+export interface SecurityRule {
+  id: string;
+  label: string;
+  severity: SecuritySeverity;
+  means: string;
+  seen: string;
+}
+
+export interface SecurityBurstMember {
+  account_id: number;
+  name: string | null;
+  kind: AccountKind | null;
+  rules: string[];
+  weight: number;
+}
+
 export interface SecurityCandidate {
   account_id: number | null;
   ip: string | null;
@@ -505,9 +525,29 @@ export interface SecurityCandidate {
   subject: string | null;
   name: string | null;
   kind: AccountKind | null;
+  severity: SecuritySeverity;
   weight: number;
   rules: string[];
   signals: SecuritySignal[];
+  /** A signup burst is ONE row: the fact is "N accounts from one
+   *  address", and the members live inside it. */
+  group?: 'burst';
+  members?: SecurityBurstMember[];
+}
+
+/** What the rules still say about an account already being watched. */
+export interface SecurityWatching {
+  account_id: number;
+  rules: string[];
+  severity: SecuritySeverity;
+}
+
+export interface SecurityBoard {
+  items: SecurityCandidate[];
+  new: SecurityCandidate[];
+  watching: SecurityWatching[];
+  count: number;
+  hours: number;
 }
 
 export interface SecurityEndpointRow {
