@@ -12,6 +12,8 @@
 #         scripts/cloudflare_ranges_refresh.sh --dry-run FILE  # write FILE, touch nothing
 # Cron (root, monthly):  0 4 1 * * /home/abcdev/projects/Semi_Telematics_bot/scripts/cloudflare_ranges_refresh.sh
 set -euo pipefail
+# cron hands root a PATH of /usr/bin:/bin — nginx lives in /usr/sbin.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 LIVE=/etc/nginx/conf.d/cloudflare-realip.conf
 DRY=""; [ "${1:-}" = "--dry-run" ] && DRY="${2:?--dry-run needs an output path}"
@@ -50,8 +52,15 @@ if [ -f "$LIVE" ] && diff -q "$OUT" "$LIVE" >/dev/null; then
     echo "cloudflare-realip.conf unchanged"; exit 0
 fi
 [ "$(id -u)" = 0 ] || { echo "ranges changed — rerun as root to apply" >&2; exit 2; }
-cp "$LIVE" "$LIVE.bak.$(date +%Y%m%d%H%M)" 2>/dev/null || true
+BAK="$LIVE.bak.$(date +%Y%m%d%H%M)"
+cp "$LIVE" "$BAK"
 cp "$OUT" "$LIVE"
-nginx -t
+# The new file is live on disk but not yet loaded. If nginx rejects it,
+# put the old one back BEFORE anything can reload it, and fail loudly.
+if ! nginx -t; then
+    cp "$BAK" "$LIVE"
+    echo "nginx -t rejected the new list — restored $BAK, nothing reloaded" >&2
+    exit 1
+fi
 systemctl reload nginx
-echo "cloudflare-realip.conf updated + nginx reloaded"
+echo "cloudflare-realip.conf updated + nginx reloaded (backup: $BAK)"
