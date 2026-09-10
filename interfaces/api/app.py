@@ -343,6 +343,11 @@ async def _lifespan(app: FastAPI):
     _owns_lifecycle = _startup.tenant_registry is None
     if _owns_lifecycle:
         await _startup.initialize()
+        # The plan table into its last-known cache before the first
+        # request: the mask is fail-closed, and a job or /me that asks
+        # before any resolve must not find an empty table.
+        from capabilities.permissions.plans import refresh_plans as _refresh_plans
+        await _refresh_plans()
         logger.info("API lifespan: initialised platform (gunicorn worker mode)")
     else:
         logger.info("API lifespan: reusing platform from parent (legacy run.py mode)")
@@ -581,7 +586,10 @@ def create_api() -> FastAPI:
     _landing_dir = os.path.join(_static_dir, "landing")
     _legal_dir = os.path.join(_static_dir, "legal")
 
-    @app.get("/", include_in_schema=False)
+    # GET *and* HEAD: uptime monitors (UptimeRobot) probe with HEAD, and a
+    # GET-only route answers 405 — which the monitor reports as DOWN while
+    # the site is perfectly healthy.  Same reason /health takes both.
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     async def landing_page():
         return FileResponse(
             os.path.join(_landing_dir, "index.html"),
