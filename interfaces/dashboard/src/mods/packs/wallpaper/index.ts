@@ -10,7 +10,9 @@ import type { Wallpaper } from '../../wallpaper';
 
 export const WALLPAPERS: readonly Wallpaper[] = [
   { id: 'none',   label: 'None',   kind: 'still', description: 'Flat chrome, the way it has always been' },
-  { id: 'mesh',   label: 'Mesh',   kind: 'still', description: 'Two soft pools of the accent, low in the corners' },
+  // Can move: with Live on, the pools drift the other way from
+  // Plasma's clouds and half as fast.
+  { id: 'mesh',   label: 'Mesh',   kind: 'live',  description: 'Two soft pools of the accent, low in the corners' },
   { id: 'grid',   label: 'Grid',   kind: 'still', description: 'Fine ruled lines, like engineering paper' },
   { id: 'grain',  label: 'Grain',  kind: 'still', description: 'A fine tooth, the way paper stock has one' },
   { id: 'paper',  label: 'Paper',  kind: 'still', description: 'Drawn fibres, as if the chrome were pressed sheet' },

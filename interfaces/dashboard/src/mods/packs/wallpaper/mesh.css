@@ -1,12 +1,49 @@
-/* Mesh — two soft pools of the accent, low in the corners. */
+/* Mesh — two soft pools of the accent, low in the corners. Can move. */
 @media screen {
+  /* The ground itself carries only its colour, and becomes a stacking
+     context so the pool layer can sit UNDER the panes and OVER this
+     paint: `z-index: -1` on the pseudo-element would otherwise put it
+     behind the ground's own background. */
   :root[data-wallpaper="mesh"] .chrome-ground,
   :root[data-wallpaper-page="mesh"] .page-ground {
     background-color: var(--ground);
+    position: relative;
+    isolation: isolate;
+  }
+  /* The pools, on a layer of their own in BOTH states — so still and
+     live paint the same stops and the contrast gate measures them once,
+     here. Larger than the ground by the drift, so no edge ever shows. */
+  :root[data-wallpaper="mesh"] .chrome-ground::before,
+  :root[data-wallpaper-page="mesh"] .page-ground::before {
+    content: '';
+    position: absolute;
+    inset: -12%;
+    z-index: -1;
+    pointer-events: none;
     background-image:
       radial-gradient(60% 55% at 12% 8%,
         color-mix(in oklab, var(--primary) 20%, transparent) 0%, transparent 100%),
       radial-gradient(55% 50% at 92% 96%,
         color-mix(in oklab, var(--primary) 16%, transparent) 0%, transparent 100%);
+  }
+  /* Live: the layer only TRANSFORMS, drawn once and moved by the
+     compositor. Slower than Plasma and along the other diagonal — two
+     patterns that drift identically are one pattern with two names. */
+  :root[data-wallpaper="mesh"][data-wallpaper-live] .chrome-ground::before,
+  :root[data-wallpaper-page="mesh"][data-wallpaper-live] .page-ground::before {
+    will-change: transform;
+    animation: mesh-drift calc(140s * var(--motion-scale, 1)) ease-in-out infinite alternate;
+  }
+  @keyframes mesh-drift {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to   { transform: translate3d(3%, -2%, 0) scale(1.06); }
+  }
+  /* Somebody who asked their system for less motion gets the pools,
+     still. */
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-wallpaper="mesh"][data-wallpaper-live] .chrome-ground::before,
+    :root[data-wallpaper-page="mesh"][data-wallpaper-live] .page-ground::before {
+      animation: none;
+    }
   }
 }
