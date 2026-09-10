@@ -43,7 +43,6 @@ import { MATERIAL_IDS } from '../mods/packs/material';
 import { MODS } from '../mods/packs/mods';
 import { THEME_PACKS } from '../mods/packs/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
-import { isModToken, isSafeValue, MOD_TOKENS } from '../mods/inject';
 import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/packs/sound';
 import { KEY_PACKS } from '../mods/packs/keys';
@@ -255,16 +254,16 @@ export interface ModSetting {
    * match none" — a person can build Cab by hand without installing it.
    */
   mod?: string;
-  /**
-   * Token values this person authored, installed over the preset.
-   *
-   * A NAMED field, validated, rather than "keep whatever the stored
-   * object had". The sanitiser rebuilds field by field on purpose — it
-   * is the migration funnel for all four read paths — and preserving
-   * unnamed keys to make room for a mod would turn that discipline into
-   * a hole exactly where untrusted data arrives.
-   */
-  tokens?: Record<string, string>;
+  // NO `tokens` FIELD, and that is the decision rather than an omission.
+  // It existed for a token editor that was never built: nothing in the
+  // product ever wrote it, no `Mod` carried one, and what a hand-edited
+  // store did put there was overwritten key by key the moment a canvas
+  // was picked. It was also the one value the engine installed WITHOUT
+  // measuring anything — a brand goes through `fitAccent`, a canvas
+  // through `fitCanvas`, every derived ink through `clampLightness`,
+  // and an authored token through nothing at all. What replaces it is
+  // the same thing every other colour here already is: a SEED the
+  // engine derives from, and refuses when the derivation is unreadable.
   /**
    * A colour this person picked, outside the curated packs.
    *
@@ -623,22 +622,11 @@ export const DEFS = {
       // and, later, ask for assets that are not there.
       const mod = MODS.some((m) => m.id === o.mod) ? o.mod as string : undefined;
 
-      // Sanitised through the injector's OWN validators, so the rules
-      // are stated once. Storage is untrusted input like any other — a
-      // value can arrive from another tab, the sync channel, or a person
-      // editing localStorage by hand.
-      let tokens: Record<string, string> | undefined;
-      if (o.tokens && typeof o.tokens === 'object' && !Array.isArray(o.tokens)) {
-        const kept: Record<string, string> = {};
-        for (const [k, v] of Object.entries(o.tokens as Record<string, unknown>)) {
-          if (!isModToken(k) || !isSafeValue(v)) continue;
-          // Capped at the number of tokens that exist, so a corrupted
-          // store cannot grow the object without bound.
-          if (Object.keys(kept).length >= MOD_TOKENS.length) break;
-          kept[k] = String(v).trim();
-        }
-        if (Object.keys(kept).length) tokens = kept;
-      }
+      // A stored `tokens` object needs no branch: this sanitiser names
+      // every field it keeps, so one written by an older build — or by
+      // hand — is dropped on the first read, and the values it carried
+      // stop being installed. That is the migration, and it is the
+      // whole of it.
 
       // Validated with the injector's own hex reader, so "what counts as
       // a colour" is stated once. Lower-cased on the way in: the same
@@ -701,9 +689,6 @@ export const DEFS = {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance,
         wallpaper, wallpaperLive, wallpaperPage, cursor, shader,
         ...(mod ? { mod } : {}),
-        // Omitted when empty rather than stored as `{}`: "no custom
-        // tokens" and "an empty set of them" should not be two states.
-        ...(tokens ? { tokens } : {}),
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),
         ...(surfaces ? { surfaces } : {}),

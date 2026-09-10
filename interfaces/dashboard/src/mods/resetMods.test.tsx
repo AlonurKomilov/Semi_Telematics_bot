@@ -77,21 +77,19 @@ describe('Reset appearance owns exactly the axes it should', () => {
     expect('regions' in RESET_AXES).toBe(false);
   });
 
-  it('restores identity and custom tokens, not just the chips', () => {
-    // An installed mod and an injected token set both survive a reset
-    // that only walks MOD_DEFAULT's keys — neither is one of them.
+  it('restores identity, not just the chips', () => {
+    // An installed mod survives a reset that only walks MOD_DEFAULT's
+    // keys — it is not one of them.
     expect(RESET_AXES).toHaveProperty('mod');
-    expect(RESET_AXES).toHaveProperty('tokens');
     expect(RESET_AXES.mod).toBeUndefined();
-    expect(RESET_AXES.tokens).toBeUndefined();
   });
 
   it('clears a picked colour, and clears it at the INTERFACE level', () => {
     // Three of these would pass with `brand` in the container group, and
     // the fourth is the point: a custom accent is an interface choice,
     // so the interface reset has to reach it. Putting it beside `mod`
-    // and `tokens` would leave "Reset interface" showing a colour the
-    // person just reset away from.
+    // would leave "Reset interface" showing a colour the person just
+    // reset away from.
     expect(RESET_AXES).toHaveProperty('brand');
     expect(RESET_AXES['brand']).toBeUndefined();
     expect(SECTION_AXES.interface).toHaveProperty('brand');
@@ -161,8 +159,8 @@ describe('the reset scopes divide cleanly', () => {
   });
 
   it('no section owns a container axis', () => {
-    // `mod` and `tokens` are the container's. Filed under a section,
-    // "Reset interface" would uninstall the look that supplied all four
+    // `mod` is the container's. Filed under a section, "Reset
+    // interface" would uninstall the look that supplied all four
     // sections — which is not what the words say.
     for (const [section, keys] of Object.entries(SECTION_KEYS)) {
       for (const c of Object.keys(CONTAINER_AXES)) {

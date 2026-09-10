@@ -44,8 +44,8 @@ const SOUND_VOLUME_DEFAULT = DEFS['mods.sound.volume'].default;
 /**
  * The axes a reset owns, partitioned by section.
  *
- * `mod` and `tokens` are the CONTAINER's, not Interface's — resetting
- * one category must not uninstall the look that supplied all four.
+ * `mod` is the CONTAINER's, not Interface's — resetting one category
+ * must not uninstall the look that supplied all four.
  *
  * Two axes are in no partition at all, and both absences are deliberate:
  *
@@ -77,7 +77,7 @@ export const SECTION_AXES = {
 } as const;
 
 /** The container's own axes — what "Reset mods" adds on top of the four. */
-export const CONTAINER_AXES = { mod: undefined, tokens: undefined } as const;
+export const CONTAINER_AXES = { mod: undefined } as const;
 
 /** Every axis a reset touches, at any level. Kept as ONE object because
  *  `resetAppearance.test.tsx` walks it against `MOD_DEFAULT` to force a

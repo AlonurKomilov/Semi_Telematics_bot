@@ -156,20 +156,23 @@ export function ModProvider({ children }: { children: ReactNode }) {
   // Deliberately NOT inside `applyTheme`. That function is the mapping
   // the pre-paint script re-implements, and `themeBoot.test.ts` compares
   // the two — a stylesheet the boot script cannot write would show up as
-  // permanent drift. Custom tokens therefore arrive one frame after
+  // permanent drift. A picked colour therefore arrives one frame after
   // hydration, which is the honest cost of the boot script not being
-  // able to import a validator.
+  // able to import a derivation.
   useEffect(() => {
     // The picked colour is re-derived here rather than stored derived,
     // and that is why `mode` is in the dependency list: the same hex has
     // to become a lighter accent on near-black than on white, or a
     // custom colour is legible in one mode and invisible in the other.
     //
-    // It merges OVER a mod's tokens. In practice they never meet —
-    // installing a mod writes an accent, and writing an accent clears
-    // the picked colour — but if they ever did, the colour a person
-    // typed outranks the one a mod brought with it.
     // Two seeds, one derivation, in order of how much they claim.
+    //
+    // EVERY value that leaves here was DERIVED — by `paletteTokens`,
+    // `accentTokens` or `surfaceTokens` — from a hex a person picked
+    // through a gate that can refuse it. Nothing authored reaches the
+    // stylesheet, and there is no longer a field that could carry one:
+    // an unmeasured value installed beside measured ones is the shape
+    // of bug this engine spends its guards avoiding.
     //
     // A canvas installs the WHOLE palette — twenty-four tokens — so it
     // supersedes the accent's four rather than merging with them; the
@@ -189,7 +192,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
       : null;
     const picked = full
       ?? (theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null);
-    const merged = picked ? { ...(theme.tokens ?? {}), ...picked } : (theme.tokens ?? null);
+    const derived = picked;
 
     // Per-place canvases. Derived here for the same reason the global
     // one is: a palette computed for one mode and worn in the other is
@@ -202,8 +205,8 @@ export function ModProvider({ children }: { children: ReactNode }) {
       const t = surfaceTokens(hex, seedBrand, theme.mode, theme.wallpaper !== 'none').tokens;
       if (t) scoped[id] = t;
     }
-    applyModTokens(merged, document, Object.keys(scoped).length ? scoped : null);
-  }, [theme.tokens, theme.brand, theme.canvas, theme.surfaces, theme.accent, theme.mode, theme.wallpaper]);
+    applyModTokens(derived, document, Object.keys(scoped).length ? scoped : null);
+  }, [theme.brand, theme.canvas, theme.surfaces, theme.accent, theme.mode, theme.wallpaper]);
 
   useEffect(() => {
     applyTheme(theme);

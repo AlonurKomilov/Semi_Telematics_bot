@@ -409,39 +409,22 @@ describe('resetAll sweeps family keys', () => {
       }
     });
 
-    it('carries a person\'s own tokens, and only the legal ones', () => {
-      // The field exists because the sanitiser DROPS what it does not
-      // name — that discipline is the migration funnel for all four read
-      // paths, so a mod's values needed a named home rather than an
-      // exception. Storage is untrusted: a value can arrive from another
-      // tab, the sync channel, or someone editing localStorage by hand.
+    it('drops a tokens object an older build stored', () => {
+      // The field is gone — the note in registry.ts says why: nothing in
+      // the product ever wrote it, a picked canvas overwrote it key by
+      // key, and it was the one value installed without any readability
+      // measurement. The sanitiser names every field it keeps, so the
+      // drop needs no branch of its own; this is the whole migration.
       const out = sanitize({
         mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
         motion: 'default', color: 'dark-blue',
-        tokens: {
-          '--card': '#101418',                  // legal
-          '--danger': '#00ff00',                // not a token a mod may set
-          '--popover': 'red } body { color:red', // not a value at all
-          '--muted': 'oklch(0.2 0 0)',          // legal
-        },
-      }) as { tokens?: Record<string, string> };
-      expect(out.tokens).toEqual({ '--card': '#101418', '--muted': 'oklch(0.2 0 0)' });
-    });
-
-    it('stores no tokens key at all when none survive', () => {
-      // "No custom tokens" and "an empty set of them" should not be two
-      // states — the injector reads the absence as "remove the sheet".
-      const out = sanitize({
-        mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
-        motion: 'default', color: 'dark-blue', tokens: { '--danger': '#fff' },
+        tokens: { '--card': '#101418', '--muted': 'oklch(0.2 0 0)' },
       }) as unknown as Record<string, unknown>;
-      expect('tokens' in out).toBe(false);
-      for (const junk of [null, 'x', 42, ['--card']]) {
-        const r = sanitize({ mode: 'dark', accent: 'blue', radius: 'rounded',
-          material: 'solid', motion: 'default', color: 'dark-blue', tokens: junk,
-        }) as unknown as Record<string, unknown>;
-        expect('tokens' in r, `tokens: ${JSON.stringify(junk)}`).toBe(false);
-      }
+      expect('tokens' in out, 'a stored token set survived the sanitiser').toBe(false);
+      // And the drop takes nothing else with it: the rest of a look
+      // stored by that older build still reads back.
+      expect(out.accent).toBe('blue');
+      expect(out.radius).toBe('rounded');
     });
 
     it('remembers which mod is installed, through an edit', () => {

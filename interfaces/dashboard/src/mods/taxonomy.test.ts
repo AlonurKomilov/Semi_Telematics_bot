@@ -44,7 +44,6 @@ function fieldsOf(name: string): string[] {
 const NOT_AN_ITEM: Record<string, string> = {
   color: 'the deprecated mode+accent alias, re-derived on every write — never read to decide anything',
   mod: 'the identity of an installed look, not an axis it carries; the container row owns it',
-  tokens: 'a raw token override a mod may install; it has no control and no producer today',
 };
 
 describe('the taxonomy covers the stored shape', () => {

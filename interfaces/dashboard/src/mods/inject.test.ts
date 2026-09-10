@@ -2,12 +2,13 @@
  * The injector is the security boundary of the whole mods arc, so these
  * guards are written against the day the packs stop being ours.
  *
- * Today a mod is a row in a TypeScript array that we wrote. The stated
- * goal is per-user authoring — someone types a value, it is stored in
- * their browser, and it ends up in a stylesheet. A value that reaches a
- * stylesheet is code the moment it can carry a closing brace, so every
- * escape below is tested now rather than when there is user input to be
- * nervous about.
+ * Today every value it installs was DERIVED from a hex a person picked
+ * through a gate that can refuse it — no authored token has a home in
+ * the stored shape any more, and the last section here holds that door.
+ * The escapes are still tested, because the values it takes still come
+ * from STORAGE, which is untrusted whatever wrote it: another tab, the
+ * sync channel, a person editing localStorage. A value that reaches a
+ * stylesheet is code the moment it can carry a closing brace.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -287,5 +288,40 @@ describe('a seed all the way to the sheet', () => {
 
   it('returns null rather than half a palette', () => {
     expect(seedTokens({ mode: 'dark', canvas: 'nope', brand: '#fff' }, derivePalette)).toBeNull();
+  });
+});
+
+/**
+ * Everything the injector installs was DERIVED.
+ *
+ * The engine used to carry `theme.tokens` — values a person could have
+ * authored, had anything ever offered to take them. Nothing did, a
+ * picked canvas overwrote them key by key, glass outranked the four
+ * that survived that, and no gate ever measured one: a brand goes
+ * through `fitAccent`, a canvas through `fitCanvas`, every derived ink
+ * through `clampLightness`, and an authored token through nothing.
+ *
+ * So the field is gone and this holds the door: the engine hands the
+ * injector only what it derived, and the stored shape has no home for
+ * anything else. The validators below stay — they guard the values the
+ * DERIVATIONS produce, and they are what a future authored path would
+ * have to come back through.
+ */
+describe('nothing authored reaches the stylesheet', () => {
+  const source = (rel: string) =>
+    readFileSync(join(__dirname, '..', rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  it('the engine installs the derived palette and nothing beside it', () => {
+    const code = source('mods/context.tsx');
+    expect(code, 'the engine reads a stored token set again').not.toMatch(/theme\.tokens/);
+    expect(code, 'the injector is handed something other than what was derived')
+      .toMatch(/applyModTokens\(derived,/);
+  });
+
+  it('and the stored shape has no field to put one in', () => {
+    const reg = source('preferences/registry.ts');
+    expect(reg, 'ModSetting grew a tokens field again — see the note in registry.ts')
+      .not.toMatch(/^\s*tokens\??:/m);
   });
 });
