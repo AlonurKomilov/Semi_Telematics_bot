@@ -1526,6 +1526,28 @@ async def security_requests(
     return {"items": items, "count": len(items)}
 
 
+@router.get("/security/candidates")
+async def security_candidates(
+    hours: int = Query(default=24 * 7, ge=1, le=24 * 90),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Accounts and IPs the detector's rules implicate, ranked.
+
+    Read-only and advisory: a candidate is an argument, not a verdict.
+    Promoting one to ``monitored`` is the operator's click (the kind
+    endpoint), and it restricts nothing — which is what makes acting on
+    a false positive cheap.
+
+    Default window is a week: the 2026-09-08 run took 47 minutes, but a
+    patient probe spreads over days and only reads as one story at that
+    range.
+    """
+    from capabilities.security.detector import find_candidates
+    items = await find_candidates(platform_db, hours=hours)
+    return {"items": items, "count": len(items), "hours": hours}
+
+
 @router.get("/security/map")
 async def security_map(
     account_id: int | None = Query(default=None, ge=1),

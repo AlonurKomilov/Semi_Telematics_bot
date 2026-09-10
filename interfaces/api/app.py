@@ -158,6 +158,11 @@ class LimitBodyMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+# In-flight ledger writes.  ``asyncio.create_task`` keeps only a weak
+# reference, so without this the task can be collected mid-write.
+_LEDGER_TASKS: set = set()
+
+
 class RequestMeteringMiddleware(BaseHTTPMiddleware):
     """Count every completed API request into the shared Redis meters.
 
@@ -193,10 +198,21 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
             # recorder decides what to keep (every refusal; everything
             # from a monitored account) and never raises — a customer's
             # request must not fail because we were writing about it.
+            #
+            # Scheduled, never awaited.  The INSERT costs ~8ms on this
+            # box, and awaiting it would charge that to EVERY request
+            # from a monitored account while a normal account pays it
+            # only on a refusal — a difference someone comparing their
+            # account against a fresh one can measure.  `monitored` has
+            # to be indistinguishable from `real` to the person being
+            # watched, so the response leaves first and the row is
+            # written behind it.  The cost is that rows in flight at
+            # shutdown are lost; for a ledger of this kind that is a
+            # better trade than a timing tell.
             try:
                 from capabilities.security.recorder import record_request
                 from interfaces.api.rate_limit import client_ip
-                await record_request(
+                task = asyncio.create_task(record_request(
                     method=request.method,
                     path=path,
                     status=response.status_code,
@@ -208,7 +224,11 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
                     ip=client_ip(request),
                     ua=request.headers.get("user-agent"),
                     request_id=getattr(request.state, "request_id", None),
-                )
+                ))
+                # Hold a reference: a bare create_task may be garbage
+                # collected before it runs.
+                _LEDGER_TASKS.add(task)
+                task.add_done_callback(_LEDGER_TASKS.discard)
             except Exception:
                 pass
         return response

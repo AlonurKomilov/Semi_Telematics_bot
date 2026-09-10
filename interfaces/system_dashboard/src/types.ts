@@ -490,6 +490,26 @@ export interface SecurityRequestRow {
   request_id: string | null;
 }
 
+export interface SecuritySignal {
+  rule: string;
+  severity: 'high' | 'med' | 'low';
+  count: number;
+  evidence: string;
+}
+
+export interface SecurityCandidate {
+  account_id: number | null;
+  ip: string | null;
+  /** What the finding is about when it names neither account nor IP —
+   *  an email under credential stuffing, an endpoint taking payloads. */
+  subject: string | null;
+  name: string | null;
+  kind: AccountKind | null;
+  weight: number;
+  rules: string[];
+  signals: SecuritySignal[];
+}
+
 export interface SecurityEndpointRow {
   method: string;
   path: string;

@@ -70,3 +70,35 @@ async def test_an_anonymous_success_is_not_kept(api):
     assert r.status_code == 200
     rows = await db.list_security_requests(limit=50)
     assert all(x["path"] != "/api/_ledger/fine" for x in rows)
+
+
+async def test_a_monitored_account_is_not_slower_than_a_normal_one(api, monkeypatch):
+    """`monitored` must be indistinguishable from `real` to the watched.
+
+    The row is written behind the response, not in front of it: the
+    INSERT costs ~8ms, and charging that to every request from a
+    monitored account — while a normal account pays it only on a
+    refusal — is a difference a tester comparing two accounts can
+    measure. A recorder that takes 400ms must not add 400ms to the
+    request.
+    """
+    import asyncio
+    import time
+
+    app, _db = api
+    from capabilities.security import recorder
+
+    async def slow_record(**_kw):
+        await asyncio.sleep(0.4)
+        return True
+
+    monkeypatch.setattr(recorder, "record_request", slow_record, raising=True)
+
+    started = time.perf_counter()
+    r = await _get(app, "/api/_ledger/fine")
+    elapsed = time.perf_counter() - started
+
+    assert r.status_code == 200
+    assert elapsed < 0.3, (
+        f"the response waited {elapsed:.3f}s for the ledger write — a "
+        "monitored account would be measurably slower than a real one")

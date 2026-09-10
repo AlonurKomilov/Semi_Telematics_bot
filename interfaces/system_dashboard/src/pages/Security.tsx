@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import type {
-  MonitoredAccountRow, SecurityEndpointRow, SecurityRequestRow, SecuritySummary,
+  AccountKind, MonitoredAccountRow, SecurityCandidate, SecurityEndpointRow,
+  SecurityRequestRow, SecuritySummary,
 } from '../types';
 
 /** Windows the ledger is read over.  Hours, because that is what the API
@@ -60,6 +61,8 @@ export default function SecurityPage() {
   const [cls, setCls] = useState<StatusClass>('all');
   const [summary, setSummary] = useState<SecuritySummary | null>(null);
   const [monitored, setMonitored] = useState<MonitoredAccountRow[]>([]);
+  const [candidates, setCandidates] = useState<SecurityCandidate[]>([]);
+  const [promoting, setPromoting] = useState<number | null>(null);
   const [map, setMap] = useState<SecurityEndpointRow[]>([]);
   const [rows, setRows] = useState<SecurityRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +82,16 @@ export default function SecurityPage() {
       apiJSON<{ items: MonitoredAccountRow[] }>(`/system/security/monitored?${base}`),
       apiJSON<{ items: SecurityEndpointRow[] }>(`/system/security/map?${scoped}`),
       apiJSON<{ items: SecurityRequestRow[] }>(`/system/security/requests?${reqQs}`),
+      // A week, always: the detector's job is to notice a probe spread
+      // over days, which the page's own window would hide.
+      apiJSON<{ items: SecurityCandidate[] }>('/system/security/candidates?hours=168'),
     ])
-      .then(([s, m, e, r]) => {
+      .then(([s, m, e, r, c]) => {
         setSummary(s);
         setMonitored(m.items);
         setMap(e.items);
         setRows(r.items);
+        setCandidates(c.items);
       })
       .catch((e: unknown) => {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
@@ -105,6 +112,24 @@ export default function SecurityPage() {
     const who = account === '' ? 'anyone' : nameOf(account);
     const what = cls === 'all' ? '' : ` (${STATUS_CLASSES.find((c) => c.value === cls)?.label.toLowerCase()})`;
     return `Nothing from ${who} in the ${w}${what}. Widen the window or change the filter.`;
+  };
+
+  /** Promote a candidate to `monitored`.  The same endpoint the account
+   *  page uses, so the change is audited there; nothing about the
+   *  account's behaviour changes, which is why this is one click and
+   *  not a confirmation dialog. */
+  const promote = async (accountId: number) => {
+    setPromoting(accountId);
+    try {
+      await apiJSON(`/system/accounts/${accountId}/type`, {
+        method: 'PATCH', body: { type: 'monitored' as AccountKind },
+      });
+      load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Could not set the account kind');
+    } finally {
+      setPromoting(null);
+    }
   };
 
   const nameOf = (id: number | null) => {
@@ -158,6 +183,85 @@ export default function SecurityPage() {
       {err && (
         <div className="mb-3 bg-danger/10 border border-danger/40 text-danger text-sm rounded px-3 py-2">{err}</div>
       )}
+
+      {/* ── Candidates ───────────────────────────────────────── */}
+      <section className="mb-4">
+        <h2 className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2">
+          Candidates · last 7 days
+        </h2>
+        <p className="text-xs text-slate-500 mb-2">
+          What the rules noticed. An argument, not a verdict — Monitor records everything the
+          account does and restricts nothing, so acting on a wrong guess costs a row in a list.
+        </p>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="text-left px-3 py-2">Subject</th>
+                <th className="text-left px-3 py-2">Why</th>
+                <th className="text-right px-3 py-2">Weight</th>
+                <th className="text-right px-3 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && candidates.length === 0 && (
+                <tr><td colSpan={4} className="text-center text-slate-500 py-6">Loading…</td></tr>
+              )}
+              {!loading && candidates.length === 0 && (
+                <tr><td colSpan={4} className="text-center text-slate-500 py-6">
+                  No rule fired in the last 7 days.
+                </td></tr>
+              )}
+              {candidates.map((c) => (
+                <tr key={`${c.account_id ?? 'ip'}-${c.ip ?? ''}`} className="border-b border-slate-800/50 align-top">
+                  <td className="px-3 py-2">
+                    {c.account_id != null ? (
+                      <>
+                        <Link to={`/accounts/${c.account_id}`} className="text-slate-100 hover:text-accent">{c.name ?? c.account_id}</Link>
+                        <div className="text-xs text-slate-500">
+                          {c.account_id}{c.ip ? ` · ${c.ip}` : ''}
+                          {c.kind && c.kind !== 'real' ? <> · <span className="text-accent">{c.kind}</span></> : null}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono text-xs text-slate-200">{c.subject ?? c.ip ?? 'unattributed'}</span>
+                        {c.subject && c.ip && <div className="text-xs text-slate-500">{c.ip}</div>}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {c.rules.map((r) => (
+                        <span key={r} className="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-300">{r}</span>
+                      ))}
+                    </div>
+                    <ul className="text-xs text-slate-500 space-y-0.5">
+                      {c.signals.slice(0, 3).map((s, i) => <li key={i}>{s.evidence}</li>)}
+                      {c.signals.length > 3 && <li className="text-slate-600">+{c.signals.length - 3} more</li>}
+                    </ul>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-300">{c.weight}</td>
+                  <td className="px-3 py-2 text-right">
+                    {c.account_id == null ? (
+                      <span className="text-xs text-slate-600">no account</span>
+                    ) : c.kind === 'monitored' ? (
+                      <span className="text-xs text-accent">watching</span>
+                    ) : (
+                      <button type="button"
+                              disabled={promoting === c.account_id}
+                              onClick={() => promote(c.account_id!)}
+                              className="text-xs px-2 py-1 rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-50">
+                        {promoting === c.account_id ? 'Setting…' : 'Monitor'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* ── Monitored accounts ───────────────────────────────── */}
       <section className="mb-4">

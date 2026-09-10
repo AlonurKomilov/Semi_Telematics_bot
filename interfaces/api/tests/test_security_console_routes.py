@@ -104,3 +104,40 @@ async def test_the_gate_is_the_operator_gate(api):
     app.dependency_overrides.pop(require_system_owner, None)
     for p in ("summary", "monitored", "requests", "map"):
         assert (await _get(app, f"/api/system/security/{p}")).status_code == 401
+
+
+async def test_candidates_are_operator_only_and_carry_their_reasons(api):
+    """The detector's list is a read like the others — and gated like them."""
+    app, db, acct = api
+    # a signup burst from one IP: three accounts is calm, four is not
+    from adapters.storage import Role
+    for i in range(4):
+        a = await db.create_account(f"Burst Co {i}")
+        u = await db.create_user_with_email(
+            email=f"burst{i}@guerrillamailblock.com", password_hash="x",
+            account_id=a.id, role=Role.OWNER, display_name="o")
+        await db._db.execute(
+            "UPDATE users SET is_primary_owner = 1 WHERE id = ?", (u.id,))
+        await db._db.commit()
+        await db.add_platform_audit(
+            "account_created", account_id=a.id, actor="self-serve",
+            details=f"name='Burst Co {i}' owner=burst{i}@guerrillamailblock.com ip=203.0.113.77")
+
+    r = await _get(app, "/api/system/security/candidates?hours=24")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["hours"] == 24 and body["count"] == len(body["items"])
+    top = body["items"][0]
+    assert {"account_id", "ip", "subject", "name", "kind", "weight", "rules", "signals"} <= set(top)
+    assert "signup_burst" in top["rules"]
+    assert top["signals"] and "evidence" in top["signals"][0]
+    # ranked, heaviest first
+    weights = [c["weight"] for c in body["items"]]
+    assert weights == sorted(weights, reverse=True)
+
+
+async def test_the_candidates_route_needs_the_operator_gate(api):
+    app, _db, _acct = api
+    from interfaces.api.deps import require_system_owner
+    app.dependency_overrides.pop(require_system_owner, None)
+    assert (await _get(app, "/api/system/security/candidates")).status_code == 401
