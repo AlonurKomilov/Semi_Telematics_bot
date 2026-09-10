@@ -1226,6 +1226,10 @@
       "commit_one": "Ceci créera {{count}} tâche réelle pour le véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient.",
       "commit_other": "Ceci créera {{count}} tâches réelles — une par véhicule sélectionné. Le guide s’arrête ici ; appuyer sur « Create » vous appartient."
     },
+    "menu": {
+      "next": "Suivante : {{title}}",
+      "all_done": "Tout est fait"
+    },
     "page": {
       "description": "Tous les guides, consultables et rejouables — un guide vous accompagne dans votre propre travail sur la vraie page.",
       "start": "Démarrer",

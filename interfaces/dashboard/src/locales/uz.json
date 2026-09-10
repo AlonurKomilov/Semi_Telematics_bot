@@ -863,6 +863,10 @@
       "commit_one": "Bu tanlangan mashina uchun {{count}} ta haqiqiy vazifa yaratadi. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz.",
       "commit_other": "Bu {{count}} ta haqiqiy vazifa yaratadi — har bir tanlangan mashinaga bittadan. Tur shu yerda to'xtaydi; “Create” tugmasini bosish — sizning qaroringiz."
     },
+    "menu": {
+      "next": "Keyingisi: {{title}}",
+      "all_done": "Hammasi bajarildi"
+    },
     "page": {
       "description": "Barcha turlar bir joyda, qayta o'tish mumkin — tur sizni haqiqiy sahifada o'z ishingiz bo'ylab olib boradi.",
       "start": "Turni boshlash",

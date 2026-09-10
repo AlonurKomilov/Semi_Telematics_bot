@@ -16,72 +16,25 @@
  * dimmed at the end — and the person's own switch to stop the beacons
  * on pages, kept here where it can be undone.
  */
-import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, CheckCircle2, GraduationCap, MessageSquare, Play, RotateCcw } from '../../lib/icons';
-import { apiJSON } from '../../api/client';
 import { PageHeader } from '@/components/shell';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { useAuth } from '../../context/AuthContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import { TOUR_CATALOG } from '../../components/tour';
-import type { TourCtx } from '../../components/tour';
-import { useTourState } from '../../components/tour/useTourState';
-import { usePreference, useSyncLoaded } from '../../preferences';
-import { reachableFeature } from './reachable';
-import { libraryModel, signalPairs } from './library';
+import { usePreference } from '../../preferences';
+import { useTourLibrary } from './useTourLibrary';
 import type { LibraryStatus } from './library';
 
 export default function ToursPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { hasAny } = useViewPermissions();
-  const { state } = useTourState();
   const { value: hidden, setValue: setHidden } = usePreference('tour.hidden');
-  // Verdict chips wait for the synced preferences to hydrate — the
-  // pre-hydration value is empty, and stamping every card "New" for a
-  // beat before flipping to Done is the provisional-value flash the
-  // preferences contract names (TourHost gates the same read).
-  const verdictsReady = useSyncLoaded();
-
-  const reachable = useMemo(() => {
-    const access = { hasAny, enabledModules: user?.enabled_modules };
-    return TOUR_CATALOG.flatMap((tour) => {
-      const feature = reachableFeature(tour.feature, access);
-      if (!feature) return [];
-      // The tour's OWN grant, not just its page's — a page frequently
-      // opens on a wider permission than the controls a tour walks
-      // through.  Without this the library offers a card whose first
-      // step points at a button the viewer cannot see.
-      if (tour.requires?.length && !hasAny(...tour.requires)) return [];
-      return [{ tour, feature }];
-    });
-  }, [hasAny, user?.enabled_modules]);
-
-  // The behavioural signals every reachable tour declares, in one
-  // request — the same read TourHost makes per page, so "you already
-  // do this" here is the same fact the beacon retires on.
-  const [signals, setSignals] = useState<TourCtx['signals']>(undefined);
-  const pairs = useMemo(() => signalPairs(reachable), [reachable]);
-  useEffect(() => {
-    let live = true;
-    if (!pairs.length) { setSignals(undefined); return; }
-    apiJSON<{ signals: NonNullable<TourCtx['signals']> }>(
-      `/me/tour-signals?pairs=${encodeURIComponent(pairs.join(','))}`)
-      .then((res) => { if (live) setSignals(res.signals); })
-      .catch(() => { if (live) setSignals(undefined); });   // unknown ≠ adopted
-    return () => { live = false; };
-  }, [pairs]);
-
-  const model = useMemo(
-    () => libraryModel(reachable, verdictsReady ? state : {}, signals),
-    [reachable, state, signals, verdictsReady],
-  );
+  const { model, ready: verdictsReady } = useTourLibrary();
 
   const launch = (path: string, key: string) =>
     navigate(`${path}?tour=${encodeURIComponent(key)}`);

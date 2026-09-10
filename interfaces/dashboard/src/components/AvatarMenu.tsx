@@ -4,6 +4,7 @@ import { UserCog, LogOut, Palette } from '../lib/icons';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
 import { MODS_HREF, useCanMods } from '../mods';
+import { ToursMenuItem } from '../features/tours/ToursMenuItem';
 
 export function AvatarMenu() {
   const { user, logout } = useAuth();
@@ -96,6 +97,9 @@ export function AvatarMenu() {
                 onClick={() => go(MODS_HREF)}
               />
             )}
+            {/* Tours are per person — progress and the next one belong
+                in the personal menu, not on a topbar icon. */}
+            <ToursMenuItem onGo={go} />
           </div>
 
           {/* Sign out */}
@@ -115,14 +119,17 @@ export function AvatarMenu() {
 
 // ── Internal helpers ─────────────────────────────────────────
 
-function MenuButton({
+export function MenuButton({
   icon,
   label,
+  sub,
   danger,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
+  /** A second, quieter line under the label — a state, never an action. */
+  sub?: string;
   danger?: boolean;
   onClick: () => void;
 }) {
@@ -131,14 +138,17 @@ function MenuButton({
       type="button"
       onClick={onClick}
       className={
-        `w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ` +
+        `w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors text-left ` +
         (danger
           ? 'text-destructive hover:bg-destructive/10'
           : 'text-foreground hover:bg-muted/60')
       }
     >
       <span className={danger ? 'text-destructive' : 'text-muted-foreground'}>{icon}</span>
-      {label}
+      <span className="min-w-0">
+        <span className="block">{label}</span>
+        {sub && <span className="block text-xs text-muted-foreground truncate">{sub}</span>}
+      </span>
     </button>
   );
 }

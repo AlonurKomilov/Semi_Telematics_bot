@@ -1226,6 +1226,10 @@
       "commit_one": "Esto creará {{count}} tarea real para el vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión.",
       "commit_other": "Esto creará {{count}} tareas reales — una por vehículo seleccionado. El tour termina aquí; pulsar “Create” es su decisión."
     },
+    "menu": {
+      "next": "Siguiente: {{title}}",
+      "all_done": "Todo hecho"
+    },
     "page": {
       "description": "Todos los recorridos, listos para repetir — un tour le guía por su propio trabajo en la página real.",
       "start": "Iniciar tour",
