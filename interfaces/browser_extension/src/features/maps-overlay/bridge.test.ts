@@ -194,16 +194,20 @@ describe('what is aboard, on a page we do not own', () => {
     expect(Object.keys(v)).toHaveLength(9);
   });
 
-  it('refuses a ZERO, not only an absence', () => {
-    // The endpoint can now answer "every vehicle, carrying or not".  A
-    // zero reaching here would put "0 items · all settled" on every
-    // marker on a page we do not own — announcing an emptiness nobody
-    // asked about.  The previous case only covered an ABSENT key, which
-    // is why this would have shipped green.
+  it('carries a ZERO when the question was asked', () => {
+    // The line moved once, deliberately.  It used to drop zeros, from a
+    // time when the map's counts and the panel's list were one answer
+    // and a zero could reach a Live Map user as "0 items" on every
+    // marker.  They are separate questions now — the worker only builds
+    // this map at all while the panel is on Inventory — and there a
+    // zero is the ANSWER: somebody who switched features and clicked a
+    // truck is owed "nothing recorded", not a silence they must read as
+    // either empty or still-loading.
+    //
+    // The guard is the map's EXISTENCE, pinned by the case below.
     const [v] = toOverlayVehicles([feature(9001)] as never,
       new Map([[9001, { total: 0, attention: 0 }]]));
-    expect('inventory_total' in v).toBe(false);
-    expect(Object.keys(v)).toHaveLength(9);
+    expect(v.inventory_total).toBe(0);
   });
 
   it('leaves a truck the counts do not mention alone', () => {

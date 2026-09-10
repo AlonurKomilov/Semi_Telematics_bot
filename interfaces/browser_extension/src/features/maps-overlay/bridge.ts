@@ -190,9 +190,13 @@ interface MapFeature {
 
 /** The map payload, trimmed. Shared by the worker and its tests. */
 /** ``registry id -> counts``, supplied by the worker ONLY while the panel
- *  is showing Inventory.  On Live Map the fields are absent, so a page
- *  belonging to somebody else never carries what is aboard our trucks
- *  when nobody asked what is aboard our trucks. */
+ *  is showing Inventory.  On Live Map the map is undefined and the
+ *  fields are absent, so a page belonging to somebody else never
+ *  carries what is aboard our trucks when nobody asked.
+ *
+ *  A zero IS carried when the map is present: on the Inventory feature
+ *  "nothing recorded" is the answer, and silence there reads as "not
+ *  loaded yet".  The guard is the map's existence, not the value. */
 export type InventoryCounts = Map<number, { total: number; attention: number }>;
 
 export function toOverlayVehicles(
@@ -221,7 +225,7 @@ export function toOverlayVehicles(
       // key, never the payload.  Absent rather than zero when the truck
       // carries nothing — a card should say "3 items" or say nothing,
       // not announce an emptiness nobody asked about.
-      ...(inv && inv.total > 0 ? { inventory_total: inv.total, inventory_attention: inv.attention } : {}),
+      ...(inv ? { inventory_total: inv.total, inventory_attention: inv.attention } : {}),
     });
   }
   return out;

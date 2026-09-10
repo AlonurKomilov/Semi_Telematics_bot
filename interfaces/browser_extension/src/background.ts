@@ -130,19 +130,20 @@ async function inventoryCounts(token: string): Promise<InventoryCounts | undefin
   try {
     const got = await chrome.storage.local.get(ACTIVE_FEATURE_KEY);
     if (got[ACTIVE_FEATURE_KEY] !== 'inventory') return undefined;
+    // ?all=1 — EVERY vehicle, carrying or not.  A zero is an answer on
+    // this feature: somebody who switched to Inventory and clicked a
+    // truck is owed "nothing recorded", not silence they have to read
+    // as either "empty" or "still loading".  It reaches google.com only
+    // while the panel is on Inventory, which is the whole guard: on
+    // Live Map this function returns before it asks anything.
     const out = await sharedInventory('inventory', token,
-      () => apiJSON<FleetCounts>('/extension/inventory-fleet'));
+      () => apiJSON<FleetCounts>('/extension/inventory-fleet?all=1'));
     const counts: InventoryCounts = new Map();
     for (const v of out.vehicles ?? []) {
-      const total = Number(v.total) || 0;
-      // A vehicle with nothing aboard contributes NOTHING.  The card
-      // renders its line whenever a count is present, so a zero here
-      // would put "0 items · all settled" on every marker — announcing
-      // an emptiness nobody asked about, on a page we do not own.  The
-      // server does not send zeros to this caller either; both, because
-      // the two ship on different clocks.
-      if (!total) continue;
-      counts.set(Number(v.vehicle_id), { total, attention: Number(v.attention) || 0 });
+      counts.set(Number(v.vehicle_id), {
+        total: Number(v.total) || 0,
+        attention: Number(v.attention) || 0,
+      });
     }
     return counts;
   } catch {

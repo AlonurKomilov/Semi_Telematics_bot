@@ -259,3 +259,25 @@ describe('whose press it is — the rule the owner asked for', () => {
     expect(down).toContain('getElementById(CURSOR_STYLE_ID)?.remove()');
   });
 });
+
+describe('the card follows the feature, data and all', () => {
+  const src = overlaySrc as unknown as string;
+
+  it('REFETCHES when the panel switches feature, not just redraws', () => {
+    // The counts live in the vehicle LIST the worker builds, and it
+    // only attaches them while the panel is on Inventory.  Redrawing
+    // the card alone changed its button text and nothing else, so the
+    // answer somebody had just switched features to get did not arrive
+    // for up to thirty seconds — which read as "it does not show it".
+    const handler = src.slice(src.indexOf('ACTIVE_FEATURE_KEY in changes'));
+    const upToNextKey = handler.slice(0, handler.indexOf('OVERLAY_PREF_KEY'));
+    expect(upToNextKey).toContain('refreshData()');
+  });
+
+  it('answers an empty vehicle rather than saying nothing', () => {
+    // On Live Map a "0 items" line on every marker would be noise; on
+    // Inventory it is the question the person just asked, and silence
+    // there reads as "not loaded yet".
+    expect(src).toContain('Nothing recorded');
+  });
+});

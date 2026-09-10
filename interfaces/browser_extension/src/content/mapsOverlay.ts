@@ -454,10 +454,16 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
     // vocabulary for the same four statuses.
     + (v.inventory_total == null ? '' :
         '<div style="font-size:11px;margin-bottom:6px">'
-        + `<span style="opacity:.6">${v.inventory_total} item${v.inventory_total === 1 ? '' : 's'}</span>`
-        + (v.inventory_attention
-            ? `<span style="color:#fbbf24;font-weight:600"> \u00b7 ${v.inventory_attention} flagged</span>`
-            : '<span style="opacity:.6"> \u00b7 none flagged</span>')
+        + (v.inventory_total === 0
+            // Silence would be ambiguous HERE, where it is not on Live
+            // Map: the person switched to Inventory to ask this exact
+            // question, so "nothing recorded" is the answer and saying
+            // nothing reads as "not loaded yet".
+            ? '<span style="opacity:.6">Nothing recorded</span>'
+            : `<span style="opacity:.6">${v.inventory_total} item${v.inventory_total === 1 ? '' : 's'}</span>`
+              + (v.inventory_attention
+                  ? `<span style="color:#fbbf24;font-weight:600"> \u00b7 ${v.inventory_attention} flagged</span>`
+                  : '<span style="opacity:.6"> \u00b7 none flagged</span>'))
         + '</div>')
     // Fuel, DEF, the address, the faults: all one button away, in the
     // panel, which is where they live — see bridge.ts on what does not
@@ -1120,7 +1126,13 @@ function start(): void {
     if (ACTIVE_FEATURE_KEY in changes) {
       const f = changes[ACTIVE_FEATURE_KEY].newValue;
       panelFeature = typeof f === 'string' && f ? f : 'live-map';
-      // An open card is showing the old promise; rewrite it in place.
+      // REFETCH, not just redraw.  The counts live in the DATA — the
+      // worker attaches them to the vehicle list, and only while the
+      // panel is on Inventory — so redrawing the card alone changed its
+      // button and nothing else, and the answer the person had just
+      // switched features to get did not arrive for up to thirty
+      // seconds.  refreshData ends in draw(), which redraws the card.
+      void refreshData();
       if (cardId) placeCard();
     }
     if (!(OVERLAY_PREF_KEY in changes)) return;
