@@ -30,9 +30,14 @@ const TONE_NAMES: Record<string, string> = {
   info: 'the info colour',
 };
 
-export function CanvasChip({ canvas, mode, onPick, onClear }: {
+export function CanvasChip({ canvas, mode, scope, onPick, onClear }: {
   canvas?: string;
   mode: Mode;
+  /** The place this picker is aimed at, when it is aimed at one. The
+   *  chip used to read "Background" while showing the Loads colour —
+   *  identical to the global one, with the aim legible only from which
+   *  chip was pressed in the row above. */
+  scope?: string;
   onPick: (hex: string) => void;
   onClear: () => void;
 }) {
@@ -81,10 +86,12 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
   const live = probeBreak ? { tone: probeBreak.breaks ?? '', ratio: probeBreak.ratio ?? 0 } : refused;
   const note = live
     ? (canvas && worn
-      ? t('theme.canvas_refused_kept', '{{tone}} would not be readable on the colour you stopped at — the last background that worked is still on.')
+      ? t('theme.canvas_refused_kept', '{{tone}} would not be readable on that in {{mode}} mode — the last background that worked is still on.')
           .replace('{{tone}}', (TONE_NAMES[live.tone] ?? live.tone).replace(/^the /, 'The '))
-      : t('theme.canvas_refused', '{{tone}} would not be readable on that background.')
-          .replace('{{tone}}', (TONE_NAMES[live.tone] ?? live.tone).replace(/^the /, 'The ')))
+          .replace('{{mode}}', mode)
+      : t('theme.canvas_refused', '{{tone}} would not be readable on that background in {{mode}} mode.')
+          .replace('{{tone}}', (TONE_NAMES[live.tone] ?? live.tone).replace(/^the /, 'The '))
+          .replace('{{mode}}', mode))
     : canvas && !worn
       ? t('theme.canvas_unworn', 'This background cannot be worn in {{mode}} mode — the built-in one is painting.')
           .replace('{{mode}}', mode)
@@ -109,10 +116,19 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
         >
           <span
             aria-hidden
-            className="w-2.5 h-2.5 rounded-full shrink-0 border border-border"
+            className={cn(
+              'w-2.5 h-2.5 rounded-full shrink-0 border',
+              // Unset looks unset: the fallback is `--background`, so on a
+              // dark theme the dot was a near-black circle on a near-black
+              // chip — indistinguishable from a background deliberately set
+              // to the default.
+              canvas || probe ? 'border-border' : 'border-dashed border-muted-foreground/60',
+            )}
             style={{ background: probe ?? canvas ?? 'var(--background)' }}
           />
-          {t('theme.canvas_label', 'Background')}
+          {scope
+            ? t('theme.canvas_label_scoped', 'Background · {{place}}').replace('{{place}}', scope)
+            : t('theme.canvas_label', 'Background')}
         </button>
         <input
           ref={probeRef}

@@ -254,3 +254,36 @@ describe('a drag writes once', () => {
       'the person learns it only after letting go').toBeTruthy();
   });
 });
+
+/**
+ * The tail of the audit: the words on this row, and the order it asks
+ * its two questions in.
+ */
+describe('the row asks the place first, then the colour', () => {
+  it('puts "applies to" above the picker it scopes', () => {
+    standingOn('loads');
+    mount({}, false);
+    const html = document.body.innerHTML;
+    expect(html.indexOf('Background applies to'), 'the picker comes first, so a first-time pick lands on Everywhere')
+      .toBeLessThan(html.indexOf('Background ·') >= 0 ? html.indexOf('Background ·') : html.indexOf('>Background<'));
+  });
+
+  it('and the picker names the place it is aimed at', () => {
+    standingOn('loads');
+    mount({}, false);
+    // Scoped: Wallpaper has a "Pattern applies to" row with a Loads of
+    // its own on this page.
+    const row = screen.getByText('Background applies to').parentElement as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Loads' }));
+    expect(screen.getByRole('button', { name: 'Background · Loads' }),
+      'aimed at a place, the chip still reads like the global one').toBeTruthy();
+  });
+
+  it('and a refusal names the mode, since the same colour may be fine in the other', () => {
+    mount({}, false);
+    const el = input('Cards');
+    el.value = REFUSED;
+    fireEvent.input(el);
+    expect(screen.getByText(/in dark mode/i), 'the refusal never says which mode refused it').toBeTruthy();
+  });
+});

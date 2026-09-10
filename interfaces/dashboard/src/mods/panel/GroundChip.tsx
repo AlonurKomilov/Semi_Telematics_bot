@@ -89,9 +89,10 @@ export function GroundChip({ ground, hex, mode, fallback, compact = false, onPic
     : '';
   const note = live
     ? (hex && worn
-      ? t('theme.ground_refused_kept', '{{tone}} would not be readable on the colour you stopped at — the last one that worked is still on.')
-          .replace('{{tone}}', tone)
-      : t('theme.ground_refused', '{{tone}} would not be readable on that.').replace('{{tone}}', tone))
+      ? t('theme.ground_refused_kept', '{{tone}} would not be readable on that in {{mode}} mode — the last one that worked is still on.')
+          .replace('{{tone}}', tone).replace('{{mode}}', mode)
+      : t('theme.ground_refused', '{{tone}} would not be readable on that in {{mode}} mode.')
+          .replace('{{tone}}', tone).replace('{{mode}}', mode))
     : hex && !worn
       ? t('theme.ground_unworn', 'Not worn in {{mode}} mode — the built-in one is painting.')
           .replace('{{mode}}', mode)

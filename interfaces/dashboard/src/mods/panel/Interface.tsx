@@ -282,6 +282,16 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
     }),
     [theme.surfaces, theme.mode, seedBrand, underPattern],
   );
+
+  /** Two names and a count, not the whole list: it grows with every
+   *  themable place, and at 198px in the panel it already ran to four
+   *  lines of grey text nobody reads to the end. */
+  const unwornSummary = useMemo(() => {
+    const names = unworn.map((s) => s.title);
+    return names.length <= 2
+      ? names.join(', ')
+      : `${names.slice(0, 2).join(', ')}${t('theme.scope_unworn_more', ' +{{n}} more').replace('{{n}}', String(names.length - 2))}`;
+  }, [unworn, t]);
   const brandWorn = useMemo(
     () => (theme.brand ? accentTokens(theme.brand, theme.mode).tokens !== null : false),
     [theme.brand, theme.mode],
@@ -324,26 +334,6 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
       <p className="text-2xs text-muted-foreground mt-1.5">
         {brandWorn ? '' : packById(theme.accent)?.description ?? ''}
       </p>
-      {/* The other half of a palette. Its own row, because it claims
-          far more than the accent does — a background repaints every
-          surface in the app, and putting it in the accent row would
-          make the two look like the same size of decision. */}
-      <div className="flex flex-wrap items-center gap-1 mt-1.5">
-        {/* Keyed: the refusal message is local state, and it used to
-            outlive the thing it was about — aim at Loads, be refused,
-            click Everywhere, and the line was still there naming a tone
-            broken by a colour that was never offered to the global
-            canvas. A mode change was worse, because the gate is
-            mode-dependent and the named tone could be the wrong one. */}
-        <CanvasChip
-          key={`${target || 'all'}:${theme.mode}`}
-          canvas={target ? theme.surfaces?.[target] : theme.canvas}
-          mode={theme.mode}
-          onPick={(hex) => setTheme(writeCanvas(theme, target, hex))}
-          onClear={() => setTheme(writeCanvas(theme, target, undefined))}
-        />
-      </div>
-
       {offered.length > 0 && (<>
       {/* WHERE the background applies. Each chip wears the background
           that place is painting, so which places carry one is legible
@@ -381,10 +371,32 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
           : unworn.length
             ? `${underPattern
                 ? t('theme.scope_unworn_wallpaper', 'Not worn under the wallpaper')
-                : t('theme.scope_unworn', 'Not worn in {{mode}} mode').replace('{{mode}}', theme.mode)}: ${unworn.map((s) => s.title).join(', ')}.`
+                : t('theme.scope_unworn', 'Not worn in {{mode}} mode').replace('{{mode}}', theme.mode)}: ${unwornSummary}.`
             : t('theme.scope_all_hint', 'One background for the whole app.')}
       </p>
       </>)}
+
+      {/* The other half of a palette. Its own row, because it claims
+          far more than the accent does — a background repaints every
+          surface in the app, and putting it in the accent row would
+          make the two look like the same size of decision. */}
+      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        {/* Keyed: the refusal message is local state, and it used to
+            outlive the thing it was about — aim at Loads, be refused,
+            click Everywhere, and the line was still there naming a tone
+            broken by a colour that was never offered to the global
+            canvas. A mode change was worse, because the gate is
+            mode-dependent and the named tone could be the wrong one. */}
+        <CanvasChip
+          key={`${target || 'all'}:${theme.mode}`}
+          canvas={target ? theme.surfaces?.[target] : theme.canvas}
+          mode={theme.mode}
+          scope={target ? surfaceById(target)?.title : undefined}
+          onPick={(hex) => setTheme(writeCanvas(theme, target, hex))}
+          onClear={() => setTheme(writeCanvas(theme, target, undefined))}
+        />
+      </div>
+
 
       {/* The other two grounds. Their own row, under the page's, because
           the page is the one they derive from when they have no seed —
