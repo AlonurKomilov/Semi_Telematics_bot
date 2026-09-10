@@ -31,6 +31,11 @@ from tests._repo import REPO
 
 PANEL = REPO / "interfaces/browser_extension/src/features/inventory/InventoryPanel.tsx"
 DIALOG = REPO / "interfaces/dashboard/src/features/inventory/ItemDialog.tsx"
+#: The panel's in-place correction form.  A THIRD place the same three
+#: fields are named — and the newest, so the one most likely to drift.
+ROWS = REPO / "interfaces/browser_extension/src/features/inventory/ItemRows.tsx"
+
+SURFACES = (PANEL, DIALOG, ROWS)
 
 #: The words a person reads for each stored field.  Change one and you
 #: change it in both, or this fails — which is the point.
@@ -54,12 +59,12 @@ def _visible_text(path) -> str:
 
 @pytest.mark.parametrize("field", FIELD_NAMES)
 def test_both_surfaces_call_the_field_the_same_thing(field):
-    for path in (PANEL, DIALOG):
+    for path in SURFACES:
         assert field in _visible_text(path), f"{path.name} does not say {field!r}"
 
 
 def test_neither_surface_teaches_with_a_vendor_name():
-    for path in (PANEL, DIALOG):
+    for path in SURFACES:
         text = _visible_text(path)
         for vendor in VENDORS:
             assert vendor not in text, (
@@ -72,7 +77,7 @@ def test_the_retired_names_do_not_come_back():
     """``Label`` and ``Identifier`` are our words for the columns, not the
     reader's.  They stay in the wire and in the database; they do not go
     back on screen."""
-    for path in (PANEL, DIALOG):
+    for path in SURFACES:
         text = _visible_text(path)
         for retired in (">Label<", ">Identifier<", '"What it is"', "label=\"What it is\""):
             assert retired not in text, f"{path.name} brought back {retired!r}"

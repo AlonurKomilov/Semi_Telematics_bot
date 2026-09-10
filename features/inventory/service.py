@@ -117,6 +117,38 @@ async def set_item_status(
     )
 
 
+async def edit_item(
+    account_id: int, item: dict, *,
+    label: str | None = None, identifier: str | None = None,
+    notes: str | None = None, category: str | None = None,
+    actor_user_id: int | None = None,
+) -> bool:
+    """Correct what an item SAYS — its name, its serial, its category.
+
+    This is a write the panel may perform because the person standing at
+    the truck is the one who can read the serial off the device; the
+    walk back to a laptop is where a correction stops being made at all.
+
+    It is safe to offer only because the trail now records the words it
+    replaced.  A rename is the quietest way to make a loss disappear —
+    change the serial and the item that went missing was never that
+    item — so an edit that recorded nothing but the fact of editing
+    would have been a hole in the one feature built to close holes.
+
+    Retiring and transferring are still not here.  Those END an item's
+    story rather than correcting it, and they stay at a desk with the
+    registry in front of you.
+    """
+    tenant = await get_tenant_db(account_id)
+    return await tenant.update_inventory_item(
+        account_id, int(item["id"]),
+        label=label, identifier=identifier, notes=notes,
+        category=normalize_inventory_category(category) if category else None,
+        actor_user_id=actor_user_id,
+        driver_user_id=await driver_on_truck(account_id, int(item["vehicle_id"])),
+    )
+
+
 async def add_item(
     account_id: int, vehicle_id: int, *,
     category: str, label: str, identifier: str = "", notes: str = "",

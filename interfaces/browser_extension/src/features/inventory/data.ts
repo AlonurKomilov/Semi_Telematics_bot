@@ -155,6 +155,33 @@ export async function setItemStatus(
   });
 }
 
+/** The fields an edit may correct.  Retiring and transferring are not
+ *  here and are not reachable from this key: correcting what an item
+ *  SAYS is not the same act as ending its story. */
+export interface ItemPatch {
+  label?: string;
+  identifier?: string;
+  category?: string;
+}
+
+/** Correct what an item says, from beside the truck.
+ *
+ *  The person holding the device is the one who can read the serial off
+ *  it, and the walk back to a laptop is where a correction stops being
+ *  made at all.  Safe to offer here only because the server now records
+ *  the words an edit replaced — a rename is otherwise the quietest way
+ *  to make a loss disappear. */
+export async function editItem(itemId: number, patch: ItemPatch): Promise<void> {
+  // Only what actually changed travels: an absent field means "leave
+  // it", so sending all three would stamp an edit on fields nobody
+  // touched and fill the trail with rows that say nothing.
+  const body: Record<string, unknown> = { item_id: itemId };
+  for (const k of ['label', 'identifier', 'category'] as const) {
+    if (patch[k] !== undefined) body[k] = patch[k];
+  }
+  await apiJSON('/extension/inventory-edit', { method: 'POST', body });
+}
+
 /** What the panel offers, worst last so the strip reads as a ladder from
  *  "fine" to "gone".  ``spare`` and ``in_repair`` are deliberately not
  *  here: they are bookkeeping states somebody sets at a desk, not what

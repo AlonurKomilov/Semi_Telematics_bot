@@ -9425,3 +9425,30 @@ async def migrate_driver_trucks_registry_id_legacy(conn) -> None:
             await conn.commit()
         except Exception:
             pass
+
+
+@_register("207_inventory_event_changes")
+async def migrate_inventory_event_changes(conn) -> None:
+    """``vehicle_inventory_events.changes`` — what an edit actually did.
+
+    The event row could say a status moved (from_status/to_status) and
+    that an item moved truck, but an "edited" event carried no values at
+    all: the Audit Log showed *Edited · Inventory item · 2* and nothing
+    more.  For the one feature whose purpose is answering "who changed
+    this", that is the answer missing.
+
+    Empty string means "this event type says it in its own columns", so
+    every row already written stays exactly as true as it was.
+    """
+    for stmt in (
+        "ALTER TABLE vehicle_inventory_events "
+        "ADD COLUMN IF NOT EXISTS changes TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE vehicle_inventory_events ADD COLUMN changes TEXT",
+    ):
+        try:
+            await conn.execute(stmt)
+            await conn.commit()
+            break
+        except Exception:
+            continue
+    logger.info("Migration 207: inventory events record what an edit changed")

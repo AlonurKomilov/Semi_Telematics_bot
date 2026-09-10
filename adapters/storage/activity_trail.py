@@ -177,7 +177,7 @@ class ActivityTrailMixin(_MixinBase):
         cur = await self._db.execute(
             f"""SELECT id, item_id, event_type, from_status, to_status,
                        from_vehicle_id, to_vehicle_id, actor_user_id,
-                       driver_user_id, note, created_at
+                       driver_user_id, note, changes, created_at
                 FROM vehicle_inventory_events WHERE account_id = ?{extra}
                 ORDER BY created_at DESC LIMIT ?""",
             params,
@@ -187,7 +187,7 @@ class ActivityTrailMixin(_MixinBase):
              "from_status": r[3], "to_status": r[4],
              "from_vehicle_id": r[5], "to_vehicle_id": r[6],
              "actor_user_id": r[7], "driver_user_id": r[8],
-             "note": r[9], "created_at": r[10]}
+             "note": r[9], "changes": r[10], "created_at": r[11]}
             for r in await cur.fetchall()
         ]
 

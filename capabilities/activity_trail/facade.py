@@ -24,6 +24,7 @@ Pure data shaping (the SQL lives on the mixin) — unit-testable without
 a database.
 """
 
+import json
 from typing import Any, Optional
 
 from .sensitive import mask_changes
@@ -60,7 +61,22 @@ def normalize_load(e: dict) -> dict:
 
 
 def normalize_inventory(e: dict) -> dict:
+    # Field-level diffs, for the event types the narrow columns cannot
+    # express — a rename, a re-categorisation.  Stored as a JSON blob;
+    # a row written before the column existed carries "" and simply has
+    # none, which is exactly as true as it ever was.
     changes: dict[str, dict] = {}
+    raw = e.get("changes")
+    if isinstance(raw, str) and raw:
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = None
+    if isinstance(raw, dict):
+        changes.update({
+            k: v for k, v in raw.items()
+            if isinstance(v, dict) and {"from", "to"} <= set(v)
+        })
     if e.get("from_status") is not None or e.get("to_status") is not None:
         changes["status"] = {"from": e.get("from_status"), "to": e.get("to_status")}
     if e.get("from_vehicle_id") is not None or e.get("to_vehicle_id") is not None:

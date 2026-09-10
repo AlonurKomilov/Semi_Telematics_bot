@@ -14,11 +14,12 @@
  * the extension token's scope, so a key that lives in a browser cannot
  * mark a dashcam missing.  The way out is a link, not a form.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
+import Field from './Field';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
-import { addItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItemStatus, verifyItem,
+import { addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItemStatus, verifyItem,
          type Inventory } from './data';
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
@@ -39,22 +40,6 @@ interface FleetRow {
 /** One labelled field.  The label stays when the placeholder goes, and
  *  a required one says so where the eye already is rather than in a
  *  message that appears after the press. */
-function Field({ label, required, children }: {
-  label: string; required?: boolean; children: ReactNode;
-}) {
-  return (
-    <label style={{ display: 'grid', gap: 3 }}>
-      <span className="muted" style={{ fontSize: 11 }}>
-        {/* Muted, not --warn: amber means "flagged, wants attention"
-            everywhere else on this panel, and a required marker is not
-            that.  An asterisk carries its meaning in its shape. */}
-        {label}{required && <span style={{ color: 'var(--muted)' }}> *</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
-
 /** Inventory is not live data: somebody adds a dashcam, not thirty
  *  trucks move.  Slow enough to be free, often enough that a panel left
  *  open all morning is not lying by lunchtime. */
@@ -344,7 +329,12 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
                          onStatus={canWrite ? async (id, st) => {
                            await setItemStatus(id, st);
                            await afterWrite(selected.vehicle_id);
-                         } : undefined} />}
+                         } : undefined}
+                         onEdit={canWrite ? async (id, patch) => {
+                           await editItem(id, patch);
+                           await afterWrite(selected.vehicle_id);
+                         } : undefined}
+                         categories={known} />}
           {/* ADD, from the truck rather than from a desk.  The walk back
               to a laptop is where the record stops being made at all.
               REMOVE and TRANSFER are deliberately not here and not
@@ -438,16 +428,18 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
               </div>
             </div>
           )}
-          {/* Everything this key may NOT do — edit a record, move an item
-              to another vehicle, retire one — is over there.  The link
-              goes to /inventory rather than the vehicle's own page: that
-              page is gated on can_view_vehicles, the one grant this
-              reader may not have and the whole reason Inventory became
-              its own feature. */}
+          {/* What this key may NOT do — move an item to another vehicle,
+              retire one — is over there.  Both END an item's story
+              rather than correcting it, which is why correcting is now
+              done here and these two are not.  The link goes to
+              /inventory rather than the vehicle's own page: that page is
+              gated on can_view_vehicles, the one grant this reader may
+              not have and the whole reason Inventory became its own
+              feature. */}
           <button type="button" className="link" onClick={openDashboard}
                   style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
                            font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
-            Edit or retire on 4truck →
+            Retire or move on 4truck →
           </button>
         </div>
       )}

@@ -197,7 +197,7 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     # tidied away — "it is on truck 5 now", "it was retired" — so the
     # manage flag in the scope above cannot reach them from a browser.
     "/extension/inventory-verify", "/extension/inventory-status",
-    "/extension/inventory-add",
+    "/extension/inventory-add", "/extension/inventory-edit",
     "/auth/refresh", "/auth/logout",
 })
 

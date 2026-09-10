@@ -969,6 +969,12 @@ async def create_tables(conn) -> None:
             actor_user_id   INTEGER,
             driver_user_id  INTEGER,
             note            TEXT    NOT NULL DEFAULT '',
+            -- Field-level before/after, JSON {field: {from, to}}.  A
+            -- status move is expressible in the columns above; a RENAME
+            -- is not, and a rename is the quietest way to make a loss
+            -- disappear -- change the serial and the item that went
+            -- missing was never that item.
+            changes         TEXT    NOT NULL DEFAULT '',
             created_at      TEXT    NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_vehicle_inventory_events_item

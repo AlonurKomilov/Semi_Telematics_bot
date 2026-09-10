@@ -13,7 +13,9 @@
  * its floor and then overflows a column with no scroll of its own.
  */
 import { useEffect, useRef, useState } from 'react';
-import { PANEL_STATUSES, humanize, sortForPanel, statusTone, type InventoryItem } from './data';
+import { PANEL_STATUSES, humanize, sortForPanel, statusTone,
+         type InventoryItem, type ItemPatch } from './data';
+import Field from './Field';
 import { ageMs, formatAge } from '../live-map/freshness';
 
 /** A status's colour, in the panel's own tokens. */
@@ -36,17 +38,30 @@ export interface ItemRowsProps {
    *  answering 403 on the press is the worse of the two. */
   onVerify?: (itemId: number) => Promise<void>;
   onStatus?: (itemId: number, status: string) => Promise<void>;
+  /** Correcting what an item SAYS.  Retire and transfer are not here
+   *  and are not reachable from this key — they end an item's story
+   *  rather than correcting it, and that stays at a desk. */
+  onEdit?: (itemId: number, patch: ItemPatch) => Promise<void>;
+  /** The categories this account already uses, for the edit form's
+   *  datalist.  The vocabulary is OPEN, so it is a suggestion list and
+   *  never a closed set. */
+  categories?: string[];
   /** A row to bring into view once — a just-added item, which sorts to
    *  the bottom because nothing is wrong with it. */
   focusId?: number | null;
 }
 
-export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVerify, onStatus, focusId }: ItemRowsProps) {
-  const canWrite = Boolean(onVerify || onStatus);
+export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVerify, onStatus, onEdit, categories, focusId }: ItemRowsProps) {
+  const canWrite = Boolean(onVerify || onStatus || onEdit);
   /** Which row has its actions showing.  One at a time: four controls
    *  under every row would bury the list they belong to. */
   const [openId, setOpenId] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  /** Which row is being corrected.  Editing REPLACES the strip rather
+   *  than adding a third line: at the panel's 320px floor, a form and
+   *  five controls at once is a wall, and the two are different jobs —
+   *  reporting what you found, and fixing what the record says. */
+  const [editId, setEditId] = useState<number | null>(null);
   /** Which row's action failed, and why.  Held per ROW rather than per
    *  list: the map card scrolls this list inside 168px, so a message
    *  parked at the bottom is a message somebody never sees — and they
@@ -156,6 +171,10 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                       onClick={() => {
                         const next = open ? null : it.id;
                         setOpenId(next);
+                        // A row closed mid-edit must not reopen still in
+                        // the form: the person left it, and coming back
+                        // to an abandoned draft reads as unsaved work.
+                        setEditId(null);
                         // A row grows from 24px to ~88 inside a 168px
                         // scroller: opened near the fold, everything it
                         // just revealed is below it.  Next frame, once
@@ -189,7 +208,15 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                 {failed.why}
               </p>
             )}
-            {open && (
+            {open && editId === it.id && onEdit && (
+              <EditForm item={it} categories={categories ?? []} busy={busy === it.id}
+                        onCancel={() => setEditId(null)}
+                        onSave={(patch) => void act(it.id, async () => {
+                          await onEdit(it.id, patch);
+                          setEditId(null);
+                        }, false)} />
+            )}
+            {open && editId !== it.id && (
               // TWO explicit lines, not one wrapping row.  Five controls
               // need ~500px at the panel's 320px floor, so a single row
               // survived only by accidental wrap — and a 32px .btn sat
@@ -201,7 +228,7 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
               // are independent, and a verify-only caller would
               // otherwise render an empty flex row.
               <>
-              {onVerify && (
+              {(onVerify || onEdit) && (
               <div className="row" style={{ gap: 6, padding: '0 0 0 14px' }}>
                 {/* WHAT VERIFY CHANGES, said where Verify is pressed.
                     ``verify_inventory_item`` stamps the check and leaves
@@ -216,24 +243,65 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                     check age does — a fifth piece ellipsised the item's
                     own name away at 320px — and it is the thing you
                     hold the device up against when you press Verify. */}
+                {/* The line's TEXT shrinks; its BUTTONS never do.  At the
+                    panel's 320px floor this line has ~278px, and serial
+                    + age + Verify + Edit measures ~275 with a short
+                    serial — a 17-character one would have pushed Edit
+                    past an `overflow-x: hidden` edge and out of reach.
+                    `.row` is a flex with no wrap, so nothing would have
+                    given: the button would simply have been gone. */}
                 {it.identifier && (
-                  <span className="muted" style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace' }}
-                        title="The serial this record was made against">
+                  <span className="muted" style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace',
+                                                   minWidth: 0, overflow: 'hidden',
+                                                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={`The serial this record was made against: ${it.identifier}`}>
                     {it.identifier}
                   </span>
                 )}
-                <span className="muted" style={{ fontSize: 11 }}
+                <span className="muted" style={{ fontSize: 11, minWidth: 0, overflow: 'hidden',
+                                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                       title={it.last_verified_at ? `Last checked ${it.last_verified_at}` : 'Nobody has checked this yet'}>
                   {(() => {
                     const age = ageMs(it.last_verified_at, now);
                     return age === null ? 'never checked' : `checked ${formatAge(age)} ago`;
                   })()}
                 </span>
-                <button className="btn" disabled={busy === it.id}
-                        title="Record that you checked it and it is aboard"
-                        onClick={() => void act(it.id, () => onVerify(it.id), false)}>
-                  {busy === it.id ? 'Saving…' : 'Verify'}
-                </button>
+                {onVerify && (
+                  <button className="btn" disabled={busy === it.id}
+                          style={{ marginLeft: 'auto', flexShrink: 0 }}
+                          title="Record that you checked it and it is aboard"
+                          onClick={() => void act(it.id, () => onVerify(it.id), false)}>
+                    {busy === it.id ? 'Saving…' : 'Verify'}
+                  </button>
+                )}
+                {/* Quieter than Verify, and deliberately.  Checking is
+                    what a person came to do; correcting the record is
+                    the rarer errand, and the ranking should say so. */}
+                {onEdit && (
+                  // A `.btn`, like Verify — because it is the same KIND
+                  // of thing: an action on this row.  It was a `.link`
+                  // for one draft, which is the shape this panel uses
+                  // for leaving it (the dashboard hand-off two regions
+                  // down), so the underline promised navigation.
+                  // Prominence comes from ORDER instead: Verify is what
+                  // a person came to do, Edit is the rarer errand.
+                  <button className="btn" disabled={busy === it.id}
+                          style={{ flexShrink: 0, ...(onVerify ? {} : { marginLeft: 'auto' }) }}
+                          title="Correct this item's name, serial or category"
+                          onClick={() => {
+                            setEditId(it.id);
+                            // The strip is ~56px tall and the form ~200:
+                            // pressed near the fold of a 280px scroller,
+                            // everything the press revealed is below it.
+                            // Same reason the row's own open scrolls —
+                            // next frame, once the form has rendered.
+                            requestAnimationFrame(() => {
+                              rowEls.current.get(it.id)?.scrollIntoView({ block: 'nearest' });
+                            });
+                          }}>
+                    Edit
+                  </button>
+                )}
               </div>
               )}
               {onStatus && (
@@ -260,6 +328,90 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Correcting what an item says, in place.
+ *
+ * Three fields and no more: the name, the serial, and the category.
+ * Notes are a desk field — long, and nobody types a paragraph standing
+ * at a truck — and retiring or transferring are not corrections at all.
+ *
+ * Only CHANGED fields are sent.  An edit that stamped all three would
+ * fill the accountability trail with rows recording that nothing
+ * happened, which is how a reader learns to skim past the rows where
+ * something did.
+ */
+function EditForm({ item, categories, busy, onSave, onCancel }: {
+  item: InventoryItem;
+  categories: string[];
+  busy: boolean;
+  onSave: (patch: ItemPatch) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState(item.label ?? '');
+  const [identifier, setIdentifier] = useState(item.identifier ?? '');
+  const [category, setCategory] = useState(humanize(item.category ?? ''));
+
+  const patch: ItemPatch = {};
+  if (label.trim() && label.trim() !== (item.label ?? '')) patch.label = label.trim();
+  if (identifier.trim() !== (item.identifier ?? '')) patch.identifier = identifier.trim();
+  if (category.trim() && category.trim() !== humanize(item.category ?? '')) {
+    patch.category = category.trim();
+  }
+  const changed = Object.keys(patch).length > 0;
+  // A name is what the row IS; emptying it would leave a row nobody can
+  // identify, which is the opposite of what this feature is for.
+  const nameGone = !label.trim();
+  const listId = `cats-${item.id}`;
+
+  return (
+    <div style={{ display: 'grid', gap: 6, padding: '2px 0 4px 14px' }}>
+      <Field label="Name" required>
+        <input className="input" value={label} disabled={busy} autoFocus
+               onChange={(e) => setLabel(e.target.value)} />
+      </Field>
+      <Field label="Serial or card number">
+        {/* Monospace, like the row above it: a serial is read a
+            character at a time, and it is the field a correction is
+            usually here for. */}
+        <input className="input" value={identifier} disabled={busy}
+               style={{ fontFamily: 'ui-monospace, monospace' }}
+               onChange={(e) => setIdentifier(e.target.value)} />
+      </Field>
+      <Field label="Category" required>
+        <input className="input" value={category} disabled={busy} list={listId}
+               onChange={(e) => setCategory(e.target.value)} />
+        <datalist id={listId}>
+          {categories.map((c) => <option key={c} value={humanize(c)} />)}
+        </datalist>
+      </Field>
+      {/* The trail is the whole point of this feature, so the form says
+          so rather than hiding it in a tooltip.  Neutral fact, not a
+          warning: somebody fixing a typo is not doing anything wrong,
+          and somebody rewriting a serial should know it is recorded. */}
+      {/* Grouped WITH the buttons, not floating between them and the
+          last field: it describes what Save does, and at an equal gap
+          on both sides it belonged to neither. */}
+      <div style={{ display: 'grid', gap: 4 }}>
+      <p className="muted" style={{ margin: 0, fontSize: 11 }}>
+        Saved with your name, next to what it replaced.
+      </p>
+      <div className="row" style={{ gap: 6 }}>
+        {/* Disabled WITH A REASON.  A dead button that says nothing
+            sends a person hunting for the field they missed. */}
+        <button className="btn primary" disabled={busy || !changed || nameGone}
+                title={nameGone ? 'An item needs a name'
+                     : !changed ? 'Nothing has changed yet'
+                     : 'Save the correction'}
+                onClick={() => onSave(patch)}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+        <button className="btn" disabled={busy} onClick={onCancel}>Cancel</button>
+      </div>
+      </div>
     </div>
   );
 }

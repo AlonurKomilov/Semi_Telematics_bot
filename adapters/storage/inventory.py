@@ -27,6 +27,7 @@ themselves (load-board "equipment type"), a collision we avoid.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # structural typing only — composed into Database
@@ -124,7 +125,7 @@ class InventoryMixin(_MixinBase):
         rows = await self.read_all(
             "SELECT id, item_id, event_type, from_status, to_status, "
             "       from_vehicle_id, to_vehicle_id, actor_user_id, "
-            "       driver_user_id, note, created_at "
+            "       driver_user_id, note, changes, created_at "
             "FROM vehicle_inventory_events "
             "WHERE account_id = ? AND item_id = ? "
             "ORDER BY id DESC LIMIT ?",
@@ -213,19 +214,20 @@ class InventoryMixin(_MixinBase):
         from_status: str | None = None, to_status: str | None = None,
         from_vehicle_id: int | None = None, to_vehicle_id: int | None = None,
         actor_user_id: int | None = None, driver_user_id: int | None = None,
-        note: str = "",
+        note: str = "", changes: dict[str, dict] | None = None,
     ) -> None:
         await self._db.execute(
             """
             INSERT INTO vehicle_inventory_events
                 (account_id, item_id, event_type, from_status, to_status,
                  from_vehicle_id, to_vehicle_id, actor_user_id,
-                 driver_user_id, note, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 driver_user_id, note, changes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (account_id, item_id, event_type, from_status, to_status,
              from_vehicle_id, to_vehicle_id, actor_user_id,
-             driver_user_id, note[:500], self._now()),
+             driver_user_id, note[:500],
+             json.dumps(changes) if changes else "", self._now()),
         )
 
     async def add_inventory_item(
@@ -260,17 +262,26 @@ class InventoryMixin(_MixinBase):
         notes: str | None = None, category: str | None = None,
         actor_user_id: int | None = None, driver_user_id: int | None = None,
     ) -> bool:
-        sets: list[str] = []
-        params: list[Any] = []
+        wanted: dict[str, str] = {}
         for col, val, cap in (
             ("label", label, 120), ("identifier", identifier, 120),
             ("notes", notes, 1000), ("category", category, 40),
         ):
             if val is not None:
-                sets.append(f"{col} = ?")
-                params.append(val[:cap])
-        if not sets:
+                wanted[col] = val[:cap]
+        if not wanted:
             return False
+        # Read first, so the event can say what the words USED to be.
+        # Without this an edit was trailed as the bare fact "edited",
+        # which cannot answer "who changed this" for the only fields a
+        # rename can hide a loss behind — the label and the serial.
+        before = await self.get_inventory_item(account_id, item_id) or {}
+        changes = {
+            col: {"from": before.get(col), "to": val}
+            for col, val in wanted.items() if before.get(col) != val
+        }
+        sets = [f"{col} = ?" for col in wanted]
+        params: list[Any] = list(wanted.values())
         sets.append("updated_at = ?")
         params.append(self._now())
         params += [item_id, account_id]
@@ -279,9 +290,12 @@ class InventoryMixin(_MixinBase):
             "WHERE id = ? AND account_id = ? AND is_active = 1",
             tuple(params),
         )
-        if cur.rowcount:
+        # A save that changed no value is not an edit.  It used to leave
+        # an event anyway, which is how a trail fills with rows that say
+        # nothing and teach a reader to skim past the ones that do.
+        if cur.rowcount and changes:
             await self._append_event(
-                account_id, item_id, "edited",
+                account_id, item_id, "edited", changes=changes,
                 actor_user_id=actor_user_id, driver_user_id=driver_user_id,
             )
         await self._db.commit()

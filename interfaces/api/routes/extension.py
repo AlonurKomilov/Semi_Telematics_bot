@@ -559,6 +559,44 @@ async def extension_add_item(
     return {"ok": True, "item_id": item_id}
 
 
+class _EditBody(BaseModel):
+    item_id: int
+    category: str | None = Field(None, min_length=1, max_length=80)
+    label: str | None = Field(None, min_length=1, max_length=120)
+    identifier: str | None = Field(None, max_length=120)
+    notes: str | None = Field(None, max_length=1000)
+
+
+@router.post("/inventory-edit")
+async def extension_edit_item(
+    body: _EditBody,
+    user: dict = Depends(require_permission("can_manage_inventory")),
+):
+    """Correct what an item says, without walking back to a desk.
+
+    The person beside the truck is the one who can read the serial off
+    the device, so this is where a typo actually gets fixed.  It is only
+    safe to offer here because an edit now records the words it replaced
+    — a rename is otherwise the quietest way to make a loss disappear.
+
+    Still absent from EXTENSION_ROUTES, and still deliberately: REMOVE
+    and TRANSFER.  Correcting an item's description is not the same act
+    as ending its story, and only the first belongs to a key that lives
+    in a browser.
+    """
+    from interfaces.api.deps import resolve_user_id
+    item = await _writable_item(user, body.item_id)
+    if all(v is None for v in (body.category, body.label, body.identifier, body.notes)):
+        raise HTTPException(status_code=400, detail="nothing to change")
+    ok = await inventory_service.edit_item(
+        int(user["account_id"]), item,
+        label=body.label, identifier=body.identifier,
+        notes=body.notes, category=body.category,
+        actor_user_id=await resolve_user_id(user),
+    )
+    return {"ok": ok}
+
+
 @router.post("/inventory-verify")
 async def extension_verify_item(
     body: _ItemRef,
