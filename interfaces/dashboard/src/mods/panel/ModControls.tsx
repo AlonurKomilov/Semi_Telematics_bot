@@ -71,7 +71,7 @@ export function ModControls({ compact = false, onNavigate, section }: {
       {has('interface') && (
         <>
           <ModeGroup label={groupLabel} />
-          <ColorGroup label={groupLabel} />
+          <ColorGroup label={groupLabel} compact={compact} />
         </>
       )}
 

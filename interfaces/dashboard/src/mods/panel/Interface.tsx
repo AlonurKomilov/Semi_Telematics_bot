@@ -211,7 +211,7 @@ export function ModeGroup({ label }: { label: LabelClass }) {
   );
 }
 
-export function ColorGroup({ label }: { label: LabelClass }) {
+export function ColorGroup({ label, compact = false }: { label: LabelClass; compact?: boolean }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   /** Which place the background picker is aiming at. Deliberately NOT
@@ -224,7 +224,27 @@ export function ColorGroup({ label }: { label: LabelClass }) {
    *  decoration, and every pick then goes to the global canvas, which is
    *  what `target === ''` already means. */
   const { hasAny, ready } = useViewPermissions();
-  const offered = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
+  /**
+   * In the Mods PANEL, the only place worth naming beside "Everywhere"
+   * is the one the person is looking at.
+   *
+   * The panel is 224px and this row wrapped to two lines of places most
+   * of which are not on screen — a list to read rather than a choice to
+   * make. Here it is at most two chips: everywhere, or this page. The
+   * whole list stays on the Mods page, where there is room to compare.
+   *
+   * WHICH page comes from the stamp `AppShell` already writes on
+   * `<html>` for the injector, not from the router: this component
+   * renders inside the panel, the page and the profile card, and the
+   * stamp is the one answer all three share.
+   */
+  const here = typeof document === 'undefined'
+    ? undefined
+    : surfaceById(document.documentElement.dataset.surface ?? '');
+  const offered = useMemo(() => {
+    const all = selectableSurfaces(hasAny, ready);
+    return compact ? all.filter((s) => s.id === here?.id) : all;
+  }, [hasAny, ready, compact, here?.id]);
   /** A place whose permission was lost — a role change, a preview of a
    *  narrower view — must not stay aimed at. The pick would land on a
    *  screen this person cannot open and could not be found again. */
@@ -384,6 +404,7 @@ export function ColorGroup({ label }: { label: LabelClass }) {
           <GroundChip
             key={`${g.id}:${theme.mode}`}
             ground={g}
+            compact={compact}
             hex={theme.grounds?.[g.id]}
             mode={theme.mode}
             fallback={groundFallback[g.id]}

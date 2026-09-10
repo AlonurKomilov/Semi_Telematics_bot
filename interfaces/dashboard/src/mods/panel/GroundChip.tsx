@@ -25,10 +25,14 @@ const TONE_NAMES: Record<string, string> = {
   info: 'the info colour',
 };
 
-export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
+export function GroundChip({ ground, hex, mode, fallback, compact = false, onPick, onClear }: {
   ground: Ground;
   hex?: string;
   mode: Mode;
+  /** The Mods panel. What a plane IS belongs on the page; here the line
+   *  is kept for the two things that are about THIS moment — a refusal,
+   *  and a colour this mode cannot wear. */
+  compact?: boolean;
   /** What paints while this ground has no seed — the value the page's
    *  own palette derived. The picker opens on it, so the first drag
    *  starts from what is on screen rather than from black. */
@@ -79,7 +83,7 @@ export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
     : hex && !worn
       ? t('theme.ground_unworn', 'Not worn in {{mode}} mode — the built-in one is painting.')
           .replace('{{mode}}', mode)
-      : t(`theme.ground_${ground.id}_hint`, ground.description);
+      : compact ? null : t(`theme.ground_${ground.id}_hint`, ground.description);
 
   return (
     <>
