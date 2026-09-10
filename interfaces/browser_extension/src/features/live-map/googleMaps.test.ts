@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { directionsUrl, followInGoogleMaps, getFollowPref, isGoogleMapsUrl, openInGoogleMaps, searchUrl, setFollowPref } from './googleMaps';
+import { directionsUrl, followInGoogleMaps, isGoogleMapsUrl, openInGoogleMaps, searchUrl } from './googleMaps';
 import { setActiveTab, tabCalls } from '../../test/setup';
 
 describe('following — Google\'s pin moves with the selection, only while Google Maps is in front', () => {
@@ -14,14 +14,6 @@ describe('following — Google\'s pin moves with the selection, only while Googl
     expect(await followInGoogleMaps(searchUrl(41, -87))).toBe(false);
     expect(tabCalls.update).toHaveLength(0);
     expect(tabCalls.create).toHaveLength(0);
-  });
-  it('is on until switched off, and the choice sticks', async () => {
-    // OFF by default: following REPLACES what is open in the person's
-    // Google Maps tab, and a setting that can throw away a route they
-    // were planning is not one to switch on for them.
-    expect(await getFollowPref()).toBe(false);
-    await setFollowPref(true);
-    expect(await getFollowPref()).toBe(true);
   });
 });
 

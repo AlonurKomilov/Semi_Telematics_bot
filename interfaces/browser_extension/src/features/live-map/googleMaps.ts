@@ -5,7 +5,6 @@
  * we open one.  This is deliberately not "draw on Google's map" — the
  * pin is Google's, one truck at a time, and it does not move.
  */
-import { getFlag, setFlag } from '../../prefs';
 
 export function searchUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
@@ -41,24 +40,7 @@ export async function followInGoogleMaps(url: string): Promise<boolean> {
   return false;
 }
 
-const FOLLOW_KEY = 'followGoogleMaps';
-/** The one-time notice shown the first time following is switched on. */
-export const FOLLOW_WARNED_KEY = 'followGoogleMapsWarned';
-/** On until the person switches it off; the choice survives the panel closing. */
-/** OFF by default, and deliberately so.  Following REPLACES what is in
- *  the person's open Google Maps tab — a route they were planning is
- *  gone, with no undo.  A setting that can destroy somebody's work is
- *  not one to switch on for them; they turn it on knowing what it does,
- *  which is what the first-time notice is for. */
-export async function getFollowPref(): Promise<boolean> {
-  return getFlag(FOLLOW_KEY, false);
-}
-export async function wasFollowWarned(): Promise<boolean> {
-  return getFlag(FOLLOW_WARNED_KEY, false);
-}
-export async function markFollowWarned(): Promise<void> {
-  await setFlag(FOLLOW_WARNED_KEY, true);
-}
-export async function setFollowPref(on: boolean): Promise<void> {
-  await setFlag(FOLLOW_KEY, on);
-}
+/* The follow PREFERENCE used to live here.  It moved to ../../prefs:
+ * it is about what the panel does with a tab, not about Google's map,
+ * and keeping it here made the shell and Inventory both import from
+ * this feature to read it. */

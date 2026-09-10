@@ -96,6 +96,36 @@ package otherwise, saying only "Invalid match pattern". `content_scripts` and
 `host_permissions` take a path and stay on `/maps/*`. `src/manifest.test.ts`
 holds all three to their rules.
 
+## One preference, one door
+
+A preference of the PANEL is changed in Settings and nowhere else
+inside the panel. A feature READS it and behaves accordingly; it does
+not offer a second switch onto the same stored value.
+
+"Follow in Google Maps" was rendered in three places for one value —
+Settings, the Live Map and Inventory — each panel carrying its own copy
+of the first-time notice, so the sentence explaining that following
+replaces your open Google Maps tab fired in whichever screen you
+happened to toggle from rather than beside the setting that does it.
+A preference offered in every feature that uses it stops reading as a
+property of the panel and starts reading as a property of the screen
+you are on, and the person has to wonder whether the switch in front of
+them is the same switch.
+
+It was also OWNED wrong: the pref lived in `features/live-map/`, so the
+shell's Settings imported from a feature to read it and Inventory
+imported from live-map for a setting about neither. Panel preferences
+live in `src/prefs.ts` — which already said so in its own first line.
+`features/live-map/googleMaps.ts` keeps the URL and tab helpers, which
+are genuinely about Google's map.
+
+**The one exception, and the test that justifies it:** a surface from
+which Settings cannot be reached at all. The overlay switch drawn on
+google.com/maps qualifies — somebody looking at the map is not looking
+at the panel. Nothing INSIDE the panel does, because Settings is two
+clicks away from every screen in it. `src/prefs.test.ts` holds the
+rule across all three files.
+
 ## One vehicle, one row
 
 `/map/vehicles` can carry the same provider id twice when two registry rows

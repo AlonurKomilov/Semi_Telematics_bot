@@ -24,8 +24,10 @@ import { addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventor
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
 import { positionOf } from '../live-map/locate';
-import { followInGoogleMaps, getFollowPref, markFollowWarned, searchUrl, setFollowPref,
-         wasFollowWarned } from '../live-map/googleMaps';
+import { followInGoogleMaps, searchUrl } from '../live-map/googleMaps';
+// READ, never written here: "Follow in Google Maps" is a preference of
+// the PANEL, and Settings is the only place it is changed.
+import { getFollowPref } from '../../prefs';
 
 /** One truck's line in the fleet answer — counts and a name, never
  *  contents.  An item's own label arrives when a truck is chosen. */
@@ -53,7 +55,6 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
    *  business seeing where the trucks are. */
   const canLocate = features.includes('live-map');
   const [follow, setFollow] = useState(false);
-  const [followNotice, setFollowNotice] = useState('');
   const [fleet, setFleet] = useState<FleetRow[] | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -83,24 +84,12 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
   /** The item just recorded, so the list can show it landing. */
   const [justAdded, setJustAdded] = useState<number | null>(null);
 
-  // The SAME switch the Live Map keeps — one preference, so a person who
-  // turned this on there is not asked again here.
+  // Read on open, not subscribed: Settings lives in this same panel, so
+  // a change there re-mounts this on the way back.
   useEffect(() => {
     if (!canLocate) return;
     void getFollowPref().then(setFollow);
   }, [canLocate]);
-
-  const toggleFollow = () => {
-    const on = !follow;
-    setFollow(on);
-    void setFollowPref(on);
-    if (!on) { setFollowNotice(''); return; }
-    void wasFollowWarned().then((warned) => {
-      if (warned) return;
-      setFollowNotice('Selecting a vehicle will replace whatever is open in your Google Maps tab.');
-      void markFollowWarned();
-    });
-  };
 
   // ── the fleet answer ────────────────────────────────────────────
   useEffect(() => {
@@ -494,17 +483,10 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
 
           </p>
         )}
-        {/* Offered only to somebody who may see positions.  Showing it
-            and then refusing at the press is worse than not showing it,
-            and this is the one grant Inventory was split away from. */}
-        {canLocate && (
-          <label className="row" style={{ gap: 8, cursor: 'pointer', minHeight: 24, padding: '2px 0' }}
-                 title="Picking a vehicle here moves your Google Maps tab to it">
-            <input type="checkbox" role="switch" checked={follow} onChange={toggleFollow} />
-            <span className="small">Follow in Google Maps</span>
-          </label>
-        )}
-        {followNotice && <p className="muted small" style={{ margin: 0 }}>{followNotice}</p>}
+        {/* The follow SWITCH is not here.  It is a preference of the
+            panel, not of Inventory, and it used to be rendered in three
+            places for one stored value.  Settings owns it; this feature
+            reads it and behaves accordingly. */}
         {error && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{error}</p>}
       </div>
 

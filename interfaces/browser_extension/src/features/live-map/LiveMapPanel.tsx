@@ -22,7 +22,10 @@ import { PANEL_LIVE, PENDING_SELECT_KEY, readPendingSelect, sharedOrOwn,
 import { ageMs, describeAge, formatAge, stalenessOf } from './freshness';
 import { getFlag, setFlag } from '../../prefs';
 import { DASHBOARD_BASE } from '../../connect';
-import { directionsUrl, followInGoogleMaps, getFollowPref, markFollowWarned, openInGoogleMaps, searchUrl, setFollowPref, wasFollowWarned } from './googleMaps';
+import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from './googleMaps';
+// READ, never written here: "Follow in Google Maps" is a preference of
+// the PANEL, and Settings is the only place it is changed.
+import { getFollowPref } from '../../prefs';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
 const REFRESH_MS = 30_000;
@@ -93,14 +96,11 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // disagree by the milliseconds between their own Date.now() calls.
   // The 30-second reload re-renders, which is how the ages advance.
   const now = Date.now();
-  // "Follow in Google Maps": a ref as well as state, because marker click
-  // handlers are attached once and must read the CURRENT choice.
-  const [follow, setFollow] = useState(false);
+  // "Follow in Google Maps": a ref rather than state, because marker
+  // click handlers are attached once and must read the CURRENT choice.
+  // Only a ref now — nothing here RENDERS the preference, so it never
+  // needed to drive a re-render.
   const followRef = useRef(false);
-  /** Shown once, the first time following is switched on: it replaces
-   *  what is open in the person's Google Maps tab, and that is worth
-   *  one sentence before it happens rather than an apology after. */
-  const [followNotice, setFollowNotice] = useState('');
   // The map is the point of the panel; the list is the index to it.
   // Collapsing gives the map the whole strip, and the choice sticks.
   const [listOpen, setListOpen] = useState(true);
@@ -183,18 +183,6 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   };
   const selectRef = useRef(select);
   selectRef.current = select;
-
-  const toggleFollow = () => {
-    const on = !follow;
-    setFollow(on); followRef.current = on;
-    void setFollowPref(on);
-    if (!on) { setFollowNotice(''); return; }
-    void wasFollowWarned().then((warned) => {
-      if (warned) return;
-      setFollowNotice('Selecting a vehicle will replace whatever is open in your Google Maps tab.');
-      void markFollowWarned();
-    });
-  };
 
   // ── physics loop: ONE rAF for the whole fleet ──
 
@@ -391,7 +379,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     // person took over", with no flag to keep in sync.
     m.on('dragstart', () => { if (keepRef.current) setKeep(false); });
     map.current = m;
-    void getFollowPref().then((on) => { setFollow(on); followRef.current = on; });
+    void getFollowPref().then((on) => { followRef.current = on; });
     void getFlag(LIST_OPEN_KEY, true).then(setListOpen);
     void getFlag(CARD_OPEN_KEY, true).then(setCardOpen);
     void getFlag(INV_OPEN_KEY, false).then(setInvOpen);
@@ -788,11 +776,15 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
         })()}
       <div style={{ padding: '0 10px', display: 'grid', gap: 6 }}>
         <input className="input" placeholder="Search vehicles…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        {/* Two different kinds of control, so two different shapes.  One
-            row of identical pills made a status FILTER and a behaviour
-            SWITCH look like siblings: picking "Moving" narrows a list,
-            pressing "Follow" changes what a Google Maps tab does, and
-            the eye could not tell which was which. */}
+        {/* Only ONE kind of control lives here now: a status FILTER,
+            which genuinely belongs to this list.  It used to sit beside
+            the Follow switch, and a row of identical pills made a
+            filter and a behaviour switch look like siblings — picking
+            "Moving" narrows a list, pressing "Follow" changed what a
+            Google Maps tab does, and the eye could not tell which was
+            which.  Follow is a preference of the PANEL and moved to
+            Settings, so the confusion is gone by construction rather
+            than by contrast. */}
         <div className="row" role="radiogroup" aria-label="Filter by status" style={{ flexWrap: 'wrap', gap: 6 }}>
           {(['all', 'moving', 'idle', 'stopped'] as Filter[]).map((s) => (
             <button key={s} className={`chip ${filter === s ? 'on' : ''}`} role="radio" aria-checked={filter === s}
@@ -801,12 +793,6 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
             </button>
           ))}
         </div>
-        <label className="row" style={{ gap: 8, cursor: 'pointer', minHeight: 24, padding: '2px 0' }}
-               title="With Google Maps in front, selecting a vehicle replaces what is open in that tab">
-          <input type="checkbox" role="switch" checked={follow} onChange={toggleFollow} />
-          <span className="small">Follow in Google Maps</span>
-        </label>
-        {followNotice && <p className="muted small" style={{ margin: 0 }}>{followNotice}</p>}
         {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
         {tileNotice && <p className="muted" style={{ margin: 0 }}>{tileNotice}</p>}
       </div>

@@ -64,19 +64,30 @@ describe('the Inventory panel holds its shape', () => {
 });
 
 describe('the panel does not assume a grant it was split away from', () => {
-  it('offers to move Google\u2019s map only to somebody who may see positions', () => {
+  it('moves Google\u2019s map only for somebody who may see positions', () => {
     // A position is a LOCATION read whoever asks for it.  Inventory was
     // split out of Vehicles precisely so it could be granted to a person
-    // with no business seeing where the trucks are — so the control is
-    // not drawn, and `positionOf` is not called, unless /extension/me
-    // said this person may open Live Map.
+    // with no business seeing where the trucks are — so `positionOf` is
+    // not called unless /extension/me said this person may open Live Map.
     expect(src).toContain("features.includes('live-map')");
-    // The gate guards BOTH the control and the call.
-    const call = src.slice(src.indexOf('positionOf('));
-    expect(src.slice(0, src.indexOf('positionOf('))).toContain('canLocate');
-    expect(call.length).toBeGreaterThan(0);
     expect(src).toMatch(/if \(canLocate && follow\)/);
-    expect(src).toMatch(/\{canLocate && \(/);
+    // The gate stands BEFORE the call, not beside it.
+    const before = src.slice(0, src.indexOf('positionOf('));
+    expect(src.indexOf('positionOf(')).toBeGreaterThan(-1);
+    expect(before).toContain('canLocate');
+    // …and the READ of the preference is gated too: an ungranted panel
+    // does not even ask what the setting is.
+    expect(src).toMatch(/if \(!canLocate\) return;/);
+  });
+
+  it('reads the follow preference but never offers a second switch', () => {
+    // It is a preference of the PANEL — Settings owns it.  This used to
+    // render its own copy, which made three switches for one stored
+    // value.  The rule is enforced across all three files in
+    // src/prefs.test.ts; this line keeps THIS panel honest where its
+    // other layout rules live.
+    expect(src).toContain("getFollowPref");
+    expect(src).not.toContain('setFollowPref');
   });
 
   it('keeps the position read in the location feature, not in this one', () => {

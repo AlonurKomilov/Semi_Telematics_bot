@@ -1,12 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { getFollowPref, setFollowPref } from '../features/live-map/googleMaps';
+import { FOLLOW_WARNING, getFollowPref, markFollowWarned, setFollowPref,
+         wasFollowWarned } from '../prefs';
 import { getOverlayPref, setOverlayPref } from '../features/maps-overlay/pref';
 
 /**
- * The panel's settings — every preference the panel keeps, in one
- * place.  A feature may also show its own quick toggle where the
- * choice is made (the Live Map's "Follow in Google Maps" chip); both
- * read and write the same stored preference.
+ * The panel's settings — every preference the panel keeps, and the ONLY
+ * place they are changed.
+ *
+ * They were not always.  "Follow in Google Maps" was rendered here AND
+ * in the Live Map AND in Inventory — three switches for one stored
+ * value, each with its own copy of the first-time notice.  A preference
+ * offered in every feature that happens to use it stops reading as a
+ * property of the panel and starts reading as a property of the screen
+ * you are on, and the person has to wonder whether the one in front of
+ * them is the same switch.
+ *
+ * The rule now: a panel preference is changed HERE.  A feature READS it
+ * and behaves accordingly; it does not offer a second door to it.
+ *
+ * The one exception, and the test that justifies it: a surface from
+ * which this screen cannot be reached at all.  The overlay switch on
+ * google.com/maps qualifies — somebody looking at the map is not
+ * looking at the panel — so it stays. Nothing inside the panel does.
  */
 /**
  * A switch whose value has not arrived yet is UNKNOWN, not off.
@@ -42,7 +57,21 @@ function Toggle({ value, onChange, label, hint }: {
 export default function Settings({ onBack }: { onBack: () => void }) {
   const [follow, setFollow] = useState<boolean | null>(null);
   const [overlay, setOverlay] = useState<boolean | null>(null);
+  const [followNotice, setFollowNotice] = useState('');
   useEffect(() => { void getFollowPref().then(setFollow); }, []);
+
+  const onFollowChange = (on: boolean) => {
+    setFollow(on);
+    void setFollowPref(on);
+    if (!on) { setFollowNotice(''); return; }
+    // Said once, ever — it explains a consequence, and a consequence
+    // repeated every time becomes something people stop reading.
+    void wasFollowWarned().then((warned) => {
+      if (warned) return;
+      setFollowNotice(FOLLOW_WARNING);
+      void markFollowWarned();
+    });
+  };
   useEffect(() => { void getOverlayPref().then(setOverlay); }, []);
 
   const manifest = chrome.runtime.getManifest();
@@ -58,7 +87,12 @@ export default function Settings({ onBack }: { onBack: () => void }) {
         <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>In this panel</span>
         <Toggle value={follow} label="Follow in Google Maps"
                 hint="With Google Maps in front, selecting a vehicle replaces what is open in that tab."
-                onChange={(on) => { setFollow(on); void setFollowPref(on); }} />
+                onChange={onFollowChange} />
+        {/* The first-time notice, now shown where the switch actually
+            is.  It used to fire inside whichever panel you happened to
+            toggle from, so the warning about replacing your tab lived
+            two screens away from the setting that does it. */}
+        {followNotice && <p className="muted" style={{ margin: 0, fontSize: 12 }}>{followNotice}</p>}
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
