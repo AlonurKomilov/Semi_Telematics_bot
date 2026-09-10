@@ -74,7 +74,7 @@ when we cannot — which is the whole reason it is somebody else's server.
    a "Status page" button that opens a vendor's marketing homepage is
    worse than no button, and the offline page's third check would be
    sending a stranded customer to a page we never made.
-   `src/test/offlineShell.test.ts` asserts that pairing: empty means
+   `interfaces/dashboard/src/test/offlineShell.test.ts` asserts that pairing: empty means
    hidden, set means an `https://` address.
 
 ## Uploading the Cloudflare error page (owner, ~2 minutes)
