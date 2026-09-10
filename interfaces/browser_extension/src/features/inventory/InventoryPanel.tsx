@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import Field from './Field';
+import Splitter, { MIN_PCT } from '../../shell/Splitter';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
 import { addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItemStatus, verifyItem,
@@ -80,11 +81,49 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
   const [adding, setAdding] = useState(false);
   /** Raised by ItemRows while one of its rows is being corrected. */
   const [editing, setEditing] = useState(false);
+  /** How much of the column the vehicle card takes, in percent.  It was
+   *  a hardcoded 70; seventy is now only where the drag starts. */
+  const [cardPct, setCardPct] = useState(70);
+  const columnRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  /** Whether dragging would DO anything.
+   *
+   *  The card is capped with `maxHeight`, not sized with `height`, so a
+   *  card whose content is short renders at its content height and a
+   *  drag moves nothing — the handle would sit there looking draggable
+   *  and lying.  With one item aboard, that is the ordinary case.
+   *
+   *  Measured against the SMALLEST share the splitter can give, not the
+   *  current one: content height does not change as the cap moves, so
+   *  this answer holds still for the whole drag instead of vanishing
+   *  under the pointer halfway through. */
+  const [cardCanResize, setCardCanResize] = useState(false);
   const [draft, setDraft] = useState({ category: '', label: '', identifier: '' });
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState('');
   /** The item just recorded, so the list can show it landing. */
   const [justAdded, setJustAdded] = useState<number | null>(null);
+
+// Does the card have more content than the SMALLEST share the
+// splitter could give it?  If not, dragging changes nothing and the
+// handle is not offered — a control that cannot act is worse than a
+// control that is absent.  ResizeObserver rather than a render-time
+// read: the card grows when an item opens or the Add form appears,
+// and neither is a re-render this component would otherwise see.
+useEffect(() => {
+  const card = cardRef.current;
+  const col = columnRef.current;
+  if (!selected || !card || !col) { setCardCanResize(false); return; }
+  const check = () => {
+    const floor = (col.clientHeight * MIN_PCT) / 100;
+    setCardCanResize(card.scrollHeight > floor + 1);
+  };
+  check();
+  const ro = new ResizeObserver(check);
+  ro.observe(card);
+  ro.observe(col);
+  return () => ro.disconnect();
+}, [selected, items]);
 
   // Read on open, not subscribed: Settings lives in this same panel, so
   // a change there re-mounts this on the way back.
@@ -262,7 +301,8 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
         // the ceiling work) removed this card's automatic minimum and it
         // was squeezed to a scrolling sliver showing one line.  It must
         // not shrink at all; the list below is the one that gives.
-        <div className="sheet" style={{ flexShrink: 0, maxHeight: '70%', overflowY: 'auto' }}>
+        <div ref={cardRef} className="sheet"
+             style={{ flexShrink: 0, maxHeight: `${cardPct}%`, overflowY: 'auto' }}>
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6 }}>
             <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
               {selected.name}
@@ -442,6 +482,15 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
               nobody opens this panel to perform, taking a line in a
               320px column every time anyone looked at a vehicle. */}
         </div>
+      )}
+
+      {/* Between the card and everything under it, and only while a
+          vehicle is chosen: with no card there is one region, and a line
+          dividing one region divides nothing. */}
+      {selected && cardCanResize && (
+        <Splitter storageKey="inventoryCardPct" fallback={70}
+                  columnRef={columnRef} onChange={setCardPct}
+                  label="Resize the vehicle card" />
       )}
 
       {/* The divider sits ABOVE the search, not below it.  The search

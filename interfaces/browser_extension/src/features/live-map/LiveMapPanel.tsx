@@ -26,6 +26,7 @@ import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from '
 // READ, never written here: "Follow in Google Maps" is a preference of
 // the PANEL, and Settings is the only place it is changed.
 import { getFollowPref } from '../../prefs';
+import Splitter from '../../shell/Splitter';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
 const REFRESH_MS = 30_000;
@@ -101,6 +102,11 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // Only a ref now — nothing here RENDERS the preference, so it never
   // needed to drive a re-render.
   const followRef = useRef(false);
+  /** How much of the column the vehicle LIST takes, in percent.  It was
+   *  a hardcoded 240px basis, and the fold could only make it that or
+   *  nothing — everything between is what people actually want. */
+  const [listPct, setListPct] = useState(40);
+  const columnRef = useRef<HTMLDivElement>(null);
   // The map is the point of the panel; the list is the index to it.
   // Collapsing gives the map the whole strip, and the choice sticks.
   const [listOpen, setListOpen] = useState(true);
@@ -500,7 +506,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     // gap at all while the search block had 6px inside it, so the space
     // within a group exceeded the space between groups and the whole
     // panel read as one flat run.  8 between, 6 within, 1 between rows.
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+    <div ref={columnRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
       {/* The map and the list SHARE what the fixed rows leave, and the
           map takes the larger share.  With a flex-basis of auto the map
           was the only thing that could give, so selecting a vehicle
@@ -800,8 +806,15 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           column's gap never lands between a group's name and its
           members.  The list gives no space when the card appears: it is
           the only thing here that already scrolls. */}
+      {/* Between the map and the list.  Only while the list is OPEN:
+          folded, it is a header bar and there is nothing to divide. */}
+      {listOpen && (
+        <Splitter storageKey="liveMapListPct" fallback={40}
+                  columnRef={columnRef} onChange={setListPct}
+                  label="Resize the vehicle list" />
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
-                    flex: listOpen ? '0 1 240px' : '0 0 auto',
+                    flex: listOpen ? `0 1 ${listPct}%` : '0 0 auto',
                     borderTop: '1px solid var(--border)' }}>
         <button type="button" onClick={toggleList} aria-expanded={listOpen}
                 className="row rowbtn"

@@ -26,6 +26,35 @@ export async function setFlag(key: string, value: boolean): Promise<void> {
 }
 
 
+/** A remembered NUMBER — a split position, in percent of the column.
+ *
+ *  Kept beside the flags because it is the same kind of thing: a choice
+ *  a person made once and expects to find again.  Out-of-range and
+ *  unparseable values fall back rather than throw: storage survives a
+ *  version where the meaning of a key changed, and a panel that refuses
+ *  to render because a stored number is odd is worse than one that
+ *  starts at its default.
+ */
+export async function getNumber(key: string, fallback: number,
+                                lo: number, hi: number): Promise<number> {
+  try {
+    const got = await chrome.storage.local.get(key);
+    const n = Number(got[key]);
+    return Number.isFinite(n) && n >= lo && n <= hi ? n : fallback;
+  } catch {
+    return fallback;  /* storage refused; the default is a working answer */
+  }
+}
+
+export async function setNumber(key: string, value: number): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [key]: value });
+  } catch {
+    /* the split is lost on the next open, the session is not */
+  }
+}
+
+
 /* ── Follow in Google Maps ──────────────────────────────────────────
  *
  * A PANEL preference, not a feature's.  It lived in
