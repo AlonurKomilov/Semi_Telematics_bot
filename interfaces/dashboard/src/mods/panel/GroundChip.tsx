@@ -10,13 +10,14 @@
  * so a colour that stops being wearable in the other mode simply is not
  * worn.
  */
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from '../../lib/icons';
 import { cn } from '../../lib/utils';
 import { undoableAction } from '../../components/banners/stagedAction';
 import { groundTokens, type Ground } from '../theme/grounds';
 import type { Mode } from '../context';
+import { useColorProbe } from './useColorProbe';
 
 const TONE_NAMES: Record<string, string> = {
   ok: 'the success colour',
@@ -47,7 +48,6 @@ export function GroundChip({ ground, hex, mode, fallback, compact = false, onPic
   // no focus ring at all on the control that works. The button opens the
   // picker now and keeps its pressed state; the input is reachable only
   // through it.
-  const inputRef = useRef<HTMLInputElement>(null);
   const noteId = useId();
   const [refused, setRefused] = useState<{ tone: string; ratio: number } | null>(null);
 
@@ -72,10 +72,22 @@ export function GroundChip({ ground, hex, mode, fallback, compact = false, onPic
   // "that would not be readable" beside a plane that visibly changed
   // reads as the app contradicting itself, so the note names BOTH: what
   // was refused, and what is on screen instead.
-  const tone = refused
-    ? (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The ')
+  /** What the chip is showing: the frame under the pointer while a drag
+   *  is happening, otherwise what is stored, otherwise the derived
+   *  colour this plane already paints. */
+  const shown = hex ?? fallback;
+  const { ref: probeRef, probe } = useColorProbe(shown, pick);
+
+  // The gate, run on the frame under the pointer — so "this one would
+  // break the warning colour" is learned while dragging rather than
+  // after letting go. It writes nothing; `pick` still commits once.
+  const probeBreak = probe ? (() => { const f = groundTokens(ground.id, probe, mode); return f.tokens ? null : f; })() : null;
+
+  const live = probeBreak ? { tone: probeBreak.breaks ?? '', ratio: probeBreak.ratio ?? 0 } : refused;
+  const tone = live
+    ? (TONE_NAMES[live.tone] ?? live.tone).replace(/^the /, 'The ')
     : '';
-  const note = refused
+  const note = live
     ? (hex && worn
       ? t('theme.ground_refused_kept', '{{tone}} would not be readable on the colour you stopped at — the last one that worked is still on.')
           .replace('{{tone}}', tone)
@@ -90,7 +102,7 @@ export function GroundChip({ ground, hex, mode, fallback, compact = false, onPic
       <span className="relative inline-flex">
         <button
           type="button"
-          onClick={() => inputRef.current?.click()}
+          onClick={() => probeRef.current?.click()}
           aria-pressed={Boolean(hex) && worn}
           className={cn(
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
@@ -103,18 +115,17 @@ export function GroundChip({ ground, hex, mode, fallback, compact = false, onPic
           <span
             aria-hidden
             className="w-2.5 h-2.5 rounded-full shrink-0 border border-border"
-            style={{ background: (worn && hex) || fallback }}
+            style={{ background: probe ?? ((worn && hex) || fallback) }}
           />
           {t(`theme.ground_${ground.id}`, ground.label)}
         </button>
         <input
-          ref={inputRef}
+          ref={probeRef}
           tabIndex={-1}
           aria-hidden
           aria-describedby={note ? noteId : undefined}
           type="color"
-          value={hex ?? fallback}
-          onChange={(e) => pick(e.target.value)}
+          defaultValue={shown}
           aria-label={t(`theme.ground_${ground.id}`, ground.label)}
           className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
         />

@@ -13,13 +13,14 @@
  * canvas. So a canvas chosen against its mode leaves them unreadable,
  * measured as low as 1.56:1. The refusal names which one.
  */
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from '../../lib/icons';
 import { cn } from '../../lib/utils';
 import { undoableAction } from '../../components/banners/stagedAction';
 import { fitCanvas, CANVAS_SEED } from '../theme/canvas';
 import type { Mode } from '../context';
+import { useColorProbe } from './useColorProbe';
 
 /** What a tone is called to somebody who is not reading our CSS. */
 const TONE_NAMES: Record<string, string> = {
@@ -42,7 +43,6 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
   // no focus ring at all on the control that works. The button opens the
   // picker now and keeps its pressed state; the input is reachable only
   // through it.
-  const inputRef = useRef<HTMLInputElement>(null);
   const noteId = useId();
   const [refused, setRefused] = useState<{ tone: string; ratio: number } | null>(null);
 
@@ -67,12 +67,24 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
   // a colour the gate refuses having passed through several it took,
   // and one of those is still painting. The note names both rather than
   // describing a background nobody is looking at.
-  const note = refused
+  /** What the chip is showing: the frame under the pointer while a drag
+   *  is happening, otherwise what is stored, otherwise the derived
+   *  colour this plane already paints. */
+  const shown = canvas ?? CANVAS_SEED[mode];
+  const { ref: probeRef, probe } = useColorProbe(shown, pick);
+
+  // The gate, run on the frame under the pointer — so "this one would
+  // break the warning colour" is learned while dragging rather than
+  // after letting go. It writes nothing; `pick` still commits once.
+  const probeBreak = probe ? (() => { const f = fitCanvas(probe, mode); return f.rgb ? null : f; })() : null;
+
+  const live = probeBreak ? { tone: probeBreak.breaks ?? '', ratio: probeBreak.ratio ?? 0 } : refused;
+  const note = live
     ? (canvas && worn
       ? t('theme.canvas_refused_kept', '{{tone}} would not be readable on the colour you stopped at — the last background that worked is still on.')
-          .replace('{{tone}}', (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The '))
+          .replace('{{tone}}', (TONE_NAMES[live.tone] ?? live.tone).replace(/^the /, 'The '))
       : t('theme.canvas_refused', '{{tone}} would not be readable on that background.')
-          .replace('{{tone}}', (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The ')))
+          .replace('{{tone}}', (TONE_NAMES[live.tone] ?? live.tone).replace(/^the /, 'The ')))
     : canvas && !worn
       ? t('theme.canvas_unworn', 'This background cannot be worn in {{mode}} mode — the built-in one is painting.')
           .replace('{{mode}}', mode)
@@ -86,7 +98,7 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
         <button
           type="button"
           aria-pressed={worn}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => probeRef.current?.click()}
           className={cn(
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
@@ -98,18 +110,17 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
           <span
             aria-hidden
             className="w-2.5 h-2.5 rounded-full shrink-0 border border-border"
-            style={{ background: canvas ?? 'var(--background)' }}
+            style={{ background: probe ?? canvas ?? 'var(--background)' }}
           />
           {t('theme.canvas_label', 'Background')}
         </button>
         <input
-          ref={inputRef}
+          ref={probeRef}
           tabIndex={-1}
           aria-hidden
           aria-describedby={note ? noteId : undefined}
           type="color"
-          value={canvas ?? CANVAS_SEED[mode]}
-          onChange={(e) => pick(e.target.value)}
+          defaultValue={shown}
           aria-label={t('theme.canvas_label', 'Background')}
           className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
         />

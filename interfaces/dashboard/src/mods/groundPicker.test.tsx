@@ -74,6 +74,8 @@ const input = (label: string) =>
 const GREYS = Array.from({ length: 256 }, (_, i) => `#${i.toString(16).padStart(2, '0').repeat(3)}`);
 const WORN = GREYS.find((h) => groundTokens('card', h, 'dark').tokens !== null)!;
 const REFUSED = GREYS.find((h) => groundTokens('card', h, 'dark').tokens === null)!;
+/** A second wearable colour, so a drag can end somewhere it did not start. */
+const WORN2 = GREYS.filter((h) => groundTokens('card', h, 'dark').tokens !== null).pop()!;
 
 const EVERY_PERMISSION = new Set(SURFACES.flatMap((s) => permissionFor(s) ?? []));
 
@@ -204,5 +206,51 @@ describe('what the panel narrows', () => {
     mount({}, true);
     fireEvent.change(input('Cards'), { target: { value: REFUSED } });
     expect(screen.getByText(/would not be readable/i)).toBeTruthy();
+  });
+});
+
+/**
+ * A drag is one decision, so it is one write.
+ *
+ * `onChange` on a colour input is the `input` event: dragging across
+ * the picker used to write per frame — the theme stored, the account
+ * blob published, the whole palette re-derived, dozens of times a
+ * second — and worse, frames the gate refused were dropped while frames
+ * it accepted were kept, so releasing on a refused colour left a
+ * different one painted.
+ */
+describe('a drag writes once', () => {
+  const fireDrag = (el: HTMLInputElement, frames: string[], final: string) => {
+    for (const f of frames) {
+      el.value = f;
+      fireEvent.input(el);
+    }
+    el.value = final;
+    fireEvent.change(el);
+  };
+
+  it('at the colour the person stopped on, whatever it passed through', () => {
+    mount({ grounds: { card: WORN } });
+    const el = input('Cards');
+    fireDrag(el, [REFUSED, WORN, REFUSED], WORN2);
+    expect(setTheme.mock.calls.length, 'a write per frame').toBe(1);
+    expect(setTheme).toHaveBeenCalledWith({ grounds: { card: WORN2 } });
+  });
+
+  it('and writes nothing at all when the colour it stopped on is refused', () => {
+    mount({ grounds: { card: WORN } });
+    fireDrag(input('Cards'), [WORN2], REFUSED);
+    expect(setTheme, 'the refused colour was written').not.toHaveBeenCalled();
+    expect(screen.getByText(/would not be readable/i)).toBeTruthy();
+  });
+
+  it('while the note follows the pointer, so a refusal is learned mid-drag', () => {
+    mount();
+    const el = input('Cards');
+    el.value = REFUSED;
+    fireEvent.input(el);                       // still dragging: nothing written
+    expect(setTheme).not.toHaveBeenCalled();
+    expect(screen.getByText(/would not be readable/i),
+      'the person learns it only after letting go').toBeTruthy();
   });
 });
