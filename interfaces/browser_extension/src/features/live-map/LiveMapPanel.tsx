@@ -525,6 +525,14 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           card is ~140px — pushed the search box, the chips, the switch,
           the list header and every row downward.  Selecting is a rapid
           sequence; a layout that walks under it compounds. */}
+      {/* The region ABOVE the line — map AND card — is what the split
+          sizes, because the share above it is the only thing a Splitter
+          reports.  Sizing the LIST instead left the line floating off
+          the cursor by exactly the card's height.  The map stays
+          elastic INSIDE this box, so the card keeps its natural height
+          and the map takes whatever is left of the share. */}
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
+                    flex: `0 1 ${mapPct}%` }}>
       <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 220 }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
       </div>
@@ -787,6 +795,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
             </div>
           );
         })()}
+      </div>
       {/* Directly under the MAP, because that is the boundary this
           moves.  It sat below the search box and the filter chips for one
           draft, where it read as dividing the search from the list — the
@@ -823,7 +832,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           members.  The list gives no space when the card appears: it is
           the only thing here that already scrolls. */}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
-                    flex: listOpen ? `0 1 ${100 - mapPct}%` : '0 0 auto',
+                    flex: listOpen ? '1 1 0' : '0 0 auto',
                     borderTop: '1px solid var(--border)' }}>
         <button type="button" onClick={toggleList} aria-expanded={listOpen}
                 className="row rowbtn"

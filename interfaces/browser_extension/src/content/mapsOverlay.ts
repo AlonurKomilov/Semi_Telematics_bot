@@ -567,18 +567,17 @@ function askInventory(id: string): void {
   };
   // ONE retry, and only for the first attempt.
   //
-  // An MV3 service worker idles out after about thirty seconds, and a
-  // message that arrives while it is starting can be dropped — the
-  // callback fires with `lastError` and no reply.  That is the best
-  // explanation for the shape the owner saw: the card's COUNTS arrive
-  // (they ride the overlay's own poll, which keeps the worker warm) but
-  // the item names, asked for once on a click that may land after an
-  // idle, do not.  Nothing else differs — the panel and this card call
-  // the SAME endpoint with the SAME registry id, and the panel's answer
-  // is correct, so the server is not the suspect.
+  // NOT the reason the owner's cards listed nothing — that was a request
+  // never sent: the press path called `placeCard()` alone, and only the
+  // keyboard path reached `selectAt`, which asks.  Fixed at the press.
+  // The reasoning that led here was sound about the server (the panel
+  // and the card call the SAME endpoint and the panel's answer was
+  // right) and wrong about the client, because it never checked whether
+  // the message left at all.
   //
-  // A second ask costs one message and settles it: if the worker was
-  // asleep, the first one woke it and the second is answered.
+  // It stays, on its own smaller merit: an MV3 worker idles out after
+  // about thirty seconds and can drop a message that arrives while it
+  // is starting. One extra ask costs one message and removes that.
   const ask = (retriesLeft: number): void => {
     try {
       chrome.runtime.sendMessage({ type: OVERLAY_INVENTORY, id }, (reply?: InventoryReply) => {
@@ -639,7 +638,14 @@ function placeCard(): void {
   // sixty times a second: a press landed on a node that no longer
   // existed by the time the click resolved, so the button worked by
   // luck.  Position every frame, content on change.
-  const html = cardHtml(v, performance.now());
+  // Date.now(), NOT performance.now().  `ageMs` subtracts an EPOCH
+  // timestamp (`updated_at`) from what it is handed; a monotonic
+  // milliseconds-since-load number is ~10^4 against ~10^12, so every
+  // subtraction went hugely negative and `Math.max(0, …)` clamped it —
+  // which is why every card on the map read "0s old", however stale the
+  // fix actually was.  The physics tween keeps performance.now(): two
+  // clocks, two questions, and only one of them is about wall time.
+  const html = cardHtml(v, Date.now());
   if (html !== cardHtmlShown) {
     card.innerHTML = html;
     cardHtmlShown = html;
@@ -1066,6 +1072,14 @@ function onPointerUp(e?: PointerEvent): void {
       // gesture.
       cardId = truckPress.id;
       placeCard();
+      // …and ASK.  This branch is the one a press actually takes;
+      // `selectAt` — which did ask — is reached only by the keyboard
+      // and synthetic path below.  So the item read was never started
+      // on a press: the card showed its COUNTS (those ride the vehicle
+      // list) and listed nothing, for every truck, always.  The retry
+      // added earlier was treating a sleeping worker that was never the
+      // cause, because no message had been sent.
+      askInventory(truckPress.id);
     }
     // Held, NOT cleared: mouseup and click are still to come, and both
     // reach Google unless this is still armed when they arrive.

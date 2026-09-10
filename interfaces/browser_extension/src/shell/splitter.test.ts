@@ -87,7 +87,7 @@ describe('each surface keeps its own ratio', () => {
     // Neither number was ever the reader's.
     expect(inventory).toContain('maxHeight: `${cardPct}%`');
     expect(inventory).not.toContain("maxHeight: '70%'");
-    expect(liveMap).toContain('`0 1 ${100 - mapPct}%`');
+    expect(liveMap).toContain('flex: `0 1 ${mapPct}%`');
     expect(liveMap).not.toContain("'0 1 240px'");
   });
 
@@ -115,8 +115,14 @@ describe('the direction the line moves', () => {
     // reports what is above it, and a caller whose region is the lower
     // one subtracts, where the reader can see the subtraction.
     expect(src).toContain('apply(((e.clientY - box.top) / box.height) * 100, false)');
-    expect(liveMap).toContain('${100 - mapPct}');
+    // The share ABOVE the line is sized DIRECTLY — no subtraction anywhere,
+    // which is the form that cannot be got backwards.  Sizing the region
+    // BELOW instead left the line floating off the cursor by exactly the
+    // vehicle card's height, because the card also sits above the line.
+    expect(liveMap).toContain('flex: `0 1 ${mapPct}%`');
+    expect(liveMap).toContain("flex: listOpen ? '1 1 0' : '0 0 auto'");
     expect(liveMap).not.toContain('setListPct');
+    expect(liveMap).not.toContain('100 - mapPct');
   });
 
   it('tells the map its box changed', () => {

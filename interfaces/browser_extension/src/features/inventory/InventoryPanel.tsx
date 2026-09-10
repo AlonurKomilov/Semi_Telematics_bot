@@ -280,7 +280,7 @@ useEffect(() => {
   return (
     // Same skeleton as Live Map: fixed rows top and bottom, ONE region
     // that gives — here the truck list, since there is no map to be it.
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+    <div ref={columnRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
       {/* THE CHANGING THING, first.  The search box and the vehicle
           list are the same on every visit; the chosen vehicle's contents
           are the only part that answers a question — so it takes the top
