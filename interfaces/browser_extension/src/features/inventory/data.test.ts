@@ -141,8 +141,17 @@ describe('inventoryFor', () => {
   });
 
   it('survives a payload that is missing its fields', async () => {
+    // ``categories`` joined the shape when the panel learned to ADD —
+    // an empty list is the honest answer for a server that did not send
+    // one, and the form then offers a free field with no suggestions
+    // rather than no form at all.
     mocked.mockResolvedValue(reply({}));
-    expect(await inventoryFor(1, 1000)).toEqual({ items: [], attention: 0 });
+    expect(await inventoryFor(1, 1000)).toEqual({ items: [], attention: 0, categories: [] });
+  });
+
+  it('carries the account vocabulary the add form offers', async () => {
+    mocked.mockResolvedValue(reply({ items: [], attention: 0, categories: ['camera', 'eld'] }));
+    expect((await inventoryFor(1, 1000))?.categories).toEqual(['camera', 'eld']);
   });
 });
 

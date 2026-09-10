@@ -14,11 +14,12 @@
  * the extension token's scope, so a key that lives in a browser cannot
  * mark a dashcam missing.  The way out is a link, not a form.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { apiJSON } from '../../api/client';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
-import { forgetVehicle, inventoryFor, retryInventory, setItemStatus, verifyItem, type Inventory } from './data';
+import { addItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItemStatus, verifyItem,
+         type Inventory } from './data';
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
 
@@ -30,6 +31,25 @@ interface FleetRow {
   company: string;
   total: number;
   attention: number;
+}
+
+/** One labelled field.  The label stays when the placeholder goes, and
+ *  a required one says so where the eye already is rather than in a
+ *  message that appears after the press. */
+function Field({ label, required, children }: {
+  label: string; required?: boolean; children: ReactNode;
+}) {
+  return (
+    <label style={{ display: 'grid', gap: 3 }}>
+      <span className="muted" style={{ fontSize: 11 }}>
+        {/* Muted, not --warn: amber means "flagged, wants attention"
+            everywhere else on this panel, and a required marker is not
+            that.  An asterisk carries its meaning in its shape. */}
+        {label}{required && <span style={{ color: 'var(--muted)' }}> *</span>}
+      </span>
+      {children}
+    </label>
+  );
 }
 
 /** Inventory is not live data: somebody adds a dashcam, not thirty
@@ -58,6 +78,15 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
    *  changes a count, and a count that waits up to a minute to catch up
    *  reads as a press that did nothing. */
   const reload = useRef<() => void>(() => {});
+  /** The add form: closed until asked for.  A truck's contents are the
+   *  answer people come for; a form standing open above them would make
+   *  every visit start with an empty question. */
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ category: '', label: '', identifier: '' });
+  const [saving, setSaving] = useState(false);
+  const [addError, setAddError] = useState('');
+  /** The item just recorded, so the list can show it landing. */
+  const [justAdded, setJustAdded] = useState<number | null>(null);
 
   // ── the fleet answer ────────────────────────────────────────────
   useEffect(() => {
@@ -97,6 +126,12 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
   const select = (row: FleetRow | null) => {
     setSelected(row);
     setItems('loading');
+    // A form left open across a selection would offer to record onto the
+    // vehicle you just left, with the words you typed for the other one.
+    setAdding(false);
+    setAddError('');
+    setJustAdded(null);
+    setDraft({ category: '', label: '', identifier: '' });
     if (!row) return;
     void inventoryFor(row.vehicle_id).then((ob) => {
       // Drop an answer that belongs to a truck the person has left.
@@ -141,6 +176,36 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
     reload.current();
   };
 
+  const known = items !== 'loading' && items !== 'failed' ? items.categories : [];
+  const canSubmit = Boolean(draft.label.trim() && draft.category.trim());
+  /** Whether what is typed would MAKE a category rather than pick one.
+   *  Compared the way the server normalises: case and spacing folded. */
+  const asKey = (v: string) => v.trim().toLowerCase().split(/\s+/).join('_');
+  const isNewCategory = Boolean(draft.category.trim())
+    && !known.some((c) => asKey(c) === asKey(draft.category));
+  const submitAdd = async () => {
+    if (!selected || !draft.label.trim() || !draft.category.trim()) return;
+    setSaving(true);
+    setAddError('');
+    try {
+      const id = await addItem(selected.vehicle_id, {
+        category: draft.category.trim(),
+        label: draft.label.trim(),
+        identifier: draft.identifier.trim(),
+      });
+      setJustAdded(id);
+      setDraft({ category: '', label: '', identifier: '' });
+      setAdding(false);
+      await afterWrite(selected.vehicle_id);
+    } catch (e) {
+      // Said here, beside the form, with the draft still in it: a
+      // failure that clears what somebody typed is a failure twice.
+      setAddError(e instanceof Error ? e.message : 'That did not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return fleet ?? [];
@@ -156,7 +221,170 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
     // Same skeleton as Live Map: fixed rows top and bottom, ONE region
     // that gives — here the truck list, since there is no map to be it.
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
-      <div style={{ padding: '8px 10px 0', display: 'grid', gap: 6 }}>
+      {/* THE CHANGING THING, first.  The search box and the vehicle
+          list are the same on every visit; the chosen vehicle's contents
+          are the only part that answers a question — so it takes the top
+          of the panel, the way the Live Map gives the top to its map.
+          It also stops the card pushing the list down as it grows. */}
+      {selected && (
+        // A CEILING, because the panel's contract is that one region
+        // absorbs growth and this is not it.  Measured at 320px with the
+        // form open and a full item list: ~615px of card, ~692 with the
+        // search block — past a 600px panel the card would simply run
+        // off the bottom, since neither it nor the root scrolls.
+        <div className="sheet" style={{ minHeight: 0, maxHeight: '70%', overflowY: 'auto' }}>
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6 }}>
+            <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              {selected.name}
+              {selected.company && <span className="muted" style={{ fontWeight: 400 }}> · {selected.company}</span>}
+            </strong>
+            <button className="btn" onClick={() => select(null)}
+                    title="Clear the selection">Close</button>
+          </div>
+          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+            {selected.total === 0 ? 'Nothing recorded' : `${selected.total} item${selected.total === 1 ? '' : 's'}`}
+            {selected.attention > 0 && (
+              <span style={{ color: 'var(--warn)', fontWeight: 600 }}>
+                {' · '}{selected.attention} flagged
+              </span>
+            )}
+          </p>
+          {items === 'loading'
+            ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>Reading…</p>
+            : items === 'failed'
+            // Named, not hidden.  It covers a refusal, a timeout and an
+            // unreachable API alike — all three are "we do not know",
+            // and none of them is "there is nothing aboard".
+            ? <p style={{ margin: 0, fontSize: 12 }}>
+                <span style={{ color: 'var(--danger)' }}>Could not read what is aboard.</span>{' '}
+                <button type="button" className="link"
+                        onClick={() => { retryInventory(); select(selected); }}
+                        style={{ background: 'none', border: 0, padding: 0, font: 'inherit',
+                                 fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                  Try again
+                </button>
+              </p>
+            : items.items.length === 0
+            // Only when the read SUCCEEDED and came back empty — the
+            // failure has its own value above, so this can no longer
+            // claim "nothing recorded" about a vehicle we could not
+            // read at all.
+            ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                Nothing recorded on this vehicle yet.
+              </p>
+            : <ItemRows items={items.items}
+                         focusId={justAdded}
+                         // Taller than the map card's seven rows: there
+                         // the ceiling keeps a natural-height card from
+                         // pushing the map to its floor, but HERE the
+                         // card is the main event and the truck list
+                         // below it is the region that gives.  It yields
+                         // while the form is open: what is aboard matters
+                         // less, for that moment, than what is being
+                         // recorded.
+                         maxHeight={adding ? 96 : 280}
+                         onVerify={canWrite ? async (id) => {
+                           await verifyItem(id);
+                           await afterWrite(selected.vehicle_id);
+                         } : undefined}
+                         onStatus={canWrite ? async (id, st) => {
+                           await setItemStatus(id, st);
+                           await afterWrite(selected.vehicle_id);
+                         } : undefined} />}
+          {/* ADD, from the truck rather than from a desk.  The walk back
+              to a laptop is where the record stops being made at all.
+              REMOVE and TRANSFER are deliberately not here and not
+              reachable from this key: they are how a loss gets tidied
+              away, and they stay at a desk with the registry open. */}
+          {canWrite && !adding && (
+            <button className="btn" style={{ justifySelf: 'start' }}
+                    title="Record something aboard this vehicle"
+                    onClick={() => { setAddError(''); setAdding(true); }}>
+              Add item
+            </button>
+          )}
+          {canWrite && adding && (
+            <div style={{ display: 'grid', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+              {/* Each field keeps a LABEL.  Three identical boxes told
+                  apart only by placeholder stop telling anything apart
+                  the moment one is filled — the placeholder goes, and a
+                  person who paused cannot re-read what they answered. */}
+              <Field label="Category" required>
+                {/* An OPEN vocabulary, so a list of what this account
+                    already uses AND a free field — a datalist is both,
+                    and it is one control rather than a select plus an
+                    "other…" escape nobody finds. */}
+                <input className="input" list="fourtruck-inv-categories"
+                       placeholder="camera, fuel card, ELD…"
+                       value={draft.category} disabled={saving}
+                       onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))} />
+                <datalist id="fourtruck-inv-categories">
+                  {known.map((c) => <option key={c} value={humanize(c)} />)}
+                </datalist>
+                {/* Typing "Dash Cam" beside an existing "camera" makes a
+                    SECOND category and splits every count that follows.
+                    The list suggests; it does not constrain — so the one
+                    thing owed is to say when a new one is being made. */}
+                {isNewCategory && (
+                  <p className="muted" style={{ margin: 0, fontSize: 11 }}>
+                    New category — it will join your list.
+                  </p>
+                )}
+              </Field>
+              <Field label="What it is" required>
+                <input className="input" placeholder="e.g. Samsara CM32"
+                       value={draft.label} disabled={saving}
+                       onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))} />
+              </Field>
+              {/* NOT "(optional)".  The API accepts a blank, but the
+                  storage layer is blunt about what this field is for:
+                  it "is what makes loss provable".  Calling it optional
+                  tells somebody it does not matter, on the one field
+                  that decides whether a missing dashcam can be shown to
+                  have been theirs. */}
+              <Field label="Serial or card number">
+                <input className="input" placeholder="e.g. GJ8-4471 or ••••7213"
+                       value={draft.identifier} disabled={saving}
+                       onChange={(e) => setDraft((d) => ({ ...d, identifier: e.target.value }))} />
+                <p className="muted" style={{ margin: 0, fontSize: 11 }}>
+                  Without it, a missing item cannot be shown to have been yours.
+                </p>
+              </Field>
+              {addError && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{addError}</p>}
+              <div className="row" style={{ gap: 6 }}>
+                {/* Disabled WITH A REASON, which is this panel's rule
+                    everywhere else: a grey button that will not say what
+                    it is waiting for is a dead end. */}
+                <button className="btn primary" disabled={saving || !canSubmit}
+                        title={canSubmit ? 'Record this item' : 'Category and name are required'}
+                        onClick={() => void submitAdd()}>
+                  {saving ? 'Saving…' : 'Add'}
+                </button>
+                <button className="btn" disabled={saving}
+                        onClick={() => { setAdding(false); setAddError(''); }}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {/* Everything this key may NOT do — edit a record, move an item
+              to another vehicle, retire one — is over there.  The link
+              goes to /inventory rather than the vehicle's own page: that
+              page is gated on can_view_vehicles, the one grant this
+              reader may not have and the whole reason Inventory became
+              its own feature. */}
+          <button type="button" className="link" onClick={openDashboard}
+                  style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
+                           font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+            Edit or retire on 4truck →
+          </button>
+        </div>
+      )}
+
+      {/* The divider sits ABOVE the search, not below it.  The search
+          and the summary describe the list under them; a border between
+          the two left the filter floating on bare ground between a
+          filled card and a bordered region, belonging to neither. */}
+      <div style={{ padding: '8px 10px 0', display: 'grid', gap: 6,
+                    borderTop: '1px solid var(--border)' }}>
         <input className="input" placeholder="Search vehicles…" value={search}
                onChange={(e) => setSearch(e.target.value)} />
         {/* The one number worth reading before anything is chosen. */}
@@ -204,79 +432,8 @@ export default function InventoryPanel({ abilities }: PanelFeatureProps) {
         {error && <p style={{ color: 'var(--danger)', margin: 0, fontSize: 12 }}>{error}</p>}
       </div>
 
-      {/* The chosen truck, above the list — the same place the Live Map
-          puts the truck it is describing. */}
-      {selected && (
-        <div className="sheet">
-          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6 }}>
-            <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-              {selected.name}
-              {selected.company && <span className="muted" style={{ fontWeight: 400 }}> · {selected.company}</span>}
-            </strong>
-            <button className="btn" onClick={() => select(null)}
-                    title="Clear the selection">Close</button>
-          </div>
-          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-            {selected.total === 0 ? 'Nothing recorded' : `${selected.total} item${selected.total === 1 ? '' : 's'}`}
-            {selected.attention > 0 && (
-              <span style={{ color: 'var(--warn)', fontWeight: 600 }}>
-                {' · '}{selected.attention} flagged
-              </span>
-            )}
-          </p>
-          {items === 'loading'
-            ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>Reading…</p>
-            : items === 'failed'
-            // Named, not hidden.  It covers a refusal, a timeout and an
-            // unreachable API alike — all three are "we do not know",
-            // and none of them is "there is nothing aboard".
-            ? <p style={{ margin: 0, fontSize: 12 }}>
-                <span style={{ color: 'var(--danger)' }}>Could not read what is aboard.</span>{' '}
-                <button type="button" className="link"
-                        onClick={() => { retryInventory(); select(selected); }}
-                        style={{ background: 'none', border: 0, padding: 0, font: 'inherit',
-                                 fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
-                  Try again
-                </button>
-              </p>
-            : items.items.length === 0
-            // Only when the read SUCCEEDED and came back empty — the
-            // failure has its own value above, so this can no longer
-            // claim "nothing recorded" about a vehicle we could not
-            // read at all.
-            ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                Nothing recorded on this vehicle yet.
-              </p>
-            : <ItemRows items={items.items}
-                         // Taller than the map card's seven rows: there
-                         // the ceiling keeps a natural-height card from
-                         // pushing the map to its floor, but HERE the
-                         // card is the main event and the truck list
-                         // below it is the region that gives.
-                         maxHeight={280}
-                         onVerify={canWrite ? async (id) => {
-                           await verifyItem(id);
-                           await afterWrite(selected.vehicle_id);
-                         } : undefined}
-                         onStatus={canWrite ? async (id, st) => {
-                           await setItemStatus(id, st);
-                           await afterWrite(selected.vehicle_id);
-                         } : undefined} />}
-          {/* Read here, changed there.  The link goes to /inventory
-              rather than the truck's own page: that page is gated on
-              can_view_vehicles, the one grant this reader may not have
-              and the whole reason Inventory became its own feature. */}
-          <button type="button" className="link" onClick={openDashboard}
-                  style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
-                           font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
-            Manage on 4truck →
-          </button>
-        </div>
-      )}
-
       {/* THE elastic region. */}
-      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto',
-                    borderTop: '1px solid var(--border)' }}>
+      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
         {fleet === null && <p className="muted" style={{ padding: 10, margin: 0 }}>Loading…</p>}
         {/* It is a HEADER now, not an empty state: the list below it is
             full of vehicles, they simply have nothing recorded.  And it

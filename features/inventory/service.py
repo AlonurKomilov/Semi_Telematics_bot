@@ -11,6 +11,7 @@ from infra.services import get_tenant_db
 
 from adapters.storage.inventory import (  # re-exported contract
     ATTENTION_STATUSES,
+    normalize_inventory_category,
     INVENTORY_CATEGORIES,
     INVENTORY_STATUSES,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "driver_on_truck",
     "verify_item",
     "set_item_status",
+    "add_item",
 ]
 
 
@@ -112,4 +114,28 @@ async def set_item_status(
         account_id, int(item["id"]), status, note=note,
         actor_user_id=actor_user_id,
         driver_user_id=await driver_on_truck(account_id, int(item["vehicle_id"])),
+    )
+
+
+async def add_item(
+    account_id: int, vehicle_id: int, *,
+    category: str, label: str, identifier: str = "", notes: str = "",
+    actor_user_id: int | None = None,
+) -> int:
+    """Record something aboard.  The category is an OPEN vocabulary —
+    "Safety Equipment" normalises to ``safety_equipment`` — while STATUS
+    stays the fixed lifecycle enum.
+
+    Adding is the write a person performs at the truck, so it is the one
+    the browser panel may do besides checking and flagging.  Removing and
+    transferring are not: those are how a loss gets tidied away, and they
+    stay at a desk with the registry in front of you.
+    """
+    tenant = await get_tenant_db(account_id)
+    return await tenant.add_inventory_item(
+        account_id, vehicle_id,
+        category=normalize_inventory_category(category),
+        label=label, identifier=identifier, notes=notes,
+        actor_user_id=actor_user_id,
+        driver_user_id=await driver_on_truck(account_id, vehicle_id),
     )

@@ -297,6 +297,13 @@ async def extension_inventory(
             # on contradicting.  A timestamp is the least of what this
             # record holds; the label and the serial still stay behind.
             "last_verified_at": str(r["last_verified_at"] or ""),
+            # The serial / card last-4 / transponder id — the thing that
+            # makes a loss provable.  It crosses for ONE vehicle, asked
+            # for, and never in the fleet list or on the map card: you
+            # cannot verify a number you cannot see, and the person who
+            # just typed it will want to check it against the device.
+            # ``notes`` still does not cross — free text is not a fact.
+            "identifier": str(r["identifier"] or ""),
         }
         for r in rows
     ]
@@ -304,6 +311,9 @@ async def extension_inventory(
         "vehicle_id": vehicle,
         "items": items,
         "attention": sum(1 for i in items if i["status"] in ATTENTION_STATUSES),
+        # The account's own vocabulary, for the panel's add form — the
+        # built-ins first, then whatever this account has invented.
+        "categories": await tenant.list_inventory_categories(account_id),
     }
 
 
@@ -433,6 +443,71 @@ async def _writable_item(user: dict, item_id: int) -> dict:
     if item is None:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     return item
+
+
+class _AddBody(BaseModel):
+    vehicle_id: int
+    category: str = Field(..., min_length=1, max_length=80)
+    label: str = Field(..., min_length=1, max_length=120)
+    identifier: str = Field("", max_length=120)
+    notes: str = Field("", max_length=1000)
+
+
+async def _writable_vehicle(user: dict, vehicle_id: int) -> dict:
+    """The vehicle this caller may write TO, or a 404 that says nothing.
+
+    An item's wall reads the item; this reads the vehicle, because on an
+    add there is no item yet.  Both walls, in the order the read applies
+    them: the company, then Team Management's unit width — so a person
+    cannot record something onto a truck their own list does not show.
+    """
+    from infra.platform import get_tenant_db
+    from interfaces.api.deps import filter_by_assigned_trucks, get_user_company_codes
+    from features.vehicles.scope import company_allows
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    v = await tenant.get_vehicle(account_id, vehicle_id)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    if not company_allows(getattr(v, "company_code", "") or "", await get_user_company_codes(user)):
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    row = {"registry_id": int(v.id), "vehicle_id": int(v.id), "name": str(v.unit_number or "")}
+    if not await filter_by_assigned_trucks([row], user):
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    return {"id": int(v.id), "name": str(v.unit_number or "")}
+
+
+@router.post("/inventory-add")
+async def extension_add_item(
+    body: _AddBody,
+    user: dict = Depends(require_permission("can_manage_inventory")),
+):
+    """Record something aboard, from the truck rather than from a desk.
+
+    The owner's reason, and it is the right one: a person who has just
+    seen a new dashcam on unit 103 should not have to open the dashboard
+    to say so — the walk back to a laptop is where the record stops
+    being made at all.
+
+    Add is the third and last verb this key may perform.  REMOVE and
+    TRANSFER stay unreachable, and not by omission: they are how a loss
+    is tidied away — "it is on truck 5 now", "it was retired" — and a
+    key that lives in a browser must not be able to say either.  They are
+    absent from EXTENSION_ROUTES, so the manage flag in the scope cannot
+    reach them however senior the person holding it.
+    """
+    from interfaces.api.deps import resolve_user_id
+    vehicle = await _writable_vehicle(user, body.vehicle_id)
+    item_id = await inventory_service.add_item(
+        int(user["account_id"]), int(vehicle["id"]),
+        category=body.category, label=body.label,
+        identifier=body.identifier, notes=body.notes,
+        actor_user_id=await resolve_user_id(user),
+    )
+    return {"ok": True, "item_id": item_id}
 
 
 @router.post("/inventory-verify")

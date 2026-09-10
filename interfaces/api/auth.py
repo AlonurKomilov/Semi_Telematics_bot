@@ -192,10 +192,12 @@ EXTENSION_SCOPE: tuple[str, ...] = (
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
     "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
-    # The two write verbs the panel may perform, and only these: add,
-    # transfer and remove are office actions and are NOT listed, so the
-    # manage flag in the scope above cannot reach them.
+    # The three write verbs the panel may perform, and only these.
+    # TRANSFER and REMOVE are absent on purpose: they are how a loss gets
+    # tidied away — "it is on truck 5 now", "it was retired" — so the
+    # manage flag in the scope above cannot reach them from a browser.
     "/extension/inventory-verify", "/extension/inventory-status",
+    "/extension/inventory-add",
     "/auth/refresh", "/auth/logout",
 })
 

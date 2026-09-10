@@ -163,18 +163,15 @@ async def add_item(
     user: dict = Depends(_MANAGE),
     tenant=Depends(get_tenant_db),
 ):
-    # Category is an OPEN vocabulary — custom values are welcomed and
-    # normalized ("Safety Equipment" -> safety_equipment); STATUS stays
-    # the fixed lifecycle enum.
-    category = normalize_inventory_category(body.category)
     account_id = int(user["account_id"])
     vehicle = await _resolve_vehicle(tenant, user, vehicle_name, body.company)
-    driver_id = await _driver_snapshot(tenant, account_id, int(vehicle["id"]))
-    item_id = await tenant.add_inventory_item(
+    # Through the service, like the browser panel's own add: one place
+    # normalises the category and one place stamps the driver.
+    item_id = await service.add_item(
         account_id, int(vehicle["id"]),
-        category=category, label=body.label,
+        category=body.category, label=body.label,
         identifier=body.identifier, notes=body.notes,
-        actor_user_id=await resolve_user_id(user), driver_user_id=driver_id,
+        actor_user_id=await resolve_user_id(user),
     )
     return {"ok": True, "item_id": item_id}
 

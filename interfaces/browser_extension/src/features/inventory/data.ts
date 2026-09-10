@@ -16,6 +16,9 @@ export interface InventoryItem {
   category: string;
   label: string;
   status: string;
+  /** The serial / card last-4 / transponder id — what makes a loss
+   *  provable.  Crosses for ONE vehicle, never in the fleet list. */
+  identifier?: string;
   /** When somebody last looked.  Empty means nobody ever has — which is
    *  itself worth saying on a row. */
   last_verified_at?: string;
@@ -23,6 +26,9 @@ export interface InventoryItem {
 
 export interface Inventory {
   items: InventoryItem[];
+  /** The account's own category vocabulary, for the add form: the
+   *  built-ins first, then whatever this account has invented. */
+  categories: string[];
   /** How many of them are in a status that wants somebody's attention. */
   attention: number;
 }
@@ -100,10 +106,12 @@ export async function inventoryFor(
       `/extension/inventory?vehicle=${encodeURIComponent(String(registryId))}`);
     if (res.status === 403) { denied = true; return null; }
     if (!res.ok) return null;                      // transient: ask again next time
-    const out = (await res.json()) as { items?: InventoryItem[]; attention?: number };
+    const out = (await res.json()) as
+      { items?: InventoryItem[]; attention?: number; categories?: string[] };
     const data: Inventory = {
       items: Array.isArray(out.items) ? out.items : [],
       attention: typeof out.attention === 'number' ? out.attention : 0,
+      categories: Array.isArray(out.categories) ? out.categories : [],
     };
     cache.set(registryId, { at: now, data });
     return data;
@@ -129,9 +137,10 @@ export function retryInventory(): void {
   forgetInventory();
 }
 
-/** The two verbs the panel may perform.  Add, transfer and remove are
- *  office actions and are not reachable from here at all — the server's
- *  route allow-list decides that, not this file. */
+/** The three verbs the panel may perform.  TRANSFER and REMOVE are not
+ *  among them and are not reachable from here at all — they are how a
+ *  loss gets tidied away, and the server's route allow-list decides
+ *  that, not this file. */
 export async function verifyItem(itemId: number): Promise<void> {
   await apiJSON('/extension/inventory-verify', {
     method: 'POST', body: { item_id: itemId },
@@ -151,3 +160,26 @@ export async function setItemStatus(
  *  here: they are bookkeeping states somebody sets at a desk, not what
  *  a person standing at a truck reports. */
 export const PANEL_STATUSES = ['installed', 'needs_check', 'damaged', 'missing'] as const;
+
+/** Record something aboard, from the truck rather than from a desk.
+ *  The category is an OPEN vocabulary — the server normalises whatever
+ *  is typed ("Safety Equipment" → safety_equipment). */
+export async function addItem(
+  vehicleId: number,
+  item: { category: string; label: string; identifier?: string },
+): Promise<number | null> {
+  const out = await apiJSON<{ item_id?: number }>('/extension/inventory-add', {
+    method: 'POST',
+    body: {
+      vehicle_id: vehicleId,
+      category: item.category,
+      label: item.label,
+      identifier: item.identifier ?? '',
+    },
+  });
+  // The id comes back so the caller can bring the new row into view: a
+  // fresh `installed` item sorts to the BOTTOM (worst first), which
+  // under a ceiling is out of sight — and a save whose result nobody
+  // sees reads as a press that did nothing.
+  return typeof out.item_id === 'number' ? out.item_id : null;
+}

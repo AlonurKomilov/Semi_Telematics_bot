@@ -12,7 +12,7 @@
  * map — a natural-height card holding twelve items pushes the map to
  * its floor and then overflows a column with no scroll of its own.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PANEL_STATUSES, humanize, sortForPanel, statusTone, type InventoryItem } from './data';
 import { ageMs, formatAge } from '../live-map/freshness';
 
@@ -36,9 +36,12 @@ export interface ItemRowsProps {
    *  answering 403 on the press is the worse of the two. */
   onVerify?: (itemId: number) => Promise<void>;
   onStatus?: (itemId: number, status: string) => Promise<void>;
+  /** A row to bring into view once — a just-added item, which sorts to
+   *  the bottom because nothing is wrong with it. */
+  focusId?: number | null;
 }
 
-export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVerify, onStatus }: ItemRowsProps) {
+export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVerify, onStatus, focusId }: ItemRowsProps) {
   const canWrite = Boolean(onVerify || onStatus);
   /** Which row has its actions showing.  One at a time: four controls
    *  under every row would bury the list they belong to. */
@@ -55,6 +58,11 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
    *  scroller: press Missing on the twelfth item and it jumps to the
    *  top, out of sight, and the press looks like it did nothing. */
   const rowEls = useRef<Map<number, HTMLDivElement | null>>(new Map());
+
+  useEffect(() => {
+    if (focusId == null) return;
+    rowEls.current.get(focusId)?.scrollIntoView({ block: 'nearest' });
+  }, [focusId, items]);
 
   const act = async (itemId: number, run: () => Promise<void>, close = true) => {
     setBusy(itemId);
@@ -203,6 +211,17 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                     went on contradicting.  It is here rather than on the
                     row because a fifth piece ellipsised the item's own
                     name away at the panel's 320px floor. */}
+                {/* The serial the record was made against.  It lives
+                    here rather than on the row for the same reason the
+                    check age does — a fifth piece ellipsised the item's
+                    own name away at 320px — and it is the thing you
+                    hold the device up against when you press Verify. */}
+                {it.identifier && (
+                  <span className="muted" style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace' }}
+                        title="The serial this record was made against">
+                    {it.identifier}
+                  </span>
+                )}
                 <span className="muted" style={{ fontSize: 11 }}
                       title={it.last_verified_at ? `Last checked ${it.last_verified_at}` : 'Nobody has checked this yet'}>
                   {(() => {

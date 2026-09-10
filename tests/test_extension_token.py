@@ -132,6 +132,36 @@ def test_the_panel_may_flag_an_item_and_may_not_retire_one():
         assert not any(office_only in r for r in EXTENSION_ROUTES), office_only
 
 
+def test_add_is_reachable_and_the_two_that_hide_a_loss_are_not():
+    """The owner asked for add on 2026-09-10 so a person who has just
+    seen a new dashcam does not have to walk back to a laptop — the walk
+    is where the record stops being made at all.
+
+    It is the THIRD and last verb this key performs.  Transfer and remove
+    stay unreachable, and not by omission: they are how a loss is tidied
+    away ("it is on truck 5 now", "it was retired").  The scope opens the
+    manage flag; this list decides where it may be used."""
+    from interfaces.api.auth import EXTENSION_ROUTES
+    assert "/extension/inventory-add" in EXTENSION_ROUTES
+    for hides_a_loss in ("transfer", "remove"):
+        assert not any(hides_a_loss in r for r in EXTENSION_ROUTES), hides_a_loss
+
+
+def test_an_add_is_walled_on_the_VEHICLE_since_there_is_no_item_yet():
+    """An item's wall reads the item; an add has no item to read, so the
+    wall reads the vehicle — both the company and Team Management's unit
+    width, so nobody records something onto a truck their own list does
+    not show them."""
+    import inspect
+    from interfaces.api.routes import extension
+    body = inspect.getsource(extension._writable_vehicle).split('"""', 2)[2]
+    assert "company_allows(" in body
+    assert "filter_by_assigned_trucks(" in body
+    # …and the same registry-id rung the fleet list needed.
+    assert '"registry_id"' in body
+    assert "inventory_service.add_item(" in inspect.getsource(extension.extension_add_item)
+
+
 def test_the_write_verbs_share_the_dashboards_wall_rather_than_copying_it():
     """Two routers, one company wall and one driver snapshot.  A second
     copy of a wall is a second chance to forget a brick — so both reach
@@ -144,6 +174,8 @@ def test_the_write_verbs_share_the_dashboards_wall_rather_than_copying_it():
     assert "inventory_service.item_if_visible(" in ext
     assert "item_if_visible(" in inspect.getsource(dash._item_or_404)
     assert "driver_on_truck(" in inspect.getsource(dash._driver_snapshot)
+    # Add too: one place normalises the category, one stamps the driver.
+    assert "service.add_item(" in inspect.getsource(dash.add_item)
 
 
 def test_the_panel_is_told_what_it_may_do_not_which_flag_says_so():
@@ -399,12 +431,20 @@ def test_the_panel_is_told_what_is_aboard_not_what_it_is_worth():
     from interfaces.api.routes import extension
     src = inspect.getsource(extension.extension_inventory)
     body = src.split("rows = await tenant.list_vehicle_inventory", 1)[1]
-    # The line moved once, by exactly one field: last_verified_at, so the
-    # panel's Verify button has a visible result.  A timestamp is the
-    # least of what this record holds.
-    for key in ('"id"', '"category"', '"label"', '"status"', '"last_verified_at"'):
+    # The line has moved TWICE, each time by exactly one field and each
+    # time for a reason written beside it:
+    #   last_verified_at — or Verify closed a strip and changed nothing;
+    #   identifier       — or you are verifying a serial you cannot see,
+    #                      and the person who just typed it cannot check
+    #                      it against the device.
+    # Both cross for ONE vehicle, asked for.  Neither is in the fleet
+    # list or on the map card.
+    for key in ('"id"', '"category"', '"label"', '"status"',
+                '"last_verified_at"', '"identifier"'):
         assert key in body, key
-    for withheld in ('"identifier"', '"notes"', 'r["identifier"]', 'r["notes"]'):
+    # ``notes`` still does not cross: free text is not a fact, and a note
+    # can hold anything somebody typed.
+    for withheld in ('"notes"', 'r["notes"]'):
         assert withheld not in body, f"{withheld} has no business in a panel key"
 
 
