@@ -387,24 +387,40 @@ async def comp_history(
 
 # ── Manual vehicle count sync ────────────────────────────────────
 
-class VehicleCountRequest(BaseModel):
-    vehicle_count: int = Field(..., ge=0, le=100_000)
-
-
 @router.post("/update-vehicles")
 async def update_vehicle_count(
-    body: VehicleCountRequest,
     user: dict = Depends(_billing_admin),
     platform_db=Depends(get_platform_db),
 ):
-    """Manually update the vehicle count used for billing.
+    """Recompute the billed vehicle count from our own records.
 
-    In production this is called automatically by the scheduler after
-    syncing the Samsara vehicle list.  Use this endpoint to correct the
-    count without waiting for the next sync.
+    The quantity we charge for is not something the payer may state.
+    This endpoint used to take a ``vehicle_count`` in the request body
+    and write it straight to the subscription, so anyone holding
+    ``can_manage_billing`` — owner, admin and accounting by default —
+    could set their own billed fleet to zero, with no trace anywhere.
+    Its docstring said the scheduler called it after a Samsara sync;
+    nothing called it at all. The monthly snapshot job only READS
+    ``vehicle_count``, and ``GET /summary`` already refreshes it.
+
+    So the route stays (an unknown caller keeps working rather than
+    meeting a 404) and the number now comes from
+    ``_sync_vehicle_count`` — the registry, with the warehouse as
+    fallback, which is the same source the pricing math reads. A
+    request body, if one is still sent, is ignored.
+
+    Account-wide by design: the caller's Team-Management vehicle scope
+    does NOT narrow the count. A subscription is billed for the whole
+    fleet, so an accountant assigned two trucks must not be able to
+    reduce the invoice to two.
     """
-    await platform_db.update_subscription(
-        user["account_id"],
-        vehicle_count=body.vehicle_count,
-    )
-    return {"ok": True, "vehicle_count": body.vehicle_count}
+    count = await _sync_vehicle_count(user["account_id"], platform_db)
+    if count is None:
+        # The registry read failed; the stored count is left untouched
+        # rather than replaced with a guess.
+        raise HTTPException(
+            status_code=503,
+            detail="Could not read the vehicle registry just now — the "
+                   "billed count is unchanged. Try again shortly.",
+        )
+    return {"ok": True, "vehicle_count": count}
