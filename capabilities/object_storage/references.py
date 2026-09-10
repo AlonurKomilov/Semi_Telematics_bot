@@ -192,6 +192,12 @@ NOT_REFERENCES: dict[str, str] = {
     "driver_inspections.driver_signature": "inline signature payload, not a stored file",
     "driver_inspections.reviewer_signature": "inline signature payload, not a stored file",
     "scan_log.signature": "a request signature/hash, not a file",
+    "security_requests.path": (
+        "an HTTP request path in the security ledger (/api/vehicles, "
+        "/api/system/accounts), not a stored-file path — the ledger "
+        "records what was ASKED FOR, and nothing it holds is a file on "
+        "our disk"
+    ),
     # ── external URLs — someone else's storage, never ours ──────────
     "safety_event_log.video_url": (
         "an EXTERNAL Samsara S3 URL (https://s3.samsara.com/...), 13,344 "
