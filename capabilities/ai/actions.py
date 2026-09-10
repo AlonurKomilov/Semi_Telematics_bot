@@ -73,6 +73,38 @@ def _trail_entity_type(result) -> str:
     return et if et in registered_entity_types() else "account"
 
 
+async def _actor_user_id(user: dict, uid: int, platform_db) -> int:
+    """The approving human's ``users.id`` — what domain rows attribute to.
+
+    Two ids ride every request and they are NOT the same number: the
+    JWT ``sub`` is the telegram_id (the AI subsystem's per-user key —
+    conversations, usage, proposal ownership), while ``uid`` is the
+    internal ``users.id`` that ``created_by`` / ``actor_user_id``
+    columns hold.  Handing executors the ``sub`` wrote a telegram id
+    into those columns: silently wrong on BIGINT (work orders, no row
+    joins back to the user) and a hard crash on INTEGER (inventory
+    events — a 2026 telegram id is past int32, so every approve by a
+    newer user died with "value out of int32 range" and the proposal
+    was finalized failed).
+
+    Falls back to a telegram_id lookup on the INJECTED platform db for
+    legacy tokens without the claim; 0 when nothing resolves — the
+    executors' own "unknown actor" sentinel.
+    """
+    claim = user.get("uid")
+    if claim:
+        try:
+            return int(claim)
+        except (TypeError, ValueError):
+            pass
+    try:
+        db_user = await platform_db.get_user_by_telegram_id(uid)
+    except Exception as e:  # noqa: BLE001 — attribution must not block the write
+        logger.warning("Actor lookup failed for telegram_id=%s: %s", uid, e)
+        return 0
+    return int(getattr(db_user, "id", 0) or 0) if db_user else 0
+
+
 async def execute_approved_action(
     proposal_id: str,
     *,
@@ -98,8 +130,18 @@ async def execute_approved_action(
     # Already-resolved proposals return idempotently / refuse.
     if prop["status"] == "consumed":
         return {"status": "consumed", "result": _client_result(_load(prop.get("result")))}
+    if prop["status"] == "failed":
+        # A one-shot proposal whose execution raised: the transaction
+        # rolled back, nothing was written, and the row is closed for
+        # good — the cure is a fresh proposal, and the message must say
+        # so, because the same button just answers 409 forever.
+        raise HTTPException(
+            status_code=409,
+            detail="This proposal failed when it ran and can't be retried — "
+                   "ask the assistant again to get a fresh one.",
+        )
     if prop["status"] != "pending":
-        # executing (a claim is in flight) / declined / failed.
+        # executing (a claim is in flight) / declined / expired.
         raise HTTPException(status_code=409, detail=f"Proposal is {prop['status']}")
 
     tool = prop["tool"]
@@ -118,11 +160,13 @@ async def execute_approved_action(
     payload = _load(prop.get("payload"))
 
     # The executor stamps domain-level attribution (created_by /
-    # acknowledged_by) off this context — inject the approving user's REAL
-    # id (the JWT subject) so AI-driven writes attribute to the human who
-    # approved them, not the 0/"auto-resolved" sentinel.  Never trust an
-    # id that rode in from the client.
-    exec_context = {**(user_context or {}), "user_id": uid}
+    # acknowledged_by) off this context — inject the approving user's
+    # internal ``users.id`` (NOT the JWT subject, which is the telegram
+    # id — see _actor_user_id) so AI-driven writes attribute to the
+    # human who approved them, not the 0/"auto-resolved" sentinel.
+    # Never trust an id that rode in from the client.
+    actor = await _actor_user_id(user, uid, platform_db)
+    exec_context = {**(user_context or {}), "user_id": actor}
     # Bulk actions (imports): the server-derived rows the user approved,
     # staged un-truncated on the proposal.  Ride the context like the
     # other server-side channels (_db pattern) — executor signatures
@@ -172,9 +216,8 @@ async def execute_approved_action(
 
     # ── Trail (actor = the APPROVING human, never the model) ──
     try:
-        from interfaces.api.deps import resolve_user_id as _resolve_uid
         await record_simple(
-            tenant_db, account_id, await _resolve_uid(user),
+            tenant_db, account_id, actor,
             f"ai_write:{tool}",
             _trail_entity_type(result),
             str(result.get("target_id", "")) if isinstance(result, dict) else "",
@@ -267,7 +310,8 @@ async def undo_approved_action(
 
     # Tool-permission re-check on the REAL role (same gate as approve).
     from capabilities.ai.intelligence import _check_tool_permission
-    exec_context = {**(user_context or {}), "user_id": uid}
+    actor = await _actor_user_id(user, uid, platform_db)
+    exec_context = {**(user_context or {}), "user_id": actor}
     blocked = await _check_tool_permission(
         tool, payload, user.get("role"), exec_context, account_id,
     )
@@ -304,9 +348,8 @@ async def undo_approved_action(
     )
 
     try:
-        from interfaces.api.deps import resolve_user_id as _resolve_uid
         await record_simple(
-            tenant_db, account_id, await _resolve_uid(user),
+            tenant_db, account_id, actor,
             f"ai_undo:{tool}",
             _trail_entity_type(result),
             str(result.get("target_id", "")) if isinstance(result, dict) else "",

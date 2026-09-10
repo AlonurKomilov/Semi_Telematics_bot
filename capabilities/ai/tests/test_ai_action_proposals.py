@@ -129,7 +129,8 @@ class _FakeTenantDB:
         # old assertions used (action + target id).
         for e in events:
             self.audits.append({"action": e["action"],
-                                "target_id": str(e["entity_id"])})
+                                "target_id": str(e["entity_id"]),
+                                "actor_user_id": e.get("actor_user_id")})
 
 
 def _prop(**over):
@@ -225,3 +226,81 @@ class TestExecuteOrchestration:
         with pytest.raises(HTTPException) as ei:
             await self._run(_prop(risk="high"))
         assert ei.value.status_code == 403
+
+
+class TestExecutorActorIsInternalUserId:
+    """Executors attribute writes to ``users.id`` — never the JWT subject.
+
+    Regression for the Cody Brown approve: ``sub`` is the telegram id
+    (8846901592, past int32), the executor stamped it as
+    ``actor_user_id`` on an INTEGER column, asyncpg raised, and the
+    proposal was finalized ``failed`` — every re-approve then 409'd.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _stub(self, monkeypatch):
+        import capabilities.ai.actions as actions
+        import capabilities.ai.tools as tools
+        self.seen = {}
+
+        async def _exec(payload, account_id, user_context, db):
+            self.seen["user_id"] = user_context.get("user_id")
+            return {"created": True, "target_type": "maintenance_task",
+                    "target_id": "99", "message": "Created."}
+        for mod in (tools, actions):
+            monkeypatch.setattr(mod, "get_action_executor",
+                                lambda name, _e=_exec: _e if name == "create_maintenance_task" else None)
+            monkeypatch.setattr(mod, "get_tool_schema",
+                                lambda name: {"writes": True, "risk": "low"} if name == "create_maintenance_task" else None)
+
+        async def _permit(*a, **k):
+            return None
+        import capabilities.ai.intelligence as intel
+        monkeypatch.setattr(intel, "_check_tool_permission", _permit)
+
+    async def test_uid_claim_wins_over_telegram_sub(self):
+        from capabilities.ai.actions import execute_approved_action
+        tg = 8846901592                       # telegram id — past int32
+        pdb = _FakePlatformDB(_prop(user_id=tg))
+        tdb = _FakeTenantDB()
+        user = {"account_id": 1, "sub": str(tg), "uid": 23, "role": "fleet"}
+        res = await execute_approved_action(
+            "p1", user=user, user_context={"role": "fleet"},
+            platform_db=pdb, tenant_db=tdb)
+        assert res["status"] == "consumed"
+        assert self.seen["user_id"] == 23           # users.id, not the sub
+        assert tdb.audits[0]["actor_user_id"] == 23  # trail actor agrees
+
+    async def test_legacy_token_resolves_through_the_injected_db(self):
+        from capabilities.ai.actions import execute_approved_action
+        tg = 8846901592
+        pdb = _FakePlatformDB(_prop(user_id=tg))
+
+        class _U:
+            id = 23
+        pdb.get_user_by_telegram_id = lambda self_tg: _resolved(self_tg)
+
+        async def _resolved(got):
+            assert got == tg
+            return _U()
+        tdb = _FakeTenantDB()
+        user = {"account_id": 1, "sub": str(tg), "role": "fleet"}   # no uid claim
+        await execute_approved_action(
+            "p1", user=user, user_context={"role": "fleet"},
+            platform_db=pdb, tenant_db=tdb)
+        assert self.seen["user_id"] == 23
+
+    async def test_failed_proposal_says_ask_again(self):
+        """After an executor crash the row is closed for good — the 409
+        must tell the person what to do, not just name the status."""
+        from fastapi import HTTPException
+        from capabilities.ai.actions import execute_approved_action
+        pdb = _FakePlatformDB(_prop(user_id=7, status="failed"))
+        user = {"account_id": 1, "sub": "7", "uid": 7, "role": "fleet"}
+        with pytest.raises(HTTPException) as ei:
+            await execute_approved_action(
+                "p1", user=user, user_context={"role": "fleet"},
+                platform_db=pdb, tenant_db=_FakeTenantDB())
+        assert ei.value.status_code == 409
+        assert "ask the assistant again" in ei.value.detail
+        assert "user_id" not in self.seen                # executor never ran
