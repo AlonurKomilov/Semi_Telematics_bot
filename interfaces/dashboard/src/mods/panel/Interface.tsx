@@ -357,10 +357,15 @@ export function AccentGroup({ label }: { label: LabelClass }) {
       <p className="text-xs text-foreground mt-2.5 mb-1.5">
         {t('theme.group_grounds', 'Grounds')}
       </p>
-      <div className="flex flex-wrap items-center gap-1">
+      {/* Each ground on its own row: the chip, its Clear, and the one
+          line that belongs to IT — what it is, or what the gate refused,
+          or that the mode cannot wear it. Two chips sharing one line at
+          the bottom made every message read as though it were about the
+          last one. */}
+      <div className="flex flex-col gap-1">
         {GROUNDS.map((g) => (
+          <div key={g.id} className="flex flex-wrap items-center gap-1">
           <GroundChip
-            key={g.id}
             ground={g}
             hex={theme.grounds?.[g.id]}
             mode={theme.mode}
@@ -372,11 +377,9 @@ export function AccentGroup({ label }: { label: LabelClass }) {
               setTheme({ grounds: Object.keys(next).length ? next : undefined });
             }}
           />
+          </div>
         ))}
       </div>
-      <p className="text-2xs text-muted-foreground mt-1.5">
-        {GROUNDS.map((g) => g.description).join(' · ')}
-      </p>
     </div>
   );
 }

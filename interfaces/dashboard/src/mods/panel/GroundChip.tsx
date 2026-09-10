@@ -54,13 +54,24 @@ export function GroundChip({ ground, hex, mode, fallback, onPick, onClear }: {
     onPick(next);
   };
 
+  // A colour input reports every frame of a drag, so a person can land
+  // on a colour the gate refuses having passed through several it
+  // accepted — and the accepted one is what stays painted. Saying only
+  // "that would not be readable" beside a plane that visibly changed
+  // reads as the app contradicting itself, so the note names BOTH: what
+  // was refused, and what is on screen instead.
+  const tone = refused
+    ? (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The ')
+    : '';
   const note = refused
-    ? t('theme.ground_refused', '{{tone}} would not be readable on that.')
-        .replace('{{tone}}', (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The '))
+    ? (hex && worn
+      ? t('theme.ground_refused_kept', '{{tone}} would not be readable on the colour you stopped at — the last one that worked is still on.')
+          .replace('{{tone}}', tone)
+      : t('theme.ground_refused', '{{tone}} would not be readable on that.').replace('{{tone}}', tone))
     : hex && !worn
       ? t('theme.ground_unworn', 'Not worn in {{mode}} mode — the built-in one is painting.')
           .replace('{{mode}}', mode)
-      : null;
+      : t(`theme.ground_${ground.id}_hint`, ground.description);
 
   return (
     <>

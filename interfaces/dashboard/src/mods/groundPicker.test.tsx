@@ -90,6 +90,25 @@ describe('what a pick writes', () => {
   });
 });
 
+describe('what the row says', () => {
+  it('gives every ground its own line, and it is that ground\'s own words', () => {
+    mount();
+    for (const g of GROUNDS) expect(screen.getByText(g.description)).toBeTruthy();
+  });
+
+  it('and names what is still painting when the colour you stopped at is refused', () => {
+    // A colour input reports every frame of a drag, so the refused
+    // colour is often NOT the one on screen: several accepted ones went
+    // by on the way, and the last of them is what stayed. Saying only
+    // "that would not be readable" beside a plane that visibly changed
+    // is the app contradicting itself.
+    mount({ grounds: { card: WORN } });
+    fireEvent.change(input('Cards'), { target: { value: REFUSED } });
+    expect(setTheme, 'the refused colour was written').not.toHaveBeenCalled();
+    expect(screen.getByText(/still on/i)).toBeTruthy();
+  });
+});
+
 describe('clearing one', () => {
   it('drops that key, keeps the other, and offers an undo', () => {
     mount({ grounds: { card: WORN, sidebar: WORN } });

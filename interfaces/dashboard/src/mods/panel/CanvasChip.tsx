@@ -55,9 +55,16 @@ export function CanvasChip({ canvas, mode, onPick, onClear }: {
     onPick(hex);
   };
 
+  // A colour input reports every frame of a drag: a person can stop on
+  // a colour the gate refuses having passed through several it took,
+  // and one of those is still painting. The note names both rather than
+  // describing a background nobody is looking at.
   const note = refused
-    ? t('theme.canvas_refused', '{{tone}} would not be readable on that background.')
-        .replace('{{tone}}', (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The '))
+    ? (canvas && worn
+      ? t('theme.canvas_refused_kept', '{{tone}} would not be readable on the colour you stopped at — the last background that worked is still on.')
+          .replace('{{tone}}', (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The '))
+      : t('theme.canvas_refused', '{{tone}} would not be readable on that background.')
+          .replace('{{tone}}', (TONE_NAMES[refused.tone] ?? refused.tone).replace(/^the /, 'The ')))
     : canvas && !worn
       ? t('theme.canvas_unworn', 'This background cannot be worn in {{mode}} mode — the built-in one is painting.')
           .replace('{{mode}}', mode)
