@@ -372,13 +372,39 @@ async def _lifespan(app: FastAPI):
             logger.info("API lifespan: shut down platform")
 
 
+def _docs_enabled() -> bool:
+    """Whether to publish the interactive docs and the OpenAPI schema.
+
+    Off unless ``API_DOCS=1``.  The schema is a 1.75 MB map of every
+    route, parameter and model we expose — including the ~25 admin write
+    endpoints — and it was served unauthenticated on dash., api. and
+    app.  A probe against production on 2026-09-08 fetched it six times
+    and then walked the admin surface it had just been handed; the
+    authorization checks held, but there is no reason to draw the
+    attacker a map first.
+
+    Nothing consumes it at runtime — no client generator, no extension,
+    no test — so hiding it costs a developer one env var and an API
+    restart when they actually want to read it.
+    """
+    return os.getenv("API_DOCS", "0").strip() == "1"
+
+
 def create_api() -> FastAPI:
     """Build and return the FastAPI application."""
+    _docs = _docs_enabled()
     app = FastAPI(
         title="4truck API",
         version="1.0.0",
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        # ``None`` makes FastAPI omit the route entirely — a 404 that
+        # looks like every other unknown path, not a 403 that confirms
+        # the endpoint is there and merely withheld.
+        docs_url="/api/docs" if _docs else None,
+        # ReDoc is FastAPI's other default renderer.  It was never set
+        # here, so it sat on the framework default and shipped open
+        # alongside the rest.
+        redoc_url="/api/redoc" if _docs else None,
+        openapi_url="/api/openapi.json" if _docs else None,
         lifespan=_lifespan,
     )
 
