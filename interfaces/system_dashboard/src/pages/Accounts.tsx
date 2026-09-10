@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import MetricsCard from '../components/MetricsCard';
 import NewAccountModal from '../components/NewAccountModal';
-import type { AccountListItem, SystemStats } from '../types';
+import type { AccountKind, AccountListItem, SystemStats } from '../types';
 
 function usd(cents: number): string {
   return '$' + (cents / 100).toFixed(2);
@@ -20,6 +20,19 @@ function statusColor(status: string): string {
   }
 }
 
+/** One face per trust class.  `real` is deliberately plain: it is the
+ *  default and should not draw the eye; the others are the exceptions an
+ *  operator scans a list for.  Exported for AccountDetail, the way `usd`
+ *  already is. */
+export function KindBadge({ kind }: { kind: AccountKind }) {
+  if (kind === 'real') return <span className="text-xs text-slate-400">real</span>;
+  const tone =
+    kind === 'test' ? 'bg-warn/15 text-warn border-warn/40'
+    : kind === 'monitored' ? 'bg-accent/15 text-accent border-accent/40'
+    : 'bg-danger/15 text-danger border-danger/40';
+  return <span className={`text-xs px-2 py-0.5 rounded border ${tone}`}>{kind}</span>;
+}
+
 export default function Accounts() {
   const [accounts, setAccounts] = useState<AccountListItem[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -30,7 +43,7 @@ export default function Accounts() {
   const [statusFilter, setStatusFilter] = useState('');
   const [tierFilter, setTierFilter] = useState('');
   const [compFilter, setCompFilter] = useState<'' | 'yes' | 'no'>('');
-  const [kindFilter, setKindFilter] = useState<'' | 'real' | 'test'>('');
+  const [kindFilter, setKindFilter] = useState<'' | AccountKind>('');
   const [showNewModal, setShowNewModal] = useState(false);
   const navigate = useNavigate();
 
@@ -113,11 +126,13 @@ export default function Accounts() {
           <option value="yes">Comped</option>
           <option value="no">Not comped</option>
         </select>
-        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as '' | 'real' | 'test')}
+        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as '' | AccountKind)}
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm">
           <option value="">Any kind</option>
           <option value="real">Real</option>
           <option value="test">Test</option>
+          <option value="monitored">Monitored</option>
+          <option value="quarantined">Quarantined</option>
         </select>
         <button onClick={load}
                 className="bg-accent text-white text-xs px-3 py-1.5 rounded hover:bg-accent/90">
@@ -179,11 +194,7 @@ export default function Accounts() {
                 </td>
                 <td className="px-4 py-2 capitalize text-slate-300">{a.tier}</td>
                 <td className="px-4 py-2">
-                  {a.type === 'test' ? (
-                    <span className="text-xs px-2 py-0.5 rounded border bg-warn/15 text-warn border-warn/40">test</span>
-                  ) : (
-                    <span className="text-xs text-slate-400">real</span>
-                  )}
+                  <KindBadge kind={a.type} />
                 </td>
                 <td className="px-4 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded border ${statusColor(a.subscription.status)}`}>

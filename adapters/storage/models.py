@@ -80,11 +80,28 @@ class Account:
     # not set → those surfaces use neutral wording rather than falling
     # back to the registered name.
     public_display_name: str = ""
-    # Operator classification: 1 = internal test/dev account (excluded
-    # from real-customer reasoning in the operator console).  Distinct
-    # from is_active on purpose — a test account stays fully functional
-    # for testing; deactivating it would defeat its purpose.
+    # Operator classification — see ACCOUNT_KINDS.  Distinct from
+    # is_active on purpose: a non-customer account stays fully functional
+    # (a test account exists to be logged into; a monitored one must look
+    # exactly like a real one to whoever is being watched).
+    kind: str = "real"
+    # Deprecated alias of ``kind == "test"``, kept one release for readers
+    # that predate ``kind``.  Storage keeps the two in step on every
+    # write; never set one without the other.
     is_test: bool = False
+
+
+# The trust classes an account can be in.  DB value == wire value, so
+# there is one vocabulary from the column to the console select.
+#   real        — a customer; counted, billed, unrestricted.
+#   test        — ours; not counted; unrestricted.
+#   monitored   — behaves EXACTLY like real (no gate may consult this
+#                 value to refuse anything), but is not counted and every
+#                 request is recorded for the security console.  Because
+#                 it restricts nothing, the detector may apply it
+#                 automatically: a false positive costs disk, not access.
+#   quarantined — refused; reserved for when someone must be cut off.
+ACCOUNT_KINDS: tuple[str, ...] = ("real", "test", "monitored", "quarantined")
 
 @dataclass
 class Company:

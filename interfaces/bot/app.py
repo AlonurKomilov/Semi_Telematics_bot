@@ -164,8 +164,11 @@ async def post_init(app: Application):
     # system.4truck.us console (no callback handler required).
     try:
         from infra import system_bot
-        sys_accounts = await db.list_accounts()
-        sys_total_users = await db.count_all_users()
+        # Customers only: test accounts are ours and monitored ones are
+        # someone we are watching — neither is a number the owner should
+        # read as "how many companies use this".
+        sys_accounts = [a for a in await db.list_accounts() if a.kind == "real"]
+        sys_total_users = await db.count_all_users(kinds=("real",))
         sys_msg = (
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "  ⚙️  <b>Bot is Online</b>\n"

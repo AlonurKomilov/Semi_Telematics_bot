@@ -220,6 +220,7 @@ async def run_all(conn) -> None:
     await migrate_alert_triggers(conn)
     await migrate_role_vehicle_scope(conn)
     await migrate_account_test_flag(conn)
+    await migrate_account_kind(conn)
     # Vehicle-document expiry needed a personal toggle like every other
     # alert type — without the column its subscriber query returned
     # nobody, so the alert fired into silence.
@@ -262,6 +263,44 @@ async def migrate_alert_vehicle_documents_column(conn) -> None:
             logger.info("Migration: added users.alert_vehicle_documents column")
     except Exception as e:
         logger.error("alert_vehicle_documents migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_account_kind(conn) -> None:
+    """accounts.kind — the trust class, superseding the is_test boolean.
+
+    The boolean could say "ours" or "not ours" and nothing else, and the
+    2026-09-08 probe showed the third thing that exists: an account that
+    is neither a customer nor ours, which we want to keep ALIVE and
+    watch rather than block.  ``kind`` names all four (see
+    models.ACCOUNT_KINDS); ``is_test`` stays one release as an alias and
+    storage keeps it in step.
+
+    Backfill maps the flag onto the new column; rerun is a no-op.  No
+    index, for the same reasons as is_test.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'real'"
+        )
+        await conn.commit()
+        logger.info("Platform migration: accounts.kind added")
+    except Exception as e:
+        logger.info("accounts.kind likely exists — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+    try:
+        await conn.execute(
+            "UPDATE accounts SET kind = 'test' WHERE is_test = 1 AND kind = 'real'"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.warning("accounts.kind backfill skipped — %s", e)
         try:
             await conn.rollback()
         except Exception:

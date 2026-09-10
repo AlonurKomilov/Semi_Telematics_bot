@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import require_system_owner, get_platform_db
+from adapters.storage.models import ACCOUNT_KINDS
 
 logger = logging.getLogger(__name__)
 
@@ -385,10 +386,8 @@ async def list_accounts(
         accounts = [a for a in accounts if needle in a.name.lower()]
     if tier:
         accounts = [a for a in accounts if a.tier == tier]
-    if account_type == "test":
-        accounts = [a for a in accounts if a.is_test]
-    elif account_type == "real":
-        accounts = [a for a in accounts if not a.is_test]
+    if account_type:
+        accounts = [a for a in accounts if a.kind == account_type]
 
     items: list[dict] = []
     for acc in accounts[:limit]:
@@ -406,7 +405,7 @@ async def list_accounts(
             "slug":           acc.slug,
             "tier":           acc.tier,
             "is_active":      acc.is_active,
-            "type":           "test" if acc.is_test else "real",
+            "type":           acc.kind,
             "created_at":     acc.created_at,
             # Subscription fields are shallow — full detail is on the
             # account-detail page; the list view stays cheap.
@@ -441,7 +440,7 @@ async def get_account_detail(
             "slug":         acc.slug,
             "tier":         acc.tier,
             "is_active":    acc.is_active,
-            "type":         "test" if acc.is_test else "real",
+            "type":         acc.kind,
             "created_at":   acc.created_at,
             "timezone":     acc.timezone,
             "bot_username": acc.bot_username,
@@ -975,7 +974,9 @@ class BillingEmailOverride(BaseModel):
 
 
 class AccountTypeBody(BaseModel):
-    type: str = Field(..., pattern="^(real|test)$")
+    # One vocabulary end to end: the DB column, this wire field and the
+    # console select all speak ACCOUNT_KINDS.
+    type: str = Field(..., pattern="^(" + "|".join(ACCOUNT_KINDS) + ")$")
 
 
 @router.patch("/accounts/{account_id}/type")
@@ -985,25 +986,37 @@ async def operator_set_account_type(
     user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
-    """Set the account TYPE — 'test' (internal dev artifact) or 'real'.
+    """Set the account's trust class — see ``models.ACCOUNT_KINDS``.
 
     Classification only — nothing about the account's function
-    changes.  Deliberately NOT an ``is_active`` write: deactivating a
-    test account would defeat its purpose, and lifecycle states
-    (suspend/delete) keep their own guarded flows.  Stored as the
-    ``accounts.is_test`` boolean; 'real' is the absence of the flag,
-    so no third value can ever creep in.
+    changes, and ``monitored`` in particular must be invisible to the
+    account itself: no gate reads it to refuse anything.  Deliberately
+    NOT an ``is_active`` write; lifecycle states (suspend/delete) keep
+    their own guarded flows.
+
+    Every change lands in the platform audit trail: who moved which
+    account from what to what.  Marking someone ``monitored`` is a
+    decision about a person, and the trail is where that decision is
+    accountable.
     """
     acc = await platform_db.get_account(account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
-    await platform_db.update_account(
-        account_id, is_test=1 if body.type == "test" else 0,
-    )
+    previous = acc.kind
+    await platform_db.update_account(account_id, kind=body.type)
     logger.info(
-        "system: account type acct=%s -> %s operator_tg=%s",
-        account_id, body.type, user.get("sub"),
+        "system: account kind acct=%s %s -> %s operator_tg=%s",
+        account_id, previous, body.type, user.get("sub"),
     )
+    if previous != body.type:
+        try:
+            await platform_db.add_platform_audit(
+                "account_kind", account_id=account_id,
+                actor=f"operator:{user.get('sub')}",
+                details=f"{previous} -> {body.type}",
+            )
+        except Exception:
+            logger.exception("platform audit write failed for account %s", account_id)
     return {"id": account_id, "type": body.type}
 
 

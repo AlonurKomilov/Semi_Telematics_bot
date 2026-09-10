@@ -1,3 +1,9 @@
+/** The trust class an account is in — mirrors ACCOUNT_KINDS on the API.
+ *  `monitored` looks exactly like `real` to the account itself; the
+ *  difference is entirely on the operator's side. */
+export type AccountKind = 'real' | 'test' | 'monitored' | 'quarantined';
+export const ACCOUNT_KINDS: AccountKind[] = ['real', 'test', 'monitored', 'quarantined'];
+
 // Operator-side type definitions.  Mirrors what /api/system/* returns.
 // Kept narrow — the operator UI shows everything, but we still type
 // the fields we read so refactors at the backend surface a TS error
@@ -21,7 +27,7 @@ export interface AccountListItem {
   tier: string;
   is_active: boolean;
   /** Account TYPE — operator classification, separate from status. */
-  type: 'real' | 'test';
+  type: AccountKind;
   created_at: string;
   subscription: SubscriptionSummary;
 }
@@ -99,7 +105,7 @@ export interface AccountDetail {
     tier: string;
     is_active: boolean;
     /** Account TYPE — operator classification, separate from status. */
-    type: 'real' | 'test';
+    type: AccountKind;
     created_at: string;
     timezone: string;
     bot_username: string;

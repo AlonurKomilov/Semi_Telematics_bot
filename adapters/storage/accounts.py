@@ -89,8 +89,27 @@ class AccountsMixin:
 
     async def update_account(self, account_id: int, **kwargs) -> bool:
         """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret, payroll_enabled, coaching_enabled, timezone, alert_routing_mode, disabled_modules, public_display_name, is_test."""
-        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone", "alert_routing_mode", "disabled_modules", "public_display_name", "is_test"}
+        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone", "alert_routing_mode", "disabled_modules", "public_display_name", "is_test", "kind"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
+        # ``kind`` and its deprecated alias ``is_test`` are one fact stored
+        # twice for a release.  Whichever the caller wrote, both land.
+        if "kind" in updates:
+            from adapters.storage.models import ACCOUNT_KINDS
+            if updates["kind"] not in ACCOUNT_KINDS:
+                raise ValueError(f"unknown account kind: {updates['kind']!r}")
+            updates["is_test"] = 1 if updates["kind"] == "test" else 0
+        elif "is_test" in updates:
+            if updates["is_test"]:
+                updates["kind"] = "test"
+            else:
+                # A legacy "not test" write may only demote test -> real.
+                # It must never touch monitored/quarantined, which the
+                # legacy writer does not know exist.
+                cur = await self._db.execute(
+                    "SELECT kind FROM accounts WHERE id = ?", (account_id,))
+                row = await cur.fetchone()
+                if row and row[0] == "test":
+                    updates["kind"] = "real"
         if not updates:
             return False
         set_clause = ", ".join(f"{k} = ?" for k in updates)

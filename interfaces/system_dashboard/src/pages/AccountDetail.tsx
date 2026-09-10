@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
-import { usd } from './Accounts';
+import { usd, KindBadge } from './Accounts';
 import AlertRoutingCard from '../components/AlertRoutingCard';
 import type {
   AccountDetail, CompHistoryRow,
   SyncQuantityResult, RefreshVehiclesResult, BillingEmailResult,
   OrphanReport, OrphanPurgeResult,
 } from '../types';
+import { ACCOUNT_KINDS, type AccountKind } from '../types';
 
 export default function AccountDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -63,9 +64,7 @@ export default function AccountDetailPage() {
       <header className="mt-3 mb-6">
         <h1 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
           {data.account.name}
-          {data.account.type === 'test' && (
-            <span className="text-xs font-medium text-warn border border-warn/40 bg-warn/10 rounded px-1.5 py-0.5">test</span>
-          )}
+          {data.account.type !== 'real' && <KindBadge kind={data.account.type} />}
         </h1>
         <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-4 gap-y-1 items-center">
           <span>id: {data.account.id}</span>
@@ -73,25 +72,30 @@ export default function AccountDetailPage() {
           <span>tz: {data.account.timezone}</span>
           {data.account.bot_username && <span>bot: @{data.account.bot_username}</span>}
           <span>{data.user_count} users</span>
-          <span>type: {data.account.type}</span>
-          {/* TYPE is classification, not lifecycle: flipping it changes
-              nothing about the account's function — it only marks the
-              row in lists and filters.  Suspend/delete keep their own
-              guarded card. */}
-          <button
-            onClick={async () => {
-              try {
-                await apiJSON(`/system/accounts/${data.account.id}/type`, {
-                  method: 'PATCH',
-                  body: { type: data.account.type === 'test' ? 'real' : 'test' },
-                });
-                load();
-              } catch { /* transient — row keeps its current type */ }
-            }}
-            className="text-accent hover:underline"
-          >
-            {data.account.type === 'test' ? 'mark as real' : 'mark as test'}
-          </button>
+          {/* KIND is classification, not lifecycle: changing it alters
+              nothing about the account's function — `monitored` in
+              particular must be invisible to the account.  Suspend/
+              delete keep their own guarded card.  Every change is
+              written to the platform audit trail by the API. */}
+          <label className="flex items-center gap-1">
+            <span>kind:</span>
+            <select
+              value={data.account.type}
+              onChange={async (e) => {
+                const next = e.target.value as AccountKind;
+                if (next === data.account.type) return;
+                try {
+                  await apiJSON(`/system/accounts/${data.account.id}/type`, {
+                    method: 'PATCH', body: { type: next },
+                  });
+                  load();
+                } catch { /* transient — row keeps its current kind */ }
+              }}
+              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
+            >
+              {ACCOUNT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </label>
         </div>
       </header>
 

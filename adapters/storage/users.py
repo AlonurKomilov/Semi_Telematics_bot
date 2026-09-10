@@ -916,12 +916,27 @@ class UsersMixin:
         rows = await cur.fetchall()
         return [self._row_to_user(r) for r in rows]
 
-    async def count_all_users(self, active_only: bool = True) -> int:
-        """Count all users across all accounts."""
-        q = "SELECT COUNT(*) FROM users"
-        if active_only:
-            q += " WHERE is_active = 1"
-        cur = await self._db.execute(q)
+    async def count_all_users(
+        self, active_only: bool = True, kinds: tuple[str, ...] | None = None,
+    ) -> int:
+        """Count users across accounts; ``kinds`` narrows to those account kinds.
+
+        The bot's health card passes ``("real",)`` so a probe's thirty
+        throwaway signups never read as customers.  Default (None) keeps
+        the historical meaning: every user, every account.
+        """
+        params: list = []
+        if kinds:
+            q = ("SELECT COUNT(*) FROM users u JOIN accounts a ON a.id = u.account_id "
+                 "WHERE a.kind IN (" + ",".join("?" * len(kinds)) + ")")
+            params.extend(kinds)
+            if active_only:
+                q += " AND u.is_active = 1"
+        else:
+            q = "SELECT COUNT(*) FROM users"
+            if active_only:
+                q += " WHERE is_active = 1"
+        cur = await self._db.execute(q, params)
         row = await cur.fetchone()
         return row[0] if row else 0
 
