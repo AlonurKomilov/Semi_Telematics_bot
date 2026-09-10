@@ -63,6 +63,40 @@ def test_the_sellable_set_is_every_entry_but_administration_and_overview():
     assert "maintenance" in plans.EXCLUDABLE
 
 
+def test_an_entry_that_rides_another_is_not_a_plan_line():
+    """``flags=[]`` entries are governed by the verb they ride: the mask
+    could force nothing off for them, so a plan cannot name them."""
+    for rider in ("scheduled_reports", "dot_binder", "kpi_my_payouts", "scorecard_rules", "vendors"):
+        assert rider not in plans.EXCLUDABLE, rider
+        assert plans.plan_includes("anything", rider)          # always included, even unknown tier
+    for fid in plans.EXCLUDABLE:
+        assert plans._FLAGS_OF[fid], f"{fid} is sellable but forces no flag off"
+
+
+def test_the_console_vocabulary():
+    cat = plans.catalog()
+    assert [c["id"] for c in cat] == list(plans.EXCLUDABLE)
+    by = {c["id"]: c for c in cat}
+    assert by["ai_assistant"]["label"] == "AI Assistant" and by["ai_assistant"]["kind"] == "service"
+    assert by["cost_per_mile"]["label"] == "Cost Per Mile"
+    assert by["truck-anatomy"]["label"] == "Truck Anatomy"
+    assert by["vehicle_documents"]["parent"] == "vehicles"
+    assert all(c["flags"] for c in cat)
+    assert plans.PLAN_KEY_RE.match("pro") and plans.PLAN_KEY_RE.match("gold_2027")
+    assert not plans.PLAN_KEY_RE.match("Pro") and not plans.PLAN_KEY_RE.match("x") and not plans.PLAN_KEY_RE.match("a-b")
+    assert set(plans.quota_defaults("free")) == set(plans.QUOTA_KEYS)
+    assert plans.quota_defaults("nope") == plans.quota_defaults("free")
+
+
+def test_normalize_included():
+    assert plans.normalize_included(["*"]) == (["*"], [])
+    assert plans.normalize_included(["maintenance", "*", "vehicles"]) == (["*"], [])
+    inc, unknown = plans.normalize_included(["work_orders", "maintenance", "maintenance", "billing", "nope", "scheduled_reports"])
+    assert inc == ["maintenance", "work_orders"]                  # registry order, deduplicated
+    assert unknown == ["billing", "nope", "scheduled_reports"]    # not for sale / unknown / rides another
+    assert plans.normalize_included([]) == ([], [])
+
+
 def test_no_two_sellable_entries_share_a_flag():
     """Excluding one entry forces ITS flags off; a flag two entries
     listed would strip the one still included.  Riding entries declare

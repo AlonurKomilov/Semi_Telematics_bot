@@ -255,8 +255,12 @@ out is forced off, so nav, API, bot and AI close through the permission,
 and `feature_available` gives a job the same answer. What a plan may
 leave out is the sellable set — every feature and service except what
 an owner must always reach: the administration tier, Billing (the way
-back to a wider plan) and Overview. Config-family flags are never
-masked. The mask is FAIL-CLOSED against a live platform: an unknown
+back to a wider plan) and Overview — and only an entry with a flag of
+its own: one that rides another entry's verb (Scheduled Reports under
+Reports, DOT Binder, My payouts under KPI) is governed by what it rides
+and is not a plan line. The operator edits plans from the system
+console (`/plans`; `GET/PUT /system/plans`), audited as
+`plan.updated`. Config-family flags are never masked. The mask is FAIL-CLOSED against a live platform: an unknown
 tier closes the sellable set, an unreadable table keeps the last-known
 one (warmed at API and bot start), an unreadable account row falls back
 to that account's last-known tier. The seed puts every tier — and any

@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList } from 'lucide-react';
+import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -20,6 +20,7 @@ import MarketIntelPage from './pages/MarketIntel';
 import ScansPage from './pages/Scans';
 import SchedulerPage from './pages/Scheduler';
 import CapacityPage from './pages/Capacity';
+import PlansPage from './pages/Plans';
 import { clearToken, getToken } from './api/client';
 
 export default function App() {
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/accounts/:id" element={<AccountDetail />} />
             <Route path="/invoices" element={<InvoicesPage />} />
+            <Route path="/plans" element={<PlansPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/health" element={<HealthPage />} />
             <Route path="/users" element={<UsersPage />} />
@@ -101,6 +103,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
     items: [
       { to: '/accounts', label: 'Accounts', icon: Building2 },
       { to: '/invoices', label: 'Invoices', icon: Receipt },
+      { to: '/plans',    label: 'Plans',    icon: Layers },
       { to: '/audit',    label: 'Audit',    icon: ScrollText },
     ],
   },

@@ -24,6 +24,8 @@ from __future__ import annotations
 import logging
 import re
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -1765,3 +1767,146 @@ async def system_ai_feedback(
         "limit": limit,
         "offset": offset,
     }
+
+# ── Plans: what each plan includes, as data the operator edits ─────
+#
+# One row per plan (accounts.tier is the key): the registry ids it
+# includes — ["*"] = everything — and its quotas.  The resolver's plan
+# mask reads the table (capabilities/permissions/plans.py, fail-closed);
+# this is the one place it is written.  A save reaches every account
+# on that plan: this process at once, sibling workers within their TTL.
+
+
+class PlanBody(BaseModel):
+    label: str = Field(..., min_length=1, max_length=60)
+    included: list[str] = Field(..., max_length=200, description='registry ids, or ["*"] for everything')
+    quotas: dict[str, int] = Field(default_factory=dict, max_length=20)
+
+
+class NewPlanBody(BaseModel):
+    tier: str = Field(..., min_length=2, max_length=32)
+    label: str = Field(..., min_length=1, max_length=60)
+
+
+def _label_of(raw: str) -> str:
+    label = raw.strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="Label is required")
+    return label
+
+
+def _plan_view(row: dict, counts: dict[str, int]) -> dict:
+    from capabilities.permissions.plans import EVERYTHING, normalize_included, quota_defaults
+    # normalized on read too: a row that names an id no longer for sale
+    # (edited in the DB, or saved before the sellable set narrowed) is
+    # shown as the mask reads it
+    inc, _ = normalize_included(row.get("included") or [])
+    return {
+        **row,
+        "included": inc,
+        "everything": EVERYTHING in inc,
+        "accounts": counts.get(row["tier"], 0),
+        "quota_defaults": quota_defaults(row["tier"]),
+    }
+
+
+def _check_quotas(quotas: dict[str, int]) -> None:
+    from capabilities.permissions.plans import QUOTA_KEYS
+    bad_keys = sorted(set(quotas) - set(QUOTA_KEYS))
+    if bad_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown quota: {', '.join(bad_keys)}")
+    if any(v < 0 for v in quotas.values()):
+        raise HTTPException(status_code=400, detail="A quota is 0 (unlimited) or a positive number")
+
+
+async def _audit_plan(platform_db, event: str, *, tier: str, actor: str, before, row: dict, accounts: int) -> None:
+    try:
+        await platform_db.add_platform_audit(
+            event, actor=actor,
+            details=json.dumps({
+                "tier": tier, "accounts": accounts,
+                "before": {k: before[k] for k in ("label", "included", "quotas")} if before else None,
+                "after": {"label": row["label"], "included": row["included"], "quotas": row["quotas"]},
+            }),
+        )
+    except Exception:
+        logger.exception("plan audit write failed tier=%s", tier)
+
+
+@router.get("/plans")
+async def system_plans(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Every plan with what it includes, the sellable catalog to draw
+    the grid from, and the tiers that have accounts but no plan row —
+    those accounts hold nothing sellable until a row exists."""
+    from capabilities.permissions.plans import QUOTA_KEYS, catalog
+    from capabilities.permissions.plans import PLAN_KEY_RE
+    rows = await platform_db.list_plans()
+    counts = await platform_db.count_accounts_by_tier()
+    known = {r["tier"] for r in rows}
+    return {
+        "plans": [_plan_view(r, counts) for r in rows],
+        "catalog": catalog(),
+        "quota_keys": list(QUOTA_KEYS),
+        "plan_key_pattern": PLAN_KEY_RE.pattern,
+        "accounts_without_plan": {t: n for t, n in sorted(counts.items()) if t not in known},
+    }
+
+
+@router.post("/plans", status_code=201)
+async def system_create_plan(
+    body: NewPlanBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """A NEW plan, with everything included — its own door, so a key
+    that already names a plan is refused (409) instead of resetting
+    that plan to everything.  Narrow it with PUT afterwards."""
+    from capabilities.permissions.plans import EVERYTHING, PLAN_KEY_RE, invalidate_plans
+    tier = body.tier.strip()
+    if not PLAN_KEY_RE.match(tier):
+        raise HTTPException(status_code=400, detail="Plan key: a-z, 0-9, _ — 2 to 32 chars, starting with a letter")
+    if await platform_db.get_plan(tier):
+        raise HTTPException(status_code=409, detail=f"A plan named '{tier}' already exists — edit it in the grid")
+    actor = f"tg:{user.get('sub')}"
+    row = await platform_db.upsert_plan(tier, label=_label_of(body.label), included=[EVERYTHING], quotas={}, updated_by=actor)
+    invalidate_plans()
+    counts = await platform_db.count_accounts_by_tier()
+    await _audit_plan(platform_db, "plan.created", tier=tier, actor=actor, before=None, row=row, accounts=counts.get(tier, 0))
+    logger.info("system: plan %s created by %s", tier, actor)
+    return {"plan": _plan_view(row, counts)}
+
+
+@router.put("/plans/{tier}")
+async def system_put_plan(
+    tier: str,
+    body: PlanBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Replace what a plan includes.  Validated against the sellable set —
+    an id that is not for sale (Billing, Overview, the administration
+    tier) or that rides another entry is refused, not silently dropped.
+    Audited as ``plan.updated`` with the before/after.  A key with no
+    plan is refused: creating one is POST's job."""
+    from capabilities.permissions.plans import PLAN_KEY_RE, invalidate_plans, normalize_included
+    if not PLAN_KEY_RE.match(tier):
+        raise HTTPException(status_code=400, detail="Plan key: a-z, 0-9, _ — 2 to 32 chars, starting with a letter")
+    label = _label_of(body.label)
+    included, unknown = normalize_included(body.included)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Not a plan line: {', '.join(unknown)}")
+    _check_quotas(body.quotas)
+    before = await platform_db.get_plan(tier)
+    if not before:
+        raise HTTPException(status_code=404, detail=f"No plan named '{tier}' — create it first")
+    actor = f"tg:{user.get('sub')}"
+    row = await platform_db.upsert_plan(
+        tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor)
+    invalidate_plans()
+    counts = await platform_db.count_accounts_by_tier()
+    await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))
+    logger.info("system: plan %s saved by %s (%d account(s))", tier, actor, counts.get(tier, 0))
+    return {"plan": _plan_view(row, counts)}

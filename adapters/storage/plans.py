@@ -44,6 +44,13 @@ class PlansMixin:
         r = await cur.fetchone()
         return _row(r) if r else None
 
+    async def count_accounts_by_tier(self) -> dict[str, int]:
+        """Active accounts per ``tier`` — the blast radius of a plan edit,
+        and the tiers that have accounts but no plan row."""
+        cur = await self._db.execute(
+            "SELECT tier, COUNT(*) AS n FROM accounts WHERE is_active = 1 GROUP BY tier")
+        return {(r["tier"] or "free"): int(r["n"]) for r in await cur.fetchall()}
+
     async def upsert_plan(
         self, tier: str, *, label: str, included: list[str],
         quotas: Optional[dict] = None, updated_by: str = "",

@@ -22,6 +22,7 @@ one.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import replace
 from typing import Optional
@@ -35,16 +36,75 @@ _TTL_S = 60.0
 
 #: what an owner must always reach, whatever the plan — never for sale
 NOT_FOR_SALE: frozenset[str] = frozenset({"overview", "billing"})
-#: ids a plan may leave out — the sellable set
+
+
+def _own_flags(e) -> frozenset[str]:
+    return frozenset(f for f in e.flags if f not in CROSS_FEATURE_FLAGS)
+
+
+#: ids a plan may leave out — the sellable set: what an owner need not
+#: always reach AND what the mask can enforce.  An entry that rides
+#: another's verb (``flags=[]`` — Scheduled Reports under Reports, DOT
+#: Binder, My payouts under KPI) is governed by the entry it rides and
+#: is not a plan line of its own.
 EXCLUDABLE: tuple[str, ...] = tuple(
-    e.id for e in ENTRIES if e.tier != "administration" and e.id not in NOT_FOR_SALE
+    e.id for e in ENTRIES
+    if e.tier != "administration" and e.id not in NOT_FOR_SALE and _own_flags(e)
 )
 _EXCLUDABLE_SET = frozenset(EXCLUDABLE)
 _FLAGS_OF: dict[str, frozenset[str]] = {
-    e.id: frozenset(f for f in e.flags if f not in CROSS_FEATURE_FLAGS)
-    for e in ENTRIES if e.id in _EXCLUDABLE_SET
+    e.id: _own_flags(e) for e in ENTRIES if e.id in _EXCLUDABLE_SET
 }
 _ALL_SELLABLE_FLAGS: frozenset[str] = frozenset(f for fl in _FLAGS_OF.values() for f in fl)
+
+#: a plan's key — accounts.tier — as the operator may create one
+PLAN_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+#: the quotas a plan row may set; each is enforced by one reader
+#: (interfaces/api/deps.py) with the config table as its default
+QUOTA_KEYS: tuple[str, ...] = ("max_users", "max_companies")
+
+_ACRONYMS = {"ai": "AI", "kpi": "KPI", "dot": "DOT"}
+
+
+def label_of(feature_id: str) -> str:
+    """A readable name for the operator console, from the id alone —
+    the customer dashboard's names are translated per locale and live
+    with it; the console is English and reads the registry."""
+    words = re.split(r"[_\-]", feature_id)
+    return " ".join(_ACRONYMS.get(w, w.capitalize()) for w in words if w)
+
+
+def catalog() -> list[dict]:
+    """The sellable set as the console draws it: registry order, each
+    with its kind, tier, parent and a label."""
+    return [
+        {"id": e.id, "kind": e.kind, "tier": e.tier, "parent": e.parent,
+         "label": label_of(e.id), "flags": sorted(_FLAGS_OF[e.id])}
+        for e in ENTRIES if e.id in _EXCLUDABLE_SET
+    ]
+
+
+def quota_defaults(tier: str) -> dict[str, int]:
+    """The config table's numbers for a tier — what applies when the
+    plan row sets none (0 = unlimited)."""
+    from infra.config import QUOTA_MAX_COMPANIES, QUOTA_MAX_USERS
+    return {
+        "max_users": QUOTA_MAX_USERS.get(tier, QUOTA_MAX_USERS.get("free", 0)),
+        "max_companies": QUOTA_MAX_COMPANIES.get(tier, QUOTA_MAX_COMPANIES.get("free", 1)),
+    }
+
+
+def normalize_included(ids) -> tuple[list[str], list[str]]:
+    """``(included, unknown)`` — ``["*"]`` whole when everything is
+    named; else the sellable ids in registry order, deduplicated; ids
+    outside the sellable set come back as *unknown* for the caller to
+    refuse."""
+    ids = list(ids or [])
+    if EVERYTHING in ids:
+        return [EVERYTHING], [i for i in ids if i != EVERYTHING and i not in _EXCLUDABLE_SET]
+    wanted = set(ids)
+    unknown = [i for i in ids if i not in _EXCLUDABLE_SET]
+    return [i for i in EXCLUDABLE if i in wanted], unknown
 
 # the last-known table: tier → included ids (a frozenset, or EVERYTHING)
 _PLANS: dict[str, frozenset[str] | str] = {}
