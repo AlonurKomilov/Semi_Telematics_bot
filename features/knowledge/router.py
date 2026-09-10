@@ -36,7 +36,7 @@ from capabilities.permissions.roles import (
 from features.knowledge.service import can_view_article as _can_view_article
 from features.work_orders.paths import safe_attachment_name
 from interfaces.api.deps import (
-    get_current_user, get_platform_db, get_tenant_db, resolve_user_id,
+    get_current_user, get_platform_db, get_tenant_db, require_permission, resolve_user_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -276,7 +276,7 @@ class ArticleUpdate(BaseModel):
 
 
 @router.get("/permissions")
-async def my_permissions(user: dict = Depends(get_current_user)):
+async def my_permissions(user: dict = Depends(require_permission("can_view_knowledge_base"))):
     """Return what THIS user can do in the KB.
 
     Single source of truth for the frontend — keeps the UI from
@@ -291,7 +291,7 @@ async def my_permissions(user: dict = Depends(get_current_user)):
 
 @router.get("/categories")
 async def list_categories(
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Return all available categories with labels."""
@@ -309,7 +309,7 @@ async def list_articles(
     pinned: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """List knowledge base articles visible to the current user.
@@ -370,7 +370,7 @@ async def list_articles(
 @router.get("/articles/{article_id}")
 async def get_article(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Get a single knowledge base article."""
@@ -409,7 +409,7 @@ async def get_article(
 
 @router.get("/stats")
 async def article_stats(
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Get category counts for visible articles."""
@@ -424,7 +424,7 @@ async def article_stats(
 @router.post("/articles/{article_id}/view")
 async def record_view(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Increment the per-article view counter.
@@ -462,7 +462,7 @@ class FeedbackRequest(BaseModel):
 async def record_feedback(
     article_id: int,
     body: FeedbackRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Record (or update) the user's helpful/unhelpful vote.
@@ -503,7 +503,7 @@ async def record_feedback(
 @router.post("/articles/{article_id}/bookmark")
 async def add_bookmark(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Bookmark an article for the requesting user.
@@ -531,7 +531,7 @@ async def add_bookmark(
 @router.delete("/articles/{article_id}/bookmark")
 async def remove_bookmark(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Remove a bookmark.  Idempotent — no error if it wasn't there."""
@@ -548,7 +548,7 @@ async def remove_bookmark(
 @router.post("/articles")
 async def create_article(
     body: ArticleCreate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
     # Needed only to resolve the account's object-store backend when the
     # article carries an uploaded file: knowledge uploads and creates in
@@ -665,7 +665,7 @@ async def create_article(
 async def update_article(
     article_id: int,
     body: ArticleUpdate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Update a knowledge base article. Only the creator can update."""
@@ -712,7 +712,7 @@ async def update_article(
 @router.delete("/articles/{article_id}")
 async def delete_article(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Delete a knowledge base article. Only the creator can delete."""
@@ -827,7 +827,7 @@ def _is_internal_kb_path(value: str) -> bool:
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -956,7 +956,7 @@ async def upload_file(
 @router.get("/articles/{article_id}/file")
 async def serve_article_file(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -1069,7 +1069,7 @@ async def serve_article_file(
 
 @router.get("/pending")
 async def list_pending_articles(
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """List public articles pending approval (owner/admin only)."""
@@ -1082,7 +1082,7 @@ async def list_pending_articles(
 @router.post("/articles/{article_id}/approve")
 async def approve_article(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Approve a public article for cross-account visibility (owner/admin only)."""
@@ -1117,7 +1117,7 @@ async def approve_article(
 @router.post("/articles/{article_id}/reject")
 async def reject_article(
     article_id: int,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_knowledge_base")),
     platform_db=Depends(get_platform_db),
 ):
     """Reject and delete a pending public article (owner/admin only)."""

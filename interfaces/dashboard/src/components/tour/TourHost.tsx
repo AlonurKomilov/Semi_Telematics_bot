@@ -24,6 +24,7 @@ import TourBeacon from './TourBeacon';
 import TourIntro from './TourIntro';
 import TourOverlay from './TourOverlay';
 import { useTourState } from './useTourState';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { TourCtx, TourSpec } from './types';
 
 /** The manual-launch lookup, pure for testing: the ?tour= key must
@@ -36,7 +37,7 @@ export function resolveManualTour(
     (t) => t.key === key && t.feature === feature) ?? null;
 }
 
-export default function TourHost({
+function TourHostInner({
   feature,
   ctx,
 }: {
@@ -123,4 +124,16 @@ export default function TourHost({
     );
   }
   return <TourBeacon tour={offered} onOpen={() => setPhase('intro')} />;
+}
+
+/**
+ * The Tours SERVICE's door (can_view_tours, per role since 2026-09-10): a
+ * role without it sees no beacon and is offered no tour on any page.  A
+ * wrapper rather than an early return, so the host's hooks stay
+ * unconditional.
+ */
+export default function TourHost(props: { feature: string; ctx: TourCtx }) {
+  const { hasAny } = useViewPermissions();
+  if (!hasAny('can_view_tours')) return null;
+  return <TourHostInner {...props} />;
 }

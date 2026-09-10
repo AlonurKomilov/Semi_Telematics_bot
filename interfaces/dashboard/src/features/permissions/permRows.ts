@@ -89,6 +89,7 @@ export const SERVICE_ROW_KEYS: Record<string, string> = {
   reports: 'can_view_reports',
   mods: 'can_view_mods',
   notifications: 'can_view_notifications',
+  tours: 'can_view_tours',
 };
 
 export const PERM_GROUPS: PermGroup[] = [
@@ -108,6 +109,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_reports', kind: 'feature', label: 'Reports', description: 'The hub and its scheduled-report subscription; which tabs appear follows the role’s features' },
       { key: 'can_view_notifications', kind: 'feature', label: 'Notifications', description: 'The bell, the notification centre, the channels (Telegram, email, push) and their settings, and delivery itself. Without it nothing reaches the person — except mandatory security and billing notices' },
       { key: 'can_view_mods', kind: 'feature', label: 'Mods', description: 'The personal look — colour, corners, sound, effects, wallpaper. Per person, per device; without it every setting stays at its default and the panel, page and doors are closed' },
+      { key: 'can_view_tours', kind: 'feature', label: 'Tours', description: 'The interactive walkthroughs — the beacons on pages and the Tours library. Each tour still needs the feature it walks through; without this grant no tour is offered' },
     ],
   },
   {
@@ -206,6 +208,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_scorecards', kind: 'feature', label: 'Scorecards' },
       // Scorecard Rules editing has no row of its own anymore — it folded
       // into "Config — account-wide" (Settings group) with KPI thresholds.
+      { key: 'can_view_knowledge_base', kind: 'feature', label: 'Knowledge Base', description: 'Tips & guides — private articles for the account and public ones shared across accounts' },
     ],
   },
   {

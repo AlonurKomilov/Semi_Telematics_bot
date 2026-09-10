@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from capabilities.tour import ALLOWED_SIGNALS
-from interfaces.api.deps import get_current_user, get_tenant_db, resolve_user_id
+from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
 
 router = APIRouter(prefix="/me", tags=["tour"])
 
@@ -16,7 +16,7 @@ _MAX_WINDOW_DAYS = 90
 async def tour_signals(
     pairs: str = Query(..., min_length=1, max_length=500),
     days: int = Query(14, ge=1, le=_MAX_WINDOW_DAYS),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_view_tours")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Counts of the CALLER's own recent actions, per requested pair.

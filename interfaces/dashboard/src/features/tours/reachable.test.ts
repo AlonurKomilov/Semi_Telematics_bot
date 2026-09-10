@@ -19,7 +19,11 @@ describe('reachableFeature', () => {
     expect(reachableFeature('maintenance', access([]))).toBeNull();
   });
   it('a permissionless feature needs only its module', () => {
-    expect(reachableFeature('knowledge_base', access([]))?.path).toBe('/knowledge');
+    // Knowledge Base took a grant on 2026-09-10; Overview is the page that
+    // still opens on its module alone (it is gated by what it shows).
+    expect(reachableFeature('overview', access([]))?.path).toBe('/');
+    expect(reachableFeature('knowledge_base', access([]))).toBeNull();
+    expect(reachableFeature('knowledge_base', access(['can_view_knowledge_base']))?.path).toBe('/knowledge');
   });
   it('an unknown feature id is a null, never a throw', () => {
     expect(reachableFeature('not_a_feature', access([]))).toBeNull();

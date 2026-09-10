@@ -124,7 +124,7 @@ const P_REPORTS = ['can_view_reports'];
  *  a legacy pair.  Guards that ask "is this a real flag" must accept
  *  these too — grown one family at a time as enforcement migrates. */
 export const CANONICAL_WIRE_FLAGS: readonly string[] = [
-  'can_view_notifications',
+  'can_view_notifications', 'can_view_knowledge_base', 'can_view_tours',
   'can_manage_maintenance', 'can_manage_work_orders',
   'can_manage_inspections', 'can_manage_geofence',
   'can_view_driver_pay', 'can_view_coaching', 'can_view_driver_docs',
@@ -179,12 +179,12 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Self-scoped: the endpoint only ever returns the CALLER's own
   // finalized payout rows, so no can_* flag gates it — can_view_kpi is for
   // the people who RUN the settlement, not the people it pays.
-  { id: 'kpi_my_payouts', labelKey: 'nav.my_payouts',     path: '/kpi/my-payouts', icon: BadgeDollarSign, modules: ['dispatch'], tier: 'shared', permission: null, navGroup: 'reports' },
-  { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
+  { id: 'kpi_my_payouts', labelKey: 'nav.my_payouts',     path: '/kpi/my-payouts', icon: BadgeDollarSign, modules: ['dispatch'], tier: 'shared', permission: ['can_view_kpi'], navGroup: 'reports' },
+  { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'shared', permission: ['can_view_knowledge_base'], navGroup: 'tail' },
   // The tour library — every walkthrough, re-runnable.  Page itself is
   // permissionless like Knowledge Base; each CARD gates on its own
   // feature's permission + module (features/tours/reachable.ts).
-  { id: 'tours', labelKey: 'nav.tours', path: '/tours', icon: GraduationCap,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
+  { id: 'tours', labelKey: 'nav.tours', path: '/tours', icon: GraduationCap,        modules: ['core'], kind: 'service', permission: ['can_view_tours'], navGroup: 'tail' },
   // Universal operational views — every working persona needs to find a
   // truck, so these live in core (always available) rather than a module.
   { id: 'live_map', labelKey: 'nav.live_map', path: '/live-map', icon: MapIcon, modules: ['core'], tier: 'shared', permission: P_LOCATION, navGroup: 'operations' },

@@ -116,8 +116,10 @@ ENTRIES: tuple[Entry, ...] = (
        nav=False, parent="reports",
        note="the hub's DOT Binder tab (features/reports/DotBinder.tsx, route /reports/dot-binder); "
             "rides Maintenance's manage verb — a page without a registry id is one the plan mask cannot see"),
-    _e("knowledge_base", tier="shared", modules=["core"]),
-    _e("tours", tier="shared", modules=["core"]),
+    _e("knowledge_base", tier="shared", modules=["core"], opens=["can_view_knowledge_base"],
+       note="tips & guides — a Shared feature, granted per role (owner decision 2026-09-10)"),
+    _e("tours", kind="service", modules=["core"], opens=["can_view_tours"],
+       note="the interactive walkthroughs — a service like Mods: per person, no account data, withheld per role"),
     _e("live_map", tier="shared", modules=["core"], opens=["can_view_location"],
        flags=["can_view_location", "can_manage_poi_layers"]),
     _e("vehicles", tier="shared", modules=["core"], opens=["can_view_vehicles"],
@@ -125,7 +127,8 @@ ENTRIES: tuple[Entry, ...] = (
               "can_view_health", "can_view_faults", "can_view_fuel", "can_view_efficiency"]),
     # ── shared across departments ────────────────────────────────────
     _e("kpi", tier="shared", modules=["account", "dispatch", "accounting"], opens=["can_view_kpi"]),
-    _e("kpi_my_payouts", tier="shared", modules=["dispatch"], note="finalized payout rows; no flag of its own"),
+    _e("kpi_my_payouts", tier="shared", modules=["dispatch"], opens=["can_view_kpi"], flags=[],
+       note="finalized payout rows; rides KPI's view verb (owner decision 2026-09-10) — a role without KPI has no payouts to see"),
     _e("inventory", tier="shared", modules=["fleet", "account"],
        opens=["can_view_inventory"],
        flags=["can_view_inventory", "can_manage_inventory"],

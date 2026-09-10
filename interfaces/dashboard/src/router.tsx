@@ -278,7 +278,7 @@ export default function AppRouter() {
         <Route path="kpi/configuration"   element={<Navigate to="/kpi/dispatch/configuration" replace />} />
         <Route path="kpi/incentives"      element={L(<P perm="can_view_kpi"><IncentiveRuns /></P>)} />
         {/* Self-scoped (own rows only) — authenticated, no can_* flag. */}
-        <Route path="kpi/my-payouts"      element={L(<MyPayouts />)} />
+        <Route path="kpi/my-payouts"      element={L(<P perm="can_view_kpi"><MyPayouts /></P>)} />
         <Route path="work-orders"         element={L(<P perm="can_view_work_orders"><WorkOrders /></P>)} />
         {/* Manager-only: a vendor profile aggregates ALL trucks' work
             orders + account-wide spend — vehicle-scope users must not
@@ -297,9 +297,9 @@ export default function AppRouter() {
             handles in-flight bookmarks. */}
 
         {/* Knowledge Base */}
-        <Route path="knowledge" element={L(<KnowledgeBase />)} />
+        <Route path="knowledge" element={L(<P perm="can_view_knowledge_base"><KnowledgeBase /></P>)} />
         {/* The tour library — browse + re-run every walkthrough. */}
-        <Route path="tours" element={L(<ToursPage />)} />
+        <Route path="tours" element={L(<P perm="can_view_tours"><ToursPage /></P>)} />
         {/* Truck Anatomy — the taxonomy as a 3D learning model.  Gated
             by can_view_truck_anatomy: a DARK feature — seeded to nobody,
             the owner included — until granted per-account in the

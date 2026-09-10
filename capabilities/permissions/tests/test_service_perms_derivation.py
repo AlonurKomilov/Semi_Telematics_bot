@@ -29,6 +29,8 @@ class TestServiceSeeds:
             assert fs.can_view_ai_assistant is True, role
             assert fs.can_view_reports is True, role
             assert fs.can_view_notifications is True, role
+            assert fs.can_view_tours is True, role
+            assert fs.can_view_knowledge_base is True, role
         # the field default carries every stored row that predates it
         assert FeatureSet().can_view_notifications is True
 

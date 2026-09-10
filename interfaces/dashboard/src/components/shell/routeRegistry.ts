@@ -101,9 +101,9 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Account-wide settings and integrations', keywords: ['account','config','settings'] },
 
   // Knowledge
-  { label: 'Knowledge Base', path: '/knowledge', icon: BookOpen, group: 'Help', permission: null,
+  { label: 'Knowledge Base', path: '/knowledge', icon: BookOpen, group: 'Help', permission: 'can_view_knowledge_base',
     description: 'Internal docs, SOPs, and guides', keywords: ['docs','help','wiki'] },
-  { label: 'Tours', path: '/tours', icon: GraduationCap, group: 'Help', permission: null,
+  { label: 'Tours', path: '/tours', icon: GraduationCap, group: 'Help', permission: 'can_view_tours',
     description: 'Interactive walkthroughs — browse and re-run any tour', keywords: ['tour','guide','learn','walkthrough','onboarding'] },
   // ── Added after a responsive audit found the palette could not reach
   //    13 live routes.  This list is a hand-kept SIBLING of
@@ -160,7 +160,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Self-scoped page — no can_* flag; the endpoint returns only the
   // caller's own finalized payout rows.
   { label: 'My payouts', path: '/kpi/my-payouts', icon: BadgeDollarSign, group: 'Reports',
-    permission: null,
+    permission: 'can_view_kpi',
     keywords: ['payout', 'incentive', 'my pay', 'bonus'] },
   { label: 'Driver Applications', path: '/workforce/applications', icon: UserPlus, group: 'Workforce',
     permission: ['can_manage_applications'],

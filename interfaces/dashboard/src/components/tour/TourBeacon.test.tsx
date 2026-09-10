@@ -8,6 +8,9 @@ import TourBeacon from './TourBeacon';
 import type { TourSpec } from './types';
 
 vi.mock('react-i18next', () => ({
+  // TourHost now reads permissions (useViewPermissions), whose import
+  // graph reaches the i18n bootstrap; the mock has to carry its export.
+  initReactI18next: { type: '3rdParty', init: () => undefined },
   useTranslation: () => ({ t: (k: string) => k }),
 }));
 
@@ -41,7 +44,7 @@ describe('TourBeacon', () => {
   });
 
   it('appears once the anchor mounts late, and leaves when it unmounts', async () => {
-    const { } = render(<TourBeacon tour={tour} onOpen={() => {}} />);
+    render(<TourBeacon tour={tour} onOpen={() => {}} />);
     expect(screen.queryByLabelText('tour.labels.beacon')).toBeNull();
     const el = document.createElement('button');
     el.setAttribute('data-tour', 'b1');

@@ -36,7 +36,7 @@ route + nav registry. A service carries **no `tier`** — the type makes that
 impossible (`CatalogEntry`'s service arm declares `tier?: never`), because a
 value inside the tier union would claim services sit on an axis they don't.
 
-## The five services
+## The six services
 
 ### 🔔 Alerts
 - **Surface**: the Alerts inbox (dashboard) · bot `/alerts` · *My Notifications*.
@@ -104,6 +104,17 @@ value inside the tier union would claim services sit on an axis they don't.
   board (`can_view_alerts`); Notifications is the delivery machinery every
   notice rides, alerts included. A role with Alerts but without
   Notifications sees the board and receives no DM.
+
+### 🎓 Tours
+- **Surface**: the beacons on pages and the Tours library (`/tours`).
+  Dashboard only.
+- **Access**: `can_view_tours`, granted per role (seeded for every role,
+  2026-09-10). A service for the reason Mods is: per person, no account
+  data, withheld per role — without the grant no beacon shows, the library
+  redirects and `/me/tour-signals` answers 403.
+- **Content gate**: each tour still needs the feature it walks through
+  (`features/tours/reachable.ts`); the service is the door, the features
+  decide which tours exist behind it.
 
 ### 🎨 Mods
 - **Surface**: the top-bar palette popover, the `/mods` page, the *Modifications*

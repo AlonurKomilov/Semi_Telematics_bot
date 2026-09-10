@@ -193,6 +193,8 @@ TAXONOMY: dict[str, Verdict] = {
     # Mods — born as a service verb on 2026-09-08; no legacy name.
     "can_view_mods":      Verdict(V, "can_view_mods"),
     "can_view_notifications": Verdict(V, "can_view_notifications"),
+    "can_view_knowledge_base": Verdict(V, "can_view_knowledge_base"),
+    "can_view_tours":         Verdict(V, "can_view_tours"),
     "can_digest":         Verdict(V, "can_view_reports"),
     "can_alerts_all":     Verdict(V, "can_view_alerts"),
     "can_alerts_vehicle": Verdict(S, "can_view_alerts"),
