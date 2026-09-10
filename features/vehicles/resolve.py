@@ -132,6 +132,27 @@ def company_of(vehicle) -> str | None:
     return code or None
 
 
+def company_for(vehicle, tool_args: dict) -> str | None:
+    """The company to ask the provider about: the resolved truck's, else
+    the one the model NAMED.
+
+    The second half matters when the registry has no active row for
+    (name, company) — a retired truck, an unregistered one, a typo.
+    Falling back to a company-less lookup there would let the provider
+    answer with the OTHER company's twin, which is the exact wrong answer
+    this module exists to end.  Asking for the named company instead
+    yields nothing, or that company's truck, and never its sibling.
+
+    Known limit: an explicit company naming a RETIRED twin while a live
+    sibling exists is not refused by the live-tool retirement check
+    (``retired_vehicle_named`` is name-keyed and a live name wins), so
+    the provider may answer with stale readings.  Reachable only when the
+    model names the company of a truck that has left; unchanged from
+    before, and narrower than the twin leak it replaces.
+    """
+    return company_of(vehicle) or ((tool_args.get("company") or "").strip().upper() or None)
+
+
 def row_company(row: dict) -> str:
     """A provider/warehouse row's company, however that row spells it."""
     return (row.get("_org") or row.get("company") or row.get("company_code") or "").strip().upper()

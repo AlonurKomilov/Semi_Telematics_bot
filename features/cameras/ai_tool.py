@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from capabilities.ai.tools.registry import register_tool
-from features.vehicles.resolve import resolve_for_tool, company_of, row_company
+from features.vehicles.resolve import resolve_for_tool, company_for, row_company
 
 logger = logging.getLogger("bot.ai.tools")
 
@@ -54,7 +54,7 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         resolved, err = await resolve_for_tool(db, account_id, tool_args)
         if err:
             return err
-        co = company_of(resolved)
+        co = company_for(resolved, tool_args)
         # Route through the cached MultiCompanyClient pool so this
         # request shares the connection pool, circuit breaker, and
         # rate-limit retries with the rest of the app.  Keys come from

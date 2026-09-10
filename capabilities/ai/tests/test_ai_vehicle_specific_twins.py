@@ -92,3 +92,16 @@ async def test_identities_are_injected_for_vehicle_specific_tools(monkeypatch):
                        scope_ladder={"identities": [[42, "sam-42", "103"]]})
     assert seen.get("_scope_vehicles") == ["103"]
     assert seen.get("_scope_identities") == [[42, "sam-42", "103"]]
+
+
+@pytest.mark.asyncio
+async def test_explicit_company_is_honoured_even_when_the_registry_has_no_live_row(monkeypatch):
+    """The model names OSY; the registry has no ACTIVE OSY 103 (retired,
+    unregistered, or a typo).  The provider must be asked for OSY — a
+    company-less fallback could return G1's 103, the exact wrong answer."""
+    svc = _Detail(); monkeypatch.setattr(LOC, "_svc_detail", svc)
+    res = await execute_tool("get_vehicle_location",
+                             {"vehicle_name": "103", "company": "OSY"}, None,
+                             account_id=1, db=_DB([G1]))
+    assert "error" not in res, res
+    assert svc.calls == ["OSY"]

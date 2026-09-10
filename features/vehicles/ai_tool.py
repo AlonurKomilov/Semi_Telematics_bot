@@ -16,7 +16,7 @@ from features.vehicles.service import (
     get_vehicle_detail as _svc_detail,
 )
 from features.vehicles.warehouse.service import get_engine_states as _svc_engine_states
-from features.vehicles.resolve import resolve_for_tool, company_of
+from features.vehicles.resolve import resolve_for_tool, company_for
 
 
 @register_tool({
@@ -60,7 +60,7 @@ async def get_vehicle_detail(tool_args: dict, samsara_client,
     resolved, err = await resolve_for_tool(db, account_id, tool_args)
     if err:
         return err
-    detail = await _svc_detail(account_id, vehicle, company=company_of(resolved))
+    detail = await _svc_detail(account_id, vehicle, company=company_for(resolved, tool_args))
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail

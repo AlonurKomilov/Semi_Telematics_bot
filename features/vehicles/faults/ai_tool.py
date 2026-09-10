@@ -7,7 +7,7 @@ from features.vehicles.warehouse.service import (
     get_vehicles_with_faults as _svc_with_faults,
 )
 from features.vehicles.service import get_vehicle_detail as _svc_detail
-from features.vehicles.resolve import resolve_for_tool, company_of, row_company
+from features.vehicles.resolve import resolve_for_tool, company_for, row_company
 
 
 @register_tool({
@@ -60,7 +60,7 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
         resolved, err = await resolve_for_tool(db, account_id, tool_args)
         if err:
             return err
-        co = company_of(resolved)
+        co = company_for(resolved, tool_args)
         detail = await _svc_detail(account_id, vehicle, company=co)
         if not detail:
             return {"error": f"Vehicle '{vehicle}' not found. Check the name/number and try again."}

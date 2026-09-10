@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from features.vehicles.resolve import resolve_for_tool, company_of, row_company
+from features.vehicles.resolve import resolve_for_tool, company_for, row_company
 from capabilities.ai.tools.scope import filter_to_scope
 from features.events.service import get_events as _svc_events
 
@@ -49,7 +49,7 @@ async def get_vehicle_events(tool_args: dict, samsara_client,
     resolved, err = await resolve_for_tool(db, account_id, tool_args)
     if err:
         return err
-    co = company_of(resolved)
+    co = company_for(resolved, tool_args)
     events = await _svc_events(account_id, days=days)
     vehicle_events = [
         e for e in events
