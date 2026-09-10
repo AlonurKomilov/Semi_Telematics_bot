@@ -68,7 +68,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Operating cost per mile by truck', keywords: ['cpm','cost','per mile'] },
 
   // Workforce
-  { label: 'Drivers',         path: '/workforce/drivers', icon: IdCard,        group: 'Workforce', permission: ['can_manage_driver_docs'],
+  { label: 'Drivers',         path: '/workforce/drivers', icon: IdCard,        group: 'Workforce', permission: ['can_view_driver_docs'],
     description: 'Driver profiles, CDL/medical docs, and vehicle assignments', keywords: ['cdl','medical','driver','documents'] },
   { label: 'Coaching',        path: '/coaching',         icon: GraduationCap, group: 'Workforce', permission: ['can_manage_coaching'],
     description: 'Driver coaching assignments and acks', keywords: ['training','review'] },
@@ -122,7 +122,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Shop visits, labour, parts and invoices',
     keywords: ['wo', 'repair', 'shop', 'invoice', 'labour', 'labor'] },
   { label: 'Inspections', path: '/inspections', icon: ClipboardCheck, group: 'Fleet',
-    permission: ['can_view_inspections'],
+    permission: 'can_manage_inspections',
     description: 'DVIR and scheduled inspection records',
     keywords: ['dvir', 'inspect', 'defect', 'pti'] },
   { label: 'Parts', path: '/parts', icon: Cog, group: 'Fleet',

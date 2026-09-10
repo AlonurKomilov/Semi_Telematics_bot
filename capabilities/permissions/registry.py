@@ -157,7 +157,7 @@ ENTRIES: tuple[Entry, ...] = (
        note="rides Work Orders' manage verb"),
     _e("parts", tier="role", modules=["fleet"], opens=["can_manage_parts"]),
     _e("service-tasks", tier="role", modules=["fleet"], opens=["can_manage_service_tasks"]),
-    _e("inspections", tier="role", modules=["fleet"], opens=["can_view_inspections"],
+    _e("inspections", tier="role", modules=["fleet"], opens=["can_manage_inspections"],
        flags=["can_view_inspections", "can_manage_inspections"]),
     # ── dispatch ─────────────────────────────────────────────────────
     _e("routes", tier="role", modules=["dispatch"], opens=["can_view_routes"]),
@@ -168,13 +168,13 @@ ENTRIES: tuple[Entry, ...] = (
     _e("risk_summary", tier="role", modules=["safety"], opens=["can_view_risk_reports"], nav=False,
        note="a Reports-hub tab (route /reports/risk-summary); Safety's data"),
     # ── hr ───────────────────────────────────────────────────────────
-    _e("coaching", tier="role", modules=["hr", "safety"], opens=["can_view_coaching"],
+    _e("coaching", tier="role", modules=["hr", "safety"], opens=["can_manage_coaching"],
        flags=["can_view_coaching", "can_manage_coaching"]),
     _e("applications", tier="role", modules=["hr"], opens=["can_manage_applications"]),
     _e("carrier_directory", tier="role", modules=["hr"], opens=["can_view_carrier_directory"],
        flags=["can_view_carrier_directory", "can_manage_carrier_directory"]),
     # ── accounting ───────────────────────────────────────────────────
-    _e("driver_pay", tier="role", modules=["accounting"], opens=["can_view_driver_pay"],
+    _e("driver_pay", tier="role", modules=["accounting"], opens=["can_manage_driver_pay"],
        flags=["can_view_driver_pay", "can_manage_driver_pay"]),
     _e("fuel_costs", tier="role", modules=["accounting", "dispatch"], opens=["can_view_fuel_cost"]),
     _e("cost_per_mile", tier="role", modules=["accounting", "fleet"], opens=["can_view_cost_per_mile"]),

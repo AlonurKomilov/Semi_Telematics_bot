@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from adapters.storage.object_storage import get_object_storage_for_account
 from interfaces.api.deps import (
     require_any_or_wide,
-    require_permission_any, get_tenant_db,
+    get_tenant_db,
     get_user_company_codes, filter_by_company_map, vehicle_company_map,
 )
 
@@ -59,11 +59,9 @@ async def camera_checks(
     vehicle: str | None = Query(None, description="Filter by vehicle name"),
     latest_only: bool = Query(True, description="Only latest check per vehicle"),
     limit: int = Query(100, ge=1, le=500),
-    # Legacy pair flag on purpose: this is a WIDTH claim ("fleet-wide
-    # only"), and the vehicles pair is view/view — both halves map to
-    # can_view_vehicles, so the grammar has no wide-only name and
-    # migrating here would ADMIT every assigned-width viewer.  Moves
-    # in the width pass, when a width-aware dependency exists.
+    # The Cameras verb, and account-wide width: camera checks are one
+    # table for the whole account, so an assigned-width viewer is refused
+    # here rather than shown everyone's trucks.
     user: dict = Depends(require_any_or_wide("can_view_cameras")),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -81,11 +79,9 @@ async def camera_checks(
 @router.get("/cameras/{check_id}/image")
 async def camera_check_image(
     check_id: int,
-    # Legacy pair flag on purpose: this is a WIDTH claim ("fleet-wide
-    # only"), and the vehicles pair is view/view — both halves map to
-    # can_view_vehicles, so the grammar has no wide-only name and
-    # migrating here would ADMIT every assigned-width viewer.  Moves
-    # in the width pass, when a width-aware dependency exists.
+    # The Cameras verb, and account-wide width: camera checks are one
+    # table for the whole account, so an assigned-width viewer is refused
+    # here rather than shown everyone's trucks.
     user: dict = Depends(require_any_or_wide("can_view_cameras")),
     tenant_db=Depends(get_tenant_db),
 ):

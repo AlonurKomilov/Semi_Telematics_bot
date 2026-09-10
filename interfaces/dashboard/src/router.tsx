@@ -209,11 +209,11 @@ export default function AppRouter() {
         <Route path="vehicles/:name" element={L(<P perm={['can_view_vehicles']}><VehicleDetail /></P>)} />
         <Route path="routes" element={L(<P perm={['can_view_routes']}><RoutesPage /></P>)} />
         <Route path="geofences" element={L(<P perm={['can_view_geofence']}><Geofences /></P>)} />
-        <Route path="parking" element={L(<P perm="can_view_vehicles"><Parking /></P>)} />
+        <Route path="parking" element={L(<P perm="can_view_parking"><Parking /></P>)} />
         <Route path="alerts" element={L(<P perm="can_view_alerts"><Alerts /></P>)} />
         <Route path="scorecards" element={L(<P perm="can_view_scorecards"><Scorecards /></P>)} />
         <Route path="safety-events" element={L(<P perm={['can_view_events']}><Events /></P>)} />
-        <Route path="cameras" element={L(<P perm="can_view_faults"><Cameras /></P>)} />
+        <Route path="cameras" element={L(<P perm="can_view_cameras"><Cameras /></P>)} />
 
         {/* AI Assistant — gate on the SAME flag as the sidebar entry
             (featureCatalog `ai_assistant` → can_view_ai_assistant), so any persona
@@ -279,7 +279,7 @@ export default function AppRouter() {
         <Route path="kpi/incentives"      element={L(<P perm="can_view_kpi"><IncentiveRuns /></P>)} />
         {/* Self-scoped (own rows only) — authenticated, no can_* flag. */}
         <Route path="kpi/my-payouts"      element={L(<MyPayouts />)} />
-        <Route path="work-orders"         element={L(<P perm="can_view_maintenance"><WorkOrders /></P>)} />
+        <Route path="work-orders"         element={L(<P perm="can_view_work_orders"><WorkOrders /></P>)} />
         {/* Manager-only: a vendor profile aggregates ALL trucks' work
             orders + account-wide spend — vehicle-scope users must not
             read it (their WO visibility is per-truck). */}
@@ -377,7 +377,7 @@ export default function AppRouter() {
         />
         <Route path="driver-pay" element={L(<P perm="can_manage_driver_pay"><DriverPay /></P>)} />
         <Route path="coaching" element={L(<P perm="can_manage_coaching"><Coaching /></P>)} />
-        <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
+        <Route path="workforce/drivers" element={L(<P perm="can_view_driver_docs"><Drivers /></P>)} />
         <Route path="workforce/applications" element={L(<P perm="can_manage_applications"><Applications /></P>)} />
         <Route path="workforce/carrier-directory" element={L(<P perm="can_view_carrier_directory"><CarrierDirectory /></P>)} />
         <Route path="workforce/carrier-directory/:id" element={L(<P perm="can_view_carrier_directory"><CarrierProfile /></P>)} />

@@ -209,7 +209,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // seeded to NOBODY, owner included (DARK_FEATURE_FIELDS in roles.py);
   // the nav entry exists only after a grant in the Permissions matrix.
   { id: 'truck-anatomy', labelKey: 'nav.truck_anatomy', path: '/truck-anatomy', icon: Truck, modules: ['fleet'], tier: 'shared', permission: 'can_view_truck_anatomy', navGroup: 'operations' },
-  { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: 'can_view_inspections', navGroup: 'operations' },
+  { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: 'can_manage_inspections', navGroup: 'operations' },
   // Geofences: zones serve both fleet (sites/yards) and dispatch
   // (routing boundaries) — surfaced when EITHER department is on.
   { id: 'geofences', labelKey: 'nav.geofences', path: '/geofences', icon: MapPin, modules: ['fleet', 'dispatch'], tier: 'shared', permission: 'can_view_geofence', navGroup: 'operations' },
@@ -234,7 +234,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'scorecards', labelKey: 'nav.scorecards', path: '/scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: 'can_view_scorecards', navGroup: 'monitoring' },
 
   // ── HR (people) ───────────────────────────────────────────────────
-  { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_view_coaching'], navGroup: 'people' },
+  { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: 'can_manage_coaching', navGroup: 'people' },
   // Drivers (documents/compliance) — HR owns it; fleet + safety read it.
   { id: 'drivers', labelKey: 'nav.drivers', path: '/workforce/drivers', icon: IdCard, modules: ['hr', 'fleet', 'safety'], tier: 'shared', permission: ['can_view_driver_docs'], navGroup: 'people' },
   // Recruiting intake — recruiter sends an apply.* link, prospects submit
@@ -250,7 +250,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // redirect in router.tsx for any legacy bookmark.
 
   // ── ACCOUNTING (money) ────────────────────────────────────────────
-  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_view_driver_pay'], navGroup: 'costs' },
+  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: 'can_manage_driver_pay', navGroup: 'costs' },
   // Costs — one accounting-leaning feature with two components (Fuel
   // Costs + Cost per Mile), so both are role-tier; the module lists let
   // dispatch (fuel) and fleet (CPM) surface their half.

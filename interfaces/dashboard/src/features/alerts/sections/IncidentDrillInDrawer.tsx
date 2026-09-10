@@ -261,7 +261,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
   // dead links.
   const canScorecards = hasAny('can_view_scorecards');
   const canCoaching = has('can_manage_coaching');
-  const canCamera = has('can_camera');
+  const canCamera = has('can_view_cameras');
   const isEventAlert = alert.alert_type === 'events' || alert.alert_type === 'event';
 
   return (
