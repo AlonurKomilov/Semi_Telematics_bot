@@ -23,7 +23,7 @@
  */
 import { createElement, type ComponentType } from 'react';
 import {
-  AccentGroup, ModeGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup,
+  ColorGroup, ModeGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup,
   WallpaperGroup, CursorGroup, type LabelClass,
 } from './Interface';
 import { ShadersItem, MotionItem, AmbientItem } from './Effects';
@@ -48,7 +48,7 @@ const headless = (C: ComponentType): ItemComponent => {
 
 export const ITEM_GROUPS: Record<string, ItemComponent> = {
   'interface/mode': ModeGroup,
-  'interface/theme': AccentGroup,
+  'interface/theme': ColorGroup,
   'interface/corners': CornersGroup,
   'interface/material': MaterialGroup,
   'interface/typeface': TypefaceGroup,

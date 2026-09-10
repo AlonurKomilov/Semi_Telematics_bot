@@ -113,7 +113,14 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // named place. The canvas moved to Wallpaper once and came
       // straight back: a red picked "for the page" turned the whole
       // app red, because that is what a palette's ground does.
-      { id: 'theme',    title: 'Accent',   heading: 'Accent',
+      // COLOR is the container: the accent, a colour picked outside the
+      // packs, the page background, where that background applies, and
+      // the two grounds. It was briefly called "Accent" after mode moved
+      // out, which made the page, the tile, the heading and the FIRST
+      // ROW INSIDE all carry one word — and made "Reset accent" the
+      // button that clears five axes. Accent is a row in here, and says
+      // so.
+      { id: 'theme',    title: 'Color',    heading: 'Color',
         axes: ['accent', 'brand', 'canvas', 'surfaces', 'grounds'],
         modFields: ['accent'] },
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modFields: ['radius'] },

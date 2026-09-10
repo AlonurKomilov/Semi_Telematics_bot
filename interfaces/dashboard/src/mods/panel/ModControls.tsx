@@ -27,7 +27,7 @@ import { MODS_HREF } from '../href';
 import type { ModSection } from '../taxonomy';
 import { ModsRow, HAS_MODS } from './ModsRow';
 import {
-  ModeGroup, AccentGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup, WallpaperGroup, CursorGroup,
+  ModeGroup, ColorGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup, WallpaperGroup, CursorGroup,
 } from './Interface';
 import { EffectsGroup } from './Effects';
 import { SoundsGroup } from './Sounds';
@@ -71,7 +71,7 @@ export function ModControls({ compact = false, onNavigate, section }: {
       {has('interface') && (
         <>
           <ModeGroup label={groupLabel} />
-          <AccentGroup label={groupLabel} />
+          <ColorGroup label={groupLabel} />
         </>
       )}
 

@@ -211,7 +211,7 @@ export function ModeGroup({ label }: { label: LabelClass }) {
   );
 }
 
-export function AccentGroup({ label }: { label: LabelClass }) {
+export function ColorGroup({ label }: { label: LabelClass }) {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   /** Which place the background picker is aiming at. Deliberately NOT
@@ -269,7 +269,14 @@ export function AccentGroup({ label }: { label: LabelClass }) {
   return (
     <div>
       <p className={`${label} mb-1.5`}>
-        {t('theme.group_accent', 'Accent')}
+        {t('theme.group_color', 'Color')}
+      </p>
+      {/* The accent is a ROW in Color, not the name of the group. Every
+          other decision in here — the background, where it applies, the
+          grounds — carries its own sub-label already; this one had none,
+          so the caps heading was doing double duty. */}
+      <p className="text-xs text-foreground mb-1.5">
+        {t('theme.sub_accent', 'Accent')}
       </p>
       {/* While a picked colour is what paints, NO pack chip is
           highlighted — the stylesheet has stood that pack's block

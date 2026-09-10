@@ -36,7 +36,15 @@ export interface Ground {
  * no seed of its own.
  */
 export const GROUNDS: readonly Ground[] = [
-  { id: 'card', label: 'Cards', description: 'The surfaces the work sits on, and the dialogs above them' },
+  // "Cards", not "Panels": this app already calls two OVERLAYS panels —
+  // the assistant's and the one this control is sitting in — and a word
+  // that means two things a few pixels apart is the collision to avoid.
+  // Not "surfaces" in the copy either: the row above this one offers
+  // Live Map, Loads and Work Orders, and those are what `surfaces` names
+  // everywhere else in this engine.
+  { id: 'card', label: 'Cards', description: 'The boxes the work sits in, and the dialogs above them' },
+  // The same region Wallpaper calls "Frame". One region, two names, and
+  // whether they should become one word is a decision, not an oversight.
   { id: 'sidebar', label: 'Sidebar', description: 'The rail and the header the page sits in' },
 ];
 

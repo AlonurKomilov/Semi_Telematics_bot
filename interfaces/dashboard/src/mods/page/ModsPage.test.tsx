@@ -145,7 +145,7 @@ describe('an item', () => {
     at('/mods/interface/corners');
     const box = screen.getByTestId('mods-item').textContent ?? '';
     expect(box).toContain('Corners');
-    for (const sibling of ['Mode', 'Accent', 'Material', 'Typeface', 'Icons', 'Wallpaper', 'Cursor'])
+    for (const sibling of ['Mode', 'Color', 'Material', 'Typeface', 'Icons', 'Wallpaper', 'Cursor'])
       expect(box, `${sibling} is on the Corners page — the item level is the whole category again`)
         .not.toContain(sibling);
   });
