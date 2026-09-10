@@ -613,8 +613,20 @@ function placeCard(): void {
     card.id = '4truck-maps-card';
     card.style.cssText =
       'position:absolute;pointer-events:auto;width:' + CARD_W + 'px;box-sizing:border-box;'
-      + 'padding:8px 10px;border-radius:10px;background:rgba(17,20,26,.94);color:#fff;'
-      + 'font:400 12px/1.35 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.45);'
+      // TWO rings, not a border.  This card sits on somebody else's page and
+      // the ground is unknown and varies WITHIN one page — Google's dark land
+      // (#212121), its roads (#3c4043), its light theme (#f2efe9).  Computed
+      // across those three, NO single translucent border reaches 3:1 on all
+      // of them: a=.45 gives 3.96 on land but 2.57 on roads, a=.65 gives 7.17
+      // on land but 1.96 on light.  A pair always shows: the outer dark ring
+      // carries a light page, and where the page is dark the inner light ring
+      // carries it against that dark ring.  The first attempt here was one
+      // 14%% hairline — 1.18:1 on roads, no boundary at all — under a comment
+      // claiming a two-part shadow the edit had never made.
+      'padding:8px 10px;border-radius:10px;background:rgba(17,20,26,.94);color:#fff;'
+      + 'font:400 12px/1.35 system-ui,sans-serif;'
+      + 'box-shadow:0 0 0 1px rgba(255,255,255,.65),0 0 0 2px rgba(0,0,0,.65),'
+      + '0 6px 20px rgba(0,0,0,.45);'
       + 'backdrop-filter:blur(2px)';
     // A fresh element carries none of the old one's content, so the
     // cache must forget it here too — not only in closeCard().  Google

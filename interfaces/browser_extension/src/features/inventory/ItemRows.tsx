@@ -156,11 +156,28 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
             )}
             <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%',
                                        background: TONE_VAR[tone], flexShrink: 0 }} />
-            {/* minWidth 0 so a long label ellipsises instead of widening
-                the whole panel. */}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis',
+            {/* minWidth 0 so a long label ellipsises instead of widening the
+                whole panel — and `title`, so an ellipsised name is recoverable
+                at all.  Opening a row costs this line ~60px (Verify joins Edit)
+                and every other element on it refuses to shrink, so the NAME was
+                the only thing that gave: the flagged item somebody had just
+                pressed could ellipsise to nothing, unreadable. */}
+            <span title={it.label}
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis',
                            whiteSpace: 'nowrap', minWidth: 0 }}>{it.label}</span>
-            <span className="muted" style={{ flexShrink: 0 }}>{humanize(it.category)}</span>
+            {/* The CATEGORY stands down while the row is open, and gives before
+                the name does when it is not.  It is a repeated, low-information
+                token — "Tablet" on every tablet — and the name is the identity.
+                It carries `title` for the same reason the name does: the first
+                draft made this shrinkable and did NOT, which moved the exact
+                defect it was written to end one element to the right. */}
+            {!open && (
+              <span className="muted" title={humanize(it.category)}
+                    style={{ minWidth: 0, overflow: 'hidden',
+                             textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {humanize(it.category)}
+              </span>
+            )}
             {/* The word appears only when the DOT cannot say it.
                 `installed` is what the green dot already means, so
                 "Installed" on every settled row was the same fact
@@ -326,6 +343,13 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                     past an `overflow-x: hidden` edge and out of reach.
                     `.row` is a flex with no wrap, so nothing would have
                     given: the button would simply have been gone. */}
+                {/* The category, back on the line the open row does have
+                    room for.  Hiding it above buys the NAME its width; not
+                    showing it anywhere would mean collapsing a row to learn
+                    what an item is filed under. */}
+                <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>
+                  {humanize(it.category)}
+                </span>
                 {it.identifier && (
                   <span className="muted" style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace',
                                                    minWidth: 0, overflow: 'hidden',

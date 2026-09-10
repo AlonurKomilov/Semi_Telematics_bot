@@ -68,7 +68,7 @@ export async function setNumber(key: string, value: number): Promise<void> {
  * genuinely about Google's map.
  */
 
-const FOLLOW_KEY = 'followGoogleMaps';
+export const FOLLOW_KEY = 'followGoogleMaps';
 
 /** The one-time notice shown the first time following is switched on. */
 export const FOLLOW_WARNED_KEY = 'followGoogleMapsWarned';

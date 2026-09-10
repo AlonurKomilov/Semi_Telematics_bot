@@ -98,8 +98,14 @@ export default function ExtensionConnect() {
               The extension in this browser wants to connect to your 4truck account.
             </p>
             <ul className="text-sm text-muted-foreground space-y-1.5 mb-4">
-              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It can see the live positions of the vehicles you are allowed to see — the same ones as on your Live Map — and nothing else.</li>
-              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It cannot change anything in your account.</li>
+              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It can see the live positions of the vehicles you are allowed to see — the same ones as on your Live Map — and what is recorded aboard them.</li>
+              {/* This used to read "It cannot change anything in your account", which
+                  is false for anybody holding can_manage_inventory: the panel posts
+                  inventory-verify, -status, -add and -edit. A consent screen that
+                  overstates the limit is worse than one that states a wider limit
+                  honestly. */}
+              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> If your account lets you manage inventory, it can record a check, flag an item, add one or correct one. It cannot retire an item or move one between vehicles — those stay on the dashboard.</li>
+              <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It reaches nothing else in your account.</li>
               <li className="flex gap-2"><ShieldCheck className="size-4 shrink-0 mt-0.5" /> It appears as “Browser extension” under Active sessions on your profile, where you can disconnect it any time.</li>
             </ul>
             <p className="text-xs text-muted-foreground mb-4">

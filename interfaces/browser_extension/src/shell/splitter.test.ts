@@ -87,7 +87,7 @@ describe('each surface keeps its own ratio', () => {
     // Neither number was ever the reader's.
     expect(inventory).toContain('maxHeight: `${cardPct}%`');
     expect(inventory).not.toContain("maxHeight: '70%'");
-    expect(liveMap).toContain('flex: `0 1 ${mapPct}%`');
+    expect(liveMap).toContain('`0 1 ${mapPct}%`');
     expect(liveMap).not.toContain("'0 1 240px'");
   });
 
@@ -119,8 +119,12 @@ describe('the direction the line moves', () => {
     // which is the form that cannot be got backwards.  Sizing the region
     // BELOW instead left the line floating off the cursor by exactly the
     // vehicle card's height, because the card also sits above the line.
-    expect(liveMap).toContain('flex: `0 1 ${mapPct}%`');
+    expect(liveMap).toContain('`0 1 ${mapPct}%`');
     expect(liveMap).toContain("flex: listOpen ? '1 1 0' : '0 0 auto'");
+    // …and a FOLDED list gives its room to the map rather than to nothing:
+    // with `0 1 …%` on the map and `0 0 auto` on the folded list, no child
+    // had flex-grow and the leftover simply went blank.
+    expect(liveMap).toContain("flex: listOpen ? `0 1 ${mapPct}%` : '1 1 auto'");
     expect(liveMap).not.toContain('setListPct');
     expect(liveMap).not.toContain('100 - mapPct');
   });
@@ -141,5 +145,43 @@ describe('the direction the line moves', () => {
     // both files: tests/test_extension_splitter_css.py.
     expect(src).toContain('className="splitter"');
     expect(src).toContain('<i aria-hidden />');
+  });
+});
+
+describe('the session ends the same way however it ends', () => {
+  it('has ONE reset, reached by all three paths', async () => {
+    // It lived only in `disconnect()`, so a 401 or a token revoked from
+    // another device left the previous person's abilities and their
+    // cached inventory and positions in memory for whoever came next.
+    const app = (await import('./App.tsx?raw')).default as unknown as string;
+    expect(app).toContain('const resetSession = ({ keepView = false } = {}) => {');
+    // An aged-out token is usually the SAME person mid-task, so the two
+    // involuntary paths keep the screen they were on; only the deliberate
+    // Disconnect returns the panel to where a first run starts.
+    expect(app).toContain('resetSession({ keepView: true })');
+    expect(app).toContain('if (!keepView) setView(');
+    // Three CALL SITES — the 401, the token leaving storage, and the
+    // deliberate Disconnect — counted whatever arguments each passes.
+    // The declaration reads `resetSession = (`, so it does not match; every
+    // hit here is a real call site, whatever arguments it passes.
+    const calls = (app.match(/resetSession\(/g) || []).length;
+    expect(calls).toBeGreaterThanOrEqual(3);
+    expect(app).toContain('forgetInventory();');
+    expect(app).toContain('setAbilities([]);');
+  });
+
+  it('lets Settings hear a pref written outside it', async () => {
+    // The overlay switch on google.com/maps is a second writer; Settings
+    // read once and showed the old answer to its own question.
+    const st = (await import('./Settings.tsx?raw')).default as unknown as string;
+    expect(st).toContain('chrome.storage.onChanged.addListener(onChange)');
+    expect(st).toContain('OVERLAY_PREF_KEY in c');
+    expect(st).toContain('FOLLOW_KEY in c');
+  });
+
+  it('derives “waiting” from the pending connection, not from mounting', async () => {
+    const c = (await import('./Connect.tsx?raw')).default as unknown as string;
+    expect(c).toContain('void getPending().then');
+    expect(c).toContain('p.expires > Date.now()');
   });
 });

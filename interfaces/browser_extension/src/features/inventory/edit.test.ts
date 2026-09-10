@@ -117,3 +117,21 @@ describe('what the panel still sends to the desk', () => {
     }
   });
 });
+
+describe('what the ten reds fixed', () => {
+  it('keeps the item NAME when the row opens', () => {
+    // Opening a row costs the line ~60px (Verify joins Edit) and every
+    // other element refused to shrink, so the name — the item's identity
+    // — was the only thing that gave, down to nothing, unreadable.
+    expect(rows).toContain('<span title={it.label}');
+    expect(rows).toContain('{!open && (');
+  });
+
+  it('says nothing about a new category until it knows the old ones', () => {
+    // `known` was [] whenever one vehicle's read was loading or failed,
+    // so the form told the person every word they typed was new. It was
+    // not: the server folds it into the existing category.
+    expect(panel).toContain('const known = vocabRef.current;');
+    expect(panel).toContain('isNewCategory = known.length > 0');
+  });
+});

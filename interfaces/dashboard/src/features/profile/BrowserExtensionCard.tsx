@@ -77,7 +77,7 @@ export default function BrowserExtensionCard() {
         4truck in a Chrome side panel beside whatever you are working on — Google Maps,
         a load board, email. Today it shows your vehicles live on the map; more of 4truck
         reaches the panel over time. It never asks for a password: you connect it from
-        here, confirm once, and it sees what it shows and nothing else.
+        here, confirm once, and it reaches your vehicles and their inventory — nothing else in your account.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">

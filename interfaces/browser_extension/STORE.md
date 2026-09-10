@@ -52,7 +52,9 @@ No account yet? The panel points you to sign-up on 4truck.us.
 PRIVACY AND CONTROL
 
 ✓ Never asks for a password — you sign in on 4truck.us, with the address bar in view
-✓ Read-only — the panel sees what it shows and cannot change anything in your account
+✓ Vehicles and their onboard inventory — nothing else in your account. If your 4truck
+  account lets you manage inventory, the panel can also record a check, flag an item,
+  add one or correct one; it cannot retire an item or move one between vehicles
 ✓ Shows only the vehicles you are allowed to see, the same as your 4truck Live Map
 ✓ On Google Maps it only draws: it reads where the map is pointing and nothing else on the page, sends nothing anywhere, and the switch on the map turns it off
 ✓ Every connection sends you a sign-in notice with a "Disconnect this session" button
@@ -187,5 +189,8 @@ LIVE account: real vehicles, real positions. Please look only — do not edit or
 4. The panel lists the vehicles and maps them live.
 5. Open google.com/maps: the same vehicles are drawn on it, and the 4truck switch top right turns them off.
 
-Read-only, positions only.
+Scope: vehicle positions and their onboard inventory. With the inventory-management
+grant the panel can also record a check, flag an item, add one or correct one — the
+four write endpoints are /extension/inventory-{verify,status,add,edit}. Retiring an
+item and moving one between vehicles are deliberately NOT reachable from the panel.
 ```

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { apiJSON } from '../../api/client';
 import { iconSignature, makeIcon } from './icons';
-import { applyFix, faceOf, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, MAP_STATUS, type Phys } from './physics';
+import { applyFix, faceOf, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, type Phys } from './physics';
 import { FALLBACK, TILES, shouldFallBack } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
@@ -484,12 +484,12 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
       }
     }, 180);
     return () => clearTimeout(t);
+      // `mapPct` belongs here: Leaflet does not notice its container being
+      // resized, so a drag changed the box and the map kept rendering for
+      // the old one — tiles frozen, the truck off centre.  The 180ms timer
+      // is cleared on every change, so a drag produces ONE re-measure when
+      // it settles rather than sixty while it runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  // `mapPct` belongs here: Leaflet does not notice its container being
-  // resized, so a drag changed the box and the map kept rendering for
-  // the old one — tiles frozen, the truck off centre.  The 180ms timer
-  // is cleared on every change, so a drag produces ONE re-measure when
-  // it settles rather than sixty while it runs.
   }, [listOpen, cardShown, cardOpen, mapPct]);
 
   const toggleList = () => {
@@ -532,7 +532,10 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           elastic INSIDE this box, so the card keeps its natural height
           and the map takes whatever is left of the share. */}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
-                    flex: `0 1 ${mapPct}%` }}>
+                    // Folded, the list is a header bar and the split is not offered — so
+                    // the map takes the room instead of leaving it unallocated.  With
+                    // `0 1 …%` on both and no grower, the leftover simply went blank.
+                    flex: listOpen ? `0 1 ${mapPct}%` : '1 1 auto' }}>
       <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 220 }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
       </div>
@@ -863,7 +866,12 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                 <span title={warn ? `${status} — fuel or DEF below ${LOW_LEVEL_PCT}%` : status}
                       aria-label={status}
                       style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: statusColor(status),
-                               boxShadow: warn ? `0 0 0 2px ${MAP_STATUS.danger}` : undefined }} />
+                      // A ground-coloured GAP, then a ring in a colour NO status uses.
+                      // Drawn straight on the dot it was the same #ef4444 as a stopped
+                      // truck's fill; drawn in --warn it became the same #f59e0b as an
+                      // IDLE one — the collision moved rather than went. --fg belongs to
+                      // no status, so it cannot collide with a fourth one later either.
+                               boxShadow: warn ? '0 0 0 1.5px var(--card), 0 0 0 3.5px var(--fg)' : undefined }} />
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
                   {multiCompany && p.company && (

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { FOLLOW_WARNING, getFollowPref, markFollowWarned, setFollowPref,
+import { FOLLOW_KEY, FOLLOW_WARNING, getFollowPref, markFollowWarned, setFollowPref,
          wasFollowWarned } from '../prefs';
-import { getOverlayPref, setOverlayPref } from '../features/maps-overlay/pref';
+import { OVERLAY_PREF_KEY, getOverlayPref, setOverlayPref } from '../features/maps-overlay/pref';
 
 /**
  * The panel's settings — every preference the panel keeps, and the ONLY
@@ -73,6 +73,21 @@ export default function Settings({ onBack }: { onBack: () => void }) {
     });
   };
   useEffect(() => { void getOverlayPref().then(setOverlay); }, []);
+
+  // …and KEEP them in step.  Both values have a second writer outside
+  // this screen — the switch drawn on google.com/maps writes the overlay
+  // pref, and a panel left open while somebody flips it showed the old
+  // answer to the question it exists to answer.  This is the shape the
+  // Live Map already uses; Settings was read-once.
+  useEffect(() => {
+    const onChange = (c: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== 'local') return;
+      if (OVERLAY_PREF_KEY in c) setOverlay(c[OVERLAY_PREF_KEY].newValue !== false);
+      if (FOLLOW_KEY in c) setFollow(c[FOLLOW_KEY].newValue === true);
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
+  }, []);
 
   const manifest = chrome.runtime.getManifest();
 

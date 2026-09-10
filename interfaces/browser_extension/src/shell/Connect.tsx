@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { REGISTER_URL, beginConnect, clearPending } from '../connect';
+import { REGISTER_URL, beginConnect, clearPending, getPending } from '../connect';
 
 /**
  * The panel's first screen.  No fields: the person signs in on 4truck.us
@@ -10,6 +10,19 @@ import { REGISTER_URL, beginConnect, clearPending } from '../connect';
 export default function Connect({ onDone, disconnected = false }: { onDone: () => void; disconnected?: boolean }) {
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState('');
+
+  // `waiting` is a fact about the WORLD, not about this component.  It was
+  // local state only, so closing and reopening the panel mid-flow reset the
+  // screen to step one while a live pending connection was still sitting in
+  // storage — the person then saw "Connect" again and had no idea the tab
+  // they had already opened was still the one that would work.
+  useEffect(() => {
+    let gone = false;
+    void getPending().then((p) => {
+      if (!gone && p && p.expires > Date.now()) setWaiting(true);
+    });
+    return () => { gone = true; };
+  }, []);
 
   useEffect(() => {
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
@@ -46,17 +59,24 @@ export default function Connect({ onDone, disconnected = false }: { onDone: () =
         </p>
       )}
       <p className="muted" style={{ margin: 0 }}>
-        You confirm on 4truck.us — this panel never asks for a password. Once connected it
-        shows the vehicles you are allowed to see, live, and nothing else.
+        You confirm on 4truck.us — this panel never asks for a password. Once
+        connected it shows the vehicles you are allowed to see, live, and what is
+        aboard them. If your account lets you manage inventory, it can also record
+        a check, flag an item, add one or correct one. It can do nothing else — it
+        cannot retire an item, move one between vehicles, or reach any other part
+        of your account.
+      </p>
+      {/* Outside the branch: restoring `waiting` from a live pending
+          connection meant somebody with NO account met a screen that
+          offered them no way to make one, for up to ten minutes. */}
+      <p className="muted small" style={{ margin: 0 }}>
+        No 4truck account yet?{' '}
+        <a className="link" href={REGISTER_URL} target="_blank" rel="noopener noreferrer">Create one on 4truck.us</a>
+        {' '}— then come back here and press Connect.
       </p>
       {!waiting ? (
         <>
           <button className="btn primary" type="button" onClick={() => void start()}>Connect to 4truck</button>
-          <p className="muted small" style={{ margin: 0 }}>
-            No 4truck account yet?{' '}
-            <a className="link" href={REGISTER_URL} target="_blank" rel="noopener noreferrer">Create one on 4truck.us</a>
-            {' '}— then come back here and press Connect.
-          </p>
         </>
       ) : (
         <>

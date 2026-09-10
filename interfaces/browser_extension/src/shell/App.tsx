@@ -49,6 +49,26 @@ export default function App() {
   // listener below does not read it as a revocation.
   const ownDisconnect = useRef(false);
 
+  // ONE reset, for all three ways a session ends.  Only the deliberate
+  // path adds POST /auth/logout; everything else about ending is the
+  // same whoever caused it.  It used to live only in `disconnect()`, so
+  // a 401 or a token revoked from another device left the previous
+  // person's abilities and their cached inventory and positions in
+  // memory for whoever connected next.
+  // `keepView` on the involuntary paths: a 401 is usually the SAME person
+  // whose token aged out, most often while they are reading Settings, and
+  // dumping them to the feature view loses their place for no safety gain.
+  // The deliberate Disconnect DOES reset it — the next person to connect
+  // should start where a first run starts.
+  const resetSession = ({ keepView = false } = {}) => {
+    forgetInventory();
+    forgetPositions();
+    setAbilities([]);
+    setMe(null);
+    if (!keepView) setView('feature');
+    setPhase('login');
+  };
+
   useEffect(() => {
     (async () => {
       await refreshIfNeeded();
@@ -56,7 +76,7 @@ export default function App() {
     })();
     // A 401 anywhere returns the panel to the connect screen.
     const onUnauthorized = (e: PromiseRejectionEvent) => {
-      if (e.reason instanceof UnauthorizedError) { e.preventDefault(); setPhase('login'); setMe(null); setDisconnected(true); }
+      if (e.reason instanceof UnauthorizedError) { e.preventDefault(); resetSession({ keepView: true }); setDisconnected(true); }
     };
     window.addEventListener('unhandledrejection', onUnauthorized);
     // The token leaving storage is THE disconnect signal, whoever
@@ -66,7 +86,7 @@ export default function App() {
     const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area !== 'local' || !('jwt' in changes)) return;
       if (changes.jwt.newValue === undefined) {
-        setPhase('login'); setMe(null);
+        resetSession({ keepView: true });
         if (!ownDisconnect.current) setDisconnected(true);
         // Consumed HERE, after it was read: storage change events are
         // delivered as their own dispatch, after disconnect() has moved on.
@@ -152,10 +172,7 @@ export default function App() {
     // The next person to connect may be a different one with different
     // grants: what one truck's inventory was, and whether Inventory was
     // permitted at all, are answers to THAT session's key, not this one's.
-    forgetInventory();
-    forgetPositions();
-    setAbilities([]);
-    setMe(null); setView('feature'); setPhase('login');
+    resetSession();
   };
 
   return (

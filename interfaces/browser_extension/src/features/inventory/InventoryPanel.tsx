@@ -98,6 +98,10 @@ export default function InventoryPanel({ abilities, features }: PanelFeatureProp
    *  this answer holds still for the whole drag instead of vanishing
    *  under the pointer halfway through. */
   const [cardCanResize, setCardCanResize] = useState(false);
+  /** The last non-empty category list this account answered with.  A ref,
+   *  not state: nothing re-renders because the vocabulary arrived, and it
+   *  must survive every vehicle switch in between. */
+  const vocabRef = useRef<string[]>([]);
   const [draft, setDraft] = useState({ category: '', label: '', identifier: '' });
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState('');
@@ -236,12 +240,26 @@ useEffect(() => {
     reload.current();
   };
 
-  const known = items !== 'loading' && items !== 'failed' ? items.categories : [];
+  // The account's category vocabulary OUTLIVES one vehicle's read.  It
+  // used to be [] whenever `items` was 'loading' or 'failed' — and the
+  // Add button is offered in every state — so opening the form during a
+  // slow or refused read emptied the datalist and told the person every
+  // word they typed was a NEW category.  It was not; the server folds it
+  // into the existing one.  The claim was simply false.
+  if (items !== 'loading' && items !== 'failed' && items.categories.length
+      && items.categories !== vocabRef.current) vocabRef.current = items.categories;
+  const known = vocabRef.current;
   const canSubmit = Boolean(draft.label.trim() && draft.category.trim());
   /** Whether what is typed would MAKE a category rather than pick one.
    *  Compared the way the server normalises: case and spacing folded. */
   const asKey = (v: string) => v.trim().toLowerCase().split(/\s+/).join('_');
-  const isNewCategory = Boolean(draft.category.trim())
+  // Silent until the vocabulary is KNOWN: "New category" is a claim, and
+  // a claim made with nothing to check it against is a guess.  On a
+  // first load, or a slow one, `known` is empty and every word typed
+  // looked new — while the server was folding it into a category that
+  // already existed.
+  const isNewCategory = known.length > 0
+    && Boolean(draft.category.trim())
     && !known.some((c) => asKey(c) === asKey(draft.category));
   const submitAdd = async () => {
     if (!selected || !draft.label.trim() || !draft.category.trim()) return;
