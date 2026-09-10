@@ -101,6 +101,12 @@
         .card a { color: var(--blue); text-decoration: none; }
         .card a:hover { text-decoration: underline; }
         .mission { font-size: 20px; font-weight: 600; color: var(--navy); }
+        /* Group heading over member cards — same weight/size as a
+           .card h2 so the two heading levels read as peers. */
+        .section-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 16px; }
+        /* Sits close to the cards it belongs to, far from the section
+           after it — between-group air must exceed within-group air. */
+        .team-note { color: var(--gray-600); font-size: 15px; margin-top: -8px; margin-bottom: 40px; }
         .contact-email a { font-size: 20px; font-weight: 600; color: var(--blue); text-decoration: none; }
         .contact-email a:hover { text-decoration: underline; }
         address { font-style: normal; color: var(--gray-600); font-size: 16px; }
@@ -199,8 +205,12 @@
             <p><a href="https://abclegacyllc.com/about">About ABC LEGACY LLC</a></p>
         </div>
 
+        <!-- "Team" is a group heading over member cards, so it sits outside
+             them; "The company" and "Mission" are single-content sections and
+             keep their heading inside the card. -->
+        <h2 class="section-title">Team</h2>
+
         <div class="card">
-            <h2>Founder</h2>
             <p class="who">Alonur Komilov &mdash; Founder &amp; CEO</p>
             <p>
                 Alonur founded ABC LEGACY LLC in 2025 and builds 4truck. His focus is making the
@@ -208,6 +218,15 @@
                 on top of the data carriers already have.
             </p>
         </div>
+
+        <div class="card">
+            <p class="who">Baxtinur Komilov &mdash; Finance &amp; Marketing</p>
+            <p>Baxtinur runs finance and marketing for ABC LEGACY LLC.</p>
+        </div>
+
+        <p class="team-note">
+            ABC LEGACY LLC is registered in Wyoming, USA. The team works from Tashkent, Uzbekistan.
+        </p>
 
         <div class="card">
             <h2>Mission</h2>
