@@ -231,6 +231,16 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
         db_user=user_obj,
     )
     user_context["scoped_vehicle_nums"] = scope
+    # Company restriction, beside the vehicle one.  REST filters rows by
+    # the caller's company codes (``filter_by_allowed_companies``); tools
+    # that are neither vehicle-keyed nor account-wide — geofences — need
+    # the same codes to filter by.  ``None`` = unrestricted, exactly as
+    # an empty code list means on the REST side.
+    try:
+        _codes = list(await platform_db.get_user_company_codes(user_obj.id) or [])
+    except Exception:  # pragma: no cover - defensive
+        _codes = []
+    user_context["scoped_company_codes"] = _codes or None
     from capabilities.ai.scope import resolve_scope_ladder
     try:
         assignments = await platform_db.get_user_vehicle_assignments(user_obj.id)

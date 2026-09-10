@@ -508,6 +508,7 @@ async def execute_tool(tool_name: str, tool_args: dict,
                        db=None,
                        scope_vehicles: list | None = None,
                        scope_ladder: dict | None = None,
+                       company_codes: list | None = None,
                        attachment_grids: dict | None = None,
                        attachment_docs: dict | None = None) -> dict:
     """Execute a registered tool by name. Returns result dict.
@@ -535,6 +536,16 @@ async def execute_tool(tool_name: str, tool_args: dict,
     if not handler:
         return _stamp_ok({"error": f"Unknown tool: {tool_name}"})
     # Server-injected channels — a model-supplied value is never honored.
+    if "_scope_companies" in tool_args:
+        tool_args = {k: v for k, v in tool_args.items() if k != "_scope_companies"}
+    if company_codes:
+        # Company scope for tools that are neither vehicle-keyed nor
+        # account-wide (geofences): only a tool that DECLARES
+        # ``company_scoped`` receives it, and it must filter by it —
+        # the same opt-in shape as ``uses_attachments``.
+        _schema = get_tool_schema(tool_name)
+        if _schema and _schema.get("company_scoped"):
+            tool_args = {**tool_args, "_scope_companies": [str(c).upper() for c in company_codes]}
     if "_scope_identities" in tool_args:
         tool_args = {k: v for k, v in tool_args.items()
                      if k != "_scope_identities"}

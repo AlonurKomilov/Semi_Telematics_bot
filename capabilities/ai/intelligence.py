@@ -980,6 +980,7 @@ async def _run_anthropic_agent(
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                     scope_ladder=_scoped_vehicle_ladder(user_context),
+                    company_codes=(user_context or {}).get("scoped_company_codes"),
                     attachment_grids=(user_context or {}).get("_attachment_grids"),
                     attachment_docs=(user_context or {}).get("_attachment_docs"),
                 )
@@ -1566,6 +1567,7 @@ async def _run_openai_compat_agent(
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                     scope_ladder=_scoped_vehicle_ladder(user_context),
+                    company_codes=(user_context or {}).get("scoped_company_codes"),
                     attachment_grids=(user_context or {}).get("_attachment_grids"),
                     attachment_docs=(user_context or {}).get("_attachment_docs"),
                 )
@@ -2033,6 +2035,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                         account_id=account_id, db=db,
                         scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                     scope_ladder=_scoped_vehicle_ladder(user_context),
+                    company_codes=(user_context or {}).get("scoped_company_codes"),
                         attachment_grids=(user_context or {}).get("_attachment_grids"),
                         attachment_docs=(user_context or {}).get("_attachment_docs"),
                     )
