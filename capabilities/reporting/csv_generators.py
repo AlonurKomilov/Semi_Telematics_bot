@@ -1,6 +1,6 @@
 """CSV export generators for Semi-Telematics bot reports."""
 
-import csv
+from infra.csv_safety import safe_writer
 import io
 from datetime import datetime
 from constants import TZ_ET as _TZ_ET
@@ -47,7 +47,7 @@ def generate_efficiency_csv(
 ) -> io.BytesIO:
     """Return a BytesIO containing CSV data for the Efficiency report."""
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     # Metadata rows
     writer.writerow(["Report", "Fleet Efficiency"])
@@ -132,7 +132,7 @@ def generate_fuel_csv(
 ) -> io.BytesIO:
     """Return a BytesIO containing CSV data for the Fuel & DEF report."""
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     # Metadata
     writer.writerow(["Report", "Fleet Fuel & DEF"])
@@ -240,7 +240,7 @@ def generate_health_csv(
 ) -> io.BytesIO:
     """Return a BytesIO containing CSV data for the Vehicle Health report."""
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     # Metadata
     writer.writerow(["Report", "Vehicle Health"])
@@ -340,7 +340,7 @@ def generate_fault_csv(
     One row per DTC for easy filtering/pivoting in Excel.
     """
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     total_dtcs = sum(len(v.get("_dtcs", [])) for v in vehicles_with_faults)
 
@@ -436,7 +436,7 @@ def generate_events_csv(
 ) -> io.BytesIO:
     """Return a BytesIO containing CSV data for the Events report."""
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     # Metadata rows
     writer.writerow(["Report", "Safety Events"])
@@ -497,7 +497,7 @@ def generate_events_csv(
 def generate_camera_check_csv(results: list[dict]) -> io.BytesIO:
     """Return a BytesIO containing CSV data for the Camera Check report."""
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     writer.writerow(["4truck — Camera Check Report"])
     writer.writerow([f"Generated: {_now_et()}"])
@@ -555,7 +555,7 @@ def generate_scorecard_csv(
     data so the column count stays stable.
     """
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     pillar_by_driver = pillar_by_driver or {}
     with_pillars = bool(pillar_by_driver)
@@ -619,7 +619,7 @@ def generate_risk_summary_csv(profile, *, audience: str = "owner") -> io.BytesIO
     cfg = get_audience_config(audience)
 
     sio = io.StringIO()
-    writer = csv.writer(sio)
+    writer = safe_writer(sio)
 
     # ── Metadata ────────────────────────────────────────────────
     writer.writerow(["Report", "Stakeholder Risk Summary"])

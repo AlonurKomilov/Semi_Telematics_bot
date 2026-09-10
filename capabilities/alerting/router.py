@@ -1009,7 +1009,7 @@ async def export_pending_alerts(
     says so: a truncated file that looks complete is worse than no file,
     and the one artifact that always travels with the data is its name.
     """
-    import csv
+    from infra.csv_safety import safe_writer
     import io
 
     state = _norm_ack_state(ack_state)
@@ -1036,7 +1036,7 @@ async def export_pending_alerts(
     alerts = alerts[:EXPORT_ROW_CAP]
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = safe_writer(buf)
     writer.writerow([
         "alert_id", "severity", "type", "kind", "vehicle", "vehicle_id", "location",
         "occurrences", "first_seen", "last_seen", "status",

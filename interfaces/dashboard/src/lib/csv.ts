@@ -17,11 +17,34 @@ import { cellText } from './cellText';
  *  doubled per the spec. */
 function csvField(value: unknown): string {
   if (value == null) return '';
-  const s = String(value);
+  const s = neutraliseFormula(String(value));
   if (/[",\r\n]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }
   return s;
+}
+
+/** Stop a cell from being read as a formula when the file is opened.
+ *
+ *  Excel, LibreOffice and Sheets evaluate a cell starting with `=`, `+`,
+ *  `-` or `@`. The payload that proves it is `=cmd|'/C calc'!A1` — a DDE
+ *  call asking the spreadsheet to launch a process — and a probe against
+ *  production tried exactly that in September 2026.
+ *
+ *  This export is the browser's, so the row it writes is whatever the
+ *  grid is showing, including vendor and part names that reach us from
+ *  the shared directories: text another account typed can land in this
+ *  account's file. A leading apostrophe marks the cell literal and is
+ *  not shown as content.
+ *
+ *  Numbers keep their sign. `-12.5` must stay a number Excel will sum;
+ *  only a string that is NOT a number gets escaped. The backend applies
+ *  the same rule in `infra/csv_safety.py` — the two must agree, because
+ *  the same report is reachable from both. */
+function neutraliseFormula(s: string): string {
+  if (!s || !'=+-@\t\r\n'.includes(s[0])) return s;
+  if (s.trim() !== '' && Number.isFinite(Number(s))) return s;
+  return `'${s}`;
 }
 
 /** What a cell says, in plain text.  Shared with the grid's global

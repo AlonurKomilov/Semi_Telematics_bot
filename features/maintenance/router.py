@@ -1433,7 +1433,7 @@ async def export_tasks_csv(
     a self-contained DOT artifact — an auditor reading the CSV can see
     who signed off on each task without needing the dashboard open.
     """
-    import csv
+    from infra.csv_safety import safe_writer
     import io
     from fastapi.responses import StreamingResponse
 
@@ -1454,7 +1454,7 @@ async def export_tasks_csv(
     name_map = await _build_user_name_map(user["account_id"], platform_db)
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = safe_writer(buf)
     writer.writerow([
         "id", "vehicle_name", "task_type", "priority", "status",
         "description", "due_date", "due_miles", "due_engine_hours",

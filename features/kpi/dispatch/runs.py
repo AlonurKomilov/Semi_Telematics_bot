@@ -33,7 +33,7 @@ NULL — visible and explicable on the row, never a silently-invented bar.
 
 from __future__ import annotations
 
-import csv
+from infra.csv_safety import safe_writer
 import io
 import json
 import logging
@@ -682,7 +682,7 @@ async def export_run_csv(account_id: int, run_id: int) -> tuple[str, str]:
     """
     detail = await get_run_detail(account_id, run_id)
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = safe_writer(buf)
     w.writerow(["Incentive run",
                 f"{detail['period_start']} - {detail['period_end']}",
                 detail["status"]])
