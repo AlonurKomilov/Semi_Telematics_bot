@@ -467,7 +467,7 @@
     "remember_me": "Remember me for 30 days",
     "incorrect_credentials": "Incorrect credentials",
     "session_expired": "Your session has expired. Please sign in again.",
-    "tagline": "Telematics platform for drivers, dispatch, safety & operations",
+    "tagline": "Vehicle management and operations platform for trucking carriers",
     "forgot_password": "Forgot password?",
     "forgot_title": "Reset your password",
     "forgot_heading": "Forgot your password?",
@@ -1512,6 +1512,10 @@
       "intro_observed_other": "I noticed you've added {{count}} tasks one at a time recently. One task can go to many vehicles at once — want me to show you, on your own next task?",
       "commit_one": "This will create {{count}} real task for the selected vehicle. The tour stops here; pressing “Create” is your call.",
       "commit_other": "This will create {{count}} real tasks — one per selected vehicle. The tour stops here; pressing “Create” is your call."
+    },
+    "menu": {
+      "next": "Next: {{title}}",
+      "all_done": "All done"
     },
     "page": {
       "description": "Every walkthrough, browsable and re-runnable — a tour walks you through your own work on the live page.",

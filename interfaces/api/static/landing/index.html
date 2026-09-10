@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>4truck — Vehicle Management &amp; Operations Platform for Trucking Carriers</title>
-    <meta name="description" content="4truck is a vehicle management and operations platform for trucking carriers: real-time GPS vehicle tracking, maintenance and work orders, driver recruiting with FMCSA-compliant applications, payroll and settlements, safety scorecards, and dispatch — with purpose-built views for Fleet, Dispatch, Safety, HR, Accounting, Recruiter, and Driver.">
+    <title>4truck — Vehicle Management for Trucking Carriers</title>
+    <meta name="description" content="Vehicle management and operations platform for trucking carriers: GPS tracking, maintenance, recruiting, payroll, safety scorecards, and dispatch.">
     <link rel="canonical" href="https://4truck.us/">
     <link rel="icon" type="image/png" sizes="32x32" href="/dashboard/favicon-32.png">
     <link rel="icon" type="image/png" sizes="64x64" href="/dashboard/favicon-64.png">
@@ -14,13 +14,13 @@
          AI-answer citation cards read these instead of scraping the body. -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="4truck">
-    <meta property="og:title" content="4truck — Vehicle Management &amp; Operations Platform for Trucking Carriers">
-    <meta property="og:description" content="Real-time GPS vehicle tracking, maintenance, driver recruiting with FMCSA-compliant applications, payroll, safety scorecards, and dispatch — one platform for the whole trucking operation.">
+    <meta property="og:title" content="4truck — Vehicle Management for Trucking Carriers">
+    <meta property="og:description" content="Vehicle management and operations platform for trucking carriers: GPS tracking, maintenance, recruiting, payroll, safety scorecards, and dispatch.">
     <meta property="og:url" content="https://4truck.us/">
     <meta property="og:image" content="https://4truck.us/og-image.png">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="4truck — Vehicle Management &amp; Operations Platform for Trucking Carriers">
-    <meta name="twitter:description" content="Real-time GPS vehicle tracking, maintenance, driver recruiting, payroll, safety, and dispatch — one platform for the whole trucking operation.">
+    <meta name="twitter:title" content="4truck — Vehicle Management for Trucking Carriers">
+    <meta name="twitter:description" content="Vehicle management and operations platform for trucking carriers: GPS tracking, maintenance, recruiting, payroll, safety scorecards, and dispatch.">
     <meta name="twitter:image" content="https://4truck.us/og-image.png">
 
     <!-- Structured data: tells Google (and AI answer engines) what kind of
@@ -164,6 +164,9 @@
 
         /* Roles section */
         .section { padding: 80px 0; }
+        /* In-page anchors (#roles, #modules, #drive) scroll under the
+           sticky header without this — it is ~79px tall. */
+        .section, .drive { scroll-margin-top: 96px; }
         .section h2 {
             font-size: 36px;
             font-weight: 800;

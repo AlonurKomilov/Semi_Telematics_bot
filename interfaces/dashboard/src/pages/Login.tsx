@@ -820,7 +820,7 @@ export default function Login() {
             'Ask your company admin for an invite code.'
           )}
           {mode === 'register' && registerKind === 'new-company' && (
-            'No card required. Pick a paid plan within 14 days to keep your fleet on.'
+            'No card required. Pick a paid plan within 14 days to keep your account active.'
           )}
           {mode === 'login' && 'Sign in with your email or Telegram account.'}
         </p>
