@@ -409,6 +409,25 @@ describe('resetAll sweeps family keys', () => {
       }
     });
 
+    it('keeps a seeded ground, and only a colour under a name it knows', () => {
+      // The same discipline as the per-place canvases: named keys,
+      // colours only, and the object dropped when nothing survives — so
+      // "no seeded grounds" and "an empty set of them" stay one state.
+      const out = sanitize({
+        mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
+        motion: 'default', color: 'dark-blue',
+        grounds: { sidebar: '#101418', card: 'not a colour', ceiling: '#ffffff' },
+      }) as { grounds?: Record<string, string> };
+      expect(out.grounds).toEqual({ sidebar: '#101418' });
+
+      for (const junk of [null, 'x', 42, ['card'], { card: 'red' }, {}]) {
+        const r = sanitize({ mode: 'dark', accent: 'blue', radius: 'rounded',
+          material: 'solid', motion: 'default', color: 'dark-blue', grounds: junk,
+        }) as unknown as Record<string, unknown>;
+        expect('grounds' in r, `grounds: ${JSON.stringify(junk)}`).toBe(false);
+      }
+    });
+
     it('drops a tokens object an older build stored', () => {
       // The field is gone — the note in registry.ts says why: nothing in
       // the product ever wrote it, a picked canvas overwrote it key by

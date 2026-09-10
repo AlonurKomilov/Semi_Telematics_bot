@@ -164,6 +164,21 @@ const INK_LIGHT: RGB = [250 / 255, 250 / 255, 250 / 255]; // #fafafa
  * unconditionally makes every page slightly harsher than the one we
  * designed. Preferring one and falling back to the other costs neither.
  */
+/** Which way "off the ground" points: positive when the ink is lighter
+ *  than what it sits on. */
+const awayFrom = (ink: RGB, ground: RGB): 1 | -1 =>
+  (srgbToOklch(ink).L >= srgbToOklch(ground).L ? 1 : -1);
+
+/** Start from the ground and walk toward the ink until the hairline
+ *  shows, so a boundary always sits ON its own surface rather than on
+ *  the page — the sidebar's border is a shade of the sidebar. Module
+ *  level because a seeded plane needs the same walk from its own ink. */
+const edgeOn = (ground: RGB, away: 1 | -1, target: number): RGB => {
+  const g = srgbToOklch(ground);
+  return clampLightness(
+    srgbInGamut(Math.min(1, Math.max(0, g.L + away * 0.08)), g.C, g.H), ground, target).rgb;
+};
+
 const pickInk = (ground: RGB): RGB => {
   const shipped = contrastRatio(INK_DARK, ground) >= contrastRatio(INK_LIGHT, ground)
     ? INK_DARK : INK_LIGHT;
@@ -253,6 +268,75 @@ const plane = (base: RGB, p: Plane): RGB => {
  *   is unparseable. Never a partial palette: half a theme applied over
  *   the other half is worse than none.
  */
+/**
+ * The planes a person may seed DIRECTLY instead of taking the ladder's
+ * step from the page, and the tokens each one owns.
+ *
+ * A plane is a family, not a token: seeding the sidebar and leaving its
+ * hover fill derived from the page would put a pale strip on a dark
+ * rail. Everything inside a seeded plane is re-derived from the seed —
+ * its siblings keep the OFFSET the ladder gave them, its ink is picked
+ * against it, its edge is measured on it.
+ *
+ * The two here are the two people ask for in words ("a dark sidebar",
+ * "grey cards"). A third is a row in this table plus its offsets, not a
+ * redesign — which is the answer to "why only two".
+ */
+export const GROUND_PLANES = {
+  card: ['--card', '--card-foreground', '--popover', '--popover-foreground'],
+  sidebar: [
+    '--sidebar', '--sidebar-foreground', '--sidebar-accent',
+    '--sidebar-accent-foreground', '--sidebar-border',
+  ],
+} as const;
+
+export type GroundId = keyof typeof GROUND_PLANES;
+
+/**
+ * One seeded plane, derived.
+ *
+ * @returns the plane's own tokens, or null if the hex is unparseable.
+ *   Never a partial plane, for the reason `derivePalette` gives: half a
+ *   surface applied over the other half is worse than none.
+ *
+ * NOT gated here. `theme/grounds.ts` asks whether the plane is wearable,
+ * the way `fitCanvas` asks it of a page — on the path that paints, not
+ * in the control that writes.
+ */
+export function deriveGround(
+  id: GroundId, seedHex: string, mode: ThemeMode,
+): Record<string, string> | null {
+  const ground = parseHex(seedHex);
+  if (!ground) return null;
+  const L = LADDER[mode], B = BOUNDARY[mode], T = INK_TARGET[mode];
+  const hex = (c: RGB) => toHex(c);
+  // Picked against THIS plane, not against the page: a near-black card
+  // on a white page has to carry light text, and the page's ink would
+  // be invisible on it.
+  const ink = pickInk(ground);
+  const away = awayFrom(ink, ground);
+
+  if (id === 'card') {
+    // The popover keeps the distance the ladder put between it and the
+    // card, so a dialog still reads as raised off a seeded card.
+    const popover = plane(ground, { dL: L.popover.dL - L.card.dL, C: L.popover.C });
+    return {
+      '--card': hex(ground),
+      '--card-foreground': hex(ink),
+      '--popover': hex(popover),
+      '--popover-foreground': hex(pickInk(popover)),
+    };
+  }
+  const accent = plane(ground, { dL: L.sidebarAccent.dL - L.sidebar.dL, C: L.sidebarAccent.C });
+  return {
+    '--sidebar': hex(ground),
+    '--sidebar-foreground': hex(ink),
+    '--sidebar-accent': hex(accent),
+    '--sidebar-accent-foreground': hex(dimTo(ink, accent, T.recessed)),
+    '--sidebar-border': hex(edgeOn(ground, away, B.sidebar)),
+  };
+}
+
 export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   const canvas = parseHex(seed.canvas);
   const brand = parseHex(seed.brand);
@@ -282,14 +366,7 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
    *  ratio is OURS (1.26 light), not WCAG 1.4.11's 3:1. A themed page
    *  whose fields are outlined twice as hard as the dashboard's reads as
    *  a different product; both move together if that ever changes. */
-  const edge = (ground: RGB, target: number) => {
-    const g = srgbToOklch(ground);
-    // Start from the ground and walk toward the ink until the hairline
-    // shows, so a boundary always sits ON its own surface rather than on
-    // the page — the sidebar's border is a shade of the sidebar.
-    return hex(clampLightness(
-      srgbInGamut(Math.min(1, Math.max(0, g.L + away * 0.08)), g.C, g.H), ground, target).rgb);
-  };
+  const edge = (ground: RGB, target: number) => hex(edgeOn(ground, away, target));
 
   const brandL = srgbToOklch(brand);
   const shift = (dL: number) =>

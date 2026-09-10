@@ -7,6 +7,7 @@ import { publishAppearanceDefault } from '../preferences/appearance';
 import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
+import { groundTokens, type GroundId } from './theme/grounds';
 import { packById, THEME_PACKS } from './packs/theme';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { useAmbient } from './ambient/useAmbient';
@@ -192,7 +193,19 @@ export function ModProvider({ children }: { children: ReactNode }) {
       : null;
     const picked = full
       ?? (theme.brand ? accentTokens(theme.brand, theme.mode).tokens : null);
-    const derived = picked;
+    // Seeded planes. A ground is one plane EVERYWHERE — it is not a
+    // place and takes no "applies to" — so it is merged over the global
+    // palette AND over every scoped block below: a page with its own
+    // background still has the sidebar the person asked for. A ground
+    // the mode cannot wear contributes nothing, like a per-place canvas.
+    const grounds: Record<string, string> = {};
+    for (const [id, hex] of Object.entries(theme.grounds ?? {})) {
+      const t = groundTokens(id as GroundId, hex, theme.mode).tokens;
+      if (t) Object.assign(grounds, t);
+    }
+    const hasGrounds = Object.keys(grounds).length > 0;
+
+    const derived = picked || hasGrounds ? { ...(picked ?? {}), ...grounds } : null;
 
     // Per-place canvases. Derived here for the same reason the global
     // one is: a palette computed for one mode and worn in the other is
@@ -200,13 +213,14 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // mode change. A surface whose canvas the current mode cannot wear
     // simply contributes nothing — the page falls back to the global
     // look rather than to half a palette.
+
     const scoped: Record<string, Record<string, string>> = {};
     for (const [id, hex] of Object.entries(theme.surfaces ?? {})) {
       const t = surfaceTokens(hex, seedBrand, theme.mode, theme.wallpaper !== 'none').tokens;
-      if (t) scoped[id] = t;
+      if (t) scoped[id] = hasGrounds ? { ...t, ...grounds } : t;
     }
     applyModTokens(derived, document, Object.keys(scoped).length ? scoped : null);
-  }, [theme.brand, theme.canvas, theme.surfaces, theme.accent, theme.mode, theme.wallpaper]);
+  }, [theme.brand, theme.canvas, theme.surfaces, theme.grounds, theme.accent, theme.mode, theme.wallpaper]);
 
   useEffect(() => {
     applyTheme(theme);

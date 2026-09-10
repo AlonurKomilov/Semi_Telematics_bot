@@ -48,6 +48,7 @@ import { SOUND_PACKS } from '../mods/packs/sound';
 import { KEY_PACKS } from '../mods/packs/keys';
 import { MOD_FONTS } from '../mods/packs/font';
 import { SURFACES } from '../mods/surfaces';
+import { GROUND_IDS } from '../mods/theme/grounds';
 
 /** Where a preference is allowed to live.
  *  - ``device`` — never leaves this browser (screen-shaped comfort
@@ -303,6 +304,16 @@ export interface ModSetting {
    * products. Seeds again, re-derived per mode like the global one.
    */
   surfaces?: Record<string, string>;
+  /**
+   * A ground a person seeded themselves — `{ sidebar: '#101418' }`.
+   *
+   * Keys are `GROUND_IDS`, values hexes. The same shape as `surfaces`
+   * because it answers the same kind of question about a different
+   * thing: that one is WHERE a background applies, this one is WHICH
+   * PLANE gets its own. A plane with no seed keeps deriving from the
+   * page, which is what every plane did before this existed.
+   */
+  grounds?: Record<string, string>;
   /** The PAGE's own pattern — a `WALLPAPERS` id, chosen apart from the
    *  frame's. `none` by default: the page has always been plain. Paints
    *  around the cards, over the page's own colour. */
@@ -657,6 +668,22 @@ export const DEFS = {
         }
         if (Object.keys(kept).length) surfaces = kept;
       }
+
+      // Seeded planes: named keys only, colours only, capped, dropped
+      // when empty — the same discipline as the per-place canvases
+      // above, and for the same reason.
+      let grounds: Record<string, string> | undefined;
+      if (o.grounds && typeof o.grounds === 'object' && !Array.isArray(o.grounds)) {
+        const kept: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o.grounds as Record<string, unknown>)) {
+          if (!GROUND_IDS.includes(k as (typeof GROUND_IDS)[number])) continue;
+          if (typeof v !== 'string' || !parseHex(v)) continue;
+          if (Object.keys(kept).length >= GROUND_IDS.length) break;
+          kept[k] = v.trim().toLowerCase();
+        }
+        if (Object.keys(kept).length) grounds = kept;
+      }
+
       // Same shape, same reasons: named places only, shipped patterns
       // only, capped, dropped when empty.
       let wallpaperPages: Record<string, string> | undefined;
@@ -692,6 +719,7 @@ export const DEFS = {
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),
         ...(surfaces ? { surfaces } : {}),
+        ...(grounds ? { grounds } : {}),
         ...(wallpaperPages ? { wallpaperPages } : {}),
         color: themeColorAlias(mode, accent),
       };

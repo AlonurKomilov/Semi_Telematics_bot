@@ -114,7 +114,7 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // straight back: a red picked "for the page" turned the whole
       // app red, because that is what a palette's ground does.
       { id: 'theme',    title: 'Accent',   heading: 'Accent',
-        axes: ['accent', 'brand', 'canvas', 'surfaces'],
+        axes: ['accent', 'brand', 'canvas', 'surfaces', 'grounds'],
         modFields: ['accent'] },
       { id: 'corners',  title: 'Corners',  heading: 'Corners',  axes: ['radius'],   modFields: ['radius'] },
       { id: 'material', title: 'Material', heading: 'Material', axes: ['material'], modFields: ['material'] },

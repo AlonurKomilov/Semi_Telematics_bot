@@ -39,6 +39,7 @@ import { useState } from 'react';
 import { ModProvider, useMods } from './context';
 import { modStyleText } from './inject';
 import { accentTokens } from './theme/accent';
+import { groundTokens } from './theme/grounds';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
 import { packById } from './packs/theme';
 
@@ -132,6 +133,26 @@ describe('a picked colour is a seed, not a set of values', () => {
     expect(light, 'the two modes derive the same accent').not.toBe(dark);
     expect(modStyleText(), 'the accent did not re-derive on a mode change')
       .toContain(`--primary: ${light};`);
+  });
+
+  it('and a seeded ground reaches it as the plane the engine derived', () => {
+    // The control that writes `grounds` is worth nothing unless the
+    // engine installs what it wrote: a chip that changes a stored value
+    // and paints nothing is the failure this whole engine is guarded
+    // against, and it is invisible from the panel's own tests.
+    mount({ grounds: { sidebar: '#101418' } });
+    const want = groundTokens('sidebar', '#101418', 'dark').tokens!;
+    for (const [name, value] of Object.entries(want))
+      expect(modStyleText(), `${name} never reached the stylesheet`).toContain(`${name}: ${value};`);
+  });
+
+  it('and drops a seeded ground the mode cannot wear, rather than half of it', () => {
+    const refused = Array.from({ length: 256 }, (_, i) => `#${i.toString(16).padStart(2, '0').repeat(3)}`)
+      .find((h) => groundTokens('card', h, 'dark').tokens === null)!;
+    mount({ grounds: { card: refused } });
+    // Nothing else is picked, so the honest outcome is no sheet at all —
+    // `?? ''` says that out loud instead of throwing on the null.
+    expect(modStyleText() ?? '', 'a refused ground was installed anyway').not.toContain('--card:');
   });
 
   it('installs nothing at all when there is no picked colour', () => {

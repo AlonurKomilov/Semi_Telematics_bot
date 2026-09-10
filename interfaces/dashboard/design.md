@@ -275,7 +275,7 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
     mods/href.ts       MODS_HREF (the card) and MODS_PAGE_HREF (the page)
     mods/SizeCard.tsx  size, whole
     mods/inject.ts     installing token values
-    mods/theme/        palette · contrast
+    mods/theme/        palette · grounds · contrast
     mods/sound/        engine · useCue
     mods/icons/        IconWeight
 

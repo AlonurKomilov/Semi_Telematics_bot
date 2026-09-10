@@ -23,7 +23,10 @@ import { MATERIAL_PACKS, materialPackById } from '../packs/material';
 import { THEME_PACKS, packById, accentSeed } from '../packs/theme';
 import { FONT_PACKS } from '../packs/font';
 import { accentTokens } from '../theme/accent';
-import { paletteTokens } from '../theme/canvas';
+import { paletteTokens, CANVAS_SEED } from '../theme/canvas';
+import { derivePalette } from '../theme/palette';
+import { GROUNDS } from '../theme/grounds';
+import { GroundChip } from './GroundChip';
 import { Chip } from './Chip';
 import { BrandChip } from './BrandChip';
 import { CanvasChip } from './CanvasChip';
@@ -238,6 +241,17 @@ export function AccentGroup({ label }: { label: LabelClass }) {
    *  is worn — a canvas that reads fine on its own may not under the
    *  pattern's strongest stop, and the dot must say what actually paints. */
   const seedBrand = theme.brand ?? (packById(theme.accent) ?? THEME_PACKS[0]).seed[theme.mode];
+  /** What paints in each plane while it has no seed of its own, so the
+   *  picker opens on the colour that is on screen. */
+  const groundFallback = useMemo(() => {
+    const pal = derivePalette({
+      mode: theme.mode, canvas: theme.canvas ?? CANVAS_SEED[theme.mode], brand: seedBrand,
+    });
+    return {
+      card: pal?.['--card'] ?? CANVAS_SEED[theme.mode],
+      sidebar: pal?.['--sidebar'] ?? CANVAS_SEED[theme.mode],
+    } as Record<string, string>;
+  }, [theme.mode, theme.canvas, seedBrand]);
   const underPattern = (theme.wallpaper ?? 'none') !== 'none';
   const unworn = useMemo(
     () => SURFACES.filter((s) => {
@@ -335,6 +349,34 @@ export function AccentGroup({ label }: { label: LabelClass }) {
             : t('theme.scope_all_hint', 'One background for the whole app.')}
       </p>
       </>)}
+
+      {/* The other two grounds. Their own row, under the page's, because
+          the page is the one they derive from when they have no seed —
+          and because "applies to" above belongs to the background alone:
+          a ground is one plane everywhere, not one place. */}
+      <p className="text-xs text-foreground mt-2.5 mb-1.5">
+        {t('theme.group_grounds', 'Grounds')}
+      </p>
+      <div className="flex flex-wrap items-center gap-1">
+        {GROUNDS.map((g) => (
+          <GroundChip
+            key={g.id}
+            ground={g}
+            hex={theme.grounds?.[g.id]}
+            mode={theme.mode}
+            fallback={groundFallback[g.id]}
+            onPick={(hex) => setTheme({ grounds: { ...(theme.grounds ?? {}), [g.id]: hex } })}
+            onClear={() => {
+              const next = { ...(theme.grounds ?? {}) };
+              delete next[g.id];
+              setTheme({ grounds: Object.keys(next).length ? next : undefined });
+            }}
+          />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {GROUNDS.map((g) => g.description).join(' · ')}
+      </p>
     </div>
   );
 }
