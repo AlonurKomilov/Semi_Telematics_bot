@@ -96,6 +96,9 @@ async def _actor_user_id(user: dict, uid: int, platform_db) -> int:
         try:
             return int(claim)
         except (TypeError, ValueError):
+            # A claim that is not a number is not a user id — fall
+            # through to the telegram_id lookup below, which is the
+            # path a legacy token without the claim already takes.
             pass
     try:
         db_user = await platform_db.get_user_by_telegram_id(uid)
