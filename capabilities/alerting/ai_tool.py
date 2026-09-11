@@ -10,7 +10,7 @@ from __future__ import annotations
 from capabilities.ai.tools.registry import (
     register_tool, register_action_executor, tool_propose, tool_error,
 )
-from capabilities.ai.tools.scope import filter_to_scope
+from capabilities.ai.tools.scope import filter_to_scope, scope_vehicle_set
 
 
 # The alert_type values the store actually holds.  Kept beside the
@@ -126,18 +126,41 @@ async def get_alert_history(tool_args: dict, samsara_client,
         ack_state = "active"
     elif status in ("acknowledged", "cleared"):
         ack_state = "acknowledged"
+    # The cap goes into SQL only for an UNRESTRICTED caller.
+    #
+    # For a scoped one it used to, and the scope filter ran afterwards
+    # in Python — so the 25 rows SQL chose were the ACCOUNT's most
+    # severe (the ORDER BY is account-wide severity, then recency), the
+    # filter removed the ones belonging to other trucks, and the caller
+    # was told what survived. A driver scoped to one truck in a busy
+    # account got the fleet's 25 worst alerts, had every one of them
+    # dropped, and read "no alerts on your truck" while their own truck
+    # carried open warnings below the cut.
+    #
+    # The REST board already knows this shape is wrong: for a driver- or
+    # company-scoped caller it calls this same method with NO limit and
+    # paginates in Python afterwards. Same rule here.
+    scoped = scope_vehicle_set(tool_args) is not None
     rows = await db.get_active_alert_history_for_account_paged(
         account_id,
         alert_type=alert_type, vehicle_substring=veh,
         severity=severity, ack_state=ack_state,
-        limit=limit,
+        limit=None if scoped else limit,
     )
 
     # Vehicle-Access scope: only the caller's own vehicles' alerts.
+    matched_before_cap = len(rows)
     rows = filter_to_scope(rows, tool_args)
+    matched = len(rows)
+    if scoped and matched > limit:
+        rows = rows[:limit]
 
     return {
         "count": len(rows),
+        # What the caller's own scope actually holds, so a truncated
+        # answer says so instead of reading as the whole picture.
+        "matched": matched if scoped else matched_before_cap,
+        "truncated": bool(scoped and matched > len(rows)),
         "filters": {
             "alert_type": alert_type, "vehicle_substring": veh,
             "status": status, "severity": severity,
