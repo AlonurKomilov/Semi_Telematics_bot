@@ -40,6 +40,26 @@ class Ambiguous:
     candidates: list  # registry Vehicle rows
 
 
+@dataclass(frozen=True)
+class OutOfScope:
+    """The registry HAS this truck; the caller may not see it.
+
+    Distinct from ``None`` on purpose. ``None`` means the registry could
+    not say — a retired truck, an unregistered one, a typo — and callers
+    fall back to asking the provider about the company the model NAMED
+    (see ``company_for``). That fallback is correct for an unknown
+    truck and catastrophic for a denied one: a caller scoped to OSY who
+    names "103 at G1" had the gate pass (it matches by NAME, which
+    cannot split twins), the scope filter reject G1's row, and the
+    company string handed to the provider anyway — answering with the
+    other company's twin. This sentinel is what makes the two cases
+    different.
+    """
+
+    name: str
+    company: str | None
+
+
 def _scope_for(tool_args: dict | None):
     """The caller's scope as a ``VehicleScope``, or ``None`` = unrestricted."""
     from capabilities.ai.tools.scope import scope_vehicle_set
@@ -68,8 +88,8 @@ async def resolve_one(
     db: Any, account_id: int, name: str, *,
     company: str | None = None, tool_args: dict | None = None,
 ):
-    """See the module docstring.  Returns a registry ``Vehicle``,
-    an ``Ambiguous``, or ``None``."""
+    """See the module docstring.  Returns a registry ``Vehicle``, an
+    ``Ambiguous``, an ``OutOfScope``, or ``None``."""
     unit = (name or "").strip().lower()
     if not unit or db is None or account_id is None:
         return None
@@ -83,6 +103,11 @@ async def resolve_one(
         rows = [v for v in rows if (getattr(v, "company_code", "") or "").strip().upper() == want]
     scope = _scope_for(tool_args)
     if scope is not None:
+        # Keep what the registry offered BEFORE the scope filter: an
+        # empty list afterwards means something different depending on
+        # which step emptied it, and collapsing the two is what let a
+        # denied twin be answered from the provider.
+        narrowed = rows
         rows = [
             v for v in rows
             if scope.allows(
@@ -91,6 +116,8 @@ async def resolve_one(
                 name=getattr(v, "unit_number", None),
             )
         ]
+        if not rows and narrowed:
+            return OutOfScope(name=name, company=company)
     if len(rows) == 1:
         return rows[0]
     if len(rows) > 1:
@@ -122,6 +149,12 @@ async def resolve_for_tool(db: Any, account_id: int, tool_args: dict):
     r = await resolve_one(db, account_id, name, company=company, tool_args=tool_args)
     if isinstance(r, Ambiguous):
         return None, ambiguity_error(r)
+    if isinstance(r, OutOfScope):
+        where = f" at {r.company}" if r.company else ""
+        return None, {"error": (
+            f"{r.name}{where} is not in your vehicle access. "
+            f"You can ask about the {r.name} you are assigned to."
+        )}
     return r, None
 
 
@@ -142,6 +175,14 @@ def company_for(vehicle, tool_args: dict) -> str | None:
     answer with the OTHER company's twin, which is the exact wrong answer
     this module exists to end.  Asking for the named company instead
     yields nothing, or that company's truck, and never its sibling.
+
+    A truck the caller is DENIED no longer reaches here: ``resolve_one``
+    returns ``OutOfScope`` for that, and ``resolve_for_tool`` turns it
+    into a refusal. Only a genuinely unknown (name, company) arrives —
+    which is what this fallback was written for. Do not widen it back by
+    making it return ``None`` when the vehicle is missing: a
+    company-less provider lookup searches every org and hands back the
+    other twin, the exact failure the paragraph above describes.
 
     Known limit: an explicit company naming a RETIRED twin while a live
     sibling exists is not refused by the live-tool retirement check

@@ -11,7 +11,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-from features.vehicles.resolve import Ambiguous, ambiguity_error, resolve_one
+from features.vehicles.resolve import Ambiguous, ambiguity_error, resolve_one, OutOfScope, resolve_for_tool, company_for
 
 
 class _DB:
@@ -50,9 +50,36 @@ class TestResolveOne:
         args = {"_scope_vehicles": ["103"]}
         assert isinstance(await resolve_one(_DB([OSY, G1]), 1, "103", tool_args=args), Ambiguous)
 
-    async def test_company_outside_scope_is_nothing_not_a_leak(self):
+    async def test_company_outside_scope_is_a_refusal_not_a_leak(self):
+        """Denied is not the same as unknown.
+
+        This used to assert ``is None`` — and None is what a truck the
+        registry has never heard of returns, which callers answer by
+        asking the provider about the company the MODEL named. So a
+        caller scoped to OSY who asked about "103 at G1" had the gate
+        pass (it matches by name, which cannot split twins), the scope
+        filter reject G1's row, and G1's company string handed to the
+        provider anyway. The sentinel is what keeps the two apart.
+        """
         args = {"_scope_vehicles": ["103"], "_scope_identities": [[42, "sam-42", "103"]]}
-        assert await resolve_one(_DB([OSY, G1]), 1, "103", company="G1", tool_args=args) is None
+        out = await resolve_one(_DB([OSY, G1]), 1, "103", company="G1", tool_args=args)
+        assert isinstance(out, OutOfScope)
+        assert out.company == "G1"
+
+    async def test_a_truck_the_registry_never_heard_of_is_still_unknown(self):
+        """The retired/unregistered/typo fallback must survive: rows are
+        empty BEFORE the scope step, so nothing was denied."""
+        args = {"_scope_vehicles": ["103"], "_scope_identities": [[42, "sam-42", "103"]]}
+        assert await resolve_one(_DB([OSY, G1]), 1, "888", tool_args=args) is None
+        assert company_for(None, {"company": "G1"}) == "G1"
+
+    async def test_the_tool_wrapper_turns_a_denial_into_an_error(self):
+        args = {"vehicle_name": "103", "company": "G1",
+                "_scope_vehicles": ["103"],
+                "_scope_identities": [[42, "sam-42", "103"]]}
+        vehicle, err = await resolve_for_tool(_DB([OSY, G1]), 1, args)
+        assert vehicle is None
+        assert err and "not in your vehicle access" in err["error"]
 
     async def test_retired_rows_do_not_count(self):
         assert (await resolve_one(_DB([RETIRED, G1]), 1, "103")).id == 99
