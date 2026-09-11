@@ -204,6 +204,19 @@ EXTENSION_SCOPE: tuple[str, ...] = (
 #: are listed for intent.
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
+    # The panel's map, brought level with the dashboard's on the owner's
+    # call.  Every one of these already rides `can_view_location`, which
+    # the scope above has carried since v1 — so full parity costs no new
+    # permission, only the right to knock.
+    #   /map/engine          which basemap engine this account gets
+    #   /map/tiles/session   Google's per-session tile template
+    #   /map/pois            the built-in overlays, by type and bbox
+    #   /map/custom-layers   the account's own, READ only: creating and
+    #                        editing them rides can_manage_poi_layers,
+    #                        which is not in the scope and is not being
+    #                        added — a panel shows layers, it does not
+    #                        author them.
+    "/map/engine", "/map/tiles/session", "/map/pois", "/map/custom-layers",
     "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
     # The three write verbs the panel may perform, and only these.
     # TRANSFER and REMOVE are absent on purpose: they are how a loss gets

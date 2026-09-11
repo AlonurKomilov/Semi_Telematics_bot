@@ -10,7 +10,9 @@ import L from 'leaflet';
 import { apiJSON } from '../../api/client';
 import { iconSignature, makeIcon } from './icons';
 import { applyFix, faceOf, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, type Phys } from './physics';
-import { FALLBACK, TILES, shouldFallBack } from './tiles';
+import { applyBase, type BaseState } from './basemap';
+import { readEngine, type MapEngine } from './engine';
+import { MAP_ENGINES, MAP_TYPES, MAP_TYPE_LABEL, type MapType } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import { linksFor, type ProviderLink } from './links';
@@ -25,7 +27,7 @@ import { DASHBOARD_BASE } from '../../connect';
 import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from './googleMaps';
 // READ, never written here: "Follow in Google Maps" is a preference of
 // the PANEL, and Settings is the only place it is changed.
-import { getFollowPref } from '../../prefs';
+import { MAP_PROVIDER_KEY, MAP_TYPE_KEY, getChoice, getFollowPref, setChoice } from '../../prefs';
 import EmptyState, { NO_VEHICLES_YET } from '../../shell/EmptyState';
 import Splitter from '../../shell/Splitter';
 import { vehicleLine } from '../../vehicleLabel';
@@ -110,7 +112,64 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
    *  person, and the vehicle wall now answers them with an empty list
    *  rather than the whole account. */
   const [answered, setAnswered] = useState(false);
-  const [tileNotice, setTileNotice] = useState('');
+  // Was the OSM-is-not-answering line.  Its writer went with the move to
+  // Esri, and the one thing worth saying now — "Google could not be
+  // drawn" — is said on the chip that was pressed, where the person is
+  // looking, rather than in a strip under the search box.
+  const [tileNotice] = useState('');
+
+  // ── the basemap: which of the three, and whose ──
+  //
+  // Both are DEVICE preferences, like the splitter's share: two people
+  // on one account do not share a screen, and a dispatcher who wants
+  // satellite should not change what the office sees.
+  const [mapType, setMapType] = useState<MapType>('standard');
+  const [provider, setProvider] = useState<MapEngine>('osm');
+  /** Whether picking Google would DO anything.  The server answers it;
+   *  a picker that offers a choice it cannot deliver is worse than one
+   *  that offers fewer. */
+  const [googleAvailable, setGoogleAvailable] = useState(false);
+  /** What was actually drawn, which is not always what was asked for: a
+   *  spent quota or a refused session falls back to the free layer. */
+  const [drewGoogle, setDrewGoogle] = useState(false);
+  const typeRef = useRef<MapType>('standard');
+  const providerRef = useRef<MapEngine>('osm');
+  const baseRef = useRef<BaseState | null>(null);
+  const viewportRef = useRef('');
+  typeRef.current = mapType;
+  providerRef.current = provider;
+
+  // Read once, then ask the server what is on offer.  The stored choice
+  // is applied FIRST and the engine answer only widens the picker — so a
+  // person who chose Google last week sees Google while the answer is
+  // still in flight, instead of a flash of the other map.
+  useEffect(() => {
+    let stopped = false;
+    void Promise.all([
+      getChoice(MAP_TYPE_KEY, 'standard', MAP_TYPES),
+      getChoice(MAP_PROVIDER_KEY, 'osm', MAP_ENGINES),
+    ]).then(([t, pv]) => {
+      if (stopped) return;
+      setMapType(t); setProvider(pv);
+    });
+    void readEngine().then((w) => { if (!stopped) setGoogleAvailable(w.google_available); });
+    return () => { stopped = true; };
+  }, []);
+
+  /** Swap the layer and remember the choice.  The preference is written
+   *  on the PRESS, not on the answer: the choice is the person's, and it
+   *  should survive a session Google happens to refuse. */
+  const chooseBasemap = (t: MapType, pv: MapEngine) => {
+    setMapType(t); setProvider(pv);
+    void setChoice(MAP_TYPE_KEY, t);
+    void setChoice(MAP_PROVIDER_KEY, pv);
+    const m = map.current, base = baseRef.current;
+    if (!m || !base) return;
+    void applyBase(m, L, base, t, pv).then((r) => {
+      setDrewGoogle(r.drew === 'google');
+      viewportRef.current = r.viewportUrl;
+    });
+  };
   // The selected truck's provider links, fetched once per truck.
   const [links, setLinks] = useState<ProviderLink[]>([]);
   // …and what is aboard it.  null covers three cases that all mean the
@@ -397,21 +456,14 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     // Top-right: the selected-vehicle card owns the bottom of the map,
     // and zoom buttons half-hidden behind it are worse than no buttons.
     L.control.zoom({ position: 'topright' }).addTo(m);
-    const t = TILES.standard;
-    const tiles = L.tileLayer(t.url, { attribution: t.attr, maxZoom: t.maxZoom }).addTo(m);
-    // A grey map is a failed source, not a slow one: count this view's
-    // errors against its loads and switch sources once, out loud.
-    let errors = 0, loads = 0, fellBack = false;
-    tiles.on('tileload', () => { loads += 1; });
-    tiles.on('tileerror', () => {
-      errors += 1;
-      if (fellBack || !shouldFallBack(errors, loads)) return;
-      fellBack = true;
-      tiles.remove();
-      L.tileLayer(FALLBACK.url, { attribution: FALLBACK.attr, maxZoom: FALLBACK.maxZoom }).addTo(m);
-      setTileNotice('OpenStreetMap is not answering from here — showing Esri street tiles.');
-    });
-    m.on('movestart', () => { if (!fellBack) { errors = 0; loads = 0; } });
+    // ONE base layer, swapped through basemap.ts so two fast presses
+    // cannot leave the slower answer on top.  The first draw uses
+    // whatever the person last chose; the engine answer arrives after
+    // and only widens what the picker offers.
+    const base: BaseState = { layer: null, seq: 0 };
+    baseRef.current = base;
+    void applyBase(m, L, base, typeRef.current, providerRef.current)
+      .then((r) => { setDrewGoogle(r.drew === 'google'); viewportRef.current = r.viewportUrl; });
     // ``dragstart`` fires ONLY for a hand on the map — our own panTo and
     // setView don't raise it.  That makes it the honest signal for "the
     // person took over", with no flag to keep in sync.
@@ -568,6 +620,36 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                     flex: listOpen ? `0 1 ${mapPct}%` : '1 1 auto' }}>
       <div style={{ position: 'relative', flex: '1 1 auto', minHeight: MAP_FLOOR_PX }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
+        {/* Over the map, TOP-LEFT: zoom owns the top-right and the
+            vehicle card owns the bottom.  A control half behind another
+            control is worse than one further away. */}
+        <div className="row" style={{
+          position: 'absolute', top: 8, left: 8, zIndex: 500,
+          gap: 4, flexWrap: 'wrap', maxWidth: 'calc(100% - 64px)',
+        }}>
+          {MAP_TYPES.map((t) => (
+            <button key={t} type="button" className={`chip ${mapType === t ? 'on' : ''}`}
+                    role="radio" aria-checked={mapType === t}
+                    onClick={() => chooseBasemap(t, provider)}>
+              {MAP_TYPE_LABEL[t]}
+            </button>
+          ))}
+          {/* Offered only when picking it would DO something — the server
+              says whether this account has the engine at all. */}
+          {googleAvailable && (
+            <button type="button" className={`chip ${provider === 'google' ? 'on' : ''}`}
+                    role="switch" aria-checked={provider === 'google'}
+                    title={provider === 'google' && !drewGoogle
+                      ? 'Google could not be drawn — showing the free map'
+                      : 'Draw this map with Google'}
+                    onClick={() => chooseBasemap(mapType, provider === 'google' ? 'osm' : 'google')}>
+              {/* Says what HAPPENED, not what was asked for: a spent quota
+                  or a refused session falls back, and a chip still lit
+                  would be the picker lying about the map underneath. */}
+              Google{provider === 'google' && !drewGoogle ? ' ·\u00a0unavailable' : ''}
+            </button>
+          )}
+        </div>
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew
           from three lines to seven, and by then it was hiding more of

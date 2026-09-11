@@ -18,6 +18,19 @@
  * API does not — is the next step and stays the owner's call on cost.
  */
 export type MapType = 'standard' | 'satellite' | 'terrain';
+
+/** The same three, as a list a stored value can be checked against —
+ *  `getChoice` needs the set, not just the type, because a word written
+ *  by an older build must not survive into a state nothing can draw. */
+export const MAP_TYPES = ['standard', 'satellite', 'terrain'] as const;
+export const MAP_ENGINES = ['osm', 'google'] as const;
+
+/** What the picker calls each one.  "Standard" rather than "Esri": the
+ *  TYPE is what the person is choosing here, and whose map it is belongs
+ *  to the provider row beside it. */
+export const MAP_TYPE_LABEL: Record<MapType, string> = {
+  standard: 'Standard', satellite: 'Satellite', terrain: 'Terrain',
+};
 export const TILES: Record<MapType, { url: string; attr: string; maxZoom: number }> = {
   standard:  { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
                attr: 'Tiles &copy; Esri', maxZoom: 19 },

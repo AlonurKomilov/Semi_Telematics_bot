@@ -68,6 +68,40 @@ export async function setNumber(key: string, value: number): Promise<void> {
  * genuinely about Google's map.
  */
 
+/**
+ * One of a fixed set of words.
+ *
+ * `getNumber` clamps a number into a range; a choice from a list needs
+ * the same guard for the same reason — a value stored by an older build,
+ * or by hand, must not become a state the panel cannot render.  Anything
+ * not in `allowed` falls back, so a stale word costs a default and never
+ * a blank map.
+ */
+export async function getChoice<T extends string>(
+  key: string, fallback: T, allowed: readonly T[],
+): Promise<T> {
+  try {
+    const got = await chrome.storage.local.get(key);
+    const v = got[key];
+    return (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+  } catch {
+    return fallback;  /* storage refused; the default is a working answer */
+  }
+}
+
+export async function setChoice(key: string, value: string): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [key]: value });
+  } catch {
+    /* the choice is lost on the next open, the session is not */
+  }
+}
+
+/** The basemap the panel draws, and whose it is.  Per device, like the
+ *  splitter's share: two people sharing an account do not share a screen. */
+export const MAP_TYPE_KEY = 'mapType';
+export const MAP_PROVIDER_KEY = 'mapProvider';
+
 export const FOLLOW_KEY = 'followGoogleMaps';
 
 /** The one-time notice shown the first time following is switched on. */
