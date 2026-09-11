@@ -238,12 +238,17 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // but can still own config (Alerts → Group delivery), and its row used
   // to render four dashes that said otherwise.
   const configCellFor = (
-    via: ConfigScope | undefined, note: string | undefined, scope: ConfigScope,
+    // A LIST now: Inventory rides BOTH scopes — one catalogue for the
+    // account, one focus per role — and a cell per scope is the only way
+    // the matrix can say so.
+    via: ConfigScope[] | undefined,
+    note: Partial<Record<ConfigScope, string>> | undefined,
+    scope: ConfigScope,
   ): ReactNode => {
-    if (via !== scope) return emptyCell;
-    const cap = capRow(via);
+    if (!via?.includes(scope)) return emptyCell;
+    const cap = capRow(scope);
     return verbCell(cap, 'config', (
-      <Tip label={`Shared control — the same flag as “${cap.label}”${note ? ` (here: ${note})` : ''}. Changing it here changes it everywhere that flag appears.`}>
+      <Tip label={`Shared control — the same flag as “${cap.label}”${note?.[scope] ? ` (here: ${note[scope]})` : ''}. Changing it here changes it everywhere that flag appears.`}>
         <span className="inline-flex text-muted-foreground"><Link2 className="size-3" aria-hidden /></span>
       </Tip>
     ));

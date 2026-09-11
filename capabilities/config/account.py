@@ -160,6 +160,26 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "blast-radius rule.",
     ),
     SettingOwner(
+        "inventory_expected", "can_manage_config_all", "config", "inventory",
+        "What a vehicle is SUPPOSED to carry, per vehicle type.  It decides "
+        "whether a truck is reported SHORT, which is a fact about the truck "
+        "and not an opinion that varies with who is looking — data-meaning "
+        "config, so account-wide by the blast-radius rule.  It is also where "
+        "a new kind of item enters the product: dispatch adding 'straps' "
+        "writes one row here and every surface reads it.",
+    ),
+    SettingOwner(
+        "inventory_focus.*", "can_manage_config_role", "config", "inventory",
+        "Which of those categories a ROLE is flagged on — the red, not the "
+        "fact.  The owner named the problem it solves: something showing red "
+        "for one role pulls a second role's focus onto what is not theirs, "
+        "and safety going red about dispatch's straps costs safety the thing "
+        "red is for.  What a truck OWES stays identical for every role; only "
+        "the attention is per-role, which is the role scope's own territory. "
+        "The own-role wall is enforced by the router — the flag alone cannot "
+        "express 'your own role only'.",
+    ),
+    SettingOwner(
         "scorecard_alert_*", "can_manage_config_all", "config", "scorecards",
         "Drop/floor thresholds that decide when a scorecard fires an "
         "alert.  Data-meaning config, so account-wide by the blast-radius "

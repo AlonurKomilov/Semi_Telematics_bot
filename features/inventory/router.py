@@ -41,6 +41,8 @@ from adapters.storage.inventory import (
     normalize_inventory_category,
     INVENTORY_STATUSES,
 )
+from capabilities.config.role import may_manage_config_role
+from features.inventory import expected as expected_config
 from features.inventory.expected import EXPECTED_VEHICLE_TYPES, standard_for
 from features.inventory import service
 from features.vehicles.scope import company_allows
@@ -153,9 +155,10 @@ async def vehicle_inventory(
         # than as "complete" — the one wrong answer here would be telling
         # somebody a truck is fully equipped because nobody said what
         # fully means.
-        "coverage": await tenant.expected_coverage(
-            int(user["account_id"]), int(vehicle["id"]),
+        "coverage": await expected_config.coverage(
+            tenant, int(user["account_id"]), int(vehicle["id"]),
             str(vehicle.get("vehicle_type") or "truck"),
+            role=str(user.get("role") or ""),
         ),
         "categories": await tenant.list_inventory_categories(int(user["account_id"])),
         "statuses": list(INVENTORY_STATUSES),
@@ -191,19 +194,28 @@ async def add_item(
     return {"ok": True, "item_id": item_id}
 
 
-# ── the expectation ──────────────────────────────────────────────
+# ── the expectation: Config family, both scopes ──────────────────
+#
+# The catalogue is ACCOUNT-wide and the focus is per-ROLE, and that split
+# is the blast-radius rule, not a preference: whether truck 103 is short
+# its ELD is a fact about the truck, while which rows a role goes red
+# about is attention.  See features/inventory/expected.py.
 
 class ExpectedRow(BaseModel):
     category: str = Field(..., min_length=1, max_length=40)
     label: str = Field("", max_length=120)
     quantity: int = Field(1, ge=1, le=99)
     required: bool = True
-    sort_order: int = Field(0, ge=0, le=999)
 
 
-class ExpectedBody(BaseModel):
+class CatalogueBody(BaseModel):
     vehicle_type: str = "truck"
     items: list[ExpectedRow] = Field(default_factory=list, max_length=100)
+
+
+class FocusBody(BaseModel):
+    role: str = Field(..., min_length=1, max_length=40)
+    categories: list[str] = Field(default_factory=list, max_length=100)
 
 
 def _checked_type(vehicle_type: str) -> str:
@@ -217,44 +229,76 @@ def _checked_type(vehicle_type: str) -> str:
 
 @router.get("/expected")
 async def get_expected(
-    vehicle_type: str = "truck",
     user: dict = Depends(_VIEW),
     tenant=Depends(get_tenant_db),
 ):
-    """The template, plus the standard it can be reset to.
+    """The catalogue, the caller's own focus, and the shipped standard.
 
-    ``standard`` travels with the answer so the editor's reset button has
-    something to reset TO without a second round trip, and so the reader
-    can see what they diverged from.
+    All three travel together so the editor needs one round trip and the
+    reader can see what they diverged from.  READING is on normal view
+    access: everybody who can see inventory needs to know what a truck
+    owes; only writing is config-gated.
     """
-    vehicle_type = _checked_type(vehicle_type)
+    account_id = int(user["account_id"])
+    role = str(user.get("role") or "")
     return {
-        "vehicle_type": vehicle_type,
-        "items": await tenant.list_expected_items(
-            int(user["account_id"]), vehicle_type,
-        ),
-        "standard": standard_for(vehicle_type),
+        "catalogue": await expected_config.get_catalogue(tenant, account_id),
+        "standard": {t: standard_for(t) for t in EXPECTED_VEHICLE_TYPES},
+        "vehicle_types": list(EXPECTED_VEHICLE_TYPES),
+        "role": role,
+        # `null` is not `[]`: never-narrowed means flagged on everything,
+        # and narrowed-to-nothing means flagged on nothing.  Collapsing
+        # them would make "stop flagging me" impossible to say.
+        "focus": await expected_config.get_role_focus(tenant, account_id, role),
     }
 
 
 @router.put("/expected")
 async def put_expected(
-    body: ExpectedBody,
-    user: dict = Depends(_MANAGE),
+    body: CatalogueBody,
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
-    """Rewrite the whole template for one vehicle type.
+    """Rewrite one vehicle type's catalogue.
 
-    A PUT, not a PATCH: the editor sends the list it is looking at.  With
-    a merge there is no way to express "this row is gone", and a template
-    nobody can delete a row from is one that only ever grows.
+    Gated on `can_manage_config_all` ALONE, never `require_permission_any`
+    with a feature flag — that mixing is what the config family exists to
+    remove.  This is also where a new kind of item enters the product:
+    dispatch adding "straps" writes one row here, and every surface that
+    measures a vehicle reads it.
     """
+    account_id = int(user["account_id"])
     vehicle_type = _checked_type(body.vehicle_type)
-    written = await tenant.replace_expected_items(
-        int(user["account_id"]), vehicle_type,
-        [row.model_dump() for row in body.items],
+    catalogue = await expected_config.get_catalogue(tenant, account_id)
+    catalogue[vehicle_type] = [row.model_dump() for row in body.items]
+    saved = await expected_config.save_catalogue(tenant, account_id, catalogue)
+    return {"ok": True, "vehicle_type": vehicle_type, "catalogue": saved}
+
+
+@router.put("/expected/focus")
+async def put_focus(
+    body: FocusBody,
+    user: dict = Depends(require_permission("can_manage_config_role")),
+    tenant=Depends(get_tenant_db),
+):
+    """Narrow which categories a role goes red about.
+
+    The own-role wall is code, not a flag: `can_manage_config_role` names
+    the scope but cannot say "yours only", so a caller may write their own
+    role and nobody else's unless they hold `can_manage_account`.  Without
+    this, a fleet manager could quietly stop the safety team being told
+    about a missing dashcam.
+    """
+    account_id = int(user["account_id"])
+    # The family's own wall, not a second copy of it: `can_manage_account`
+    # crosses roles, `can_manage_config_role` does not, and that rule is
+    # written once in capabilities/config/role.py.
+    if not await may_manage_config_role(user, body.role):
+        raise HTTPException(403, "You may only change your own role's focus")
+    saved = await expected_config.save_role_focus(
+        tenant, account_id, body.role, body.categories,
     )
-    return {"ok": True, "vehicle_type": vehicle_type, "count": written}
+    return {"ok": True, "role": body.role, "categories": saved}
 
 
 # ── fleet badge ──────────────────────────────────────────────────

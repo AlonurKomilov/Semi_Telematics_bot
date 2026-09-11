@@ -31,9 +31,13 @@ export interface VerbFamily {
   /** The bare "Manage" action child, promoted into the parent's row. */
   manage?: TickRow;
   children: VerbChild[];
-  /** The cross-feature row this feature's config rides, if any. */
-  configVia?: 'can_manage_config_all' | 'can_manage_config_role';
-  configNote?: string;
+  /** The cross-feature rows this feature's config rides, if any.  A LIST,
+   *  because a feature may ride BOTH scopes: Inventory's catalogue of what
+   *  a vehicle owes is account-wide (data meaning), while which categories
+   *  a role goes red about is that role's own (attention).  Showing one of
+   *  the two would make the matrix misreport who can change what. */
+  configVia?: ConfigFlag[];
+  configNote?: Partial<Record<ConfigFlag, string>>;
 }
 export interface VerbBand { band: string; families: VerbFamily[] }
 
@@ -47,20 +51,31 @@ export interface VerbBand { band: string; families: VerbFamily[] }
 // keys were owned by can_manage_storage / can_manage_integrations, so
 // the matrix showed "–" in the Config column for settings that plainly
 // existed — the owner could not see what granting Config actually moved.
-const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_role', string]> = {
+type ConfigFlag = 'can_manage_config_all' | 'can_manage_config_role';
+
+const CONFIG_VIA: Record<string, [ConfigFlag, string][]> = {
   // Vehicle source policy — field precedence + auto-pilot.  On the
   // VEHICLES row because that is where its gear lives now; it sat on
   // Integrations while the panel did, and a tick must always point at
   // the surface the grant actually opens.
-  can_view_vehicles: ['can_manage_config_all', 'source precedence + auto-pilot'],
+  can_view_vehicles: [['can_manage_config_all', 'source precedence + auto-pilot']],
   // Alerts is a service row now; its Group delivery (forum topics,
   // per-type AI) is account_settings behind the config family.
-  can_view_alerts: ['can_manage_config_all', 'group delivery — topics + per-type AI'],
-  can_view_scorecards: ['can_manage_config_all', 'rules + pillar caps'],
-  can_view_kpi: ['can_manage_config_all', 'grade thresholds'],
-  can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
-  can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],
-  can_manage_account: ['can_manage_config_all', 'account-wide values'],
+  can_view_alerts: [['can_manage_config_all', 'group delivery — topics + per-type AI']],
+  can_view_scorecards: [['can_manage_config_all', 'rules + pillar caps']],
+  can_view_kpi: [['can_manage_config_all', 'grade thresholds']],
+  can_manage_storage: [['can_manage_config_all', 'backend + disk quota']],
+  can_manage_applications: [['can_manage_config_all', 'DQF export passphrase']],
+  can_manage_account: [['can_manage_config_all', 'account-wide values']],
+  // The first feature to ride BOTH scopes, and the reason configVia is a
+  // list.  The catalogue is one truth for the account — whether a truck
+  // is short its ELD is a fact about the truck.  The focus is each role's
+  // own, because something going red for one role pulls another role's
+  // attention onto what is not theirs.
+  can_view_inventory: [
+    ['can_manage_config_all', 'what a vehicle is expected to carry'],
+    ['can_manage_config_role', 'which of it my role goes red about'],
+  ],
 };
 
 const rowKey = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as SimpleFlag).key);
@@ -85,7 +100,10 @@ function familyFrom(block: Block): VerbFamily {
   const parent = block.parent as TickRow;
   const fam: VerbFamily = { parent, merged: isMerged(parent), children: [] };
   const via = CONFIG_VIA[rowKey(parent)];
-  if (via) { fam.configVia = via[0]; fam.configNote = via[1]; }
+  if (via) {
+    fam.configVia = via.map(([flag]) => flag);
+    fam.configNote = Object.fromEntries(via) as Partial<Record<ConfigFlag, string>>;
+  }
   for (const c of block.children) {
     const row = c.parent as TickRow;
     // The bare "Manage" child IS the parent's Manage cell; everything

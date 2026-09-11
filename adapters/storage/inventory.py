@@ -78,112 +78,30 @@ def _row_to_dict(row) -> dict | None:
 class InventoryMixin(_MixinBase):
     """CRUD + event trail for per-vehicle onboard inventory."""
 
-    # ── the expectation: what a vehicle SHOULD be carrying ───────
+    # ── the expectation reads ONE number from here ───────────────
 
-    async def list_expected_items(
-        self, account_id: int, vehicle_type: str = "truck",
-    ) -> list[dict]:
-        """The template for a vehicle type.  Empty means nothing is
-        expected — which is the honest answer for an account that has not
-        written one, and keeps every completeness count at "n/a" rather
-        than at zero."""
+    async def count_inventory_by_category(
+        self, account_id: int, vehicle_id: int,
+    ) -> dict[str, int]:
+        """How many of each category are ABOARD this vehicle.
+
+        Aboard means active and not ``missing``.  A damaged dashcam is
+        still in the truck — the attention badge already says it is
+        damaged, and counting it absent as well would report one fault
+        twice.
+
+        The template it gets measured against is config, not storage: it
+        lives in ``account_settings`` and the feature owns the merge (see
+        features/inventory/expected.py).  All this layer owes is the count.
+        """
         rows = await self.read_all(
-            "SELECT id, account_id, vehicle_type, category, label, quantity, "
-            "       required, sort_order, created_at, updated_at "
-            "FROM inventory_expected_items "
-            "WHERE account_id = ? AND vehicle_type = ? "
-            "ORDER BY sort_order, category",
-            (account_id, vehicle_type),
-        )
-        return [dict(r) for r in rows]
-
-    async def replace_expected_items(
-        self, account_id: int, vehicle_type: str, rows: list[dict],
-    ) -> int:
-        """Write the whole template for one vehicle type.
-
-        A REPLACE, not a merge: the editor sends the list it is looking
-        at, and a merge would make deleting the last row impossible to
-        express.  Rows are rewritten inside one transaction so a failure
-        halfway does not leave an account expecting half of what it said.
-        """
-        now = self._now()
-        await self._db.execute(
-            "DELETE FROM inventory_expected_items "
-            "WHERE account_id = ? AND vehicle_type = ?",
-            (account_id, vehicle_type),
-        )
-        seen: set[str] = set()
-        written = 0
-        for i, raw in enumerate(rows):
-            category = normalize_inventory_category(raw.get("category"))
-            # The unique index would raise on a repeat; catching it here
-            # means the editor's own duplicate does not cost the whole
-            # save, and the LAST one wins the way a form's last field does.
-            if category in seen:
-                continue
-            seen.add(category)
-            await self._db.execute(
-                """
-                INSERT INTO inventory_expected_items
-                    (account_id, vehicle_type, category, label, quantity,
-                     required, sort_order, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (account_id, vehicle_type, category,
-                 str(raw.get("label") or "")[:120],
-                 max(1, int(raw.get("quantity") or 1)),
-                 1 if raw.get("required", True) else 0,
-                 int(raw.get("sort_order") or (i + 1)), now, now),
-            )
-            written += 1
-        await self._db.commit()
-        return written
-
-    async def expected_coverage(
-        self, account_id: int, vehicle_id: int, vehicle_type: str = "truck",
-    ) -> dict:
-        """What this vehicle owes its template, and what it has.
-
-        "Has" counts every ACTIVE item in the category except ``missing``:
-        a damaged dashcam is still aboard, and the attention badge already
-        says it is damaged.  Two questions, two signals — reporting a
-        damaged item as absent as well would double-count one fault.
-
-        Returns ``{"expected": n, "present": n, "rows": [...]}`` where a
-        row is short only when it is short; ``expected`` counts REQUIRED
-        quantities alone, so a declared-but-optional transponder never
-        makes a complete truck look incomplete.
-        """
-        template = await self.list_expected_items(account_id, vehicle_type)
-        if not template:
-            return {"expected": 0, "present": 0, "rows": []}
-
-        counted = await self.read_all(
             "SELECT category, COUNT(*) AS n FROM vehicle_inventory_items "
             "WHERE account_id = ? AND vehicle_id = ? AND is_active = 1 "
             "  AND status <> 'missing' "
             "GROUP BY category",
             (account_id, vehicle_id),
         )
-        have = {str(dict(r)["category"]): int(dict(r)["n"]) for r in counted}
-
-        rows, expected, present = [], 0, 0
-        for t in template:
-            want = int(t["quantity"])
-            got = have.get(str(t["category"]), 0)
-            if t["required"]:
-                expected += want
-                present += min(got, want)
-            rows.append({
-                "category": t["category"],
-                "label": t["label"],
-                "quantity": want,
-                "required": bool(t["required"]),
-                "present": got,
-                "short": max(0, want - got),
-            })
-        return {"expected": expected, "present": present, "rows": rows}
+        return {str(dict(r)["category"]): int(dict(r)["n"]) for r in rows}
 
     # ── reads ────────────────────────────────────────────────────
 

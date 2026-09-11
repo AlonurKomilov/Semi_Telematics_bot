@@ -43,6 +43,10 @@ describe('verb grid completeness', () => {
         // Alerts is a service ROW now; its Group delivery config rides
         // the config family exactly as it did on the read-only band.
         'can_view_alerts',
+        // The first feature to ride BOTH scopes: the catalogue of what a
+        // vehicle owes is account-wide (a fact about the truck), and which
+        // of it a role goes red about is that role's own (attention).
+        'can_view_inventory',
         'can_view_kpi',
         'can_view_scorecards',
         // Vehicle source policy (precedence + auto-pilot).  Moved off
@@ -118,7 +122,7 @@ describe('services can own config', () => {
   it('Alerts declares its Group delivery config', () => {
     // Group delivery writes account_settings behind can_manage_config_all,
     // so the Config column must not say "-" for a grant that really exists.
-    expect(serviceFamily('can_view_alerts')?.configVia).toBe('can_manage_config_all');
+    expect(serviceFamily('can_view_alerts')?.configVia).toEqual(['can_manage_config_all']);
   });
 
   it('services WITHOUT config still declare none', () => {

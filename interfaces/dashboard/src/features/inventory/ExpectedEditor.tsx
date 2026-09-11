@@ -37,11 +37,15 @@ interface ExpectedRow {
 }
 
 interface ExpectedResponse {
-  vehicle_type: VehicleType;
-  items: ExpectedRow[];
-  /** The shipped default, so reset needs no second round trip and the
-   *  reader can see what they diverged from. */
-  standard: ExpectedRow[];
+  /** ONE catalogue for the account — what a vehicle carries is a fact
+   *  about the vehicle, so every role reads the same list. */
+  catalogue: Record<VehicleType, ExpectedRow[]>;
+  standard: Record<VehicleType, ExpectedRow[]>;
+  vehicle_types: VehicleType[];
+  /** The caller's own role, and what it goes red about.  `null` means it
+   *  has never narrowed — flagged on everything. */
+  role: string;
+  focus: string[] | null;
 }
 
 const TABS: { key: VehicleType; label: string }[] = [
@@ -55,15 +59,15 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
   const [draft, setDraft] = useState<ExpectedRow[] | null>(null);
 
   const { data, isLoading, error } = useQuery<ExpectedResponse>({
-    queryKey: ['inventory-expected', type],
-    queryFn: () => apiJSON(`/inventory/expected?vehicle_type=${type}`),
+    queryKey: ['inventory-expected'],
+    queryFn: () => apiJSON('/inventory/expected'),
   });
 
   // The draft follows the server until somebody edits, and resets when
   // the tab changes — an edit to the truck list must not follow the
   // reader over to trailers.
   useEffect(() => { setDraft(null); }, [type]);
-  const rows = draft ?? data?.items ?? [];
+  const rows = draft ?? data?.catalogue?.[type] ?? [];
   const dirty = draft !== null;
 
   const save = useMutation({
@@ -74,9 +78,32 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
       }),
     onSuccess: () => {
       setDraft(null);
-      void qc.invalidateQueries({ queryKey: ['inventory-expected', type] });
+      void qc.invalidateQueries({ queryKey: ['inventory-expected'] });
       // Every truck's card reads its coverage from this — leaving them on
       // the old answer would show a completeness nobody expects any more.
+      void qc.invalidateQueries({ queryKey: ['vehicle-inventory'] });
+    },
+  });
+
+  // The second scope.  `null` focus means "flagged on everything", so a
+  // role that has never narrowed keeps every box ticked until it does.
+  const [focusDraft, setFocusDraft] = useState<string[] | null>(null);
+  const allCategories = Object.values(data?.catalogue ?? {})
+    .flat()
+    .map((r) => r.category)
+    .filter((c, i, a) => a.indexOf(c) === i);
+  const focus = focusDraft ?? data?.focus ?? allCategories;
+  const focusDirty = focusDraft !== null;
+
+  const saveFocus = useMutation({
+    mutationFn: (categories: string[]) =>
+      apiJSON('/inventory/expected/focus', {
+        method: 'PUT',
+        body: { role: data?.role, categories },
+      }),
+    onSuccess: () => {
+      setFocusDraft(null);
+      void qc.invalidateQueries({ queryKey: ['inventory-expected'] });
       void qc.invalidateQueries({ queryKey: ['vehicle-inventory'] });
     },
   });
@@ -129,7 +156,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
             <Button
               className="mt-3"
               size="sm"
-              onClick={() => setDraft((data?.standard ?? []).map((r) => ({ ...r })))}
+              onClick={() => setDraft((data?.standard?.[type] ?? []).map((r) => ({ ...r })))}
             >
               <RotateCcw /> Start from the standard list
             </Button>
@@ -211,7 +238,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setDraft((data?.standard ?? []).map((r) => ({ ...r })))}
+            onClick={() => setDraft((data?.standard?.[type] ?? []).map((r) => ({ ...r })))}
           >
             <RotateCcw /> Reset to standard
           </Button>
@@ -235,6 +262,55 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
           >
             {save.isPending ? 'Saving…' : 'Save'}
           </Button>
+        </div>
+      )}
+
+      {/* ── the ROLE scope ──────────────────────────────────────────
+          What a vehicle carries is one truth; which of it turns red is
+          not.  The owner named the problem: something showing red for
+          one role pulls a second role's focus onto what is not theirs —
+          safety going red about dispatch's straps costs safety the thing
+          red is for.  The count above stays identical for everybody. */}
+      {allCategories.length > 0 && (
+        <div className="rounded-lg border p-4 space-y-2">
+          <h3 className="text-sm font-medium">What my role goes red about</h3>
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            Every role reads the same list above — this only decides which of
+            it is flagged on <strong>your</strong> screens. Untick a category
+            and your role stops being pulled toward it; the vehicle still owes
+            it, and the roles that ticked it still see it.
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
+            {allCategories.map((c) => (
+              <label key={c} className="flex items-center gap-1.5 text-sm">
+                <Checkbox
+                  checked={focus.includes(c)}
+                  onChange={(e) =>
+                    setFocusDraft(
+                      e.target.checked ? [...focus, c] : focus.filter((x) => x !== c),
+                    )
+                  }
+                />
+                {categoryMeta(c).label}
+              </label>
+            ))}
+          </div>
+          {focusDirty && (
+            <div className="flex items-center gap-2 pt-1">
+              <Button size="sm" disabled={saveFocus.isPending}
+                      onClick={() => saveFocus.mutate(focus)}>
+                {saveFocus.isPending ? 'Saving…' : 'Save my focus'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setFocusDraft(null)}>
+                Discard
+              </Button>
+            </div>
+          )}
+          {saveFocus.isSuccess && !focusDirty && (
+            <p className="text-sm text-muted-foreground">
+              Saved. Your screens stop flagging what you unticked.
+            </p>
+          )}
         </div>
       )}
 
