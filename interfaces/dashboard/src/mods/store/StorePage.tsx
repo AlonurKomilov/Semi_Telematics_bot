@@ -25,6 +25,8 @@ import { ArrowLeft, Check, Store } from '../../lib/icons';
 import { PageHeader, SectionHeader } from '../../components/shell';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/ui/badge';
+import { undoableAction } from '../../components/banners/stagedAction';
 import { usePreference } from '../../preferences';
 import { useMods } from '../context';
 import { useApplyMod } from '../useApplyMod';
@@ -70,15 +72,27 @@ export function ModsStorePage() {
     return home.theme!.every((f) => theme[f] === id);
   };
 
-  const apply = (axis: string, id: string) => {
+  /**
+   * Applying is the preview, so it has to be as cheap to undo as it was
+   * to try — and on four of these shelves (cursor, material, shader, and
+   * a still wallpaper) the change is quiet enough that a person can
+   * click and not be sure anything happened. The banner is both answers
+   * at once: what changed, and the way back. The looks shelf is absent
+   * from this — `useApplyMod` owns the undo for the write that touches
+   * seven axes, and two banners for one click is worse than none.
+   */
+  const apply = (axis: string, id: string, label: string) => {
     const home = AXIS_UI[axis]?.home;
     if (!home) return;
+    const said = t('mods.store_toast', '{{shelf}} set to {{pack}}',
+      { shelf: AXIS_UI[axis].label, pack: label });
     if (home.mod) {
       const mod = modById(id);
       if (mod) applyMod(mod);
       return;
     }
     if (home.pref) {
+      const was = prefOf(home.pref);
       setPref(home.pref, id);
       // A sound pack you cannot hear is a blank tile. Same cue the
       // panel plays when a chip is picked, at the level already set.
@@ -92,9 +106,13 @@ export function ModsStorePage() {
           if (pack) playCue(pack.cues.letter, volume, KEY_LIMITS);
         }
       }
+      undoableAction({ label: said, undo: async () => setPref(home.pref!, was) });
       return;
     }
+    const was = Object.fromEntries(
+      home.theme!.map((f) => [f, theme[f]])) as Partial<ModSetting>;
     setTheme(Object.fromEntries(home.theme!.map((f) => [f, id])) as Partial<ModSetting>);
+    undoableAction({ label: said, undo: async () => setTheme(was) });
   };
 
   return (
@@ -125,7 +143,7 @@ export function ModsStorePage() {
                   row={row}
                   dot={dotOf(axis, row.id, theme.mode)}
                   applied={isApplied(axis, row.id)}
-                  onApply={() => apply(axis, row.id)}
+                  onApply={() => apply(axis, row.id, row.label)}
                 />
               ))}
             </div>
@@ -158,12 +176,20 @@ function PackTile({ row, dot, applied, onApply }: {
         <span className="text-2xs text-muted-foreground truncate">
           {t('mods.store_by', 'by {{who}}', { who: row.publisher })}
         </span>
-        <Button size="sm" variant={applied ? 'secondary' : 'default'}
-          disabled={applied} onClick={onApply}>
-          {applied
-            ? (<><Check className="size-4" />{t('mods.store_applied', 'Applied')}</>)
-            : t('mods.store_apply', 'Apply')}
-        </Button>
+        {/* What IS, and what you can DO, are not the same shape. A
+            disabled button saying "Applied" is a status wearing an
+            action's clothes — the eye has to read it to find out it is
+            not a control. */}
+        {applied
+          ? (
+            <Badge tone="ok">
+              <Check className="size-3.5" aria-hidden />
+              {t('mods.store_applied', 'Applied')}
+            </Badge>
+          )
+          : (
+            <Button size="sm" onClick={onApply}>{t('mods.store_apply', 'Apply')}</Button>
+          )}
       </div>
     </Card>
   );

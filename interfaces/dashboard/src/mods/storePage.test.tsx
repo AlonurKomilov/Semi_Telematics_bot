@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 // `vi.mock` is hoisted above the file, so the spy has to be hoisted too
 // or the factory closes over a variable that does not exist yet.
-const { setTheme } = vi.hoisted(() => ({ setTheme: vi.fn() }));
+const { setTheme, undoSpy } = vi.hoisted(() => ({ setTheme: vi.fn(), undoSpy: vi.fn() }));
 
 // Spread the real modules: the preferences barrel pulls in AuthContext,
 // which pulls in src/i18n.ts, which needs `initReactI18next` to exist.
@@ -27,9 +27,13 @@ vi.mock('react-router-dom', async (orig) => ({
 }));
 vi.mock('./context', () => ({
   useMods: () => ({
+    // Every axis the page can write, as the real preference always has
+    // them: an undo that restores `undefined` is not an undo.
     theme: {
       mode: 'dark', accent: 'blue', radius: 'md', material: 'solid',
       motion: 'default', icons: 'regular', mod: '',
+      font: 'geist', iconPack: 'lucide', cursor: 'system', shader: 'flat',
+      wallpaper: 'none', wallpaperPage: 'none', wallpaperLive: false,
     },
     setTheme,
     size: { global: 1, text: 1, control: 1, layout: 1, panel: 1, regions: {} },
@@ -65,6 +69,8 @@ vi.mock('./store/local', async (orig) => {
       items.filter((i) => `${axis}/${idOf(i)}` !== 'font/mono'),
   };
 });
+
+vi.mock('../components/banners/stagedAction', () => ({ undoableAction: undoSpy }));
 
 import { ModsStorePage } from './store/StorePage';
 import { AXIS_UI } from './store/axes';
@@ -117,5 +123,31 @@ describe('the store page', () => {
     const tile = screen.getByText('Mesh').closest('div[class*="p-3"]') as HTMLElement;
     fireEvent.click(within(tile).getByRole('button', { name: /apply/i }));
     expect(setTheme).toHaveBeenCalledWith({ wallpaper: 'mesh', wallpaperPage: 'mesh' });
+  });
+});
+
+describe('applying is as cheap to undo as it was to try', () => {
+  it('says what changed, and puts the old value back', async () => {
+    undoSpy.mockClear(); setTheme.mockClear();
+    render(<ModsStorePage />);
+    const tile = screen.getByText('Sharp').closest('div[class*="p-3"]') as HTMLElement;
+    fireEvent.click(within(tile).getByRole('button', { name: /apply/i }));
+
+    expect(undoSpy, 'a quiet axis changed with nothing said').toHaveBeenCalledTimes(1);
+    const call = undoSpy.mock.calls[0][0];
+    expect(call.label, 'the banner does not name the shelf and the pack')
+      .toBe('{{shelf}} set to {{pack}}');
+    setTheme.mockClear();
+    await call.undo();
+    expect(setTheme, 'undo did not restore the cursor it replaced')
+      .toHaveBeenCalledWith({ cursor: 'system' });
+  });
+
+  it('what IS does not wear what you can DO', () => {
+    render(<ModsStorePage />);
+    // The harness wears the blue accent, so its tile is the applied one.
+    const tile = screen.getByText('Blue').closest('div[class*="p-3"]') as HTMLElement;
+    expect(within(tile).queryByRole('button'), 'the applied state is still a button').toBeNull();
+    expect(within(tile).getByText('Applied')).toBeTruthy();
   });
 });
