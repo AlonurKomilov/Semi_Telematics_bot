@@ -74,7 +74,7 @@ and the matching `PRODUCT` in `ops/cloudflare/error-5xx.html`. The mark
 needs no change at all: each product serves the file from its own
 origin, so `/favicon-32.png` is already its own. Every product mention
 in the markup is a `<span data-product>` slot whose pre-JS default must
-equal `PRODUCT.name` — `src/test/offlineShell.test.ts` fails on a bare
+equal `PRODUCT.name` — `interfaces/dashboard/src/test/offlineShell.test.ts` fails on a bare
 mention left outside a slot, which is how a page ends up telling a 2bot
 customer to unblock 4truck.
 
