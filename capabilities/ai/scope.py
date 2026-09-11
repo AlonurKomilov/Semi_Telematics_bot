@@ -90,11 +90,24 @@ async def resolve_vehicle_scope(
     # Company mode: expand the allowed companies to their vehicles.
     try:
         company_codes = list(await platform_db.get_user_company_codes(user_id) or [])
-    except Exception as e:  # pragma: no cover - defensive
-        logger.warning("AI scope: get_user_company_codes failed user=%s: %s", user_id, e)
-        company_codes = []
+    except Exception as e:
+        # Fail CLOSED, the same rule the vehicle read below already
+        # follows. A restriction we cannot READ is not a restriction we
+        # may ignore — and this branch used to collapse the failure into
+        # the same value as "this member has no company restriction",
+        # which is the module's UNRESTRICTED sentinel. One pool timeout
+        # on this single query turned a dispatcher restricted to one
+        # company into an unrestricted one for that chat turn: every
+        # other company's vehicles, positions, drivers and work orders
+        # narrated to them as their own, with no denial and no marker,
+        # and the window closed as soon as the next read succeeded.
+        logger.warning(
+            "AI scope: get_user_company_codes failed user=%s (failing closed): %s",
+            user_id, e,
+        )
+        return []
     if not company_codes:
-        return None  # "All" — no company restriction
+        return None  # "All" — a member with no company rows is unrestricted
 
     allowed = {c.strip().upper() for c in company_codes if c}
     # The registry is the roster of record: it still knows trucks whose

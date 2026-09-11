@@ -6,6 +6,7 @@
 
 
 import json
+import logging
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,6 +21,8 @@ from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai
 from capabilities.permissions.roles import is_management_role
 from interfaces.api.deps import require_permission, get_current_user, get_platform_db, get_tenant_db, active_view
 from interfaces.api.rate_limit import limiter
+
+logger = logging.getLogger("bot.ai.router")
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -238,9 +241,22 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
     # an empty code list means on the REST side.
     try:
         _codes = list(await platform_db.get_user_company_codes(user_obj.id) or [])
-    except Exception:  # pragma: no cover - defensive
-        _codes = []
-    user_context["scoped_company_codes"] = _codes or None
+    except Exception as _e:
+        # Fail CLOSED on the same reasoning as resolve_vehicle_scope: a
+        # swallowed failure here set the codes to None, which
+        # execute_tool reads as "no company channel" and get_geofences
+        # reads as "no filter" — so the same outage that widened the
+        # vehicle scope also handed over every company's zones. The
+        # sentinel mirrors the vehicle_filter one below: a code nothing
+        # matches, so the tool filters to nothing rather than to
+        # everything.
+        logger.warning(
+            "AI: company codes unreadable for user=%s (failing closed): %s",
+            getattr(user_obj, "id", "?"), _e,
+        )
+        user_context["scoped_company_codes"] = ["\x00__no_access__"]
+    else:
+        user_context["scoped_company_codes"] = _codes or None
     from capabilities.ai.scope import resolve_scope_ladder
     try:
         assignments = await platform_db.get_user_vehicle_assignments(user_obj.id)
