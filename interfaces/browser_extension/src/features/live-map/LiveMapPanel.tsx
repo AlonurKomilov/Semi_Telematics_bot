@@ -949,7 +949,15 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           <EmptyState title="No vehicles to show" detail={NO_VEHICLES_YET} />
         )}
         {!vehicles.length && !error && !answered && Array.from({ length: 6 }, (_, i) => (
-          <div key={i} style={{ padding: '10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}
+          <div key={i} style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)',
+                                // The SHAPE of the answer, to the pixel: a real row is
+                                // 8 + (18 name + 2 + 18 address) + 8 + 1 = 55.  This was
+                                // 10px padding round two 10px bars with a 6px gap — 47 —
+                                // so six of them shifted the list 48px the moment the
+                                // vehicles arrived, which is the one thing a skeleton
+                                // exists to prevent.
+                                display: 'grid', gridTemplateRows: '18px 18px', gap: 2,
+                                alignItems: 'center' }}
                aria-hidden={i > 0} role={i === 0 ? 'status' : undefined}
                aria-label={i === 0 ? 'Loading vehicles' : undefined}>
             <div className="skel" style={{ width: `${45 - i * 3}%` }} />
