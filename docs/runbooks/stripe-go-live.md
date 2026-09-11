@@ -68,6 +68,45 @@ the ids on the row; the Stripe price id column is read-only from then on.
    the Stripe dashboard by hand and sync again — expect a `drift`
    warning in the API log and the quantity back to the registry's.
 
+## 4b. Switching from the sandbox to live — the ids do not carry over
+
+Product, Price, Customer and Subscription ids are per mode. After the
+dry run the `plans` rows remember SANDBOX Product/Price ids, and a Save
+with an unchanged price is a no-op — so on live keys checkout would send
+a sandbox Price and Stripe would refuse it. Before swapping the keys:
+
+1. Do the dry run on a TEST account, never the real one. While
+   `BILLING_PROVIDER=stripe` with `sk_test_…`, every customer's Billing
+   page offers a test checkout — keep that window short.
+2. Run this once (the operator runs it; it touches only the rows the dry
+   run created):
+
+   ```sql
+   -- plans: forget the sandbox Product/Price ids so the next Save
+   -- creates live ones (a Save creates a Price when the row has none)
+   UPDATE plans SET stripe_price_id = '', stripe_product_id = '';
+   -- dry-run subscriptions: nothing in live Stripe knows these ids
+   UPDATE subscriptions
+      SET provider = 'stub', provider_customer_id = '',
+          provider_subscription_id = '', provider_base_item_id = '',
+          provider_extra_item_id = '', provider_base_price_id = '',
+          billed_quantity = NULL, billed_at = NULL
+    WHERE provider = 'stripe';
+   ```
+
+   The dry-run account keeps the tier the test checkout gave it; move it
+   back from its console page (allowed now that Stripe no longer bills
+   it). Rollout history rows from the dry run are just history.
+3. In the live account: the extras Price (new id), the API key
+   (`sk_live_…`), a NEW webhook endpoint (its own `whsec_…`), the
+   Customer Portal switched on for live too.
+4. `.env` → the live values; restart `4truck-api` (the plan cache is
+   rebuilt at boot).
+5. Plans page → Save each priced plan once more: the row has no id, so
+   the Save creates the live Product and Price.
+6. One real checkout on your own account with a real card, then refund
+   it from the Stripe dashboard — that is the live proof.
+
 ## 5. Known limits, decided
 
 - One extras Price for every plan (per-tier extras would need a
