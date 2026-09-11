@@ -22,7 +22,6 @@ All endpoints except /webhook require a valid JWT with role admin or owner.
 from __future__ import annotations
 
 import logging
-import os
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
@@ -34,15 +33,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
 
 def _dashboard_url() -> str:
-    """Where Stripe sends the customer back: the dashboard origin the
-    rest of the platform names (AUTH_BASE_URL → DASHBOARD_BASE_URL →
-    APP_BASE_URL), else the dashboard host itself — never the apex,
-    whose /dashboard redirect drops the query string."""
-    for k in ("AUTH_BASE_URL", "DASHBOARD_BASE_URL", "APP_BASE_URL"):
-        v = (os.getenv(k) or "").strip().rstrip("/")
-        if v:
-            return v
-    return "https://dash.4truck.us"
+    """The origin Stripe returns the customer to — see billing/urls.py
+    for which variable wins and why."""
+    from capabilities.platform.billing.urls import return_origin
+    return return_origin()
 
 
 _billing_admin = require_permission("can_manage_billing")

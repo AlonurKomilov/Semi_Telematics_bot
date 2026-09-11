@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type React from 'react';
 import { apiJSON, ApiError } from '../api/client';
 
 // ── Plans: what each plan includes, as data ─────────────────────
@@ -60,6 +59,22 @@ interface PlansResponse {
   stripe_setup: { secret_key: boolean; webhook_secret: boolean; extras_price: boolean; return_url: boolean };
 }
 
+/** One line of the payment wiring, answered by Stripe itself rather than
+ *  by the presence of an environment variable. */
+interface WiringCheck {
+  id: string;
+  label: string;
+  state: 'ok' | 'problem' | 'unknown';
+  note: string;
+}
+
+interface WiringReport {
+  provider: string;
+  mode: string;   // 'test' | 'live' | 'unknown' — read from the key's prefix
+  checks: WiringCheck[];
+  ok: boolean;
+}
+
 interface Draft {
   label: string;
   everything: boolean;
@@ -73,6 +88,106 @@ const inputCls =
   'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
 const btnCls =
   'px-2.5 py-1 rounded text-xs font-medium border transition disabled:opacity-50';
+
+// ── Payment wiring ───────────────────────────────────────────────
+//
+// Env presence is not wiring: a Price id from the other Stripe mode, or
+// a Product id pasted where a Price id belongs, both read as "set" and
+// the second bills no extra truck at all — silently.  So this asks
+// Stripe, and it stays on the page AFTER the switch to stripe, which is
+// exactly when an operator wants to see it green.
+
+// Flat tints, no border: on this page a bordered box is something to
+// press (Save, Roll out, Re-check), and a state that looks pressable
+// invites a click that does nothing.
+const WIRING_TONE: Record<WiringCheck['state'], { chip: string; mark: string }> = {
+  ok:      { chip: 'bg-emerald-500/15 text-emerald-300', mark: '✓' },
+  problem: { chip: 'bg-rose-500/15 text-rose-300',       mark: '✗' },
+  unknown: { chip: 'bg-slate-500/15 text-slate-400',     mark: '?' },
+};
+
+function PaymentWiring({ provider, reloadKey }: { provider: string; reloadKey: number }) {
+  const [report, setReport] = useState<WiringReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const check = useCallback(async () => {
+    setBusy(true);
+    setFailed('');
+    try {
+      setReport(await apiJSON<WiringReport>('/system/plans/stripe-check'));
+    } catch (e) {
+      setFailed(e instanceof ApiError ? e.message : 'Could not reach the check');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => { check(); }, [check, reloadKey]);
+
+  const live = report?.mode === 'live';
+  const test = report?.mode === 'test';
+  const ready = report ? report.checks.filter((c) => c.state === 'ok').length : 0;
+  return (
+    <section className="mb-4 border border-slate-800 rounded-lg overflow-hidden">
+      <header className="flex items-center gap-3 px-3 py-2 bg-slate-900/40 border-b border-slate-800">
+        <h2 className="text-sm font-semibold text-slate-200">Payment wiring</h2>
+        <span className="text-xs text-slate-500">provider: <span className="text-slate-300">{provider}</span></span>
+        {report && (
+          <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+            live ? 'bg-emerald-500/15 text-emerald-300'
+                 : test ? 'bg-amber-500/15 text-amber-300'
+                        : 'bg-slate-500/15 text-slate-400'}`}>
+            {live ? 'LIVE — real charges' : test ? 'TEST MODE — no real money' : 'mode unknown'}
+          </span>
+        )}
+        {/* Where the operator is in the go-live list, rather than five
+            marks to count by eye. */}
+        {report && (
+          <span className={`text-xs ${report.ok ? 'text-emerald-300' : 'text-slate-400'}`}>
+            {ready} of {report.checks.length} ready
+          </span>
+        )}
+        <button
+          onClick={check}
+          disabled={busy}
+          className={`${btnCls} ml-auto border-slate-700 text-slate-300 hover:bg-slate-800`}
+        >{busy ? 'Checking…' : 'Re-check'}</button>
+      </header>
+
+      {/* Five rows tall whatever it holds, so the grid below stays put
+          while Stripe answers. */}
+      <div className="min-h-[8.5rem]">
+        {failed && <p className="px-3 py-2 text-sm text-rose-400">{failed}</p>}
+        {!report && !failed && <p className="px-3 py-2 text-sm text-slate-500">Asking Stripe…</p>}
+        {report && (
+          <dl className="divide-y divide-slate-800/70">
+            {report.checks.map((c) => (
+              <div key={c.id} className="flex items-start gap-3 px-3 py-1.5">
+                <span className={`shrink-0 w-5 text-center rounded text-[11px] leading-5 ${WIRING_TONE[c.state].chip}`}
+                      aria-label={c.state}>{WIRING_TONE[c.state].mark}</span>
+                <dt className="shrink-0 w-44 text-sm text-slate-300">{c.label}</dt>
+                <dd className={`text-sm ${c.state === 'problem' ? 'text-rose-300' : 'text-slate-500'}`}>{c.note}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      {report && (
+        <p className="px-3 py-2 border-t border-slate-800 text-xs text-slate-500">
+          {provider !== 'stripe'
+            ? 'Prices below are shown to customers but nothing is charged until BILLING_PROVIDER=stripe.'
+            : test
+              ? 'Every customer pressing Upgrade opens a TEST checkout right now — finish the dry run and swap the keys.'
+              : report.ok
+                ? 'Customers can buy a plan.'
+                : 'Fix the red lines above — a customer meets them at checkout.'}
+        </p>
+      )}
+    </section>
+  );
+}
 
 const QUOTA_LABEL: Record<string, string> = {
   max_users: 'Users',
@@ -183,6 +298,7 @@ export default function PlansPage() {
   // draft without depending on render-time state.
   const dataRef = useRef<PlansResponse | null>(null);
   const draftsRef = useRef<Record<string, Draft>>({});
+  const [wiringKey, setWiringKey] = useState(0);
   dataRef.current = data;
   draftsRef.current = drafts;
 
@@ -191,6 +307,9 @@ export default function PlansPage() {
   const load = useCallback(async (savedTier?: string) => {
     setLoading(true);
     setErr('');
+    // A save can create a plan's Stripe Price, which is one of the
+    // wiring checks — so the card re-asks Stripe whenever the page does.
+    setWiringKey((n) => n + 1);
     try {
       const res = await apiJSON<PlansResponse>('/system/plans');
       const old = dataRef.current;
@@ -382,19 +501,7 @@ export default function PlansPage() {
       {err && <div className="mb-4 text-sm text-rose-400 border border-rose-500/30 bg-rose-500/10 rounded px-3 py-2">{err}</div>}
       {loading && <p className="text-slate-500 text-sm">Loading…</p>}
 
-      {data && (
-        <div className="mb-4 text-xs text-slate-500">
-          Billing provider: <span className="text-slate-300">{data.billing_provider}</span>
-          {data.billing_provider !== 'stripe' && (
-            <span> — prices here are shown to customers but nothing is charged; before switching to Stripe the API needs:{' '}
-              {([['secret_key', 'STRIPE_SECRET_KEY'], ['webhook_secret', 'STRIPE_WEBHOOK_SECRET'], ['extras_price', 'STRIPE_PRICE_EXTRA_VEHICLE (the per-extra-truck Price)'], ['return_url', 'AUTH_BASE_URL / DASHBOARD_BASE_URL']] as const)
-                .map(([k, label]) => <span key={k} className={data.stripe_setup[k] ? 'text-emerald-400' : 'text-amber-300'}>{data.stripe_setup[k] ? '✓' : '✗'} {label}</span>)
-                .reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ', ', el] : [el]), [])}
-              . Then save each plan's price once so its Stripe Price is created.
-            </span>
-          )}
-        </div>
-      )}
+      {data && <PaymentWiring provider={data.billing_provider} reloadKey={wiringKey} />}
       {orphans.length > 0 && (
         <div className="mb-4 text-sm text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded px-3 py-2">
           Accounts on a plan that has no row — they hold <span className="font-medium">nothing sellable</span> until it exists:{' '}
@@ -558,14 +665,25 @@ export default function PlansPage() {
                 {plans.map((p) => {
                   const d = drafts[p.tier];
                   const dirty = d ? isDirty(p, d, catalog) : false;
+                  // A priced plan with no Stripe price yet still has work to
+                  // do, and saving it unchanged is what does it — the API
+                  // creates the Price when the row carries none.  Without
+                  // this the page told the operator to press Save and handed
+                  // them a disabled "No changes".
+                  const needsPrice = data.billing_provider === 'stripe'
+                    && p.price_monthly_cents > 0 && !p.stripe_price_id;
+                  const armed = dirty || needsPrice;
                   return (
                     <td key={p.tier} className="px-3 py-2 text-center align-top">
                       <button
-                        className={`${btnCls} ${dirty ? 'border-accent text-accent hover:bg-accent/10' : 'border-slate-800 text-slate-500'}`}
-                        disabled={!dirty || busy === p.tier}
+                        className={`${btnCls} ${armed ? 'border-accent text-accent hover:bg-accent/10' : 'border-slate-800 text-slate-500'}`}
+                        disabled={!armed || busy === p.tier}
                         onClick={() => save(p)}
                       >
-                        {busy === p.tier ? 'Saving…' : dirty ? 'Save' : saved === p.tier ? 'Saved' : 'No changes'}
+                        {busy === p.tier ? 'Saving…'
+                          : dirty ? 'Save'
+                          : needsPrice ? 'Create Stripe price'
+                          : saved === p.tier ? 'Saved' : 'No changes'}
                       </button>
                       <div className="mt-1 text-[11px] text-slate-500">
                         {p.updated_by || '—'}
@@ -643,7 +761,11 @@ function GroupRows({
             const everything = d?.everything ?? p.everything;
             const on = everything || (d ? d.included.has(c.id) : p.included.includes(c.id));
             return (
-              <td key={p.tier} className="px-3 py-1.5 text-center">
+              // The label carries the cell's padding, so the whole cell is
+              // the target: a 13px native checkbox is a small thing to hit
+              // forty times in a row, which is what narrowing a plan is.
+              <td key={p.tier} className="text-center">
+                <label className={`flex items-center justify-center px-3 py-1.5 ${everything ? '' : 'cursor-pointer'}`}>
                 <input
                   type="checkbox"
                   checked={on}
@@ -653,6 +775,7 @@ function GroupRows({
                   onChange={() => onToggle(p.tier, c.id)}
                   aria-label={`${c.label} on ${p.label}`}
                 />
+                </label>
               </td>
             );
           })}

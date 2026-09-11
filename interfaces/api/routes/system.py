@@ -2111,6 +2111,28 @@ async def system_plans(
     }
 
 
+@router.get("/plans/stripe-check")
+async def system_plans_stripe_check(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Ask Stripe whether the payment wiring is real, not just present.
+
+    ``/system/plans.stripe_setup`` answers from environment variables,
+    which cannot see the two failures that cost money: a Price id from
+    the other Stripe mode, and a Product id pasted where a Price id
+    belongs (that one bills no extra trucks at all, silently). This
+    route asks Stripe itself. It only reads.
+
+    Its own route rather than a field on ``GET /plans`` so the grid still
+    paints instantly when Stripe is slow. "stripe-check" can never be
+    mistaken for a plan key: ``PLAN_KEY_RE`` has no dash.
+    """
+    from capabilities.platform.billing.setup_check import check_stripe_setup
+    rows = await platform_db.list_plans()
+    return await check_stripe_setup(rows, provider=_billing_provider_name())
+
+
 @router.post("/plans", status_code=201)
 async def system_create_plan(
     body: NewPlanBody,

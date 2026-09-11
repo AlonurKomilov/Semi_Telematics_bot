@@ -4,7 +4,10 @@ Today production runs `BILLING_PROVIDER=stub`: prices are shown, nothing is
 charged, no call reaches Stripe. Switching is one env change — but the
 chain it turns on has pieces that live in Stripe and in `.env`, and a
 missing piece fails silently (extras never billed) or on the customer's
-first checkout. The Plans page (system console) shows this list live.
+first checkout. The **Payment wiring** card at the top of the Plans page
+(system console) asks Stripe itself and shows what is still missing —
+including the two an environment variable cannot see: a Price id from
+the other Stripe mode, and a Product id pasted where a Price id belongs.
 
 ## 1. Stripe dashboard (test mode first, then live)
 
@@ -33,15 +36,20 @@ first checkout. The Plans page (system console) shows this list live.
 ## 2. `.env`
 
 `BILLING_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_EXTRA_VEHICLE`, and the dashboard origin Stripe sends the
-customer back to (`AUTH_BASE_URL` or `DASHBOARD_BASE_URL`, e.g.
-`https://dash.4truck.us`; the default is that host). Restart `4truck-api`.
+`STRIPE_PRICE_EXTRA_VEHICLE` (the Price id — `price_…`, not the `prod_…`
+above it), and `DASHBOARD_BASE_URL` — the host that SERVES the dashboard,
+because that is where Stripe returns the customer. The apex answers 404
+for `/billing`, so an `AUTH_BASE_URL` pointing there used to hand a
+paying customer an error page; `DASHBOARD_BASE_URL` now wins over it.
+Restart `4truck-api`, then read the Payment wiring card.
 
 ## 3. The plans (system console → Plans)
 
 Save each priced plan once. In stripe mode a save with a price creates the
 plan's Stripe Product (first time) and a Price for that amount, and writes
 the ids on the row; the Stripe price id column is read-only from then on.
+A plan that is priced but has no Stripe price yet shows **Create Stripe
+price** instead of "No changes", so this step needs no pretend edit.
 `STRIPE_PRICE_<TIER>` env vars are only a fallback for a row with no id.
 
 ## 4. Dry run in test mode — what to watch

@@ -162,12 +162,25 @@ async def test_the_webhook_reconciles_a_subscription_stripe_moved_to_a_plan_our_
     assert "reconciled_to" not in out
 
 
-def test_the_customer_returns_to_the_dashboard_billing_page(monkeypatch):
+def test_the_customer_returns_to_the_host_that_serves_the_dashboard(monkeypatch):
+    """The return URL must land on the page that answers /billing.
+
+    AUTH_BASE_URL used to win, and in production it holds the apex
+    (https://4truck.us), which answers 404 for /billing — a customer who
+    had just paid saw an error page. DASHBOARD_BASE_URL leads now;
+    AUTH_BASE_URL stays as a last resort, better than nothing.
+    """
     from capabilities.platform.billing.router import _dashboard_url
     for k in ("AUTH_BASE_URL", "DASHBOARD_BASE_URL", "APP_BASE_URL"):
         monkeypatch.delenv(k, raising=False)
     assert _dashboard_url() == "https://dash.4truck.us"
-    monkeypatch.setenv("APP_BASE_URL", "https://4truck.us/")
-    assert _dashboard_url() == "https://4truck.us"
-    monkeypatch.setenv("AUTH_BASE_URL", "https://dash.example/")
-    assert _dashboard_url() == "https://dash.example"
+
+    monkeypatch.setenv("AUTH_BASE_URL", "https://4truck.us/")
+    assert _dashboard_url() == "https://4truck.us", "the only one set is still used"
+
+    monkeypatch.setenv("DASHBOARD_BASE_URL", "https://dash.4truck.us/")
+    assert _dashboard_url() == "https://dash.4truck.us", "the dashboard host wins over the apex"
+
+    monkeypatch.delenv("DASHBOARD_BASE_URL")
+    monkeypatch.setenv("APP_BASE_URL", "https://app.example/")
+    assert _dashboard_url() == "https://app.example", "and so does the app host"
