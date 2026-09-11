@@ -1,9 +1,12 @@
 /**
- * The container's own row — which whole look is installed.
+ * The container's own row — which prepared pack is installed.
  *
- * Called "Looks", not "Mods": the service is Mods, and a row of that
- * name inside it named its own container. The store shelf says the same
- * word, and `storePage.test.tsx` holds the two together.
+ * Called "Presets", not "Mods": the service is Mods, and a row of that
+ * name inside it named its own container. A preset is a pack like any
+ * other; it just carries several shelves' settings at once, so one
+ * click prepares what would otherwise be four or five choices. The
+ * store shelf and the taxonomy say the same word, and
+ * `storePage.test.tsx` holds all three together.
  *
  * Not a category: installing a mod writes into every category below it,
  * which is exactly why it sits above them. It owns `applyMod`, the one
@@ -68,7 +71,7 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
   return (
     <div>
       <p className={`${groupLabel} mb-1.5`}>
-        {t('mods.group_mods', 'Looks')}
+        {t('mods.group_mods', 'Presets')}
       </p>
       <div className="flex flex-wrap gap-1">
         {offered('mods', MOD_OPTIONS, (o) => o.value).map((o) => (

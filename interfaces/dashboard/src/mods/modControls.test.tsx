@@ -77,7 +77,7 @@ import { MODS } from './store/packs/mods';
 import { headingsOf } from './taxonomy';
 
 /** Sections every surface carries — the two questions asked most often. */
-const SHARED = ['Looks', 'Mode', 'Color'];
+const SHARED = ['Presets', 'Mode', 'Color'];
 /** Sections the page carries and the popover sends people to the page for. */
 const PAGE_ONLY = ['Corners', 'Material', 'Typeface', 'Icons', 'Motion', 'Sound'];
 

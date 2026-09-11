@@ -231,9 +231,11 @@ export function resetAxesOf(id: CategoryId): readonly string[] {
 
 /** The caps headings the panel renders for a category, in order. */
 export function headingsOf(id: CategoryId | 'mods'): readonly string[] {
-  // "Looks", not "Mods": the service is Mods, and the row inside it
-  // named its own container. Held to the store's shelf by storePage.test.
-  if (id === 'mods') return ['Looks'];
+  // "Presets", not "Mods": the service is Mods, and the row inside it
+  // named its own container. A preset is a pack that carries several
+  // shelves' settings at once, not a second kind of thing. Held to the
+  // store's shelf by storePage.test.
+  if (id === 'mods') return ['Presets'];
   const cat = TAXONOMY.find((c) => c.id === id);
   if (!cat) return [];
   return [

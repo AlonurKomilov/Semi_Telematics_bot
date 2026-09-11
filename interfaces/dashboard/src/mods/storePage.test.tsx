@@ -99,15 +99,16 @@ describe('every shelf has a home', () => {
     expect(Object.keys(AXIS_UI).sort()).toEqual(PACK_AXES.map((a) => a.axis).sort());
   });
 
-  it('the looks shelf does not name the service it sits inside', () => {
+  it('the presets shelf does not name the service it sits inside', () => {
     // "Mods" is the service. A shelf of that name inside it made the
-    // page point at itself — and a look is not a mode: it writes seven
-    // axes at once, which is what GX calls a mod.
+    // page point at itself, and produced the question it was meant to
+    // answer. A preset is a pack like any other; it just carries
+    // several shelves' settings at once.
     expect(AXIS_UI.mods.label).not.toBe('Mods');
     const row = readFileSync(join(__dirname, 'panel', 'ModsRow.tsx'), 'utf8');
     const said = /t\('mods\.group_mods',\s*'([^']+)'\)/.exec(row);
     expect(said, 'the panel row no longer names itself in one place').not.toBeNull();
-    expect(said![1], 'the panel and the store call the looks shelf different things')
+    expect(said![1], 'the panel and the store call the presets shelf different things')
       .toBe(AXIS_UI.mods.label);
     // And the taxonomy, which is what the panel's own section guard reads.
     expect(headingsOf('mods'), 'the taxonomy calls it something else again')
@@ -243,5 +244,22 @@ describe('a shelf is what this person kept', () => {
     const tile = tileOf('Serif');
     expect(within(tile).queryByRole('button', { name: /^apply$/i })).toBeNull();
     expect(within(tile).getByRole('button', { name: /add/i })).toBeTruthy();
+  });
+});
+
+describe('the shelf whose packs are not one setting says so', () => {
+  it('explains itself under its own heading', () => {
+    render(<ModsStorePage />);
+    const shelf = within(screen.getByTestId('store-axis-mods'));
+    expect(AXIS_UI.mods.note, 'the shelf that needs a line has none').toBeTruthy();
+    expect(shelf.getByText(AXIS_UI.mods.note!)).toBeTruthy();
+  });
+
+  it('and the shelves that are one setting do not', () => {
+    // A note on every heading is noise; only the one that is not a
+    // single choice has to explain what it is.
+    for (const axis of ['theme', 'font', 'cursor']) {
+      expect(AXIS_UI[axis].note, `${axis} explains what needs no explaining`).toBeUndefined();
+    }
   });
 });

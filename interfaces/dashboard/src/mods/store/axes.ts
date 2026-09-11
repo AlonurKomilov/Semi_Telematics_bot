@@ -13,15 +13,13 @@
  * taxonomy's own titles, held to them by a test, so a shelf cannot come
  * to be called one thing here and another on /mods.
  *
- * `mods` is the exception and the reason this comment is longer than
- * the table: the SERVICE is called Mods, and a shelf of the same name
- * inside it read as a page pointing at itself — the first person to see
- * this page asked whether a "mod" meant dark and light. It does not: a
- * look writes seven axes at once (Cab sets the accent, the corners, the
- * scale, the icon weight and the cue set together), which is what GX
- * calls a mod and what nothing else here is. The shelf is called Looks,
- * the service stays Mods, and a test holds the panel's own row to the
- * same word.
+ * `mods` is the exception, and it is not a different KIND of thing: it
+ * is a pack like every other, except that it carries the settings of
+ * several shelves at once instead of one. Somebody who does not want to
+ * choose an accent, then a corner, then a scale, then a cue set takes
+ * one of these and is done. So the shelf is called Presets, which says
+ * that and nothing more — it is not a second word for the service, and
+ * there is no third concept to learn.
  */
 import { MOD_DEFAULT, DEFS, type ModSetting } from '../../preferences/registry';
 
@@ -39,11 +37,18 @@ export type AxisHome =
 export interface AxisUI {
   /** What a person calls this shelf. */
   readonly label: string;
+  /** One line under the heading, where a shelf needs one. Only the
+   *  shelf whose packs are not one setting does. */
+  readonly note?: string;
   readonly home: AxisHome;
 }
 
 export const AXIS_UI: Readonly<Record<string, AxisUI>> = {
-  mods:      { label: 'Looks',             home: { mod: true } },
+  mods: {
+    label: 'Presets',
+    note: 'One pack that sets every other shelf at once — for when you want it done, not chosen.',
+    home: { mod: true },
+  },
   theme:     { label: 'Color',             home: { theme: ['accent'] } },
   font:      { label: 'Typeface',          home: { theme: ['font'] } },
   icons:     { label: 'Icons',             home: { theme: ['iconPack'] } },

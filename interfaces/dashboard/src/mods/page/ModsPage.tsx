@@ -151,7 +151,7 @@ function Hub() {
             sentence on the screen twice. */}
         <SectionHeader
           size="card"
-          description={installed ? undefined : 'No mod installed — every category is set by hand.'}
+          description={installed ? undefined : 'Nothing prepared — every category is set by hand.'}
         >
           {installed ? installed.label : 'Your own'}
         </SectionHeader>

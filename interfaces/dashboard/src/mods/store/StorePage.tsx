@@ -195,7 +195,7 @@ export function ModsStorePage() {
         if (!ui || rows.length === 0) return null;
         return (
           <section key={axis} data-testid={`store-axis-${axis}`}>
-            <SectionHeader>{ui.label}</SectionHeader>
+            <SectionHeader description={ui.note}>{ui.label}</SectionHeader>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {rows.map((row) => (
                 <PackTile
