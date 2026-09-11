@@ -430,6 +430,25 @@ class KnowledgeBaseMixin:
         await self._db.commit()
         return cur.rowcount > 0
 
+    async def list_kb_platform_refused(self) -> list[dict]:
+        """Articles the platform reviewed and did NOT publish.
+
+        A decision that leaves no trace on the surface that made it is
+        not a reviewable decision: without this the refusal note is
+        written to a row the console would never show again.  Read-only
+        by design — there is no operator "restore".  Publication is the
+        account's to ask for, so the way back out is the account
+        submitting again, which is the same rule that stops the
+        operator approving something nobody submitted.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM knowledge_base "
+            "WHERE platform_reviewed_at <> '' AND platform_approved = 0 "
+            "AND quarantined_at IS NULL "
+            "ORDER BY platform_reviewed_at DESC",
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def list_kb_published_platform_wide(self) -> list[dict]:
         """Everything currently readable across tenant lines.
 

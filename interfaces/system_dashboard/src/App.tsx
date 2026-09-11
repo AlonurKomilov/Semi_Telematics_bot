@@ -23,18 +23,32 @@ import KnowledgePage from './pages/Knowledge';
 import SchedulerPage from './pages/Scheduler';
 import CapacityPage from './pages/Capacity';
 import PlansPage from './pages/Plans';
-import { clearToken, getToken } from './api/client';
+import { apiJSON, clearToken, getToken } from './api/client';
 
 export default function App() {
   const loc = useLocation();
   const nav = useNavigate();
   const [authed, setAuthed] = useState<boolean>(() => !!getToken());
+  // Counts that belong on the nav rather than only inside their page.
+  // Keyed by route so a second queue drops in without restructuring.
+  const [badges, setBadges] = useState<Record<string, number>>({});
 
   // Re-evaluate auth state when the route changes — login page sets
   // the token and pushes to / which re-renders this component.
   useEffect(() => {
     setAuthed(!!getToken());
   }, [loc.pathname]);
+
+  // Refreshed on every navigation, so acting on the queue updates the
+  // badge without a poll. Failure is silent on purpose: a badge that
+  // could not be fetched is a missing count, never a banner across
+  // every page of the console.
+  useEffect(() => {
+    if (!authed) return;
+    apiJSON<{ count: number }>('/system/knowledge/pending')
+      .then((r) => setBadges((b) => ({ ...b, '/knowledge': r.count ?? 0 })))
+      .catch(() => { /* a count is not worth an error surface */ });
+  }, [authed, loc.pathname]);
 
   // Unauthed visitor lands on /login regardless of path.  Soft gate —
   // the real authorization is server-side; this saves useless 401s.
@@ -49,6 +63,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex bg-slate-950">
       <Sidebar
+        badges={badges}
         onLogout={() => {
           clearToken();
           setAuthed(false);
@@ -148,7 +163,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
   },
 ];
 
-function Sidebar({ onLogout }: { onLogout: () => void }) {
+function Sidebar({ onLogout, badges }: { onLogout: () => void; badges: Record<string, number> }) {
   return (
     <aside className="w-56 shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col h-screen sticky top-0">
       <div className="px-4 py-4 border-b border-slate-800">
@@ -182,7 +197,17 @@ function Sidebar({ onLogout }: { onLogout: () => void }) {
                   }
                 >
                   <Icon size={16} className="shrink-0" />
-                  {item.label}
+                  <span className="min-w-0 truncate">{item.label}</span>
+                  {/* A review queue nobody is told about is a queue that
+                      waits. An account submits and then depends on the
+                      operator remembering this page exists. Omitted at
+                      zero rather than rendered as 0 — an empty queue is
+                      not news. */}
+                  {badges[item.to] > 0 && (
+                    <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-900/50 text-amber-300">
+                      {badges[item.to]}
+                    </span>
+                  )}
                 </NavLink>
               );
             })}

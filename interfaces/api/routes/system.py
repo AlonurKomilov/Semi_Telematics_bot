@@ -643,6 +643,20 @@ async def list_kb_published(
     return {"articles": rows, "count": len(rows)}
 
 
+@router.get("/knowledge/refused")
+async def list_kb_refused(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """What the platform reviewed and declined, with the reason given.
+
+    Read-only: publication is the account's to ask for, so the way back
+    out is the account submitting again.
+    """
+    rows = await platform_db.list_kb_platform_refused()
+    return {"articles": rows, "count": len(rows)}
+
+
 @router.post("/knowledge/{article_id}/approve", status_code=200)
 async def platform_approve_kb(
     article_id: int,
