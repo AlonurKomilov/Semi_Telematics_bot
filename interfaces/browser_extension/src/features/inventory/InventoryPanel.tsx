@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import Field from './Field';
+import { vehicleLine } from '../../vehicleLabel';
 import Splitter from '../../shell/Splitter';
 import { MIN_PCT } from '../../shell/splitterRange';
 import { DASHBOARD_BASE } from '../../connect';
@@ -336,7 +337,8 @@ useEffect(() => {
         <div ref={cardRef} className="sheet"
              style={{ flexShrink: 0, maxHeight: `${cardPct}%`, overflowY: 'auto' }}>
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6 }}>
-            <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+            <strong title={vehicleLine(selected.name, selected.company)}
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
               {selected.name}
               {selected.company && <span className="muted" style={{ fontWeight: 400 }}> · {selected.company}</span>}
             </strong>
@@ -637,7 +639,8 @@ useEffect(() => {
                     style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
                              background: r.total === 0 ? 'var(--muted)'
                                : r.attention > 0 ? 'var(--warn)' : 'var(--ok)' }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              <span title={vehicleLine(r.name, r.company)}
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 <span style={{ fontWeight: 600 }}>{r.name}</span>
                 {r.company && <span className="muted" style={{ fontWeight: 400 }}> · {r.company}</span>}
               </span>

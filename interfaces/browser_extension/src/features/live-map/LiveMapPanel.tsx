@@ -27,6 +27,7 @@ import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from '
 // the PANEL, and Settings is the only place it is changed.
 import { getFollowPref } from '../../prefs';
 import Splitter from '../../shell/Splitter';
+import { vehicleLine } from '../../vehicleLabel';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
 
 const REFRESH_MS = 30_000;
@@ -628,7 +629,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                   {/* minWidth 0 lets the ellipsis work at all — a flex
                       item's default minimum is its full text, which is
                       the width the whole panel was being stretched to. */}
-                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                  <strong title={vehicleLine(selected.properties.name, selected.properties.company, multiCompany)}
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {selected.properties.name}
                     {multiCompany && selected.properties.company && (
                       <span className="muted" style={{ fontWeight: 400 }}> · {selected.properties.company}</span>
@@ -893,7 +895,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                       // IDLE one — the collision moved rather than went. --fg belongs to
                       // no status, so it cannot collide with a fourth one later either.
                                boxShadow: warn ? '0 0 0 1.5px var(--card), 0 0 0 3.5px var(--fg)' : undefined }} />
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span title={vehicleLine(p.name, p.company, multiCompany)}
+                      style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
                   {multiCompany && p.company && (
                     <span className="muted" style={{ fontWeight: 400 }}> · {p.company}</span>
@@ -914,7 +917,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                 })()}
                 {p.fuel_percent != null && <span className="muted">⛽ {Math.round(p.fuel_percent)}%</span>}
               </div>
-              <p className="muted" style={{ margin: '2px 0 0 18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.address || '—'}</p>
+              <p className="muted" title={p.address || undefined} style={{ margin: '2px 0 0 18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.address || '—'}</p>
             </button>
           );
         })}

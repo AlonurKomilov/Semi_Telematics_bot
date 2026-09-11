@@ -39,7 +39,8 @@ export default function UserMenu({ me, onSettings, onDisconnect }: {
       {open && (
         <div className="menu" role="menu">
           <div className="menu-head">
-            <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</strong>
+            <strong title={label}
+                      style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</strong>
             {(me?.account_name || me?.role) && (
               <span className="muted" style={{ fontSize: 12 }}>
                 {[me?.account_name, me?.role].filter(Boolean).join(' · ')}

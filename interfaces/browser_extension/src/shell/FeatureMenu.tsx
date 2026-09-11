@@ -43,6 +43,10 @@ export default function FeatureMenu({ features, current, onPick }: {
               title="Switch feature"
               className="row rowbtn"
               style={{ gap: 6, padding: '2px 6px', margin: '0 -6px', borderRadius: 4 }}>
+        {/* No `title` here, deliberately: the button already carries one
+            ("Switch feature"), a second on the text inside it would
+            shadow it on hover, and what truncates is a two-item enum
+            the menu below spells out in full anyway. */}
         <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           4truck · {current.label}
         </strong>
