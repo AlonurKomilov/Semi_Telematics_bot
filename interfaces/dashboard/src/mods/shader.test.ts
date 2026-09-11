@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SHADER_BAND } from './shader';
-import { SHADER_PACKS, SHADER_IDS, shaderPackById } from './packs/shader';
+import { SHADER_PACKS, SHADER_IDS, shaderPackById } from './store/packs/shader';
 import { assembledCss } from '../test/stylesheet';
 
 const ROOT = join(__dirname, '..', '..');

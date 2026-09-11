@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import {
   CUE_NAMES, CUE_LIMITS, WAVES, isSafeCue, playCue, armAudio, resetAudioForTests, type Cue,
 } from './engine';
-import { SOUND_PACKS, soundPackById } from '../packs/sound';
+import { SOUND_PACKS, soundPackById } from '../store/packs/sound';
 
 beforeEach(() => { resetAudioForTests(); });
 

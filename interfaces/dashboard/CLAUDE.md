@@ -100,7 +100,7 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   TIME**: glyphs come from [`lib/icons`](src/lib/icons/index.tsx), never
   from a library. A pack swaps the WHOLE set at once and is a Mods axis
   (`iconPack`); the packs themselves live in
-  [`mods/packs/icons/`](src/mods/packs/icons/index.ts) — three files
+  [`mods/store/packs/icons/`](src/mods/store/packs/icons/index.ts) — three files
   each, the door names none of them. Mixing two sets — a hardcoded
   glyph beside a pack one,
   or two libraries — is what the rule forbids, and

@@ -8,7 +8,7 @@ import { applyModTokens } from './inject';
 import { accentTokens } from './theme/accent';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
 import { groundTokens, type GroundId } from './theme/grounds';
-import { packById, THEME_PACKS } from './packs/theme';
+import { packById, THEME_PACKS } from './store/packs/theme';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { useAmbient } from './ambient/useAmbient';
 import { AMBIENT_SCALE } from './ambient/ambient';

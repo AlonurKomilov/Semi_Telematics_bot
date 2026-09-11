@@ -18,7 +18,7 @@
  * that problem does not exist for us.
  */
 import { type Cue, type CueLimits } from './engine';
-import type { PackMeta } from '../packs/meta';
+import type { PackMeta } from '../store/packs/meta';
 
 export const KEY_CLASSES = ['letter', 'space', 'enter', 'backspace'] as const;
 export type KeyClass = (typeof KEY_CLASSES)[number];
@@ -40,7 +40,7 @@ export interface KeyPack extends PackMeta {
   readonly cues: Readonly<Record<KeyClass, Cue>>;
 }
 
-// The packs live in `mods/packs/keys/`, one file each. This file is the
+// The packs live in `mods/store/packs/keys/`, one file each. This file is the
 // keyboard as a MECHANISM — what counts as typing, which fields stay
 // silent, how fast a click may repeat — and it takes the pack it plays
 // from as an argument rather than looking one up, so it never has to

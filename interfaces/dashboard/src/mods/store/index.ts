@@ -24,8 +24,8 @@
  * `PACK_AXES`, so the catalogue cannot drift from the folders — the
  * store adds a stamp, never an entry.
  */
-import { PACK_AXES } from '../packs';
-import type { PackMeta } from '../packs/meta';
+import { PACK_AXES } from './packs';
+import type { PackMeta } from './packs/meta';
 
 /** The house. One value today; the column exists because the stamp is
  *  the store's word, and a stamp with nobody to attribute is still the

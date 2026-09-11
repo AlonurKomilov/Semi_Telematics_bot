@@ -14,7 +14,7 @@ import { GROUNDS, GROUND_IDS, GROUND_TOKENS, groundById, groundTokens } from './
 import { deriveGround, derivePalette, patternGrounds, GROUND_PLANES, DERIVED_TOKENS } from './palette';
 import { CANVAS_SEED, worstTone, paletteTokens } from './canvas';
 import { parseHex, distance, contrastRatio, AA_TEXT, AA_LARGE, toHex } from './contrast';
-import { THEME_PACKS } from '../packs/theme';
+import { THEME_PACKS } from '../store/packs/theme';
 import { isModToken, isSafeValue } from '../inject';
 
 const MODES = ['light', 'dark'] as const;

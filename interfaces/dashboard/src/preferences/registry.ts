@@ -34,19 +34,19 @@
  */
 
 import type { IconPack } from '../lib/icons';
-import { ICON_PACK_IDS } from '../mods/packs/icons';
-import { WALLPAPER_IDS } from '../mods/packs/wallpaper';
-import { CURSOR_IDS } from '../mods/packs/cursor';
-import { SHADER_IDS } from '../mods/packs/shader';
+import { ICON_PACK_IDS } from '../mods/store/packs/icons';
+import { WALLPAPER_IDS } from '../mods/store/packs/wallpaper';
+import { CURSOR_IDS } from '../mods/store/packs/cursor';
+import { SHADER_IDS } from '../mods/store/packs/shader';
 import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
-import { MATERIAL_IDS } from '../mods/packs/material';
-import { MODS } from '../mods/packs/mods';
-import { THEME_PACKS } from '../mods/packs/theme';
+import { MATERIAL_IDS } from '../mods/store/packs/material';
+import { MODS } from '../mods/store/packs/mods';
+import { THEME_PACKS } from '../mods/store/packs/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
-import { SOUND_PACKS } from '../mods/packs/sound';
-import { KEY_PACKS } from '../mods/packs/keys';
-import { MOD_FONTS } from '../mods/packs/font';
+import { SOUND_PACKS } from '../mods/store/packs/sound';
+import { KEY_PACKS } from '../mods/store/packs/keys';
+import { MOD_FONTS } from '../mods/store/packs/font';
 import { SURFACES } from '../mods/surfaces';
 import { GROUND_IDS } from '../mods/theme/grounds';
 

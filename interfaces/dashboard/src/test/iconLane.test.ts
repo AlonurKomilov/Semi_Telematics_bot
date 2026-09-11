@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { ICON_NAMES } from '../lib/icons/names';
 import { ICON_WEIGHTS } from '../lib/icons/weight';
-import { ICON_PACK_IDS } from '../mods/packs/icons';
+import { ICON_PACK_IDS } from '../mods/store/packs/icons';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,7 +65,7 @@ const NOT_A_GLYPH = new Set([
   'IconPack', 'IconPackModule', 'RasterIconProps',
 ]);
 
-const PACKS = 'mods/packs/icons/';
+const PACKS = 'mods/store/packs/icons/';
 const PACK_FILES = ICON_PACK_IDS.flatMap((id) => [`${PACKS}${id}.tsx`, `${PACKS}${id}.icons.ts`]);
 
 /** Comments out, first. A docstring EXPLAINING the rule reads exactly
@@ -217,7 +217,7 @@ describe('one set on screen at a time', () => {
     // dynamic imports one directory level deep only, and the leaves are
     // small enough to load eagerly — that was the point of the leaves.
     const leaves = import.meta.glob<{ WEIGHT_MAP: Record<string, unknown> }>(
-      '../mods/packs/icons/*.weights.ts', { eager: true },
+      '../mods/store/packs/icons/*.weights.ts', { eager: true },
     );
     const mapOf = (id: string) => leaves[`../${PACKS}${id}.weights.ts`]?.WEIGHT_MAP;
     expect(ICON_WEIGHTS.length, 'no weights — this test would pass on nothing').toBe(3);
@@ -268,7 +268,7 @@ describe('one set on screen at a time', () => {
 });
 
 /**
- * The pack NAMES stay inside `mods/packs/icons` too. Its index is the list; a
+ * The pack NAMES stay inside `mods/store/packs/icons` too. Its index is the list; a
  * component that spells `'phosphor'` itself is a second list, and the
  * panel had one — two chips written by hand beside a `map` over
  * everything else, which is how a third pack would ship with a door

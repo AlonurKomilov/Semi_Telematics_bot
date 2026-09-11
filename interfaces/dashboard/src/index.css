@@ -2,24 +2,24 @@
 /* Mod PACKS — one file per pack, each wrapped in its own `@media screen`.
    Imported here because CSS allows `@import` only at the top; the
    mechanism each pack plugs into stays further down this sheet, under
-   its own heading. `mods/packs/packs.test.ts` holds the index of every
+   its own heading. `mods/store/packs/packs.test.ts` holds the index of every
    axis equal to its folder, both ways. */
-@import './mods/packs/wallpaper/mesh.css';
-@import './mods/packs/wallpaper/grid.css';
-@import './mods/packs/wallpaper/grain.css';
-@import './mods/packs/wallpaper/paper.css';
-@import './mods/packs/wallpaper/plasma.css';
-@import './mods/packs/cursor/sharp.css';
-@import './mods/packs/shader/soft.css';
-@import './mods/packs/shader/studio.css';
-@import './mods/packs/theme/purple.css';
-@import './mods/packs/theme/green.css';
-@import './mods/packs/theme/azure.css';
-@import './mods/packs/font/system.css';
-@import './mods/packs/font/serif.css';
-@import './mods/packs/font/mono.css';
-@import './mods/packs/font/rounded.css';
-@import './mods/packs/material/glass.css';
+@import './mods/store/packs/wallpaper/mesh.css';
+@import './mods/store/packs/wallpaper/grid.css';
+@import './mods/store/packs/wallpaper/grain.css';
+@import './mods/store/packs/wallpaper/paper.css';
+@import './mods/store/packs/wallpaper/plasma.css';
+@import './mods/store/packs/cursor/sharp.css';
+@import './mods/store/packs/shader/soft.css';
+@import './mods/store/packs/shader/studio.css';
+@import './mods/store/packs/theme/purple.css';
+@import './mods/store/packs/theme/green.css';
+@import './mods/store/packs/theme/azure.css';
+@import './mods/store/packs/font/system.css';
+@import './mods/store/packs/font/serif.css';
+@import './mods/store/packs/font/mono.css';
+@import './mods/store/packs/font/rounded.css';
+@import './mods/store/packs/material/glass.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -618,7 +618,7 @@
      property of series SEPARATION, and a colour nobody checked against
      the other four slots does not get to join the ramp.
 
-     THE PACKS ARE NOT HERE. `mods/packs/theme/*.css` holds one file per
+     THE PACKS ARE NOT HERE. `mods/store/packs/theme/*.css` holds one file per
      accent, imported at the top of this sheet, and blue has none — it IS
      the base `:root` / `.dark` above. What stays in this file is the
      mechanism the packs plug into: the stand-down, the base ramp, and
@@ -677,7 +677,7 @@
      own optical-quality face where it exists and fall through where it
      does not.
 
-     THE STACKS ARE NOT HERE. `mods/packs/font/*.css` holds one file per
+     THE STACKS ARE NOT HERE. `mods/store/packs/font/*.css` holds one file per
      face, imported at the top of this sheet; Geist has none. A bundled
      webfont later is its own `@import` plus one pack file. */
 
@@ -917,7 +917,7 @@
      it. `mods/wallpaper.test.ts` reads the percentages out of the pack
      files, so a pattern that drifts fails on the file that paints it.
 
-     THE PATTERNS ARE NOT HERE. `mods/packs/wallpaper/*.css` holds one
+     THE PATTERNS ARE NOT HERE. `mods/store/packs/wallpaper/*.css` holds one
      file per pattern, imported at the top of this sheet; what stays
      below is the MECHANISM — the pane that steps aside. The engine
      defines where a wallpaper paints; a pack says what it paints.
@@ -946,7 +946,7 @@
      is (0,2,0) against Tailwind's (0,1,0). The only `!important` in
      this file is the reduced-motion floor and it stays that way.
 
-     THE POINTERS ARE NOT HERE. `mods/packs/cursor/*.css` holds one
+     THE POINTERS ARE NOT HERE. `mods/store/packs/cursor/*.css` holds one
      file per pack, imported at the top of this sheet. Nothing of the
      cursor axis remains in this file but this note, and
      `packs/packs.test.ts` keeps it that way. */
@@ -965,7 +965,7 @@
      that scale is 1, so the absence of a rule IS the shipped light —
      the same reason wallpaper's `none` has no block.
 
-     THE PRESETS ARE NOT HERE. `mods/packs/shader/*.css` holds one file
+     THE PRESETS ARE NOT HERE. `mods/store/packs/shader/*.css` holds one file
      per preset, imported at the top of this sheet. What stays below is
      the mechanism: the card rung of the ladder, lit by whatever the
      active preset says. */
@@ -1033,7 +1033,7 @@
     --muted-foreground: var(--muted-foreground-on-pattern);
   }
 
-  /* GLASS IS NOT HERE. `mods/packs/material/glass.css` carries the
+  /* GLASS IS NOT HERE. `mods/store/packs/material/glass.css` carries the
      translucent surface — its tokens, the backdrop filter, and the
      `.surface-opaque` escape hatch — imported at the top of this sheet.
      Solid has no file: it IS `.surface` above, and costs nothing. */

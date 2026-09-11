@@ -1,4 +1,4 @@
-import type { PackMeta } from './packs/meta';
+import type { PackMeta } from './store/packs/meta';
 /**
  * The pointer itself.
  *
@@ -28,7 +28,7 @@ import type { PackMeta } from './packs/meta';
 export interface CursorPack extends PackMeta {
 }
 
-// The packs — the list and the CSS — live in `mods/packs/cursor/`.
+// The packs — the list and the CSS — live in `mods/store/packs/cursor/`.
 // This file is the contract a pack has to keep.
 
 /**

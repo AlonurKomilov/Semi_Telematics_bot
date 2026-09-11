@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FONT_PACKS, MOD_FONTS } from '../packs/font';
+import { FONT_PACKS, MOD_FONTS } from '../store/packs/font';
 import { assembledCss } from '../../test/stylesheet';
 import { MOD_DEFAULT } from '../../preferences';
 

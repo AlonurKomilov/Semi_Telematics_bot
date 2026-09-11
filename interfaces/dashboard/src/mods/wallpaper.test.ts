@@ -16,9 +16,9 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
-import { WALLPAPERS, WALLPAPER_IDS } from './packs/wallpaper';
+import { WALLPAPERS, WALLPAPER_IDS } from './store/packs/wallpaper';
 import { assembledCss, engineCss } from '../test/stylesheet';
-import { THEME_PACKS } from './packs/theme';
+import { THEME_PACKS } from './store/packs/theme';
 import { oklchToSrgb, contrastRatio, distance, parseHex, type RGB } from './theme/contrast';
 import { derivePalette, patternGrounds, PATTERN_STOPS } from './theme/palette';
 import { fitCanvas, paletteTokens, WALLPAPER_BREAK } from './theme/canvas';
@@ -354,7 +354,7 @@ describe('a live pattern moves only what the gate has already measured', () => {
   const live = WALLPAPERS.filter((w) => w.kind === 'live');
   const still = WALLPAPERS.filter((w) => w.kind === 'still' && w.id !== 'none');
   const fileOf = (id: string) =>
-    readFileSync(join(__dirname, 'packs', 'wallpaper', `${id}.css`), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    readFileSync(join(__dirname, 'store', 'packs', 'wallpaper', `${id}.css`), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   /** Property names set inside every `@keyframes` block of a file. */
   const animated = (css: string): string[] =>
     [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\}\s*\}/g)]

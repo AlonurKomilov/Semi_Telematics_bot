@@ -13,8 +13,8 @@ import { useMods, type Accent } from '../context';
 import {
   MOD_THEME_FIELDS, modMatchesAxes, modFootprint, type Mod,
 } from '../catalogue';
-import { MODS, modById } from '../packs/mods';
-import { accentSeed } from '../packs/theme';
+import { MODS, modById } from '../store/packs/mods';
+import { accentSeed } from '../store/packs/theme';
 import type { ModSetting } from '../../preferences/registry';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';

@@ -28,8 +28,8 @@ import { Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { armAudio, playCue, type SoundPack } from '../sound/engine';
 import { KEY_LIMITS } from '../sound/keys';
-import { SOUND_PACKS } from '../packs/sound';
-import { KEY_PACKS, keyPackById } from '../packs/keys';
+import { SOUND_PACKS } from '../store/packs/sound';
+import { KEY_PACKS, keyPackById } from '../store/packs/keys';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';
 

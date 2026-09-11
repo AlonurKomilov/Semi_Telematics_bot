@@ -1,7 +1,7 @@
 /**
  * What an icon pack MODULE is — the shape the door consumes. The pack's
  * meta and loader (`IconPackDef`) sit beside the packs in
- * `mods/packs/icons/index.ts`, on top of `packs/meta.ts` like every axis. A type-only leaf: the packs are
+ * `mods/store/packs/icons/index.ts`, on top of `packs/meta.ts` like every axis. A type-only leaf: the packs are
  * fetched on demand and must not drag the door into their chunk to
  * learn what shape to be.
  */

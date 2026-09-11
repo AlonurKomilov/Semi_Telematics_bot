@@ -21,11 +21,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyModTokens, seedTokens } from './inject';
 import { derivePalette } from './theme/palette';
-import { THEME_PACKS } from './packs/theme';
+import { THEME_PACKS } from './store/packs/theme';
 import { assembledCss } from '../test/stylesheet';
 
 /** The accent presets, exactly as they ship — one pack file each, in
- *  `mods/packs/theme/`. Read from the assembled sheet rather than the
+ *  `mods/store/packs/theme/`. Read from the assembled sheet rather than the
  *  folder so what this fixture wears is what the app imports. */
 const ACCENT_CSS = (() => {
   const css = assembledCss();

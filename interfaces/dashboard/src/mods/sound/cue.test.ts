@@ -27,9 +27,9 @@ vi.mock('./engine', async (orig) => ({
 
 import { playUiCue, armIfWanted, playKeyCue } from './cue';
 import { resetKeySoundForTests, KEY_LIMITS } from './keys';
-import { keyPackById } from '../packs/keys';
+import { keyPackById } from '../store/packs/keys';
 import { preferences } from '../../preferences';
-import { SOUND_PACKS } from '../packs/sound';
+import { SOUND_PACKS } from '../store/packs/sound';
 
 const set = (ui: boolean, volume = 1, pack = 'chime', alert = false) => {
   preferences.set('mods.sound.ui', ui);

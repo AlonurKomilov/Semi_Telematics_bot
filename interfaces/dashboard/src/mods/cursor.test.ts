@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { CURSOR_KINDS, CURSOR_MAX_PX } from './cursor';
-import { CURSOR_PACKS, CURSOR_IDS } from './packs/cursor';
+import { CURSOR_PACKS, CURSOR_IDS } from './store/packs/cursor';
 import { assembledCss } from '../test/stylesheet';
 
 const SRC = join(__dirname, '..');

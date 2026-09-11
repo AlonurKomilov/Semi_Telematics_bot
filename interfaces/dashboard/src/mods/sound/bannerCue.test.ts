@@ -18,7 +18,7 @@ vi.mock('./engine', async (orig) => ({
 }));
 
 import { playBannerCue, resetBannerCueForTests } from './cue';
-import { SOUND_PACKS } from '../packs/sound';
+import { SOUND_PACKS } from '../store/packs/sound';
 import { preferences, DEFS } from '../../preferences';
 
 const pack = () => SOUND_PACKS.find((p) => p.id === 'chime')!;

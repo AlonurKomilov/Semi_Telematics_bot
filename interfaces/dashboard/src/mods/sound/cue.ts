@@ -22,8 +22,8 @@
 import { preferences } from '../../preferences';
 import { armAudio, playCue, type CueName } from './engine';
 import { pickKeyCue, KEY_LIMITS } from './keys';
-import { soundPackById } from '../packs/sound';
-import { keyPackById } from '../packs/keys';
+import { soundPackById } from '../store/packs/sound';
+import { keyPackById } from '../store/packs/keys';
 
 /**
  * Play an interface cue, if this screen has asked for interface sound.

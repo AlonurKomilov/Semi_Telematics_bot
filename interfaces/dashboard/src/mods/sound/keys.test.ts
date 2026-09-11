@@ -15,7 +15,7 @@ import {
   KEY_CLASSES, KEY_LIMITS,
   classify, isSensitiveTarget, pickKeyCue, resetKeySoundForTests,
 } from './keys';
-import { KEY_PACKS, keyPackById } from '../packs/keys';
+import { KEY_PACKS, keyPackById } from '../store/packs/keys';
 import { isCueWithin, CUE_LIMITS } from './engine';
 
 const press = (init: Partial<KeyboardEvent> & { key: string }, target?: Element) => {

@@ -29,14 +29,14 @@ import {
   MOD_FIELD_SECTION, modFootprint,
   PACK_TOKENS, modMatchesAxes, type ModAxes,
 } from './catalogue';
-import { MODS, modById } from './packs/mods';
+import { MODS, modById } from './store/packs/mods';
 
 /** Which shipped look these axes add up to — `modMatchesAxes` over the
  *  list. The engine used to offer this by name (`activeModId`, deprecated
  *  once identity moved to `theme.mod`); the list is the packs' now, so
  *  the question is asked here, where both halves are in hand. */
 const activeModId = (a: ModAxes): string => MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';
-import { THEME_PACKS, packById } from './packs/theme';
+import { THEME_PACKS, packById } from './store/packs/theme';
 import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
@@ -266,7 +266,7 @@ describe('a look is on only while it adds up', () => {
 });
 
 describe('the properties a mod carries and the panel does not', () => {
-  /** The stroke widths moved to `mods/packs/icons/lucide.tsx` with the pack
+  /** The stroke widths moved to `mods/store/packs/icons/lucide.tsx` with the pack
    *  that means them — a second pack takes no stroke at all — and the
    *  guard went with them, generalised over every pack:
    *  `test/iconLane.test.ts` holds each pack's weight map total over

@@ -60,7 +60,7 @@ const ALLOWED_DEEP = [
   // just an `undefined` binding at module-init.
   'components/banners/AppBanner.tsx',
   // The icon door consumes the icon PACKS — a resource under
-  // `mods/packs/icons`, reached by path for the same reason the sound
+  // `mods/store/packs/icons`, reached by path for the same reason the sound
   // lanes reach `mods/sound/cue`: the barrel exports the panel, the
   // panel draws icons through the door, and the door importing the
   // barrel would close that ring at module-init. The door is not part

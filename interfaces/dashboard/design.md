@@ -203,7 +203,7 @@ the migration branch, one release after the split ships.
 ### A mod is a look; the axes are still the state ⭐
 
 A **pack** is a colour: an id, a label and a seed per mode, in
-[`src/mods/packs/theme/index.ts`](src/mods/packs/theme/index.ts), with
+[`src/mods/store/packs/theme/index.ts`](src/mods/store/packs/theme/index.ts), with
 its derived tokens beside it as one `.css` file per pack (blue has none
 — it is the base). A **mod** is a named
 combination of axes we already have — a pack plus corners plus scale —
@@ -261,7 +261,13 @@ them, and a theme is the colour part inside it — hence `mods/theme` and
 
     mods/index.ts      the one import surface
     mods/catalogue.ts  the axes, and the pack CONTRACTS (Mod, ThemePack, FontPack)
-    mods/packs/        the resources — one file per pack, an index per axis:
+    mods/store/        the SOURCE KEEPER — the engine paints, the store keeps.
+                       store/index.ts   the catalogue: every pack, stamped with
+                                        its publisher BY the store (a pack never
+                                        declares its own owner; the house does).
+                       store/local.ts   what this install carries — the one door
+                                        a picker asks. All of it today.
+    mods/store/packs/  the resources — one file per pack, an index per axis:
                        mods (the looks: cab, wall) · sound · keys (cue tables) ·
                        wallpaper · cursor · shader · material · theme · font (CSS).
                        The engine never lists what exists. Every pack carries

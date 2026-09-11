@@ -1,4 +1,4 @@
-import type { PackMeta } from '../packs/meta';
+import type { PackMeta } from '../store/packs/meta';
 /**
  * Cues, as synthesis parameters — not as files.
  *
@@ -99,7 +99,7 @@ export function isSafeCue(c: unknown): c is Cue {
 }
 
 // ── the packs live elsewhere ─────────────────────────────────────────
-// `mods/packs/sound/` holds the cue sets, one file each. This file
+// `mods/store/packs/sound/` holds the cue sets, one file each. This file
 // defines what a pack MUST BE — the shape above, the bounds, and the
 // player below — and does not know which ones exist. An engine that
 // listed its own content is an engine somebody has to open to add a

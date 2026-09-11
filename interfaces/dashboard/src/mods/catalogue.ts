@@ -36,7 +36,7 @@ import type { ThemeMode } from './theme/palette';
 // value, and this import is erased.
 import type { ModRadius } from '../preferences/registry';
 import { MOD_FIELD_CATEGORY, CATEGORY_IDS } from './taxonomy';
-import type { PackMeta } from './packs/meta';
+import type { PackMeta } from './store/packs/meta';
 
 export interface ThemePack extends PackMeta {
   /** `--primary` per mode. The canvas comes from the mode, not the pack;
@@ -45,7 +45,7 @@ export interface ThemePack extends PackMeta {
   readonly seed: Readonly<Record<ThemeMode, string>>;
 }
 
-// The packs — seeds and CSS — live in `mods/packs/theme/`. This file is
+// The packs — seeds and CSS — live in `mods/store/packs/theme/`. This file is
 // the contract: what a pack is, and which tokens its seed answers for.
 
 /** The three tokens an accent block re-points, and therefore the three a
@@ -54,7 +54,7 @@ export interface ThemePack extends PackMeta {
  *  separation, which is a property of all five slots together. */
 export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as const;
 
-// Materials live in `mods/packs/material/`; the contract is `mods/material.ts`.
+// Materials live in `mods/store/packs/material/`; the contract is `mods/material.ts`.
 /** How fast the app moves. A multiplier on every transition — see the
  *  motion tokens in index.css for why the infinite loops are excluded. */
 export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
@@ -125,7 +125,7 @@ export const motionPercent = (m: (typeof MOD_MOTIONS)[number]): number =>
  */
 export interface FontPack extends PackMeta {
 }
-// The faces live in `mods/packs/font/`, one file each.
+// The faces live in `mods/store/packs/font/`, one file each.
 export type ModFont = string;
 
 /**
@@ -229,7 +229,7 @@ export interface Mod extends PackMeta {
   readonly sound?: string;
 }
 
-// The bundles themselves — Cab, Wall — live in `mods/packs/mods/`, one
+// The bundles themselves — Cab, Wall — live in `mods/store/packs/mods/`, one
 // file each. This file says what a mod IS and how each field it carries
 // is placed and installed; it does not know which mods exist.
 

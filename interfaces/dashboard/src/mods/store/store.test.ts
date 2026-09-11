@@ -5,11 +5,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PACK_AXES } from '../packs';
+import { PACK_AXES } from './packs';
 import { STORE, STORE_AXES, PUBLISHER, rowsOf, idsOf, rowById } from './index';
 import { installed, installedIds, isInstalled } from './local';
 
-const PACKS = join(__dirname, '..', 'packs');
+const STORE_DIR = __dirname;
+const PACKS = join(__dirname, 'packs');
 const strip = (text: string) =>
   text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const src = (path: string) => strip(readFileSync(path, 'utf8'));
@@ -86,5 +87,27 @@ describe('local is the door, and it is a leaf', () => {
     const code = src(join(__dirname, 'local.ts'));
     const runtime = [...code.matchAll(/^import\s+(?!type\s)[^;]*from\s+'([^']+)'/gm)].map((m) => m[1]);
     expect(runtime, `local.ts reaches past the catalogue: ${runtime.join(', ')}`).toEqual(['./index']);
+  });
+});
+
+describe('the engine keeps no sources', () => {
+  /** Every file under `mods/`, with the store's own subtree cut out. */
+  const engineFiles = (dir: string): string[] =>
+    readdirSync(dir).flatMap((f) => {
+      const full = join(dir, f);
+      if (full === STORE_DIR) return [];
+      return statSync(full).isDirectory() ? engineFiles(full) : [full];
+    });
+
+  it('no pack lives outside the store', () => {
+    const files = engineFiles(join(__dirname, '..'));
+    expect(files.length, 'the scan found no engine files at all').toBeGreaterThan(20);
+    const stray = files.filter((f) => f.endsWith('.css'));
+    expect(stray, `a pack source sits in the engine: ${stray.join(', ')} — mods/ paints, the store keeps`)
+      .toEqual([]);
+  });
+
+  it('and that scan can fail', () => {
+    expect(['x/mesh.css'].filter((f) => f.endsWith('.css'))).not.toEqual([]);
   });
 });

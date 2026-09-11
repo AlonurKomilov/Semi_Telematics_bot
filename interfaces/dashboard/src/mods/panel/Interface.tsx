@@ -19,9 +19,9 @@ import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
 import { useMods, type Mode, type Accent, type RadiusVariant, type Material } from '../context';
 import { MOD_ICONS, type ModIcons } from '../catalogue';
-import { MATERIAL_PACKS, materialPackById } from '../packs/material';
-import { THEME_PACKS, packById, accentSeed } from '../packs/theme';
-import { FONT_PACKS } from '../packs/font';
+import { MATERIAL_PACKS, materialPackById } from '../store/packs/material';
+import { THEME_PACKS, packById, accentSeed } from '../store/packs/theme';
+import { FONT_PACKS } from '../store/packs/font';
 import { accentTokens } from '../theme/accent';
 import { paletteTokens, CANVAS_SEED } from '../theme/canvas';
 import { derivePalette } from '../theme/palette';
@@ -33,9 +33,9 @@ import { CanvasChip } from './CanvasChip';
 import { SURFACES, surfaceById, selectableSurfaces } from '../surfaces';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
-import { ICON_PACKS, iconPackById, BASE_PACK } from '../packs/icons';
-import { WALLPAPERS, wallpaperById } from '../packs/wallpaper';
-import { CURSOR_PACKS, cursorPackById } from '../packs/cursor';
+import { ICON_PACKS, iconPackById, BASE_PACK } from '../store/packs/icons';
+import { WALLPAPERS, wallpaperById } from '../store/packs/wallpaper';
+import { CURSOR_PACKS, cursorPackById } from '../store/packs/cursor';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -121,7 +121,7 @@ const FONT_PREVIEW: Record<string, string> = {
 const PACK_OPTIONS: { value: IconPack; key: string; label: string }[] =
   // From the packs' own index, never spelled here: two chips written by
   // hand beside a `map` over everything else were a second list, and
-  // `iconLane.test.ts` holds every pack name inside `mods/packs/icons`.
+  // `iconLane.test.ts` holds every pack name inside `mods/store/packs/icons`.
   ICON_PACKS.map((p) => ({
     value: p.id,
     key: `mods.icon_pack_${p.id}`,

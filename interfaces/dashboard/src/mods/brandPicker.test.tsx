@@ -57,7 +57,7 @@ vi.mock('../hooks/useViewPermissions', () => ({
 import { ModControls } from './panel/ModControls';
 import { accentTokens, TONES, ACCENT_BAND } from './theme/accent';
 import { oklchToSrgb, toHex } from './theme/contrast';
-import { THEME_PACKS } from './packs/theme';
+import { THEME_PACKS } from './store/packs/theme';
 
 const BASE = {
   mode: 'dark' as const, accent: 'blue', radius: 'md', material: 'solid',

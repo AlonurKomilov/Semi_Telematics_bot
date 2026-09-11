@@ -1,4 +1,4 @@
-import type { PackMeta } from './packs/meta';
+import type { PackMeta } from './store/packs/meta';
 /**
  * The light the interface sits in.
  *
@@ -60,7 +60,7 @@ export interface ShaderPack extends PackMeta {
  * be a flatter look, it would be a menu you cannot find the edge of.
  * The two departures move the light, they do not put it out.
  */
-// The presets — the numbers and the CSS — live in `mods/packs/shader/`.
+// The presets — the numbers and the CSS — live in `mods/store/packs/shader/`.
 // This file is the contract: what a light is, and the band it may move in.
 
 /**

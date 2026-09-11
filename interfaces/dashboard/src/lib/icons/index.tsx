@@ -24,7 +24,7 @@ import {
   createContext, useContext, useEffect, useState,
   type ComponentType, type ReactNode, type CSSProperties, type MouseEventHandler,
 } from 'react';
-import { BASE_PACK, loadIconPack } from '../../mods/packs/icons';
+import { BASE_PACK, loadIconPack } from '../../mods/store/packs/icons';
 import type { IconName } from './names';
 import type { IconWeightName } from './weight';
 import type { IconPackModule } from './pack';
@@ -34,7 +34,7 @@ export { ICON_WEIGHTS, type IconWeightName } from './weight';
 
 export type { IconPackModule } from './pack';
 
-/** A pack id — one of `ICON_PACK_IDS` in `mods/packs/icons`. A string,
+/** A pack id — one of `ICON_PACK_IDS` in `mods/store/packs/icons`. A string,
  *  like every other pack-backed axis: the packs are a resource this door
  *  consumes by contract, not a list it keeps, and the registry
  *  sanitises a stored id against the packs' own index. */
