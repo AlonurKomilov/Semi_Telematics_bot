@@ -5,7 +5,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 // renders in. Adding or retiring a persona shell never touches this
 // file — the registry is the only place that mapping lives.
 import { pickShell } from './shells';
-import { ModsPage, MODS_PERMISSION } from './mods';
+import { ModsPage, ModsStorePage, MODS_PERMISSION } from './mods';
 import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AssistantHost from './features/ai/AssistantHost';
@@ -330,6 +330,10 @@ export default function AppRouter() {
         {/* Mods — a service: one View row in the matrix. A role without it
             never sees the panel or the doors, and lands here only by URL. */}
         <Route path="mods" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
+        {/* The store sits INSIDE the service, on the same permission:
+            it is the shelf /mods draws from, not a second product. A
+            static segment, so it is matched ahead of `:category`. */}
+        <Route path="mods/store" element={<P perm={MODS_PERMISSION}><ModsStorePage /></P>} />
         <Route path="mods/:category" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
         <Route path="mods/:category/:item" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
         {/* Notifications are a cross-source PERSONAL surface on their own

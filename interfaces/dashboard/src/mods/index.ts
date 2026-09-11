@@ -81,5 +81,6 @@ export { useCue } from './sound/useCue';
 export { THEME_PACKS, packById } from './store/packs/theme';
 export { FONT_PACKS, MOD_FONTS } from './store/packs/font';
 export { MODS, modById } from './store/packs/mods';
+export { ModsStorePage } from './store/StorePage';
 export { MATERIAL_PACKS, MATERIAL_IDS, materialPackById } from './store/packs/material';
 export type { MaterialPack } from './material';

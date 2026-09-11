@@ -25,10 +25,11 @@
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft, LayoutGrid, Palette, Square, Layers, PenLine, Sparkles,
-  Volume2, Bell, Zap, Monitor, Maximize2, Puzzle, type LucideIcon,
+  Volume2, Bell, Zap, Monitor, Maximize2, Puzzle, Store, type LucideIcon,
 } from '../../lib/icons';
 import { PageHeader, SectionHeader } from '../../components/shell';
 import { Card } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import { usePreference, preferences } from '../../preferences';
 import { useMods } from '../context';
@@ -42,7 +43,7 @@ import { MOD_DEFAULT, DEFS } from '../../preferences/registry';
 import {
   TAXONOMY, categoryById, browsableItemsOf, type CategoryId, type TaxonomyItem,
 } from '../taxonomy';
-import { MODS_PAGE_HREF, MODS_HREF } from '../href';
+import { MODS_PAGE_HREF, MODS_HREF, MODS_STORE_HREF } from '../href';
 import {
   itemState, itemSummary, categoryTouched, categoryIntensity, type TileState,
 } from './state';
@@ -126,9 +127,17 @@ function Hub() {
         title="Mods"
         description="How the app looks, moves and sounds — drawn as a map. Only affects what you see."
         actions={
-          <Link to={MODS_HREF} className="text-xs text-muted-foreground hover:text-foreground min-h-tap inline-flex items-center">
-            Flat list on your profile
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to={MODS_HREF} className="text-xs text-muted-foreground hover:text-foreground min-h-tap inline-flex items-center">
+              Flat list on your profile
+            </Link>
+            {/* GX's shape, and the one this page was rebuilt for: the
+                page is what you HAVE, the store is one button away. */}
+            <Button variant="outline" size="sm" render={<Link to={MODS_STORE_HREF} />}>
+              <Store className="size-4" />
+              Browse the store
+            </Button>
+          </div>
         }
       />
 

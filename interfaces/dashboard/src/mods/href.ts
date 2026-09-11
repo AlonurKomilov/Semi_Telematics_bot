@@ -19,3 +19,11 @@ export const MODS_HREF = '/profile#modifications';
  * page is where you see what you HAVE, and the store is a button on it.
  */
 export const MODS_PAGE_HREF = '/mods';
+
+/**
+ * The store — what there IS, next to the page about what you HAVE.
+ * A constant for the same reason the page's own href is one: three
+ * doors already point at /mods, and a fourth pointing one segment
+ * deeper must move with it.
+ */
+export const MODS_STORE_HREF = '/mods/store';
