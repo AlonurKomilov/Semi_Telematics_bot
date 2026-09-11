@@ -180,15 +180,19 @@ KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 EXTENSION_SCOPE: tuple[str, ...] = (
     "can_view_location", "can_location_map", "can_location_vehicle",
     "can_view_inventory", "can_manage_inventory",
-    # A role's FOCUS — which categories it goes red about — and nothing
-    # else from the config family.  `can_manage_config_all` is absent for
-    # the same reason transfer and remove are absent below: it decides
-    # what EVERY truck in the account owes, which is a desk decision with
-    # an account-wide blast radius, and a browser key does not carry it.
-    # The focus is the narrow half: it changes what one role is shown,
-    # never what a truck is short, and it is exactly what somebody
-    # standing at a truck wants to turn down.
+    # The config family, both halves.  The FOCUS is the narrow one — it
+    # changes what one role is shown, never what a truck is short, and it
+    # is exactly what somebody standing at a truck wants to turn down.
     "can_manage_config_role",
+    # …and the account-wide half, on the owner's explicit call after
+    # seeing the two screens side by side: what the dashboard can do here
+    # the panel must be able to do too.  The concern was raised twice and
+    # answered twice, so it is recorded rather than re-argued: a browser
+    # key now rewrites what every vehicle in the account is expected to
+    # carry.  It is still narrower than the dashboard's reach — transfer
+    # and remove stay out of the route list below, because those are how a
+    # LOSS gets tidied away, which is a different kind of harm.
+    "can_manage_config_all",
 )
 #: Where a scoped token may go AT ALL — matched exactly by
 #: deps.get_current_user after the /api and /api/v1 mount prefixes and a
@@ -212,6 +216,7 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     # catalogue is READ-ONLY here — writing it decides what every truck in
     # the account owes, and that flag is deliberately not in the scope.
     "/extension/inventory-config", "/extension/inventory-focus",
+    "/extension/inventory-catalogue",
     "/auth/refresh", "/auth/logout",
 })
 

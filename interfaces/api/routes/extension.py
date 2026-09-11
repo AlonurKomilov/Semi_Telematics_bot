@@ -403,7 +403,7 @@ async def extension_inventory_config(
     everything; narrowed-to-nothing means flagged on nothing, and a role
     must be able to say the second.
     """
-    from features.inventory.expected import EXPECTED_VEHICLE_TYPES
+    from features.inventory.expected import EXPECTED_VEHICLE_TYPES, standard_for
     from infra.platform import get_tenant_db
 
     account_id = int(user["account_id"])
@@ -418,12 +418,58 @@ async def extension_inventory_config(
         "focus": await expected_config.get_role_focus(tenant, account_id, role),
         # Said by the SERVER, so the panel hides a control the server
         # would refuse rather than offering it and answering 403.
-        "can_edit_catalogue": False,
+        "can_edit_catalogue": bool(
+            getattr(await effective_perms(user), "can_manage_config_all", False)
+        ),
+        "standard": {t: standard_for(t) for t in EXPECTED_VEHICLE_TYPES},
     }
 
 
 class _FocusBody(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=100)
+
+
+class _CatalogueRow(BaseModel):
+    category: str = Field(..., min_length=1, max_length=40)
+    label: str = Field("", max_length=120)
+    quantity: int = Field(1, ge=1, le=99)
+    required: bool = True
+
+
+class _CatalogueBody(BaseModel):
+    vehicle_type: str = "truck"
+    items: list[_CatalogueRow] = Field(default_factory=list, max_length=100)
+
+
+@router.put("/inventory-catalogue")
+async def extension_inventory_catalogue(
+    body: _CatalogueBody,
+    user: dict = Depends(require_permission("can_manage_config_all")),
+):
+    """Rewrite one vehicle type's catalogue, from the panel.
+
+    The owner's call, made after putting the two screens side by side:
+    what the dashboard can do, this must be able to do.  It is the same
+    act behind the same flag — `can_manage_config_all` — and the same
+    replace-not-merge rule, because the editor sends the list it is
+    looking at and a merge leaves no way to say "this row is gone".
+    """
+    from features.inventory.expected import EXPECTED_VEHICLE_TYPES
+    from infra.platform import get_tenant_db
+
+    if body.vehicle_type not in EXPECTED_VEHICLE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"vehicle_type must be one of {', '.join(EXPECTED_VEHICLE_TYPES)}",
+        )
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    catalogue = await expected_config.get_catalogue(tenant, account_id)
+    catalogue[body.vehicle_type] = [row.model_dump() for row in body.items]
+    saved = await expected_config.save_catalogue(tenant, account_id, catalogue)
+    return {"ok": True, "vehicle_type": body.vehicle_type, "catalogue": saved}
 
 
 @router.put("/inventory-focus")

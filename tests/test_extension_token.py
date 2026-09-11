@@ -121,11 +121,12 @@ async def test_the_panel_may_aim_its_own_attention_but_not_redefine_the_fleet(pg
         authorization=f"Bearer {scoped}", auth_token=None)
 
     assert await deps.require_permission("can_manage_config_role")(user=dict(user))
+    # A FLEET MANAGER holds the own-role half and not the account-wide one,
+    # so the catalogue is still refused for them — the two scopes stay two
+    # scopes even now that both are in the token's scope list.
     with pytest.raises(HTTPException) as e:
         await deps.require_permission("can_manage_config_all")(user=dict(user))
-    assert e.value.status_code == 403, (
-        "a browser key must not be able to rewrite what every truck owes"
-    )
+    assert e.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -163,10 +164,13 @@ async def test_an_owner_aims_focus_from_the_dashboard_not_from_the_panel(pg_db, 
 
     with pytest.raises(HTTPException):
         await deps.require_permission("can_manage_config_role")(user=dict(user))
-    # …and the sweeping flag is refused too, so the panel is narrow for an
-    # owner in both directions.
-    with pytest.raises(HTTPException):
-        await deps.require_permission("can_manage_config_all")(user=dict(user))
+    # …but the ACCOUNT-wide half now passes.  That changed on the owner's
+    # explicit call, after putting the panel and the dashboard side by
+    # side: what one screen can do the other must, or a person learns the
+    # feature twice.  The concern — a browser key rewriting what every
+    # vehicle in the account owes — was raised twice and answered twice,
+    # so it is recorded here rather than re-argued.
+    assert await deps.require_permission("can_manage_config_all")(user=dict(user))
 
 
 def test_the_two_config_routes_are_reachable_and_nothing_else_opened():
@@ -175,8 +179,13 @@ def test_the_two_config_routes_are_reachable_and_nothing_else_opened():
     from interfaces.api.auth import EXTENSION_ROUTES
     assert "/extension/inventory-config" in EXTENSION_ROUTES
     assert "/extension/inventory-focus" in EXTENSION_ROUTES
-    # The account-wide writes stay unreachable from a browser, whatever a
-    # future edit does to the scope above.
+    assert "/extension/inventory-catalogue" in EXTENSION_ROUTES
+    # What stays shut, and is the line that did NOT move: transfer and
+    # remove are how a LOSS gets tidied away — "it is on truck 5 now", "it
+    # was retired" — which is a different kind of harm from rewriting a
+    # list, and no scope widening reaches them.  The dashboard's own
+    # config URL stays out too: a browser key knocks on the panel's
+    # routes, never on the dashboard's.
     for never in ("/inventory/expected", "/extension/inventory-transfer",
                   "/extension/inventory-remove"):
         assert never not in EXTENSION_ROUTES, never

@@ -36,6 +36,9 @@ interface CatalogueRow {
 
 interface ConfigResponse {
   catalogue: Record<string, CatalogueRow[]>;
+  /** The shipped default, so "start from the standard list" needs no
+   *  second round trip — the same shape the dashboard is handed. */
+  standard: Record<string, CatalogueRow[]>;
   vehicle_types: string[];
   role: string;
   /** `null` means this role has never narrowed — flagged on everything.
@@ -53,6 +56,12 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
   /** Which type's list is shown.  The focus above spans both, because a
    *  role turns a CATEGORY down, not a category-on-a-trailer. */
   const [type, setType] = useState('truck');
+  /** The catalogue being edited, or null while it follows the server.
+   *  Reset when the type changes: an edit to trucks must not follow the
+   *  reader over to trailers. */
+  const [draft, setDraft] = useState<CatalogueRow[] | null>(null);
+  const [savingRows, setSavingRows] = useState(false);
+  useEffect(() => { setDraft(null); }, [type]);
 
   useEffect(() => {
     let stopped = false;
@@ -84,6 +93,26 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
   // The server says whether the flag is held; the panel does not guess
   // from a role name.
   const mayAim = abilities.includes('config.role');
+  // The catalogue half.  The SERVER answers it — the panel hides a
+  // control the server would refuse rather than offering it and
+  // collecting a 403 on the press.
+  const mayEdit = data.can_edit_catalogue;
+  const rows = draft ?? data.catalogue[type] ?? [];
+  const rowsDirty = draft !== null;
+
+  const editRow = (n: number, patch: Partial<CatalogueRow>) =>
+    setDraft(rows.map((r, x) => (x === n ? { ...r, ...patch } : r)));
+
+  const saveRows = () => {
+    setSavingRows(true); setError('');
+    void apiJSON<{ catalogue: Record<string, CatalogueRow[]> }>(
+      '/extension/inventory-catalogue',
+      { method: 'PUT', body: { vehicle_type: type, items: rows } },
+    )
+      .then((r) => { setData({ ...data, catalogue: r.catalogue }); setDraft(null); })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not save the list'))
+      .finally(() => setSavingRows(false));
+  };
   const dirty = JSON.stringify(ticked) !== JSON.stringify(data.focus ?? all);
 
   const toggle = (c: string) => {
@@ -191,26 +220,85 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
       {[type].map((t) => (
         <section key={t} style={{ display: 'grid', gap: 8 }}>
           <span className="muted eyebrow">Expected on every {t}</span>
-          {(data.catalogue[t] ?? []).length === 0 ? (
-            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              Nothing is expected, so no {t} is ever reported short.
-            </p>
+          {/* The same act the dashboard does, behind the same flag.  Kept
+              read-only for a while and then opened on the owner's call:
+              what one screen can do the other must, or a person learns
+              the feature twice. */}
+          {rows.length === 0 ? (
+            <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                Nothing is expected, so no {t} is ever reported short.
+              </p>
+              {mayEdit && (
+                <button className="btn primary"
+                        onClick={() => setDraft((data.standard[t] ?? []).map((r) => ({ ...r })))}>
+                  Start from the standard list
+                </button>
+              )}
+            </div>
           ) : (
-            <div style={{ display: 'grid', gap: 2 }}>
-              {(data.catalogue[t] ?? []).map((r) => (
-                <div key={r.category} className="row" style={{ gap: 6, minHeight: 24, fontSize: 12 }}>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={r.label || humanize(r.category)}>
-                    {r.label || humanize(r.category)}
-                  </span>
-                  {r.quantity > 1 && <span className="muted" style={{ flexShrink: 0 }}>×{r.quantity}</span>}
-                  {!r.required && (
-                    <span className="muted" style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11 }}>
-                      optional
-                    </span>
+            <div style={{ display: 'grid', gap: 4 }}>
+              {rows.map((r, n) => (
+                <div key={`${r.category}-${n}`} className="row"
+                     style={{ gap: 6, minHeight: 24, fontSize: 12, flexWrap: 'wrap' }}>
+                  {mayEdit ? (
+                    <>
+                      <input className="input" aria-label="Category" value={r.category}
+                             placeholder="camera, eld, fuel_card…"
+                             style={{ flex: '1 1 7rem', minWidth: 0 }}
+                             onChange={(e) => editRow(n, { category: e.target.value })} />
+                      <input className="input" aria-label="How many" type="number" min={1} max={99}
+                             value={r.quantity} style={{ width: 56, flexShrink: 0 }}
+                             onChange={(e) => editRow(n, { quantity: Math.max(1, Number(e.target.value) || 1) })} />
+                      <label className="row" style={{ gap: 4, flexShrink: 0, fontSize: 11 }}>
+                        <input type="checkbox" checked={r.required}
+                               style={{ width: 16, height: 16 }}
+                               onChange={(e) => editRow(n, { required: e.target.checked })} />
+                        Required
+                      </label>
+                      <button className="btn compact" style={{ flexShrink: 0 }}
+                              title={`Remove ${r.label || r.category}`}
+                              aria-label={`Remove ${r.label || r.category}`}
+                              onClick={() => setDraft(rows.filter((_, x) => x !== n))}>×</button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            title={r.label || humanize(r.category)}>
+                        {r.label || humanize(r.category)}
+                      </span>
+                      {r.quantity > 1 && <span className="muted" style={{ flexShrink: 0 }}>×{r.quantity}</span>}
+                      {!r.required && (
+                        <span className="muted" style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11 }}>
+                          optional
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
+            </div>
+          )}
+          {mayEdit && rows.length > 0 && (
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <button className="btn compact"
+                      onClick={() => setDraft([...rows, { category: '', label: '', quantity: 1, required: true }])}>
+                Add a row
+              </button>
+              <button className="btn compact"
+                      onClick={() => setDraft((data.standard[t] ?? []).map((r) => ({ ...r })))}>
+                Reset to standard
+              </button>
+            </div>
+          )}
+          {mayEdit && rowsDirty && (
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn primary" disabled={savingRows || rows.some((r) => !r.category.trim())}
+                      title={rows.some((r) => !r.category.trim())
+                        ? 'Every row needs a category' : 'Save this list'}
+                      onClick={saveRows}>{savingRows ? 'Saving…' : 'Save'}</button>
+              <button className="btn compact" disabled={savingRows}
+                      onClick={() => setDraft(null)}>Discard</button>
             </div>
           )}
         </section>
