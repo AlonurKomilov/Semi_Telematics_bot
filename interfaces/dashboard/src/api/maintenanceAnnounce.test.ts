@@ -27,13 +27,13 @@ describe('what reaches the maintenance channel', () => {
 
   it('announces a gateway failure as an update', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 502 })));
-    await apiFetch('/thing').catch(() => {});
+    await apiFetch('/thing').catch(() => { /* the rejection is the point; the test listens for what was announced */ });
     expect(ear.seen).toEqual(['updating']);
   });
 
   it('announces a dead connection as unreachable, not as an update', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-    await apiFetch('/thing').catch(() => {});
+    await apiFetch('/thing').catch(() => { /* the rejection is the point; the test listens for what was announced */ });
     expect(ear.seen).toEqual(['unreachable']);
   });
 
@@ -41,13 +41,13 @@ describe('what reaches the maintenance channel', () => {
     // The dangerous one: React Query does this on every unmount.
     const abort = new DOMException('The operation was aborted.', 'AbortError');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
-    await apiFetch('/thing').catch(() => {});
+    await apiFetch('/thing').catch(() => { /* the rejection is the point; the test listens for what was announced */ });
     expect(ear.seen, 'an abort must never put an outage card over a healthy app').toEqual([]);
   });
 
   it('says nothing about an ordinary application error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 403 })));
-    await apiFetch('/thing').catch(() => {});
+    await apiFetch('/thing').catch(() => { /* the rejection is the point; the test listens for what was announced */ });
     expect(ear.seen).toEqual([]);
   });
 });
