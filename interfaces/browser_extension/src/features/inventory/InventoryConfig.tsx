@@ -98,6 +98,28 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
       .finally(() => setSaving(false));
   };
 
+  // Nothing declared ANYWHERE is one fact, and it was being reported four
+  // times: once by the focus section, once by the line explaining that the
+  // focus cannot be aimed, and once per vehicle type.  A screen of four
+  // refusals reads as a broken feature rather than an unconfigured one.
+  if (all.length === 0) {
+    return (
+      <div style={{ padding: 12, display: 'grid', gap: 8 }}>
+        <span className="muted eyebrow">Inventory configuration</span>
+        <p style={{ margin: 0, fontSize: 12 }}>
+          No vehicle is expected to carry anything yet, so nothing is ever
+          reported short.
+        </p>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          The list is written on 4truck — it decides what every vehicle in the
+          account owes, which is not a decision this panel makes. Once it
+          exists, this is where you turn down the parts of it your role does
+          not need to see.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: 12, display: 'grid', gap: 14 }}>
       <section style={{ display: 'grid', gap: 8 }}>
@@ -107,22 +129,17 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
           turns red on <strong>your</strong> screens. A truck still owes what it
           owes, and the roles that kept a category still see it.
         </p>
-        {all.length === 0 ? (
-          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-            Nothing is expected on any vehicle yet, so there is nothing to
-            turn down.
-          </p>
-        ) : (
-          <div style={{ display: 'grid', gap: 4 }}>
-            {all.map((c) => (
+        {/* `all` is non-empty here: the whole surface returns early when the
+            account has declared nothing, so this branch cannot be reached. */}
+        <div style={{ display: 'grid', gap: 4 }}>
+          {all.map((c) => (
               <label key={c} className="row" style={{ gap: 6, minHeight: 24, cursor: mayAim ? 'pointer' : 'default' }}>
                 <input type="checkbox" checked={ticked.includes(c)} disabled={!mayAim}
                        onChange={() => toggle(c)} style={{ width: 16, height: 16, flexShrink: 0 }} />
                 <span style={{ fontSize: 12 }}>{humanize(c)}</span>
               </label>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
         {mayAim ? (
           dirty && (
             <div className="row" style={{ gap: 6 }}>

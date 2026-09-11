@@ -177,12 +177,22 @@ export default function ExpectedEditor() {
       ) : (
         <ul className="divide-y rounded-lg border">
           {rows.map((r, i) => (
-            <li key={`${r.category}-${i}`} className="flex items-center gap-3 p-2.5">
-              {/* The stable key, so it gets the example.  A blank row with
-                  no placeholder asks for a value without saying what kind. */}
+            <li key={`${r.category}-${i}`} className="flex flex-wrap items-center gap-3 p-2.5">
+                {/* The row WRAPS, and both text fields carry a floor.
+                    It was one non-wrapping row of four fixed widths plus
+                    a `flex-1 min-w-0` label.  192 + 80 + the Required
+                    pair + the bin is ~400px that never gives, so in a
+                    narrow window the one field that COULD give gave all
+                    of it: the label collapsed to nothing and the dialog
+                    scrolled sideways to reach the bin.  The field
+                    somebody is typing in must not be the one that
+                    vanishes.
+
+                    The stable key gets the example: a blank row with no
+                    placeholder asks for a value without saying what kind. */}
               <Input
                 aria-label="Category"
-                className="w-48"
+                className="flex-1 min-w-35 basis-40"
                 placeholder="camera, eld, fuel_card…"
                 value={r.category}
                 disabled={!mayEditCatalogue}
@@ -190,7 +200,7 @@ export default function ExpectedEditor() {
               />
               <Input
                 aria-label="What to call it"
-                className="flex-1 min-w-0"
+                className="flex-1 min-w-35 basis-40"
                 placeholder={categoryMeta(r.category).label || 'What to call it'}
                 value={r.label}
                 disabled={!mayEditCatalogue}
@@ -201,7 +211,7 @@ export default function ExpectedEditor() {
                 type="number"
                 min={1}
                 max={99}
-                className="w-20"
+                className="w-20 shrink-0"
                 value={r.quantity}
                 disabled={!mayEditCatalogue}
                 onChange={(e) => edit(i, { quantity: Math.max(1, Number(e.target.value) || 1) })}
@@ -210,7 +220,7 @@ export default function ExpectedEditor() {
                   to carry and normal not to; flagging every truck without
                   one teaches people to ignore the flag, which costs more
                   than the flag is worth. */}
-              <label className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap">
+              <label className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap">
                 <Checkbox
                   checked={r.required}
                   disabled={!mayEditCatalogue}
@@ -222,6 +232,7 @@ export default function ExpectedEditor() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                    className="shrink-0"
                   aria-label={`Remove ${r.label || r.category}`}
                   onClick={() => setDraft(rows.filter((_, n) => n !== i))}
                 >
@@ -247,13 +258,19 @@ export default function ExpectedEditor() {
           >
             <Plus /> Add a row
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDraft((data?.standard?.[type] ?? []).map((r) => ({ ...r })))}
-          >
-            <RotateCcw /> Reset to standard
-          </Button>
+          {/* Only once there IS something to reset FROM.  On an empty
+              template this said exactly what the empty state's own button
+              said, one line below it — two controls, one act, and the
+              reader has to work out that they are the same. */}
+          {rows.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDraft((data?.standard?.[type] ?? []).map((r) => ({ ...r })))}
+            >
+              <RotateCcw /> Reset to standard
+            </Button>
+          )}
           <div className="flex-1" />
           {dirty && (
             <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
