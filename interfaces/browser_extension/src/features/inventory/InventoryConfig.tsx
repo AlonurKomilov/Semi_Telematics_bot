@@ -245,12 +245,29 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
                     <>
                       <input className="input" aria-label="Category" value={r.category}
                              placeholder="camera, eld, fuel_card…"
-                             style={{ flex: '1 1 7rem', minWidth: 0 }}
+                             // No `minWidth: 0`: it would let the one
+                             // shrinkable field give everything while the
+                             // fixed ones hold, which is exactly what
+                             // collapsed the dashboard's label field.  The
+                             // basis is a real floor and the row wraps.
+                             style={{ flex: '1 1 7rem' }}
                              onChange={(e) => editRow(n, { category: e.target.value })} />
+                      {/* The reader's name for the row.  The dashboard has
+                          had this field since the start; the panel shipped
+                          without it, so a row created here had no label and
+                          fell back to the category key. */}
+                      <input className="input" aria-label="What to call it" value={r.label}
+                             placeholder={humanize(r.category) || 'What to call it'}
+                             style={{ flex: '1 1 7rem' }}
+                             onChange={(e) => editRow(n, { label: e.target.value })} />
                       <input className="input" aria-label="How many" type="number" min={1} max={99}
                              value={r.quantity} style={{ width: 56, flexShrink: 0 }}
                              onChange={(e) => editRow(n, { quantity: Math.max(1, Number(e.target.value) || 1) })} />
-                      <label className="row" style={{ gap: 4, flexShrink: 0, fontSize: 11 }}>
+                      {/* minHeight on the LABEL, which is the target: the
+                          box inside it is 16px and a 16px target is under
+                          the floor.  The focus list above already does
+                          this; this row was the one that forgot. */}
+                      <label className="row" style={{ gap: 4, flexShrink: 0, fontSize: 11, minHeight: 24 }}>
                         <input type="checkbox" checked={r.required}
                                style={{ width: 16, height: 16 }}
                                onChange={(e) => editRow(n, { required: e.target.checked })} />
