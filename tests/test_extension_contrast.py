@@ -1,0 +1,97 @@
+"""The panel's colours, measured rather than eyeballed.
+
+Two of this file's numbers were wrong when a human wrote them down: a
+comment claimed an edge token was 3.1:1 when it was 2.22:1, and white on
+the primary fill was assumed to be fine at 3.68:1.  Contrast is
+arithmetic, so it belongs in a test and not in a sentence.
+
+The pairs are declared, because no parser can tell from a stylesheet
+which colour ends up on which ground — but every RATIO here is computed
+from the tokens as they are in `index.css` right now, so changing a
+token changes the verdict.
+"""
+from __future__ import annotations
+
+import re
+
+import pytest
+
+from tests._repo import REPO
+
+CSS = REPO / "interfaces/browser_extension/src/index.css"
+
+# WCAG 2.2
+AA_TEXT = 4.5          # 1.4.3, text under 18.66px / bold 24px
+AA_NON_TEXT = 3.0      # 1.4.11, anything that identifies a control
+
+
+def _tokens() -> dict[str, str]:
+    css = CSS.read_text(encoding="utf-8")
+    root = css[css.index(":root {"):css.index("}", css.index(":root {"))]
+    # Comments in this block quote ratios like "3.1:1" — strip them, or a
+    # hex inside prose would be read as a declaration.
+    root = re.sub(r"/\*.*?\*/", "", root, flags=re.S)
+    return dict(re.findall(r"--([\w-]+)\s*:\s*(#[0-9a-fA-F]{6})", root))
+
+
+def _lum(hex_colour: str) -> float:
+    def channel(c: int) -> float:
+        s = c / 255
+        return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast(a: str, b: str) -> float:
+    la, lb = _lum(a), _lum(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _c(name: str) -> str:
+    """A token by name, or a literal hex passed straight through."""
+    return name if name.startswith("#") else _tokens()[name]
+
+
+# (foreground, background, floor, what wears it)
+PAIRS = [
+    ("fg",      "bg",   AA_TEXT, "body text"),
+    ("fg",      "card", AA_TEXT, "text on a card"),
+    ("muted",   "bg",   AA_TEXT, "captions, at 11px and 12px — never large text"),
+    ("muted",   "card", AA_TEXT, "row captions"),
+    ("primary", "card", AA_TEXT, ".link, which is TEXT and nothing else"),
+    ("danger",  "card", AA_TEXT, "error lines"),
+    ("warn",    "card", AA_TEXT, "the stale-position line"),
+    ("ok",      "card", AA_TEXT, "settled counts"),
+    ("#ffffff", "primary-fill", AA_TEXT, ".btn.primary 13px, .chip.on and .avatar 12px"),
+    ("#ffffff", "#2f6fd0",      AA_TEXT, "the same three on hover — the half nobody checks"),
+    ("edge",         "card", AA_NON_TEXT, "a control's own edge, 1.4.11"),
+    ("edge",         "bg",   AA_NON_TEXT, "a control's own edge, 1.4.11"),
+    ("primary-fill", "card", AA_NON_TEXT, "the filled button's boundary against the card"),
+    ("primary-fill", "bg",   AA_NON_TEXT, "the filled button's boundary against the panel"),
+]
+
+
+@pytest.mark.parametrize("fg,bg,floor,worn_by", PAIRS,
+                         ids=[f"{a}-on-{b}" for a, b, _, _ in PAIRS])
+def test_pair_clears_its_floor(fg: str, bg: str, floor: float, worn_by: str) -> None:
+    got = contrast(_c(fg), _c(bg))
+    assert got >= floor, (
+        f"{fg} on {bg} is {got:.2f}:1, below {floor} — worn by {worn_by}"
+    )
+
+
+def test_the_separator_stays_a_separator() -> None:
+    """--border is deliberately below every floor, and must not be reached for.
+
+    It divides rows, where a whisper is correct.  The bug this records is
+    the opposite of a contrast failure: --border was being used as the
+    EDGE of controls, which is what --edge exists for.
+    """
+    t = _tokens()
+    assert contrast(t["border"], t["card"]) < AA_NON_TEXT
+    css = CSS.read_text(encoding="utf-8")
+    for rule in (".btn {", ".input {", ".chip {"):
+        body = css[css.index(rule):css.index("}", css.index(rule))]
+        assert "var(--edge)" in body, f"{rule} must take its edge from --edge"
+        assert "border:1px solid var(--border)" not in body
