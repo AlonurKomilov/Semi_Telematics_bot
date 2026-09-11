@@ -8,6 +8,7 @@ from features.vehicles.warehouse.service import (
 )
 from features.vehicles.service import get_vehicle_detail as _svc_detail
 from features.vehicles.resolve import resolve_for_tool, company_for, row_company
+from features.vehicles.severity import classify_is_critical
 
 
 @register_tool({
@@ -73,10 +74,36 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
             and (not co or row_company(v) == co)
         ]
         if not matches:
+            # "Not in the faulted list" is not the same as "clean".  The
+            # faulted list only carries vehicles with a non-empty DTC
+            # array, so a truck whose STOP lamp is on with no stored DTC
+            # fell through here and was reported clean — with
+            # check_engine_lights: {} — which is the single worst answer
+            # this tool can give.  The detail payload fetched above
+            # already holds the lamps; read them instead of asserting.
+            from features.vehicles.severity import lamps_are_critical
+            j1939 = (detail.get("fault_codes") or {}).get("j1939") or {}
+            lights = j1939.get("checkEngineLights") or {}
+            if lamps_are_critical(lights) or any(lights.values()):
+                return {
+                    "vehicle": detail.get("name") or vehicle,
+                    "fault_count": 0,
+                    "faults": [],
+                    "check_engine_lights": lights,
+                    "critical": classify_is_critical(detail),
+                    "status": (
+                        "A warning lamp is on, but no diagnostic trouble "
+                        "code is stored against it. Treat this as an "
+                        "active fault: the lamp is the truck's own "
+                        "report. A shop scan tool will read the code."
+                    ),
+                }
             return {
-                "vehicle": vehicle, "fault_count": 0, "faults": [],
-                "check_engine_lights": {},
-                "status": "No active fault codes detected \u2014 vehicle is clean.",
+                "vehicle": detail.get("name") or vehicle,
+                "fault_count": 0, "faults": [],
+                "check_engine_lights": lights,
+                "critical": False,
+                "status": "No active fault codes and no warning lamps on.",
             }
         v = matches[0]
         return {
@@ -92,6 +119,7 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
                 for d in v.get("_dtcs", [])[:10]
             ],
             "check_engine_lights": v.get("_lights", {}),
+            "critical": classify_is_critical(v),
         }
 
     if critical_only:

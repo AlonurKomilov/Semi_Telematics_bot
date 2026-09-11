@@ -72,9 +72,33 @@ async def get_parked_vehicles(tool_args: dict, samsara_client,
     # own vehicles.  None = unrestricted; empty set = none (fail-closed).
     scope_set = scope_vehicle_set(tool_args)
 
-    events = await db.get_active_parking_events(
-        account_id, attention_only=not include_safe,
-    )
+    # Read through the feature's own contract, not the ACTIVE-only
+    # adapter.  The tracker resolves a stop once the truck moves, so the
+    # unresolved table only ever holds short stays — in production its
+    # longest was 65 hours, under three days — while 5,189 resolved
+    # events reached thirteen. The description tells the model to pass
+    # 7 and 10, and promises "this tool has the history"; against the
+    # active table those questions could only ever answer zero, and zero
+    # reads as "no truck has been sitting".
+    #
+    # `days` bounds the history window: a stop cannot be longer than the
+    # window it is read from, so it has to cover what was asked for.
+    #
+    # Composed from the two adapter reads on the INJECTED db rather than
+    # through features.parking.service.get_events, which resolves its
+    # own tenant handle from the global singleton.  The dispatcher hands
+    # this tool a db precisely so it uses that one; reaching past it is
+    # how a tool ends up reading a connection nobody scoped.
+    window = max(int(min_days) + 1, 30)
+    active = await db.get_active_parking_events(account_id, attention_only=False)
+    active_ids = {ev.get("id") for ev in active}
+    history = await db.get_parking_history(account_id, days=window, limit=500)
+    events = list(active) + list(history)
+    for ev in events:
+        ev["_still_parked"] = ev.get("id") in active_ids
+    if not include_safe:
+        from features.parking.service import needs_attention
+        events = [ev for ev in events if needs_attention(ev)]
 
     min_hours = min_days * 24.0
     filtered: list[dict] = []
@@ -94,7 +118,13 @@ async def get_parked_vehicles(tool_args: dict, samsara_client,
         "min_days": min_days,
         "include_safe": include_safe,
         "company_filter": company or None,
+        # The window actually searched, so the model can say "in the last
+        # N days" instead of implying it looked at all of history.
+        "window_days": window,
         "count": len(filtered),
+        "still_parked_now": sum(
+            1 for ev in filtered if ev.get("_still_parked")
+        ),
         "vehicles": [
             {
                 "vehicle": ev.get("vehicle_name", "?"),
@@ -106,6 +136,9 @@ async def get_parked_vehicles(tool_args: dict, samsara_client,
                 "duration_days": round(float(ev.get("duration_hours") or 0) / 24.0, 1),
                 "location_class": ev.get("location_class", "unknown"),
                 "first_seen": ev.get("first_seen") or ev.get("created_at", ""),
+                # A stop that has ended is still the answer to "what
+                # truck sat for ten days" — say which ones are over.
+                "still_parked": bool(ev.get("_still_parked")),
             }
             for ev in filtered[:25]
         ],

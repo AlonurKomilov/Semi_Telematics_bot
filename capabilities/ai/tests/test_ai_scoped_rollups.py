@@ -23,17 +23,34 @@ from capabilities.ai.tools.registry import execute_tool
 
 
 class _FakeParkingDB:
-    def __init__(self, events):
+    """Both reads the tool composes.
+
+    ``get_parked_vehicles`` used to read ACTIVE stops only, which the
+    tracker resolves as soon as a truck moves — so "which trucks sat for
+    a week", the question its own description tells the model to ask,
+    could only ever answer zero.  It reads the history too now, so the
+    double carries both adapter methods.
+    """
+
+    def __init__(self, events, history=None):
         self._events = events
+        self._history = history or []
 
     async def get_active_parking_events(self, account_id, attention_only=True):
         return list(self._events)
 
+    async def get_parking_history(self, account_id, days=0, limit=50):
+        return list(self._history)
+
 
 def _events():
+    # ``location_class`` is load-bearing: 'safe' and geofenced stops are
+    # the depot idle the tool excludes by default.
     return [
-        {"vehicle_name": "B-1", "company_code": "B", "duration_hours": 48},
-        {"vehicle_name": "A-3", "company_code": "A", "duration_hours": 72},
+        {"id": 1, "vehicle_name": "B-1", "company_code": "B",
+         "duration_hours": 48, "location_class": "unsafe"},
+        {"id": 2, "vehicle_name": "A-3", "company_code": "A",
+         "duration_hours": 72, "location_class": "unsafe"},
     ]
 
 

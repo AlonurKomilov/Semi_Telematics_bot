@@ -9,24 +9,54 @@ warehouse ingestor, and the bot commands.
 from __future__ import annotations
 
 
+def lamps_are_critical(lights: dict | None) -> bool:
+    """Return True when a check-engine-lamp payload means CRITICAL.
+
+    Two shapes reach this code and they do not share a key.  The live
+    Samsara payload names the individual lamps
+    (``stopIsOn`` / ``protectIsOn`` / ``emissionsIsOn``).  The warehouse
+    reader only knows a COUNT of critical DTCs, so it synthesises
+    ``{"red": True}`` — red being the stop lamp's colour.  Readers that
+    checked only the first spelling reported every warehouse-served
+    fleet as having zero critical faults, which on a safety question is
+    the worst direction to be wrong in.
+    """
+    lights = lights or {}
+    return bool(
+        lights.get("stopIsOn")
+        or lights.get("protectIsOn")
+        or lights.get("emissionsIsOn")
+        or lights.get("red")
+    )
+
+
 def classify_is_critical(vehicle: dict) -> bool:
     """Return True when a vehicle's active faults qualify as CRITICAL.
 
     Critical conditions:
-    * STOP warning light is on
+    * STOP warning light is on (either spelling — see lamps_are_critical)
     * PROTECT warning light is on
     * EMISSIONS warning light is on
     * Any active DTC has 'most severe' in its FMI description
+
+    Accepts a vehicle carrying ``_lights`` (the faulted-vehicle shape)
+    or a raw ``fault_codes.j1939.checkEngineLights`` payload, so a
+    caller holding either does not have to reshape first.
     """
-    lights = vehicle.get("_lights", {})
-    if (
-        lights.get("stopIsOn", False)
-        or lights.get("protectIsOn", False)
-        or lights.get("emissionsIsOn", False)
-    ):
+    lights = vehicle.get("_lights")
+    if lights is None:
+        lights = (
+            (vehicle.get("fault_codes") or {}).get("j1939") or {}
+        ).get("checkEngineLights") or {}
+    if lamps_are_critical(lights):
         return True
-    for dtc in vehicle.get("_dtcs", []):
-        if "most severe" in dtc.get("fmiDescription", "").lower():
+    dtcs = vehicle.get("_dtcs")
+    if dtcs is None:
+        dtcs = (
+            (vehicle.get("fault_codes") or {}).get("j1939") or {}
+        ).get("diagnosticTroubleCodes") or []
+    for dtc in dtcs:
+        if "most severe" in (dtc or {}).get("fmiDescription", "").lower():
             return True
     return False
 

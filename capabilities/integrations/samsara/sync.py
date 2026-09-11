@@ -860,8 +860,23 @@ async def ingest_vehicle_faults(account_id: int) -> int:
         logger.exception("ingest_vehicle_faults: get_vehicles_with_faults failed acct=%d", account_id)
         return 0
 
-    # _severity is stamped on each vehicle by get_vehicles_with_faults()
-    critical_ids = {v.get("id") or "" for v in faulted if v.get("_severity") == "critical"}
+    # Classify HERE.  The comment this replaces said "_severity is
+    # stamped on each vehicle by get_vehicles_with_faults()" — the
+    # SERVICE wrapper does that, but this ingest calls the CLIENT
+    # directly, and the client only stamps ``_lights`` and ``_dtcs``.
+    # So the set comprehension matched nothing, every row was written
+    # has_critical=0, and the whole critical tier disappeared from the
+    # product: `get_vehicle_faults(critical_only=true)` answered "no
+    # vehicles have critical warning lights" for a fleet that had them,
+    # which is the worst possible direction for a safety question to be
+    # wrong in. Production carried 33 fault rows and not one critical.
+    #
+    # ``classify_is_critical`` is the documented single source of truth
+    # and reads exactly the ``_lights``/``_dtcs`` the client provides.
+    from features.vehicles.severity import classify_is_critical
+    critical_ids = {
+        v.get("id") or "" for v in faulted if classify_is_critical(v)
+    }
     rows = [_faulted_to_snapshot_row(v) for v in faulted]
     n = await tenant.upsert_vehicle_fault_live(account_id, rows, critical_ids)
 
