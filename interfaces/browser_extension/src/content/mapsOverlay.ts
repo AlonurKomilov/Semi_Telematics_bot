@@ -444,8 +444,13 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
     +   `<strong style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">${esc(v.name || v.id)}`
     +     (v.company ? `<span style="font-weight:400;opacity:.6"> · ${esc(v.company)}</span>` : '')
     +   '</strong>'
-    +   '<button data-close aria-label="Close" style="all:unset;cursor:pointer;padding:2px 4px;line-height:1;'
-    +     'color:rgba(255,255,255,.55);font-size:14px">\u00d7</button>'
+    // A 24x24 target for a 9px glyph, bought from the margin so the header
+    // row stays the height it was: padding plus glyph measured 17x18, and
+    // -3/-4 gives exactly that back.  Closing the card is the most pressed
+    // thing on it after the truck itself.
+    +   '<button data-close aria-label="Close" style="all:unset;cursor:pointer;box-sizing:border-box;'
+    +     'display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;'
+    +     'margin:-3px -4px;line-height:1;color:rgba(255,255,255,.55);font-size:14px">\u00d7</button>'
     + '</div>'
     + '<div style="font-size:11px;margin-bottom:6px">'
     +   `<span style="font-weight:600;text-transform:capitalize">${esc(v.status)}</span>`
@@ -501,7 +506,11 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
     // Fuel, DEF, the address, the faults: all one button away, in the
     // panel, which is where they live — see bridge.ts on what does not
     // cross into a page we do not own.
-    + '<button data-panel style="all:unset;box-sizing:border-box;display:block;width:100%;text-align:center;'
+    // min-height, because 6 + 11 + 6 is 23 and the floor is 24.  A button
+    // one pixel short is not a different button, it is the same one
+    // failing 2.5.8 for no reason anybody chose.
+    + '<button data-panel style="all:unset;box-sizing:border-box;display:flex;align-items:center;'
+    +   'justify-content:center;width:100%;min-height:24px;text-align:center;'
     +   'cursor:pointer;margin-top:2px;padding:6px 8px;border-radius:6px;background:#2563eb;color:#fff;'
     +   `font:600 11px/1 system-ui,sans-serif">${esc(panelButtonLabel())}</button>`;
 }
