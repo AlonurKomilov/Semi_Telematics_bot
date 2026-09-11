@@ -16,6 +16,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
+import EmptyState, { NO_VEHICLES_YET } from '../../shell/EmptyState';
 import Field from './Field';
 import { vehicleLine } from '../../vehicleLabel';
 import Splitter from '../../shell/Splitter';
@@ -535,11 +536,12 @@ useEffect(() => {
         <input className="input" placeholder="Search vehicles…" value={search}
                onChange={(e) => setSearch(e.target.value)} />
         {/* The one number worth reading before anything is chosen. */}
-        {/* Suppressed entirely when the first read failed: `fleet` is
-            [] then, and "No vehicles to show" would be a confident
-            falsehood printed directly above the red line saying we
-            could not read the list at all. */}
-        {fleet !== null && !(error && fleet.length === 0) && (
+        {/* Suppressed whenever there is no list to summarise at all —
+            a failed first read (`fleet` is [] then, and a count printed
+            above the red line saying we could not read it is a
+            confident falsehood) and an empty account alike.  Both cases
+            are answered below, where there is room to say WHY. */}
+        {fleet !== null && fleet.length > 0 && (
           <p className="muted" style={{ margin: 0, fontSize: 12 }}>
             {/* The list holds every vehicle this person may see now, so
                 the first number is the fleet and the second is how much
@@ -564,8 +566,6 @@ useEffect(() => {
                 number about something the reader cannot see. */}
             {search.trim()
               ? `${shown.length} of ${fleet.length} vehicle${fleet.length === 1 ? '' : 's'} match`
-              : fleet.length === 0
-              ? 'No vehicles to show'
               : `${fleet.length} vehicle${fleet.length === 1 ? '' : 's'}`
                 + (withItems === 0
                   ? ''
@@ -615,10 +615,23 @@ useEffect(() => {
           </div>
         )}
         {/* "Nothing here" would be false: the search is what emptied it. */}
+        {/* "Nothing here" would be false: the search is what emptied it —
+            so the constraint is named and clearing it is one press, the
+            same answer Live Map gives to the same situation.  It used to
+            be a muted sentence with no way out, and the search box that
+            caused it can be scrolled off the top of a short panel. */}
         {fleet !== null && fleet.length > 0 && shown.length === 0 && (
-          <p className="muted" style={{ padding: 10, margin: 0 }}>
-            No vehicle matches “{search.trim()}”.
-          </p>
+          <EmptyState
+            title="No vehicles match"
+            detail={`Search: “${search.trim()}”`}
+            action={<button className="btn" style={{ marginTop: 4 }}
+                            onClick={() => setSearch('')}>Clear search</button>} />
+        )}
+        {/* An account that has given this sign-in no vehicles is a fact
+            about the ACCOUNT, not an empty screen: without it the panel
+            just looked broken, and the person had nothing to act on. */}
+        {fleet !== null && fleet.length === 0 && !error && (
+          <EmptyState title="No vehicles to show" detail={NO_VEHICLES_YET} />
         )}
         {shown.map((r) => {
           const chosen = selected?.vehicle_id === r.vehicle_id;

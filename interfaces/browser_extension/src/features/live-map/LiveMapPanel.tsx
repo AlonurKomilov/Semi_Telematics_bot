@@ -26,6 +26,7 @@ import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from '
 // READ, never written here: "Follow in Google Maps" is a preference of
 // the PANEL, and Settings is the only place it is changed.
 import { getFollowPref } from '../../prefs';
+import EmptyState, { NO_VEHICLES_YET } from '../../shell/EmptyState';
 import Splitter from '../../shell/Splitter';
 import { vehicleLine } from '../../vehicleLabel';
 import type { LiveVehiclesResponse, MapVehicleFeature, MapVehiclesResponse, VehicleStatus } from './types';
@@ -929,26 +930,19 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
             their account was empty, so the constraint is named and the
             way out is one press. */}
         {!filtered.length && !!vehicles.length && (
-          <div style={{ padding: '20px 12px', display: 'grid', gap: 6, justifyItems: 'center', textAlign: 'center' }}>
-            <strong style={{ fontSize: 13 }}>No vehicles match</strong>
-            <span className="muted small">
-              {[filter !== 'all' ? `Status: ${filter}` : '', search ? `Search: “${search}”` : '']
-                .filter(Boolean).join(' · ')}
-            </span>
-            <button className="btn" style={{ marginTop: 4 }}
-                    onClick={() => { chooseFilter('all'); setSearch(''); }}>
-              Clear filters
-            </button>
-          </div>
+          <EmptyState
+            title="No vehicles match"
+            detail={[filter !== 'all' ? `Status: ${filter}` : '', search ? `Search: “${search}”` : '']
+              .filter(Boolean).join(' · ')}
+            action={
+              <button className="btn" style={{ marginTop: 4 }}
+                      onClick={() => { chooseFilter('all'); setSearch(''); }}>
+                Clear filters
+              </button>
+            } />
         )}
         {!vehicles.length && !error && answered && (
-          <div style={{ padding: '20px 12px', display: 'grid', gap: 6, justifyItems: 'center', textAlign: 'center' }}>
-            <strong style={{ fontSize: 13 }}>No vehicles to show</strong>
-            <span className="muted small">
-              Your 4truck account has not given this sign-in any vehicles yet. Ask whoever
-              manages your account to assign one, then reopen the panel.
-            </span>
-          </div>
+          <EmptyState title="No vehicles to show" detail={NO_VEHICLES_YET} />
         )}
         {!vehicles.length && !error && !answered && Array.from({ length: 6 }, (_, i) => (
           <div key={i} style={{ padding: '10px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 6 }}
