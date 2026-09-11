@@ -24,8 +24,9 @@ const FleetMap = (() => {
         }).setView([39.8283, -98.5795], 5); // Center of USA
 
         // OpenStreetMap tiles (free)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
+        // Esri — see MapPage.tsx: OSM blocked the product on 2026-09-11.
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri',
             maxZoom: 19,
         }).addTo(_map);
 

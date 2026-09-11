@@ -1,19 +1,48 @@
-/** Same tile sources as the dashboard's useLeafletMap. v2 adds Google here as a fourth entry. */
+/**
+ * Same tile sources as the dashboard's useLeafletMap.
+ *
+ * NOT OpenStreetMap's servers, and not OpenTopoMap's, and that is the
+ * whole point of this comment.  Both are volunteer-run, and both forbid
+ * exactly what this is: "distributing an app that uses tiles from
+ * openstreetmap.org" without prior permission.  A published Chrome
+ * extension drawing a fleet map is squarely that, and on 2026-09-11 OSM
+ * blocked us — the owner's map filled with tiles that say "403 Access
+ * blocked" in the picture itself.
+ *
+ * Leaving OpenTopoMap behind for the same reason: keeping a second
+ * volunteer server in a distributed app after the first one blocked us
+ * is making the same mistake with a different host.  Esri's keyless
+ * endpoints answer all three now.
+ *
+ * The paid path — Google Map Tiles, which permits Leaflet where the JS
+ * API does not — is the next step and stays the owner's call on cost.
+ */
 export type MapType = 'standard' | 'satellite' | 'terrain';
 export const TILES: Record<MapType, { url: string; attr: string; maxZoom: number }> = {
-  standard:  { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-               attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19 },
+  standard:  { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+               attr: 'Tiles &copy; Esri', maxZoom: 19 },
   satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                attr: 'Tiles &copy; Esri', maxZoom: 19 },
-  terrain:   { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-               attr: 'Map data: &copy; OpenStreetMap contributors, SRTM | &copy; OpenTopoMap', maxZoom: 17 },
+  terrain:   { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+               attr: 'Tiles &copy; Esri', maxZoom: 19 },
 };
 
 /**
- * Where the map goes when OpenStreetMap stops answering.  Their tile
- * server rate-limits shared addresses — VPN exits, office NATs — with
- * 429/403, and Leaflet's only symptom is a grey map with the markers
- * still on it.  Same keyless Esri host the satellite layer already uses.
+ * Where the map goes when the chosen source stops answering.
+ *
+ * It is the SAME host as `standard` today, so for that layer it is
+ * currently a no-op — said out loud rather than left as a mechanism that
+ * quietly does nothing.  It stays because the default is due to move to
+ * Google's paid tiles, and that is exactly when a keyless second source
+ * earns its place again.
+ *
+ * And a warning for whoever reaches for it next: this net does NOT catch
+ * being blocked.  A blocked client is served a PICTURE that says "403
+ * Access blocked", with a successful HTTP status — so Leaflet fires
+ * `tileload`, not `tileerror`, the counter below never moves, and the
+ * map fills with error images while the code believes it is fine.  That
+ * is how the OSM block went unnoticed.  Not depending on a server that
+ * blocks distributed apps is the fix; this is not.
  */
 export const FALLBACK = {
   url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',

@@ -51,11 +51,25 @@ const GOOGLE_TYPE: Record<MapType, 'roadmap' | 'satellite' | 'terrain'> = {
 
 interface TileCfg { url: string; attr: string; maxZoom: number; }
 
-/** Base tile layer configurations — all free, no API key required. */
+/**
+ * Base tile layer configurations — all free, no API key required.
+ *
+ * NOT OpenStreetMap's servers, and not OpenTopoMap's.  Both are
+ * volunteer-run and both forbid heavy or app-distributed use without
+ * prior permission; on 2026-09-11 OSM blocked this product and served
+ * tiles that say "403 Access blocked" in the image itself.  The browser
+ * extension was the surface that showed it first, and this file pointed
+ * at the same hosts, so it was the same outage waiting.
+ *
+ * Esri's keyless endpoints answer all three.  The paid path — Google Map
+ * Tiles, which permits Leaflet where the JS API does not — is the next
+ * step and stays a cost decision.
+ */
 const TILES: Record<MapType, TileCfg> = {
   standard: {
-    url:     'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attr:    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    // ESRI World Street Map — free, no API key
+    url:     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attr:    'Tiles &copy; Esri',
     maxZoom: 19,
   },
   satellite: {
@@ -65,10 +79,12 @@ const TILES: Record<MapType, TileCfg> = {
     maxZoom: 19,
   },
   terrain: {
-    // OpenTopoMap — free, no API key; shows elevation contours useful for grade/mountain-pass awareness
-    url:     'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    attr:    'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | &copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
-    maxZoom: 17,
+    // ESRI World Topo Map — free, no API key; keeps the elevation
+    // context that made this layer worth having, without leaving a
+    // second volunteer server in a product the first one just blocked.
+    url:     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attr:    'Tiles &copy; Esri',
+    maxZoom: 19,
   },
 };
 

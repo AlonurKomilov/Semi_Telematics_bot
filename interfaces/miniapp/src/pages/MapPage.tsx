@@ -263,10 +263,15 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
     // left side. It will sit above the FABs which are further right.
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
+      // Esri, not OpenStreetMap: their servers are volunteer-run and
+      // forbid app-distributed and heavy use without permission, and on
+      // 2026-09-11 the product was blocked — tiles came back as a PICTURE
+      // saying "403 Access blocked".  Every surface that drew from them
+      // moved together, because leaving one behind is leaving the block.
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        { attribution: 'Tiles &copy; Esri', maxZoom: 19 },
+      ).addTo(map);
 
     const cluster = (L as unknown as { markerClusterGroup: (opts?: unknown) => L.MarkerClusterGroup }).markerClusterGroup({
       maxClusterRadius: 50,
