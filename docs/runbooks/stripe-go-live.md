@@ -58,8 +58,15 @@ the ids on the row; the Stripe price id column is read-only from then on.
    mid-cycle.
 4. Cancel from the portal → `customer.subscription.deleted` → the account
    is on Free and the resolver closes the paid features.
-5. `sync_billing_quantity` (the extras job) → the extras item's quantity
-   equals the active-truck count.
+5. `sync_billing_quantity` → the extras item's quantity equals the
+   account's non-archived trucks minus the plan's included trucks (the
+   Vehicles list, not Samsara: add a truck by hand, archive one, and
+   press "Sync quantity" on the account's console page each time —
+   the quantity follows; the daily `billing_quantity_sync` job does the
+   same for every account at 03:30 UTC). After the first sync the
+   subscription row carries `billed_quantity`; change the quantity in
+   the Stripe dashboard by hand and sync again — expect a `drift`
+   warning in the API log and the quantity back to the registry's.
 
 ## 5. Known limits, decided
 

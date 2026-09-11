@@ -289,7 +289,23 @@ reaches existing subscribers only through the price rollout —
 audited as `plan.rollout` — which swaps each live subscription's base
 item with `proration_behavior="none"`, so the new amount bills from
 that account's next period; the extras item is never touched
-(`capabilities/platform/billing/rollout.py`). The operator moves an account to a plan from its detail page
+(`capabilities/platform/billing/rollout.py`). The extras QUANTITY is the
+vehicle registry's, never a telematics signal: every truck in the
+account's Vehicles list that is not archived is billed, whatever its
+source (manual, Samsara, a TMS projection); trailers and `other` rows
+are not (`BILLABLE_VEHICLE_TYPES` in `adapters/storage/billing.py`, the
+owner's reserved decision); the operator's status words (yard, shop)
+never change the bill — archiving does, by a person or by the
+departure sweep. So a paused or disconnected integration changes
+nothing on the invoice, which is why the count reaches Stripe on OUR
+clock: after every Samsara ingest, once a day for every account
+(`billing_quantity_sync`), and from the console button. The sync
+records the quantity it confirmed on the subscription
+(`billed_quantity`, `billed_at`); a Stripe quantity that differs from
+it was changed outside 4truck and is reconciled to the registry with a
+warning (`drift`), and an unattended rise beyond max(20, half the
+current quantity) is held (`jump_guard`) until the operator releases it
+from the console. The operator moves an account to a plan from its detail page
 (`PATCH /system/accounts/{id}/plan`, audited as `account_plan`) — refused
 for an account Stripe is billing, whose plan moves through the price
 rollout — and the plan a self-serve trial starts on is the one row

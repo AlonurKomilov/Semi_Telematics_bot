@@ -9,6 +9,14 @@ Currently:
     idempotent on (account_id, period_start) so a re-run of the job
     after a transient failure is safe.
 
+  - ``run_billing_quantity_sync`` — daily, pushes every account's
+    billable vehicle count to the payment provider.  The count is ours
+    (the vehicle registry), so this job is what keeps Stripe's extras
+    quantity honest for an account whose telematics integration is
+    paused or gone: the after-ingest sync never fires for it, and a
+    truck added or archived by hand in 4truck would otherwise never
+    reach the invoice.
+
 The job lives here (not in ``features/vehicles/warehouse``) because the work
 is purely billing — Samsara is already long-since polled for activity
 by the time this fires (02:30 UTC vs the ingest job's 60s cadence).
@@ -62,7 +70,7 @@ async def snapshot_account_billing(
 
     Returns the new (or existing — idempotent) snapshot row id, or
     None when the account has no subscription configured.  Reads
-    activity from ``vehicle_state.captured_at`` via ``compute_billing``
+    the billable count from the vehicle registry via ``compute_billing``
     so the recorded extras count matches what Stripe was billing the
     customer during the period.
     """
@@ -93,8 +101,8 @@ async def snapshot_account_billing(
         account_id=account_id,
         period_start=period_start,
         period_end=period_end,
-        # ``vehicle_count`` keeps the raw Samsara count for backwards
-        # compat; the activity-based ``active_vehicles`` is what drives
+        # ``vehicle_count`` keeps the subscription's fleet-size column for
+        # backwards compat; the registry-based ``active_vehicles`` is what drives
         # the extras / amount_due math on this row.
         vehicle_count=int(sub.get("vehicle_count") or 0),
         user_count=user_count,
@@ -150,6 +158,7 @@ __all__ = [
     "snapshot_account_billing",
     "_previous_month_window",
     "run_comp_expiry_sweep",
+    "run_billing_quantity_sync",
 ]
 
 
@@ -314,3 +323,72 @@ async def _expiring_reminder_already_sent(
             if f"bucket={bucket}d" in reason:
                 return True
     return False
+
+
+# ── Daily billable-quantity sync ──────────────────────────────────
+
+
+async def run_billing_quantity_sync(_app=None) -> dict:
+    """Daily: reconcile the provider's extras quantity with the registry.
+
+    The billable count is computed from OUR vehicle registry
+    (``BillingMixin.count_billable_vehicles``), never from a telematics
+    signal, so it must reach the provider on a clock of our own.  The
+    two other triggers are event-driven and both have a hole this job
+    covers:
+
+      * the after-ingest sync (samsara/sync.py) only fires for accounts
+        whose Samsara integration is alive — a paused or disconnected
+        account is exactly the one that never gets it;
+      * the operator's console button is a human remembering.
+
+    Every account is visited; ``sync_billing_quantity`` itself skips the
+    ones that are not billed by the provider (stub deployments, comped
+    accounts without a checkout, subscriptions without an extras line)
+    after one local read, so the loop costs nothing for them and one
+    provider read per billed account.  Outcomes are tallied by the
+    provider's own ``skipped`` reason so the log line says how many
+    subscriptions were actually PATCHed.
+
+    One account erroring out never blocks the rest.  Idempotent: the
+    sync PATCHes only when the quantity differs, so a re-run is a no-op.
+    """
+    from capabilities.platform.billing import get_provider
+
+    platform_db = _platform_router().platform
+    provider = get_provider()
+    try:
+        accounts = await platform_db.list_accounts(active_only=True)
+    except Exception:
+        logger.exception("run_billing_quantity_sync: list_accounts failed")
+        return {"patched": 0, "noop": 0, "skipped": 0, "failed": 0, "total": 0}
+    patched = noop = skipped = failed = 0
+    for acc in accounts:
+        try:
+            result = await provider.sync_billing_quantity(acc.id, platform_db)
+        except Exception:
+            failed += 1
+            logger.exception(
+                "run_billing_quantity_sync: sync failed acct=%d — continuing", acc.id,
+            )
+            continue
+        reason = result.get("skipped")
+        if reason is None:
+            patched += 1
+        elif reason == "noop":
+            noop += 1
+        elif reason == "stripe_error":
+            # The provider already logged the exception with the item
+            # id; here it only counts as a failure of this run.
+            failed += 1
+        else:
+            skipped += 1
+    logger.info(
+        "billing quantity sync: %d patched, %d unchanged, %d not provider-billed, "
+        "%d failed (of %d accounts)",
+        patched, noop, skipped, failed, len(accounts),
+    )
+    return {
+        "patched": patched, "noop": noop, "skipped": skipped,
+        "failed": failed, "total": len(accounts),
+    }

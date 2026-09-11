@@ -233,6 +233,7 @@ async def run_all(conn) -> None:
     await migrate_plans(conn)
     await migrate_plans_catalog(conn)
     await migrate_plan_price_rollouts(conn)
+    await migrate_subscription_billed_quantity(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -5266,3 +5267,19 @@ async def migrate_plan_price_rollouts(conn) -> None:
         except Exception:
             pass
 
+async def migrate_subscription_billed_quantity(conn) -> None:
+    """The extras quantity the provider was last told, and when
+    (``sync_billing_quantity`` writes both after every PATCH or
+    confirmed match).  NULL until the first sync, which is how the
+    drift and jump guards tell a first sync from a changed one.  ADD
+    COLUMN IF NOT EXISTS; no index (read per-row with the primary key).
+    Idempotent.
+    """
+    try:
+        await conn.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS billed_quantity INTEGER")
+        await conn.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS billed_at TEXT")
+    except Exception:
+        # Boot must not depend on this migration: the sync treats a
+        # missing column the same as NULL (no baseline), and the error
+        # is logged for the operator to act on.
+        logger.exception("migrate_subscription_billed_quantity failed")

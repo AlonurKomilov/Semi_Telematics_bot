@@ -1000,12 +1000,14 @@ async def force_sync_quantity(
     user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
-    """Manually reconcile Stripe's extras-line qty against active vehicles.
+    """Manually reconcile Stripe's extras-line qty against the registry.
 
-    The same logic runs after every Samsara ingest cycle (every 60s),
-    so this endpoint is mainly for debugging: customer says the bill
-    looks wrong, operator wants to force a sync now rather than wait
-    for the next tick.  Returns the same status dict
+    The same logic runs after every Samsara ingest cycle and once a day
+    for every account, so this endpoint is for the cases a human must
+    decide: the bill looks wrong and the operator wants a sync now, or
+    the unattended sync held a large upward jump (``jump_guard``) and
+    the operator, having looked at the fleet, releases it — this call
+    passes ``force=True``.  Returns the same status dict
     ``sync_billing_quantity`` would have returned from the scheduler.
     """
     acc = await platform_db.get_account(account_id)
@@ -1013,7 +1015,7 @@ async def force_sync_quantity(
         raise HTTPException(status_code=404, detail="Account not found")
     from capabilities.platform.billing import get_provider
     provider = get_provider()
-    result = await provider.sync_billing_quantity(account_id, platform_db)
+    result = await provider.sync_billing_quantity(account_id, platform_db, force=True)
     logger.info(
         "system: sync_billing_quantity manual run acct=%s operator_tg=%s result=%s",
         account_id, user.get("sub"), result,

@@ -814,60 +814,50 @@ class TestBillingEnforcementMiddleware:
 
 
 class TestActiveVehicleBilling:
-    """Active-vehicle counting + compute_billing + get_billing_summary."""
+    """Billable-vehicle counting + compute_billing + get_billing_summary.
+
+    The billed quantity is the vehicle registry's: every truck that is
+    not archived.  No telemetry row is written in these tests on
+    purpose — the count must not need one.
+    """
 
     @staticmethod
-    def _vehicle_row(vid: str, name: str, captured_at: str) -> dict:
-        return {
-            "vehicle_id": vid,
-            "vehicle_name": name,
-            "company_code": "ACME",
-            "lat": None, "lon": None,
-            "speed_mph": None, "heading": None,
-            "address": "",
-            "engine_state": "",
-            "fuel_pct": None, "def_pct": None,
-            "odometer_mi": None, "odometer_time": None,
-            "engine_hours": None, "engine_hours_time": None,
-            "fault_count": 0, "dtc_critical_count": 0,
-            "last_driver_id": "", "last_driver_name": "",
-            "captured_at": captured_at,
-        }
+    async def _add_trucks(
+        db, account_id: int, n: int, prefix: str = "Truck",
+        *, archived: bool = False, vehicle_type: str = "truck",
+    ) -> list[int]:
+        ids = []
+        for i in range(n):
+            vid = await db.add_vehicle(
+                account_id, unit_number=f"{prefix} #{i}", vehicle_type=vehicle_type,
+            )
+            if archived:
+                await db.deactivate_vehicle(account_id, vid)
+            ids.append(vid)
+        return ids
 
     @pytest.mark.asyncio
-    async def test_count_active_and_inactive(self, pg_db):
-        from datetime import datetime, timezone, timedelta
+    async def test_count_billable_and_unbilled(self, pg_db):
         db = pg_db
         acct = await db.create_account("FleetCo")
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=2)).isoformat()
-        stale = (now - timedelta(days=10)).isoformat()
-        rows = [
-            self._vehicle_row("v1", "Truck #1", recent),
-            self._vehicle_row("v2", "Truck #2", recent),
-            self._vehicle_row("v3", "Truck #3", stale),
-            self._vehicle_row("v4", "Truck #4", ""),   # never reported
-        ]
-        await db.upsert_vehicle_state(acct.id, rows)
-        assert await db.count_active_vehicles(acct.id) == 2
-        assert await db.count_inactive_vehicles(acct.id) == 2
-        inactive = await db.list_inactive_vehicles(acct.id, limit=10)
-        names = [v["vehicle_name"] for v in inactive]
-        assert "Truck #3" in names and "Truck #4" in names
+        await self._add_trucks(db, acct.id, 2)
+        await self._add_trucks(db, acct.id, 2, "Retired", archived=True)
+        await self._add_trucks(db, acct.id, 1, "Trailer", vehicle_type="trailer")
+        assert await db.count_billable_vehicles(acct.id) == 2
+        assert await db.count_unbilled_vehicles(acct.id) == 2
+        unbilled = await db.list_unbilled_vehicles(acct.id, limit=10)
+        names = [v["vehicle_name"] for v in unbilled]
+        assert names == ["Retired #0", "Retired #1"]
+        assert set(unbilled[0]) == {"vehicle_id", "vehicle_name", "archived_at"}
 
     @pytest.mark.asyncio
     async def test_compute_billing_starter_with_extras(self, pg_db):
-        from datetime import datetime, timezone, timedelta
         db = pg_db
         acct = await db.create_account("StarterFleet")
         await db.get_or_create_subscription(acct.id, tier="starter")
-        # 12 active, 2 inactive → 2 extras at 299 cents = 598 cents on top of 4900 base
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=2)).isoformat()
-        stale = (now - timedelta(days=10)).isoformat()
-        rows = [self._vehicle_row(f"v{i}", f"Truck #{i}", recent) for i in range(12)]
-        rows.extend([self._vehicle_row(f"vs{i}", f"Parked #{i}", stale) for i in range(2)])
-        await db.upsert_vehicle_state(acct.id, rows)
+        # 12 trucks, 2 archived → 2 extras at 299 cents = 598 cents on top of 4900 base
+        await self._add_trucks(db, acct.id, 12)
+        await self._add_trucks(db, acct.id, 2, "Parked", archived=True)
         billing = await db.compute_billing(acct.id)
         assert billing["active_vehicles"] == 12
         assert billing["inactive_vehicles"] == 2
@@ -879,14 +869,10 @@ class TestActiveVehicleBilling:
 
     @pytest.mark.asyncio
     async def test_compute_billing_under_included_count(self, pg_db):
-        from datetime import datetime, timezone, timedelta
         db = pg_db
         acct = await db.create_account("SmallFleet")
         await db.get_or_create_subscription(acct.id, tier="starter")
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=2)).isoformat()
-        rows = [self._vehicle_row(f"v{i}", f"Truck #{i}", recent) for i in range(5)]
-        await db.upsert_vehicle_state(acct.id, rows)
+        await self._add_trucks(db, acct.id, 5)
         billing = await db.compute_billing(acct.id)
         assert billing["active_vehicles"] == 5
         assert billing["extras"] == 0
@@ -894,45 +880,36 @@ class TestActiveVehicleBilling:
         assert billing["subtotal_cents"] == 4900  # base only
 
     @pytest.mark.asyncio
-    async def test_get_billing_summary_uses_active_count(self, pg_db):
-        """End-to-end summary uses active count, not raw vehicle_count."""
-        from datetime import datetime, timezone, timedelta
+    async def test_get_billing_summary_uses_registry_count(self, pg_db):
+        """End-to-end summary uses the registry count, not raw vehicle_count."""
         db = pg_db
         acct = await db.create_account("SummaryCo")
         await db.get_or_create_subscription(acct.id, tier="pro")
-        # Set vehicle_count = 99 (stale legacy value); real active = 15
+        # Set vehicle_count = 99 (stale legacy value); real count = 15
         await db.update_subscription(acct.id, vehicle_count=99)
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=1)).isoformat()
-        stale  = (now - timedelta(days=10)).isoformat()
-        rows = [self._vehicle_row(f"a{i}", f"Active #{i}", recent) for i in range(15)]
-        rows.extend([self._vehicle_row(f"p{i}", f"Parked #{i}", stale) for i in range(3)])
-        await db.upsert_vehicle_state(acct.id, rows)
+        await self._add_trucks(db, acct.id, 15, "Active")
+        await self._add_trucks(db, acct.id, 3, "Parked", archived=True)
 
         summary = await db.get_billing_summary(acct.id, provider="stripe")
-        # Active drives billing; the legacy raw count is still surfaced
+        # The registry drives billing; the legacy raw count is still surfaced
         assert summary["active_vehicles"] == 15
         assert summary["inactive_vehicles"] == 3
         # Pro: 9900 base + (15-10) * 299 = 11395
         assert summary["amount_due_cents"] == 11395
         assert summary["subtotal_cents"] == 11395
-        # Sample of inactive trucks for the "X inactive — not billed" footer
+        # Sample of archived trucks for the "X archived — not billed" footer
         assert len(summary["inactive_sample"]) == 3
         sample_names = [v["vehicle_name"] for v in summary["inactive_sample"]]
         assert all(n.startswith("Parked #") for n in sample_names)
 
     @pytest.mark.asyncio
-    async def test_get_billing_summary_comped_with_active_count(self, pg_db):
+    async def test_get_billing_summary_comped_with_registry_count(self, pg_db):
         """Comp accounts see the would-be amount + discount + $0 total."""
-        from datetime import datetime, timezone, timedelta
         db = pg_db
         acct = await db.create_account("CompFleet")
         await db.get_or_create_subscription(acct.id, tier="pro")
         await db.grant_comp(acct.id, expires_at="2099-12-31T23:59:59+00:00")
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=1)).isoformat()
-        rows = [self._vehicle_row(f"v{i}", f"Truck #{i}", recent) for i in range(12)]
-        await db.upsert_vehicle_state(acct.id, rows)
+        await self._add_trucks(db, acct.id, 12)
 
         summary = await db.get_billing_summary(acct.id, provider="stripe")
         assert summary["is_comped"] is True
@@ -1027,7 +1004,6 @@ class TestStripeTwoLineSubscription:
     async def test_sync_billing_quantity_no_op_when_qty_matches(
         self, pg_db, monkeypatch
     ):
-        from datetime import datetime, timezone, timedelta
         from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("SyncNoOpCo")
@@ -1036,11 +1012,7 @@ class TestStripeTwoLineSubscription:
             acct.id, provider="stripe",
             provider_subscription_id="sub_X", provider_extra_item_id="si_extra",
         )
-        # 12 active = 2 extras
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=1)).isoformat()
-        rows = [TestActiveVehicleBilling._vehicle_row(f"v{i}", f"Truck #{i}", recent) for i in range(12)]
-        await db.upsert_vehicle_state(acct.id, rows)
+        await TestActiveVehicleBilling._add_trucks(db, acct.id, 12)  # 12 trucks = 2 extras
         patched: dict = {}
         class _FakeStripe:
             class SubscriptionItem:
@@ -1059,7 +1031,6 @@ class TestStripeTwoLineSubscription:
 
     @pytest.mark.asyncio
     async def test_sync_billing_quantity_patches_on_change(self, pg_db, monkeypatch):
-        from datetime import datetime, timezone, timedelta
         from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("SyncPatchCo")
@@ -1068,10 +1039,7 @@ class TestStripeTwoLineSubscription:
             acct.id, provider="stripe",
             provider_subscription_id="sub_X", provider_extra_item_id="si_extra",
         )
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=1)).isoformat()
-        rows = [TestActiveVehicleBilling._vehicle_row(f"v{i}", f"Truck #{i}", recent) for i in range(15)]
-        await db.upsert_vehicle_state(acct.id, rows)
+        await TestActiveVehicleBilling._add_trucks(db, acct.id, 15)
         patched: dict = {}
         class _FakeStripe:
             class SubscriptionItem:
@@ -1123,22 +1091,15 @@ class TestMonthlyBillingSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_uses_active_count(self, pg_db, monkeypatch):
-        """The recorded row's amount_due reflects active count, not raw."""
-        from datetime import datetime, timezone, timedelta
+        """The recorded row's amount_due reflects the registry count, not raw."""
         from capabilities.platform.billing.jobs import snapshot_account_billing
         db = pg_db
         acct = await db.create_account("MonthCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
-        # Stale raw vehicle_count (legacy field); real active = 13
+        # Stale raw vehicle_count (legacy field); real count = 13
         await db.update_subscription(acct.id, vehicle_count=99)
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=1)).isoformat()
-        stale  = (now - timedelta(days=10)).isoformat()
-        rows = (
-            [TestActiveVehicleBilling._vehicle_row(f"a{i}", f"Active #{i}", recent) for i in range(13)]
-            + [TestActiveVehicleBilling._vehicle_row(f"p{i}", f"Parked #{i}", stale) for i in range(2)]
-        )
-        await db.upsert_vehicle_state(acct.id, rows)
+        await TestActiveVehicleBilling._add_trucks(db, acct.id, 13, "Active")
+        await TestActiveVehicleBilling._add_trucks(db, acct.id, 2, "Parked", archived=True)
 
         # Point the job at our test DB
         import infra.platform as _ip
@@ -1161,15 +1122,11 @@ class TestMonthlyBillingSnapshot:
     @pytest.mark.asyncio
     async def test_snapshot_idempotent_on_replay(self, pg_db, monkeypatch):
         """Re-running for the same period returns the same row, no dupes."""
-        from datetime import datetime, timezone, timedelta
         from capabilities.platform.billing.jobs import snapshot_account_billing
         db = pg_db
         acct = await db.create_account("ReplayCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
-        now = datetime.now(timezone.utc)
-        recent = (now - timedelta(hours=1)).isoformat()
-        rows = [TestActiveVehicleBilling._vehicle_row(f"v{i}", f"Truck #{i}", recent) for i in range(7)]
-        await db.upsert_vehicle_state(acct.id, rows)
+        await TestActiveVehicleBilling._add_trucks(db, acct.id, 7)
         import infra.platform as _ip
         class _Router: platform = db
         monkeypatch.setattr(_ip, "get_router", lambda: _Router())
@@ -1546,6 +1503,7 @@ class TestBillingMetrics:
         for result in (
             "noop", "patched", "stripe_error",
             "not_stripe", "no_extras_item", "no_subscription",
+            "not_live", "jump_guard", "bookkeeping_failed",
         ):
             obs.record_sync_billing_quantity(result)
 

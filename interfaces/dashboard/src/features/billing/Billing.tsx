@@ -44,15 +44,17 @@ interface LineItem {
 interface InactiveVehicleSample {
   vehicle_id: string;
   vehicle_name: string;
-  captured_at: string;
+  archived_at: string;
 }
 
 interface BillingSummary {
   tier: string;
   status: string;
-  // Raw Samsara fleet count (informational; not what we bill)
+  // Fleet size on the subscription row (informational; the same number)
   vehicle_count: number;
-  // Activity-driven counts — these drive the math
+  // Registry counts — these drive the math: every truck in the
+  // Vehicles list that is not archived is billed; archived trucks and
+  // trailers are not.
   active_vehicles: number;
   inactive_vehicles: number;
   inactive_sample: InactiveVehicleSample[];
@@ -218,7 +220,7 @@ function InactiveVehiclesFooter({ summary }: { summary: BillingSummary }) {
       <span className="shrink-0">ⓘ</span>
       <p>
         <span className="font-medium text-foreground/80">
-          {summary.inactive_vehicles} vehicle{summary.inactive_vehicles === 1 ? '' : 's'} inactive for 3+ days
+          {summary.inactive_vehicles} archived truck{summary.inactive_vehicles === 1 ? '' : 's'}
         </span>
         {' '}— not billed{preview && (
           <> (e.g. {preview}{extra > 0 ? `, +${extra} more` : ''})</>
@@ -257,8 +259,8 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
       </div>
 
       <div className="grid grid-cols-fit-36 gap-3 mb-5">
-        <Stat label="Active Vehicles" value={String(summary.active_vehicles)}
-              sub={summary.inactive_vehicles > 0 ? `${summary.inactive_vehicles} parked` : 'last 3 days'} />
+        <Stat label="Billed Trucks" value={String(summary.active_vehicles)}
+              sub={summary.inactive_vehicles > 0 ? `${summary.inactive_vehicles} archived` : 'in your Vehicles list'} />
         <Stat label="Included" value={String(summary.base_vehicles)} sub="per plan" />
         <Stat label="Extra Trucks" value={String(summary.extra_vehicles)}
               accent={isOverLimit ? 'text-warn' : 'text-foreground'} />
@@ -774,9 +776,9 @@ export default function Billing() {
         <p className="inline-flex items-center gap-1.5 font-medium text-foreground/80 mb-1.5"><Lightbulb className="size-3.5" aria-hidden />How pricing works</p>
         <ul className="space-y-1 list-disc list-inside text-xs">
           {summary && summary.base_vehicles > 0 && (
-            <li>Your plan includes {summary.base_vehicles} trucks. Additional <em>active</em> trucks: {money(summary.extra_vehicle_cents)}/truck/month.</li>
+            <li>Your plan includes {summary.base_vehicles} trucks. Each additional truck: {money(summary.extra_vehicle_cents)}/truck/month.</li>
           )}
-          <li>A truck is "active" if it sent any telemetry signal in the last 3 days — parked trucks are automatically excluded.</li>
+          <li>Every truck in your Vehicles list is billed — whether it came from your telematics provider or you added it yourself. Archive a truck to stop billing it. Archived trucks and trailers are never billed.</li>
           <li>AI usage (tokens) is included — no per-query fees on any plan.</li>
           <li>Invoices generated at the end of each billing period, with mid-cycle vehicle changes pro-rated automatically.</li>
         </ul>

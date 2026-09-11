@@ -818,6 +818,10 @@ async def create_tables(conn) -> None:
             provider_extra_item_id TEXT NOT NULL DEFAULT '',
             -- the Stripe Price the base item is on (a rollout moves it)
             provider_base_price_id TEXT NOT NULL DEFAULT '',
+            -- the extras quantity the provider was last told, and when —
+            -- written by sync_billing_quantity; NULL until the first sync
+            billed_quantity     INTEGER,
+            billed_at           TEXT,
             provider_data       TEXT    NOT NULL DEFAULT '{}',
             -- JSON blob for provider-specific fields
             trial_ends_at       TEXT,

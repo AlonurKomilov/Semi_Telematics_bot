@@ -729,12 +729,20 @@ function OperatorActionsCard({
       );
       // skipped===null is the patched path (or noop if before===after).
       // Provider returns ``skipped: "noop"`` when qty already matched.
+      // The button passes force, so the unattended sync's jump guard
+      // never holds here — a large rise the operator has looked at
+      // goes through.
+      const drift = r.drift
+        ? ' Stripe held a different quantity than 4truck last set — it was changed outside 4truck.'
+        : '';
       if (r.skipped === 'noop') {
-        setSyncStatus(`Already in sync (qty=${r.after ?? r.before ?? '?'}).`);
+        setSyncStatus(`Already in sync (qty=${r.after ?? r.before ?? '?'}).${drift}`);
+      } else if (r.skipped === 'not_live') {
+        setSyncStatus('Skipped: the Stripe subscription is not live (canceled or unpaid) — nothing to bill.');
       } else if (r.skipped) {
         setSyncStatus(`Skipped: ${r.skipped}.`);
       } else {
-        setSyncStatus(`Patched: ${r.before ?? '?'} → ${r.after ?? '?'}.`);
+        setSyncStatus(`Patched: ${r.before ?? '?'} → ${r.after ?? '?'}.${drift}`);
       }
     } catch (e) {
       setSyncStatus(`Failed: ${e instanceof Error ? e.message : 'unknown'}`);

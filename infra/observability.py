@@ -340,8 +340,11 @@ def record_sync_billing_quantity(result: str) -> None:
     """One ``sync_billing_quantity`` call.
 
     ``result`` ∈ {``noop``, ``patched``, ``stripe_error``, ``not_stripe``,
-    ``no_extras_item``, ``no_subscription``} — matches the ``skipped``
-    tokens the provider returns plus ``patched`` for the happy path.
+    ``no_extras_item``, ``no_subscription``, ``not_live``, ``jump_guard``,
+    ``bookkeeping_failed``} — matches the ``skipped`` tokens the provider
+    returns plus ``patched`` for the happy path and ``bookkeeping_failed``
+    for a sync whose Stripe side succeeded but whose local record of the
+    quantity did not land.
     """
     BILLING_SYNC_QTY.labels(result=result).inc()
 

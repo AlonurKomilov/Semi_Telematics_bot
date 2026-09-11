@@ -134,6 +134,9 @@ export interface SyncQuantityResult {
   after?: number;
   account_id: number;
   reason?: string;
+  // Stripe's quantity differed from the one 4truck last set — changed
+  // outside 4truck; the sync reconciled it to the registry.
+  drift?: boolean;
 }
 
 export interface RefreshVehiclesResult {

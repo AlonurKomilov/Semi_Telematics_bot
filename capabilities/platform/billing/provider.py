@@ -98,13 +98,20 @@ class BillingProvider(Protocol):
         """
         ...
 
-    async def sync_billing_quantity(self, account_id: int, db) -> dict:
-        """Reconcile per-vehicle billing quantity with current activity.
+    async def sync_billing_quantity(
+        self, account_id: int, db, *, force: bool = False,
+    ) -> dict:
+        """Push the account's billable vehicle count to the provider.
 
-        Called by the Samsara ingest job after every cycle so a fleet
-        scaling up (or parking trucks) lands on the next invoice without
-        an admin touching the dashboard.  Implementations should be
-        cheap when nothing has changed; the stub provider no-ops.
+        The count is the vehicle registry's (``count_billable_vehicles``),
+        so three callers keep it current: the Samsara ingest after every
+        cycle, the daily ``billing_quantity_sync`` job (the one that
+        reaches an account whose integration is paused or gone), and the
+        operator's console button.  Implementations should be cheap when
+        nothing has changed; the stub provider no-ops.
+
+        ``force`` lifts the upward-jump guard (a sudden large increase is
+        held for a human) — the console button passes it.
 
         Returns a status dict for metrics (``skipped`` token, ``before``
         / ``after`` quantities, ``account_id``).

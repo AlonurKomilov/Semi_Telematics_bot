@@ -22,24 +22,23 @@ from capabilities.platform.billing import router as billing_router
 
 
 class _FakeDB:
-    """Records what the endpoint writes, and what it was asked to count."""
+    """Records what the endpoint writes, and what it was asked to count.
 
-    def __init__(self, registry_count=None, warehouse=(0, 0), fail=False):
-        self._registry_count = registry_count
-        self._warehouse = warehouse
+    Only the registry's billable count exists here on purpose: the
+    endpoint must have no other source to fall back on.
+    """
+
+    def __init__(self, billable=None, fail=False):
+        self._billable = billable
         self._fail = fail
         self.written: list[dict] = []
+        self.asked: list[int] = []
 
-    async def count_vehicles(self, account_id):
+    async def count_billable_vehicles(self, account_id):
+        self.asked.append(account_id)
         if self._fail:
             raise RuntimeError("registry unavailable")
-        return self._registry_count
-
-    async def count_active_vehicles(self, account_id):
-        return self._warehouse[0]
-
-    async def count_inactive_vehicles(self, account_id):
-        return self._warehouse[1]
+        return self._billable
 
     async def update_subscription(self, account_id, **fields):
         self.written.append({"account_id": account_id, **fields})
@@ -53,7 +52,7 @@ USER = {"account_id": 10000001, "role": "owner", "user_id": 1}
 @pytest.mark.asyncio
 async def test_a_caller_cannot_choose_the_billed_quantity():
     """The whole point: a zero from the caller must not become a zero bill."""
-    db = _FakeDB(registry_count=189)
+    db = _FakeDB(billable=189)
 
     result = await billing_router.update_vehicle_count(user=USER, platform_db=db)
 
@@ -82,18 +81,22 @@ async def test_the_endpoint_takes_no_request_body_at_all():
 
 @pytest.mark.asyncio
 async def test_registry_is_the_source_of_truth():
-    db = _FakeDB(registry_count=42, warehouse=(999, 999))
+    db = _FakeDB(billable=42)
     assert (await billing_router.update_vehicle_count(
         user=USER, platform_db=db))["vehicle_count"] == 42
+    assert db.asked == [USER["account_id"]]
 
 
 @pytest.mark.asyncio
-async def test_warehouse_is_the_fallback_for_accounts_with_no_registry_rows():
-    """Manual trucks and trailers live in the registry; older accounts
-    may have none yet, and must still be counted rather than billed at 0."""
-    db = _FakeDB(registry_count=0, warehouse=(7, 3))
+async def test_an_empty_registry_is_zero_not_a_fallback():
+    """The registry is the only source.  A telematics warehouse used to
+    stand in when the registry had no rows; that made the bill a
+    function of the provider again (a paused integration billed nothing
+    three days later), so an account with no registered trucks is
+    billed for none."""
+    db = _FakeDB(billable=0)
     assert (await billing_router.update_vehicle_count(
-        user=USER, platform_db=db))["vehicle_count"] == 10
+        user=USER, platform_db=db))["vehicle_count"] == 0
 
 
 # ── a failed read must not rewrite the number ─────────────────────

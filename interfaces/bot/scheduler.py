@@ -80,6 +80,7 @@ _JOB_META = {
     # ("money"), opposite direction and audience.
     "billing_snapshot_monthly":       ("Platform billing", "Record monthly billing-usage snapshots"),
     "billing_comp_expiry_sweep":      ("Platform billing", "Expire lapsed comp accounts + send reminders"),
+    "billing_quantity_sync":          ("Platform billing", "Push each account's billable vehicle count to the payment provider"),
     # ── Reporting ──
     "scheduled_reports_send":         ("Reporting", "Send due scheduled reports"),
     # ── Integrations ──
@@ -359,6 +360,20 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         run_comp_expiry_sweep, "cron",
         hour=3, minute=0, args=[app], id="billing_comp_expiry_sweep",
+        max_instances=1, coalesce=True,
+    )
+
+    # ── daily billable-quantity sync ─────────────────────
+    # The billed truck count comes from OUR vehicle registry, so it has
+    # to reach the provider on our own clock: the after-ingest sync only
+    # fires for accounts whose telematics integration is alive, and a
+    # truck added or archived by hand would otherwise never change the
+    # invoice.  Runs after the comp sweep so a comp that lapsed tonight
+    # is already plain-billed when its quantity is pushed.
+    from capabilities.platform.billing.jobs import run_billing_quantity_sync
+    scheduler.add_job(
+        run_billing_quantity_sync, "cron",
+        hour=3, minute=30, args=[app], id="billing_quantity_sync",
         max_instances=1, coalesce=True,
     )
 

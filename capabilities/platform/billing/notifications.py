@@ -309,7 +309,7 @@ async def notify_comp_expired(account_id: int) -> int:
     text = (
         "<b>📅 Complimentary period ended</b>\n\n"
         "Your comp window has closed; your account is now billed normally "
-        "based on tier + active vehicles in the last 3 days.\n\n"
+        "based on tier + the trucks in your vehicle list.\n\n"
         "If this was an error or you'd like another comp window, contact "
         "4truck support.\n"
         f"Subscription page: <code>{_portal_link(account_id)}</code>"

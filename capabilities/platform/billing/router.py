@@ -57,24 +57,17 @@ async def _count_users(account_id: int, platform_db) -> int:
 # ── Summary ───────────────────────────────────────────────────────
 
 async def _sync_vehicle_count(account_id: int, platform_db) -> int | None:
-    """Refresh ``subscriptions.vehicle_count`` from the warehouse.
+    """Refresh ``subscriptions.vehicle_count`` from the vehicle registry.
 
-    Total known fleet = active + inactive over ``vehicle_state`` — the same
-    table billing's pricing math reads, so the summary can never disagree
+    The same count billing's pricing math reads
+    (``count_billable_vehicles``), so the summary can never disagree
     with what we charge.  (Deliberately NOT features.vehicles: platform
-    domains don't import the customer product — tests/test_layer_boundaries.py.)
-    Returns the count, or None if the warehouse read fails.
+    domains don't import the customer product —
+    tests/test_layer_boundaries.py.)  Returns the count, or None if the
+    read fails.
     """
     try:
-        # Registry first (the vehicles-table SSOT — includes manual trucks +
-        # trailers, matching the pre-refactor fleet-overview semantics); fall
-        # back to the Samsara warehouse for accounts with no registry rows.
-        count = await platform_db.count_vehicles(account_id)
-        if not count:
-            count = (
-                await platform_db.count_active_vehicles(account_id)
-                + await platform_db.count_inactive_vehicles(account_id)
-            )
+        count = await platform_db.count_billable_vehicles(account_id)
         await platform_db.update_subscription(account_id, vehicle_count=count)
         return count
     except Exception as exc:
@@ -92,7 +85,7 @@ async def billing_summary(
     provider = get_provider()
     account_id = user["account_id"]
 
-    # Sync live vehicle count from Samsara before computing the summary
+    # Refresh the fleet size from the registry before computing the summary
     await _sync_vehicle_count(account_id, platform_db)
 
     summary = await provider.get_summary(account_id, platform_db)
@@ -453,9 +446,9 @@ async def update_vehicle_count(
 
     So the route stays (an unknown caller keeps working rather than
     meeting a 404) and the number now comes from
-    ``_sync_vehicle_count`` — the registry, with the warehouse as
-    fallback, which is the same source the pricing math reads. A
-    request body, if one is still sent, is ignored.
+    ``_sync_vehicle_count`` — the vehicle registry, the same source the
+    pricing math reads. A request body, if one is still sent, is
+    ignored.
 
     Account-wide by design: the caller's Team-Management vehicle scope
     does NOT narrow the count. A subscription is billed for the whole

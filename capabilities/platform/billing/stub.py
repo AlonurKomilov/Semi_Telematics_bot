@@ -101,7 +101,9 @@ class StubBillingProvider:
     async def handle_webhook(self, payload: bytes, sig_header: str, db) -> dict:
         return {"handled": False, "event_type": "stub.noop"}
 
-    async def sync_billing_quantity(self, account_id: int, db) -> dict:
+    async def sync_billing_quantity(
+        self, account_id: int, db, *, force: bool = False,
+    ) -> dict:
         """No-op for the stub provider — there's no Stripe to PATCH."""
         return {"skipped": "stub_provider", "account_id": account_id}
 

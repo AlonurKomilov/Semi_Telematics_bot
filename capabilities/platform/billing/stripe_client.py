@@ -24,8 +24,14 @@ from capabilities.platform.billing.notifications import (
     notify_payment_recovered as _notify_payment_recovered,
 )
 from infra import observability as _obs
+from adapters.storage.plan_rollouts import LIVE_STATUSES
 
 logger = logging.getLogger(__name__)
+
+#: An extras quantity may rise by at most ``max(JUMP_GUARD_MIN, current/2)``
+#: in one unattended sync once a baseline exists; a bigger jump waits
+#: for the operator's console button (``force=True``).
+JUMP_GUARD_MIN = 20
 
 def _tier_price_id(tier: str) -> str:
     """Resolve tier name → Stripe price id at call time.
@@ -604,22 +610,45 @@ class StripeBillingProvider:
                 "synced_to_provider": False, "reason": "stripe_error",
             }
 
-    async def sync_billing_quantity(self, account_id: int, db) -> dict:
-        """Reconcile Stripe's extras-line quantity with our active count.
+    async def sync_billing_quantity(
+        self, account_id: int, db, *, force: bool = False,
+    ) -> dict:
+        """Reconcile Stripe's extras-line quantity with our billable count.
 
-        Called after every Samsara ingest so an account that scales up
-        (or parks trucks) sees the change on the next Stripe invoice.
-        The flow:
+        The count is the vehicle registry's (``BillingMixin.
+        compute_billing`` → ``count_billable_vehicles``), so this runs on
+        three triggers: after every Samsara ingest, from the daily
+        ``billing_quantity_sync`` job (the one that reaches an account
+        whose integration is paused or gone), and from the operator's
+        console button (``force=True``).  The flow:
 
-          1. ``BillingMixin.compute_billing`` gives us the target qty.
+          1. ``compute_billing`` gives us the target qty.
           2. We compare to the current Stripe subscription_item qty.
           3. Only PATCH if it changed — most calls are no-ops.
           4. Skip silently for accounts that aren't on Stripe yet
-             (stub provider, comped without checkout, missing item id).
+             (stub provider, comped without checkout, missing item id)
+             or whose subscription is no longer live.
+
+        Two guards around the money:
+
+          * **drift** — Stripe's current quantity differs from the one
+            we last set (``subscriptions.billed_quantity``): someone
+            changed it outside 4truck.  Logged as a warning and
+            reconciled to the registry, which is the source of truth.
+          * **jump** — the count would rise by more than
+            ``max(JUMP_GUARD_MIN, half of the current quantity)`` on an
+            account that already has a baseline.  A roster projection
+            doubling the fleet must not double an invoice unattended:
+            the PATCH is held (``skipped="jump_guard"``) until an
+            operator forces it from the console.  Decreases always go
+            through — holding those would overcharge.
+
+        After a PATCH or a confirmed match the quantity and the time are
+        written to the subscription row, so the next run can tell drift
+        from a first sync.
 
         Returns a small status dict for logs / metrics: ``{skipped: str,
-        before, after, account_id}`` so the caller can wire it into a
-        Prometheus counter without crashing if Stripe is unreachable.
+        before, after, account_id}`` (+ ``drift: True`` when seen).
         """
         sub = await db.get_subscription(account_id)
         if not sub:
@@ -632,38 +661,71 @@ class StripeBillingProvider:
         if not extra_item_id:
             _obs.record_sync_billing_quantity("no_extras_item")
             return {"skipped": "no_extras_item", "account_id": account_id}
+        if (sub.get("status") or "") not in LIVE_STATUSES:
+            # A canceled or unpaid subscription has nothing to bill; a
+            # PATCH would only be refused by Stripe.
+            _obs.record_sync_billing_quantity("not_live")
+            return {"skipped": "not_live", "account_id": account_id}
         billing = await db.compute_billing(account_id)
         target_qty = billing["extras"]
         stripe = _stripe()
         try:
             current_item = stripe.SubscriptionItem.retrieve(extra_item_id)
             current_qty = int(current_item.get("quantity", 0) or 0)
-            if current_qty == target_qty:
-                _obs.record_sync_billing_quantity("noop")
-                return {
-                    "skipped": "noop",
-                    "before": current_qty, "after": target_qty,
-                    "account_id": account_id,
-                }
+        except Exception:
+            _obs.record_sync_billing_quantity("stripe_error")
+            logger.exception(
+                "sync_billing_quantity: Stripe read failed for account=%s (item=%s)",
+                account_id, extra_item_id,
+            )
+            return {"skipped": "stripe_error", "account_id": account_id}
+
+        last_set = sub.get("billed_quantity")
+        drift = last_set is not None and int(last_set) != current_qty
+        if drift:
+            logger.warning(
+                "sync_billing_quantity: account=%s Stripe extras qty is %s but "
+                "4truck last set %s — changed outside 4truck; reconciling to "
+                "the registry (%s)",
+                account_id, current_qty, last_set, target_qty,
+            )
+        extra: dict[str, Any] = {"drift": True} if drift else {}
+
+        if current_qty == target_qty:
+            if not await self._record_billed_quantity(db, account_id, target_qty):
+                extra["recorded"] = False
+            _obs.record_sync_billing_quantity("noop")
+            return {
+                "skipped": "noop",
+                "before": current_qty, "after": target_qty,
+                "account_id": account_id, **extra,
+            }
+        rise = target_qty - current_qty
+        if (
+            not force and last_set is not None
+            and rise > max(JUMP_GUARD_MIN, current_qty // 2)
+        ):
+            _obs.record_sync_billing_quantity("jump_guard")
+            logger.warning(
+                "sync_billing_quantity: account=%s extras would jump %s → %s; "
+                "held for an operator (console: Sync quantity)",
+                account_id, current_qty, target_qty,
+            )
+            return {
+                "skipped": "jump_guard",
+                "before": current_qty, "after": target_qty,
+                "account_id": account_id, **extra,
+            }
+        try:
             stripe.SubscriptionItem.modify(
                 extra_item_id,
                 quantity=target_qty,
                 # Stripe pro-rates the difference by default; we keep
                 # the default so a mid-cycle scale-up is fair to the
                 # customer (only charged for the days they actually
-                # had the trucks active).
+                # had the trucks).
                 proration_behavior="create_prorations",
             )
-            _obs.record_sync_billing_quantity("patched")
-            logger.info(
-                "sync_billing_quantity: account=%s extras %s → %s",
-                account_id, current_qty, target_qty,
-            )
-            return {
-                "skipped": None,
-                "before": current_qty, "after": target_qty,
-                "account_id": account_id,
-            }
         except Exception:
             _obs.record_sync_billing_quantity("stripe_error")
             logger.exception(
@@ -671,7 +733,47 @@ class StripeBillingProvider:
                 "(item=%s target_qty=%s)",
                 account_id, extra_item_id, target_qty,
             )
-            return {"skipped": "stripe_error", "account_id": account_id}
+            return {"skipped": "stripe_error", "account_id": account_id, **extra}
+        if not await self._record_billed_quantity(db, account_id, target_qty):
+            extra["recorded"] = False
+        _obs.record_sync_billing_quantity("patched")
+        logger.info(
+            "sync_billing_quantity: account=%s extras %s → %s%s",
+            account_id, current_qty, target_qty, " (forced)" if force else "",
+        )
+        return {
+            "skipped": None,
+            "before": current_qty, "after": target_qty,
+            "account_id": account_id, **extra,
+        }
+
+    @staticmethod
+    async def _record_billed_quantity(db, account_id: int, qty: int) -> bool:
+        """What Stripe holds now, and when we confirmed it — the baseline
+        the drift and jump guards read on the next run.
+
+        Returns False when the write failed.  By then Stripe already
+        holds the right quantity, so the caller's result must still say
+        so: the money side succeeded and only our memory of it is
+        stale — the guards read no baseline (or an old one) until a
+        later run records it, which is a warning, not a failed sync.
+        """
+        try:
+            await db.update_subscription(
+                account_id,
+                billed_quantity=int(qty),
+                billed_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return True
+        except Exception:
+            _obs.record_sync_billing_quantity("bookkeeping_failed")
+            logger.exception(
+                "sync_billing_quantity: account=%s Stripe holds %s but recording "
+                "it locally failed — the drift and jump guards read a stale "
+                "baseline until a later run records it",
+                account_id, qty,
+            )
+            return False
 
     @staticmethod
     def _past_due_since_fields(new_status: str, current: dict | None) -> dict:

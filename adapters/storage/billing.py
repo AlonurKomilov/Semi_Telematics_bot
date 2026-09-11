@@ -17,6 +17,12 @@ _TIER_BASE_VEHICLES = {"free": 0, "starter": 10, "pro": 10, "enterprise": 0}
 _TIER_MONTHLY_BASE  = {"free": 0, "starter": 4900, "pro": 9900, "enterprise": 0}
 _TIER_EXTRA_CENTS   = {"free": 0, "starter": 299,  "pro": 299,  "enterprise": 0}
 
+#: Which registry rows are billed.  A truck in the account's Vehicles
+#: list is billed while it is not archived; trailers and "other" rows
+#: are not — the owner has reserved that decision ("should trailers
+#: bill like trucks?") and this tuple is where it lands when made.
+BILLABLE_VEHICLE_TYPES: tuple[str, ...] = ("truck",)
+
 
 class BillingMixin:
     """Billing DB helpers — mixed into DatabaseManager."""
@@ -78,7 +84,9 @@ class BillingMixin:
         Allowed keys: tier, status, vehicle_count, base_vehicles,
         monthly_base_usd, extra_vehicle_cents, billing_email, provider,
         provider_customer_id, provider_subscription_id, provider_data,
-        trial_ends_at, current_period_start, current_period_end, canceled_at.
+        trial_ends_at, current_period_start, current_period_end, canceled_at,
+        billed_quantity / billed_at (the extras quantity the provider was
+        last told, and when — written by ``sync_billing_quantity``).
         """
         if not fields:
             return
@@ -89,6 +97,7 @@ class BillingMixin:
             "provider_base_item_id", "provider_extra_item_id", "provider_base_price_id",
             "provider_data", "trial_ends_at", "current_period_start",
             "current_period_end", "canceled_at", "past_due_since",
+            "billed_quantity", "billed_at",
         }
         safe = {k: v for k, v in fields.items() if k in allowed}
         if not safe:
@@ -243,7 +252,7 @@ class BillingMixin:
         otherwise we fall back to ``vehicle_count`` for legacy callers
         that haven't migrated.  ``inactive_vehicles`` is purely
         informational and is persisted so the dashboard can render the
-        "X parked — not billed" footer for historical periods too.
+        "X archived — not billed" footer for historical periods too.
 
         Idempotent on (account_id, period_start) — replaying the job
         for the same month returns the existing row id without
@@ -682,96 +691,79 @@ class BillingMixin:
                 return True, "past_due_grace_expired"
         return False, ""
 
-    # ── Active-vehicle counting (billing input) ──────────────────
+    # ── Billable-vehicle counting (billing input) ────────────────
     #
-    # "Active" = had any Samsara signal in the last N days, where
-    # ``vehicle_state.captured_at`` carries the timestamp of the most
-    # recent location update from Samsara.  Parked-but-connected trucks
-    # keep ticking captured_at (the ELD reports periodically); trucks
-    # that are sold / unplugged / in storage drop off after a few days.
+    # The quantity we bill for is OUR vehicle registry, not a telematics
+    # signal: every truck in the account's Vehicles list that is not
+    # archived.  Samsara (or any provider) is a source that feeds the
+    # registry; it is not what "having a truck" means.  So a paused or
+    # disconnected integration changes nothing on the invoice, a truck
+    # added by hand bills like one Samsara reported, and archiving is
+    # the one act that stops a charge — the operator's own status
+    # vocabulary (yard / shop / available) never does.  Trailers and
+    # "other" rows are not billed (BILLABLE_VEHICLE_TYPES) until the
+    # owner decides they are.
     #
-    # The DEFAULT_ACTIVITY_DAYS constant is the single source of truth
-    # for the window length; flip it once if the policy changes.
-
-    DEFAULT_ACTIVITY_DAYS = 3
+    # A row the departure sweep retired (badge silent 30+ days, see
+    # vehicle_departure.py) is archived like any other, so a truck that
+    # really left the provider stops billing without a human touching
+    # it — while the sweep's whole-fleet refusal keeps an ingest outage
+    # from zeroing the bill.  Before 2026-09-11 this read
+    # ``warehouse.vehicle_state_live.captured_at`` (a Samsara signal in
+    # the last 3 days): a manual truck was never billed and a paused
+    # integration billed nothing three days later.
 
     @staticmethod
-    def _activity_cutoff_iso(days: int) -> str:
-        """ISO-8601 UTC ``now - days``.  Pulled out for testability."""
-        return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    def _billable_marks() -> str:
+        return ",".join("?" for _ in BILLABLE_VEHICLE_TYPES)
 
-    async def count_active_vehicles(
-        self, account_id: int, days: int | None = None,
-    ) -> int:
-        """Count vehicles with a Samsara signal in the last ``days`` days.
-
-        Uses the (account_id, captured_at) index so this stays cheap at
-        any fleet size.  An empty/null ``captured_at`` (vehicle added to
-        Samsara but never reported) is treated as inactive — matches the
-        product rule "new trucks bill from day 1 of FIRST activity".
-        """
-        days = self.DEFAULT_ACTIVITY_DAYS if days is None else days
-        cutoff = self._activity_cutoff_iso(days)
+    async def count_billable_vehicles(self, account_id: int) -> int:
+        """Trucks in the registry that are not archived — the billed quantity."""
         cur = await self._db.execute(
-            "SELECT COUNT(*) FROM warehouse.vehicle_state_live "
-            "WHERE account_id = ? AND captured_at > ?",
-            (account_id, cutoff),
+            "SELECT COUNT(*) FROM vehicles "
+            "WHERE account_id = ? AND is_active = 1 "
+            f"AND vehicle_type IN ({self._billable_marks()})",
+            (account_id, *BILLABLE_VEHICLE_TYPES),
         )
         row = await cur.fetchone()
         return int(row[0]) if row else 0
 
-    async def count_inactive_vehicles(
-        self, account_id: int, days: int | None = None,
-    ) -> int:
-        """Count vehicles known to Samsara but silent for ``days``+ days.
-
-        The "X inactive — not billed" footer on the billing UI sums this
-        plus the count of vehicles with empty ``captured_at`` (added but
-        never reported) so the operator can see exactly what 4truck
-        chose not to charge them for.
-        """
-        days = self.DEFAULT_ACTIVITY_DAYS if days is None else days
-        cutoff = self._activity_cutoff_iso(days)
+    async def count_unbilled_vehicles(self, account_id: int) -> int:
+        """Archived trucks — the "N archived, not billed" footer, so the
+        customer can see exactly what 4truck chose not to charge for."""
         cur = await self._db.execute(
-            "SELECT COUNT(*) FROM warehouse.vehicle_state_live "
-            "WHERE account_id = ? "
-            "  AND (captured_at IS NULL OR captured_at = '' OR captured_at <= ?)",
-            (account_id, cutoff),
+            "SELECT COUNT(*) FROM vehicles "
+            "WHERE account_id = ? AND is_active = 0 "
+            f"AND vehicle_type IN ({self._billable_marks()})",
+            (account_id, *BILLABLE_VEHICLE_TYPES),
         )
         row = await cur.fetchone()
         return int(row[0]) if row else 0
 
-    async def list_inactive_vehicles(
-        self,
-        account_id: int,
-        days: int | None = None,
-        limit: int = 10,
+    async def list_unbilled_vehicles(
+        self, account_id: int, limit: int = 10,
     ) -> list[dict]:
-        """Return up to ``limit`` inactive vehicles for the UI footer.
-
-        Sorted by vehicle_name so the dashboard's "not billed" list
-        renders deterministically.  Only the fields the dashboard needs
-        — name, last captured_at — to keep payloads small.
-        """
-        days = self.DEFAULT_ACTIVITY_DAYS if days is None else days
-        cutoff = self._activity_cutoff_iso(days)
+        """Up to ``limit`` archived trucks for the UI footer, by unit
+        number so the list renders deterministically.  Only what the
+        footer shows: the unit and when the row was archived —
+        ``updated_at``, which archiving stamps and nothing writes on an
+        archived row afterwards (the registry has no archive timestamp
+        of its own; if a later write path touches archived rows, give
+        it one)."""
         cur = await self._db.execute(
-            """
-            SELECT vehicle_id, vehicle_name, captured_at
-            FROM warehouse.vehicle_state_live
-            WHERE account_id = ?
-              AND (captured_at IS NULL OR captured_at = '' OR captured_at <= ?)
-            ORDER BY vehicle_name
-            LIMIT ?
-            """,
-            (account_id, cutoff, limit),
+            "SELECT id, unit_number, updated_at FROM vehicles "
+            "WHERE account_id = ? AND is_active = 0 "
+            f"AND vehicle_type IN ({self._billable_marks()}) "
+            "ORDER BY unit_number LIMIT ?",
+            (account_id, *BILLABLE_VEHICLE_TYPES, limit),
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [
+            {"vehicle_id": str(r[0]), "vehicle_name": r[1], "archived_at": r[2]}
+            for r in await cur.fetchall()
+        ]
 
-    async def compute_billing(
-        self, account_id: int, days: int | None = None,
-    ) -> dict:
-        """Combine tier pricing with the active-vehicle count.
+    async def compute_billing(self, account_id: int) -> dict:
+        """Combine tier pricing with the billable-vehicle count.
 
         This is the canonical billing math — both the API summary and
         ``sync_billing_quantity`` use it so the dashboard's preview and
@@ -792,8 +784,8 @@ class BillingMixin:
         base = int(sub.get("monthly_base_usd") or 0) or _TIER_MONTHLY_BASE.get(tier, 0)
         included = int(sub.get("base_vehicles") or 0) or _TIER_BASE_VEHICLES.get(tier, 0)
         extra_unit = int(sub.get("extra_vehicle_cents") or 0) or _TIER_EXTRA_CENTS.get(tier, 0)
-        active   = await self.count_active_vehicles(account_id, days)
-        inactive = await self.count_inactive_vehicles(account_id, days)
+        active   = await self.count_billable_vehicles(account_id)
+        inactive = await self.count_unbilled_vehicles(account_id)
         extras = max(0, active - included)
         extras_cents = extras * extra_unit
         return {
@@ -961,13 +953,13 @@ class BillingMixin:
         active-vehicle billing math live in one place.
 
         When ``active_vehicles`` is supplied, billing is driven by it
-        (the new model: charge only for trucks signaling in last N
-        days).  When it's None we fall back to ``sub["vehicle_count"]``
+        (every non-archived truck in the account's vehicle registry —
+        see ``count_billable_vehicles``).  When it's None we fall back to ``sub["vehicle_count"]``
         — the legacy raw count — so tests and call sites that haven't
         migrated keep working.
 
         ``inactive_vehicles`` / ``inactive_sample`` are surfaced for the
-        "X inactive — not billed" UI footer; they don't affect the math.
+        "X archived — not billed" UI footer; they don't affect the math.
 
         The line items are intentionally returned even for comped
         accounts — operators should see "what 4truck is covering" so
@@ -1035,23 +1027,22 @@ class BillingMixin:
         account_id: int,
         *,
         provider: str = "stub",
-        days: int | None = None,
         inactive_sample_limit: int = 10,
     ) -> dict:
-        """End-to-end summary: subscription + active-vehicle math + comp.
+        """End-to-end summary: subscription + billable-vehicle math + comp.
 
         This is what both providers' ``get_summary`` should call.  It
         composes the pure projection (``build_summary``) with the
-        activity-driven inputs (``count_active_vehicles`` /
-        ``count_inactive_vehicles`` / ``list_inactive_vehicles``) so
+        registry-driven inputs (``count_billable_vehicles`` /
+        ``count_unbilled_vehicles`` / ``list_unbilled_vehicles``) so
         the dashboard sees a single, consistent dict whether the
         deployment is stub or Stripe.
         """
         sub = await self.get_or_create_subscription(account_id)
-        active = await self.count_active_vehicles(account_id, days=days)
-        inactive = await self.count_inactive_vehicles(account_id, days=days)
-        sample = await self.list_inactive_vehicles(
-            account_id, days=days, limit=inactive_sample_limit,
+        active = await self.count_billable_vehicles(account_id)
+        inactive = await self.count_unbilled_vehicles(account_id)
+        sample = await self.list_unbilled_vehicles(
+            account_id, limit=inactive_sample_limit,
         )
         return self.build_summary(
             sub,
