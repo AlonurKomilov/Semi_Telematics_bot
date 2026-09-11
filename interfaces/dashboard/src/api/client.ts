@@ -130,7 +130,9 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
       // Gateway-level failure — the API is restarting (make restart) or
       // briefly unreachable.  Announce it so the MaintenanceOverlay can
       // show "updating…" instead of each page surfacing a raw error.
-      window.dispatchEvent(new Event('4truck:maintenance'));
+      window.dispatchEvent(
+        new CustomEvent('4truck:maintenance', { detail: { reason: 'updating' } }),
+      );
     }
     return res;
   } catch (e) {
@@ -142,6 +144,22 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
       throw new Error(
         `Request to ${path} timed out after ${Math.round(timeoutMs / 1000)}s. ` +
         `The server may be busy — please try again.`,
+      );
+    }
+    // The request never got an answer at all: the connection between
+    // this browser and us is gone.  Announced for the same reason a 502
+    // is — otherwise a connection that dies mid-shift surfaces as a raw
+    // error on every panel, which is the "this product is broken"
+    // impression the whole offline story exists to prevent.  The
+    // service worker's page cannot cover this: a single-page app does
+    // not navigate, so nothing asks it for one.
+    //
+    // A cancelled request is NOT a network failure — React Query aborts
+    // constantly on unmount and on every refetch, and announcing those
+    // would put an outage card over a perfectly healthy app.
+    if (e instanceof TypeError) {
+      window.dispatchEvent(
+        new CustomEvent('4truck:maintenance', { detail: { reason: 'unreachable' } }),
       );
     }
     throw e;
