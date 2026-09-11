@@ -42,9 +42,7 @@ export default function FeatureMenu({ features, current, onPick }: {
               aria-haspopup="menu" aria-expanded={open}
               title="Switch feature"
               className="row rowbtn"
-              style={{ gap: 6, background: 'transparent', border: 0, padding: '2px 6px',
-                       margin: '0 -6px', borderRadius: 4, minHeight: 24, minWidth: 0,
-                       color: 'var(--fg)', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+              style={{ gap: 6, padding: '2px 6px', margin: '0 -6px', borderRadius: 4 }}>
         <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           4truck · {current.label}
         </strong>

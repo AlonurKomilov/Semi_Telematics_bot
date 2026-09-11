@@ -238,16 +238,11 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                       // No width and no margin: as a stretched grid item
                       // it fills its track exactly, in both states, so
                       // the dot does not jump 4px when the row opens.
-                      // `font` BEFORE `fontSize`: the shorthand resets
-                      // every longhand it covers, and React writes these
-                      // in insertion order — declared after, it silently
-                      // undid the 12px and left the row a step larger
-                      // than the read-only branch beside it.
-                      style={{ flex: '1 1 0', gap: 6, minWidth: 0, minHeight: 24,
-                               background: 'transparent',
-                               border: 0, padding: '2px 4px', margin: 0, borderRadius: 4,
-                               color: 'var(--fg)', cursor: 'pointer', font: 'inherit',
-                               fontSize: 12, textAlign: 'left' }}>
+                      // The one row a step SMALLER than the rest: it sits
+                      // beside a read-only branch at 12px, and inheriting
+                      // the panel's 13px left the two a step apart.
+                      style={{ flex: '1 1 0', gap: 6, padding: '2px 4px',
+                               borderRadius: 4, fontSize: 12 }}>
                 {line}
               </button>
               {/* Correcting a record is one press from the list, not two.

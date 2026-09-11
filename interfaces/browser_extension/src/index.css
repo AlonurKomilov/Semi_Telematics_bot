@@ -92,5 +92,29 @@ button, input { font: inherit; }
 .mark-art { height:11px; width:auto; color: var(--muted); }
 .mark-link { text-decoration:none; cursor:pointer; }
 .mark-link:hover { border-color: var(--primary); color: var(--fg); }
+/* A button that has to look like a ROW, not like a button.  It existed only
+   as a `:hover` rule — a primitive with no body — so six call sites each
+   re-typed the same nine-property reset. */
+.rowbtn { min-width:0; min-height:24px; margin:0; border:0;
+          background:transparent; color: var(--fg); cursor:pointer;
+          /* A row inherits the panel's 13px.  Every call site said
+             `font: 'inherit'` and meant it; a 12px here shrinks all six. */
+          font:inherit; text-align:left; }
+/* Deliberately NOT here: display, width, gap, padding, radius.  They are not
+   shared — one site is a block button, one is `flex:1 1 0` and comments that
+   it wants no width, and the paddings run 2px/6px/8px by row density.  A
+   primitive that claims them silently restyles the sites that differ, so
+   layout stays at the call site and `.row` supplies flex where it is wanted. */
+
 .link { color: var(--primary); text-decoration: underline; }
+/* …and a link that is really a BUTTON needs the reset too.  `.link` was
+   colour-only, so three <button> call sites carried the same seven inline
+   properties to make a button stop looking like one (the fourth `.link`
+   is an <a>, which needs none of it — hence the `button.` qualifier).
+   All three asked for 12px — a link inside prose sits a step below it.
+   `font` BEFORE `font-size`: the shorthand resets every longhand it covers,
+   so a font-size declared before it would be silently undone. */
+button.link { background:none; border:0; margin:0; padding:2px 0;
+              font:inherit; font-size:12px;
+              cursor:pointer; min-height:24px; text-align:left; }
 .small { font-size: 12px; }

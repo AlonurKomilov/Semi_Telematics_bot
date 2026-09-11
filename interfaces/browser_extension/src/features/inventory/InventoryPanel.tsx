@@ -346,9 +346,7 @@ useEffect(() => {
             ? <p style={{ margin: 0, fontSize: 12 }}>
                 <span style={{ color: 'var(--danger)' }}>Could not read what is aboard.</span>{' '}
                 <button type="button" className="link"
-                        onClick={() => { retryInventory(); select(selected); }}
-                        style={{ background: 'none', border: 0, padding: 0, font: 'inherit',
-                                 fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                        onClick={() => { retryInventory(); select(selected); }}>
                   Try again
                 </button>
               </p>
@@ -593,8 +591,7 @@ useEffect(() => {
             </p>
             {!canWrite && (
               <button type="button" className="link" onClick={openDashboard}
-                      style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
-                               font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                      style={{ justifySelf: 'start' }}>
                 Open Inventory on 4truck →
               </button>
             )}
@@ -614,10 +611,7 @@ useEffect(() => {
                     // Live Map's row, to the pixel: 10px dot, bold unit,
                     // 8px 10px.  The same object in the same role must
                     // not wear two faces across one panel's features.
-                    style={{ width: '100%', gap: 8, padding: '8px 10px', minHeight: 24,
-                             background: chosen ? 'rgba(255,255,255,.06)' : 'transparent',
-                             border: 0, borderBottom: '1px solid var(--border)',
-                             color: 'var(--fg)', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+                    style={{ width: '100%', gap: 8, padding: '8px 10px', background: chosen ? 'rgba(255,255,255,.06)' : 'transparent', borderBottom: '1px solid var(--border)' }}>
               {/* Three states, not two.  Green says "aboard and settled";
                   on a vehicle nobody has ever inventoried it would be
                   asserting a check that never happened, so an empty one

@@ -735,9 +735,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                           aria-expanded={invOpen} aria-controls={INV_BODY_ID}
                           className="row rowbtn"
                           title={invOpen ? 'Hide what is aboard' : 'Show what is aboard'}
-                          style={{ gap: 6, background: 'rgba(255,255,255,.04)', border: 0, padding: '2px 4px',
-                                   margin: '0 -4px', borderRadius: 4, minHeight: 24,
-                                   color: 'var(--fg)', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+                          style={{ gap: 6, background: 'rgba(255,255,255,.04)', padding: '2px 4px',
+                                   margin: '0 -4px', borderRadius: 4 }}>
                     {/* The caret LEADS what it opens — the card above and
                         the list below both point the same way. */}
                     <span aria-hidden style={{ width: 12, flexShrink: 0 }}>{invOpen ? '\u25be' : '\u25b4'}</span>
@@ -787,8 +786,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                         feature of its own. */}
                     <button type="button" className="link"
                             onClick={() => { void chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` }); }}
-                            style={{ justifySelf: 'start', background: 'none', border: 0, padding: '2px 0',
-                                     font: 'inherit', fontSize: 12, cursor: 'pointer', minHeight: 24 }}>
+                            style={{ justifySelf: 'start' }}>
                       Manage on 4truck →
                     </button>
                   </div>
@@ -839,8 +837,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                     borderTop: '1px solid var(--border)' }}>
         <button type="button" onClick={toggleList} aria-expanded={listOpen}
                 className="row rowbtn"
-                style={{ width: '100%', gap: 6, padding: '6px 10px',
-                         background: 'var(--card)', border: 0, color: 'var(--fg)', cursor: 'pointer' }}>
+                style={{ width: '100%', gap: 6, padding: '6px 10px', background: 'var(--card)' }}>
           {/* The caret LEADS what it opens — the same rule the card
               above follows, and the one the browser's own <summary>
               uses.  It sat at the far right until the card gained a
@@ -860,8 +857,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           const p = f.properties, status = vehicleStatus(f), warn = hasLowLevelWarning(p);
           return (
             <button key={idOf(f)} onClick={() => focus(f)} className="rowbtn"
-              style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 0,
-                       borderBottom: '1px solid var(--border)', color: 'var(--fg)', cursor: 'pointer', minHeight: 24 }}>
+              style={{ width: '100%', padding: '8px 10px',
+                       borderBottom: '1px solid var(--border)' }}>
               <div className="row">
                 <span title={warn ? `${status} — fuel or DEF below ${LOW_LEVEL_PCT}%` : status}
                       aria-label={status}
