@@ -201,7 +201,7 @@ def _portal_link(account_id: int) -> str:
     Kept literal here because the dashboard route is stable; if we ever
     rename it, this single string updates every notification body.
     """
-    return "/dashboard/billing"
+    return "/billing"
 
 
 # ── Payment events ──────────────────────────────────────────────

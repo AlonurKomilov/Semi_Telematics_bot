@@ -295,6 +295,10 @@ async def test_in_stub_mode_a_price_change_creates_nothing_and_a_rollout_is_refu
     assert r.json()["subscribers_on_old_price"] == 0
     g = (await s["client"].get("/api/system/plans", headers=s["op"])).json()
     assert g["billing_provider"] == "stub"
+    assert set(g["stripe_setup"]) == {"secret_key", "webhook_secret", "extras_price", "return_url"}
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x"); monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
+    g2 = (await s["client"].get("/api/system/plans", headers=s["op"])).json()["stripe_setup"]
+    assert g2["secret_key"] is True and g2["extras_price"] is False
     r = await s["client"].post("/api/system/plans/pro/rollout", headers=s["op"])
     assert r.status_code == 400 and "stub" in r.json()["detail"]
 

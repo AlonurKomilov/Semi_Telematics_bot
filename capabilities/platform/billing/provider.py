@@ -13,6 +13,12 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 
+class ProviderError(RuntimeError):
+    """The payment provider refused or failed a call the customer
+    started (a checkout, a switch, the portal): shown as a 502 with its
+    text, never a bare 500."""
+
+
 @runtime_checkable
 class BillingProvider(Protocol):
     """Interface every billing backend must implement."""

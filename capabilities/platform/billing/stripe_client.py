@@ -11,11 +11,13 @@ Set BILLING_PROVIDER=stub (the default) to disable Stripe entirely.
 from __future__ import annotations
 
 import logging
+import uuid
 import os
 from datetime import datetime, timezone
 from typing import Any
 
 from capabilities.permissions.plans import account_plan_changed
+from capabilities.platform.billing.provider import ProviderError
 from capabilities.platform.billing.notifications import (
     notify_checkout_complete as _notify_checkout_complete,
     notify_payment_failed as _notify_payment_failed,
@@ -116,6 +118,18 @@ class StripeBillingProvider:
                 f"Set it on the plan (system console) or the STRIPE_PRICE_{tier.upper()} env var."
             )
 
+        # An account Stripe already bills does not check out again — that
+        # would open a SECOND subscription and charge twice.  It switches
+        # in place: the base item moves to the new plan's Price, prorated,
+        # and our rows follow at once.
+        if sub.get("provider_subscription_id") and (sub.get("status") or "") in ("active", "trialing", "past_due"):
+            if (sub.get("tier") or "") == tier:
+                raise ValueError(f"This account is already on the '{tier}' plan.")
+            try:
+                return await self._switch_plan(stripe, db, account_id, sub, tier, base_price_id, success_url)
+            except stripe.error.StripeError as e:
+                raise ProviderError(f"Stripe could not switch the plan: {e}") from e
+
         # Get or create Stripe customer
         customer_id = sub.get("provider_customer_id", "")
         if not customer_id:
@@ -150,6 +164,60 @@ class StripeBillingProvider:
             metadata={"account_id": str(account_id), "tier": tier},
         )
         return {"url": session["url"], "session_id": session["id"]}
+
+    async def _switch_plan(self, stripe, db, account_id: int, sub: dict, tier: str,
+                           base_price_id: str, success_url: str) -> dict:
+        """Move a live subscription's BASE item to *base_price_id* —
+        Stripe prorates the difference on the next invoice (the standard
+        mid-cycle plan change); the extras item is untouched; our rows
+        record what Stripe now charges and the resolver answers for the
+        new plan at once.  Returns the page's own URL: nothing to redirect
+        to, the change is done."""
+        sub_id = sub["provider_subscription_id"]
+        live = stripe.Subscription.retrieve(sub_id, expand=["items"])
+        slots = self._extract_items(live)
+        base = slots["base"]
+        if not base.get("id"):
+            raise ValueError("The Stripe subscription has no base item to switch; contact support.")
+        # The idempotency key is one per ACTION, not per target: a nonce.
+        # Keyed on the target alone, an A→B→A→B day would hand the last
+        # switch Stripe's cached first response — the row would say B
+        # while Stripe still billed A.  A double-click is harmless: the
+        # second modify to the same price is a no-op in Stripe.
+        stripe.Subscription.modify(
+            sub_id,
+            items=[{"id": base["id"], "price": base_price_id, "quantity": 1}],
+            proration_behavior="create_prorations",
+            metadata={"account_id": str(account_id), "tier": tier},
+            idempotency_key=f"switch:{account_id}:{sub_id}:{uuid.uuid4().hex}",
+        )
+        # Trust what Stripe HOLDS, not what the modify call returned: a
+        # fresh read is never a cached replay.  If the base item is not on
+        # the target price now, nothing is written and the customer is told.
+        fresh = stripe.Subscription.retrieve(sub_id, expand=["items"])
+        after = self._extract_items(fresh)
+        if (after["base"].get("price_id") or "") != base_price_id:
+            raise ProviderError("Stripe did not move the subscription to the new plan; nothing was changed on our side.")
+        pricing = await db.pricing_for(tier)
+        updates = {"tier": tier, **self._priced_updates(tier, pricing, after),
+                   "provider_base_price_id": base_price_id}
+        if after["base"].get("id"):
+            updates["provider_base_item_id"] = after["base"]["id"]
+        # Stripe has moved; our two rows move together or not at all.  If
+        # this write fails, Stripe's own subscription.updated event for
+        # the modify re-derives the plan from the Price it sees (the
+        # webhook below) — the state heals from Stripe, not from silence.
+        try:
+            async with db.transaction():
+                await db.update_subscription(account_id, **updates)
+                await db.update_account_tier(account_id, tier)
+        except Exception:
+            logger.error("Plan switched in Stripe but the local rows did not follow: account=%s sub=%s tier=%s "
+                         "— the subscription.updated webhook will reconcile", account_id, sub_id, tier, exc_info=True)
+            raise
+        account_plan_changed(account_id)
+        logger.info("Plan switched in place: account=%s tier=%s sub=%s", account_id, tier, sub_id)
+        return {"url": success_url, "session_id": "", "switched": True}
 
     async def create_portal_session(
         self,
@@ -293,20 +361,42 @@ class StripeBillingProvider:
             # reliable timestamp to compare against.
             row = await db.get_subscription(account_id)
             updates.update(self._past_due_since_fields(status, row))
+            slots = self._extract_items(data)
+            base_price = slots["base"].get("price_id") or ""
+            # The Price the base item is on names the plan: when it maps to
+            # a plan row and that is not the plan our row says, Stripe has
+            # moved the subscription (an in-app switch whose local write
+            # failed, a rollout batch that died mid-write) and our rows
+            # follow — tier, prices, the account, the resolver.  This is
+            # the reconciler; nothing else re-derives tier from Stripe.
+            moved_to = await db.plan_by_stripe_price(base_price) if row else None
+            if moved_to and moved_to != (row.get("tier") or ""):
+                pricing = await db.pricing_for(moved_to)
+                updates.update({"tier": moved_to, **self._priced_updates(moved_to, pricing, slots),
+                                "provider_base_price_id": base_price})
+                if slots["base"]["id"]:
+                    updates["provider_base_item_id"] = slots["base"]["id"]
+                await db.update_subscription(account_id, **updates)
+                await db.update_account_tier(account_id, moved_to)
+                account_plan_changed(account_id)
+                logger.warning("subscription.updated: account=%s reconciled to plan %s from Stripe price %s (row said %s)",
+                               account_id, moved_to, base_price, row.get("tier"))
+                return {"handled": True, "event_type": event_type, "reconciled_to": moved_to}
             # Backfill, never refresh: a row whose extras item id is still
             # blank (the checkout-time retrieve failed) takes the item ids
             # and Stripe's prices from this event's own Subscription
             # object, which carries items.data[].price without a retrieve.
-            # A row that already has them is left alone here.
+            # The plan is the one the base Price names (else the event's
+            # metadata, else the row) — never the row first, which could
+            # be mid-write.
             if row and not (row.get("provider_extra_item_id") or ""):
-                slots = self._extract_items(data)
                 if slots["base"]["id"] or slots["extra"]["id"]:
-                    tier = row.get("tier") or data.get("metadata", {}).get("tier") or "free"
+                    tier = moved_to or (data.get("metadata") or {}).get("tier") or row.get("tier") or "free"
                     pricing = await db.pricing_for(tier)
                     updates.update(self._priced_updates(tier, pricing, slots))
                     if slots["base"]["id"]:
                         updates["provider_base_item_id"] = slots["base"]["id"]
-                        updates["provider_base_price_id"] = slots["base"].get("price_id") or ""
+                        updates["provider_base_price_id"] = base_price
                     if slots["extra"]["id"]:
                         updates["provider_extra_item_id"] = slots["extra"]["id"]
                     logger.info("Stripe item ids backfilled from subscription.updated: account=%s", account_id)

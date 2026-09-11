@@ -32,7 +32,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
-_BASE_URL = os.getenv("APP_BASE_URL", "https://4truck.us")
+def _dashboard_url() -> str:
+    """Where Stripe sends the customer back: the dashboard origin the
+    rest of the platform names (AUTH_BASE_URL → DASHBOARD_BASE_URL →
+    APP_BASE_URL), else the dashboard host itself — never the apex,
+    whose /dashboard redirect drops the query string."""
+    for k in ("AUTH_BASE_URL", "DASHBOARD_BASE_URL", "APP_BASE_URL"):
+        v = (os.getenv(k) or "").strip().rstrip("/")
+        if v:
+            return v
+    return "https://dash.4truck.us"
+
 
 _billing_admin = require_permission("can_manage_billing")
 
@@ -183,8 +193,9 @@ async def billing_checkout(
     from capabilities.platform.billing import get_provider
     provider = get_provider()
     account_id = user["account_id"]
-    success_url = f"{_BASE_URL}/dashboard/billing?success=1"
-    cancel_url  = f"{_BASE_URL}/dashboard/billing?canceled=1"
+    success_url = f"{_dashboard_url()}/billing?success=1"
+    cancel_url  = f"{_dashboard_url()}/billing?canceled=1"
+    from capabilities.platform.billing.provider import ProviderError
     try:
         result = await provider.create_checkout_session(
             account_id=account_id,
@@ -195,6 +206,8 @@ async def billing_checkout(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ProviderError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     return result
 
 
@@ -208,7 +221,7 @@ async def billing_portal(
     """Create a Stripe billing portal session.  Returns a redirect URL."""
     from capabilities.platform.billing import get_provider
     provider = get_provider()
-    return_url = f"{_BASE_URL}/dashboard/billing"
+    return_url = f"{_dashboard_url()}/billing"
     try:
         result = await provider.create_portal_session(
             account_id=user["account_id"],

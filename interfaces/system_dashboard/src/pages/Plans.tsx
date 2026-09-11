@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type React from 'react';
 import { apiJSON, ApiError } from '../api/client';
 
 // ── Plans: what each plan includes, as data ─────────────────────
@@ -56,6 +57,7 @@ interface PlansResponse {
   plan_key_pattern: string;
   accounts_without_plan: Record<string, number>;
   billing_provider: string;
+  stripe_setup: { secret_key: boolean; webhook_secret: boolean; extras_price: boolean; return_url: boolean };
 }
 
 interface Draft {
@@ -380,6 +382,19 @@ export default function PlansPage() {
       {err && <div className="mb-4 text-sm text-rose-400 border border-rose-500/30 bg-rose-500/10 rounded px-3 py-2">{err}</div>}
       {loading && <p className="text-slate-500 text-sm">Loading…</p>}
 
+      {data && (
+        <div className="mb-4 text-xs text-slate-500">
+          Billing provider: <span className="text-slate-300">{data.billing_provider}</span>
+          {data.billing_provider !== 'stripe' && (
+            <span> — prices here are shown to customers but nothing is charged; before switching to Stripe the API needs:{' '}
+              {([['secret_key', 'STRIPE_SECRET_KEY'], ['webhook_secret', 'STRIPE_WEBHOOK_SECRET'], ['extras_price', 'STRIPE_PRICE_EXTRA_VEHICLE (the per-extra-truck Price)'], ['return_url', 'AUTH_BASE_URL / DASHBOARD_BASE_URL']] as const)
+                .map(([k, label]) => <span key={k} className={data.stripe_setup[k] ? 'text-emerald-400' : 'text-amber-300'}>{data.stripe_setup[k] ? '✓' : '✗'} {label}</span>)
+                .reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ', ', el] : [el]), [])}
+              . Then save each plan's price once so its Stripe Price is created.
+            </span>
+          )}
+        </div>
+      )}
       {orphans.length > 0 && (
         <div className="mb-4 text-sm text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded px-3 py-2">
           Accounts on a plan that has no row — they hold <span className="font-medium">nothing sellable</span> until it exists:{' '}

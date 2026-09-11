@@ -110,6 +110,15 @@ class PlansMixin:
         await self._db.commit()
         return (await self.get_plan(tier)) or {}
 
+    async def plan_by_stripe_price(self, price_id: str) -> Optional[str]:
+        """The tier whose row carries this Stripe price id — how a webhook
+        re-derives what plan a subscription is on from the Price it sees."""
+        if not price_id:
+            return None
+        cur = await self._db.execute("SELECT tier FROM plans WHERE stripe_price_id = ? LIMIT 1", (price_id,))
+        r = await cur.fetchone()
+        return r["tier"] if r else None
+
     async def trial_plan(self) -> Optional[str]:
         """The plan a self-serve signup's trial starts on — the one row
         flagged ``trial_default`` — or ``None`` when the operator has
