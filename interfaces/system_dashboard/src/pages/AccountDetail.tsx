@@ -148,8 +148,8 @@ export default function AccountDetailPage() {
             <p className="text-sm text-slate-400">Not available.</p>
           ) : (
             <dl className="text-sm space-y-1.5">
-              <Row label="Active vehicles" value={String(billing.active_vehicles)} />
-              <Row label="Inactive (3+ days)" value={String(billing.inactive_vehicles)} />
+              <Row label="Billed trucks (registry)" value={String(billing.active_vehicles)} />
+              <Row label="Archived (not billed)" value={String(billing.inactive_vehicles)} />
               <Row label="Included" value={String(billing.included)} />
               <Row label="Extras" value={String(billing.extras)} />
               <Row label="Base" value={usd(billing.base_cents)} />
