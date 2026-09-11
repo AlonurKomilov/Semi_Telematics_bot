@@ -115,11 +115,26 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
       </p>
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nothing is expected on {type === 'truck' ? 'trucks' : 'trailers'} yet,
-          so no {type} is ever reported short.
-          {canManage ? ' Add a row, or reset to the standard list.' : ''}
-        </p>
+        /* A blank editor asks somebody to invent a list.  The standard one
+           is the answer most fleets want, so it is offered as the action
+           rather than mentioned as an option beside "add a row" — the
+           recommendation leads, and inventing your own stays one press
+           away. */
+        <div className="rounded-lg border border-dashed p-5 text-center">
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Nothing is expected on {type === 'truck' ? 'trucks' : 'trailers'} yet,
+            so no {type} is ever reported short.
+          </p>
+          {canManage && (
+            <Button
+              className="mt-3"
+              size="sm"
+              onClick={() => setDraft((data?.standard ?? []).map((r) => ({ ...r })))}
+            >
+              <RotateCcw /> Start from the standard list
+            </Button>
+          )}
+        </div>
       ) : (
         <ul className="divide-y rounded-lg border">
           {rows.map((r, i) => (
@@ -221,6 +236,12 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
             {save.isPending ? 'Saving…' : 'Save'}
           </Button>
         </div>
+      )}
+
+      {save.isSuccess && !dirty && (
+        <p className="text-sm text-muted-foreground">
+          Saved. Every {type}'s card now measures against this list.
+        </p>
       )}
 
       {save.isError && (
