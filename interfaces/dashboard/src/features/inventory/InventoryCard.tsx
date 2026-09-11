@@ -37,19 +37,33 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
   if (isLoading) return <CardSkeleton height="h-48" />;
   if (!data) return null;
 
-  const { items, summary } = data;
+  const { items, summary, coverage } = data;
+  // An account with no template has not said what "complete" means, so
+  // nothing here says it either.  Silence is the honest answer; "0 of 0"
+  // would read as a verdict nobody pronounced.
+  const declared = coverage.expected > 0;
+  const shortRows = coverage.rows.filter((r) => r.short > 0);
 
   return (
     <Card>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-baseline gap-2">
           <SectionHeader>Inventory</SectionHeader>
-          {summary.total > 0 && (
+          {(summary.total > 0 || declared) && (
             <span className="text-2xs text-muted-foreground">
               {summary.total} item{summary.total === 1 ? '' : 's'}
               {summary.attention > 0 && (
                 <> · <span className={toneText('warn')}>
                   {summary.attention} need{summary.attention === 1 ? 's' : ''} attention
+                </span></>
+              )}
+              {/* A DIFFERENT fact from the count beside it: that one says
+                  how much is RECORDED, this says how much of what the
+                  truck owes is aboard.  A truck can carry six items and
+                  still be short its ELD. */}
+              {declared && (
+                <> · <span className={coverage.present < coverage.expected ? toneText('warn') : undefined}>
+                  {coverage.present} of {coverage.expected} expected aboard
                 </span></>
               )}
             </span>
@@ -64,7 +78,12 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
 
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nothing tracked in this truck yet.
+          {declared
+            // The case this whole template exists for: a truck owing
+            // three things and recording none looked identical to a
+            // truck that owes nothing.  Now it says what it owes.
+            ? `Nothing recorded yet — this truck is expected to carry ${coverage.expected} item${coverage.expected === 1 ? '' : 's'}.`
+            : 'Nothing tracked in this truck yet.'}
           {canManage ? ' Add the dashcam, fuel card, ELD… so swaps and losses stay accountable.' : ''}
         </p>
       ) : (
@@ -103,6 +122,28 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
             );
           })}
         </ul>
+      )}
+
+      {/* What is SHORT, named.  A count tells you something is wrong;
+          this tells you what to go and find.  Only the rows that are
+          actually short render — a template listing everything the
+          truck already has would be a second copy of the list above.
+          Optional rows are included but said quietly: they are worth
+          knowing and not worth chasing. */}
+      {shortRows.length > 0 && (
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Not aboard:{' '}
+          {shortRows.map((r, n) => (
+            <span key={r.category}>
+              {n > 0 && ', '}
+              <span className={r.required ? toneText('warn') : undefined}>
+                {r.label || r.category}
+                {r.short > 1 && ` ×${r.short}`}
+                {!r.required && ' (optional)'}
+              </span>
+            </span>
+          ))}
+        </p>
       )}
 
       {canManage && addOpen && (

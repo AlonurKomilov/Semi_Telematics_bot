@@ -19,10 +19,33 @@ export interface InventoryItem {
   last_verified_by: number | null;
 }
 
+/** One line of the template, measured against this vehicle.
+ *  `short` is 0 unless it is short — the only rows worth rendering. */
+export interface CoverageRow {
+  category: string;
+  label: string;
+  quantity: number;
+  required: boolean;
+  present: number;
+  short: number;
+}
+
+/** What this vehicle OWES, beside what it has.
+ *
+ *  `expected: 0` means NOT DECLARED, never "complete" — an account that
+ *  has written no template has not said what complete means, and saying
+ *  it for them is the one wrong answer available here. */
+export interface Coverage {
+  expected: number;
+  present: number;
+  rows: CoverageRow[];
+}
+
 export interface InventoryResponse {
   vehicle_id: number;
   items: InventoryItem[];
   summary: { total: number; attention: number };
+  coverage: Coverage;
   categories: string[];
   statuses: string[];
 }
