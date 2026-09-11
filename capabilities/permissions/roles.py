@@ -1765,25 +1765,41 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_maintenance_summary":  ["can_manage_maintenance"],                     # owner/admin/fleet/safety
     "get_vehicle_fuel_costs":   ["can_view_fuel_cost"],                           # owner/admin/fleet
     "get_fuel_cost_summary":    ["can_view_fuel_cost"],                           # owner/admin/fleet
-    "check_vehicle_camera":     ["can_view_vehicles"],                           # all except driver
+    # The cameras feature opens can_view_cameras (registry.py) and every
+    # other camera surface gates on it. This row was can_view_vehicles,
+    # which dispatcher, HR, accounting AND driver all hold — so four
+    # roles the permission system denies cameras could pull a dashcam
+    # frame through the assistant. The old comment ("all except
+    # driver") was wrong too: driver has can_view_vehicles.
+    "check_vehicle_camera":     ["can_view_cameras"],                            # owner/admin/fleet/safety
     "get_driver_scorecard":     ["can_view_scorecards", "can_view_scorecards"],  # all except dispatcher
     "get_rolling_stopped":      ["can_view_vehicles"],                       # all except driver — account-wide fleet engine-state, follows Vehicles access like search_vehicles/get_parked_vehicles
     "get_vehicle_odometer":     ["can_view_vehicles", "can_view_vehicles"],          # all roles
     "get_drivers_list":         ["can_view_vehicles"],                           # all except driver
     "search_vehicles":          ["can_view_vehicles"],                           # all except driver
-    "search_knowledge_base":    None,                                        # all roles
+    # Was None (no permission needed) while every knowledge route
+    # requires can_view_knowledge_base. The flag is on for every role
+    # by default, so this changes nothing today — but an account that
+    # turns the feature off for a role had the assistant still
+    # answering from it.
+    "search_knowledge_base":    ["can_view_knowledge_base"],                 # every role by default
     # Reads a file the CALLER just attached to their own message — it
     # reaches no stored record, so there is nothing to gate.  Listed
     # explicitly because a missing row and a deliberate None are
     # indistinguishable to the gate, and the guard now requires the
     # decision to be written down either way.
     "read_attachment":          None,                                        # the caller's own upload
-    "get_parked_vehicles":        ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
+    "get_parked_vehicles":        ["can_view_parking"],                            # the parking feature's own verb, as the REST board uses
     "get_undriven_vehicles":      ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
     "get_driver_hos_status":    ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
     "get_alert_history":        ["can_view_alerts"],         # owner/admin/fleet/safety/driver(own)
     "get_recent_work_orders":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
-    "get_recent_inspections":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
+    # Gated on the MAINTENANCE manage verb, which only owner/admin/
+    # fleet/safety hold — so dispatcher, HR and driver were denied a
+    # DVIR tool their can_view_inspections entitles them to. Drift in
+    # the closed direction: a feature quietly unavailable rather than
+    # a leak, but drift all the same.
+    "get_recent_inspections":   ["can_view_inspections"],                     # owner/admin/dispatcher/hr/fleet/safety/driver
     "get_driver_applications":  ["can_manage_applications"],                          # owner/admin/hr/recruiter — applicant-pipeline triage, account-wide
     "get_vehicle_history":      ["can_view_vehicles", "can_view_vehicles"],       # all roles — vehicle-specific tool, isolation enforced below
     # ── Write actions (copilot "hands") — propose during a chat turn;

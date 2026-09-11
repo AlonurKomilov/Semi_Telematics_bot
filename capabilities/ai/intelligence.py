@@ -632,6 +632,24 @@ async def _check_tool_permission(
             )}
     req_perms = TOOL_PERMISSIONS.get(tool_name)
     if req_perms is not None:
+        # An unknown account cannot be permission-checked, and the
+        # resolver's fallback for that case is the hardcoded ROLE
+        # DEFAULTS — no per-account overrides, no plan mask. That is the
+        # widest answer available, handed out exactly when we know the
+        # least.
+        #
+        # Left as-is deliberately: every live caller passes an
+        # account_id, and the scope tests below this line exercise the
+        # gate without one, so the fallback is load-bearing in the test
+        # contract. Closing it means making account_id required on this
+        # signature and updating each caller — its own change, not a
+        # drive-by. Logged so it stops being silent.
+        if account_id is None:
+            logger.warning(
+                "tool gate: %s requires %s but no account_id was passed — "
+                "falling back to unmasked role defaults",
+                tool_name, req_perms,
+            )
         from capabilities.ai.usage import resolve_user_permissions
         perms = await resolve_user_permissions(user_role, account_id, user_context)
         # ``None`` = unknown role.  Deny, as the old except-branch did NOT:
