@@ -61,6 +61,7 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
    *  reader over to trailers. */
   const [draft, setDraft] = useState<CatalogueRow[] | null>(null);
   const [savingRows, setSavingRows] = useState(false);
+  const [rowsSaved, setRowsSaved] = useState(false);
   useEffect(() => { setDraft(null); }, [type]);
 
   useEffect(() => {
@@ -100,8 +101,10 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
   const rows = draft ?? data.catalogue[type] ?? [];
   const rowsDirty = draft !== null;
 
-  const editRow = (n: number, patch: Partial<CatalogueRow>) =>
+  const editRow = (n: number, patch: Partial<CatalogueRow>) => {
+    setRowsSaved(false);
     setDraft(rows.map((r, x) => (x === n ? { ...r, ...patch } : r)));
+  };
 
   const saveRows = () => {
     setSavingRows(true); setError('');
@@ -109,7 +112,7 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
       '/extension/inventory-catalogue',
       { method: 'PUT', body: { vehicle_type: type, items: rows } },
     )
-      .then((r) => { setData({ ...data, catalogue: r.catalogue }); setDraft(null); })
+      .then((r) => { setData({ ...data, catalogue: r.catalogue }); setDraft(null); setRowsSaved(true); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not save the list'))
       .finally(() => setSavingRows(false));
   };
@@ -168,8 +171,8 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
             <div className="row" style={{ gap: 6 }}>
               <button className="btn primary" disabled={saving}
                       title="Save what your role is flagged on"
-                      onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
-              <button className="btn" disabled={saving}
+                      onClick={save}>{saving ? 'Saving…' : 'Save my focus'}</button>
+              <button className="btn compact" disabled={saving}
                       onClick={() => { setFocus(data.focus); setSaved(false); }}>Discard</button>
             </div>
           )
@@ -197,13 +200,13 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
       </section>
       )}
 
-      {nothingDeclared && (
-        <p style={{ margin: 0, padding: '0 0 2px', fontSize: 12 }}>
-          No vehicle is expected to carry anything yet, so nothing is ever
-          reported short. The list is written on 4truck — once it exists,
-          this is where you turn down the parts your role does not need.
-        </p>
-      )}
+      {/* No standalone "nothing is expected" line any more.  It said the
+          same thing the section below says per type, and — since the panel
+          learned to write the catalogue — its second half had become
+          untrue: "the list is written on 4truck" is exactly what a holder
+          no longer has to do.  The section's own empty state carries both
+          the fact and the button, and the closing line at the bottom is
+          what explains the absence to somebody who cannot. */}
       {/* One type at a time, the way the dashboard's dialog does it.  Two
           stacked lists made the shorter one read as a continuation of the
           longer, and a panel is 320px — the two together were most of a
@@ -313,10 +316,19 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
               <button className="btn primary" disabled={savingRows || rows.some((r) => !r.category.trim())}
                       title={rows.some((r) => !r.category.trim())
                         ? 'Every row needs a category' : 'Save this list'}
-                      onClick={saveRows}>{savingRows ? 'Saving…' : 'Save'}</button>
+                      onClick={saveRows}>{savingRows ? 'Saving…' : 'Save the list'}</button>
               <button className="btn compact" disabled={savingRows}
                       onClick={() => setDraft(null)}>Discard</button>
             </div>
+          )}
+          {/* Saving the LIST said nothing while saving the focus said
+              something — one surface, two acts, and only one of them
+              acknowledged.  A save whose only visible result is a button
+              disappearing reads as a press that did nothing. */}
+          {mayEdit && rowsSaved && !rowsDirty && (
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              Saved. Every {type} is measured against this list from now on.
+            </p>
           )}
         </section>
       ))}

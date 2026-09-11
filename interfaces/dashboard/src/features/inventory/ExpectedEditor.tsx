@@ -311,7 +311,11 @@ export default function ExpectedEditor() {
             disabled={!dirty || save.isPending || rows.some((r) => !r.category.trim())}
             onClick={() => save.mutate(rows.map((r, i) => ({ ...r, sort_order: i + 1 })))}
           >
-            {save.isPending ? 'Saving…' : 'Save'}
+            {/* "Save the list", not "Save".  Beside "Save my focus" on the
+                same surface, a bare Save reads as saving everything — and
+                the panel calls it the same thing, which is the point: one
+                act, one name, on both screens. */}
+            {save.isPending ? 'Saving…' : 'Save the list'}
           </Button>
         </div>
       )}
