@@ -59,6 +59,26 @@ export async function readEngine(): Promise<EngineWire> {
   }
 }
 
+/**
+ * Change which engine THIS ACCOUNT is drawn on.
+ *
+ * An account-wide write, and deliberately so: the dashboard has no
+ * per-device basemap choice at all — the account's engine IS its map —
+ * and Google's tiles are billable, so "which map we buy" is one truth
+ * for everyone who looks, not a per-browser taste.  The server gates it
+ * on `can_manage_config_all`; the panel hides the control without that
+ * ability rather than offering it and answering 403 on the press.
+ *
+ * Held sessions are dropped on success: they were opened against the
+ * old answer, and one opened while the account was on Google is worth
+ * nothing the moment it is not.
+ */
+export async function setAccountEngine(engine: MapEngine): Promise<EngineWire> {
+  const out = await apiJSON<EngineWire>('/map/config', { method: 'PUT', body: { engine } });
+  forgetSessions();
+  return out;
+}
+
 /** Re-ask this many seconds before the template stops working, so a tile
  *  is never requested with a session that expired between the check and
  *  the fetch. */

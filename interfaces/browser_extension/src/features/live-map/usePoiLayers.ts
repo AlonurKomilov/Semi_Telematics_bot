@@ -26,7 +26,7 @@ import type L from 'leaflet';
 import { apiFetch, apiJSON } from '../../api/client';
 import { POI_LAYERS_KEY, getWords, setWords } from '../../prefs';
 import {
-  POI_LAYERS, customLayerDef, esc, glyphSvg, osmPopup,
+  POI_LAYERS, customLayerDef, esc, glyphSvg, osmPopup, readableOn,
   type CustomLayerDto, type PoiLayerDef,
 } from './poiLayers';
 import {
@@ -92,10 +92,13 @@ function markerSize(zoom: number): number {
 }
 
 function markerHtml(def: PoiLayerDef, size: number, hasDef: boolean): string {
-  const inner = glyphSvg(def.glyph, Math.round(size * 0.55))
+  // The glyph identifies which layer this pin belongs to, so it is a
+  // non-text contrast case (3:1) — and white on amber is 2.15:1.
+  const ink = readableOn(def.color);
+  const inner = glyphSvg(def.glyph, Math.round(size * 0.55), ink)
     // A custom layer's mark is an emoji the account chose — a character,
     // not one of ours, so it is escaped and drawn as text.
-    || `<span style="font-size:${Math.round(size * 0.55)}px;line-height:1">${esc(def.glyph)}</span>`;
+    || `<span style="color:${ink};font-size:${Math.round(size * 0.55)}px;line-height:1">${esc(def.glyph)}</span>`;
   // The DEF badge is on the FUEL layer's markers, because that is where
   // the question is asked: "does this stop I can see also have DEF".
   const badge = hasDef

@@ -11,11 +11,16 @@
 import type * as L from 'leaflet';
 
 import { GOOGLE_TYPE, tileSession, type MapEngine } from './engine';
-import { TILES, type MapType } from './tiles';
+import { LABELS, TILES, type MapType } from './tiles';
 
 export interface BaseState {
   /** The layer currently on the map, so the next swap can remove it. */
   layer: L.TileLayer | null;
+  /** The road-names overlay, when it is switched on.  Held separately
+   *  because it survives a base swap conceptually — the person asked
+   *  for names, not for names ON Satellite — but has to be re-added
+   *  after one, since the new base would otherwise cover it. */
+  labels: L.TileLayer | null;
   /** Raised on every swap; a resolved session with a stale number is
    *  dropped rather than drawn over a newer choice. */
   seq: number;
@@ -40,7 +45,7 @@ export interface SwapResult {
  */
 export async function applyBase(
   map: L.Map, Leaf: typeof L, state: BaseState,
-  type: MapType, provider: MapEngine,
+  type: MapType, provider: MapEngine, showLabels = false,
 ): Promise<SwapResult> {
   const mine = ++state.seq;
 
@@ -74,5 +79,32 @@ export async function applyBase(
   state.layer?.remove();
   layer.addTo(map);
   state.layer = layer;
+  applyLabels(map, Leaf, state, type, showLabels);
   return { drew, viewportUrl };
+}
+
+/**
+ * Put the road-names overlay on, or take it off.
+ *
+ * Exported as well as called from the swap, because the two callers ask
+ * different questions: the swap asks "the base changed, restore what
+ * was asked for", the toggle asks "they just changed their mind".  One
+ * function, so the pane and the standard-tiles exception are written
+ * once.
+ *
+ * `shadowPane` is the pane between tiles and markers — the same one the
+ * dashboard uses.  Named here because it looks arbitrary: it is the one
+ * built-in pane that sits above the base tiles and below every marker,
+ * so labels never cover a truck.
+ */
+export function applyLabels(
+  map: L.Map, Leaf: typeof L, state: BaseState, type: MapType, show: boolean,
+): void {
+  state.labels?.remove();
+  state.labels = null;
+  // Standard carries its own names, and so does Google's roadmap.
+  if (!show || type === 'standard') return;
+  state.labels = Leaf.tileLayer(LABELS.url, {
+    attribution: LABELS.attr, maxZoom: LABELS.maxZoom, pane: 'shadowPane',
+  }).addTo(map);
 }

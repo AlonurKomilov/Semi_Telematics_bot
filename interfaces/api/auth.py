@@ -216,7 +216,16 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     #                        which is not in the scope and is not being
     #                        added — a panel shows layers, it does not
     #                        author them.
+    #   /map/config          WHICH engine the account runs on.  Gated on
+    #                        can_manage_config_all, which the scope above
+    #                        carries.  Without it the panel could offer
+    #                        Google and never deliver it: the tile
+    #                        session refuses any account not already on
+    #                        Google, so the button was permanently
+    #                        "unavailable" — an offer that could not be
+    #                        taken, which is worse than no offer.
     "/map/engine", "/map/tiles/session", "/map/pois", "/map/custom-layers",
+    "/map/config",
     "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
     # The three write verbs the panel may perform, and only these.
     # TRANSFER and REMOVE are absent on purpose: they are how a loss gets

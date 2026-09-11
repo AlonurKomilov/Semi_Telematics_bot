@@ -53,6 +53,45 @@ const GLYPH: Record<string, string> = {
     + '<path d="M2 6a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1"/>',
 };
 
+/**
+ * Dark ink or light ink — whichever can actually be READ on this
+ * colour.  Not a threshold: both ratios are computed and the better
+ * one wins, because a threshold is a guess about where the crossover
+ * sits and the first one written here put it at 0.45, which handed
+ * white to the amber fuel colour at 2.15:1 when dark would have given
+ * 8.8:1.
+ *
+ * This exists because the marks and counts were white on the layer's
+ * own fill, copied from the dashboard.  Measured, seven of the eight
+ * layers failed 4.5:1 for text — and 3:1 for a mark that identifies a
+ * control.  Only the blue one passed, which is why nobody saw it.
+ *
+ * The dark ink is the panel's own ground rather than pure black, so a
+ * pill still reads as part of this interface.
+ */
+const INK_DARK = '#0f1115', INK_LIGHT = '#ffffff';
+
+function luminance(hex: string): number | null {
+  const h = hex.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+  const ch = (i: number) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4);
+}
+
+export function readableOn(hex: string): string {
+  const l = luminance(hex);
+  // Six digits out, always — a three-digit shorthand reads back as NaN
+  // in anything that slices it, which is how the first version of the
+  // test guarding this measured white as "not a colour".
+  if (l === null) return INK_LIGHT;
+  const onLight = 1.05 / (l + 0.05);
+  const onDark  = (l + 0.05) / (luminance(INK_DARK)! + 0.05);
+  return onDark >= onLight ? INK_DARK : INK_LIGHT;
+}
+
 /** One glyph as an SVG string, at the size the caller has room for. */
 export function glyphSvg(key: string, sizePx: number, colour = '#fff'): string {
   const body = GLYPH[key];

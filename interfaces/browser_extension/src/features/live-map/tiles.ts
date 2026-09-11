@@ -41,6 +41,22 @@ export const TILES: Record<MapType, { url: string; attr: string; maxZoom: number
 };
 
 /**
+ * Road names and city labels, drawn ON TOP of satellite or terrain.
+ *
+ * Not for `standard`: those tiles carry their own labels, and Google's
+ * roadmap does too — switching it on there would print every name
+ * twice.  Same Esri family as the bases, same keyless endpoint, same
+ * layer the dashboard uses, so a map with labels reads identically on
+ * both surfaces.
+ */
+export const LABELS = {
+  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/'
+     + 'World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  attr: 'Labels &copy; Esri',
+  maxZoom: 19,
+};
+
+/**
  * Where the map goes when the chosen source stops answering.
  *
  * It is the SAME host as `standard` today, so for that layer it is

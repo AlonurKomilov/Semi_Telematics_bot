@@ -8,6 +8,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { GOOGLE_TYPE, sessionIsUsable, tileSession, forgetSessions } from './engine';
+import { applyLabels, type BaseState } from './basemap';
 import { MAP_TYPES, MAP_ENGINES, MAP_TYPE_LABEL, TILES } from './tiles';
 
 vi.mock('../../api/client', () => ({ apiJSON: vi.fn() }));
@@ -81,5 +82,66 @@ describe('Google refusing is an answer, not a blank map', () => {
     await tileSession('roadmap');
     mocked.mockResolvedValueOnce(session(Math.floor(Date.now() / 1000) + 3600));
     expect(await tileSession('roadmap')).not.toBeNull();
+  });
+});
+
+
+describe('road names go over the maps that lack them, and no others', () => {
+  /** Enough of Leaflet for the one thing this decides: whether a layer
+   *  was built and added at all. */
+  function rig() {
+    const added: unknown[] = [];
+    const removed: unknown[] = [];
+    const Leaf = {
+      tileLayer: (url: string, opts: Record<string, unknown>) => ({
+        url, opts,
+        addTo: (_m: unknown) => { added.push(url); return { url, opts, remove: () => removed.push(url) }; },
+        remove: () => removed.push(url),
+      }),
+    } as unknown as typeof import('leaflet');
+    const state: BaseState = { layer: null, labels: null, seq: 0 };
+    return { Leaf, state, added, removed, map: {} as never };
+  }
+
+  it('draws nothing over Standard — those tiles carry their own names', () => {
+    const { Leaf, state, added, map } = rig();
+    applyLabels(map, Leaf, state, 'standard', true);
+    expect(added).toHaveLength(0);
+    expect(state.labels).toBeNull();
+  });
+
+  it('draws them over Satellite and Terrain', () => {
+    for (const type of ['satellite', 'terrain'] as const) {
+      const { Leaf, state, added, map } = rig();
+      applyLabels(map, Leaf, state, type, true);
+      expect(added, type).toHaveLength(1);
+      expect(state.labels, type).not.toBeNull();
+    }
+  });
+
+  it('takes the old one off before putting a new one on', () => {
+    // Two presses in a row would otherwise stack two identical label
+    // layers, and only the top one would ever come off again.
+    const { Leaf, state, map, removed } = rig();
+    applyLabels(map, Leaf, state, 'satellite', true);
+    applyLabels(map, Leaf, state, 'satellite', true);
+    expect(removed).toHaveLength(1);
+  });
+
+  it('switching them off leaves nothing behind', () => {
+    const { Leaf, state, map, removed } = rig();
+    applyLabels(map, Leaf, state, 'satellite', true);
+    applyLabels(map, Leaf, state, 'satellite', false);
+    expect(removed).toHaveLength(1);
+    expect(state.labels).toBeNull();
+  });
+
+  it('sits in the pane between the tiles and the trucks', () => {
+    // `shadowPane` is the one built-in pane above the base tiles and
+    // below every marker.  Without it a city name can cover a truck.
+    const { Leaf, state, map } = rig();
+    applyLabels(map, Leaf, state, 'satellite', true);
+    expect((state.labels as unknown as { opts: Record<string, unknown> }).opts.pane)
+      .toBe('shadowPane');
   });
 });

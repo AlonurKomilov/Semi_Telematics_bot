@@ -238,11 +238,17 @@ async def extension_me(user: dict = Depends(get_current_user)):
     if getattr(perms, "can_manage_inventory", False):
         abilities.append("inventory.write")
     # Aiming a role's own attention.  Named `config.role`, matching the
-    # scope it rides: the account-wide half of the config family has no
-    # ability here because a browser key does not carry it, and inventing
-    # `config.all` would be a verb the panel could never perform.
+    # scope it rides.
     if getattr(perms, "can_manage_config_role", False):
         abilities.append("config.role")
+    # …and the account-wide half.  This comment used to say a browser key
+    # does not carry it and that `config.all` would be a verb the panel
+    # could never perform — both were true when it was written and
+    # neither is now: the scope carries the flag, and the map's engine is
+    # exactly such a verb.  The panel hides the control rather than
+    # offering it and answering 403 on the press.
+    if getattr(perms, "can_manage_config_all", False):
+        abilities.append("config.all")
     return {
         "display_name": db_user.display_name or "",
         "role": str(user.get("role") or ""),

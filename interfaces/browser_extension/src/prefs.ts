@@ -98,28 +98,6 @@ export async function setChoice(key: string, value: string): Promise<void> {
 }
 
 /**
- * The same read, but able to say "nothing stored".
- *
- * `getChoice` cannot: its fallback is returned both for a value it
- * refused and for a key nobody ever wrote, and those are different
- * facts.  The map provider needs the difference — an account that runs
- * on Google should OPEN on Google, and only a person's own past press
- * should override that.  With `getChoice` alone the panel drew the free
- * map for everybody and called it a preference.
- */
-export async function getStoredChoice<T extends string>(
-  key: string, allowed: readonly T[],
-): Promise<T | null> {
-  try {
-    const got = await chrome.storage.local.get(key);
-    const v = got[key];
-    return (allowed as readonly string[]).includes(v) ? (v as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * A remembered SET of words — which map layers are switched on.
  *
  * Filtered through `allowed` on the way out for the same reason
@@ -144,10 +122,18 @@ export async function setWords(key: string, values: readonly string[]): Promise<
   } catch { /* the layers come back off next open; nothing else breaks */ }
 }
 
-/** The basemap the panel draws, and whose it is.  Per device, like the
- *  splitter's share: two people sharing an account do not share a screen. */
+/** Which of the three basemaps, and whether road names are drawn over
+ *  it.  Per device, like the splitter's share: two people sharing an
+ *  account do not share a screen.
+ *
+ *  There is deliberately no key for WHOSE map it is.  That was stored
+ *  here for one version and it was wrong: the engine is an account
+ *  setting the dashboard reads and writes account-wide, the tiles are
+ *  billable, and a device copy of it could only ever disagree with the
+ *  server.  A `mapProvider` left in storage by that version is simply
+ *  never read again. */
 export const MAP_TYPE_KEY = 'mapType';
-export const MAP_PROVIDER_KEY = 'mapProvider';
+export const MAP_LABELS_KEY = 'mapLabels';
 
 /** Which overlay layers were left switched on.  Remembered because the
  *  side panel is closed and reopened all day: a driver who works with

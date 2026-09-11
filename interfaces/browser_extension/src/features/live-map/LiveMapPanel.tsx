@@ -10,9 +10,10 @@ import L from 'leaflet';
 import { apiJSON } from '../../api/client';
 import { iconSignature, makeIcon } from './icons';
 import { applyFix, faceOf, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, type Phys } from './physics';
-import { applyBase, type BaseState } from './basemap';
-import { readEngine, type MapEngine } from './engine';
-import { MAP_ENGINES, MAP_TYPES, type MapType } from './tiles';
+import { applyBase, applyLabels, type BaseState, type SwapResult } from './basemap';
+import { readEngine, setAccountEngine, type MapEngine } from './engine';
+import { hideCredit, refreshCredit, showCredit, type CreditState } from './googleCredit';
+import { MAP_TYPES, type MapType } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import MapControls from './MapControls';
@@ -29,8 +30,7 @@ import { DASHBOARD_BASE } from '../../connect';
 import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from './googleMaps';
 // READ, never written here: "Follow in Google Maps" is a preference of
 // the PANEL, and Settings is the only place it is changed.
-import { MAP_PROVIDER_KEY, MAP_TYPE_KEY, getChoice, getFollowPref, getStoredChoice,
-         setChoice } from '../../prefs';
+import { MAP_LABELS_KEY, MAP_TYPE_KEY, getChoice, getFollowPref, setChoice } from '../../prefs';
 import EmptyState, { NO_VEHICLES_YET } from '../../shell/EmptyState';
 import Splitter from '../../shell/Splitter';
 import { vehicleLine } from '../../vehicleLabel';
@@ -87,6 +87,10 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // at the map card who sees "Dashcam — Missing" should not have to
   // switch features to say so.
   const canWriteInventory = abilities.includes('inventory.write');
+  /** May this person change which map the ACCOUNT is drawn on?  The
+   *  server's own word, so the panel hides the control rather than
+   *  offering it and answering 403 on the press. */
+  const canManageEngine = abilities.includes('config.all');
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const markers = useRef<Map<string, L.Marker>>(new Map());
@@ -115,19 +119,36 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
    *  person, and the vehicle wall now answers them with an empty list
    *  rather than the whole account. */
   const [answered, setAnswered] = useState(false);
-  // Was the OSM-is-not-answering line.  Its writer went with the move to
-  // Esri, and the one thing worth saying now — "Google could not be
-  // drawn" — is said on the chip that was pressed, where the person is
-  // looking, rather than in a strip under the search box.
-  const [tileNotice] = useState('');
+  // Deleted here: `tileNotice`, a state with no writer and a render
+  // branch that could never fire.  It was the OSM-is-not-answering
+  // line; its writer went with the move to Esri, and the one thing
+  // worth saying now — "Google could not be drawn" — is said inside
+  // Map Type, next to the choice it is about.  A dead branch reads as
+  // a feature to whoever finds it next.
 
   // ── the basemap: which of the three, and whose ──
   //
-  // Both are DEVICE preferences, like the splitter's share: two people
-  // on one account do not share a screen, and a dispatcher who wants
-  // satellite should not change what the office sees.
+  // The TYPE is a device preference, like the splitter's share: two
+  // people on one account do not share a screen, and a dispatcher who
+  // wants satellite should not change what the office sees.
+  //
+  // WHOSE is not.  It was, for one version, and that was wrong: the
+  // dashboard has no per-device engine choice at all — the account's
+  // engine IS its map — and Google's tiles are billable, so "which map
+  // we buy" is one truth for everyone who looks.  A device toggle also
+  // made an offer it could not keep: the tile session refuses any
+  // account not already on Google, so the button sat permanently
+  // "Google · unavailable", which is the panel inviting a press that
+  // could never work.
   const [mapType, setMapType] = useState<MapType>('standard');
   const [provider, setProvider] = useState<MapEngine>('osm');
+  /** Road names over satellite and terrain.  A device preference, and
+   *  remembered — unlike the dashboard, which forgets it on reload;
+   *  the panel is closed and reopened all day. */
+  const [showLabels, setShowLabels] = useState(false);
+  /** A write to the account's engine is in flight. */
+  const [savingEngine, setSavingEngine] = useState(false);
+  const [engineError, setEngineError] = useState('');
   /** Whether picking Google would DO anything.  The server answers it;
    *  a picker that offers a choice it cannot deliver is worse than one
    *  that offers fewer. */
@@ -141,10 +162,17 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   const [mapReady, setMapReady] = useState(false);
   const typeRef = useRef<MapType>('standard');
   const providerRef = useRef<MapEngine>('osm');
+  const labelsRef = useRef(false);
   const baseRef = useRef<BaseState | null>(null);
-  const viewportRef = useRef('');
+  /** Google's name and its per-view copyright, which the Map Tiles
+   *  terms require whenever Google's tiles are on screen.  The panel
+   *  drew them for one version with none: the layer's own attribution
+   *  is empty on purpose (a fixed string would be wrong half the time)
+   *  and nothing rendered the line it was standing in for. */
+  const creditRef = useRef<CreditState>({ control: null, viewportUrl: '' });
   typeRef.current = mapType;
   providerRef.current = provider;
+  labelsRef.current = showLabels;
 
   // Read once, then ask the server what is on offer.  The stored choice
   // is applied FIRST and the engine answer only widens the picker — so a
@@ -153,53 +181,91 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   useEffect(() => {
     let stopped = false;
     void (async () => {
-      const [t, stored] = await Promise.all([
+      const [t, labels] = await Promise.all([
         getChoice(MAP_TYPE_KEY, 'standard', MAP_TYPES),
-        // `getStoredChoice`, not `getChoice`: the difference between "they
-        // chose the free map" and "nobody has chosen here yet" is the whole
-        // point below, and a fallback answers both the same way.
-        getStoredChoice(MAP_PROVIDER_KEY, MAP_ENGINES),
+        getFlag(MAP_LABELS_KEY, false),
       ]);
       if (stopped) return;
-      setMapType(t);
-      if (stored) setProvider(stored);
+      setMapType(t); setShowLabels(labels);
+      typeRef.current = t; labelsRef.current = labels;
       const w = await readEngine();
       if (stopped) return;
       setGoogleAvailable(w.google_available);
-      // Nobody has pressed anything here yet, so follow the ACCOUNT.  The
-      // dashboard has no per-device choice at all — the account's engine
-      // IS its map — so a panel that opened on the free map for an account
-      // running on Google was contradicting the screen beside it, and
-      // calling it a preference nobody had expressed.
-      if (!stored && w.engine !== providerRef.current) {
-        setProvider(w.engine);
-        providerRef.current = w.engine;
-        const m = map.current, base = baseRef.current;
-        // Ordering is the swap's own problem: `applyBase` carries a
-        // sequence number, so this arriving late cannot land on top of a
-        // press the person has since made.
-        if (m && base) {
-          void applyBase(m, L, base, typeRef.current, w.engine)
-            .then((r) => { setDrewGoogle(r.drew === 'google'); viewportRef.current = r.viewportUrl; });
-        }
-      }
+      adoptEngine(w.engine);
     })();
     return () => { stopped = true; };
+    // `adoptEngine` is redeclared every render and reads only refs, so
+    // listing it would re-run this effect — and this effect is the one
+    // that asks the server which engine the account is on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * What every basemap swap does with its answer, in one place.
+   *
+   * Three callers used to each set two things and one of them — the
+   * attribution Google's terms require — was never rendered at all.
+   */
+  function afterSwap(r: SwapResult) {
+    const m = map.current;
+    setDrewGoogle(r.drew === 'google');
+    creditRef.current.viewportUrl = r.viewportUrl;
+    if (!m) return;
+    if (r.drew === 'google') {
+      showCredit(m, L, creditRef.current);
+      void refreshCredit(m, creditRef.current);
+    } else {
+      hideCredit(creditRef.current);
+    }
+  }
+
+  /** Draw the account's engine, whatever it turns out to be.
+   *
+   *  Called when the answer first arrives and again after a write.
+   *  Ordering is the swap's own problem: `applyBase` carries a sequence
+   *  number, so a slow answer cannot land on top of a newer press. */
+  function adoptEngine(engine: MapEngine) {
+    setProvider(engine);
+    providerRef.current = engine;
+    const m = map.current, base = baseRef.current;
+    if (!m || !base) return;
+    void applyBase(m, L, base, typeRef.current, engine, labelsRef.current)
+      .then((r) => afterSwap(r));
+  }
 
   /** Swap the layer and remember the choice.  The preference is written
    *  on the PRESS, not on the answer: the choice is the person's, and it
    *  should survive a session Google happens to refuse. */
-  const chooseBasemap = (t: MapType, pv: MapEngine) => {
-    setMapType(t); setProvider(pv);
+  const chooseType = (t: MapType) => {
+    setMapType(t); typeRef.current = t;
     void setChoice(MAP_TYPE_KEY, t);
-    void setChoice(MAP_PROVIDER_KEY, pv);
     const m = map.current, base = baseRef.current;
     if (!m || !base) return;
-    void applyBase(m, L, base, t, pv).then((r) => {
-      setDrewGoogle(r.drew === 'google');
-      viewportRef.current = r.viewportUrl;
-    });
+    void applyBase(m, L, base, t, providerRef.current, labelsRef.current).then(afterSwap);
+  };
+
+  /** Road names on or off.  No tile swap and no request — the overlay
+   *  goes on top of whatever base is already drawn. */
+  const chooseLabels = (on: boolean) => {
+    setShowLabels(on); labelsRef.current = on;
+    void setFlag(MAP_LABELS_KEY, on);
+    const m = map.current, base = baseRef.current;
+    if (m && base) applyLabels(m, L, base, typeRef.current, on);
+  };
+
+  /** Change the ACCOUNT's engine.  A write, not a preference — see the
+   *  state block above for why this is not per device.  The answer is
+   *  drawn rather than what was asked for: the server decides, and an
+   *  account without the engine is told no. */
+  const chooseEngine = (e: MapEngine) => {
+    if (e === providerRef.current || savingEngine) return;
+    setSavingEngine(true); setEngineError('');
+    void setAccountEngine(e)
+      .then((w) => { setGoogleAvailable(w.google_available); adoptEngine(w.engine); })
+      .catch((err: unknown) => {
+        setEngineError(err instanceof Error ? err.message : 'Could not change the map');
+      })
+      .finally(() => setSavingEngine(false));
   };
   /** What is drawn ON TOP of the basemap — fuel, DEF, parking, showers,
    *  weigh stations, rest areas, the repair-shop directory, and whatever
@@ -491,21 +557,30 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   useEffect(() => {
     if (!mapEl.current || map.current) return;
     const m = L.map(mapEl.current, { zoomControl: false }).setView([39.5, -98.35], 4);
-    // Top-right: the selected-vehicle card owns the bottom of the map,
-    // and zoom buttons half-hidden behind it are worse than no buttons.
-    L.control.zoom({ position: 'topright' }).addTo(m);
+    // TOP-LEFT, which is where the dashboard keeps it.  It was top-right
+    // here, and the corner a control lives in is muscle memory: somebody
+    // working in both screens should not have to look for the same two
+    // buttons in two places.  Map Layers takes the top-right, Map Type
+    // the bottom-left — the dashboard's arrangement, corner for corner.
+    L.control.zoom({ position: 'topleft' }).addTo(m);
     // ONE base layer, swapped through basemap.ts so two fast presses
     // cannot leave the slower answer on top.  The first draw uses
     // whatever the person last chose; the engine answer arrives after
     // and only widens what the picker offers.
-    const base: BaseState = { layer: null, seq: 0 };
+    const base: BaseState = { layer: null, labels: null, seq: 0 };
     baseRef.current = base;
-    void applyBase(m, L, base, typeRef.current, providerRef.current)
-      .then((r) => { setDrewGoogle(r.drew === 'google'); viewportRef.current = r.viewportUrl; });
+    void applyBase(m, L, base, typeRef.current, providerRef.current, labelsRef.current)
+      .then((r) => afterSwap(r));
     // ``dragstart`` fires ONLY for a hand on the map — our own panTo and
     // setView don't raise it.  That makes it the honest signal for "the
     // person took over", with no flag to keep in sync.
     m.on('dragstart', () => { if (keepRef.current) setKeep(false); });
+    // Google's copyright line is per VIEWPORT — it names different data
+    // owners in different places — so it is re-asked when the view
+    // settles.  Free of quota, and a no-op when Google is not drawn.
+    const creditState = creditRef.current;
+    const onMoved = () => { void refreshCredit(m, creditState); };
+    m.on('moveend', onMoved);
     map.current = m;
     setMapReady(true);
     void getFollowPref().then((on) => { followRef.current = on; });
@@ -529,6 +604,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
       physMap.clear(); markerMap.clear(); latestMap.clear();
       keyMap.clear(); arrowMap.clear(); warnMap.clear();
       setMapReady(false);
+      m.off('moveend', onMoved);
+      hideCredit(creditState);
       m.remove(); map.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -672,7 +749,11 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
         <MapControls
           mapType={mapType} provider={provider}
           googleAvailable={googleAvailable} drewGoogle={drewGoogle}
-          onChoose={chooseBasemap} poi={poi}
+          canManageEngine={canManageEngine} savingEngine={savingEngine}
+          engineError={engineError}
+          onChooseType={chooseType} onChooseEngine={chooseEngine}
+          showLabels={showLabels} onToggleLabels={chooseLabels}
+          poi={poi}
         />
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew
@@ -964,7 +1045,6 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           ))}
         </div>
         {error && <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>}
-        {tileNotice && <p className="muted" style={{ margin: 0 }}>{tileNotice}</p>}
       </div>
       {/* Header and rows are ONE region — one border, one fold — so the
           column's gap never lands between a group's name and its

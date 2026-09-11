@@ -191,6 +191,38 @@ def test_the_two_config_routes_are_reachable_and_nothing_else_opened():
         assert never not in EXTENSION_ROUTES, never
 
 
+def test_creating_a_custom_layer_is_stopped_by_the_scope_not_the_door():
+    """`POST /map/custom-layers` shares its path with the list the panel
+    reads, and membership is by PATH — so the door cannot tell them
+    apart and the create knocks successfully.
+
+    What stops it is the other gate: writing a layer rides
+    `can_manage_poi_layers`, which is not in the scope and is not being
+    added.  A panel SHOWS layers; it does not author them.  This is
+    written down because the pair is easy to read as a hole: the route
+    list alone does not close it, and the day somebody adds that flag
+    to the scope for an unrelated reason, this is the test that fails.
+    """
+    from interfaces.api.auth import EXTENSION_SCOPE
+    assert "can_manage_poi_layers" not in EXTENSION_SCOPE
+
+
+def test_the_map_engine_can_be_CHOSEN_from_the_panel_not_only_read():
+    """`/map/engine` says which engine draws; `/map/config` decides it.
+
+    Both are in the list, and they are gated differently on purpose:
+    the read rides `can_view_location` (everyone who sees a map), the
+    write rides `can_manage_config_all` (the account-wide half of the
+    config family).  Without the write the panel could offer Google and
+    never deliver it — the tile session refuses any account not already
+    on Google, so the button sat permanently "unavailable", which is an
+    offer that cannot be taken.
+    """
+    from interfaces.api.auth import EXTENSION_ROUTES, EXTENSION_SCOPE
+    assert "/map/config" in EXTENSION_ROUTES
+    assert "can_manage_config_all" in EXTENSION_SCOPE
+
+
 def test_refresh_never_drops_the_audience():
     """A refresh that dropped aud would widen a truck-list key into an
     account key every eight hours.  Pinned at the call site."""
@@ -795,14 +827,26 @@ async def test_a_scoped_token_is_refused_outside_its_routes_with_403(monkeypatch
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
 
     for path in ("/api/user/me", "/api/v1/user/me", "/api/extension/info",
-                 "/api/extension/download", "/api/map/custom-layers", "/api/vehicles",
-                 "/api/extension/connect"):
+                 "/api/extension/download", "/api/vehicles",
+                 "/api/extension/connect",
+                 # The custom-layer WRITES.  The list endpoint below is
+                 # open to the panel (it reads layers to draw them), but
+                 # every write hangs off a SUB-path, and membership is
+                 # exact — so edit, delete, the pin shortcuts and the CSV
+                 # replace are all still turned away at the door.
+                 "/api/map/custom-layers/3", "/api/map/custom-layers/from-pin",
+                 "/api/map/custom-layers/from-brand", "/api/map/custom-layers/3/csv"):
         with pytest.raises(HTTPException) as e:
             await deps.get_current_user(_req(path)(), authorization=f"Bearer {scoped}", auth_token=None)
         assert e.value.status_code == 403, path
 
     for path in ("/api/map/vehicles", "/api/v1/map/vehicles", "/api/map/vehicles/live",
-                 "/api/v1/map/vehicles/live/", "/api/extension/me"):
+                 "/api/v1/map/vehicles/live/", "/api/extension/me",
+                 # The map, brought level with the dashboard's.  Each of
+                 # these rides can_view_location, which the scope has
+                 # carried since v1.
+                 "/api/map/engine", "/api/map/pois", "/api/map/custom-layers",
+                 "/api/map/config"):
         user = await deps.get_current_user(_req(path)(), authorization=f"Bearer {scoped}", auth_token=None)
         assert user["aud"] == "extension", path
 
