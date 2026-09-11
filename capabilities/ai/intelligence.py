@@ -643,13 +643,8 @@ async def _check_tool_permission(
         # gate without one, so the fallback is load-bearing in the test
         # contract. Closing it means making account_id required on this
         # signature and updating each caller — its own change, not a
-        # drive-by. Logged so it stops being silent.
-        if account_id is None:
-            logger.warning(
-                "tool gate: %s requires %s but no account_id was passed — "
-                "falling back to unmasked role defaults",
-                tool_name, req_perms,
-            )
+        # drive-by. resolve_user_permissions warns when it happens, for
+        # all four callers rather than just this one.
         from capabilities.ai.usage import resolve_user_permissions
         perms = await resolve_user_permissions(user_role, account_id, user_context)
         # ``None`` = unknown role.  Deny, as the old except-branch did NOT:

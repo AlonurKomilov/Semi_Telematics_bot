@@ -89,6 +89,22 @@ async def resolve_user_permissions(
     except (ValueError, KeyError, ImportError):
         return None
     if account_id is None:
+        # The widest answer available, handed out exactly when we know
+        # the least: hardcoded role defaults, with no per-account
+        # overrides and no plan mask (the mask is applied in
+        # _resolve_perms, which only the account-aware path reaches).
+        #
+        # Warned HERE rather than at any one caller: four sites reach
+        # this — the tool gate, tool advertisement, the router's
+        # persona preview and the attachment gate — and a warning at
+        # one of them leaves the other three silent. All four pass an
+        # account_id today, so this is a tripwire for the next one that
+        # does not, not a live path.
+        logger.warning(
+            "AI permissions resolved WITHOUT an account for role=%s — "
+            "unmasked role defaults, no account overrides, no plan mask",
+            role,
+        )
         return get_permissions(r)
     ctx = user_context or {}
     return await get_user_permissions(

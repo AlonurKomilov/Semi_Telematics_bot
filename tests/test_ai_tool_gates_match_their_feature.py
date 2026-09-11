@@ -98,3 +98,43 @@ def test_no_role_reaches_a_tool_its_feature_denies():
             if gate_open and not feature_open:
                 leaks.append(f"{role.value} reaches {tool} without any {feature} permission")
     assert not leaks, "\n  ".join(leaks)
+
+
+def test_resolving_permissions_without_an_account_is_never_silent():
+    """The fallback hands out unmasked role defaults — no per-account
+    overrides, no plan mask — which is the widest answer available,
+    given exactly when we know the least.
+
+    Four sites reach it (the tool gate, tool advertisement, the router's
+    persona preview, the attachment gate) and all four pass an
+    account_id today, so this is a tripwire rather than a live path. It
+    is asserted at the resolver because a warning at one caller leaves
+    the other three silent.
+    """
+    import asyncio
+    import logging
+
+    from capabilities.ai.usage import resolve_user_permissions
+
+    records = []
+
+    class _Catch(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    logger = logging.getLogger("capabilities.ai.usage")
+    handler = _Catch()
+    logger.addHandler(handler)
+    previous = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        perms = asyncio.run(resolve_user_permissions("dispatcher", None, None))
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+
+    assert perms is not None, "the fallback still returns role defaults"
+    assert any("WITHOUT an account" in m for m in records), (
+        "resolving permissions with no account must warn — it is the one "
+        "path that skips both the account overrides and the plan mask"
+    )
