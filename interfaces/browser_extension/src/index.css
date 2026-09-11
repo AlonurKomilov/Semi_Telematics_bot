@@ -195,6 +195,10 @@ button.link { background:none; border:0; margin:0; padding:2px 0;
                color: var(--fg); font:inherit; font-size:12px; font-weight:600;
                cursor:pointer; text-align:left; }
 .mapctl-head:hover { background: rgba(255,255,255,.06); }
+/* The body when it stands alone under the header row rather than
+   docked beneath its own header: no top border to divide it from a
+   header that is no longer directly above it. */
+.mapctl-body.mapctl-solo { border-top:0; }
 .mapctl-body { border-top:1px solid var(--border); padding:8px; display:grid; gap:8px;
                /* The body sets the open width; collapsed, the header
                   alone does, so the resting control is a small button

@@ -73,15 +73,44 @@ export default function MapControls({
       // it; it must not swallow a drag on the map underneath.
       pointerEvents: 'none',
     }}>
+      {/* BOTH headers in one row, and the bodies BELOW them.
+          Stacked as two cards, opening the first pushed the second one
+          down by the height of its body — so switching from the map
+          picker to the layers meant aiming at a button that had moved
+          since you looked at it.  Two presses in a row is exactly how
+          these controls get used.  The headers now never move; only the
+          region under them changes, and only one of them opens. */}
+      <div className="row" style={{ gap: 6, pointerEvents: 'auto', flex: 'none' }}>
+        <div className="mapctl">
+          <button type="button" className="mapctl-head" aria-expanded={open === 'base'}
+                  aria-controls="mapctl-base" onClick={() => press('base')}>
+            {/* The VALUE, with a word saying what it is a value OF.
+                "Standard ⌄" alone told a first-time reader nothing —
+                the one thing a collapsed control has to do is say what
+                opening it would be about. */}
+            <span className="muted" style={{ fontWeight: 400 }}>Map</span>
+            <span>{MAP_TYPE_LABEL[mapType]}</span>
+            <Chevron open={open === 'base'} />
+          </button>
+        </div>
+        <div className="mapctl">
+          <button type="button" className="mapctl-head" aria-expanded={open === 'layers'}
+                  aria-controls="mapctl-layers" onClick={() => press('layers')}>
+            <span>Layers</span>
+            {poi.activeCount > 0 && (
+              <span className="mapctl-count" aria-label={`${poi.activeCount} on`}>
+                {poi.activeCount}
+              </span>
+            )}
+            <Chevron open={open === 'layers'} />
+          </button>
+        </div>
+      </div>
+
       {/* ── what the map is drawn on ─────────────────────────────── */}
-      <div className="mapctl">
-        <button type="button" className="mapctl-head" aria-expanded={open === 'base'}
-                aria-controls="mapctl-base" onClick={() => press('base')}>
-          <span>{MAP_TYPE_LABEL[mapType]}</span>
-          <Chevron open={open === 'base'} />
-        </button>
-        {open === 'base' && (
-          <div className="mapctl-body" id="mapctl-base">
+      {open === 'base' && (
+        <div className="mapctl">
+          <div className="mapctl-body mapctl-solo" id="mapctl-base">
             {googleAvailable && (
               <div style={{ display: 'grid', gap: 4 }}>
                 <div className="eyebrow muted">Map</div>
@@ -116,23 +145,13 @@ export default function MapControls({
               ))}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── what is drawn on top of it ───────────────────────────── */}
-      <div className="mapctl">
-        <button type="button" className="mapctl-head" aria-expanded={open === 'layers'}
-                aria-controls="mapctl-layers" onClick={() => press('layers')}>
-          <span>Layers</span>
-          {poi.activeCount > 0 && (
-            <span className="mapctl-count" aria-label={`${poi.activeCount} on`}>
-              {poi.activeCount}
-            </span>
-          )}
-          <Chevron open={open === 'layers'} />
-        </button>
-        {open === 'layers' && (
-          <div className="mapctl-body" id="mapctl-layers">
+      {open === 'layers' && (
+        <div className="mapctl">
+          <div className="mapctl-body mapctl-solo" id="mapctl-layers">
             {POI_GROUPS.map((g) => {
               const inGroup = poi.layers.filter((l) => l.group === g.id);
               // A group with nothing in it is not an empty section, it is
@@ -149,8 +168,8 @@ export default function MapControls({
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -199,9 +218,19 @@ function LayerRow({ def, poi }: { def: PoiLayerDef; poi: PoiLayersState }) {
       {!err && note && (
         <p className="small muted" style={{ margin: '0 0 2px 24px' }}>{note}</p>
       )}
-      {count && on && count.shown < count.total && (
+      {on && !busy && !err && !note && count && count.shown < count.total && (
         <p className="small muted" style={{ margin: '0 0 2px 24px' }}>
           Nearest {count.shown} shown — zoom in for the rest
+        </p>
+      )}
+      {/* An empty layer names the reason it is empty.  "0" alone sends
+          somebody hunting for a truck stop away believing there is
+          none, when a chip they pressed two minutes ago is hiding it. */}
+      {on && !busy && !err && !note && count?.total === 0 && (
+        <p className="small muted" style={{ margin: '0 0 2px 24px' }}>
+          {count.fetched > 0
+            ? 'None of the chosen brands in this view'
+            : 'None in this view'}
         </p>
       )}
       {chips.length > 0 && (

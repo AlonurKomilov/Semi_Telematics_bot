@@ -52,6 +52,11 @@ export interface LayerCount {
   /** Markers the layer has here.  Differs from `shown` only when the
    *  budget bit, and then the row has to say both numbers. */
   total: number;
+  /** What came back BEFORE the brand chips narrowed it.  The difference
+   *  between "there is nothing here" and "there is nothing here of the
+   *  chain you picked" — two empties a row must not say the same way,
+   *  because only one of them is one press from being fixed. */
+  fetched: number;
 }
 
 export interface PoiLayersState {
@@ -168,7 +173,10 @@ export function usePoiLayers(
 
     const c = map.getCenter();
     const drawn = nearestFirst(matching, c.lat, c.lng);
-    setCounts((prev) => ({ ...prev, [id]: { shown: drawn.length, total: matching.length } }));
+    setCounts((prev) => ({
+      ...prev,
+      [id]: { shown: drawn.length, total: matching.length, fetched: features.length },
+    }));
 
     if (!groups.current[id]) groups.current[id] = Leaf.layerGroup().addTo(map);
     const group = groups.current[id];
