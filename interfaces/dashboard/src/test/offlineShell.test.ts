@@ -159,12 +159,89 @@ describe('offline page — it must render with the network down', () => {
     expect(html).not.toMatch(/<link[^>]+rel="stylesheet"/);
   });
 
+  it('speaks as ABC Checker, and still names whose product this is', () => {
+    // The product's own voice is the weakest one available when the
+    // product is what failed — but a stranger's name appearing at the
+    // moment a connection was interfered with reads as a redirect, so
+    // the product's mark and name sit beside the service's, and the
+    // footer says who operates what.
+    expect(html).toContain('ABC Checker');
+    expect(html).toMatch(/class="prod"/);
+    expect(html).toMatch(/ABC&nbsp;LEGACY&nbsp;LLC/);
+    // Service first, product second — never the other way round. Measured
+    // INSIDE the header: the file's opening comment names ABC Checker
+    // too, and comparing whole-file offsets made this assertion vacuous
+    // (it passed with the two swapped).
+    const bar = html.match(/<header class="topbar">([\s\S]*?)<\/header>/)![1];
+    expect(bar.indexOf('class="svc"')).toBeGreaterThanOrEqual(0);
+    expect(bar.indexOf('class="svc"')).toBeLessThan(bar.indexOf('class="prod"'));
+  });
+
+  it('changes product with one variable, and the HTML default agrees with it', () => {
+    // Reuse for 2bot must not become a search-and-replace across the
+    // file: a half-done rename is how a page ends up telling a 2bot
+    // customer to unblock 4truck.
+    const name = html.match(/var PRODUCT = \{\s*\n?\s*name: '([^']+)'/)![1];
+    expect(name).toBe('4truck');
+    // Every product mention is a slot, and the pre-JS default matches —
+    // so the first paint is right even if the script never runs.
+    const slots = [...html.matchAll(/<span data-product>([^<]*)<\/span>/g)].map((m) => m[1]);
+    expect(slots.length).toBeGreaterThan(5);
+    expect(new Set(slots)).toEqual(new Set([name]));
+    // and no bare product name survives outside a slot in the body copy
+    const body = html.slice(html.indexOf('<body'));
+    const bare = body.replace(/<span data-product>[^<]*<\/span>/g, '')
+                     .replace(/<script[\s\S]*?<\/script>/g, '')
+                     .match(/4truck/g);
+    expect(bare, 'a product mention outside a slot will not follow a rename').toBeNull();
+  });
+
   it('says which side the problem is on, in both cases', () => {
     // The whole reason the page exists: the browser refuses to draw this
     // distinction, and it is the one a customer needs.
-    expect(html).toContain('No internet connection');       // their network
-    expect(html).toContain('Can’t reach 4truck');            // the route to us
+    expect(html).toContain('No internet connection');              // their network
+    expect(html).toContain('This network can’t reach 4truck');     // the route to us
     expect(html).toMatch(/navigator\.onLine/);
+  });
+
+  it('never makes 4truck the thing that failed', () => {
+    // The owner read the first draft as a customer and came away
+    // thinking it was our fault. The headline is where that happens:
+    // "Can't reach 4truck" puts 4truck in the failing position, while
+    // "This network can't reach 4truck" names the actual subject.
+    const headings = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)]
+      .map((m) => m[1].replace(/<[^>]+>/g, '').trim());
+    const spoken = [...html.matchAll(/title\.textContent = '((?:[^']|\\')+)'/g)].map((m) => m[1]);
+    for (const line of [...headings, ...spoken]) {
+      expect(line, `"${line}" reads as 4truck being down`)
+        .not.toMatch(/^(4truck|Can’t reach|Cannot reach|Service unavailable)/i);
+    }
+  });
+
+  it('gives a way back in, not only a diagnosis', () => {
+    // A dispatcher with drivers on the road wants access, not a verdict.
+    // A VPN and a phone's data both get them working while the block
+    // stands, and the owner confirmed a VPN restores access.
+    expect(html).toMatch(/Get back in now/);
+    expect(html).toMatch(/Connect through a VPN/);
+    expect(html).toMatch(/phone’s data/);
+  });
+
+  it('routes an office block to the office, with a message to forward', () => {
+    // Commercially the point of the whole section: a blocked corporate
+    // network is fixed by their own IT in a minute, and without
+    // something to forward the complaint lands on our support instead.
+    expect(html).toMatch(/Get it fixed for good/);
+    expect(html).toMatch(/hosts: '\*\.4truck\.us'/);   // the ask an IT admin can act on
+    expect(html).toMatch(/id="copy-msg"/);
+  });
+
+  it('withholds VPN and office advice from a device with no network at all', () => {
+    // Telling someone with no connection to try a VPN is not merely
+    // useless, it is wrong — the CSS hides those by state.
+    expect(html).toMatch(/body\[data-state="offline"\] \[data-when="unreachable"\] \{ display: none; \}/);
+    expect(html).toMatch(/<li data-when="unreachable">/);
+    expect(html).toMatch(/<section data-when="unreachable">/);
   });
 
   it('tells the customer their data is safe', () => {
@@ -176,14 +253,26 @@ describe('offline page — it must render with the network down', () => {
     expect(html).toMatch(/addEventListener\('online'/);
   });
 
+  it('keeps machine detail closed, and the human sentence in the open', () => {
+    // A timestamp and a hostname shown in the open read as wreckage to
+    // someone who only wants their loads back — the same reason
+    // Cloudflare's "Error 521 Web server is down" makes a working
+    // platform look abandoned.
+    expect(html).toMatch(/<details class="tech">/);
+    expect(html).not.toMatch(/<details class="tech" open>/);
+    const summary = html.match(/<summary>([^<]+)<\/summary>/)![1];
+    expect(summary).toBe('Technical details');
+    // ...and it must not promise a destination the page cannot name.
+    expect(html).not.toContain('Send us this line');
+  });
+
   it('hides the status link until a status page actually exists', () => {
     // A "Status page" button that opens a vendor's marketing homepage is
     // worse than no button.
     expect(html).toMatch(/var STATUS_PAGE_URL = '[^']*';/);
     const url = html.match(/var STATUS_PAGE_URL = '([^']*)';/)![1];
     if (!url) {
-      expect(html).toMatch(/id="status"[^>]*hidden/);
-      expect(html).toMatch(/id="check-status"[^>]*hidden/);
+      expect(html).toMatch(/id="sec-status"[^>]*hidden/);
     } else {
       expect(url).toMatch(/^https:\/\//);
     }

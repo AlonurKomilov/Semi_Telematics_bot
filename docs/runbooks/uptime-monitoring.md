@@ -47,6 +47,37 @@ stays in the bot + operator console — richer, faster, but alive only
 while the bot is. External monitoring answers exactly one question
 from the outside: "is anyone home?"
 
+## ABC Checker — the name all three pages speak under
+
+The failure pages are not branded as the product. A product insisting it
+is fine while the customer cannot reach it is the weakest voice in the
+room; a named service that checks on it is a different speaker, and
+reads as a company with infrastructure rather than one app defending
+itself. What that costs is a stranger's name appearing at the exact
+moment a connection was interfered with — which is why the product's own
+mark and name sit in the header beside ABC Checker's, and each page's
+footer says ABC Checker is operated by ABC LEGACY LLC, which builds the
+product.
+
+Reuse for another ABC Legacy product (2bot, and the rest) is one
+variable. In `interfaces/dashboard/public/offline.html`:
+
+```js
+var PRODUCT = {
+  name: '4truck',
+  hosts: '*.4truck.us',
+  what: 'the trucking operations platform we use for ...',
+};
+```
+
+and the matching `PRODUCT` in `ops/cloudflare/error-5xx.html`. The mark
+needs no change at all: each product serves the file from its own
+origin, so `/favicon-32.png` is already its own. Every product mention
+in the markup is a `<span data-product>` slot whose pre-JS default must
+equal `PRODUCT.name` — `src/test/offlineShell.test.ts` fails on a bare
+mention left outside a slot, which is how a page ends up telling a 2bot
+customer to unblock 4truck.
+
 ## The public status page (owner, ~5 minutes)
 
 The three pages a customer can land on when something is wrong now form
@@ -61,12 +92,22 @@ one story, and this is the piece that lives outside our infrastructure:
 The first two say "check the status page", so the link has to answer
 when we cannot — which is the whole reason it is somebody else's server.
 
+The owner is building it as **ABC Checker** in its own repo
+(`ABC-Checker`), deployed to Vercel at a `*.vercel.app` address. A
+separate repo on purpose: a bad commit or a build-config change in this
+repo must never be able to take down the page whose entire job is to
+answer when this repo's product cannot. And a `status.4truck.us` custom
+domain would defeat the point — it would resolve through our DNS and our
+Cloudflare, which is exactly what may be blocked.
+
+Until it exists, UptimeRobot's own status page is the fallback:
+
 1. UptimeRobot → **Status Pages** → *Add New Status Page*.
 2. Add the `dash.4truck.us` monitor (created in the section above).
-3. Name it `4truck`. A custom domain would defeat the point: it must not
-   resolve through our DNS or our origin, so keep the
-   `stats.uptimerobot.com/…` address.
-4. Paste that address into `STATUS_PAGE_URL` in **both** files:
+3. Keep the `stats.uptimerobot.com/…` address for the same
+   independence reason.
+4. Paste whichever address you end up with into `STATUS_PAGE_URL` in
+   **both** files:
    - `interfaces/dashboard/public/offline.html`
    - `ops/cloudflare/error-5xx.html`
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>4truck — temporarily unavailable</title>
+<title>4truck — ABC Checker</title>
 <link rel="icon" type="image/png" sizes="32x32" href="https://dash.4truck.us/favicon-32.png" />
 <!--
   Cloudflare custom error page — the OTHER half of the offline story.
@@ -20,6 +20,14 @@
   ::CLOUDFLARE_ERROR_500S_BOX:: token to be present somewhere in the
   body; it is at the foot, styled down, because the machine detail
   belongs under the human sentence rather than over it.
+
+  Branded as ABC Checker for the same reason the offline page is: the
+  product's own voice is the weakest one available when the product is
+  what failed. Here the fault genuinely IS ours, which is why this page
+  says so plainly rather than sending anyone to check their firewall —
+  and why the service name matters more, not less, since a customer who
+  has just been told "it is us" needs to believe the source. One
+  variable, PRODUCT, is what changes when this is reused for 2bot.
 
   Self-contained by necessity: Cloudflare serves this when our origin is
   unreachable, so anything it pulls FROM the origin would be a hole in
@@ -60,9 +68,25 @@
     display: flex; align-items: center; justify-content: center; padding: 24px;
   }
   .shell { width: 100%; max-width: 33rem; }
-  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 28px; }
-  .brand img { width: 22px; height: 22px; border-radius: 5px; display: block; }
-  .brand span { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    padding-bottom: 16px; margin-bottom: 26px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .svc { display: flex; align-items: center; gap: 10px; }
+  .svc .mark { display: block; color: var(--fg); flex: 0 0 auto; }
+  .svc-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .prod {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 12px 4px 5px;
+    font-size: 13px; color: var(--muted);
+  }
+  .prod img { width: 18px; height: 18px; border-radius: 4px; display: block; }
+  .prod span { font-weight: 500; color: var(--fg); }
+  .who { margin: 0 0 20px; font-size: 12px; color: var(--muted); }
+  .who b { color: var(--fg); font-weight: 600; }
   .state {
     display: inline-flex; align-items: center; gap: 7px;
     font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
@@ -96,36 +120,68 @@
   :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   .auto { font-size: 13px; color: var(--muted); margin-left: auto; }
   @media (max-width: 480px) { .auto { margin-left: 0; width: 100%; } }
-  .foot { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--rule);
-          font-size: 12px; color: var(--muted); }
-  /* Cloudflare's own diagnostic block, kept small and last. */
-  .foot :is(h2, h3) { font-size: 12px; font-weight: 600; margin: 0 0 4px; color: var(--muted); }
-  .foot * { font-size: 12px !important; color: var(--muted) !important; max-width: 100%; }
+  /* Cloudflare's box says "Error 521 Web server is down" over a Ray ID.
+     That sentence, in the open, is what makes a working platform look
+     abandoned — so it sits one click away instead. The token stays in
+     the markup, which is all Cloudflare requires, and support can still
+     ask for the Ray ID. */
+  .tech { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  .tech summary {
+    cursor: pointer; list-style: none;
+    font-size: 12px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 6px;
+    min-height: 24px;
+  }
+  .tech summary::-webkit-details-marker { display: none; }
+  .tech summary::before {
+    content: ""; width: 0; height: 0;
+    border-left: 4px solid currentColor;
+    border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
+    transition: transform 120ms ease;
+  }
+  .tech[open] summary::before { transform: rotate(90deg); }
+  .tech summary:hover { color: var(--fg); }
+  .tech-body { margin-top: 10px; }
+  .tech-body :is(h2, h3) { font-size: 12px; font-weight: 600; margin: 0 0 4px; color: var(--muted); }
+  .tech-body * { font-size: 12px !important; color: var(--muted) !important; max-width: 100%; }
 </style>
 </head>
 <body>
   <main class="shell">
-    <div class="brand">
-      <img src="https://dash.4truck.us/favicon-32.png" alt="" />
-      <span>4truck</span>
-    </div>
+    <header class="topbar">
+      <div class="svc">
+        <svg class="mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <rect x="0.6" y="0.6" width="22.8" height="22.8" rx="6.4"
+                fill="currentColor" fill-opacity="0.07"
+                stroke="currentColor" stroke-opacity="0.22" stroke-width="1.2" />
+          <text x="12" y="15.4" text-anchor="middle" fill="currentColor"
+                font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
+                font-size="7.6" font-weight="700" letter-spacing="-0.15">ABC</text>
+        </svg>
+        <span class="svc-name">ABC Checker</span>
+      </div>
+      <div class="prod">
+        <img src="https://dash.4truck.us/favicon-32.png" alt="" />
+        <span data-product>4truck</span>
+      </div>
+    </header>
 
     <p class="state"><span class="dot"></span><span>Service interrupted</span></p>
-    <h1>4truck is temporarily unavailable</h1>
+    <h1><span data-product>4truck</span> is temporarily unavailable</h1>
     <p class="lede">
       Our servers are not responding right now. This one is on us, not on your
       connection or your browser.
     </p>
     <p class="safe">
-      <b>Your data is safe.</b> Loads, drivers, inspections and documents are stored
-      separately from the part that is down. Nothing has been lost.
+      <b>Your data is safe.</b> Your records are stored separately from the part that
+      is down. Nothing has been lost.
     </p>
 
     <div class="panel">
       <b>What happens next</b>
       <p>We are alerted automatically when this page appears, so nobody needs to report
          it. Most interruptions clear within a few minutes. This page checks by itself
-         and returns you to 4truck the moment it is back.</p>
+         and returns you to <span data-product>4truck</span> the moment it is back.</p>
     </div>
 
     <div class="actions">
@@ -134,15 +190,30 @@
       <span class="auto" id="auto">Checking again in 15s</span>
     </div>
 
-    <div class="foot">
-      ::CLOUDFLARE_ERROR_500S_BOX::
-    </div>
+    <p class="who">ABC&nbsp;Checker is operated by <b>ABC&nbsp;LEGACY&nbsp;LLC</b>, which builds
+       <span data-product>4truck</span>.</p>
+
+    <details class="tech">
+      <summary>Technical details</summary>
+      <div class="tech-body">
+        ::CLOUDFLARE_ERROR_500S_BOX::
+      </div>
+    </details>
   </main>
 <script>
 // Same constant as interfaces/dashboard/public/offline.html — set both
 // when the status page exists (docs/runbooks/uptime-monitoring.md).
 // Hidden while empty rather than pointed at a vendor homepage.
 var STATUS_PAGE_URL = '';
+
+// The one variable, matching interfaces/dashboard/public/offline.html.
+var PRODUCT = { name: '4truck' };
+
+(function () {
+  var slots = document.querySelectorAll('[data-product]');
+  for (var i = 0; i < slots.length; i++) slots[i].textContent = PRODUCT.name;
+  document.title = PRODUCT.name + ' \u2014 ABC Checker';
+})();
 
 (function () {
   if (STATUS_PAGE_URL) {

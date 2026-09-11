@@ -3,17 +3,36 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>4truck — connection problem</title>
+<title>4truck — ABC Checker</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <!--
   The page a customer sees INSTEAD of the browser's own error.
 
   It exists because a raw ERR_CONNECTION_RESET reads as "this product is
-  broken" to everyone who sees it — nobody suspects their own browser
-  when every other site works. So this page does the one thing the
-  browser's cannot: it says which side the problem is on, states that
-  the customer's data is untouched, and gives three checks that actually
-  separate the causes.
+  broken" to everyone who sees it — nobody suspects their own network
+  when every other site works.
+
+  Its first draft only DIAGNOSED, and the owner caught the flaw by
+  reading it as a customer: it still sounded like our fault, and a
+  dispatcher with drivers on the road does not want a diagnosis, they
+  want back in. So the page now does three things in order — names which
+  side the problem is on, gives the ways back in that actually work
+  (a phone's data, a VPN), and hands over a message they can forward to
+  whoever runs their network. That last part matters commercially: a
+  blocked office network is fixed by their own IT in a minute, and
+  without the message the complaint arrives at our support instead.
+
+  BRANDED AS "ABC CHECKER", not as the product. A product insisting it is
+  fine while the customer cannot reach it is the weakest voice in the
+  room; a named service that checks on it is a different speaker, and
+  reads as a company with infrastructure rather than one app defending
+  itself. The risk that buys is a stranger's name appearing at the exact
+  moment a connection was interfered with — which is why the product's
+  own mark and name sit in the header beside it, and the footer says who
+  operates what. One variable, PRODUCT, is the whole of what changes when
+  this page is reused for 2bot or anything else under ABC Legacy; the
+  mark needs no change at all, because each product serves this file from
+  its own origin and /favicon-32.png resolves to its own.
 
   Served by the service worker from cache, so it must be entirely
   self-contained: no stylesheet, no font, no script, no image beyond the
@@ -56,6 +75,7 @@
     --ok: oklch(0.49 0.132 150);
     --warn: oklch(0.50 0.11 70);
     --rule: oklch(0.96 0 0);
+    --sunk: oklch(0.975 0 0);
   }
   html.dark {
     --bg: oklch(0.10 0 0);
@@ -68,9 +88,9 @@
     --ok: oklch(0.76 0.17 150);
     --warn: oklch(0.82 0.14 80);
     --rule: oklch(1 0 0 / 7%);
+    --sunk: oklch(0.13 0 0);
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
   body {
     margin: 0;
     background: var(--bg);
@@ -79,24 +99,36 @@
           "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     display: flex;
-    align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 40px 24px 56px;
   }
-  .shell { width: 100%; max-width: 33rem; }
+  .shell { width: 100%; max-width: 34rem; }
 
-  .brand {
-    display: flex; align-items: center; gap: 9px;
-    margin-bottom: 28px;
+  /* Two identities, in the order that answers the reader's questions:
+     who is telling me this (the service), and about what (the product,
+     keeping its own mark so the page is recognisably about THEIR tool). */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    padding-bottom: 16px; margin-bottom: 26px;
+    border-bottom: 1px solid var(--rule);
   }
-  .brand img { width: 22px; height: 22px; border-radius: 5px; display: block; }
-  .brand span { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .svc { display: flex; align-items: center; gap: 10px; }
+  .svc .mark { display: block; color: var(--fg); flex: 0 0 auto; }
+  .svc-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .prod {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 12px 4px 5px;
+    font-size: 13px; color: var(--muted);
+  }
+  .prod img { width: 18px; height: 18px; border-radius: 4px; display: block; }
+  .prod span { font-weight: 500; color: var(--fg); }
 
   .state {
     display: inline-flex; align-items: center; gap: 7px;
     font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 12px;
+    color: var(--muted); margin-bottom: 12px;
   }
   .dot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -111,35 +143,58 @@
     text-wrap: balance;
   }
   .lede { margin: 0 0 6px; color: var(--muted); }
-  .safe { margin: 0 0 26px; color: var(--muted); }
+  .safe { margin: 0 0 22px; color: var(--muted); }
   .safe b { color: var(--fg); font-weight: 600; }
 
-  .checks {
+  .retry-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin-bottom: 30px;
+  }
+  .auto { font-size: 13px; color: var(--muted); }
+
+  h2 {
+    margin: 0 0 4px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  section { margin-bottom: 30px; }
+  section > p.sub { margin: 0 0 12px; font-size: 13.5px; color: var(--muted); }
+
+  .steps {
     border: 1px solid var(--border); border-radius: 10px;
     background: var(--card);
-    padding: 4px 18px;
-    margin: 0 0 22px;
-    list-style: none;
-    counter-reset: step;
+    padding: 4px 18px; margin: 0;
+    list-style: none; counter-reset: step;
   }
-  .checks li {
+  .steps li {
     counter-increment: step;
     display: grid; grid-template-columns: 26px 1fr; gap: 12px;
     padding: 14px 0;
     border-bottom: 1px solid var(--rule);
   }
-  .checks li:last-child { border-bottom: 0; }
-  .checks li::before {
+  .steps li:last-child { border-bottom: 0; }
+  .steps li::before {
     content: counter(step);
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; margin-top: 1px;
     border: 1px solid var(--border); border-radius: 50%;
     font-size: 11px; font-weight: 600; color: var(--muted);
   }
-  .checks b { display: block; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-  .checks p { margin: 0; font-size: 13px; color: var(--muted); }
+  .steps b { display: block; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .steps p { margin: 0; font-size: 13px; color: var(--muted); }
 
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .forward {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+    padding: 16px 18px;
+  }
+  .forward .msg {
+    background: var(--sunk); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; margin: 0 0 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px; line-height: 1.5; color: var(--fg);
+    white-space: pre-wrap; word-break: break-word;
+  }
+
   button, .link {
     font: inherit; font-size: 14px; font-weight: 500;
     border-radius: 8px; cursor: pointer;
@@ -152,89 +207,195 @@
   }
   button:hover { filter: brightness(1.08); }
   button:disabled { opacity: 0.55; cursor: default; filter: none; }
-  .link { background: transparent; color: var(--fg); border: 1px solid var(--border); }
-  .link:hover { border-color: var(--muted); }
+  .link, button.ghost {
+    background: transparent; color: var(--fg); border: 1px solid var(--border);
+    font-weight: 500;
+  }
+  .link:hover, button.ghost:hover { border-color: var(--muted); filter: none; }
   :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-  .auto { font-size: 13px; color: var(--muted); margin-left: auto; }
-  @media (max-width: 480px) { .auto { margin-left: 0; width: 100%; } }
-
-  .foot {
-    margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--rule);
+  /* Machine detail is available, not announced. A timestamp and a host
+     shown in the open read as wreckage to someone who just wants their
+     loads back — the same reason Cloudflare's "Error 521 Web server is
+     down" makes a working platform look abandoned. */
+  .tech { padding-top: 18px; border-top: 1px solid var(--rule); }
+  .tech summary {
+    cursor: pointer; list-style: none;
     font-size: 12px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 6px;
+    min-height: 24px;
   }
-  .foot code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+  .tech summary::-webkit-details-marker { display: none; }
+  .tech summary::before {
+    content: ""; width: 0; height: 0;
+    border-left: 4px solid currentColor;
+    border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
+    transition: transform 120ms ease;
+  }
+  .tech[open] summary::before { transform: rotate(90deg); }
+  .tech summary:hover { color: var(--fg); }
+  .tech-body { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .tech-body p { margin: 0 0 8px; }
+  .diag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .diag-row code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    background: var(--sunk); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 9px; color: var(--fg);
+  }
+  .small { font-size: 12px; padding: 5px 11px; min-height: 28px; }
+  .who { margin: 0 0 20px; font-size: 12px; color: var(--muted); }
+  .who b { color: var(--fg); font-weight: 600; }
+
+  /* One page, two situations. A device with no network at all cannot be
+     told to try a VPN or to email its office, so those sections are not
+     merely irrelevant there — they would be wrong. */
+  body[data-state="offline"] [data-when="unreachable"] { display: none; }
+  body[data-state="unreachable"] [data-when="offline"] { display: none; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
-<body>
+<body data-state="unreachable">
   <main class="shell">
-    <div class="brand">
-      <img src="/favicon-32.png" alt="" />
-      <span>4truck</span>
-    </div>
+    <header class="topbar">
+      <div class="svc">
+        <svg class="mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <rect x="0.6" y="0.6" width="22.8" height="22.8" rx="6.4"
+                fill="currentColor" fill-opacity="0.07"
+                stroke="currentColor" stroke-opacity="0.22" stroke-width="1.2" />
+          <text x="12" y="15.4" text-anchor="middle" fill="currentColor"
+                font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
+                font-size="7.6" font-weight="700" letter-spacing="-0.15">ABC</text>
+        </svg>
+        <span class="svc-name">ABC Checker</span>
+      </div>
+      <div class="prod">
+        <img src="/favicon-32.png" alt="" />
+        <span data-product>4truck</span>
+      </div>
+    </header>
 
     <p class="state"><span class="dot" id="dot"></span><span id="state">Checking</span></p>
-    <h1 id="title">Can’t reach 4truck</h1>
+    <h1 id="title">This network can’t reach <span data-product>4truck</span></h1>
     <p class="lede" id="lede">
-      This device can’t open a connection to our servers right now.
+      Your device is online. Something between it and <span data-product>4truck</span> is refusing
+      the connection — most often an office firewall, a company network policy, or an internet provider.
     </p>
     <p class="safe">
       <b>Your data is safe.</b> Nothing was lost, and nothing was sent anywhere. This
       page is stored on your device, which is why it still opens.
     </p>
 
-    <ol class="checks" id="checks">
-      <li>
-        <div>
-          <b>Try mobile data</b>
-          <p>Turn Wi-Fi off on your phone and open 4truck. If it loads, your network or
-             internet provider is blocking the connection, not us.</p>
-        </div>
-      </li>
-      <li>
-        <div>
-          <b>Open a private window</b>
-          <p>Ctrl+Shift+N in Chrome, or Ctrl+Shift+P in Firefox. If it loads there, a
-             browser extension is interfering.</p>
-        </div>
-      </li>
-      <li id="check-status" hidden>
-        <div>
-          <b>Check the status page</b>
-          <p>It runs outside our servers, so it answers even when this page can’t —
-             it will say whether 4truck itself is down.</p>
-        </div>
-      </li>
-    </ol>
-
-    <div class="actions">
+    <div class="retry-row">
       <button type="button" id="retry">Try again</button>
-      <a class="link" id="status" href="#" rel="noopener" hidden>Status page</a>
       <span class="auto" id="auto"></span>
     </div>
 
-    <p class="foot">
-      Still stuck? Send us this line: <code id="diag">—</code>
-    </p>
+    <section>
+      <h2>Get back in now</h2>
+      <p class="sub" data-when="unreachable">Any one of these gets you working again while the
+        block is still in place.</p>
+      <p class="sub" data-when="offline"><span data-product>4truck</span> reopens by itself the
+        moment a connection returns. If you need it sooner:</p>
+      <ol class="steps">
+        <li>
+          <div>
+            <b>Use your phone’s data</b>
+            <p>Turn Wi-Fi off on your phone and open <span data-product>4truck</span> there, or share
+               its connection to this computer. If it loads, the network you were on is what is
+               blocking it.</p>
+          </div>
+        </li>
+        <li data-when="unreachable">
+          <div>
+            <b>Connect through a VPN</b>
+            <p>A company VPN, or any VPN app. It routes around whatever is blocking the
+               connection, and usually restores <span data-product>4truck</span> immediately.</p>
+          </div>
+        </li>
+        <li data-when="unreachable">
+          <div>
+            <b>If a VPN is already on, turn it off</b>
+            <p>Some VPNs break the route instead of fixing it. Worth one try in each direction.</p>
+          </div>
+        </li>
+        <li data-when="unreachable">
+          <div>
+            <b>Open a private window</b>
+            <p>Ctrl+Shift+N in Chrome, Ctrl+Shift+P in Firefox. If it loads there, a browser
+               extension is interfering.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section data-when="unreachable">
+      <h2>Get it fixed for good</h2>
+      <p class="sub">If you are on an office or company network, whoever runs it can unblock
+         <span data-product>4truck</span> in a minute. Send them this.</p>
+      <div class="forward">
+        <p class="msg" id="msg"></p>
+        <button type="button" class="ghost" id="copy-msg">Copy message</button>
+      </div>
+    </section>
+
+    <section id="sec-status" hidden>
+      <h2>Or check whether it’s us</h2>
+      <p class="sub">The status page runs outside our servers, so it answers even when this
+         page can’t. It will say plainly whether <span data-product>4truck</span> itself is down.</p>
+      <a class="link" id="status" href="#" rel="noopener">Open the status page</a>
+    </section>
+
+    <p class="who">ABC&nbsp;Checker is operated by <b>ABC&nbsp;LEGACY&nbsp;LLC</b>, which builds
+       <span data-product>4truck</span>.</p>
+
+    <details class="tech">
+      <summary>Technical details</summary>
+      <div class="tech-body">
+        <p>If you contact us, this line saves a round of questions.</p>
+        <div class="diag-row">
+          <code id="diag">—</code>
+          <button type="button" class="ghost small" id="copy-diag">Copy</button>
+        </div>
+      </div>
+    </details>
   </main>
 
 <script>
 // The public status page, hosted OUTSIDE our infrastructure so it can
 // answer when this page cannot. Set it once here and in
 // ops/cloudflare/error-5xx.html; docs/runbooks/uptime-monitoring.md has
-// the ten-minute setup. Left empty until it exists, and every reference
-// to it hides itself — a "Status page" button that opens a vendor's
-// marketing homepage is worse than no button, and the third check would
-// be telling a stranded customer to visit a page we never made.
+// the setup. Left empty until it exists, and every reference to it
+// hides itself — a "Status page" button that opens a vendor's marketing
+// homepage is worse than no button, and that whole section would be
+// telling a stranded customer to visit a page we never made.
 var STATUS_PAGE_URL = '';
+
+// EVERYTHING that changes when ABC Checker is reused for another product.
+// The mark is not in here on purpose: each product serves this file from
+// its own origin, so /favicon-32.png is already its own.
+var PRODUCT = {
+  name: '4truck',
+  // What an IT admin needs in order to act. A wildcard, because the
+  // platform answers on a dozen hostnames and nobody unblocks a list of
+  // twelve.
+  hosts: '*.4truck.us',
+  what: 'the trucking operations platform we use for dispatch, maintenance and compliance',
+};
+
+(function () {
+  var slots = document.querySelectorAll('[data-product]');
+  for (var i = 0; i < slots.length; i++) slots[i].textContent = PRODUCT.name;
+  document.title = PRODUCT.name + ' \u2014 ABC Checker';
+  document.getElementById('msg').textContent =
+    'Please allow ' + PRODUCT.hosts + ' through our network, over HTTPS (port 443).'
+    + '\n\nIt is ' + PRODUCT.what + ', and it is currently being blocked \u2014 the connection is '
+    + 'refused before it reaches them.';
+})();
 
 (function () {
   if (STATUS_PAGE_URL) {
-    var link = document.getElementById('status');
-    link.href = STATUS_PAGE_URL;
-    link.hidden = false;
-    document.getElementById('check-status').hidden = false;
+    document.getElementById('status').href = STATUS_PAGE_URL;
+    document.getElementById('sec-status').hidden = false;
   }
 })();
 
@@ -249,26 +410,59 @@ var STATUS_PAGE_URL = '';
 
   // The distinction the browser refuses to draw, and the whole reason
   // this page is worth serving: a device with no connection is the
-  // customer's own network, while a device that IS online and still
-  // cannot reach us is a route, DNS or provider problem between us —
-  // two different sentences, two different things to try.
+  // customer's own network and fixes itself, while a device that IS
+  // online and still cannot reach us has something in the way that a
+  // VPN or another network gets around. Two situations, two sets of
+  // advice — and the headline must never make 4truck the thing that
+  // failed, because that is the reading a customer arrives with.
   function offlineCopy() {
+    document.body.dataset.state = 'offline';
     stateEl.textContent = 'No connection';
     title.textContent = 'No internet connection';
     lede.textContent = 'This device is not connected to a network. 4truck will open again '
                      + 'by itself once the connection comes back.';
   }
   function unreachableCopy() {
-    stateEl.textContent = 'Cannot reach 4truck';
-    title.textContent = 'Can’t reach 4truck';
-    lede.textContent = 'Your internet is working, but this device can’t open a connection '
-                     + 'to our servers. That is usually a network, DNS or provider problem '
-                     + 'on the way to us.';
+    document.body.dataset.state = 'unreachable';
+    stateEl.textContent = 'Connection blocked';
+    title.textContent = 'This network can’t reach 4truck';
+    lede.textContent = 'Your device is online. Something between it and 4truck is refusing '
+                     + 'the connection — most often an office firewall, a company network '
+                     + 'policy, or an internet provider.';
   }
   (navigator.onLine === false ? offlineCopy : unreachableCopy)();
 
   diag.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z · '
                    + location.host + ' · ' + (navigator.onLine === false ? 'device-offline' : 'unreachable');
+
+  // Copying beats transcribing, and the fallback beats nothing: the
+  // clipboard is refused in plenty of contexts, so selecting the text
+  // is what always works.
+  function wireCopy(btnId, sourceId, label) {
+    var btn = document.getElementById(btnId);
+    var src = document.getElementById(sourceId);
+    btn.addEventListener('click', function () {
+      var done = function () { flash('Copied'); };
+      var flash = function (t) {
+        btn.textContent = t;
+        setTimeout(function () { btn.textContent = label; }, 1800);
+      };
+      var select = function () {
+        try {
+          var r = document.createRange();
+          r.selectNodeContents(src);
+          var sel = window.getSelection();
+          sel.removeAllRanges(); sel.addRange(r);
+          flash('Press Ctrl+C');
+        } catch (e) { flash('Select it manually'); }
+      };
+      try {
+        navigator.clipboard.writeText(src.textContent).then(done, select);
+      } catch (e) { select(); }
+    });
+  }
+  wireCopy('copy-msg', 'msg', 'Copy message');
+  wireCopy('copy-diag', 'diag', 'Copy');
 
   // A probe, not a reload: reloading to find out costs the customer a
   // second browser error page every time. This asks quietly and only
