@@ -8,7 +8,8 @@ Endpoints:
   GET  /billing/usage        — monthly usage history (up to 12 months)
   POST /billing/checkout     — create checkout session (upgrade tier)
   POST /billing/portal       — open Stripe customer portal (manage subscription)
-  POST /billing/webhook      — Stripe webhook receiver (no auth — validated by signature)
+  POST /billing/stripe/webhook — Stripe webhook receiver (no auth — validated by signature;
+                               /billing/webhook is kept as an alias)
   POST /billing/update-vehicles — admin: manually sync vehicle count to subscription
 
 All endpoints except /webhook require a valid JWT with role admin or owner.
@@ -228,6 +229,11 @@ async def billing_portal(
 
 # ── Webhook (no JWT auth — signature-verified by provider) ───────
 
+# The provider-named path is the one Stripe is configured with: a second
+# provider tomorrow gets its own (/billing/<provider>/webhook) instead of
+# a switch inside one handler.  The bare /billing/webhook stays as an
+# alias so an endpoint registered against it keeps delivering.
+@router.post("/stripe/webhook")
 @router.post("/webhook")
 async def billing_webhook(
     request: Request,

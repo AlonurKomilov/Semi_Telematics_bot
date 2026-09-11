@@ -277,7 +277,7 @@ class ApiNoStoreMiddleware(BaseHTTPMiddleware):
 # logged-out session can refresh; health/version stay open for monitors.
 _ENFORCEMENT_BYPASS_SUFFIXES = (
     "/billing/summary", "/billing/usage", "/billing/invoices",
-    "/billing/portal", "/billing/webhook",
+    "/billing/portal", "/billing/webhook", "/billing/stripe/webhook",
     "/auth/login", "/auth/refresh", "/auth/logout",
     # Inbound provider webhooks — signature-verified, no JWT.  The
     # Resend bounce/complaint events must reach the handler even

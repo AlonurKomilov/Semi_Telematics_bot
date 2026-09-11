@@ -11,9 +11,10 @@ first checkout. The Plans page (system console) shows this list live.
 - **Keys**: `STRIPE_SECRET_KEY` (sk_test_… then sk_live_…). Price and
   Product ids are per mode — every id below must come from the same mode
   as the key.
-- **Webhook endpoint**: `https://api.4truck.us/billing/webhook` (the api host
-  mounts routes without the `/api` prefix; `/api/billing/webhook` is the
-  same route on dash.4truck.us and 4truck.us — probed 2026-09-11), events
+- **Webhook endpoint**: `https://api.4truck.us/billing/stripe/webhook` (the
+  provider-named path; `/billing/webhook` is an alias. The api host mounts
+  routes without the `/api` prefix; on dash.4truck.us and 4truck.us the same
+  route is under `/api/` — probed 2026-09-11), events
   `checkout.session.completed`, `customer.subscription.updated`,
   `customer.subscription.deleted`, `invoice.payment_succeeded`,
   `invoice.payment_failed`. Paste its signing secret into

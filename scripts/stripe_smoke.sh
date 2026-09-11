@@ -25,7 +25,7 @@
 set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8080}"
-WEBHOOK_PATH="${WEBHOOK_PATH:-/api/billing/webhook}"
+WEBHOOK_PATH="${WEBHOOK_PATH:-/api/billing/stripe/webhook}"
 DATABASE_URL="${DATABASE_URL:?DATABASE_URL must be set}"
 
 # Stripe events the 4truck webhook handler processes.  Order matters:
