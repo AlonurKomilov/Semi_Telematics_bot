@@ -19,6 +19,7 @@
  * six and threading them down — is the 600-line `ModControls` this
  * folder was cut out of.
  */
+import { offered } from '../store/local';
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RotateCcw, Volume2, VolumeX } from '../../lib/icons';
@@ -116,7 +117,7 @@ export function SoundVolume({ label: groupLabel }: { label: LabelClass }) {
         }}
       />
       <div className="flex flex-wrap gap-1 mt-1.5">
-        {SOUND_PACKS.map((p) => (
+        {offered('sound', SOUND_PACKS, (p) => p.id).map((p) => (
           <Chip key={p.id} value={p.id} current={soundPack} label={p.label}
             onClick={(v) => {
               setSoundPack(v);
@@ -207,7 +208,7 @@ export function KeyboardItem() {
       </p>
       {keySound && (
         <div className="flex flex-wrap gap-1 mt-1.5">
-          {KEY_PACKS.map((p) => (
+          {offered('keys', KEY_PACKS, (p) => p.id).map((p) => (
             <Chip key={p.id} value={p.id} current={keyPack} label={p.label}
               onClick={(v) => {
                 setKeyPack(v);

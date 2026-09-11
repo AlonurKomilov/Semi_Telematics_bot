@@ -6,6 +6,7 @@
  * write in this service that touches seven axes at once, and therefore
  * the undo that write needs.
  */
+import { offered } from '../store/local';
 import { useTranslation } from 'react-i18next';
 import { usePreference } from '../../preferences';
 import { undoableAction } from '../../components/banners/stagedAction';
@@ -112,7 +113,7 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
         {t('mods.group_mods', 'Mods')}
       </p>
       <div className="flex flex-wrap gap-1">
-        {MOD_OPTIONS.map((o) => (
+        {offered('mods', MOD_OPTIONS, (o) => o.value).map((o) => (
           <Chip key={o.value} value={o.value} current={activeMod} label={o.label} dot={accentSeed(o.mod.accent, theme.mode)}
             onClick={() => applyMod(o.mod)} />
         ))}
@@ -145,6 +146,8 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
 }
 
 /** Whether there is anything to show — the container row renders only
- *  when the catalogue has entries, which is how a shrunken catalogue
- *  leaves no empty heading behind. */
-export const HAS_MODS = MOD_OPTIONS.length > 0;
+ *  when this install carries a mod, which is how a shrunken catalogue
+ *  leaves no empty heading behind. A function, not a constant: what is
+ *  carried is a question asked at render, not frozen at import. */
+export const hasMods = (): boolean =>
+  offered('mods', MOD_OPTIONS, (o) => o.value).length > 0;

@@ -7,6 +7,7 @@
  * the panel and the profile card show the category whole. The
  * composition is the DOM those two surfaces always rendered.
  */
+import { offered } from '../store/local';
 import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
 import { usePreference } from '../../preferences';
@@ -38,7 +39,7 @@ export function ShadersItem({ label }: { label: LabelClass }) {
         {t('mods.group_shader', 'Shaders')}
       </p>
       <div className="flex flex-wrap gap-1">
-        {SHADER_PACKS.map((sp) => (
+        {offered('shader', SHADER_PACKS, (sp) => sp.id).map((sp) => (
           <Chip key={sp.id} value={sp.id} current={theme.shader ?? 'flat'}
             label={t(`mods.shader_${sp.id}`, sp.label)}
             onClick={(v) => setTheme({ shader: v })} />

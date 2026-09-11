@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRight, SlidersHorizontal } from '../../lib/icons';
 import { MODS_HREF } from '../href';
 import type { ModSection } from '../taxonomy';
-import { ModsRow, HAS_MODS } from './ModsRow';
+import { ModsRow, hasMods } from './ModsRow';
 import {
   ModeGroup, ColorGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup, WallpaperGroup, CursorGroup,
 } from './Interface';
@@ -60,7 +60,7 @@ export function ModControls({ compact = false, onNavigate, section }: {
     <>
       {/* The container's own row: installing a mod writes into every
           category below, which is why it is not one of them. */}
-      {has('mods') && HAS_MODS && (
+      {has('mods') && hasMods() && (
         <>
           <ModsRow label={groupLabel} />
           {rule}

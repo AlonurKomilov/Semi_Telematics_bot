@@ -14,6 +14,7 @@
  * `Section` already does exactly this — a component takes what it uses
  * rather than being handed eleven props it mostly ignores.
  */
+import { offered } from '../store/local';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
@@ -241,7 +242,7 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
   const here = typeof document === 'undefined'
     ? undefined
     : surfaceById(document.documentElement.dataset.surface ?? '');
-  const offered = useMemo(() => {
+  const places = useMemo(() => {
     const all = selectableSurfaces(hasAny, ready);
     return compact ? all.filter((s) => s.id === here?.id) : all;
   }, [hasAny, ready, compact, here?.id]);
@@ -249,8 +250,8 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
    *  narrower view — must not stay aimed at. The pick would land on a
    *  screen this person cannot open and could not be found again. */
   useEffect(() => {
-    if (target && !offered.some((s) => s.id === target)) setTarget('');
-  }, [offered, target]);
+    if (target && !places.some((s) => s.id === target)) setTarget('');
+  }, [places, target]);
   // Whether a picked colour is what is actually painting, in the mode
   // being worn — not merely whether one is stored. The pack chips read
   // their highlight off this, because a chip highlighted while its block
@@ -314,7 +315,7 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
           is not on the screen. `theme.accent` is still stored and
           still what a Clear returns to. */}
       <div className="flex flex-wrap gap-1">
-        {ACCENT_OPTIONS.map((o) => (
+        {offered('theme', ACCENT_OPTIONS, (o) => o.value).map((o) => (
           <Chip key={o.value} value={o.value} current={brandWorn ? ('' as Accent) : theme.accent}
             label={t(o.key, o.label)} dot={accentSeed(o.value, theme.mode)}
             onClick={(v) => setTheme({ accent: v })} />
@@ -334,7 +335,7 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
       <p className="text-2xs text-muted-foreground mt-1.5">
         {brandWorn ? '' : packById(theme.accent)?.description ?? ''}
       </p>
-      {offered.length > 0 && (<>
+      {places.length > 0 && (<>
       {/* WHERE the background applies. Each chip wears the background
           that place is painting, so which places carry one is legible
           without clicking through all four — state that can only be
@@ -359,7 +360,7 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
         <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
           dot={wornCanvas(theme.canvas, theme.mode, seedBrand, underPattern, theme.grounds?.sidebar)}
           onClick={() => setTarget('')} />
-        {offered.map((s) => (
+        {places.map((s) => (
           <Chip key={s.id} value={s.id} current={target} label={s.title}
             dot={wornCanvas(theme.surfaces?.[s.id], theme.mode, seedBrand, underPattern, theme.grounds?.sidebar)}
             onClick={(v) => setTarget(v)} />
@@ -464,7 +465,7 @@ export function MaterialGroup({ label }: { label: LabelClass }) {
           whole app, and a person may want glass without taking a
           mod's size and colour with it. */}
       <div className="flex flex-wrap gap-1">
-        {MATERIAL_OPTIONS.map((o) => (
+        {offered('material', MATERIAL_OPTIONS, (o) => o.value).map((o) => (
           <Chip key={o.value} value={o.value} current={theme.material} label={t(o.key, o.label)}
             onClick={(v) => setTheme({ material: v })} />
         ))}
@@ -489,7 +490,7 @@ export function TypefaceGroup({ label }: { label: LabelClass }) {
           asking here is "what does it look like", and the chip can
           simply answer it. */}
       <div className="flex flex-wrap gap-1">
-        {FONT_PACKS.map((f) => (
+        {offered('font', FONT_PACKS, (f) => f.id).map((f) => (
           <span key={f.id} style={{ fontFamily: FONT_PREVIEW[f.id] }}>
             <Chip value={f.id} current={theme.font} label={f.label}
               onClick={(v) => setTheme({ font: v })} />
@@ -536,7 +537,7 @@ export function CursorGroup({ label }: { label: LabelClass }) {
         {t('mods.group_cursor', 'Cursor')}
       </p>
       <div className="flex flex-wrap gap-1">
-        {CURSOR_PACKS.map((c) => (
+        {offered('cursor', CURSOR_PACKS, (c) => c.id).map((c) => (
           <Chip key={c.id} value={c.id} current={current} label={t(`mods.cursor_${c.id}`, c.label)}
             onClick={(v) => setTheme({ cursor: v })} />
         ))}
@@ -571,10 +572,10 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
    *  stored, like the canvas's aim: a question about this moment. */
   const [target, setTarget] = useState('');
   const { hasAny, ready } = useViewPermissions();
-  const offered = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
+  const places = useMemo(() => selectableSurfaces(hasAny, ready), [hasAny, ready]);
   useEffect(() => {
-    if (target && !offered.some((s) => s.id === target)) setTarget('');
-  }, [offered, target]);
+    if (target && !places.some((s) => s.id === target)) setTarget('');
+  }, [places, target]);
   /** What the aimed place wears: its own pattern, or everywhere's. */
   const own = target ? theme.wallpaperPages?.[target] : undefined;
   const page = own ?? theme.wallpaperPage ?? 'none';
@@ -589,10 +590,11 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   // Live is one switch for both grounds: it applies to whichever of
   // them wears a pattern that can move.
   const canLive = wornFrame?.kind === 'live' || wornPage?.kind === 'live';
-  const movers = WALLPAPERS.filter((w) => w.kind === 'live').map((w) => w.label);
+  const movers = offered('wallpaper', WALLPAPERS, (w) => w.id)
+    .filter((w) => w.kind === 'live').map((w) => w.label);
   const chips = (current: string, write: (v: string) => void) => (
     <div className="flex flex-wrap gap-1">
-      {WALLPAPERS.map((w) => (
+      {offered('wallpaper', WALLPAPERS, (w) => w.id).map((w) => (
         <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
           live={w.kind === 'live' ? (current === w.id && theme.wallpaperLive ? 'on' : 'off') : undefined}
           onClick={write} />
@@ -620,7 +622,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <p className="text-xs text-foreground mt-3 mb-1.5">
         {t('mods.wallpaper_page', 'Page')}
       </p>
-      {offered.length > 0 && (<>
+      {places.length > 0 && (<>
       {/* WHERE the page pattern applies — the same places, the same
           gate and the same shape as the canvas's row under Color. Each
           chip wears a dot only when that place holds its OWN pattern,
@@ -632,7 +634,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <div className="flex flex-wrap gap-1 mb-1.5">
         <Chip value="" current={target} label={t('theme.scope_all', 'Everywhere')}
           onClick={() => setTarget('')} />
-        {offered.map((s) => (
+        {places.map((s) => (
           <Chip key={s.id} value={s.id} current={target} label={s.title}
             live={theme.wallpaperPages?.[s.id] ? 'on' : undefined}
             onClick={(v) => setTarget(v)} />
@@ -694,7 +696,7 @@ export function IconsGroup({ label }: { label: LabelClass }) {
           decision: the weight changes how one set is drawn, the pack
           changes the set. */}
       <div className="flex flex-wrap gap-1">
-        {PACK_OPTIONS.map((o) => (
+        {offered('icons', PACK_OPTIONS, (o) => o.value).map((o) => (
           <Chip key={o.value} value={o.value} current={theme.iconPack ?? BASE_PACK.id}
             label={t(o.key, o.label)}
             onClick={(v) => setTheme({ iconPack: v })} />

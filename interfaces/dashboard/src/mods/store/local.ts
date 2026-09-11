@@ -35,6 +35,24 @@ export const installedIds = (axis: string): readonly string[] =>
 export const isInstalled = (axis: string, id: string): boolean =>
   installedIds(axis).includes(id);
 
+/**
+ * What a picker may draw — the door every mods surface goes through.
+ *
+ * Takes the axis's own typed list and hands back the part this install
+ * carries, so a picker keeps its payload (a seed, a cue table, a
+ * wallpaper's kind) and loses only the rows that are not here. The id
+ * getter is explicit because an option table calls the id `value` and a
+ * pack calls it `id`, and a helper that guesses would silently offer
+ * everything the day one of them is renamed.
+ *
+ * Called at RENDER, never frozen into a module constant: the day this
+ * answers differently per person, a constant computed at import time
+ * would still be showing what the first paint saw.
+ */
+export const offered = <T,>(
+  axis: string, items: readonly T[], idOf: (item: T) => string,
+): readonly T[] => items.filter((i) => isInstalled(axis, idOf(i)));
+
 /** The one test a row has to pass to be here. Its own function because
  *  it is the seam: a plan mask or a delivery check lands in this line,
  *  and nothing above it has to move. */

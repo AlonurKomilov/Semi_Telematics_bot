@@ -203,16 +203,17 @@ describe('the panel section', () => {
     join(__dirname, '..', 'panel', 'Sounds.tsx'), 'utf8');
 
   it('offers every pack', () => {
-    // Generated from the catalogue, so adding a pack cannot half-land as
-    // a set of cues nobody can select.
-    expect(panel).toContain('SOUND_PACKS.map');
+    // Generated from what the store hands out, so adding a pack cannot
+    // half-land as a set of cues nobody can select — and a pack this
+    // install does not carry cannot be offered.
+    expect(panel).toContain("offered('sound', SOUND_PACKS");
   });
 
   it('previews the pack that was clicked, not the one that was stored', () => {
     // `setValue` is async. Previewing through the stored id plays the
     // pack you just LEFT, which is the kind of bug that reads as the
     // preview being broken rather than as one frame of staleness.
-    const onClick = /SOUND_PACKS\.map\([\s\S]{0,600}?preview\((\w+)/.exec(panel);
+    const onClick = /SOUND_PACKS[\s\S]{0,80}?\.map\([\s\S]{0,600}?preview\((\w+)/.exec(panel);
     expect(onClick, 'the pack chips no longer preview').not.toBeNull();
     expect(onClick![1], 'the preview reads a stored id instead of the clicked pack')
       .toBe('p');
