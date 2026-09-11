@@ -35,6 +35,7 @@ from fastapi import Query
 from pydantic import BaseModel, Field
 
 from adapters.storage import Role
+from features.inventory import expected as expected_config
 from features.inventory import service as inventory_service
 from capabilities.permissions.roles import get_user_permissions
 
@@ -233,7 +234,15 @@ async def extension_me(user: dict = Depends(get_current_user)):
     # a verb you may perform there — and because the panel must be able
     # to hide a control the server would refuse, rather than offering it
     # and answering 403 on the press.
-    abilities = ["inventory.write"] if getattr(perms, "can_manage_inventory", False) else []
+    abilities: list[str] = []
+    if getattr(perms, "can_manage_inventory", False):
+        abilities.append("inventory.write")
+    # Aiming a role's own attention.  Named `config.role`, matching the
+    # scope it rides: the account-wide half of the config family has no
+    # ability here because a browser key does not carry it, and inventing
+    # `config.all` would be a verb the panel could never perform.
+    if getattr(perms, "can_manage_config_role", False):
+        abilities.append("config.role")
     return {
         "display_name": db_user.display_name or "",
         "role": str(user.get("role") or ""),
@@ -360,10 +369,89 @@ async def extension_inventory(
         "vehicle_id": vehicle,
         "items": items,
         "attention": sum(1 for i in items if i["status"] in ATTENTION_STATUSES),
+        # What this truck OWES, beside what it has.  The person holding
+        # this panel is standing at the truck — "no ELD recorded" is
+        # something they can act on now, and the dashboard reader cannot.
+        # `flagged` is narrowed by THIS caller's role, so a role that
+        # turned straps down is not sent to look for them.
+        "coverage": await expected_config.coverage(
+            tenant, account_id, vehicle,
+            str(getattr(v, "vehicle_type", "") or "truck"),
+            role=str(user.get("role") or ""),
+        ),
         # The account's own vocabulary, for the panel's add form — the
         # built-ins first, then whatever this account has invented.
         "categories": await tenant.list_inventory_categories(account_id),
     }
+
+
+@router.get("/inventory-config")
+async def extension_inventory_config(
+    user: dict = Depends(require_permission("can_view_inventory")),
+):
+    """The feature's own config, as the panel's gear needs it.
+
+    Two halves with two different blast radii, and the panel only writes
+    one of them.  The CATALOGUE — what every vehicle of a type is
+    expected to carry — is returned read-only: changing it decides
+    whether a hundred trucks are short, which is a desk decision behind
+    `can_manage_config_all`, a flag this token does not carry.  The FOCUS
+    — which of those categories THIS role goes red about — is the narrow
+    half, and it is exactly what somebody at a truck wants to turn down.
+
+    `focus: null` is not `focus: []`.  Never-narrowed means flagged on
+    everything; narrowed-to-nothing means flagged on nothing, and a role
+    must be able to say the second.
+    """
+    from features.inventory.expected import EXPECTED_VEHICLE_TYPES
+    from infra.platform import get_tenant_db
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    role = str(user.get("role") or "")
+    return {
+        "catalogue": await expected_config.get_catalogue(tenant, account_id),
+        "vehicle_types": list(EXPECTED_VEHICLE_TYPES),
+        "role": role,
+        "focus": await expected_config.get_role_focus(tenant, account_id, role),
+        # Said by the SERVER, so the panel hides a control the server
+        # would refuse rather than offering it and answering 403.
+        "can_edit_catalogue": False,
+    }
+
+
+class _FocusBody(BaseModel):
+    categories: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.put("/inventory-focus")
+async def extension_inventory_focus(
+    body: _FocusBody,
+    user: dict = Depends(require_permission("can_manage_config_role")),
+):
+    """Narrow what the CALLER's OWN role goes red about.
+
+    No role parameter, deliberately.  The dashboard's endpoint takes one
+    and walks the own-role wall for people who may cross it; from a
+    browser key there is nothing to decide — a panel may aim its own
+    role's attention and no other, so the role is read off the token and
+    the wall cannot be argued with.
+    """
+    from infra.platform import get_tenant_db
+
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=503, detail="tenant DB unavailable")
+    role = str(user.get("role") or "")
+    if not role:
+        raise HTTPException(status_code=400, detail="No role on this session")
+    saved = await expected_config.save_role_focus(
+        tenant, account_id, role, body.categories,
+    )
+    return {"ok": True, "role": role, "categories": saved}
 
 
 @router.get("/inventory-fleet")

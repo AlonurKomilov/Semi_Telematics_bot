@@ -10,7 +10,11 @@ import { forgetInventory } from '../features/inventory/data';
 import { forgetPositions } from '../features/live-map/locate';
 
 type Phase = 'loading' | 'login' | 'ready';
-type View = 'feature' | 'settings';
+/** `config` is the SELECTED FEATURE's config, not the panel's.  The
+ *  panel's own preferences stay `settings`, reached from the user menu —
+ *  two different questions the dashboard also keeps apart: what this
+ *  panel does for me, versus what the feature means for the account. */
+type View = 'feature' | 'settings' | 'config';
 
 /** GET /extension/me — an avatar's worth, by design nothing more. */
 interface MeWire {
@@ -156,6 +160,10 @@ export default function App() {
   const feature = offered.find((f) => f.id === featureId) ?? offered[0];
   const pickFeature = (id: string) => {
     setFeatureId(id);
+    // Switching feature leaves that feature's config: the gear is the
+    // only way back in, and Live Map has no gear — staying in `config`
+    // would strand the panel on a view its new feature cannot render.
+    setView('feature');
     // One key, two readers: the panel remembers the choice and the
     // overlay's card on google.com/maps reads it to label its button —
     // "for levels & more" is a lie while the panel is on Inventory.
@@ -180,12 +188,42 @@ export default function App() {
       <header className="row" style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', justifyContent: 'space-between' }}>
         {view === 'settings'
           ? <strong>4truck · Settings</strong>
-          : <FeatureMenu features={offered} current={feature} onPick={pickFeature} />}
+          : (
+            <span className="row" style={{ gap: 2, minWidth: 0 }}>
+              <FeatureMenu features={offered} current={feature} onPick={pickFeature} />
+              {/* The gear belongs to the FEATURE, so it stands beside the
+                  feature's name and appears only for a feature that declares
+                  a config surface.  Live Map declares none and gets none: an
+                  always-present gear that opens nothing for half the panel is
+                  a control somebody has to learn twice. */}
+              {feature.Config && (
+                <button type="button" className="btn compact"
+                        aria-pressed={view === 'config'}
+                        aria-label={view === 'config'
+                          ? `Back to ${feature.label}`
+                          : `Configure ${feature.label}`}
+                        title={view === 'config'
+                          ? `Back to ${feature.label}`
+                          : `Configure ${feature.label}`}
+                        onClick={() => setView(view === 'config' ? 'feature' : 'config')}
+                        style={{ flexShrink: 0, padding: '2px 6px' }}>
+                  {view === 'config' ? '←' : '⚙'}
+                </button>
+              )}
+            </span>
+          )}
         <UserMenu me={me} onSettings={() => setView('settings')} onDisconnect={() => void disconnect()} />
       </header>
-      <main style={{ flex: 1, minHeight: 0, overflowY: view === 'settings' ? 'auto' : undefined }}>
+      {/* Settings and a feature's config are ordinary documents and
+          scroll; a feature owns its own height and must not. */}
+      <main style={{ flex: 1, minHeight: 0,
+                     overflowY: view === 'feature' ? undefined : 'auto' }}>
         {view === 'settings' ? (
           <Settings onBack={() => setView('feature')} />
+        ) : view === 'config' && feature.Config ? (
+          <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
+            <feature.Config abilities={abilities} features={offered.map((f) => f.id)} />
+          </Suspense>
         ) : (
           <Suspense fallback={<p className="muted" style={{ padding: 16 }}>Loading…</p>}>
             <feature.Component abilities={abilities} features={offered.map((f) => f.id)} />

@@ -414,6 +414,26 @@ useEffect(() => {
                            await afterWrite(selected.vehicle_id);
                          } : undefined}
                          categories={known} />}
+            {/* What this truck OWES and has not got — named, because a
+                count tells you something is wrong and this tells you what
+                to go and look for.  Only the rows THIS role is flagged on:
+                the count is one truth for the account, the red is the
+                role's own, and sending safety to look for dispatch's
+                straps is the thing that split them. */}
+            {typeof items === 'object' && items.coverage.expected > 0 && (
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                {items.coverage.present} of {items.coverage.expected} expected aboard
+                {items.coverage.flagged.length > 0 && (
+                  <span style={{ color: 'var(--warn)' }}>
+                    {' · missing '}
+                    {items.coverage.flagged
+                      .map((c) => items.coverage.rows.find((r) => r.category === c))
+                      .map((r) => r?.label || humanize(r?.category ?? ''))
+                      .join(', ')}
+                  </span>
+                )}
+              </p>
+            )}
           {/* ADD, from the truck rather than from a desk.  The walk back
               to a laptop is where the record stops being made at all.
               REMOVE and TRANSFER are deliberately not here and not

@@ -37,8 +37,34 @@ export const FIELD_LABEL = {
   identifier: 'Serial or card number',
 } as const;
 
+/** One line of the account's catalogue, measured against this vehicle.
+ *  `short` is 0 unless it is short — the only rows worth rendering. */
+export interface CoverageRow {
+  category: string;
+  label: string;
+  quantity: number;
+  required: boolean;
+  present: number;
+  short: number;
+}
+
+/** What this vehicle OWES, beside what it has.
+ *
+ *  `expected: 0` means NOT DECLARED, never "complete": an account that
+ *  has written no catalogue has not said what complete means.
+ *
+ *  `flagged` is narrowed by the CALLER's role — the count is one truth
+ *  for everybody, the red is each role's own. */
+export interface Coverage {
+  expected: number;
+  present: number;
+  rows: CoverageRow[];
+  flagged: string[];
+}
+
 export interface Inventory {
   items: InventoryItem[];
+  coverage: Coverage;
   /** The account's own category vocabulary, for the add form: the
    *  built-ins first, then whatever this account has invented. */
   categories: string[];
@@ -119,12 +145,19 @@ export async function inventoryFor(
       `/extension/inventory?vehicle=${encodeURIComponent(String(registryId))}`);
     if (res.status === 403) { denied = true; return null; }
     if (!res.ok) return null;                      // transient: ask again next time
-    const out = (await res.json()) as
-      { items?: InventoryItem[]; attention?: number; categories?: string[] };
+    const out = (await res.json()) as {
+      items?: InventoryItem[]; attention?: number; categories?: string[];
+      coverage?: Coverage;
+    };
     const data: Inventory = {
       items: Array.isArray(out.items) ? out.items : [],
       attention: typeof out.attention === 'number' ? out.attention : 0,
       categories: Array.isArray(out.categories) ? out.categories : [],
+      // A server that has not been restarted yet answers without this.
+      // Reading it as "nothing declared" is the one safe default: the
+      // panel then says nothing about completeness, rather than calling
+      // every truck complete or every truck short.
+      coverage: out.coverage ?? { expected: 0, present: 0, rows: [], flagged: [] },
     };
     cache.set(registryId, { at: now, data });
     return data;

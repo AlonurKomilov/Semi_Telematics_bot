@@ -22,11 +22,28 @@ export interface PanelFeature {
   id: string;
   label: string;
   Component: LazyExoticComponent<ComponentType<PanelFeatureProps>>;
+  /** The feature's OWN configuration surface, when it has one.
+   *
+   *  Its presence is the whole mechanism: the shell puts a gear beside
+   *  the feature's name only for a feature that declares one, so Live Map
+   *  shows none and Inventory does, and a feature that grows config later
+   *  needs no change to the shell at all.
+   *
+   *  Config, not Settings.  Settings (the user menu) holds what THIS
+   *  PANEL does — follow a Google Maps tab, draw on the map.  This holds
+   *  what the FEATURE means for the account: the two were kept apart on
+   *  the dashboard for the same reason and must not merge here. */
+  Config?: LazyExoticComponent<ComponentType<PanelFeatureProps>>;
 }
 
 export const FEATURES: PanelFeature[] = [
   { id: 'live-map', label: 'Live Map', Component: lazy(() => import('../features/live-map/LiveMapPanel')) },
-  { id: 'inventory', label: 'Inventory', Component: lazy(() => import('../features/inventory/InventoryPanel')) },
+  {
+    id: 'inventory',
+    label: 'Inventory',
+    Component: lazy(() => import('../features/inventory/InventoryPanel')),
+    Config: lazy(() => import('../features/inventory/InventoryConfig')),
+  },
 ];
 
 /** Which of these a person may open is the SERVER's answer — /extension/me

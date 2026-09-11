@@ -90,6 +90,98 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
     assert await deps.require_permission("can_manage_vehicles")(user=dict(user_full))
 
 
+@pytest.mark.asyncio
+async def test_the_panel_may_aim_its_own_attention_but_not_redefine_the_fleet(pg_db, monkeypatch):
+    """The config family reaches the panel by its NARROW half only.
+
+    A role's focus — which categories it goes red about — changes what
+    ONE role is shown, and is exactly what somebody standing at a truck
+    wants to turn down, so a browser key carries it.  The catalogue
+    decides whether a hundred trucks are reported short: a desk decision
+    with an account-wide blast radius, kept out for the same reason
+    transfer and remove are kept out of the route list.
+
+    The subject is a FLEET MANAGER, because that is who the split is
+    visible on — see the owner case below for the edge this leaves.
+    """
+    from interfaces.api import deps
+    import infra.platform as _cp
+
+    acct = (await pg_db.create_account("Config Scoped Co")).id
+    monkeypatch.setattr(_cp, "_db", pg_db)
+
+    async def _not_revoked(_jti):
+        return False
+    monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
+
+    scoped = create_jwt(1, acct, "fleet", user_id=7, is_manager=True,
+                        aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
+    user = await deps.get_current_user(
+        _req("/api/extension/inventory-config")(),
+        authorization=f"Bearer {scoped}", auth_token=None)
+
+    assert await deps.require_permission("can_manage_config_role")(user=dict(user))
+    with pytest.raises(HTTPException) as e:
+        await deps.require_permission("can_manage_config_all")(user=dict(user))
+    assert e.value.status_code == 403, (
+        "a browser key must not be able to rewrite what every truck owes"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_owner_aims_focus_from_the_dashboard_not_from_the_panel(pg_db, monkeypatch):
+    """A recorded edge, not an oversight.
+
+    An owner holds `can_manage_config_all` and `can_manage_account`; the
+    OWN-ROLE flag is a manager-tier grant they do not carry by default.
+    On the dashboard that is invisible, because `may_manage_config_role`
+    lets `can_manage_account` cross into any role.  From a browser key it
+    is visible, because `can_manage_account` is not in the scope and must
+    not be — putting it there would hand a truck-list key the account.
+
+    So the panel offers an owner the focus control disabled, with the
+    reason said out loud.  The way in is the Permissions page, which now
+    shows Inventory's "Config — own role" cell: the owner ticks the flag
+    for the rows that should aim their own attention, including their
+    own.  That is the matrix doing its job, not a special case.
+    """
+    from interfaces.api import deps
+    import infra.platform as _cp
+
+    acct = (await pg_db.create_account("Owner Panel Co")).id
+    monkeypatch.setattr(_cp, "_db", pg_db)
+
+    async def _not_revoked(_jti):
+        return False
+    monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
+
+    scoped = create_jwt(1, acct, "owner", user_id=7, is_primary_owner=True,
+                        aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
+    user = await deps.get_current_user(
+        _req("/api/extension/inventory-config")(),
+        authorization=f"Bearer {scoped}", auth_token=None)
+
+    with pytest.raises(HTTPException):
+        await deps.require_permission("can_manage_config_role")(user=dict(user))
+    # …and the sweeping flag is refused too, so the panel is narrow for an
+    # owner in both directions.
+    with pytest.raises(HTTPException):
+        await deps.require_permission("can_manage_config_all")(user=dict(user))
+
+
+def test_the_two_config_routes_are_reachable_and_nothing_else_opened():
+    """A route the token may DO something on but may not KNOCK on is a
+    403 with a confusing message; the pair is read together."""
+    from interfaces.api.auth import EXTENSION_ROUTES
+    assert "/extension/inventory-config" in EXTENSION_ROUTES
+    assert "/extension/inventory-focus" in EXTENSION_ROUTES
+    # The account-wide writes stay unreachable from a browser, whatever a
+    # future edit does to the scope above.
+    for never in ("/inventory/expected", "/extension/inventory-transfer",
+                  "/extension/inventory-remove"):
+        assert never not in EXTENSION_ROUTES, never
+
+
 def test_refresh_never_drops_the_audience():
     """A refresh that dropped aud would widen a truck-list key into an
     account key every eight hours.  Pinned at the call site."""

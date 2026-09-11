@@ -180,6 +180,15 @@ KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 EXTENSION_SCOPE: tuple[str, ...] = (
     "can_view_location", "can_location_map", "can_location_vehicle",
     "can_view_inventory", "can_manage_inventory",
+    # A role's FOCUS — which categories it goes red about — and nothing
+    # else from the config family.  `can_manage_config_all` is absent for
+    # the same reason transfer and remove are absent below: it decides
+    # what EVERY truck in the account owes, which is a desk decision with
+    # an account-wide blast radius, and a browser key does not carry it.
+    # The focus is the narrow half: it changes what one role is shown,
+    # never what a truck is short, and it is exactly what somebody
+    # standing at a truck wants to turn down.
+    "can_manage_config_role",
 )
 #: Where a scoped token may go AT ALL — matched exactly by
 #: deps.get_current_user after the /api and /api/v1 mount prefixes and a
@@ -198,6 +207,11 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     # manage flag in the scope above cannot reach them from a browser.
     "/extension/inventory-verify", "/extension/inventory-status",
     "/extension/inventory-add", "/extension/inventory-edit",
+    # The feature's own config surface: read what a vehicle type is
+    # expected to carry, and narrow what THIS role is flagged on.  The
+    # catalogue is READ-ONLY here — writing it decides what every truck in
+    # the account owes, and that flag is deliberately not in the scope.
+    "/extension/inventory-config", "/extension/inventory-focus",
     "/auth/refresh", "/auth/logout",
 })
 

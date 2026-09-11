@@ -145,8 +145,27 @@ describe('inventoryFor', () => {
     // an empty list is the honest answer for a server that did not send
     // one, and the form then offers a free field with no suggestions
     // rather than no form at all.
+    // ``coverage`` joined it when the panel learned what a truck OWES.
+    // A server that has not been restarted yet answers without it, and
+    // an empty catalogue is the one safe reading: the panel then says
+    // NOTHING about completeness, rather than calling every truck
+    // complete or every truck short on a field it never received.
     mocked.mockResolvedValue(reply({}));
-    expect(await inventoryFor(1, 1000)).toEqual({ items: [], attention: 0, categories: [] });
+    expect(await inventoryFor(1, 1000)).toEqual({
+      items: [], attention: 0, categories: [],
+      coverage: { expected: 0, present: 0, rows: [], flagged: [] },
+    });
+  });
+
+  it('keeps the coverage the server sent, red included', async () => {
+    // The count is account-wide truth; `flagged` is already narrowed to
+    // the caller's role by the server, so the panel never re-decides it.
+    const coverage = {
+      expected: 3, present: 1, flagged: ['eld'],
+      rows: [{ category: 'eld', label: 'ELD', quantity: 1, required: true, present: 0, short: 1 }],
+    };
+    mocked.mockResolvedValue(reply({ items: [], attention: 0, categories: [], coverage }));
+    expect((await inventoryFor(1, 1000))?.coverage).toEqual(coverage);
   });
 
   it('carries the account vocabulary the add form offers', async () => {
