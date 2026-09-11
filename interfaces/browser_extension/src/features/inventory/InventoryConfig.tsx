@@ -50,6 +50,9 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
   const [focus, setFocus] = useState<string[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  /** Which type's list is shown.  The focus above spans both, because a
+   *  role turns a CATEGORY down, not a category-on-a-trailer. */
+  const [type, setType] = useState('truck');
 
   useEffect(() => {
     let stopped = false;
@@ -154,8 +157,16 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
           // Disabled WITH A REASON — a dead control that will not say what
           // it is waiting for is a dead end.
           <p className="muted" style={{ margin: 0, fontSize: 11 }}>
-            Your account has not given this sign-in the right to re-aim your
-            role's attention.
+            Aiming a role's attention rides <strong>Config — own role</strong>,
+            which this sign-in does not hold. Tick it for {data.role || 'this role'} on
+            4truck → Permissions, Inventory's Config column.
+            {/* Named to the tick, not to the flag.  An owner meets this
+                one: they hold Config — account-wide and Account, and on
+                the dashboard the second crosses into any role, but a
+                browser key does not carry it and must not.  So the answer
+                is the matrix, which is where it belongs — and saying
+                "your account has not given you the right" without saying
+                WHICH right leaves them nowhere to go. */}
           </p>
         )}
         {saved && !dirty && (
@@ -165,7 +176,20 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
         )}
       </section>
 
-      {data.vehicle_types.map((t) => (
+      {/* One type at a time, the way the dashboard's dialog does it.  Two
+          stacked lists made the shorter one read as a continuation of the
+          longer, and a panel is 320px — the two together were most of a
+          screenful of things that are not the type you came to check. */}
+      <div className="row" style={{ gap: 4 }}>
+        {data.vehicle_types.map((t) => (
+          <button key={t} type="button" className={`chip ${type === t ? 'on' : ''}`}
+                  role="radio" aria-checked={type === t}
+                  onClick={() => setType(t)}>
+            {t === 'truck' ? 'Trucks' : 'Trailers'}
+          </button>
+        ))}
+      </div>
+      {[type].map((t) => (
         <section key={t} style={{ display: 'grid', gap: 8 }}>
           <span className="muted eyebrow">Expected on every {t}</span>
           {(data.catalogue[t] ?? []).length === 0 ? (
