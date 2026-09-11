@@ -99,7 +99,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
       </div>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>In this panel</span>
+        <span className="muted eyebrow">In this panel</span>
         <Toggle value={follow} label="Follow in Google Maps"
                 hint="With Google Maps in front, selecting a vehicle replaces what is open in that tab."
                 onChange={onFollowChange} />
@@ -111,14 +111,14 @@ export default function Settings({ onBack }: { onBack: () => void }) {
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>On google.com/maps</span>
-        <Toggle value={overlay} label="Show my vehicles on Google Maps"
-                hint="Draws them on google.com/maps itself, so a route and your vehicles are one picture. The same switch sits on the map, top right."
+        <span className="muted eyebrow">On google.com/maps</span>
+        <Toggle value={overlay} label="Show my vehicles"
+                hint="A route and your vehicles in one picture. The same switch sits on the map, top right."
                 onChange={(on) => { setOverlay(on); void setOverlayPref(on); }} />
       </section>
 
       <section style={{ display: 'grid', gap: 4 }}>
-        <span className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>About</span>
+        <span className="muted eyebrow">About</span>
         <span className="muted" style={{ fontSize: 12 }}>4truck for Chrome {manifest.version}</span>
         <span className="muted" style={{ fontSize: 12, fontFamily: 'ui-monospace, monospace' }}>{chrome.runtime.id}</span>
       </section>

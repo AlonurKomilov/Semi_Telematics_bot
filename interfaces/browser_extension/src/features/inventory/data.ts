@@ -24,6 +24,19 @@ export interface InventoryItem {
   last_verified_at?: string;
 }
 
+/** What each field of an item is CALLED on screen, keyed by the field it
+ *  names above.  The add form and the edit form order them differently on
+ *  purpose — creating narrows by category first, correcting opens on the
+ *  thing you came to fix — but they must not put the same field under two
+ *  different NAMES.  Three literals in two files is one rename away from
+ *  saying "Serial or card number" on one form and something else on the
+ *  other, for the same column. */
+export const FIELD_LABEL = {
+  category: 'Category',
+  label: 'Name',
+  identifier: 'Serial or card number',
+} as const;
+
 export interface Inventory {
   items: InventoryItem[];
   /** The account's own category vocabulary, for the add form: the

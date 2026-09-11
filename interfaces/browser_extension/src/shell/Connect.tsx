@@ -76,7 +76,11 @@ export default function Connect({ onDone, disconnected = false }: { onDone: () =
       </p>
       {!waiting ? (
         <>
-          <button className="btn primary" type="button" onClick={() => void start()}>Connect to 4truck</button>
+          {/* "Connect", not "Connect to 4truck": the heading already says
+              that, and the paragraph above tells you to "press Connect" —
+              a button whose label differs from the instruction naming it
+              is one more thing to resolve before pressing anything. */}
+          <button className="btn primary" type="button" onClick={() => void start()}>Connect</button>
         </>
       ) : (
         <>

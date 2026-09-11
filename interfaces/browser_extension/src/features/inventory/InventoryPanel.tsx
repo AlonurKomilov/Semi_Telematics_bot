@@ -21,7 +21,8 @@ import Splitter from '../../shell/Splitter';
 import { MIN_PCT } from '../../shell/splitterRange';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
-import { addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItemStatus, verifyItem,
+import { FIELD_LABEL, addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventory,
+         setItemStatus, verifyItem,
          type Inventory } from './data';
 import ItemRows from './ItemRows';
 import type { PanelFeatureProps } from '../../shell/registry';
@@ -431,7 +432,7 @@ useEffect(() => {
               {/* The vocabulary is OPEN, so the placeholder teaches the
                   BEHAVIOUR rather than listing three of six built-ins —
                   a list reads as the only choices, which this is not. */}
-              <Field label="Category" required>
+              <Field label={FIELD_LABEL.category} required>
                 {/* An OPEN vocabulary, so a list of what this account
                     already uses AND a free field — a datalist is both,
                     and it is one control rather than a select plus an
@@ -466,7 +467,7 @@ useEffect(() => {
                   the placeholder makes the form read as built for that
                   one, which is exactly how it read.  It shows what the
                   field is FOR instead: telling two of a kind apart. */}
-              <Field label="Name" required>
+              <Field label={FIELD_LABEL.label} required>
                 <input className="input" placeholder="e.g. Front dashcam"
                        value={draft.label} disabled={saving}
                        onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))} />
@@ -477,7 +478,7 @@ useEffect(() => {
                   tells somebody it does not matter, on the one field
                   that decides whether a missing dashcam can be shown to
                   have been theirs. */}
-              <Field label="Serial or card number">
+              <Field label={FIELD_LABEL.identifier}>
                 {/* Spelled out, and no invented serial: a made-up
                     "GJ8-4471" teaches nothing, and bullet-masked digits
                     imply the field masks what is typed.  It does not. */}

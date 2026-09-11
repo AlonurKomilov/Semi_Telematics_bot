@@ -866,7 +866,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           <span className="muted" aria-hidden style={{ flexShrink: 0 }}>{listOpen ? '▾' : '▴'}</span>
           {/* A header that shares its rows' surface, padding and border
               reads as their first row.  A fill step says it owns them. */}
-          <span style={{ fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+          <span className="eyebrow" style={{ fontWeight: 600 }}>
             Vehicles <span className="muted" style={{ fontWeight: 400 }}>({filtered.length})</span>
           </span>
         </button>

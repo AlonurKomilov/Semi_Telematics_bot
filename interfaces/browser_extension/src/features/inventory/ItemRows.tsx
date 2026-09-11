@@ -13,7 +13,7 @@
  * its floor and then overflows a column with no scroll of its own.
  */
 import { useEffect, useRef, useState } from 'react';
-import { PANEL_STATUSES, humanize, sortForPanel, statusTone,
+import { FIELD_LABEL, PANEL_STATUSES, humanize, sortForPanel, statusTone,
          type InventoryItem, type ItemPatch } from './data';
 import Field from './Field';
 import { ageMs, formatAge } from '../live-map/freshness';
@@ -436,11 +436,11 @@ function EditForm({ item, categories, busy, onSave, onCancel }: {
 
   return (
     <div style={{ display: 'grid', gap: 6, padding: '2px 0 4px 14px' }}>
-      <Field label="Name" required>
+      <Field label={FIELD_LABEL.label} required>
         <input className="input" value={label} disabled={busy} autoFocus
                onChange={(e) => setLabel(e.target.value)} />
       </Field>
-      <Field label="Serial or card number">
+      <Field label={FIELD_LABEL.identifier}>
         {/* Monospace, like the row above it: a serial is read a
             character at a time, and it is the field a correction is
             usually here for. */}
@@ -448,7 +448,7 @@ function EditForm({ item, categories, busy, onSave, onCancel }: {
                style={{ fontFamily: 'ui-monospace, monospace' }}
                onChange={(e) => setIdentifier(e.target.value)} />
       </Field>
-      <Field label="Category" required>
+      <Field label={FIELD_LABEL.category} required>
         <input className="input" value={category} disabled={busy} list={listId}
                onChange={(e) => setCategory(e.target.value)} />
         <datalist id={listId}>
