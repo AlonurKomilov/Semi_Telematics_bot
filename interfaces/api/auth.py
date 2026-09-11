@@ -968,6 +968,26 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
+async def _trial_offer() -> dict | None:
+    """``{"days", "plan", "plan_label"}`` for the plan flagged trial_default,
+    ``None`` when no plan is flagged (no trial) or the table cannot be read
+    — a promise the page cannot keep is worse than none."""
+    try:
+        from infra.platform import get_platform_db
+        db = get_platform_db()
+        tier = await db.trial_plan()
+        if not tier:
+            return None
+        row = await db.get_plan(tier)
+        return {"days": _AUTO_TRIAL_DAYS, "plan": tier,
+                "plan_label": (row or {}).get("label") or tier.title()}
+    except Exception:
+        # Dropped on purpose: this only decides whether the login page draws a
+        # trial promise; a promise the page cannot keep is worse than none.
+        logging.getLogger("api.auth").debug("trial offer lookup failed; the page shows no trial", exc_info=True)
+        return None
+
+
 def _signup_base_url() -> str:
     """The apex origin where the public ``/signup/<code>`` route lives.
 
@@ -1027,6 +1047,10 @@ async def auth_config(request: Request):
         "bot_id": _bot_id,
         "signup_base_url": signup_base,
         "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
+        # What a self-serve signup gets: the trial on the plan the operator
+        # flagged (Plans page), or nothing — the login page draws its
+        # trial promise from this, never from copy of its own.
+        "trial": await _trial_offer(),
         # Public by design — every browser sends it to Google.  Absent
         # (so the button is not drawn) when the platform has no client
         # configured, and on the operator console's host, which has its
@@ -2125,7 +2149,7 @@ async def complete_setup(
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     try:
-        await db.start_trial(user.account_id, tier="pro", days=_AUTO_TRIAL_DAYS)
+        await db.start_trial(user.account_id, days=_AUTO_TRIAL_DAYS)   # the plan the operator flagged for trials
         from capabilities.permissions.plans import account_plan_changed
         account_plan_changed(user.account_id)
     except Exception as e:
@@ -2538,7 +2562,7 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
             "platform audit write failed for account %s", account.id,
         )
 
-    # 14-day Pro trial — a REAL trial, not a comp: tier='pro' +
+    # 14-day trial on the plan the operator flagged — a REAL trial, not a comp:
     # status='trialing' + trial_ends_at so the owner gets full Pro
     # features (and the operator console shows "Pro · trialing", not a
     # confusing "free").  The daily ``expire_due_trials`` job downgrades
@@ -2547,7 +2571,7 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
     trial_expires_iso: str | None = None
     try:
         trial_expires_iso = await db.start_trial(
-            account.id, tier="pro", days=_AUTO_TRIAL_DAYS,
+            account.id, days=_AUTO_TRIAL_DAYS,      # the plan the operator flagged; none = no trial
         )
         from capabilities.permissions.plans import account_plan_changed
         account_plan_changed(account.id)
@@ -2588,8 +2612,8 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
             "expires_at": trial_expires_iso,
         } if trial_expires_iso else None,
         "message": (
-            "Account created. Check your inbox for the verification link, "
-            f"then sign in. Your {_AUTO_TRIAL_DAYS}-day trial is already running."
+            "Account created. Check your inbox for the verification link, then sign in."
+            + (f" Your {_AUTO_TRIAL_DAYS}-day trial is already running." if trial_expires_iso else "")
         ),
     }
 

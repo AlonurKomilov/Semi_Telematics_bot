@@ -202,6 +202,52 @@ async def test_the_price_catalog_round_trips_and_an_omitted_field_keeps_its_valu
 
 
 @pytest.mark.asyncio
+async def test_the_operator_moves_an_account_to_a_plan_and_the_resolver_follows_at_once(system_app):
+    from capabilities.permissions.plans import EXCLUDABLE, invalidate_plans
+    from capabilities.permissions.roles import get_account_permissions
+    s = system_app
+    await s["db"].upsert_plan("starter", label="Starter", included=[i for i in EXCLUDABLE if i != "maintenance"])
+    invalidate_plans()
+    assert (await get_account_permissions(Role.OWNER, s["free"].id)).can_view_maintenance     # free = everything
+    await s["db"].get_or_create_subscription(s["free"].id)                                     # the row the Billing page reads
+    r = await s["client"].patch(f"/api/system/accounts/{s['free'].id}/plan", headers=s["op"],
+                                json={"tier": "starter", "reason": "enterprise deal"})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"id": s["free"].id, "tier": "starter", "changed": True, "previous": "free"}
+    assert (await s["db"].get_account(s["free"].id)).tier == "starter"
+    assert not (await get_account_permissions(Role.OWNER, s["free"].id)).can_view_maintenance   # at once
+    sub = await s["db"].get_subscription(s["free"].id)
+    assert sub["tier"] == "starter" and sub["monthly_base_usd"] == 4900 and sub["base_vehicles"] == 10
+    rows = await s["db"].list_platform_audit(event="account_plan", limit=1)
+    assert rows and rows[0]["account_id"] == s["free"].id and '"to": "starter"' in rows[0]["details"]
+    # the same plan again is a no-op; an unknown plan is refused
+    assert (await s["client"].patch(f"/api/system/accounts/{s['free'].id}/plan", headers=s["op"], json={"tier": "starter"})).json()["changed"] is False
+    assert (await s["client"].patch(f"/api/system/accounts/{s['free'].id}/plan", headers=s["op"], json={"tier": "gold"})).status_code == 404
+    assert (await s["client"].patch(f"/api/system/accounts/{s['free'].id}/plan", headers=s["non_op"], json={"tier": "pro"})).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_an_account_stripe_bills_is_not_moved_by_hand(system_app):
+    s = system_app
+    await s["db"].get_or_create_subscription(s["pro"].id)
+    await s["db"].update_subscription(s["pro"].id, provider="stripe", provider_subscription_id="sub_live", status="active")
+    r = await s["client"].patch(f"/api/system/accounts/{s['pro'].id}/plan", headers=s["op"], json={"tier": "starter"})
+    assert r.status_code == 409 and "Stripe" in r.json()["detail"]
+    assert (await s["db"].get_account(s["pro"].id)).tier == "pro"
+
+
+@pytest.mark.asyncio
+async def test_the_trial_flag_moves_between_plans_from_the_panel(system_app):
+    s = system_app
+    r = await s["client"].put("/api/system/plans/starter", headers=s["op"],
+                              json={"label": "Starter", "included": ["*"], "quotas": {}, "trial_default": True})
+    assert r.status_code == 200 and r.json()["plan"]["trial_default"] is True
+    g = {p["tier"]: p for p in (await s["client"].get("/api/system/plans", headers=s["op"])).json()["plans"]}
+    assert g["starter"]["trial_default"] is True and g["pro"]["trial_default"] is False
+    assert await s["db"].trial_plan() == "starter"
+
+
+@pytest.mark.asyncio
 async def test_accounts_on_a_plan_with_no_row_are_named(system_app):
     s = system_app
     await s["db"].update_account_tier(s["pro"].id, "legacy_gold")

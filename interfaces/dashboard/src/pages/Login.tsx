@@ -45,6 +45,7 @@ export default function Login() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [botUsername, setBotUsername] = useState('4truckBot');
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [trialOffer, setTrialOffer] = useState<{ days: number; planLabel: string } | null>(null);
   // Sign in with Google.  Empty = the platform has no client configured
   // (or this is the operator host) and the button is simply not drawn.
   const [googleClientId, setGoogleClientId] = useState('');
@@ -217,6 +218,11 @@ export default function Login() {
           if (data.bot_id) setBotId(data.bot_id);
           if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
           setGoogleClientId(String(data.google_signin_client_id || ''));
+          // The trial promise is the operator's (Plans page), not this page's:
+          // absent = no trial, and no callout is drawn.
+          setTrialOffer(data.trial && typeof data.trial.days === 'number'
+            ? { days: data.trial.days, planLabel: String(data.trial.plan_label || '') }
+            : null);
         }
       } catch { /* fall back to defaults */ }
     })();
@@ -511,16 +517,16 @@ export default function Login() {
                 />
               )}
 
-              {registerKind === 'new-company' && (
+              {registerKind === 'new-company' && trialOffer && (
                 <div className="rounded-md border border-ok/30 bg-ok/5 p-3 text-xs">
                   <p className="font-medium text-foreground">
-                    {t('auth.trial_callout_title', '14-day free trial')}
+                    {t('auth.trial_callout_title', { defaultValue: '{{days}}-day free trial', days: trialOffer.days })}
                   </p>
                   <p className="text-muted-foreground mt-1">
-                    {t(
-                      'auth.trial_callout_body',
-                      'Full access to every feature for 14 days. No card required — switch to a paid plan or let the trial lapse.',
-                    )}
+                    {t('auth.trial_callout_body', {
+                      defaultValue: 'Full access to the {{plan}} plan for {{days}} days. No card required — switch to a paid plan or let the trial lapse.',
+                      plan: trialOffer.planLabel || 'trial', days: trialOffer.days,
+                    })}
                   </p>
                 </div>
               )}

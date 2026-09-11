@@ -64,6 +64,22 @@ async def test_pricing_reads_the_row_first_and_the_code_table_when_the_row_is_un
 
 
 @pytest.mark.asyncio
+async def test_one_plan_carries_the_trial_and_a_trial_with_no_plan_flagged_does_not_start(db):
+    assert await db.trial_plan() == "pro"                       # the seed: Pro, as the signup code had it
+    await db.upsert_plan("starter", label="Starter", included=["*"], trial_default=True)
+    assert await db.trial_plan() == "starter"
+    assert (await db.get_plan("pro"))["trial_default"] is False    # one row carries it
+    acct = await db.create_account("Trial Co")
+    ends = await db.start_trial(acct.id, days=14)                 # no tier named → the flagged plan
+    assert ends and (await db.get_account(acct.id)).tier == "starter"
+    await db.upsert_plan("starter", label="Starter", included=["*"], trial_default=False)
+    assert await db.trial_plan() is None
+    acct2 = await db.create_account("No Trial Co")
+    assert await db.start_trial(acct2.id, days=14) is None
+    assert (await db.get_account(acct2.id)).tier == "free"
+
+
+@pytest.mark.asyncio
 async def test_rerun_never_rewrites_a_narrowed_plan(db):
     await db.upsert_plan("free", label="Free", included=["vehicles"], quotas={"max_users": 3},
                          updated_by="owner:1")

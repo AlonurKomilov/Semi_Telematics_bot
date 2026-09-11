@@ -107,6 +107,11 @@ export default function AccountDetailPage() {
             </select>
             <span className="text-slate-500">{KIND_HINT[data.account.type]}</span>
           </label>
+          {/* PLAN is what the account may use and what it is charged for.
+              The select lists the Plans page's rows; the API refuses an
+              account Stripe is billing (its plan moves through the price
+              rollout), and every move lands in the platform audit. */}
+          <PlanSelect accountId={data.account.id} tier={data.account.tier} onMoved={load} />
         </div>
       </header>
 
@@ -1029,5 +1034,54 @@ function AccountStateCard({ accountId }: { accountId: number }) {
         </p>
       )}
     </Card>
+  );
+}
+
+function PlanSelect({ accountId, tier, onMoved }: { accountId: number; tier: string; onMoved: () => void }) {
+  type PlanRow = { tier: string; label: string; public: boolean; price_monthly_cents: number; base_vehicles: number; extra_vehicle_cents: number };
+  const [plans, setPlans] = useState<PlanRow[] | null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    apiJSON<{ plans: PlanRow[] }>('/system/plans')
+      .then((d) => setPlans(d.plans))
+      .catch(() => { setPlans([]); setErr('Could not load the plan list'); });
+  }, []);
+  const money = (c: number) => (c % 100 === 0 ? `$${c / 100}` : `$${(c / 100).toFixed(2)}`);
+  const known = plans?.some((p) => p.tier === tier) ?? true;
+  return (
+    <label className="flex items-center gap-1">
+      <span>plan:</span>
+      <select
+        value={tier}
+        disabled={busy || !plans}
+        onChange={async (e) => {
+          const next = e.target.value;
+          if (next === tier) return;
+          const target = plans?.find((p) => p.tier === next);
+          const label = target?.label ?? next;
+          const price = target
+            ? `${money(target.price_monthly_cents)}/month, ${target.base_vehicles} trucks included, ${money(target.extra_vehicle_cents)} per extra truck`
+            : 'no price on record';
+          if (!window.confirm(`Move this account to "${label}" (${price})?  It follows that plan's features and quotas at once, and its Billing page shows the new plan and price.`)) return;
+          setBusy(true); setErr('');
+          try {
+            await apiJSON(`/system/accounts/${accountId}/plan`, { method: 'PATCH', body: { tier: next } });
+            onMoved();
+          } catch (e) {
+            setErr(e instanceof ApiError ? e.message : 'Could not move the account');
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
+      >
+        {!known && <option value={tier}>{tier} (no plan row)</option>}
+        {(plans ?? []).map((p) => (
+          <option key={p.tier} value={p.tier}>{p.label}{p.public ? '' : ' (not offered)'}</option>
+        ))}
+      </select>
+      {err && <span className="text-rose-400">{err}</span>}
+    </label>
   );
 }

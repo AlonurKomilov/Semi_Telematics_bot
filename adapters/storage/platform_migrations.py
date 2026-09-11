@@ -5122,6 +5122,7 @@ async def migrate_plans_catalog(conn) -> None:
         "stripe_price_id TEXT NOT NULL DEFAULT ''",
         "public INTEGER NOT NULL DEFAULT 0",
         "sort INTEGER NOT NULL DEFAULT 0",
+        "trial_default INTEGER NOT NULL DEFAULT 0",
     )
     try:
         for c in cols:
@@ -5143,6 +5144,12 @@ async def migrate_plans_catalog(conn) -> None:
                 "public = ?, sort = ? WHERE tier = ? AND updated_by = 'migration'",
                 (price, base, extra, public, sort, tier),
             )
+        # the trial plan: Pro, as the signup code had it, until the operator
+        # picks another — set only when NO row carries the flag yet
+        cur = await conn.execute("SELECT COUNT(*) AS n FROM plans WHERE trial_default = 1")
+        row = await cur.fetchone()
+        if not (row and int(row["n"] or 0)):
+            await conn.execute("UPDATE plans SET trial_default = 1 WHERE tier = 'pro'")
         await conn.commit()
         logger.info("Migration: plans catalog columns present; untouched seed rows priced")
     except Exception as e:

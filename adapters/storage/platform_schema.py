@@ -622,6 +622,8 @@ async def create_tables(conn) -> None:
             stripe_price_id     TEXT    NOT NULL DEFAULT '',
             public              INTEGER NOT NULL DEFAULT 0,
             sort                INTEGER NOT NULL DEFAULT 0,
+            -- the plan a self-serve signup's trial starts on (one row)
+            trial_default       INTEGER NOT NULL DEFAULT 0,
             updated_at  TEXT NOT NULL,
             updated_by  TEXT NOT NULL DEFAULT ''
         );

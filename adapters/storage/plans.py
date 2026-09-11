@@ -41,6 +41,8 @@ def _row(r) -> dict:
         "stripe_price_id": str(r["stripe_price_id"] or "") if "stripe_price_id" in keys else "",
         "public": bool(_int("public")),
         "sort": _int("sort"),
+        # the plan a self-serve signup's trial starts on (one row carries it)
+        "trial_default": bool(_int("trial_default")),
         "updated_at": r["updated_at"], "updated_by": r["updated_by"],
     }
 
@@ -70,6 +72,7 @@ class PlansMixin:
         price_monthly_cents: Optional[int] = None, base_vehicles: Optional[int] = None,
         extra_vehicle_cents: Optional[int] = None, stripe_price_id: Optional[str] = None,
         public: Optional[bool] = None, sort: Optional[int] = None,
+        trial_default: Optional[bool] = None,
     ) -> dict:
         """Create or replace a plan.  Label, included and quotas are always
         written; a catalog field left ``None`` keeps the row's value (or the
@@ -80,12 +83,13 @@ class PlansMixin:
         pick = lambda v, k, d: (cur.get(k, d) if v is None else v)  # noqa: E731
         await self._db.execute(
             "INSERT INTO plans (tier, label, included, quotas, price_monthly_cents, base_vehicles, "
-            "extra_vehicle_cents, stripe_price_id, public, sort, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "extra_vehicle_cents, stripe_price_id, public, sort, trial_default, updated_at, updated_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(tier) DO UPDATE SET label = excluded.label, included = excluded.included, "
             "quotas = excluded.quotas, price_monthly_cents = excluded.price_monthly_cents, "
             "base_vehicles = excluded.base_vehicles, extra_vehicle_cents = excluded.extra_vehicle_cents, "
             "stripe_price_id = excluded.stripe_price_id, public = excluded.public, sort = excluded.sort, "
+            "trial_default = excluded.trial_default, "
             "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
             (tier, label, json.dumps(list(included)), json.dumps(quotas or {}),
              int(pick(price_monthly_cents, "price_monthly_cents", 0)),
@@ -94,10 +98,23 @@ class PlansMixin:
              str(pick(stripe_price_id, "stripe_price_id", "") or ""),
              1 if pick(public, "public", False) else 0,
              int(pick(sort, "sort", 0)),
+             1 if pick(trial_default, "trial_default", False) else 0,
              now, updated_by),
         )
+        # one plan carries the trial: flagging this one un-flags the rest
+        if trial_default:
+            await self._db.execute("UPDATE plans SET trial_default = 0 WHERE tier != ?", (tier,))
         await self._db.commit()
         return (await self.get_plan(tier)) or {}
+
+    async def trial_plan(self) -> Optional[str]:
+        """The plan a self-serve signup's trial starts on — the one row
+        flagged ``trial_default`` — or ``None`` when the operator has
+        flagged none (then no trial starts: an account signs up on Free)."""
+        cur = await self._db.execute(
+            "SELECT tier FROM plans WHERE trial_default = 1 ORDER BY sort, tier LIMIT 1")
+        r = await cur.fetchone()
+        return r["tier"] if r else None
 
     async def pricing_for(self, tier: str) -> dict:
         """What a checkout charges and a subscription records for *tier*:

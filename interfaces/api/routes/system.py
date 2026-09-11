@@ -1910,6 +1910,8 @@ class PlanBody(BaseModel):
     stripe_price_id: str | None = Field(default=None, max_length=120)
     public: bool | None = None
     sort: int | None = Field(default=None, ge=0, le=1000)
+    # the plan a self-serve signup's trial starts on; True moves the flag here
+    trial_default: bool | None = None
 
 
 class NewPlanBody(BaseModel):
@@ -1918,7 +1920,7 @@ class NewPlanBody(BaseModel):
 
 
 _AUDITED_PLAN_FIELDS = ("label", "included", "quotas", "price_monthly_cents", "base_vehicles",
-                        "extra_vehicle_cents", "stripe_price_id", "public", "sort")
+                        "extra_vehicle_cents", "stripe_price_id", "public", "sort", "trial_default")
 
 
 def _label_of(raw: str) -> str:
@@ -2041,9 +2043,83 @@ async def system_put_plan(
         price_monthly_cents=body.price_monthly_cents, base_vehicles=body.base_vehicles,
         extra_vehicle_cents=body.extra_vehicle_cents,
         stripe_price_id=body.stripe_price_id.strip() if body.stripe_price_id is not None else None,
-        public=body.public, sort=body.sort)
+        public=body.public, sort=body.sort, trial_default=body.trial_default)
     invalidate_plans()
     counts = await platform_db.count_accounts_by_tier()
     await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))
     logger.info("system: plan %s saved by %s (%d account(s))", tier, actor, counts.get(tier, 0))
     return {"plan": _plan_view(row, counts)}
+
+
+# ── The operator moves an account to a plan ────────────────────────
+#
+# The one door for "this account is on that plan" outside a checkout:
+# an enterprise deal, a comp, a downgrade by hand.  It refuses an
+# account Stripe is billing — Stripe would keep charging the old price,
+# and a plan that the page says one thing about while the invoice says
+# another is the lie this whole table exists to end; those accounts
+# move through the price rollout, not here.
+
+
+class AccountPlanBody(BaseModel):
+    tier: str = Field(..., min_length=2, max_length=32)
+    reason: str = Field(default="", max_length=300)
+
+
+# Stripe is still charging (or about to): active, a trial that will
+# convert, and past_due with an open invoice.  ``unpaid`` is left out on
+# purpose — Stripe has stopped billing it — as are canceled/incomplete.
+_STRIPE_LIVE = ("active", "trialing", "past_due")
+
+
+@router.patch("/accounts/{account_id}/plan")
+async def operator_set_account_plan(
+    account_id: int,
+    body: AccountPlanBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    from capabilities.permissions.plans import PLAN_KEY_RE, account_plan_changed
+    tier = body.tier.strip()
+    if not PLAN_KEY_RE.match(tier):
+        raise HTTPException(status_code=400, detail="Plan key: a-z, 0-9, _ — 2 to 32 chars, starting with a letter")
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    plan = await platform_db.get_plan(tier)
+    if plan is None:
+        raise HTTPException(status_code=404, detail=f"No plan named '{tier}' — create it on the Plans page first")
+    previous = acc.tier or "free"
+    if previous == tier:
+        return {"id": account_id, "tier": tier, "changed": False}
+    sub = await platform_db.get_subscription(account_id)
+    if sub and sub.get("provider") == "stripe" and sub.get("provider_subscription_id") \
+            and (sub.get("status") or "") in _STRIPE_LIVE and not sub.get("is_comped"):
+        raise HTTPException(
+            status_code=409,
+            detail="Stripe bills this account; moving it here would not change what Stripe charges. "
+                   "Change its plan through the price rollout, or cancel the Stripe subscription first.")
+    pricing = await platform_db.pricing_for(tier)
+    # one transaction: the account and its subscription row change plan
+    # together or not at all — the Billing page reads the row, the
+    # resolver reads the account, and they must never disagree
+    async with platform_db.transaction():
+        await platform_db.update_account_tier(account_id, tier)
+        if sub:
+            await platform_db.update_subscription(
+                account_id, tier=tier,
+                base_vehicles=pricing["base_vehicles"],
+                monthly_base_usd=pricing["monthly_base_cents"],
+                extra_vehicle_cents=pricing["extra_vehicle_cents"],
+            )
+    account_plan_changed(account_id)
+    actor = f"operator:{user.get('sub')}"
+    try:
+        await platform_db.add_platform_audit(
+            "account_plan", account_id=account_id, actor=actor,
+            details=json.dumps({"from": previous, "to": tier, "reason": body.reason.strip()}),
+        )
+    except Exception:
+        logger.exception("platform audit write failed for account %s", account_id)
+    logger.info("system: account plan acct=%s %s -> %s by %s", account_id, previous, tier, actor)
+    return {"id": account_id, "tier": tier, "changed": True, "previous": previous}

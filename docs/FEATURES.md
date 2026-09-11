@@ -282,7 +282,11 @@ RECORDS as its price is what Stripe invoices: the webhook takes each
 item's amount from the expanded subscription when it is a plain
 monthly USD price, logs a warning when the plan row disagrees, and
 falls back to the row otherwise; the trucks included are always the
-row's. The mask is FAIL-CLOSED against a live platform: an unknown
+row's. The operator moves an account to a plan from its detail page
+(`PATCH /system/accounts/{id}/plan`, audited as `account_plan`) — refused
+for an account Stripe is billing, whose plan moves through the price
+rollout — and the plan a self-serve trial starts on is the one row
+flagged `trial_default` (none flagged = no trial), not a name in code. The mask is FAIL-CLOSED against a live platform: an unknown
 tier closes the sellable set, an unreadable table keeps the last-known
 one (warmed at API and bot start), an unreadable account row falls back
 to that account's last-known tier. The seed puts every tier — and any

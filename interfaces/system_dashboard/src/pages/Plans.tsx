@@ -37,10 +37,11 @@ interface Plan {
   stripe_price_id: string;
   public: boolean;
   sort: number;
+  trial_default: boolean;
 }
 
 /** The catalog fields the operator edits per column, as strings while typing. */
-interface CatalogDraft { price: string; base: string; extra: string; stripe: string; pub: boolean; sort: string }
+interface CatalogDraft { price: string; base: string; extra: string; stripe: string; pub: boolean; sort: string; trial: boolean }
 const CATALOG_ROWS: { key: keyof CatalogDraft; label: string; hint: string }[] = [
   { key: 'price', label: 'Price / month ($)', hint: '0 = free' },
   { key: 'base', label: 'Trucks included', hint: '' },
@@ -90,6 +91,7 @@ function draftOf(p: Plan): Draft {
     cat: {
       price: dollars(p.price_monthly_cents), base: String(p.base_vehicles),
       extra: dollars(p.extra_vehicle_cents), stripe: p.stripe_price_id, pub: p.public, sort: String(p.sort),
+      trial: p.trial_default,
     },
   };
 }
@@ -97,13 +99,13 @@ function draftOf(p: Plan): Draft {
 /** The catalog as the API wants it; ``null`` when a number does not parse. */
 function catalogOf(d: Draft): {
   price_monthly_cents: number; base_vehicles: number; extra_vehicle_cents: number;
-  stripe_price_id: string; public: boolean; sort: number;
+  stripe_price_id: string; public: boolean; sort: number; trial_default: boolean;
 } | null {
   const price = cents(d.cat.price || '0'), extra = cents(d.cat.extra || '0');
   const base = Number(d.cat.base || '0'), sort = Number(d.cat.sort || '0');
   if (![price, extra, base, sort].every((n) => Number.isInteger(n) && n >= 0)) return null;
   return { price_monthly_cents: price, base_vehicles: base, extra_vehicle_cents: extra,
-    stripe_price_id: d.cat.stripe.trim(), public: d.cat.pub, sort };
+    stripe_price_id: d.cat.stripe.trim(), public: d.cat.pub, sort, trial_default: d.cat.trial };
 }
 
 function includedOf(d: Draft, catalog: CatalogEntry[]): string[] {
@@ -134,7 +136,7 @@ function isDirty(p: Plan, d: Draft, catalog: CatalogEntry[]): boolean {
   if (!c) return true;
   return c.price_monthly_cents !== p.price_monthly_cents || c.base_vehicles !== p.base_vehicles
     || c.extra_vehicle_cents !== p.extra_vehicle_cents || c.stripe_price_id !== p.stripe_price_id
-    || c.public !== p.public || c.sort !== p.sort;
+    || c.public !== p.public || c.sort !== p.sort || c.trial_default !== p.trial_default;
 }
 
 function when(iso: string): string {
@@ -266,6 +268,7 @@ export default function PlansPage() {
       restored.length ? `\nGiven: ${restored.join(', ')}` : '',
       d.everything && !p.everything ? '\nBack to everything included.' : '',
       cat.public !== p.public ? (cat.public ? '\nShown on the customer Billing page from now on.' : '\nHidden from the customer Billing page (accounts already on it keep it).') : '',
+      cat.trial_default && !p.trial_default ? '\nNew self-serve signups start their trial on this plan from now on.' : '',
       cat.price_monthly_cents !== p.price_monthly_cents ? `\nPrice: $${dollars(p.price_monthly_cents)} → $${dollars(cat.price_monthly_cents)} per month (new checkouts only; Stripe is the bill).` : '',
     ];
     if (!window.confirm(lines.join(''))) return;
@@ -422,6 +425,34 @@ export default function PlansPage() {
                       checked={drafts[p.tier]?.cat.pub ?? p.public}
                       onChange={(e) => setDraft(p.tier, (d) => ({ ...d, cat: { ...d.cat, pub: e.target.checked } }))}
                       aria-label={`Offer ${p.label} on the customer Billing page`}
+                    />
+                  </td>
+                ))}
+              </tr>
+              <tr className="border-t border-slate-800/70">
+                <td className="px-3 py-1.5 text-slate-300">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="trial_default"
+                      checked={!plans.some((p) => drafts[p.tier]?.cat.trial ?? p.trial_default)}
+                      onChange={() => setDrafts((ds) => Object.fromEntries(Object.entries(ds).map(([t, d]) =>
+                        [t, { ...d, cat: { ...d.cat, trial: false } }])))}
+                      aria-label="No trial for new signups"
+                    />
+                    <span>Trial plan for new signups</span>
+                  </label>
+                  <span className="ml-2 text-[11px] text-slate-500">this radio = no trial; else one plan</span>
+                </td>
+                {plans.map((p) => (
+                  <td key={p.tier} className="px-3 py-1.5 text-center">
+                    <input
+                      type="radio"
+                      name="trial_default"
+                      checked={drafts[p.tier]?.cat.trial ?? p.trial_default}
+                      onChange={() => setDrafts((ds) => Object.fromEntries(Object.entries(ds).map(([t, d]) =>
+                        [t, { ...d, cat: { ...d.cat, trial: t === p.tier } }])))}
+                      aria-label={`Trials start on ${p.label}`}
                     />
                   </td>
                 ))}

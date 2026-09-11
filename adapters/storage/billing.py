@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +103,11 @@ class BillingMixin:
         await self._db.commit()
 
     async def start_trial(
-        self, account_id: int, *, tier: str = "pro", days: int = 14,
-    ) -> str:
-        """Put an account on a real ``tier`` trial for ``days`` days.
+        self, account_id: int, *, tier: Optional[str] = None, days: int = 14,
+    ) -> Optional[str]:
+        """Put an account on a real trial for ``days`` days — on ``tier``
+        when named, else on the plan the operator flagged trial_default
+        (``None`` when no plan is flagged: nothing changes).
 
         Sets ``status='trialing'``, ``tier`` (default pro so the user
         gets full features), and ``trial_ends_at = now + days`` plus the
@@ -118,6 +120,13 @@ class BillingMixin:
         reverses it to free when the window elapses.
         """
         from datetime import timedelta
+        if tier is None:
+            # the plan the operator flagged for trials (PlansMixin.trial_plan);
+            # none flagged = the operator wants no trial → the account stays as it is
+            reader = getattr(self, "trial_plan", None)
+            tier = await reader() if reader is not None else "pro"
+            if not tier:
+                return None
         await self.get_or_create_subscription(account_id)
         ends = datetime.now(timezone.utc) + timedelta(days=days)
         ends_iso = ends.isoformat()
