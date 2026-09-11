@@ -24,6 +24,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Checkbox } from '../../components/ui/checkbox';
 import { CardSkeleton, ErrorState } from '../../components/shell';
+import { useRoleView } from '../../context/RoleViewContext';
 import { categoryMeta } from './categories';
 
 type VehicleType = 'truck' | 'trailer';
@@ -53,7 +54,18 @@ const TABS: { key: VehicleType; label: string }[] = [
   { key: 'trailer', label: 'Trailers' },
 ];
 
-export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
+export default function ExpectedEditor() {
+  // Each half asks for ITS OWN flag, not for the feature's Manage.
+  //
+  // It first shipped gated on `can_manage_inventory` — the flag for adding
+  // and verifying items — while the server gates the catalogue on
+  // `can_manage_config_all`.  A fleet manager therefore saw an enabled
+  // Save that answered 403, which the config family's own recipe forbids
+  // in as many words: mirror the server's check on the affordance,
+  // because a button leading to a 403 is worse than no button.
+  const { viewHas } = useRoleView();
+  const mayEditCatalogue = viewHas('can_manage_config_all');
+  const mayAimFocus = viewHas('can_manage_config_role');
   const qc = useQueryClient();
   const [type, setType] = useState<VehicleType>('truck');
   const [draft, setDraft] = useState<ExpectedRow[] | null>(null);
@@ -152,7 +164,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
             Nothing is expected on {type === 'truck' ? 'trucks' : 'trailers'} yet,
             so no {type} is ever reported short.
           </p>
-          {canManage && (
+          {mayEditCatalogue && (
             <Button
               className="mt-3"
               size="sm"
@@ -173,7 +185,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
                 className="w-48"
                 placeholder="camera, eld, fuel_card…"
                 value={r.category}
-                disabled={!canManage}
+                disabled={!mayEditCatalogue}
                 onChange={(e) => edit(i, { category: e.target.value })}
               />
               <Input
@@ -181,7 +193,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
                 className="flex-1 min-w-0"
                 placeholder={categoryMeta(r.category).label || 'What to call it'}
                 value={r.label}
-                disabled={!canManage}
+                disabled={!mayEditCatalogue}
                 onChange={(e) => edit(i, { label: e.target.value })}
               />
               <Input
@@ -191,7 +203,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
                 max={99}
                 className="w-20"
                 value={r.quantity}
-                disabled={!canManage}
+                disabled={!mayEditCatalogue}
                 onChange={(e) => edit(i, { quantity: Math.max(1, Number(e.target.value) || 1) })}
               />
               {/* Declared and not enforced.  A toll transponder is normal
@@ -201,12 +213,12 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
               <label className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap">
                 <Checkbox
                   checked={r.required}
-                  disabled={!canManage}
+                  disabled={!mayEditCatalogue}
                   onChange={(e) => edit(i, { required: e.target.checked })}
                 />
                 Required
               </label>
-              {canManage && (
+              {mayEditCatalogue && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -221,7 +233,7 @@ export default function ExpectedEditor({ canManage }: { canManage: boolean }) {
         </ul>
       )}
 
-      {canManage && (
+      {mayEditCatalogue && (
         <div className="flex items-center gap-2">
           <Button
             variant="outline"

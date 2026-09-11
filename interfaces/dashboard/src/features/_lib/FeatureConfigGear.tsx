@@ -52,6 +52,19 @@ interface FeatureConfigGearProps {
   children?: ReactNode;
   /** Widen for config with more than a short form. */
   size?: 'lg' | 'xl' | '2xl';
+  /** A SECOND flag that also opens this gear.
+   *
+   *  The family has two scopes and until Inventory no feature rode both.
+   *  Inventory does: the catalogue of what a vehicle owes is account-wide
+   *  (`can_manage_config_all`), while which categories a ROLE goes red
+   *  about is that role's own (`can_manage_config_role`).  A gear gated on
+   *  the account flag alone would leave a fleet manager — who may aim
+   *  their own team's attention and nothing else — with no door at all.
+   *
+   *  The gating RULE is unchanged: it renders for somebody who can change
+   *  SOMETHING behind it, and for nobody else.  What each half of the
+   *  content lets them touch is the content's own business. */
+  alsoWhen?: string;
   /** Config that is a PAGE, not a panel — the gear navigates instead of
    *  opening a dialog. Scorecards' rules are a full CRUD editor and
    *  Alerts' live inside Group delivery; neither shrinks into a dialog
@@ -62,7 +75,7 @@ interface FeatureConfigGearProps {
 }
 
 export function FeatureConfigGear({
-  feature, children, size = 'lg', to,
+  feature, children, size = 'lg', to, alsoWhen,
 }: FeatureConfigGearProps) {
   const { t } = useTranslation();
   const { viewHas } = useRoleView();
@@ -70,7 +83,9 @@ export function FeatureConfigGear({
 
   // Account-wide config. Not the feature's own Manage — View / Manage /
   // Config are three actions (capabilities/config/docs/ARCHITECTURE.md).
-  if (!viewHas('can_manage_config_all')) return null;
+  // `alsoWhen` widens WHO sees the door, never what it is: a feature that
+  // rides both scopes must open for the holder of either.
+  if (!viewHas('can_manage_config_all') && !(alsoWhen && viewHas(alsoWhen))) return null;
 
   // "KPI configuration" — the whole word.
   //

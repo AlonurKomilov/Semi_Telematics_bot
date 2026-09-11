@@ -18,6 +18,8 @@ recovery permanent instead of something somebody has to remember.
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from tests._repo import REPO
@@ -96,3 +98,50 @@ def test_the_matrix_shows_inventory_riding_both_scopes() -> None:
     block = grid.split("can_view_inventory: [", 1)[1].split("\n  ],", 1)[0]
     assert "can_manage_config_all" in block, "the catalogue scope is missing"
     assert "can_manage_config_role" in block, "the focus scope is missing"
+
+
+def test_the_dashboard_opens_it_with_the_house_gear_not_a_shape_of_its_own() -> None:
+    """FeatureConfigGear exists to end exactly this.
+
+    Its own docstring counts the damage: "Six surfaces, six shapes, six
+    icons — and no way to learn 'where do I change this?' once and have
+    it hold on the next page."  Inventory's config shipped as a page TAB
+    first, which made a seventh.  The owner spotted it by looking at a
+    page that had the gear and one that did not.
+
+    `alsoWhen` is asserted too, because without it the door closes on the
+    person most likely to want it: Inventory is the first feature to ride
+    both config scopes, and a fleet manager holds only the own-role half.
+    """
+    page = (REPO / "interfaces/dashboard/src/features/inventory/InventoryPage.tsx") \
+        .read_text(encoding="utf-8")
+    assert "<FeatureConfigGear" in page, (
+        "Inventory's config must open from the house gear, in the slot every "
+        "other feature keeps it in"
+    )
+    assert 'alsoWhen="can_manage_config_role"' in page
+    assert "PAGE_TABS" not in page, "the bespoke Expected tab is back"
+
+
+def test_each_half_of_the_editor_asks_for_its_own_flag() -> None:
+    """The config family's recipe, in as many words: mirror the server's
+    check on the affordance, because a button leading to a 403 is worse
+    than no button.
+
+    This shipped gated on `can_manage_inventory` — the flag for adding and
+    verifying ITEMS — while the server gates the catalogue on
+    `can_manage_config_all`.  A fleet manager saw an enabled Save that
+    answered 403.
+    """
+    raw = (REPO / "interfaces/dashboard/src/features/inventory/ExpectedEditor.tsx") \
+        .read_text(encoding="utf-8")
+    # Comments stripped first.  This file's own comment RECORDS the wrong
+    # flag as the mistake it was, and a guard that reads prose matches its
+    # own explanation — which is how a rule comes to forbid describing it.
+    editor = re.sub(r"/\*.*?\*/", " ", raw, flags=re.S)
+    editor = re.sub(r"^\s*//.*$", " ", editor, flags=re.M)
+    assert "viewHas('can_manage_config_all')" in editor
+    assert "viewHas('can_manage_config_role')" in editor
+    assert "can_manage_inventory" not in editor, (
+        "the catalogue is config, not the feature's own Manage"
+    )

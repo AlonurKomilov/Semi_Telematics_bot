@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/button';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { AddItemDialog, ItemDialog } from './ItemDialog';
 import { PageHeader, CardSkeleton, ErrorState } from '../../components/shell';
+import FeatureConfigGear from '../_lib/FeatureConfigGear';
 import { Freshness } from '../../components/tooltip';
 import { statusClasses } from '../../lib/status';
 import type { AnyColumn } from '../../types';
@@ -128,18 +129,9 @@ const COLUMNS: AnyColumn[] = [
 
 const ExpectedEditorInline = lazy(() => import('./ExpectedEditor'));
 
-const PAGE_TABS = [
-  { key: 'items' as const, label: 'Items' },
-  { key: 'expected' as const, label: 'Expected' },
-];
-
 export default function InventoryPage() {
   const { has } = useViewPermissions();
   const canManage = has('can_manage_inventory');
-  // Two questions about one fleet: what IS aboard, and what SHOULD be.
-  // The second is where the first gets its meaning — a truck with three
-  // items is complete or half-empty depending on this tab.
-  const [tab, setTab] = useState<'items' | 'expected'>('items');
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<FleetItem | null>(null);
   const { data, isLoading, error } = useQuery<FleetInventoryResponse>({
@@ -158,19 +150,32 @@ export default function InventoryPage() {
       <PageHeader
         icon={Boxes}
         title="Inventory"
-        // Each tab is a different question, so the header answers the one
-        // being asked.  A description of the grid, read over the template
-        // editor, describes a screen the reader is not looking at.
-        description={tab === 'expected'
-          ? 'What every truck and trailer is supposed to carry. A vehicle short a required row is reported short on its own card — including items nobody ever recorded.'
-          : 'Every tracked item across the fleet — search by serial or card number, filter missing/damaged. Click a row to open its truck.'}
-        // …and the same for the action: "Add item" puts a real item in a
-        // real truck, which is not what this tab is for.
-        actions={canManage && tab === 'items' ? (
-          <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-            <Plus /> Add item
-          </Button>
-        ) : undefined}
+        description="Every tracked item across the fleet — search by serial or card number, filter missing/damaged. Click a row to open its truck."
+        actions={(
+          <>
+            {canManage && (
+              <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+                <Plus /> Add item
+              </Button>
+            )}
+              {/* The house gear, in the slot every other feature keeps it
+                  in.  This shipped as a page TAB first, which is exactly
+                  the seventh shape FeatureConfigGear was written to end —
+                  six features had six ideas of where config lives and no
+                  way to learn the answer once.
+
+                  `alsoWhen` because Inventory is the first feature to ride
+                  BOTH scopes: without it a fleet manager, who may aim
+                  their own team's attention and nothing else, would find
+                  no door at all. */}
+              <FeatureConfigGear feature="Inventory" size="2xl"
+                                 alsoWhen="can_manage_config_role">
+                <Suspense fallback={<CardSkeleton />}>
+                  <ExpectedEditorInline />
+                </Suspense>
+              </FeatureConfigGear>
+            </>
+          )}
       />
       {canManage && addOpen && (
         <AddItemDialog
@@ -188,28 +193,7 @@ export default function InventoryPage() {
           onClose={() => setSelected(null)}
         />
       )}
-      <div className="flex items-center gap-1 rounded-lg bg-muted p-1 w-fit mb-3">
-        {PAGE_TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 text-sm rounded-md transition ${
-              tab === t.key
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'expected' ? (
-        <Suspense fallback={<CardSkeleton />}>
-          <ExpectedEditorInline canManage={canManage} />
-        </Suspense>
-      ) : isLoading ? (
+      {isLoading ? (
         <CardSkeleton />
       ) : error ? (
         <ErrorState title="Could not load the fleet inventory" />
