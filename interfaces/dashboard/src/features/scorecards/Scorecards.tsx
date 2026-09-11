@@ -1100,7 +1100,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
               <span
                 className="text-2xs font-bold tabular-nums"
                 style={{ color: delta >= 0 ? 'var(--ok)' : 'var(--danger)' }}
-                title={`${delta >= 0 ? '+' : ''}${delta} vs fleet average`}
+                title={`${delta >= 0 ? '+' : ''}${delta} vs account average`}
               >
                 {delta >= 0 ? '+' : ''}{delta} vs fleet
               </span>

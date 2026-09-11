@@ -8,6 +8,12 @@
 
 html, body { background: #020617; color: #f1f5f9; min-height: 100vh; }
 
+/* The console draws its own controls everywhere except these two, which
+ * stay native for keyboard and screen-reader behaviour we would only
+ * reimplement worse.  The accent is all they need to stop looking like
+ * a different application dropped into a dark page. */
+input[type="checkbox"], input[type="radio"] { accent-color: #3b82f6; }
+
 /* Monospace tabular numbers for the accounts table — id and dollar
  * amounts should line up vertically regardless of width. */
 .tabular-nums { font-variant-numeric: tabular-nums; }

@@ -2111,6 +2111,20 @@ async def system_plans(
     }
 
 
+@router.get("/billing-mode")
+async def system_billing_mode(_user: dict = Depends(require_system_owner)):
+    """Which billing provider and Stripe mode this API is running in.
+
+    Environment only — no Stripe call — because the console asks it on
+    every navigation: the operator must not have to remember, on the
+    Accounts page, that the platform is in test mode and every
+    customer's Upgrade button opens a test checkout.  The Plans page's
+    wiring check is the thorough answer; this is the one that travels.
+    """
+    from capabilities.platform.billing.setup_check import stripe_mode
+    return {"provider": _billing_provider_name(), "mode": stripe_mode()}
+
+
 @router.get("/plans/stripe-check")
 async def system_plans_stripe_check(
     _user: dict = Depends(require_system_owner),

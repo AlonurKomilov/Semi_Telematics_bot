@@ -50,6 +50,18 @@ export default function App() {
       .catch(() => { /* a count is not worth an error surface */ });
   }, [authed, loc.pathname]);
 
+  // Which mode the money is in.  Asked once per session rather than per
+  // navigation (it answers from the API's environment and only changes
+  // when someone restarts the API), and silent on failure: a console
+  // that cannot reach this endpoint has louder problems than a strip.
+  const [billingMode, setBillingMode] = useState<{ provider: string; mode: string } | null>(null);
+  useEffect(() => {
+    if (!authed) return;
+    apiJSON<{ provider: string; mode: string }>('/system/billing-mode')
+      .then(setBillingMode)
+      .catch(() => { /* the strip is a courtesy, not a gate */ });
+  }, [authed]);
+
   // Unauthed visitor lands on /login regardless of path.  Soft gate —
   // the real authorization is server-side; this saves useless 401s.
   if (!authed && loc.pathname !== '/login') {
@@ -72,6 +84,16 @@ export default function App() {
       />
       <main className="flex-1 min-w-0 px-6 py-6 overflow-x-auto">
         <div className="max-w-6xl mx-auto w-full">
+          {/* Test mode is invisible from every page but Plans, and it is
+              the state in which a real customer pressing Upgrade gets a
+              test checkout.  So it says so wherever the operator is. */}
+          {billingMode?.provider === 'stripe' && billingMode.mode === 'test' && (
+            <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              <span className="font-semibold">Stripe TEST mode</span> — no real money moves, and every
+              customer pressing Upgrade opens a test checkout. Swap the keys in{' '}
+              <code className="text-amber-200">.env</code> when the dry run is done.
+            </div>
+          )}
           <Routes>
             <Route path="/" element={<Accounts />} />
             <Route path="/accounts" element={<Accounts />} />

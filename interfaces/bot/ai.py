@@ -575,7 +575,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     user_ctx = await _build_user_context(user)
     lang = getattr(user, "language", "en") or "en"
-    await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
+    await _show_loading(update, context, "📊  <i>Generating briefing...</i>")
 
     try:
         blocked, vehicle_filter = _scope_filter(user, user_ctx)
@@ -610,7 +610,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "  ❌  <b>AI ERROR</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  Couldn't generate the fleet briefing.\n"
+            "  Couldn't generate the briefing.\n"
             f"\n  <i>{type(e).__name__}</i>"
         )
 
