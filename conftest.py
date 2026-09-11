@@ -483,6 +483,7 @@ _PROCESS_CACHES = (
     # (account ids repeat across template copies); re-primed by _plans_warm
     ("capabilities.permissions.plans", "_PLANS"),
     ("capabilities.permissions.plans", "_QUOTAS"),
+    ("capabilities.permissions.plans", "_LABELS"),
     ("capabilities.permissions.plans", "_TIER_OF"),
     ("capabilities.permissions.scope", "_role_scope_cache"),
     ("adapters.storage.platform_settings", "_settings_cache"),

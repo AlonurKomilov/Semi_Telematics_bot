@@ -282,7 +282,14 @@ RECORDS as its price is what Stripe invoices: the webhook takes each
 item's amount from the expanded subscription when it is a plain
 monthly USD price, logs a warning when the plan row disagrees, and
 falls back to the row otherwise; the trucks included are always the
-row's. The operator moves an account to a plan from its detail page
+row's. A changed monthly price makes the Stripe Price itself on save (one
+Product per plan, remembered on the row; the old Price is archived) and
+reaches existing subscribers only through the price rollout —
+`GET/POST /system/plans/{tier}/rollout`, previewed, batched, resumable,
+audited as `plan.rollout` — which swaps each live subscription's base
+item with `proration_behavior="none"`, so the new amount bills from
+that account's next period; the extras item is never touched
+(`capabilities/platform/billing/rollout.py`). The operator moves an account to a plan from its detail page
 (`PATCH /system/accounts/{id}/plan`, audited as `account_plan`) — refused
 for an account Stripe is billing, whose plan moves through the price
 rollout — and the plan a self-serve trial starts on is the one row

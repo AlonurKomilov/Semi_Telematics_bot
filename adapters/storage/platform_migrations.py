@@ -232,6 +232,7 @@ async def run_all(conn) -> None:
     # operator narrows one from the system console.
     await migrate_plans(conn)
     await migrate_plans_catalog(conn)
+    await migrate_plan_price_rollouts(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
     await migrate_driver_trucks_registry_id(conn)
@@ -5158,3 +5159,63 @@ async def migrate_plans_catalog(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+async def migrate_plan_price_rollouts(conn) -> None:
+    """A plan's price reaching Stripe: the plan row remembers its Stripe
+    Product, the subscription row remembers which Price its base item is
+    on, and two tables record every rollout and every account it touched
+    (capabilities/platform/billing/rollout.py).  Columns via ADD COLUMN IF
+    NOT EXISTS; no index on a new column here.  Idempotent.
+    """
+    try:
+        await conn.execute("ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_product_id TEXT NOT NULL DEFAULT ''")
+        await conn.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS provider_base_price_id TEXT NOT NULL DEFAULT ''")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS plan_price_rollouts (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                tier          TEXT    NOT NULL,
+                from_price_id TEXT    NOT NULL DEFAULT '',
+                to_price_id   TEXT    NOT NULL,
+                from_cents    INTEGER NOT NULL DEFAULT 0,
+                to_cents      INTEGER NOT NULL DEFAULT 0,
+                actor         TEXT    NOT NULL DEFAULT '',
+                started_at    TEXT    NOT NULL,
+                finished_at   TEXT,
+                aborted       INTEGER NOT NULL DEFAULT 0,
+                summary       TEXT    NOT NULL DEFAULT '{}',
+                -- the batch being worked right now (a claim), and the last batch's end
+                running_token TEXT    NOT NULL DEFAULT '',
+                running_since TEXT    NOT NULL DEFAULT '',
+                last_batch_at TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS plan_price_rollout_items (
+                rollout_id      INTEGER NOT NULL,
+                account_id      INTEGER NOT NULL,
+                subscription_id TEXT    NOT NULL DEFAULT '',
+                outcome         TEXT    NOT NULL,
+                error           TEXT    NOT NULL DEFAULT '',
+                effective_at    TEXT    NOT NULL DEFAULT '',
+                at              TEXT    NOT NULL,
+                PRIMARY KEY (rollout_id, account_id)
+            )
+        """)
+        for c in ("running_token TEXT NOT NULL DEFAULT ''", "running_since TEXT NOT NULL DEFAULT ''",
+                  "last_batch_at TEXT NOT NULL DEFAULT ''"):
+            await conn.execute(f"ALTER TABLE plan_price_rollouts ADD COLUMN IF NOT EXISTS {c}")
+        # a partial unique index on a table this same migration creates (not on
+        # a column added to a live table): one open rollout per plan
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_price_rollouts_open "
+            "ON plan_price_rollouts (tier) WHERE finished_at IS NULL")
+        await conn.commit()
+        logger.info("Migration: plan price rollout tables present")
+    except Exception as e:
+        logger.error("plan price rollouts migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+

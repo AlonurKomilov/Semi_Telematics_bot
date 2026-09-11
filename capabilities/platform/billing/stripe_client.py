@@ -268,6 +268,7 @@ class StripeBillingProvider:
             }
             if base_item_id:
                 updates["provider_base_item_id"] = base_item_id
+                updates["provider_base_price_id"] = (slots.get("base") or {}).get("price_id") or ""
             if extra_item_id:
                 updates["provider_extra_item_id"] = extra_item_id
             await db.update_subscription(account_id, **updates)
@@ -305,6 +306,7 @@ class StripeBillingProvider:
                     updates.update(self._priced_updates(tier, pricing, slots))
                     if slots["base"]["id"]:
                         updates["provider_base_item_id"] = slots["base"]["id"]
+                        updates["provider_base_price_id"] = slots["base"].get("price_id") or ""
                     if slots["extra"]["id"]:
                         updates["provider_extra_item_id"] = slots["extra"]["id"]
                     logger.info("Stripe item ids backfilled from subscription.updated: account=%s", account_id)
@@ -456,6 +458,24 @@ class StripeBillingProvider:
                         tier, slot_name, row_amt, stripe_amt,
                     )
         return out
+
+    # ── the plan's price, and its rollout ─────────────────────────
+
+    async def create_plan_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
+        from capabilities.platform.billing import rollout as _rollout
+        return _rollout.ensure_plan_price(_stripe(), tier=tier, label=label, cents=cents, before=before)
+
+    def archive_plan_price(self, price_id: str) -> bool:
+        from capabilities.platform.billing import rollout as _rollout
+        return _rollout.archive_price(_stripe(), price_id)
+
+    async def rollout_preview(self, db, tier: str) -> dict:
+        from capabilities.platform.billing import rollout as _rollout
+        return await _rollout.preview(db, tier)
+
+    async def rollout_execute(self, db, tier: str, *, actor: str) -> dict:
+        from capabilities.platform.billing import rollout as _rollout
+        return await _rollout.execute(_stripe(), db, tier, actor=actor)
 
     async def update_billing_email(self, account_id: int, db, email: str) -> dict:
         """Persist the email locally and push it to Stripe's Customer record.

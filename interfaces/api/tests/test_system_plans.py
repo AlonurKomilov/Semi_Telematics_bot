@@ -247,6 +247,124 @@ async def test_the_trial_flag_moves_between_plans_from_the_panel(system_app):
     assert await s["db"].trial_plan() == "starter"
 
 
+def _fake_stripe(subs=None, price_amount=12900):
+    """Just enough Stripe for a save and a rollout: Product/Price creation,
+    Price retrieve/modify, Subscription retrieve/modify.  Records calls."""
+    calls = []
+    subs = subs or {}
+    price = {"id": "price_new", "active": True, "unit_amount": price_amount, "currency": "usd",
+             "recurring": {"interval": "month", "interval_count": 1}}
+
+    class _S:
+        class Product:
+            @staticmethod
+            def create(**kw): calls.append(("Product.create", kw)); return {"id": "prod_new"}
+        class Price:
+            @staticmethod
+            def create(**kw): calls.append(("Price.create", kw)); return {"id": "price_new"}
+            @staticmethod
+            def retrieve(pid): calls.append(("Price.retrieve", pid)); return price
+            @staticmethod
+            def modify(pid, **kw): calls.append(("Price.modify", pid, kw)); return {"id": pid}
+        class Subscription:
+            @staticmethod
+            def retrieve(sid, expand=None): calls.append(("Subscription.retrieve", sid)); return subs[sid]
+            @staticmethod
+            def modify(sid, **kw):
+                calls.append(("Subscription.modify", sid, kw))
+                s = dict(subs[sid]); base = kw["items"][0]
+                s["items"] = {"data": [{"id": base["id"], "price": {"id": base["price"], "unit_amount": price_amount, "currency": "usd",
+                                                                    "recurring": {"interval": "month", "interval_count": 1}}}]}
+                subs[sid] = s
+                return s
+    _S.calls = calls
+    _S.price = price
+    return _S
+
+
+@pytest.mark.asyncio
+async def test_in_stub_mode_a_price_change_creates_nothing_and_a_rollout_is_refused(system_app, monkeypatch):
+    s = system_app
+    monkeypatch.setenv("BILLING_PROVIDER", "stub")
+    import capabilities.platform.billing as _b
+    monkeypatch.setattr(_b, "_provider", None)
+    r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
+                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900})
+    assert r.status_code == 200, r.text
+    assert r.json()["plan"]["price_monthly_cents"] == 12900 and r.json()["plan"]["stripe_price_id"] == ""
+    assert r.json()["subscribers_on_old_price"] == 0
+    g = (await s["client"].get("/api/system/plans", headers=s["op"])).json()
+    assert g["billing_provider"] == "stub"
+    r = await s["client"].post("/api/system/plans/pro/rollout", headers=s["op"])
+    assert r.status_code == 400 and "stub" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_in_stripe_mode_the_save_makes_the_price_and_the_rollout_moves_the_subscribers(system_app, monkeypatch):
+    s = system_app
+    monkeypatch.setenv("BILLING_PROVIDER", "stripe")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extra")
+    import capabilities.platform.billing as _b
+    monkeypatch.setattr(_b, "_provider", None)
+    # two live Stripe subscribers on Pro, one on the old price, one already on the new
+    subs = {}
+    for n, (tg, sub_id, base_price) in enumerate([(915001, "sub_1", "price_old"), (915002, "sub_2", "price_new")]):
+        acct = await s["db"].create_account(f"Rollout Co {n}", tier="pro")
+        await s["db"].get_or_create_subscription(acct.id)
+        await s["db"].update_subscription(acct.id, tier="pro", provider="stripe", provider_subscription_id=sub_id,
+                                          status="active", provider_base_price_id=base_price)
+        subs[sub_id] = {"id": sub_id, "status": "active", "current_period_end": 1800000000,
+                        "items": {"data": [{"id": f"si_{sub_id}", "price": {"id": base_price, "unit_amount": 9900 if base_price == "price_old" else 12900,
+                                                                            "currency": "usd", "recurring": {"interval": "month", "interval_count": 1}}},
+                                           {"id": f"si_x_{sub_id}", "price": {"id": "price_extra", "unit_amount": 299, "currency": "usd",
+                                                                              "recurring": {"interval": "month", "interval_count": 1}}}]}}
+    fake = _fake_stripe(subs)
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: fake)
+    # the save: Stripe first, then the row; the ids land on the row; the old price is archived
+    await s["db"].upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_old")
+    r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
+                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900})
+    assert r.status_code == 200, r.text
+    p = r.json()["plan"]
+    assert (p["price_monthly_cents"], p["stripe_price_id"], p["stripe_product_id"]) == (12900, "price_new", "prod_new")
+    assert r.json()["subscribers_on_old_price"] == 1
+    names = [c[0] for c in fake.calls]
+    assert names[:2] == ["Product.create", "Price.create"] and ("Price.modify", "price_old", {"active": False}) in fake.calls
+    assert fake.calls[1][1]["unit_amount"] == 12900 and fake.calls[1][1]["idempotency_key"].startswith("plan-price:pro:12900:")
+    # a pasted price id is refused in Stripe mode — the Price is made on save, never set by hand
+    r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
+                              json={"label": "Pro", "included": ["*"], "quotas": {}, "stripe_price_id": "price_pasted"})
+    assert r.status_code == 400 and "cannot be set by hand" in r.json()["detail"]
+    assert (await s["db"].get_plan("pro"))["stripe_price_id"] == "price_new"
+    # saving again with the SAME price creates nothing
+    n_before = len(fake.calls)
+    r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
+                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900})
+    assert r.status_code == 200 and len(fake.calls) == n_before
+    # preview, then the rollout: the old-price subscriber moves with no proration; the other is "already"
+    pv = (await s["client"].get("/api/system/plans/pro/rollout", headers=s["op"])).json()
+    assert (pv["candidates"], pv["to_move"], pv["already_on_new_price"], pv["to_cents"]) == (2, 1, 1, 12900)
+    r = await s["client"].post("/api/system/plans/pro/rollout", headers=s["op"])
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["counts"] == {"changed": 1, "already": 1} and out["remaining"] == 0 and out["finished"] is True
+    mods = [c for c in fake.calls if c[0] == "Subscription.modify"]
+    assert len(mods) == 1 and mods[0][1] == "sub_1"
+    assert mods[0][2]["items"] == [{"id": "si_sub_1", "price": "price_new", "quantity": 1}]
+    assert mods[0][2]["proration_behavior"] == "none"
+    moved = [x for x in await s["db"].subscriptions_on_tier("pro") if x["provider_subscription_id"] == "sub_1"][0]
+    assert moved["provider_base_price_id"] == "price_new" and moved["monthly_base_usd"] == 12900
+    rows = await s["db"].list_platform_audit(event="plan.rollout", limit=1)
+    assert rows and '"finished": true' in rows[0]["details"]
+    assert (await s["client"].get("/api/system/plans/pro/rollout", headers=s["op"])).json()["to_move"] == 0
+    # a price that Stripe does not agree with refuses the rollout
+    fake.price["unit_amount"] = 9900
+    r = await s["client"].post("/api/system/plans/pro/rollout", headers=s["op"])
+    assert r.status_code == 400 and "save the plan again" in r.json()["detail"]
+    assert (await s["client"].post("/api/system/plans/pro/rollout", headers=s["non_op"])).status_code == 403
+
+
 @pytest.mark.asyncio
 async def test_accounts_on_a_plan_with_no_row_are_named(system_app):
     s = system_app

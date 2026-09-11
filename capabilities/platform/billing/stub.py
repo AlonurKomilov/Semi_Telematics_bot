@@ -76,6 +76,20 @@ class StubBillingProvider:
         account_plan_changed(account_id)
         return {"url": success_url, "session_id": "stub_session"}
 
+    async def create_plan_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
+        """No Stripe here: the row keeps whatever id it has; nothing is created."""
+        return {"skipped": "stub"}
+
+    def archive_plan_price(self, price_id: str) -> bool:
+        return False
+
+    async def rollout_preview(self, db, tier: str) -> dict:
+        from capabilities.platform.billing.rollout import preview
+        return {**(await preview(db, tier)), "skipped": "stub"}
+
+    async def rollout_execute(self, db, tier: str, *, actor: str) -> dict:
+        raise ValueError("BILLING_PROVIDER is stub — there is no Stripe to roll a price out to.")
+
     async def create_portal_session(
         self,
         account_id: int,

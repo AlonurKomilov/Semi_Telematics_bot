@@ -1920,7 +1920,12 @@ class NewPlanBody(BaseModel):
 
 
 _AUDITED_PLAN_FIELDS = ("label", "included", "quotas", "price_monthly_cents", "base_vehicles",
-                        "extra_vehicle_cents", "stripe_price_id", "public", "sort", "trial_default")
+                        "extra_vehicle_cents", "stripe_price_id", "stripe_product_id", "public", "sort", "trial_default")
+
+
+def _billing_provider_name() -> str:
+    import os as _os
+    return (_os.getenv("BILLING_PROVIDER", "stub") or "stub").lower()
 
 
 def _label_of(raw: str) -> str:
@@ -1987,6 +1992,9 @@ async def system_plans(
         "quota_keys": list(QUOTA_KEYS),
         "plan_key_pattern": PLAN_KEY_RE.pattern,
         "accounts_without_plan": {t: n for t, n in sorted(counts.items()) if t not in known},
+        # stripe = a price change creates the Stripe Price and can be rolled out;
+        # stub = prices are numbers on a page
+        "billing_provider": _billing_provider_name(),
     }
 
 
@@ -2038,17 +2046,52 @@ async def system_put_plan(
     if not before:
         raise HTTPException(status_code=404, detail=f"No plan named '{tier}' — create it first")
     actor = f"tg:{user.get('sub')}"
+    # A changed monthly price makes the provider hold a Price for it BEFORE
+    # the row is written — the row's cents and the Price Stripe charges by
+    # the same hand; a provider failure leaves the row untouched.  The stub
+    # skips; the old Price is archived after the row commits.
+    stripe_price_id = body.stripe_price_id.strip() if body.stripe_price_id is not None else None
+    if stripe_price_id is not None and _billing_provider_name() == "stripe" \
+            and stripe_price_id != (before.get("stripe_price_id") or ""):
+        # Stripe is the source of the Price: it is made on save from the
+        # price, never pasted, so a checkout can never be pointed at a
+        # Price the row's cents do not describe
+        raise HTTPException(status_code=400, detail="The Stripe price is created from the price on save; it cannot be set by hand")
+    stripe_product_id = None
+    archived = ""
+    new_cents = body.price_monthly_cents
+    if new_cents is not None and (new_cents != int(before.get("price_monthly_cents") or 0)
+                                  or (new_cents > 0 and not before.get("stripe_price_id"))):
+        from capabilities.platform.billing import get_provider
+        try:
+            made = await get_provider().create_plan_price(tier=tier, label=label, cents=int(new_cents), before=before)
+        except Exception as e:
+            logger.exception("plan %s: the provider could not create a price for %s cents", tier, new_cents)
+            raise HTTPException(status_code=502, detail=f"The billing provider could not create the price: {e}")
+        if not made.get("skipped"):
+            stripe_price_id = made.get("stripe_price_id", "")
+            stripe_product_id = made.get("stripe_product_id") or None
+            archived = made.get("archived") or ""
     row = await platform_db.upsert_plan(
         tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor,
         price_monthly_cents=body.price_monthly_cents, base_vehicles=body.base_vehicles,
         extra_vehicle_cents=body.extra_vehicle_cents,
-        stripe_price_id=body.stripe_price_id.strip() if body.stripe_price_id is not None else None,
+        stripe_price_id=stripe_price_id, stripe_product_id=stripe_product_id,
         public=body.public, sort=body.sort, trial_default=body.trial_default)
     invalidate_plans()
+    if archived and archived != row.get("stripe_price_id"):
+        from capabilities.platform.billing import get_provider
+        provider = get_provider()
+        if hasattr(provider, "archive_plan_price"):
+            provider.archive_plan_price(archived)
     counts = await platform_db.count_accounts_by_tier()
     await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))
     logger.info("system: plan %s saved by %s (%d account(s))", tier, actor, counts.get(tier, 0))
-    return {"plan": _plan_view(row, counts)}
+    on_old = 0
+    if row.get("stripe_price_id"):
+        on_old = sum(1 for s_ in await platform_db.subscriptions_on_tier(tier)
+                     if (s_.get("provider_base_price_id") or "") != row["stripe_price_id"])
+    return {"plan": _plan_view(row, counts), "subscribers_on_old_price": on_old}
 
 
 # ── The operator moves an account to a plan ────────────────────────
@@ -2069,7 +2112,8 @@ class AccountPlanBody(BaseModel):
 # Stripe is still charging (or about to): active, a trial that will
 # convert, and past_due with an open invoice.  ``unpaid`` is left out on
 # purpose — Stripe has stopped billing it — as are canceled/incomplete.
-_STRIPE_LIVE = ("active", "trialing", "past_due")
+# One tuple, shared with the rollout's candidate query.
+from adapters.storage.plan_rollouts import LIVE_STATUSES as _STRIPE_LIVE  # noqa: E402
 
 
 @router.patch("/accounts/{account_id}/plan")
@@ -2123,3 +2167,55 @@ async def operator_set_account_plan(
         logger.exception("platform audit write failed for account %s", account_id)
     logger.info("system: account plan acct=%s %s -> %s by %s", account_id, previous, tier, actor)
     return {"id": account_id, "tier": tier, "changed": True, "previous": previous}
+
+
+# ── The price rollout ───────────────────────────────────────────────
+#
+# A saved price reaches new checkouts at once and existing subscribers
+# only through this: previewed, capped per call (the console calls again
+# while ``remaining`` is not zero), resumable, audited, and refused by
+# the engine when the plan's Stripe price does not say what the row says.
+
+
+@router.get("/plans/{tier}/rollout")
+async def system_plan_rollout_preview(
+    tier: str,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    from capabilities.platform.billing import get_provider
+    from capabilities.platform.billing.rollout import RolloutRefused
+    try:
+        return await get_provider().rollout_preview(platform_db, tier)
+    except RolloutRefused as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/plans/{tier}/rollout")
+async def system_plan_rollout(
+    tier: str,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    from capabilities.platform.billing import get_provider
+    from capabilities.platform.billing.rollout import RolloutBusy, RolloutRefused
+    actor = f"tg:{user.get('sub')}"
+    try:
+        out = await get_provider().rollout_execute(platform_db, tier, actor=actor)
+    except RolloutBusy as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except (RolloutRefused, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        await platform_db.add_platform_audit(
+            "plan.rollout", actor=actor,
+            details=json.dumps({"tier": tier, "rollout_id": out.get("rollout_id"), "to_price_id": out.get("to_price_id"),
+                                "to_cents": out.get("to_cents"), "processed": out.get("processed"),
+                                "counts": out.get("counts"), "remaining": out.get("remaining"),
+                                "finished": out.get("finished"), "aborted": out.get("aborted")}),
+        )
+    except Exception:
+        logger.exception("plan rollout audit write failed tier=%s", tier)
+    logger.info("system: plan %s price rollout by %s: %s", tier, actor, out)
+    return out
+

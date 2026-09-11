@@ -86,7 +86,7 @@ class BillingMixin:
             "tier", "status", "vehicle_count", "base_vehicles",
             "monthly_base_usd", "extra_vehicle_cents", "billing_email",
             "provider", "provider_customer_id", "provider_subscription_id",
-            "provider_base_item_id", "provider_extra_item_id",
+            "provider_base_item_id", "provider_extra_item_id", "provider_base_price_id",
             "provider_data", "trial_ends_at", "current_period_start",
             "current_period_end", "canceled_at", "past_due_since",
         }

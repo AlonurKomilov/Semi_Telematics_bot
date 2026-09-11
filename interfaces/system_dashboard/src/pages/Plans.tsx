@@ -41,12 +41,11 @@ interface Plan {
 }
 
 /** The catalog fields the operator edits per column, as strings while typing. */
-interface CatalogDraft { price: string; base: string; extra: string; stripe: string; pub: boolean; sort: string; trial: boolean }
+interface CatalogDraft { price: string; base: string; extra: string; pub: boolean; sort: string; trial: boolean }
 const CATALOG_ROWS: { key: keyof CatalogDraft; label: string; hint: string }[] = [
   { key: 'price', label: 'Price / month ($)', hint: '0 = free' },
   { key: 'base', label: 'Trucks included', hint: '' },
   { key: 'extra', label: 'Extra truck ($/month)', hint: '' },
-  { key: 'stripe', label: 'Stripe price id', hint: 'blank = STRIPE_PRICE_<TIER> env' },
   { key: 'sort', label: 'Order on the page', hint: 'lowest first' },
 ];
 
@@ -56,6 +55,7 @@ interface PlansResponse {
   quota_keys: string[];
   plan_key_pattern: string;
   accounts_without_plan: Record<string, number>;
+  billing_provider: string;
 }
 
 interface Draft {
@@ -90,7 +90,7 @@ function draftOf(p: Plan): Draft {
     ),
     cat: {
       price: dollars(p.price_monthly_cents), base: String(p.base_vehicles),
-      extra: dollars(p.extra_vehicle_cents), stripe: p.stripe_price_id, pub: p.public, sort: String(p.sort),
+      extra: dollars(p.extra_vehicle_cents), pub: p.public, sort: String(p.sort),
       trial: p.trial_default,
     },
   };
@@ -99,13 +99,13 @@ function draftOf(p: Plan): Draft {
 /** The catalog as the API wants it; ``null`` when a number does not parse. */
 function catalogOf(d: Draft): {
   price_monthly_cents: number; base_vehicles: number; extra_vehicle_cents: number;
-  stripe_price_id: string; public: boolean; sort: number; trial_default: boolean;
+  public: boolean; sort: number; trial_default: boolean;
 } | null {
   const price = cents(d.cat.price || '0'), extra = cents(d.cat.extra || '0');
   const base = Number(d.cat.base || '0'), sort = Number(d.cat.sort || '0');
   if (![price, extra, base, sort].every((n) => Number.isInteger(n) && n >= 0)) return null;
   return { price_monthly_cents: price, base_vehicles: base, extra_vehicle_cents: extra,
-    stripe_price_id: d.cat.stripe.trim(), public: d.cat.pub, sort, trial_default: d.cat.trial };
+    public: d.cat.pub, sort, trial_default: d.cat.trial };
 }
 
 function includedOf(d: Draft, catalog: CatalogEntry[]): string[] {
@@ -135,7 +135,7 @@ function isDirty(p: Plan, d: Draft, catalog: CatalogEntry[]): boolean {
   const c = catalogOf(d);
   if (!c) return true;
   return c.price_monthly_cents !== p.price_monthly_cents || c.base_vehicles !== p.base_vehicles
-    || c.extra_vehicle_cents !== p.extra_vehicle_cents || c.stripe_price_id !== p.stripe_price_id
+    || c.extra_vehicle_cents !== p.extra_vehicle_cents
     || c.public !== p.public || c.sort !== p.sort || c.trial_default !== p.trial_default;
 }
 
@@ -269,7 +269,8 @@ export default function PlansPage() {
       d.everything && !p.everything ? '\nBack to everything included.' : '',
       cat.public !== p.public ? (cat.public ? '\nShown on the customer Billing page from now on.' : '\nHidden from the customer Billing page (accounts already on it keep it).') : '',
       cat.trial_default && !p.trial_default ? '\nNew self-serve signups start their trial on this plan from now on.' : '',
-      cat.price_monthly_cents !== p.price_monthly_cents ? `\nPrice: $${dollars(p.price_monthly_cents)} → $${dollars(cat.price_monthly_cents)} per month (new checkouts only; Stripe is the bill).` : '',
+      cat.price_monthly_cents !== p.price_monthly_cents
+        ? `\nPrice: $${dollars(p.price_monthly_cents)} → $${dollars(cat.price_monthly_cents)} per month. ${data?.billing_provider === 'stripe' ? 'A Stripe price is created now; new checkouts use it at once. Accounts already on the plan keep paying the old price until you roll it out.' : 'New checkouts only.'}` : '',
     ];
     if (!window.confirm(lines.join(''))) return;
     setBusy(p.tier);
@@ -283,6 +284,45 @@ export default function PlansPage() {
       await load(p.tier);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Save failed');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function rollout(p: Plan) {
+    setErr('');
+    let preview: { to_move: number; candidates: number; already_on_new_price: number; to_cents: number; open_rollout: { id: number; items: number } | null };
+    try {
+      preview = await apiJSON(`/system/plans/${p.tier}/rollout`);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Could not preview the rollout');
+      return;
+    }
+    if (preview.to_move === 0 && !preview.open_rollout) {
+      window.alert(`Every Stripe subscriber on "${p.label}" is already on the current price (${preview.candidates} on the plan).`);
+      return;
+    }
+    const resume = preview.open_rollout ? `\nA rollout is already open (${preview.open_rollout.items} accounts done); this continues it.` : '';
+    if (!window.confirm(
+      `Roll out $${dollars(preview.to_cents)}/month to ${preview.to_move} Stripe subscriber${preview.to_move === 1 ? '' : 's'} on "${p.label}"?` +
+      `\nEach account is moved to the new price with no proration: the new amount bills from that account's NEXT period. Their extra-truck price is untouched.${resume}`,
+    )) return;
+    setBusy(`rollout:${p.tier}`);
+    const totals: Record<string, number> = {};
+    try {
+      for (let guard = 0; guard < 200; guard++) {
+        const out = await apiJSON<{ counts: Record<string, number>; remaining: number; finished: boolean; aborted: boolean }>(
+          `/system/plans/${p.tier}/rollout`, { method: 'POST' });
+        for (const [k, v] of Object.entries(out.counts)) totals[k] = (totals[k] ?? 0) + v;
+        if (out.finished || out.aborted || out.remaining === 0) {
+          const line = Object.entries(totals).map(([k, v]) => `${k}: ${v}`).join(', ') || 'nothing to do';
+          window.alert(`${out.aborted ? 'Rollout STOPPED after repeated errors' : 'Rollout finished'} — ${line}.${out.aborted ? ' Fix the errors (see the audit) and press Roll out again to continue.' : ''}`);
+          break;
+        }
+      }
+      await load(p.tier);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Rollout failed');
     } finally {
       setBusy('');
     }
@@ -467,7 +507,7 @@ export default function PlansPage() {
                     <td key={p.tier} className="px-3 py-1.5">
                       <input
                         className={`${inputCls} text-center tabular-nums`}
-                        inputMode={row.key === 'stripe' ? 'text' : 'decimal'}
+                        inputMode="decimal"
                         value={String(drafts[p.tier]?.cat[row.key] ?? '')}
                         onChange={(e) =>
                           setDraft(p.tier, (d) => ({ ...d, cat: { ...d.cat, [row.key]: e.target.value } }))
@@ -478,6 +518,26 @@ export default function PlansPage() {
                   ))}
                 </tr>
               ))}
+              <tr className="border-t border-slate-800/70">
+                <td className="px-3 py-1.5 text-slate-300">
+                  Stripe price
+                  <span className="ml-2 text-[11px] text-slate-500">created on save; existing subscribers move with Roll out</span>
+                </td>
+                {plans.map((p) => (
+                  <td key={p.tier} className="px-3 py-1.5 text-center align-top">
+                    <div className="text-[11px] text-slate-500 break-all">{p.stripe_price_id || '—'}</div>
+                    {data.billing_provider === 'stripe' && p.stripe_price_id && (
+                      <button
+                        className={`${btnCls} mt-1 border-amber-500/40 text-amber-300 hover:bg-amber-500/10`}
+                        disabled={busy === `rollout:${p.tier}`}
+                        onClick={() => rollout(p)}
+                      >
+                        {busy === `rollout:${p.tier}` ? 'Rolling out…' : 'Roll out price…'}
+                      </button>
+                    )}
+                  </td>
+                ))}
+              </tr>
               <tr className="border-t border-slate-800">
                 <td className="px-3 py-2 text-xs text-slate-500">Last change</td>
                 {plans.map((p) => {

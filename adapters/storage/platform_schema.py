@@ -624,9 +624,45 @@ async def create_tables(conn) -> None:
             sort                INTEGER NOT NULL DEFAULT 0,
             -- the plan a self-serve signup's trial starts on (one row)
             trial_default       INTEGER NOT NULL DEFAULT 0,
+            -- the Stripe Product this plan's Prices hang off (made on first use)
+            stripe_product_id   TEXT    NOT NULL DEFAULT '',
             updated_at  TEXT NOT NULL,
             updated_by  TEXT NOT NULL DEFAULT ''
         );
+
+        -- A plan's price reaching the accounts already on it: one row per
+        -- rollout, one per account it touched (capabilities/platform/
+        -- billing/rollout.py).  Never enumerated from Stripe.
+        CREATE TABLE IF NOT EXISTS plan_price_rollouts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            tier          TEXT    NOT NULL,
+            from_price_id TEXT    NOT NULL DEFAULT '',
+            to_price_id   TEXT    NOT NULL,
+            from_cents    INTEGER NOT NULL DEFAULT 0,
+            to_cents      INTEGER NOT NULL DEFAULT 0,
+            actor         TEXT    NOT NULL DEFAULT '',
+            started_at    TEXT    NOT NULL,
+            finished_at   TEXT,
+            aborted       INTEGER NOT NULL DEFAULT 0,
+            summary       TEXT    NOT NULL DEFAULT '{}',
+            -- the batch being worked right now (a claim), and the last batch's end
+            running_token TEXT    NOT NULL DEFAULT '',
+            running_since TEXT    NOT NULL DEFAULT '',
+            last_batch_at TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS plan_price_rollout_items (
+            rollout_id      INTEGER NOT NULL,
+            account_id      INTEGER NOT NULL,
+            subscription_id TEXT    NOT NULL DEFAULT '',
+            outcome         TEXT    NOT NULL,
+            error           TEXT    NOT NULL DEFAULT '',
+            effective_at    TEXT    NOT NULL DEFAULT '',
+            at              TEXT    NOT NULL,
+            PRIMARY KEY (rollout_id, account_id)
+        );
+        -- one open rollout per plan: a second operator joins it, never forks it
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_price_rollouts_open
+            ON plan_price_rollouts (tier) WHERE finished_at IS NULL;
 
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -772,6 +808,8 @@ async def create_tables(conn) -> None:
             -- changes quantity.  Empty for stub-provider accounts.
             provider_base_item_id  TEXT NOT NULL DEFAULT '',
             provider_extra_item_id TEXT NOT NULL DEFAULT '',
+            -- the Stripe Price the base item is on (a rollout moves it)
+            provider_base_price_id TEXT NOT NULL DEFAULT '',
             provider_data       TEXT    NOT NULL DEFAULT '{}',
             -- JSON blob for provider-specific fields
             trial_ends_at       TEXT,

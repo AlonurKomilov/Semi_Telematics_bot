@@ -105,6 +105,22 @@ class BillingProvider(Protocol):
         """
         ...
 
+    async def create_plan_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
+        """Make the provider hold a price for a plan (the console just
+        saved a new monthly amount).  Stripe: a Price on the plan's
+        Product; returns ``{"stripe_price_id", "stripe_product_id",
+        "archived"}``.  Stub: ``{"skipped": "stub"}`` and nothing touched."""
+        ...
+
+    async def rollout_preview(self, db, tier: str) -> dict:
+        """What a price rollout would do, from our tables alone."""
+        ...
+
+    async def rollout_execute(self, db, tier: str, *, actor: str) -> dict:
+        """Move up to one batch of live subscriptions on *tier* to the
+        plan's price; returns counts and ``remaining``."""
+        ...
+
     async def update_billing_email(self, account_id: int, db, email: str) -> dict:
         """Persist a new billing email and push it to the payment provider.
 
