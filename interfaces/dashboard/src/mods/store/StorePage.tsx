@@ -21,7 +21,7 @@
  */
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Check, Store } from '../../lib/icons';
+import { ArrowLeft, Check, Plus, Store, X } from '../../lib/icons';
 import { PageHeader, SectionHeader } from '../../components/shell';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -38,9 +38,11 @@ import { accentSeed } from './packs/theme';
 import { soundPackById } from './packs/sound';
 import { keyPackById } from './packs/keys';
 import { PACK_AXES } from './packs';
-import { rowsOf, type StoreRow } from './index';
+import { rowsOf, rowById, type StoreRow } from './index';
 import { offered } from './local';
-import { AXIS_UI } from './axes';
+import { AXIS_UI, defaultOf } from './axes';
+import { useShelves } from './useOffered';
+import { cn } from '../../lib/utils';
 import type { ModSetting } from '../../preferences/registry';
 
 /** The dot a tile can honestly draw: a colour the pack IS. Everything
@@ -55,6 +57,7 @@ export function ModsStorePage() {
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   const applyMod = useApplyMod();
+  const { isKept, keep, drop, canDrop } = useShelves();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
   const { value: keyPack, setValue: setKeyPack } = usePreference('mods.sound.keyboard.pack');
   const { value: volume } = usePreference('mods.sound.volume');
@@ -115,6 +118,23 @@ export function ModsStorePage() {
     undoableAction({ label: said, undo: async () => setTheme(was) });
   };
 
+  /**
+   * Taking a pack off the shelf you are WEARING it from would leave the
+   * app painting something no picker offers and nothing can put back —
+   * the same trap `ModsLock` closes when a permission goes away, closed
+   * the same way: the removal writes the reset.
+   */
+  const remove = (axis: string, id: string, label: string) => {
+    drop(axis, id);
+    if (!isApplied(axis, id)) return;
+    const back = defaultOf(axis);
+    if (back) { apply(axis, back, rowById(axis, back)?.label ?? back); return; }
+    // The looks shelf has no default: stop wearing it, and leave the
+    // axes it wrote alone — a look is a way of writing them, not a
+    // layer over them.
+    setTheme({ mod: '' } as Partial<ModSetting>);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -143,7 +163,11 @@ export function ModsStorePage() {
                   row={row}
                   dot={dotOf(axis, row.id, theme.mode)}
                   applied={isApplied(axis, row.id)}
+                  kept={isKept(axis, row.id)}
+                  removable={canDrop(axis, row.id)}
                   onApply={() => apply(axis, row.id, row.label)}
+                  onKeep={() => keep(axis, row.id)}
+                  onRemove={() => remove(axis, row.id, row.label)}
                 />
               ))}
             </div>
@@ -154,12 +178,16 @@ export function ModsStorePage() {
   );
 }
 
-function PackTile({ row, dot, applied, onApply }: {
-  row: StoreRow; dot?: string; applied: boolean; onApply: () => void;
+function PackTile({ row, dot, applied, kept, removable, onApply, onKeep, onRemove }: {
+  row: StoreRow; dot?: string; applied: boolean; kept: boolean; removable: boolean;
+  onApply: () => void; onKeep: () => void; onRemove: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <Card className="p-3 flex flex-col gap-3">
+    // A pack taken off the shelf stays on the page, dimmed: it is the
+    // only way back. Hiding it would make removal indistinguishable
+    // from the pack never having existed.
+    <Card className={cn('p-3 flex flex-col gap-3', !kept && 'opacity-60')}>
       <div className="flex items-start gap-2 min-w-0">
         {dot && (
           <span aria-hidden className="size-4 rounded-full shrink-0 mt-0.5 border border-border"
@@ -180,16 +208,34 @@ function PackTile({ row, dot, applied, onApply }: {
             disabled button saying "Applied" is a status wearing an
             action's clothes — the eye has to read it to find out it is
             not a control. */}
-        {applied
-          ? (
-            <Badge tone="ok">
-              <Check className="size-3.5" aria-hidden />
-              {t('mods.store_applied', 'Applied')}
-            </Badge>
-          )
-          : (
-            <Button size="sm" onClick={onApply}>{t('mods.store_apply', 'Apply')}</Button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!kept
+            ? (
+              <Button size="sm" variant="outline" onClick={onKeep}>
+                <Plus className="size-4" aria-hidden />
+                {t('mods.store_add', 'Add')}
+              </Button>
+            )
+            : applied
+              ? (
+                <Badge tone="ok">
+                  <Check className="size-3.5" aria-hidden />
+                  {t('mods.store_applied', 'Applied')}
+                </Badge>
+              )
+              : (
+                <Button size="sm" onClick={onApply}>{t('mods.store_apply', 'Apply')}</Button>
+              )}
+          {/* Removable only where a shelf would still have something on
+              it afterwards. A control that silently does nothing is
+              worse than one that is not there. */}
+          {kept && removable && (
+            <Button size="sm" variant="ghost" onClick={onRemove}
+              aria-label={t('mods.store_remove', 'Remove {{pack}}', { pack: row.label })}>
+              <X className="size-4" aria-hidden />
+            </Button>
           )}
+        </div>
       </div>
     </Card>
   );

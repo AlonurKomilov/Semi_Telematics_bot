@@ -31,6 +31,9 @@ const FROZEN_KEYS: readonly string[] = [
   'mods.sound.keyboard',
   'mods.sound.keyboard.pack',
   'mods.ambient',
+  // Which packs this device took off its shelves. A name nobody may
+  // reuse: reusing it would hide packs for everyone who ever removed one.
+  'mods.packs.removed',
   'integrations.cardOpen',
   'ai.thoughtNoteDismissed',
   'tour.state',
@@ -518,5 +521,28 @@ describe('the axis set itself', () => {
       'accent', 'color', 'cursor', 'entrance', 'font', 'iconPack', 'icons',
       'material', 'mode', 'motion', 'radius', 'shader', 'wallpaper', 'wallpaperLive', 'wallpaperPage',
     ]);
+  });
+});
+
+describe('a shelf remembers only packs that still ship', () => {
+  const sanitize = DEFS['mods.packs.removed'].sanitize!;
+
+  it('keeps a real removal, by axis', () => {
+    expect(sanitize({ font: ['serif'] })).toEqual({ font: ['serif'] });
+  });
+
+  it('drops an axis nobody ships, and an id nobody ships', () => {
+    expect(sanitize({ zzz: ['serif'], font: ['not-a-font'] })).toEqual({});
+  });
+
+  it('an id listed twice is one removal', () => {
+    expect(sanitize({ font: ['serif', 'serif'] })).toEqual({ font: ['serif'] });
+  });
+
+  it('refuses a shape that is not a record of lists', () => {
+    expect(sanitize('serif')).toBeUndefined();
+    expect(sanitize(['serif'])).toBeUndefined();
+    // A value that is not a list is skipped rather than trusted.
+    expect(sanitize({ font: 'serif' })).toEqual({});
   });
 });

@@ -13,7 +13,7 @@
  * taxonomy's own titles, held to them by a test, so a shelf cannot come
  * to be called one thing here and another on /mods.
  */
-import type { ModSetting } from '../../preferences/registry';
+import { MOD_DEFAULT, DEFS, type ModSetting } from '../../preferences/registry';
 
 /** Where the chosen id is written. */
 export type AxisHome =
@@ -44,3 +44,23 @@ export const AXIS_UI: Readonly<Record<string, AxisUI>> = {
   sound:     { label: 'Interface sounds',  home: { pref: 'mods.sound.pack' } },
   keys:      { label: 'Keyboard',          home: { pref: 'mods.sound.keyboard.pack' } },
 };
+
+/**
+ * The pack a shelf falls back to — the one that cannot be taken off it.
+ *
+ * Read from the same home the shelf declares, never listed again here:
+ * an axis whose default is spelled twice is an axis that can disagree
+ * with itself, and this one already has a third copy in `MOD_DEFAULT`
+ * that the engine paints from. The looks shelf has no default — wearing
+ * no look is a perfectly good answer, so every look may be dropped.
+ */
+export function defaultOf(axis: string): string | undefined {
+  const home = AXIS_UI[axis]?.home;
+  if (!home || home.mod) return undefined;
+  if (home.pref) {
+    const d = (DEFS as Record<string, { default: unknown }>)[home.pref]?.default;
+    return typeof d === 'string' ? d : undefined;
+  }
+  const d = MOD_DEFAULT[home.theme![0]];
+  return typeof d === 'string' ? d : undefined;
+}

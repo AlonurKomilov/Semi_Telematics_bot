@@ -7,7 +7,7 @@
  * the panel and the profile card show the category whole. The
  * composition is the DOM those two surfaces always rendered.
  */
-import { offered } from '../store/local';
+import { useOffered } from '../store/useOffered';
 import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
 import { usePreference } from '../../preferences';
@@ -31,6 +31,7 @@ const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
  * room is lit while the work is being done.
  */
 export function ShadersItem({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   return (

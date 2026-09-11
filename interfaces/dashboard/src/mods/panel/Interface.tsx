@@ -14,7 +14,7 @@
  * `Section` already does exactly this — a component takes what it uses
  * rather than being handed eleven props it mostly ignores.
  */
-import { offered } from '../store/local';
+import { useOffered } from '../store/useOffered';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
@@ -213,6 +213,7 @@ export function ModeGroup({ label }: { label: LabelClass }) {
 }
 
 export function ColorGroup({ label, compact = false }: { label: LabelClass; compact?: boolean }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   /** Which place the background picker is aiming at. Deliberately NOT
@@ -454,6 +455,7 @@ export function CornersGroup({ label }: { label: LabelClass }) {
 }
 
 export function MaterialGroup({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   return (
@@ -478,6 +480,7 @@ export function MaterialGroup({ label }: { label: LabelClass }) {
 }
 
 export function TypefaceGroup({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   return (
@@ -528,6 +531,7 @@ export function TypefaceGroup({ label }: { label: LabelClass }) {
  * discovery later.
  */
 export function CursorGroup({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   const current = theme.cursor ?? 'system';
@@ -563,6 +567,7 @@ export function CursorGroup({ label }: { label: LabelClass }) {
  * picked red under Wallpaper › Page watched the whole app turn red.
  */
 export function WallpaperGroup({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   const frame = theme.wallpaper ?? 'none';
@@ -685,6 +690,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
 }
 
 export function IconsGroup({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   return (

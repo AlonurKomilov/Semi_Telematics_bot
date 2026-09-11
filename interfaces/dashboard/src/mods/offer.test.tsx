@@ -63,14 +63,14 @@ vi.mock('../hooks/useViewPermissions', () => ({
 /** What this run pretends is not carried: `axis/id`. */
 const WITHHELD = ['theme/purple', 'font/mono'];
 
-// The real `offered` is the one under test at every CALL SITE — so the
-// mock replaces the helper, not what it reads. A picker that never asks
-// it is untouched by this, and that is exactly what fails.
-vi.mock('./store/local', async (orig) => {
-  const real = await orig<typeof import('./store/local')>();
+// The real door is the one under test at every CALL SITE — so the mock
+// replaces the hook, not the preference it reads. A picker that never
+// asks it is untouched by this, and that is exactly what fails.
+vi.mock('./store/useOffered', async (orig) => {
+  const real = await orig<typeof import('./store/useOffered')>();
   return {
     ...real,
-    offered: <T,>(axis: string, items: readonly T[], idOf: (i: T) => string) =>
+    useOffered: () => <T,>(axis: string, items: readonly T[], idOf: (i: T) => string) =>
       items.filter((i) => !WITHHELD.includes(`${axis}/${idOf(i)}`)),
   };
 });

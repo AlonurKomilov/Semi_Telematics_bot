@@ -6,7 +6,7 @@
  * write in this service that touches seven axes at once, and therefore
  * the undo that write needs.
  */
-import { offered } from '../store/local';
+import { useOffered } from '../store/useOffered';
 import { useTranslation } from 'react-i18next';
 import { usePreference } from '../../preferences';
 import { useMods, type Accent } from '../context';
@@ -34,6 +34,7 @@ const MOD_OPTIONS = MODS.map((m) => ({
 }));
 
 export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme, size, setSize } = useMods();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
@@ -102,5 +103,5 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
  *  when this install carries a mod, which is how a shrunken catalogue
  *  leaves no empty heading behind. A function, not a constant: what is
  *  carried is a question asked at render, not frozen at import. */
-export const hasMods = (): boolean =>
-  offered('mods', MOD_OPTIONS, (o) => o.value).length > 0;
+export const useHasMods = (): boolean =>
+  useOffered()('mods', MOD_OPTIONS, (o) => o.value).length > 0;

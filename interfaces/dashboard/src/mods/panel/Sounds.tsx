@@ -19,7 +19,7 @@
  * six and threading them down — is the 600-line `ModControls` this
  * folder was cut out of.
  */
-import { offered } from '../store/local';
+import { useOffered } from '../store/useOffered';
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RotateCcw, Volume2, VolumeX } from '../../lib/icons';
@@ -44,6 +44,7 @@ import type { LabelClass } from './Interface';
  * The taxonomy says the same thing now.
  */
 export function SoundVolume({ label: groupLabel }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
   const { value: volume, setValue: setVolume } = usePreference('mods.sound.volume');
@@ -179,6 +180,7 @@ export function InterfaceSoundItem() {
 }
 
 export function KeyboardItem() {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { value: volume } = usePreference('mods.sound.volume');
   const { value: keySound, setValue: setKeySound } = usePreference('mods.sound.keyboard');

@@ -41,6 +41,7 @@ import { SHADER_IDS } from '../mods/store/packs/shader';
 import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
 import { MATERIAL_IDS } from '../mods/store/packs/material';
 import { MODS } from '../mods/store/packs/mods';
+import { PACK_AXES } from '../mods/store/packs';
 import { THEME_PACKS } from '../mods/store/packs/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
@@ -533,6 +534,44 @@ export const DEFS = {
    * Which cue set plays. A property of the PERSON — someone who prefers
    * the blip wants it on every machine — so it syncs.
    */
+  /**
+   * Which packs this person has taken OFF their shelves.
+   *
+   * Removals, not keeps — and the direction is the whole design. A
+   * stored list of what you keep would freeze the shelves on the day it
+   * was written: every pack shipped afterwards would arrive already
+   * hidden, and nobody would ever know it existed. A stored list of what
+   * you dropped leaves the default answer "everything", so a new pack
+   * appears for everyone and only what a person actually refused stays
+   * gone.
+   *
+   * DEVICE, like `mods.theme`: what a screen is dressed in, and which
+   * packs its pickers offer, are the same question asked twice.
+   *
+   * Validity only, as every id sanitiser here is: an unknown axis or an
+   * unknown id is dropped, because it can only be a pack that no longer
+   * ships. Whether a pack may be dropped AT ALL — an axis default may
+   * not — is the reader's rule, in `store/useOffered.ts`, so it is
+   * asked once and cannot be half-enforced from two sides.
+   */
+  'mods.packs.removed': def<Record<string, string[]>>({
+    default: {},
+    scope: 'device',
+    sanitize: (v) => {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+      const kept: Record<string, string[]> = {};
+      for (const axis of PACK_AXES) {
+        const list = (v as Record<string, unknown>)[axis.axis];
+        if (!Array.isArray(list)) continue;
+        const ids = list.filter((id): id is string =>
+          typeof id === 'string' && axis.packs.some((p) => p.id === id));
+        if (ids.length) kept[axis.axis] = [...new Set(ids)];
+      }
+      return kept;
+    },
+    note: 'Packs taken off this device\'s shelves. Everything not listed is offered.',
+  }),
+
   'mods.sound.pack': def<string>({
     default: 'chime',
     scope: 'synced',

@@ -2,14 +2,18 @@
  * The store page: it lists the catalogue, and Apply lands in the one
  * home the axis declares.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 // `vi.mock` is hoisted above the file, so the spy has to be hoisted too
 // or the factory closes over a variable that does not exist yet.
-const { setTheme, undoSpy } = vi.hoisted(() => ({ setTheme: vi.fn(), undoSpy: vi.fn() }));
+const { setTheme, undoSpy, setPref, removed } = vi.hoisted(() => ({
+  setTheme: vi.fn(), undoSpy: vi.fn(), setPref: vi.fn(),
+  // What this person has taken off their shelves, per test.
+  removed: { current: {} as Record<string, string[]> },
+}));
 
 // Spread the real modules: the preferences barrel pulls in AuthContext,
 // which pulls in src/i18n.ts, which needs `initReactI18next` to exist.
@@ -17,7 +21,16 @@ const { setTheme, undoSpy } = vi.hoisted(() => ({ setTheme: vi.fn(), undoSpy: vi
 // collect rather than failing an assertion.
 vi.mock('react-i18next', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  useTranslation: () => ({ t: (_k: string, d?: string) => d ?? _k }),
+  // Interpolating, unlike the simpler harness elsewhere: this page puts
+  // the pack's name INSIDE a label ("Remove Serif"), and a mock that
+  // handed back `Remove {{pack}}` would let a control ship with a name
+  // no screen reader could use.
+  useTranslation: () => ({
+    t: (_k: string, d?: string, o?: Record<string, unknown>) =>
+      Object.entries(o ?? {}).reduce(
+        (s, [k, v]) => s.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v)),
+        d ?? _k),
+  }),
 }));
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -31,8 +44,8 @@ vi.mock('./context', () => ({
     // them: an undo that restores `undefined` is not an undo.
     theme: {
       mode: 'dark', accent: 'blue', radius: 'md', material: 'solid',
-      motion: 'default', icons: 'regular', mod: '',
-      font: 'geist', iconPack: 'lucide', cursor: 'system', shader: 'flat',
+      motion: 'default', icons: 'regular', mod: 'cab',
+      font: 'geist', iconPack: 'lucide', cursor: 'system', shader: 'soft',
       wallpaper: 'none', wallpaperPage: 'none', wallpaperLive: false,
     },
     setTheme,
@@ -44,8 +57,11 @@ vi.mock('./context', () => ({
 vi.mock('../preferences', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   usePreference: (k: string) => ({
-    value: k === 'mods.sound.volume' ? 1 : k === 'dispatch.soundOn' ? true : 'chime',
-    setValue: () => {},
+    value: k === 'mods.sound.volume' ? 1
+      : k === 'dispatch.soundOn' ? true
+        : k === 'mods.packs.removed' ? removed.current
+          : 'chime',
+    setValue: k === 'mods.packs.removed' ? setPref : () => {},
   }),
 }));
 
@@ -136,7 +152,7 @@ describe('applying is as cheap to undo as it was to try', () => {
     expect(undoSpy, 'a quiet axis changed with nothing said').toHaveBeenCalledTimes(1);
     const call = undoSpy.mock.calls[0][0];
     expect(call.label, 'the banner does not name the shelf and the pack')
-      .toBe('{{shelf}} set to {{pack}}');
+      .toBe('Cursor set to Sharp');
     setTheme.mockClear();
     await call.undo();
     expect(setTheme, 'undo did not restore the cursor it replaced')
@@ -149,5 +165,64 @@ describe('applying is as cheap to undo as it was to try', () => {
     const tile = screen.getByText('Blue').closest('div[class*="p-3"]') as HTMLElement;
     expect(within(tile).queryByRole('button'), 'the applied state is still a button').toBeNull();
     expect(within(tile).getByText('Applied')).toBeTruthy();
+  });
+});
+
+describe('a shelf is what this person kept', () => {
+  /** Scoped to its shelf: two axes ship a pack called Soft, which is
+   *  fine on a page where each sits under its own heading. */
+  const tileOf = (label: string, axis?: string) => {
+    const scope = axis ? within(screen.getByTestId(`store-axis-${axis}`)) : screen;
+    return scope.getByText(label).closest('div[class*="p-3"]') as HTMLElement;
+  };
+
+  beforeEach(() => {
+    removed.current = {};
+    setPref.mockClear(); setTheme.mockClear();
+  });
+
+  it('taking a pack off the shelf records it, by axis', () => {
+    render(<ModsStorePage />);
+    fireEvent.click(within(tileOf('Serif')).getByRole('button', { name: /remove serif/i }));
+    expect(setPref).toHaveBeenCalledWith({ font: ['serif'] });
+  });
+
+  it('what a shelf falls back to cannot be taken off it', () => {
+    render(<ModsStorePage />);
+    // Blue IS the base accent; a Color shelf with nothing on it is one
+    // nobody could leave.
+    expect(within(tileOf('Blue')).queryByRole('button', { name: /remove/i })).toBeNull();
+    expect(within(tileOf('Serif')).getByRole('button', { name: /remove/i })).toBeTruthy();
+  });
+
+  it('removing what you are WEARING puts the shelf default back on', () => {
+    render(<ModsStorePage />);
+    // The harness wears the Soft shader — the one pack in this mock that
+    // is not its shelf's default, so it is the only one where removing
+    // and wearing are the same gesture.
+    const soft = tileOf('Soft', 'shader');
+    expect(within(soft).getByText('Applied'), 'the harness is not wearing it').toBeTruthy();
+    fireEvent.click(within(soft).getByRole('button', { name: /remove soft/i }));
+    expect(setPref).toHaveBeenCalledWith({ shader: ['soft'] });
+    expect(setTheme, 'the app is left wearing a pack no shelf offers')
+      .toHaveBeenCalledWith({ shader: 'flat' });
+  });
+
+  it('removing the look you WEAR stops you wearing it, and leaves the axes it wrote', () => {
+    render(<ModsStorePage />);
+    const cab = tileOf('Cab', 'mods');
+    fireEvent.click(within(cab).getByRole('button', { name: /remove cab/i }));
+    expect(setPref).toHaveBeenCalledWith({ mods: ['cab'] });
+    // No shelf default here — wearing no look is a fine answer — so the
+    // reset is the look itself, not the seven axes it wrote.
+    expect(setTheme).toHaveBeenCalledWith({ mod: '' });
+  });
+
+  it('a pack taken off stays on the page, offering the way back', () => {
+    removed.current = { font: ['serif'] };
+    render(<ModsStorePage />);
+    const tile = tileOf('Serif');
+    expect(within(tile).queryByRole('button', { name: /^apply$/i })).toBeNull();
+    expect(within(tile).getByRole('button', { name: /add/i })).toBeTruthy();
   });
 });
