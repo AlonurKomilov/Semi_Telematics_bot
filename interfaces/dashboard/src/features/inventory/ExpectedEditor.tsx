@@ -45,7 +45,13 @@ interface ExpectedResponse {
   vehicle_types: VehicleType[];
   /** The caller's own role, and what it goes red about.  `null` means it
    *  has never narrowed — flagged on everything. */
+  /** Whose focus `focus` belongs to — the caller's own unless they asked
+   *  for another and may cross. */
   role: string;
+  my_role: string;
+  /** Every role this caller may aim.  Empty unless they may cross, so a
+   *  picker offering roles the server would refuse never renders. */
+  roles: string[];
   focus: string[] | null;
 }
 
@@ -65,14 +71,20 @@ export default function ExpectedEditor() {
   // because a button leading to a 403 is worse than no button.
   const { viewHas } = useRoleView();
   const mayEditCatalogue = viewHas('can_manage_config_all');
+  // Two scopes, two reaches.  Aiming ONE role is `can_manage_config_role`;
+  // crossing into any role is what the account-wide holder has, and the
+  // server answers with the list — the screen never decides it.
   const mayAimFocus = viewHas('can_manage_config_role');
   const qc = useQueryClient();
   const [type, setType] = useState<VehicleType>('truck');
   const [draft, setDraft] = useState<ExpectedRow[] | null>(null);
 
+  /** Whose focus is being read.  Empty means "the caller's own", which is
+   *  what the server answers with no role. */
+  const [aimAt, setAimAt] = useState('');
   const { data, isLoading, error } = useQuery<ExpectedResponse>({
-    queryKey: ['inventory-expected'],
-    queryFn: () => apiJSON('/inventory/expected'),
+    queryKey: ['inventory-expected', aimAt],
+    queryFn: () => apiJSON(`/inventory/expected${aimAt ? `?role=${encodeURIComponent(aimAt)}` : ''}`),
   });
 
   // The draft follows the server until somebody edits, and resets when
@@ -111,6 +123,9 @@ export default function ExpectedEditor() {
     mutationFn: (categories: string[]) =>
       apiJSON('/inventory/expected/focus', {
         method: 'PUT',
+        // The role being AIMED, which is the caller's own unless they may
+        // cross and have picked another.  The server walks the own-role
+        // wall again — this only decides what is asked for.
         body: { role: data?.role, categories },
       }),
     onSuccess: () => {
@@ -125,6 +140,13 @@ export default function ExpectedEditor() {
 
   if (isLoading) return <CardSkeleton />;
   if (error) return <ErrorState title="Could not load the template" />;
+  // Narrowed past the two guards above, so the picker can read it.
+  if (!data) return null;
+  // The server says whether this caller may cross roles, by whether it
+  // handed back a list to cross into.  The screen never decides it.
+  const crossing = data.roles.length > 1;
+  // Either reach opens the control; they differ in HOW FAR, not in whether.
+  const mayAim = mayAimFocus || crossing;
 
   return (
     <div className="space-y-3">
@@ -302,7 +324,31 @@ export default function ExpectedEditor() {
           red is for.  The count above stays identical for everybody. */}
       {allCategories.length > 0 && (
         <div className="rounded-lg border p-4 space-y-2">
-          <h3 className="text-sm font-medium">What my role goes red about</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">
+              {crossing ? 'What a role goes red about' : 'What my role goes red about'}
+            </h3>
+            {/* The difference between the two scopes, made visible.
+                `can_manage_config_role` aims ONE role — your own — so it
+                gets no picker and cannot reach across.  `can_manage_account`
+                belongs to whoever set the roles up; they aim any of them,
+                which the server has always allowed and the screen did not
+                offer — leaving an owner locked out of their own rule. */}
+            {crossing && (
+              <select
+                aria-label="Whose focus"
+                className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+                value={data.role}
+                onChange={(e) => { setAimAt(e.target.value); setFocusDraft(null); }}
+              >
+                {data.roles.map((r) => (
+                  <option key={r} value={r}>
+                    {r === data.my_role ? `${r} (mine)` : r}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground max-w-2xl">
             Every role reads the same list above — this only decides which of
             it is flagged on <strong>your</strong> screens. Untick a category
@@ -314,6 +360,7 @@ export default function ExpectedEditor() {
               <label key={c} className="flex items-center gap-1.5 text-sm">
                 <Checkbox
                   checked={focus.includes(c)}
+                  disabled={!mayAim}
                   onChange={(e) =>
                     setFocusDraft(
                       e.target.checked ? [...focus, c] : focus.filter((x) => x !== c),
@@ -324,7 +371,7 @@ export default function ExpectedEditor() {
               </label>
             ))}
           </div>
-          {focusDirty && (
+          {mayAim && focusDirty && (
             <div className="flex items-center gap-2 pt-1">
               <Button size="sm" disabled={saveFocus.isPending}
                       onClick={() => saveFocus.mutate(focus)}>
@@ -334,6 +381,16 @@ export default function ExpectedEditor() {
                 Discard
               </Button>
             </div>
+          )}
+          {/* Disabled WITH A REASON.  The config family says it in as
+              many words: mirror the server on the affordance, because a
+              button leading to a 403 is worse than no button. */}
+          {!mayAim && (
+            <p className="text-sm text-muted-foreground">
+              Aiming a role's attention rides <strong>Config — own role</strong>,
+              which this sign-in does not hold. It is granted per role on the
+              Permissions page, in Inventory's Config column.
+            </p>
           )}
           {saveFocus.isSuccess && !focusDirty && (
             <p className="text-sm text-muted-foreground">

@@ -290,3 +290,61 @@ class TestRoleFocus:
             r = await c.put("/api/inventory/expected/focus", headers=hf,
                             json={"role": "fleet", "categories": ["camera"]})
             assert r.status_code == 200, r.text
+
+
+class TestWhoMayAimWhoseAttention:
+    """The difference between the two config scopes, as the owner put it.
+
+    `can_manage_config_role` aims ONE role — its own — so one role can
+    never reach into another's attention.  `can_manage_account` belongs
+    to whoever set the roles up: it crosses, because that is the person
+    who decides what each role is shown in the first place.
+
+    The server has always allowed the crossing; the screen did not offer
+    it, which left an owner locked out of a rule they own.
+    """
+
+    async def test_an_owner_reads_and_aims_any_role(self, api):
+        app, db = api
+        acct = await db.create_account("Cross Co")
+        owner = await db.create_user(840001, acct.id, role=Role.OWNER)
+        ho = _headers(owner, acct, "owner")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            await c.put("/api/inventory/expected", headers=ho, json={
+                "vehicle_type": "truck",
+                "items": [{"category": "eld", "label": "ELD", "quantity": 1, "required": True}],
+            })
+            # The list to cross into is the SERVER's answer — the screen
+            # never decides who may be aimed.
+            r = await c.get("/api/inventory/expected", headers=ho)
+            assert r.status_code == 200, r.text
+            assert "safety" in r.json()["roles"]
+            assert r.json()["my_role"] == "owner"
+
+            r = await c.get("/api/inventory/expected?role=safety", headers=ho)
+            assert r.status_code == 200 and r.json()["role"] == "safety"
+
+            r = await c.put("/api/inventory/expected/focus", headers=ho,
+                            json={"role": "safety", "categories": []})
+            assert r.status_code == 200, r.text
+            assert (await c.get("/api/inventory/expected?role=safety", headers=ho)).json()["focus"] == []
+
+    async def test_a_role_manager_gets_no_list_to_cross_into(self, api):
+        app, db = api
+        acct = await db.create_account("Cross Co")
+        fleet = await db.create_user(840002, acct.id, role=Role.FLEET)
+        hf = _headers(fleet, acct, "fleet", is_manager=True)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.get("/api/inventory/expected", headers=hf)
+            assert r.status_code == 200, r.text
+            # Empty, so the picker never renders: a list of roles the
+            # server would refuse is a list of 403s.
+            assert r.json()["roles"] == []
+            assert r.json()["role"] == "fleet"
+
+            # …and asking for somebody else's is refused, not quietly
+            # answered with their own.
+            r = await c.get("/api/inventory/expected?role=safety", headers=hf)
+            assert r.status_code == 403

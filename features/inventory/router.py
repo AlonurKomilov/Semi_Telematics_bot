@@ -41,7 +41,7 @@ from adapters.storage.inventory import (
     normalize_inventory_category,
     INVENTORY_STATUSES,
 )
-from capabilities.config.role import may_manage_config_role
+from capabilities.config.role import VALID_ROLES, may_manage_config_role
 from features.inventory import expected as expected_config
 from features.inventory.expected import EXPECTED_VEHICLE_TYPES, standard_for
 from features.inventory import service
@@ -218,6 +218,13 @@ class FocusBody(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=100)
 
 
+#: A role string no caller can ever hold, so asking `may_manage_config_role`
+#: about it answers exactly one question: may this person cross roles at
+#: all?  Only `can_manage_account` gets a yes, which is the rule the config
+#: family already owns — asked, rather than re-decided here.
+_A_ROLE_NOBODY_HAS = "\x00 not a role"
+
+
 def _checked_type(vehicle_type: str) -> str:
     if vehicle_type not in EXPECTED_VEHICLE_TYPES:
         raise HTTPException(
@@ -229,6 +236,7 @@ def _checked_type(vehicle_type: str) -> str:
 
 @router.get("/expected")
 async def get_expected(
+    role: str | None = None,
     user: dict = Depends(_VIEW),
     tenant=Depends(get_tenant_db),
 ):
@@ -240,16 +248,30 @@ async def get_expected(
     owes; only writing is config-gated.
     """
     account_id = int(user["account_id"])
-    role = str(user.get("role") or "")
+    mine = str(user.get("role") or "")
+    # A holder of the ACCOUNT-wide flag is the person who set the roles up;
+    # they read and aim any role's focus, which is the whole difference
+    # between the two scopes — `can_manage_config_role` is one role's own
+    # attention, `can_manage_account` crosses.  `may_manage_config_role`
+    # is the single place that rule lives; this asks it rather than
+    # re-deciding it.
+    may_cross = await may_manage_config_role(user, _A_ROLE_NOBODY_HAS)
+    asked = role or mine
+    if asked != mine and not may_cross:
+        raise HTTPException(403, "You may only read your own role's focus")
     return {
         "catalogue": await expected_config.get_catalogue(tenant, account_id),
         "standard": {t: standard_for(t) for t in EXPECTED_VEHICLE_TYPES},
         "vehicle_types": list(EXPECTED_VEHICLE_TYPES),
-        "role": role,
+        "role": asked,
+        "my_role": mine,
+        # Empty unless the caller may cross: a picker offering roles the
+        # server would refuse is a list of 403s.
+        "roles": sorted(VALID_ROLES) if may_cross else [],
         # `null` is not `[]`: never-narrowed means flagged on everything,
         # and narrowed-to-nothing means flagged on nothing.  Collapsing
         # them would make "stop flagging me" impossible to say.
-        "focus": await expected_config.get_role_focus(tenant, account_id, role),
+        "focus": await expected_config.get_role_focus(tenant, account_id, asked),
     }
 
 
@@ -278,7 +300,13 @@ async def put_expected(
 @router.put("/expected/focus")
 async def put_focus(
     body: FocusBody,
-    user: dict = Depends(require_permission("can_manage_config_role")),
+    # Seeing inventory is the floor; WHO may aim WHOSE attention is
+    # `may_manage_config_role`'s decision and only its decision.  Gating
+    # the dependency on the own-role flag was narrower than the rule it
+    # then applied: an owner holds `can_manage_account` — which the rule
+    # says crosses into any role — and was refused before the rule ran.
+    # `interfaces/api/page_layouts.py` is the family's own precedent.
+    user: dict = Depends(_VIEW),
     tenant=Depends(get_tenant_db),
 ):
     """Narrow which categories a role goes red about.

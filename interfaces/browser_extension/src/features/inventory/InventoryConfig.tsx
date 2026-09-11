@@ -105,26 +105,17 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
   // times: once by the focus section, once by the line explaining that the
   // focus cannot be aimed, and once per vehicle type.  A screen of four
   // refusals reads as a broken feature rather than an unconfigured one.
-  if (all.length === 0) {
-    return (
-      <div style={{ padding: 12, display: 'grid', gap: 8 }}>
-        <span className="muted eyebrow">Inventory configuration</span>
-        <p style={{ margin: 0, fontSize: 12 }}>
-          No vehicle is expected to carry anything yet, so nothing is ever
-          reported short.
-        </p>
-        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-          The list is written on 4truck — it decides what every vehicle in the
-          account owes, which is not a decision this panel makes. Once it
-          exists, this is where you turn down the parts of it your role does
-          not need to see.
-        </p>
-      </div>
-    );
-  }
+  // An account that has declared nothing says so ONCE — it was saying it
+  // four times, which reads as a broken feature rather than an
+  // unconfigured one.  But the SHAPE stays: the type chips and the section
+  // headings are how a person learns what this screen will hold, and a
+  // panel that shows a bare sentence where the dashboard shows a
+  // structure is two different products for one feature.
+  const nothingDeclared = all.length === 0;
 
   return (
     <div style={{ padding: 12, display: 'grid', gap: 14 }}>
+      {!nothingDeclared && (
       <section style={{ display: 'grid', gap: 8 }}>
         <span className="muted eyebrow">What my role is flagged on</span>
         <p className="muted" style={{ margin: 0, fontSize: 12 }}>
@@ -175,7 +166,15 @@ export default function InventoryConfig({ abilities }: PanelFeatureProps) {
           </p>
         )}
       </section>
+      )}
 
+      {nothingDeclared && (
+        <p style={{ margin: 0, padding: '0 0 2px', fontSize: 12 }}>
+          No vehicle is expected to carry anything yet, so nothing is ever
+          reported short. The list is written on 4truck — once it exists,
+          this is where you turn down the parts your role does not need.
+        </p>
+      )}
       {/* One type at a time, the way the dashboard's dialog does it.  Two
           stacked lists made the shorter one read as a continuation of the
           longer, and a panel is 320px — the two together were most of a
