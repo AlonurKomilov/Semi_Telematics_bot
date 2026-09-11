@@ -9516,3 +9516,30 @@ async def migrate_inventory_expected_items(conn) -> None:
         logger.info("Migration 208: RLS enabled on %s", tbl)
     except Exception as e:
         logger.warning("Migration 208: %s RLS skipped (%s)", tbl, e)
+@_register("209_kb_platform_review")
+async def migrate_kb_platform_review(conn) -> None:
+    """Legacy mirror of the second approval gate on public KB articles.
+
+    See ``platform_migrations.migrate_kb_platform_review`` for why the
+    publishing account's own owner is not enough to put text into every
+    other tenant's knowledge base.  SQLite has no ADD COLUMN IF NOT
+    EXISTS, so each add is attempted and a duplicate-column error is the
+    "already there" signal.
+    """
+    for ddl in (
+        "ALTER TABLE knowledge_base ADD COLUMN platform_approved INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE knowledge_base ADD COLUMN platform_reviewed_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE knowledge_base ADD COLUMN platform_review_note TEXT NOT NULL DEFAULT ''",
+    ):
+        try:
+            await conn.execute(ddl)
+        except Exception:      # noqa: BLE001 — column already present
+            pass
+    # Grandfather what is already published platform-wide, so an upgrade
+    # never withdraws an article somebody is already reading.
+    await conn.execute(
+        "UPDATE knowledge_base SET platform_approved = 1 "
+        "WHERE visibility = 'public' AND approved = 1 AND platform_approved = 0"
+    )
+    await conn.commit()
+    logger.info("Migration 209: public KB articles need platform review")

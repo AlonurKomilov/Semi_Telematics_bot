@@ -1104,14 +1104,27 @@ async def approve_article(
             int(article.get("account_id") or 0),
             article.get("title", ""), "approved",
         )
-        # Fan-out to the target audience now that the article is visible.
+        # Fan-out to the target audience now that the article is visible
+        # INSIDE this account.  Reaching other accounts needs the
+        # platform's own approval as well — see below.
         notified = await _notify_audience(
             platform_db,
             account_id=int(article.get("account_id") or 0),
             article=article,
             exclude_user_id=int(article.get("created_by") or 0),
         )
-    return {"ok": ok, "notified": notified, "message": "Article approved"}
+    # Say what actually happened.  Approving publishes the article to
+    # THIS account immediately and submits it for platform review; it
+    # reaches other accounts only once the operator approves it too,
+    # because a public article lands in every tenant's knowledge base
+    # and every tenant's assistant.
+    return {
+        "ok": ok,
+        "notified": notified,
+        "message": "Article approved — live for your team, and submitted "
+                   "for review before it reaches other companies",
+        "pending_platform_review": True,
+    }
 
 
 @router.post("/articles/{article_id}/reject")

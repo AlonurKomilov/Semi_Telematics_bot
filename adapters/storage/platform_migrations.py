@@ -233,6 +233,7 @@ async def run_all(conn) -> None:
     await migrate_plans(conn)
     await migrate_plans_catalog(conn)
     await migrate_plan_price_rollouts(conn)
+    await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
     await migrate_driver_trucks_registry_id(conn)
@@ -5159,6 +5160,52 @@ async def migrate_plans_catalog(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+async def migrate_kb_platform_review(conn) -> None:
+    """Publishing into every OTHER account takes two approvals, not one.
+
+    A public knowledge-base article is visible to every account on the
+    platform — that is the feature, stated on the visibility control
+    ("Public — every user on the platform") and in the approver rule.
+    The approval, however, came from the PUBLISHING account's own owner
+    or admin.  With open signup, that means anyone can register, become
+    the owner of their own account, write an article, approve it
+    themselves, and land text in every tenant's knowledge base and
+    every tenant's AI context.  Nobody at the platform ever saw it.
+
+    ``platform_approved`` is the second gate: the account still decides
+    whether to submit, and the operator decides whether it goes out.
+    Existing live articles are grandfathered so nothing already
+    published disappears when this runs; the operator can unpublish any
+    of them from the console.
+
+    ADD COLUMN IF NOT EXISTS, no index on the new column, idempotent.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE knowledge_base "
+            "ADD COLUMN IF NOT EXISTS platform_approved INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.execute(
+            "ALTER TABLE knowledge_base "
+            "ADD COLUMN IF NOT EXISTS platform_reviewed_at TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.execute(
+            "ALTER TABLE knowledge_base "
+            "ADD COLUMN IF NOT EXISTS platform_review_note TEXT NOT NULL DEFAULT ''"
+        )
+        # Grandfather what is already live.  These rows are visible
+        # across the platform right now; making them vanish mid-upgrade
+        # would be a regression nobody asked for.  Anything created
+        # after this point starts at 0 and waits for the operator.
+        await conn.execute(
+            "UPDATE knowledge_base SET platform_approved = 1 "
+            "WHERE visibility = 'public' AND approved = 1 "
+            "AND platform_approved = 0 AND platform_reviewed_at = ''"
+        )
+    except Exception as e:  # noqa: BLE001 — boot must survive a partial upgrade
+        logger.warning("kb platform-review migration skipped: %s", e)
 
 
 async def migrate_plan_price_rollouts(conn) -> None:

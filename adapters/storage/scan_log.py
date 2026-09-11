@@ -279,18 +279,37 @@ class ScanLogMixin:
         return [dict(r) for r in rows]
 
     async def mark_article_quarantined(self, article_id: int, *, reason: str) -> None:
-        """Set quarantine columns on a KB article.  Called by the
-        rescan worker when ClamAV flags an existing file.  Idempotent
-        — re-marking just overwrites the reason + bumps the timestamp."""
+        """Quarantine a KB article: withdraw it, then flag it.
+
+        Called by the rescan worker when ClamAV flags an existing file.
+        Idempotent — re-marking overwrites the reason and bumps the
+        timestamp.
+
+        Quarantine used to set the flag alone, which only blocked the
+        FILE download: the article's text stayed in every account's list
+        and in the assistant's knowledge search, because neither read
+        looked at the column.  An article we distrust enough to
+        quarantine is one whose author we distrust too, so the row drops
+        out of public entirely — back to private, both approvals
+        cleared.  Restoring it is therefore a resubmission, not a
+        silent republish.
+        """
         await self._db.execute(
             "UPDATE knowledge_base SET quarantined_at = NOW(), "
-            "quarantined_reason = ? WHERE id = ?",
+            "quarantined_reason = ?, visibility = 'private', "
+            "approved = 0, platform_approved = 0 WHERE id = ?",
             (reason, int(article_id)),
         )
 
     async def restore_quarantined_article(self, article_id: int) -> None:
         """Clear the quarantine flag — operator confirms the file is
-        a false positive or has been cleaned externally."""
+        a false positive or has been cleaned externally.
+
+        The article comes back PRIVATE and unapproved, the state
+        quarantine left it in.  Publishing it again means going through
+        both approvals from the start, which is the point: the operator
+        is clearing a virus flag, not re-blessing the content.
+        """
         await self._db.execute(
             "UPDATE knowledge_base SET quarantined_at = NULL, "
             "quarantined_reason = NULL WHERE id = ?",

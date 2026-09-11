@@ -610,6 +610,87 @@ async def cancel_scans_rescan(
     return {"ok": True, "job_id": job_id, "status": "cancelled"}
 
 
+# ── Knowledge base: the platform's half of the publishing decision ──
+#
+# A public article is readable by every account on the platform and is
+# fed to every account's AI assistant.  The publishing account's own
+# owner decides whether to SUBMIT; the operator decides whether it goes
+# out.  Before this existed, one customer's owner could approve their
+# own article into every other customer's product — and with open
+# signup, that is anyone who can complete a registration form.
+
+
+@router.get("/knowledge/pending")
+async def list_kb_platform_pending(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Articles their own account approved, waiting on the platform.
+
+    Oldest first: somebody submitted these and is waiting.
+    """
+    rows = await platform_db.list_kb_platform_pending()
+    return {"articles": rows, "count": len(rows)}
+
+
+@router.get("/knowledge/published")
+async def list_kb_published(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Everything currently readable across tenant lines."""
+    rows = await platform_db.list_kb_published_platform_wide()
+    return {"articles": rows, "count": len(rows)}
+
+
+@router.post("/knowledge/{article_id}/approve", status_code=200)
+async def platform_approve_kb(
+    article_id: int,
+    body: dict | None = None,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Publish an account-approved article to every other account."""
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if article.get("quarantined_at"):
+        raise HTTPException(
+            status_code=409,
+            detail="Article is quarantined — restore it before publishing.",
+        )
+    if article.get("visibility") != "public" or not article.get("approved"):
+        raise HTTPException(
+            status_code=409,
+            detail="Only an article its own account has approved for "
+                   "public can be published platform-wide.",
+        )
+    note = str((body or {}).get("note") or "")[:500]
+    ok = await platform_db.platform_approve_kb_article(article_id, note=note)
+    return {"ok": ok, "article_id": article_id, "platform_approved": ok}
+
+
+@router.post("/knowledge/{article_id}/unpublish", status_code=200)
+async def platform_unpublish_kb(
+    article_id: int,
+    body: dict | None = None,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Withdraw an article from every other account.
+
+    The row stays, as the authoring account's own private article —
+    refusing publication is not deleting somebody's work.  Use the
+    quarantine delete path when the article itself has to go.
+    """
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    note = str((body or {}).get("note") or "")[:500]
+    ok = await platform_db.platform_unpublish_kb_article(article_id, note=note)
+    return {"ok": ok, "article_id": article_id}
+
+
 @router.post("/scans/quarantine/{article_id}/restore", status_code=200)
 async def restore_quarantined(
     article_id: int,
@@ -1923,6 +2004,20 @@ _AUDITED_PLAN_FIELDS = ("label", "included", "quotas", "price_monthly_cents", "b
                         "extra_vehicle_cents", "stripe_price_id", "stripe_product_id", "public", "sort", "trial_default")
 
 
+def _stripe_setup() -> dict:
+    """Which pieces of the Stripe wiring exist, by env presence.  Read
+    by the Plans page so an operator sees what is missing BEFORE
+    BILLING_PROVIDER is switched, not from the first failed checkout."""
+    import os as _os
+    has = lambda k: bool((_os.getenv(k) or "").strip())  # noqa: E731
+    return {
+        "secret_key": has("STRIPE_SECRET_KEY"),
+        "webhook_secret": has("STRIPE_WEBHOOK_SECRET"),
+        "extras_price": has("STRIPE_PRICE_EXTRA_VEHICLE"),
+        "return_url": any(has(k) for k in ("AUTH_BASE_URL", "DASHBOARD_BASE_URL", "APP_BASE_URL")),
+    }
+
+
 def _billing_provider_name() -> str:
     import os as _os
     return (_os.getenv("BILLING_PROVIDER", "stub") or "stub").lower()
@@ -1995,6 +2090,8 @@ async def system_plans(
         # stripe = a price change creates the Stripe Price and can be rolled out;
         # stub = prices are numbers on a page
         "billing_provider": _billing_provider_name(),
+        # what a switch to Stripe still needs — env presence only, no Stripe call
+        "stripe_setup": _stripe_setup(),
     }
 
 

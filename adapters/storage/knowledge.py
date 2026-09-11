@@ -252,21 +252,34 @@ class KnowledgeBaseMixin:
         #   * Private:  same account AND
         #               (legacy 'all' target OR matches role OR
         #                user is owner/admin — management override)
-        #   * Public+approved: target='all' OR matches role
+        #   * Public+approved: target='all' OR matches role, AND —
+        #               when the article belongs to ANOTHER account —
+        #               the platform operator has also approved it, and
+        #               it is not quarantined.  A public article is
+        #               visible to every tenant, so the publishing
+        #               account's own owner cannot be the only gate:
+        #               with open signup that lets anyone put text into
+        #               every tenant's knowledge base and AI context.
         #   * Pending:  same-account (review queue, gated by include_pending)
-        #   * Creator:  always sees own row regardless of vis/role
+        #   * Creator:  always sees own row regardless of vis/role —
+        #               but `created_by = 0` is the column DEFAULT, so a
+        #               caller with no identity (the AI tool passes
+        #               none) would otherwise match every row that was
+        #               written without an author.
         cols = self._LIST_COLUMNS if light else "*"
         is_mgmt = user_role in ("owner", "admin")
         q = f"""SELECT {cols} FROM knowledge_base WHERE (
                   (visibility = 'private' AND account_id = ?
                    AND ({'TRUE' if is_mgmt else "(target_role = 'all' OR target_role = ?)"}))
                OR (visibility = 'public' AND approved = 1
+                   AND quarantined_at IS NULL
+                   AND (account_id = ? OR platform_approved = 1)
                    AND (target_role = 'all' OR target_role = ?))
-               OR created_by = ?"""
+               OR (created_by = ? AND created_by <> 0)"""
         params: list = [account_id]
         if not is_mgmt:
             params.append(user_role)
-        params.extend([user_role, user_id])
+        params.extend([account_id, user_role, user_id])
         if include_pending:
             q += " OR (visibility = 'public' AND approved = 0 AND account_id = ?)"
             params.append(account_id)
@@ -317,12 +330,14 @@ class KnowledgeBaseMixin:
                   (visibility = 'private' AND account_id = ?
                    AND ({'TRUE' if is_mgmt else "(target_role = 'all' OR target_role = ?)"}))
                OR (visibility = 'public' AND approved = 1
+                   AND quarantined_at IS NULL
+                   AND (account_id = ? OR platform_approved = 1)
                    AND (target_role = 'all' OR target_role = ?))
-               OR created_by = ?"""
+               OR (created_by = ? AND created_by <> 0)"""
         params: list = [account_id]
         if not is_mgmt:
             params.append(user_role)
-        params.extend([user_role, user_id])
+        params.extend([account_id, user_role, user_id])
         if include_pending:
             q += " OR (visibility = 'public' AND approved = 0 AND account_id = ?)"
             params.append(account_id)
@@ -362,6 +377,73 @@ class KnowledgeBaseMixin:
             )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ── Platform review (the SECOND gate on cross-account publishing) ──
+    #
+    # `approved` is the publishing account's own owner/admin.  These
+    # three are the platform operator's: a public article reaches every
+    # tenant's knowledge base and every tenant's AI context, so it does
+    # not go out on one customer's say-so.
+
+    async def list_kb_platform_pending(self) -> list[dict]:
+        """Articles the publishing account approved, awaiting the platform.
+
+        Ordered oldest first — a review queue is worked front to back,
+        and the oldest submission is the one somebody is waiting on.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM knowledge_base "
+            "WHERE visibility = 'public' AND approved = 1 "
+            "AND platform_approved = 0 AND quarantined_at IS NULL "
+            "ORDER BY created_at ASC",
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def platform_approve_kb_article(
+        self, article_id: int, *, note: str = "",
+    ) -> bool:
+        """Publish an account-approved article to every other account."""
+        cur = await self._db.execute(
+            "UPDATE knowledge_base SET platform_approved = 1, "
+            "platform_reviewed_at = ?, platform_review_note = ?, updated_at = ? "
+            "WHERE id = ? AND visibility = 'public' AND approved = 1",
+            (self._now(), note, self._now(), int(article_id)),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def platform_unpublish_kb_article(
+        self, article_id: int, *, note: str = "",
+    ) -> bool:
+        """Withdraw an article from every other account.
+
+        The row survives and stays the authoring account's own private
+        article — the operator is refusing PUBLICATION, not deleting
+        somebody's work.  Deletion is a separate, deliberate action.
+        """
+        cur = await self._db.execute(
+            "UPDATE knowledge_base SET platform_approved = 0, approved = 0, "
+            "visibility = 'private', platform_reviewed_at = ?, "
+            "platform_review_note = ?, updated_at = ? WHERE id = ?",
+            (self._now(), note, self._now(), int(article_id)),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def list_kb_published_platform_wide(self) -> list[dict]:
+        """Everything currently readable across tenant lines.
+
+        The operator's standing view of what this platform is publishing
+        on its customers' behalf — the list you check before you are
+        asked about it, and the list you unpublish from.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM knowledge_base "
+            "WHERE visibility = 'public' AND approved = 1 "
+            "AND platform_approved = 1 AND quarantined_at IS NULL "
+            "ORDER BY updated_at DESC",
+        )
+        return [dict(r) for r in await cur.fetchall()]
 
     async def get_kb_article(self, article_id: int) -> Optional[dict]:
         cur = await self._db.execute(

@@ -679,6 +679,14 @@ async def create_tables(conn) -> None:
             created_by       BIGINT  NOT NULL DEFAULT 0,
             creator_name     TEXT    NOT NULL DEFAULT '',
             approved         INTEGER NOT NULL DEFAULT 1,
+            -- Publishing to every OTHER account takes a SECOND approval.
+            -- `approved` is the publishing account's own owner/admin
+            -- saying yes; this one is the platform operator saying yes.
+            -- Without it, open signup means anyone can put text into
+            -- every tenant's knowledge base and AI context.
+            platform_approved    INTEGER NOT NULL DEFAULT 0,
+            platform_reviewed_at TEXT    NOT NULL DEFAULT '',
+            platform_review_note TEXT    NOT NULL DEFAULT '',
             view_count       INTEGER NOT NULL DEFAULT 0,
             helpful_count    INTEGER NOT NULL DEFAULT 0,
             unhelpful_count  INTEGER NOT NULL DEFAULT 0,

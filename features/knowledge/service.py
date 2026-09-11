@@ -25,17 +25,28 @@ def can_view_article(
            (management override — needed so account admins keep
            visibility into what each team is documenting).
     3. Public + approved — visible if target_role matches (or 'all').
+       From ANOTHER account it additionally needs the platform
+       operator's approval and a clean quarantine flag: a public
+       article reaches every tenant, so the publishing account's own
+       owner cannot be the only gate.
        New public articles are always created with target_role='all'
        (the per-role selector for public was dropped); the field is
        still honoured here for backward-compat with old rows.
     4. Public + not approved — visible only to same-account management
        (review queue: Owner/Admin/Fleet/Safety).
+
+    Kept in lockstep with ``Database.get_kb_articles`` — the SQL is the
+    prefilter and this is the per-row check; drift between them shows
+    up as short pages.
     """
     vis = article.get("visibility", "private")
     target = article.get("target_role", "all")
     approved = bool(article.get("approved", 1))
+    same_account = article.get("account_id") == account_id
 
-    if article.get("created_by") == user_id:
+    # `created_by` defaults to 0 on the column, so an anonymous caller
+    # (user_id 0) must not match every authorless row.
+    if user_id and article.get("created_by") == user_id:
         return True
 
     if vis == "private":
@@ -53,7 +64,15 @@ def can_view_article(
 
     # public article
     if approved:
-        return target == "all" or target == role
+        if not (target == "all" or target == role):
+            return False
+        if same_account:
+            return True
+        # Someone else's article: the platform has to have blessed it,
+        # and a quarantined one is withdrawn from everyone.
+        if article.get("quarantined_at"):
+            return False
+        return bool(article.get("platform_approved"))
 
     # public but pending approval — only same-account management can see it
     if article.get("account_id") == account_id:
