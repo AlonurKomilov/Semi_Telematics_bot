@@ -81,6 +81,47 @@ def test_pair_clears_its_floor(fg: str, bg: str, floor: float, worn_by: str) -> 
     )
 
 
+OVERLAY = REPO / "interfaces/browser_extension/src/content/mapsOverlay.ts"
+
+# Google paints the land behind our card: #f2efe9 on the default map,
+# #3c4043 on its dark one.  A translucent ground has TWO ratios, and the
+# control has to clear its floor on both.
+MAP_GROUNDS = {"light map": "#f2efe9", "dark map": "#3c4043"}
+
+
+def _composite(fg: str, alpha: float, bg: str) -> str:
+    f = [int(fg.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    b = [int(bg.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    return "#" + "".join(f"{round(alpha * x + (1 - alpha) * y):02x}"
+                         for x, y in zip(f, b))
+
+
+def _overlay_const(name: str) -> str:
+    m = re.search(rf"const {name} = '(#[0-9a-fA-F]{{6}})'", OVERLAY.read_text(encoding="utf-8"))
+    assert m, f"{name} is gone from mapsOverlay.ts"
+    return m.group(1)
+
+
+@pytest.mark.parametrize("map_name", list(MAP_GROUNDS))
+def test_the_overlay_switch_is_visible_when_it_is_off(map_name: str) -> None:
+    """The control saying the vehicles are HIDDEN was the invisible one.
+
+    This surface is drawn onto somebody else's page, so it carries its
+    own literals and cannot inherit --edge.  The off track was #4b5563:
+    2.02:1 against its own pill over a light map.
+    """
+    pill = _composite("#11141a", 0.92, MAP_GROUNDS[map_name])
+    track = _overlay_const("TRACK_OFF")
+    assert contrast(track, pill) >= AA_NON_TEXT, (
+        f"the off track is {contrast(track, pill):.2f}:1 on the pill over the "
+        f"{map_name} — the switch disappears in exactly the state that needs "
+        f"a press"
+    )
+    # …and the knob has to stay legible ON that track, or the state moves
+    # from invisible to ambiguous.
+    assert contrast("#ffffff", track) >= AA_NON_TEXT
+
+
 def test_the_separator_stays_a_separator() -> None:
     """--border is deliberately below every floor, and must not be reached for.
 

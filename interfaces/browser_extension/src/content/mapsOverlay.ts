@@ -75,6 +75,15 @@ const QUIET_RESTORE_MS = 900;
  *  ``needsRemeasure``. */
 const GEOMETRY_RECHECK_MS = 2_000;
 
+/** The toggle's OFF track.  It was #4b5563, which is 2.02:1 against the
+ *  pill it sits in over a light Google map — below 1.4.11's 3:1, so the
+ *  control that says the vehicles are HIDDEN was the one you could
+ *  barely see.  This is 3.15:1 there and 3.70:1 over Google's dark map,
+ *  with the white knob at 4.83:1 on it.  Computed, on both map themes,
+ *  because this surface cannot borrow the panel's tokens — it is drawn
+ *  onto somebody else's page. */
+const TRACK_OFF = '#6b7280';
+
 let camera: Camera | null = null;
 let surface: Surface | null = null;
 let canvasEl: HTMLCanvasElement | null = null;
@@ -260,7 +269,7 @@ function ensureChip(): HTMLButtonElement {
     '<span data-spin hidden style="width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.25);' +
       'border-top-color:#fff;animation:fourtruck-spin .7s linear infinite"></span>' +
     '<span data-label></span>' +
-    '<span data-track style="position:relative;width:28px;height:16px;border-radius:999px;background:#4b5563;transition:background .15s">' +
+    `<span data-track style="position:relative;width:28px;height:16px;border-radius:999px;background:${TRACK_OFF};transition:background .15s">` +
       '<span data-knob style="position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s"></span>' +
     '</span>';
   el.addEventListener('click', () => { void setOverlayPref(!enabled); });
@@ -309,7 +318,7 @@ function updateChip(inView: number | null): void {
     label.textContent = 'vehicles off';
     el.setAttribute('aria-checked', 'false');
     el.setAttribute('aria-label', 'Show 4truck vehicles on this map — off');
-    track.style.background = '#4b5563';
+    track.style.background = TRACK_OFF;
     knob.style.transform = '';
   }
 }
