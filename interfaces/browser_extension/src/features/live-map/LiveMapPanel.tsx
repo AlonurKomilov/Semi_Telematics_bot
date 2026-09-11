@@ -50,6 +50,25 @@ const INV_BODY_ID = 'live-map-vehicle-inventory';
 /** The filter is a working preference, not a fresh decision every time:
  *  a dispatcher who watches Moving watched it yesterday too. */
 const FILTER_KEY = 'liveMapFilter';
+
+/* The two floors the splitter converts into a range it can actually
+   offer.  They live here, next to the elements that impose them, because
+   a floor stated in one file and honoured in another is how the map came
+   to refuse a minimum the separator was advertising. */
+
+/** A map below this is not a map.  It was 220 — which 20% of any column
+ *  shorter than 1100px cannot pay, so the separator offered a minimum the
+ *  layout refused, and the shortfall came out of the list. */
+const MAP_FLOOR_PX = 120;
+/** The vehicle list's scroller: one row and a little, so the region under
+ *  the line never becomes a header bar with nothing beneath it. */
+const LIST_FLOOR_PX = 80;
+/** Everything BELOW the line, added up:
+ *    8   column gap (separator → search)
+ *  + 66  search box (input 34 + gap 6 + chips 26)
+ *  + 8   column gap (search → list)
+ *  + 111 list region (header 30 + scroller floor + 1px border) */
+const BELOW_FLOOR_PX = 8 + 66 + 8 + (30 + LIST_FLOOR_PX + 1);
 type Filter = 'all' | VehicleStatus;
 
 export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
@@ -536,7 +555,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
                     // the map takes the room instead of leaving it unallocated.  With
                     // `0 1 …%` on both and no grower, the leftover simply went blank.
                     flex: listOpen ? `0 1 ${mapPct}%` : '1 1 auto' }}>
-      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 220 }}>
+      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: MAP_FLOOR_PX }}>
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew
@@ -804,6 +823,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
       {listOpen && (
         <Splitter storageKey="liveMapMapPct" fallback={60}
                   columnRef={columnRef} onChange={setMapPct}
+                  minAbovePx={MAP_FLOOR_PX} minBelowPx={BELOW_FLOOR_PX}
                   label="Resize the map" />
       )}
       <div style={{ padding: '0 10px', display: 'grid', gap: 6 }}>
@@ -851,7 +871,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           </span>
         </button>
         <div hidden={!listOpen}
-             style={{ flex: 1, minHeight: 80, overflowY: 'auto' }}
+             style={{ flex: 1, minHeight: LIST_FLOOR_PX, overflowY: 'auto' }}
              role="region" aria-label="Vehicles" tabIndex={0}>
         {filtered.map((f) => {
           const p = f.properties, status = vehicleStatus(f), warn = hasLowLevelWarning(p);

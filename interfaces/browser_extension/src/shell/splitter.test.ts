@@ -16,7 +16,7 @@ import splitterSrc from './Splitter.tsx?raw';
 import inventorySrc from '../features/inventory/InventoryPanel.tsx?raw';
 import liveMapSrc from '../features/live-map/LiveMapPanel.tsx?raw';
 import prefsSrc from '../prefs.ts?raw';
-import { MIN_PCT, MAX_PCT } from './Splitter';
+import { MIN_PCT, MAX_PCT, rangeFor } from './splitterRange';
 
 const src = splitterSrc as unknown as string;
 const inventory = inventorySrc as unknown as string;
@@ -30,7 +30,9 @@ describe('the splitter', () => {
     // rather than configured.
     expect(MIN_PCT).toBeGreaterThanOrEqual(15);
     expect(MAX_PCT).toBeLessThanOrEqual(85);
-    expect(src).toContain('Math.min(MAX_PCT, Math.max(MIN_PCT');
+    // With no pixel floors declared those two ARE the range, and a drag
+    // past either end lands on it rather than through it.
+    expect(rangeFor(600)).toEqual({ lo: MIN_PCT, hi: MAX_PCT });
     // …and a stored number outside that range is refused on the way IN
     // too — in prefs, where it is read — or yesterday's value
     // reintroduces exactly what the clamp prevents.
@@ -183,5 +185,59 @@ describe('the session ends the same way however it ends', () => {
     const c = (await import('./Connect.tsx?raw')).default as unknown as string;
     expect(c).toContain('void getPending().then');
     expect(c).toContain('p.expires > Date.now()');
+  });
+});
+
+describe('the range it offers is the range the layout will honour', () => {
+  // A splitter speaks per cent; the regions have floors in PIXELS.  On a
+  // 600px column 20% is 120px, so Live Map's old 220px map floor refused
+  // the minimum the separator was advertising — Home stopped short, the
+  // drag stopped short, and the shortfall was taken out of the list,
+  // whose last rows fell off a panel with nothing to scroll them back.
+  it('raises the minimum until the region above can pay its floor', () => {
+    // 120px of a 600px column is exactly 20%, so nothing moves…
+    expect(rangeFor(600, 120).lo).toBe(MIN_PCT);
+    // …and on a shorter column the same floor costs more of it.
+    expect(rangeFor(400, 120).lo).toBe(30);
+    // The old number, at the height that showed the bug.
+    expect(rangeFor(600, 220).lo).toBe(37);
+  });
+
+  it('lowers the maximum until the region below can pay its floor', () => {
+    expect(rangeFor(600, undefined, 193).hi).toBe(68);
+    expect(rangeFor(1000, undefined, 193).hi).toBe(MAX_PCT);
+  });
+
+  it('never proposes a minimum above its own maximum', () => {
+    // A column too short to pay both floors.  The region BELOW wins: a
+    // small map still works, while a list without its header and first
+    // row leaves no way to pick another vehicle at all.
+    const r = rangeFor(250, 120, 193);
+    expect(r.lo).toBeLessThanOrEqual(r.hi);
+    expect(r.hi).toBe(23);
+    expect(r.lo).toBe(23);
+  });
+
+  it('falls back to the fixed range before the column has been measured', () => {
+    // A ResizeObserver reports after the first paint; until then height
+    // is 0, and dividing by it would hand the layout a NaN.
+    expect(rangeFor(0, 120, 193)).toEqual({ lo: MIN_PCT, hi: MAX_PCT });
+  });
+
+  it('quotes that range to the keyboard and to assistive tech, not the constants', () => {
+    expect(src).toContain('aria-valuemin={lo}');
+    expect(src).toContain('aria-valuemax={hi}');
+    expect(src).toContain("e.key === 'Home') { apply(lo, true)");
+    expect(src).toContain("e.key === 'End') { apply(hi, true)");
+    expect(src).toContain('Math.min(hi, Math.max(lo, Math.round(next)))');
+  });
+
+  it('is told its floors by the surface that imposes them', () => {
+    // Two numbers in two files drift.  Live Map names each floor once,
+    // beside the element that imposes it, and hands them over.
+    expect(liveMap).toContain('minAbovePx={MAP_FLOOR_PX} minBelowPx={BELOW_FLOOR_PX}');
+    expect(liveMap).toContain('minHeight: MAP_FLOOR_PX');
+    expect(liveMap).toContain('minHeight: LIST_FLOOR_PX');
+    expect(liveMap).not.toContain('minHeight: 220');
   });
 });

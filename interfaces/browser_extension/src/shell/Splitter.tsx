@@ -21,20 +21,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getNumber, setNumber } from '../prefs';
+import { MAX_PCT, MIN_PCT, rangeFor } from './splitterRange';
 
-/** Neither region may be dragged away entirely.  A card at 0 hides the
- *  truck somebody just selected; a list at 0 hides the way to select
- *  another, and both leave the panel looking broken rather than
- *  configured. */
-export const MIN_PCT = 20;
-export const MAX_PCT = 80;
 /** One arrow press.  Big enough to be worth pressing, small enough to
  *  land where you meant on a 600px column. */
 const STEP_PCT = 4;
-
-function clamp(n: number): number {
-  return Math.min(MAX_PCT, Math.max(MIN_PCT, Math.round(n)));
-}
 
 /**
  * The percentage a Splitter reports is ALWAYS the share of the column
@@ -58,11 +49,32 @@ export interface SplitterProps {
   /** Raised with the current percentage: on mount, on drag, on reset. */
   onChange: (pct: number) => void;
   label: string;
+  /** Pixel floor of the region ABOVE the line, if it has one. */
+  minAbovePx?: number;
+  /** Pixel floor of everything BELOW the line — the fixed rows between
+   *  the regions included, since they are under it too. */
+  minBelowPx?: number;
 }
 
-export default function Splitter({ storageKey, fallback, columnRef, onChange, label }: SplitterProps) {
+export default function Splitter({ storageKey, fallback, columnRef, onChange, label,
+                                   minAbovePx, minBelowPx }: SplitterProps) {
   const [pct, setPct] = useState<number | null>(null);
+  const [colH, setColH] = useState(0);
   const dragging = useRef(false);
+  const { lo, hi } = rangeFor(colH, minAbovePx, minBelowPx);
+
+  // The reachable range is a function of the column's height, so it
+  // changes when the browser window does.  Without this the range is
+  // whatever it was at mount, and a pct that was legal in a tall window
+  // stays put in a short one — the exact deficit this is here to stop.
+  useEffect(() => {
+    const col = columnRef.current;
+    if (!col) return;
+    const ro = new ResizeObserver(() => setColH(col.getBoundingClientRect().height));
+    ro.observe(col);
+    setColH(col.getBoundingClientRect().height);
+    return () => ro.disconnect();
+  }, [columnRef]);
 
   // Read once, then the parent is told.  `null` until it arrives so the
   // parent can hold its own default rather than flashing 50% first.
@@ -78,11 +90,22 @@ export default function Splitter({ storageKey, fallback, columnRef, onChange, la
   }, [storageKey]);
 
   const apply = useCallback((next: number, persist: boolean) => {
-    const v = clamp(next);
+    const v = Math.min(hi, Math.max(lo, Math.round(next)));
     setPct(v);
     onChange(v);
     if (persist) void setNumber(storageKey, v);
-  }, [onChange, storageKey]);
+  }, [onChange, storageKey, lo, hi]);
+
+  // A stored 60 is legal in a tall window and unreachable in a short one.
+  // Re-clamping here is what makes the resize honest rather than just the
+  // next drag.  Not persisted: the window is temporary, the preference is
+  // not, and writing it back would let one narrow moment overwrite a
+  // choice the person made deliberately.
+  useEffect(() => {
+    if (pct == null) return;
+    const v = Math.min(hi, Math.max(lo, pct));
+    if (v !== pct) { setPct(v); onChange(v); }
+  }, [lo, hi, pct, onChange]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const col = columnRef.current;
@@ -121,8 +144,8 @@ export default function Splitter({ storageKey, fallback, columnRef, onChange, la
       aria-orientation="horizontal"
       aria-label={label}
       aria-valuenow={pct ?? fallback}
-      aria-valuemin={MIN_PCT}
-      aria-valuemax={MAX_PCT}
+      aria-valuemin={lo}
+      aria-valuemax={hi}
       tabIndex={0}
       title={`${label} — drag, or use the arrow keys; double-click to reset`}
       onPointerDown={onPointerDown}
@@ -135,8 +158,8 @@ export default function Splitter({ storageKey, fallback, columnRef, onChange, la
         // still move it.
         if (e.key === 'ArrowUp') { apply((pct ?? fallback) - STEP_PCT, true); e.preventDefault(); }
         else if (e.key === 'ArrowDown') { apply((pct ?? fallback) + STEP_PCT, true); e.preventDefault(); }
-        else if (e.key === 'Home') { apply(MIN_PCT, true); e.preventDefault(); }
-        else if (e.key === 'End') { apply(MAX_PCT, true); e.preventDefault(); }
+        else if (e.key === 'Home') { apply(lo, true); e.preventDefault(); }
+        else if (e.key === 'End') { apply(hi, true); e.preventDefault(); }
       }}
       // A 24px HIT BOX for a 2px line, bought with padding the layout
       // never pays for.  An edge handle is the case WCAG 2.5.8's spacing

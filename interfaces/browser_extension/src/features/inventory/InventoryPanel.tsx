@@ -17,7 +17,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import Field from './Field';
-import Splitter, { MIN_PCT } from '../../shell/Splitter';
+import Splitter from '../../shell/Splitter';
+import { MIN_PCT } from '../../shell/splitterRange';
 import { DASHBOARD_BASE } from '../../connect';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
 import { addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventory, setItemStatus, verifyItem,
@@ -47,6 +48,18 @@ interface FleetRow {
  *  trucks move.  Slow enough to be free, often enough that a panel left
  *  open all morning is not lying by lunchtime. */
 const FLEET_REFRESH_MS = 60_000;
+
+/** The floor of everything BELOW the line, so a drag cannot take the truck
+ *  list away entirely — the card would still scroll, but the way to pick a
+ *  different vehicle would be gone.  A cap on the SPLITTER, not a
+ *  `minHeight` on the list: the list must stay able to shrink to nothing,
+ *  which is what makes the card's ceiling work at all (see the card).
+ *    8   the search block's top padding
+ *  + 34  the search input
+ *  + 23  gap and the summary line, when it is shown
+ *  + 1   its top border
+ *  + 60  one row of list and a little, so the region is visibly a list */
+const BELOW_FLOOR_PX = 8 + 34 + 23 + 1 + 60;
 
 export default function InventoryPanel({ abilities, features }: PanelFeatureProps) {
   const canWrite = abilities.includes('inventory.write');
@@ -506,6 +519,7 @@ useEffect(() => {
       {selected && cardCanResize && (
         <Splitter storageKey="inventoryCardPct" fallback={70}
                   columnRef={columnRef} onChange={setCardPct}
+                  minBelowPx={BELOW_FLOOR_PX}
                   label="Resize the vehicle card" />
       )}
 
