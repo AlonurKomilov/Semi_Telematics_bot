@@ -979,5 +979,27 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_vehicle_inventory_events_item
             ON vehicle_inventory_events(account_id, item_id);
+
+        -- What a vehicle is SUPPOSED to carry, per vehicle type.  Keyed on
+        -- CATEGORY, never on label: labels are free text somebody types at
+        -- a truck, categories are the stable key the items already group
+        -- by.  `quantity` because a truck can owe two cameras; `required`
+        -- because a toll transponder is normal to carry and normal not to,
+        -- and flagging every truck without one teaches people to ignore
+        -- the flag.
+        CREATE TABLE IF NOT EXISTS inventory_expected_items (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL,
+            vehicle_type  TEXT    NOT NULL DEFAULT 'truck',
+            category      TEXT    NOT NULL,
+            label         TEXT    NOT NULL DEFAULT '',
+            quantity      INTEGER NOT NULL DEFAULT 1,
+            required      INTEGER NOT NULL DEFAULT 1,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT '',
+            updated_at    TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_expected_unique
+            ON inventory_expected_items(account_id, vehicle_type, category);
     """)
     await conn.commit()

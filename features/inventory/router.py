@@ -14,6 +14,11 @@ Routes (mounted under the same /vehicles prefix as the parent feature):
     POST   /inventory/items/{id}/transfer           move to another truck
     POST   /inventory/items/{id}/remove             soft-remove (trail kept)
     GET    /inventory/items/{id}/events             accountability trail
+    GET    /inventory/expected                      what a vehicle type owes
+    PUT    /inventory/expected                      rewrite that template
+
+    The two ``expected`` routes have no legacy alias: they are newer than
+    the move, so there is no pre-move address for them to answer on.
 
     Every one also answers on its pre-move ``/vehicles/…`` address, as a
     deprecated alias; ``tests/test_inventory_url_move.py`` proves the two
@@ -36,6 +41,7 @@ from adapters.storage.inventory import (
     normalize_inventory_category,
     INVENTORY_STATUSES,
 )
+from features.inventory.expected import EXPECTED_VEHICLE_TYPES, standard_for
 from features.inventory import service
 from features.vehicles.scope import company_allows
 from interfaces.api.deps import (
@@ -142,6 +148,15 @@ async def vehicle_inventory(
         "vehicle_id": vehicle["id"],
         "items": items,
         "summary": _summary(items),
+        # What this truck OWES, beside what it has.  An account with no
+        # template gets expected=0, which reads as "not declared" rather
+        # than as "complete" — the one wrong answer here would be telling
+        # somebody a truck is fully equipped because nobody said what
+        # fully means.
+        "coverage": await tenant.expected_coverage(
+            int(user["account_id"]), int(vehicle["id"]),
+            str(vehicle.get("vehicle_type") or "truck"),
+        ),
         "categories": await tenant.list_inventory_categories(int(user["account_id"])),
         "statuses": list(INVENTORY_STATUSES),
     }
@@ -174,6 +189,72 @@ async def add_item(
         actor_user_id=await resolve_user_id(user),
     )
     return {"ok": True, "item_id": item_id}
+
+
+# ── the expectation ──────────────────────────────────────────────
+
+class ExpectedRow(BaseModel):
+    category: str = Field(..., min_length=1, max_length=40)
+    label: str = Field("", max_length=120)
+    quantity: int = Field(1, ge=1, le=99)
+    required: bool = True
+    sort_order: int = Field(0, ge=0, le=999)
+
+
+class ExpectedBody(BaseModel):
+    vehicle_type: str = "truck"
+    items: list[ExpectedRow] = Field(default_factory=list, max_length=100)
+
+
+def _checked_type(vehicle_type: str) -> str:
+    if vehicle_type not in EXPECTED_VEHICLE_TYPES:
+        raise HTTPException(
+            400,
+            f"vehicle_type must be one of {', '.join(EXPECTED_VEHICLE_TYPES)}",
+        )
+    return vehicle_type
+
+
+@router.get("/expected")
+async def get_expected(
+    vehicle_type: str = "truck",
+    user: dict = Depends(_VIEW),
+    tenant=Depends(get_tenant_db),
+):
+    """The template, plus the standard it can be reset to.
+
+    ``standard`` travels with the answer so the editor's reset button has
+    something to reset TO without a second round trip, and so the reader
+    can see what they diverged from.
+    """
+    vehicle_type = _checked_type(vehicle_type)
+    return {
+        "vehicle_type": vehicle_type,
+        "items": await tenant.list_expected_items(
+            int(user["account_id"]), vehicle_type,
+        ),
+        "standard": standard_for(vehicle_type),
+    }
+
+
+@router.put("/expected")
+async def put_expected(
+    body: ExpectedBody,
+    user: dict = Depends(_MANAGE),
+    tenant=Depends(get_tenant_db),
+):
+    """Rewrite the whole template for one vehicle type.
+
+    A PUT, not a PATCH: the editor sends the list it is looking at.  With
+    a merge there is no way to express "this row is gone", and a template
+    nobody can delete a row from is one that only ever grows.
+    """
+    vehicle_type = _checked_type(body.vehicle_type)
+    written = await tenant.replace_expected_items(
+        int(user["account_id"]), vehicle_type,
+        [row.model_dump() for row in body.items],
+    )
+    return {"ok": True, "vehicle_type": vehicle_type, "count": written}
 
 
 # ── fleet badge ──────────────────────────────────────────────────

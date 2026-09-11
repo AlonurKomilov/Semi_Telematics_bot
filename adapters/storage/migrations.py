@@ -9452,3 +9452,67 @@ async def migrate_inventory_event_changes(conn) -> None:
         except Exception:
             continue
     logger.info("Migration 207: inventory events record what an edit changed")
+
+
+@_register("208_inventory_expected_items")
+async def migrate_inventory_expected_items(conn) -> None:
+    """What a vehicle is SUPPOSED to carry.
+
+    Inventory could only answer "what has somebody recorded on this
+    truck?", which leaves the feature's strongest case unmakeable: a
+    dashcam nobody ever typed in cannot go ``missing``.  It simply is not
+    there, and nothing notices.  Declaring the expectation turns that
+    silence into a fact.
+
+    Keyed on CATEGORY, not label — categories are the stable key items
+    already group by, while labels are free text somebody types standing
+    at a truck ("front dashcam", "dash cam"), which a template keyed on
+    them would drift away from the day it shipped.
+
+    No rows are written here.  An account with no template expects
+    nothing, which is exactly what was true before this ran; seeding is
+    the feature's own call, so an existing fleet is never flagged by a
+    migration it did not ask for.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_expected_items (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL,
+            vehicle_type  TEXT    NOT NULL DEFAULT 'truck',
+            category      TEXT    NOT NULL,
+            label         TEXT    NOT NULL DEFAULT '',
+            quantity      INTEGER NOT NULL DEFAULT 1,
+            required      INTEGER NOT NULL DEFAULT 1,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT '',
+            updated_at    TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_expected_unique "
+        "ON inventory_expected_items(account_id, vehicle_type, category)"
+    )
+    await conn.commit()
+    logger.info("Migration 208: inventory expected-items table created")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 208: ENABLE_RLS not set; RLS skipped")
+        return
+    tbl = "inventory_expected_items"
+    try:
+        await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+        await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+        await conn.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {tbl}")
+        await conn.execute(
+            f"""
+            CREATE POLICY tenant_isolation ON {tbl}
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        logger.info("Migration 208: RLS enabled on %s", tbl)
+    except Exception as e:
+        logger.warning("Migration 208: %s RLS skipped (%s)", tbl, e)
