@@ -76,7 +76,13 @@ describe('the panel does not assume a grant it was split away from', () => {
     // with no business seeing where the trucks are — so `positionOf` is
     // not called unless /extension/me said this person may open Live Map.
     expect(src).toContain("features.includes('live-map')");
-    expect(src).toMatch(/if \(canLocate && follow\)/);
+    // `canLocate` FIRST, and the condition is allowed to GROW: this guard
+    // is about the grant, not about an exact expression.  One more joined
+    // it — a choice made on Google's own map carries `fromMap`, and
+    // following then navigates the very tab the person is working on to
+    // show a pin where a pin already is.
+    expect(src).toMatch(/if \(canLocate && follow(?: && \w+)?\)/);
+    expect(src).toContain('andFollow');
     // The gate stands BEFORE the call, not beside it.
     const before = src.slice(0, src.indexOf('positionOf('));
     expect(src.indexOf('positionOf(')).toBeGreaterThan(-1);

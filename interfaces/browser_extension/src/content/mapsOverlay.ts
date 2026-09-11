@@ -50,6 +50,7 @@ import { ageMs, describeAge, formatAge, stalenessOf } from '../features/live-map
 import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
+import { DASHBOARD_BASE } from '../connect';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraDrawable, cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
 import { cardAnchor, colourFor, findMapCanvas, hitRadiusFor, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
@@ -503,16 +504,47 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
             ? `<div style="opacity:.6">+${cardItems.more} more</div>`
             : '')
         + '</div>')
-    // Fuel, DEF, the address, the faults: all one button away, in the
-    // panel, which is where they live — see bridge.ts on what does not
-    // cross into a page we do not own.
-    // min-height, because 6 + 11 + 6 is 23 and the floor is 24.  A button
-    // one pixel short is not a different button, it is the same one
-    // failing 2.5.8 for no reason anybody chose.
-    + '<button data-panel style="all:unset;box-sizing:border-box;display:flex;align-items:center;'
-    +   'justify-content:center;width:100%;min-height:24px;text-align:center;'
-    +   'cursor:pointer;margin-top:2px;padding:6px 8px;border-radius:6px;background:#2563eb;color:#fff;'
-    +   `font:600 11px/1 system-ui,sans-serif">${esc(panelButtonLabel())}</button>`;
+      // Fuel, DEF, the address, the faults: all one button away, in the
+      // panel, which is where they live — see bridge.ts on what does not
+      // cross into a page we do not own.
+      //
+      // TWO doors, because they cost different things.  PANEL opens the
+      // side panel beside this page and leaves the page alone.  WEB is a
+      // new TAB, never this one: whoever is reading Google's map is
+      // usually mid-preparation on it, and taking that tab away to show a
+      // vehicle costs them the work — which is the whole reason a panel
+      // exists.  An <a target=_blank>, not a scripted open, so no popup
+      // heuristic on somebody else's page gets a say in it.
+      //
+      // min-height, because 6 + 11 + 6 is 23 and the floor is 24: a button
+      // one pixel short is the same button failing 2.5.8 for no reason
+      // anybody chose.
+      + '<div style="display:flex;gap:6px;margin-top:2px">'
+      +   '<button data-panel style="all:unset;box-sizing:border-box;display:flex;align-items:center;'
+      +     'justify-content:center;flex:1 1 auto;min-width:0;min-height:24px;text-align:center;'
+      +     'cursor:pointer;padding:6px 8px;border-radius:6px;background:#2563eb;color:#fff;'
+      +     `font:600 11px/1 system-ui,sans-serif">${esc(panelButtonLabel())}</button>`
+      +   `<a data-web href="${esc(webUrl(v))}" target="_blank" rel="noopener noreferrer" `
+      +     'style="all:unset;box-sizing:border-box;display:flex;align-items:center;'
+      +     'justify-content:center;flex:0 0 auto;min-height:24px;cursor:pointer;'
+      +     'padding:6px 10px;border-radius:6px;color:#fff;'
+      +     'box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);'
+      +     'font:600 11px/1 system-ui,sans-serif" '
+      +     'title="Open this vehicle on 4truck.us in a new tab">Web</a>'
+      + '</div>';
+}
+
+/** This vehicle's own page on 4truck.us.
+ *
+ *  `?company=` is not decoration: unit numbers repeat across companies,
+ *  so "103" alone names two trucks and the dashboard would have to guess
+ *  which.  The overlay already carries both because its CARD had the
+ *  same problem.
+ */
+function webUrl(v: OverlayVehicle): string {
+  const name = encodeURIComponent(v.name || v.id);
+  const q = v.company ? `?company=${encodeURIComponent(v.company)}` : '';
+  return `${DASHBOARD_BASE}/vehicles/${name}${q}`;
 }
 
 /** Which feature the panel will land on, so the button can say what it
@@ -710,7 +742,14 @@ function openInPanel(v: OverlayVehicle): void {
   // /map/vehicles needs the location grant its reader may not hold —
   // resolves the unit number inside its company.
   void chrome.storage.local.set({
-    [PENDING_SELECT_KEY]: { id: v.id, name: v.name || '', company: v.company || '' },
+    [PENDING_SELECT_KEY]: {
+      id: v.id, name: v.name || '', company: v.company || '',
+      // The truck is on the page in front of them.  Following would
+      // navigate THIS tab to a bare search URL to show a pin where a pin
+      // already is, and take the place page, the search, or whatever was
+      // being prepared with it.
+      fromMap: true,
+    },
   });
   try { chrome.runtime.sendMessage({ type: OPEN_PANEL }); } catch { /* worker asleep; storage still carries it */ }
 }

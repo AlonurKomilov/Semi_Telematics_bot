@@ -325,3 +325,29 @@ describe("the card's button always does something", () => {
     expect(src).toContain('chrome.runtime.lastError');
   });
 });
+
+describe('the card offers two doors, and only one of them costs the page', () => {
+  // The `?raw` import above, for the reason stated there.
+  const overlay = overlaySrc as unknown as string;
+
+  it('opens the web half in a NEW tab, never this one', () => {
+    // The person reading Google's map is usually mid-preparation on it.
+    // `chrome.tabs.update` on the active tab — which is what Follow does
+    // — takes that work away; a plain target=_blank cannot.
+    expect(overlay).toContain('target="_blank"');
+    expect(overlay).toContain('rel="noopener noreferrer"');
+    expect(overlay).not.toContain('chrome.tabs.update');
+  });
+
+  it('names the vehicle by unit AND company', () => {
+    // Unit numbers repeat across companies, so "103" alone would open
+    // whichever one the dashboard guessed.
+    expect(overlay).toContain('?company=${encodeURIComponent(v.company)}');
+  });
+
+  it('tells the panel the choice came from the map', () => {
+    // The whole point: the truck is already on the page in front of the
+    // person, so the panel must not navigate that page to show it.
+    expect(overlay).toContain('fromMap: true');
+  });
+});

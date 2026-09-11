@@ -192,7 +192,12 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
 
   /** One place a vehicle gets selected: the card, the map, and — with
    *  Google Maps in front and follow on — Google's pin. */
-  const select = (f: MapVehicleFeature, pan: boolean) => {
+  /** `follow` is false for a choice made ON Google's map: the truck is
+   *  already on the page in front of the person, and following would
+   *  navigate that very tab to a bare search URL — losing the place page,
+   *  the search, whatever was being prepared — to show a pin where a pin
+   *  already was. */
+  const select = (f: MapVehicleFeature, pan: boolean, follow = true) => {
     const cur = latest.current.get(idOf(f)) ?? f;
     setSelected(cur);
     // Links belong to the truck, not the selection: clear first so the
@@ -212,7 +217,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     setKeep(true);              // a fresh choice always starts centred
     const [lat, lng] = liveLatLng(cur);
     if (pan) centreOn(lat, lng, { zoom: 14 });
-    if (followRef.current) void followInGoogleMaps(searchUrl(lat, lng));
+    if (follow && followRef.current) void followInGoogleMaps(searchUrl(lat, lng));
   };
   const selectRef = useRef(select);
   selectRef.current = select;
@@ -480,7 +485,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
         ?? (want.name ? vehicles.find((v) => String(v.properties.name) === want.name) : undefined);
       if (!f) return;
       void chrome.storage.local.remove(PENDING_SELECT_KEY);
-      select(f, true);
+      select(f, true, !want.fromMap);
     };
     void chrome.storage.local.get(PENDING_SELECT_KEY).then((got) => take(got[PENDING_SELECT_KEY]));
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {

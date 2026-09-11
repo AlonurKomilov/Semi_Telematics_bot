@@ -146,20 +146,20 @@ describe('toOverlayVehicles — the card\'s fields', () => {
 
 describe('the truck handed from the map to the panel', () => {
   it('carries an identity each feature can resolve', () => {
-    expect(readPendingSelect({ id: '42', name: '103', company: 'PTG' }))
-      .toEqual({ id: '42', name: '103', company: 'PTG' });
+    expect(readPendingSelect({ id: '42', name: '103', company: 'PTG', fromMap: false }))
+      .toEqual({ id: '42', name: '103', company: 'PTG', fromMap: false });
   });
 
   it('still reads the bare string the key held before Inventory existed', () => {
     // An update lands while a click may already be sitting in storage.
     // Dropping it would eat that click, and the person would press the
     // button twice and blame the panel.
-    expect(readPendingSelect('42')).toEqual({ id: '42', name: '', company: '' });
+    expect(readPendingSelect('42')).toEqual({ id: '42', name: '', company: '', fromMap: false });
   });
 
   it('accepts a name with no id — the half Inventory actually matches on', () => {
     expect(readPendingSelect({ name: '103' }))
-      .toEqual({ id: '', name: '103', company: '' });
+      .toEqual({ id: '', name: '103', company: '', fromMap: false });
   });
 
   it('refuses everything that identifies nothing', () => {
@@ -215,5 +215,23 @@ describe('what is aboard, on a page we do not own', () => {
     // announcing an emptiness nobody asked about is noise.
     const [v] = toOverlayVehicles([feature(7)] as never, new Map([[9001, { total: 3, attention: 1 }]]));
     expect('inventory_total' in v).toBe(false);
+  });
+});
+
+describe('a choice made ON Google’s map says so', () => {
+  it('carries the flag when the overlay sets it', () => {
+    expect(readPendingSelect({ id: '42', name: '103', company: 'PTG', fromMap: true }))
+      .toEqual({ id: '42', name: '103', company: 'PTG', fromMap: true });
+  });
+
+  it('treats an absent flag as false, not as unknown', () => {
+    // A choice written before this field existed came from the panel's
+    // own list, where following a Google Maps tab is the right answer.
+    expect(readPendingSelect({ id: '42', name: '103', company: 'PTG' })?.fromMap).toBe(false);
+    expect(readPendingSelect('42')?.fromMap).toBe(false);
+  });
+
+  it('does not take a truthy string for a yes', () => {
+    expect(readPendingSelect({ id: '42', fromMap: 'yes' })?.fromMap).toBe(false);
   });
 });

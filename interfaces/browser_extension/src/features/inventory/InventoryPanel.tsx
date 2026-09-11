@@ -187,7 +187,12 @@ useEffect(() => {
   }, []);
 
   // ── one truck's contents ────────────────────────────────────────
-  const select = (row: FleetRow | null) => {
+  /** `andFollow` is false for a choice made ON Google's map: the truck is
+   *  already on the page in front of the person, and following would
+   *  navigate that very tab to a bare search URL — taking the place page,
+   *  the search, or whatever was being prepared — to show a pin where a
+   *  pin already was. */
+  const select = (row: FleetRow | null, andFollow = true) => {
     setSelected(row);
     setItems('loading');
     // A form left open across a selection would offer to record onto the
@@ -203,7 +208,7 @@ useEffect(() => {
     });
     // …and point Google's map at it, the way the Live Map does — so a
     // unit picked here does not have to be hunted for over there.
-    if (canLocate && follow) {
+    if (canLocate && follow && andFollow) {
       void positionOf(row.vehicle_id).then((at) => {
         if (at && selectedRef.current?.vehicle_id === row.vehicle_id) {
           void followInGoogleMaps(searchUrl(at[0], at[1]));
@@ -236,7 +241,7 @@ useEffect(() => {
       const row = fleet.find((r) =>
         r.name === want.name && (!want.company || !r.company || r.company === want.company));
       if (!row) return;
-      selectRef.current(row);
+      selectRef.current(row, !want.fromMap);
     };
     void chrome.storage.local.get(PENDING_SELECT_KEY).then((got) => take(got[PENDING_SELECT_KEY]));
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {

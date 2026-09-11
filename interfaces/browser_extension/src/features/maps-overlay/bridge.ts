@@ -78,19 +78,42 @@ export const CARD_ITEMS_MAX = 5;
  *  the location grant this reader may not have. */
 export const PENDING_SELECT_KEY = 'pendingSelectVehicle';
 
-export interface PendingSelect { id: string; name: string; company: string }
+export interface PendingSelect {
+  id: string;
+  name: string;
+  company: string;
+  /** The choice came from the map the person is ALREADY looking at.
+   *
+   *  Follow exists to point a Google Maps tab at the truck you picked in
+   *  the panel.  Picked from the overlay, that is backwards: the truck is
+   *  on the page in front of you, and following navigates that very tab
+   *  to a bare search URL — losing the place page, the search, whatever
+   *  was being prepared — to show a pin where a pin already was.  The
+   *  panel reads this and stays its hand. */
+  fromMap?: boolean;
+}
 
 /** Read whatever is in the key.  Tolerant of the BARE STRING the key
  *  held before Inventory existed: an update lands while a click may
  *  already be sitting there, and dropping it would eat that click. */
 export function readPendingSelect(v: unknown): PendingSelect | null {
-  if (typeof v === 'string') return v ? { id: v, name: '', company: '' } : null;
+  if (typeof v === 'string') {
+    // The pre-Inventory shape, and it predates the flag too: it came
+    // from the panel's own list, where following is the right answer.
+    return v ? { id: v, name: '', company: '', fromMap: false } : null;
+  }
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
   const id = typeof o.id === 'string' ? o.id : '';
   const name = typeof o.name === 'string' ? o.name : '';
   if (!id && !name) return null;
-  return { id, name, company: typeof o.company === 'string' ? o.company : '' };
+  return {
+    id, name,
+    company: typeof o.company === 'string' ? o.company : '',
+    // Absent is FALSE, not unknown: a choice written before this field
+    // existed came from the panel's own list, where following is right.
+    fromMap: o.fromMap === true,
+  };
 }
 
 /** Which feature the panel is showing, so the overlay's card can say
