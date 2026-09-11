@@ -13,6 +13,15 @@ from capabilities.ai.tools.registry import (
 from capabilities.ai.tools.scope import filter_to_scope
 
 
+# The alert_type values the store actually holds.  Kept beside the
+# schema that advertises them: a filter value the data never carries
+# returns nothing, and nothing reads to the model as "all clear".
+_ALERT_TYPES: frozenset[str] = frozenset({
+    "events", "parking", "fault", "fuel", "health", "scorecard",
+    "maintenance", "camera", "geofence", "documents",
+})
+
+
 @register_tool({
     "name": "get_alert_history",
     "description": (
@@ -37,9 +46,15 @@ from capabilities.ai.tools.scope import filter_to_scope
             },
             "alert_type": {
                 "type": "string",
+                "enum": [
+                    "events", "parking", "fault", "fuel", "health",
+                    "scorecard", "maintenance", "camera", "geofence",
+                    "documents",
+                ],
                 "description": (
-                    "Optional filter: 'fault', 'health', 'fuel', "
-                    "'parking', 'event', 'maintenance'."
+                    "Optional filter.  Note 'events' is plural — it is "
+                    "the safety-event family (harsh braking, speeding, "
+                    "distraction) and the busiest type there is."
                 ),
             },
             "vehicle_substring": {
@@ -51,6 +66,7 @@ from capabilities.ai.tools.scope import filter_to_scope
             },
             "status": {
                 "type": "string",
+                "enum": ["active", "acknowledged", "cleared"],
                 "description": (
                     "Optional: 'active' (unacknowledged + unresolved), "
                     "'acknowledged', 'cleared'."
@@ -58,6 +74,7 @@ from capabilities.ai.tools.scope import filter_to_scope
             },
             "severity": {
                 "type": "string",
+                "enum": ["critical", "warning", "info"],
                 "description": (
                     "Optional: 'critical', 'warning', 'info'."
                 ),
@@ -71,11 +88,29 @@ async def get_alert_history(tool_args: dict, samsara_client,
     if not db or account_id is None:
         return {"error": "Alert history not available in this context"}
 
+    from capabilities.ai.tools import tool_error
+
     limit = min(int(tool_args.get("limit") or 25), 100)
-    alert_type = (tool_args.get("alert_type") or "").strip() or None
+    alert_type = (tool_args.get("alert_type") or "").strip().lower() or None
     veh = (tool_args.get("vehicle_substring") or "").strip() or None
     status = (tool_args.get("status") or "").strip().lower() or None
     severity = (tool_args.get("severity") or "").strip().lower() or None
+
+    # The safety-event family is stored PLURAL.  The board's own reader
+    # accepts both spellings (capabilities/alerting/router.py) and this
+    # tool did not, so `alert_type='event'` — the singular the schema
+    # itself advertised — matched none of the 8,000-odd rows and the
+    # model reported a quiet week.
+    if alert_type == "event":
+        alert_type = "events"
+    if alert_type and alert_type not in _ALERT_TYPES:
+        return tool_error(
+            f"alert_type must be one of {', '.join(sorted(_ALERT_TYPES))}."
+        )
+    if status and status not in ("active", "acknowledged", "cleared"):
+        return tool_error("status must be active, acknowledged or cleared.")
+    if severity and severity not in ("critical", "warning", "info"):
+        return tool_error("severity must be critical, warning or info.")
 
     # Same source the dashboard's Alerts page reads (``alert_history``
     # with the severity/occurrence columns + acknowledged_by_name join)

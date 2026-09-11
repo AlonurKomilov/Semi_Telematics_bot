@@ -9,6 +9,9 @@ from __future__ import annotations
 from capabilities.ai.tools.registry import register_tool
 
 
+from adapters.storage.knowledge import KB_CATEGORIES
+
+
 @register_tool({
     "name": "search_knowledge_base",
     "description": (
@@ -35,7 +38,17 @@ from capabilities.ai.tools.registry import register_tool
             },
             "category": {
                 "type": "string",
-                "description": "Optional category filter, e.g. 'safety', 'maintenance', 'compliance'",
+                # Derived, never retyped: a hand-copied list is a list
+                # that drifts, and a category the store does not hold
+                # matches nothing — which reads as "we have no article
+                # on that" rather than "you asked for a category that
+                # does not exist".
+                "enum": sorted(KB_CATEGORIES),
+                "description": (
+                    "Optional category filter.  These are the only "
+                    "values stored — a near miss matches nothing, and "
+                    "nothing reads as 'we have no article on that'."
+                ),
             },
         },
         "required": ["query"],

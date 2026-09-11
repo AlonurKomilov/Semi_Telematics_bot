@@ -237,6 +237,7 @@ class DriverInspectionsMixin(_MixinBase):
         vehicle_name: Optional[str] = None,
         user_id: Optional[int] = None,
         only_user_ids: Optional[list[int]] = None,
+        with_defects: Optional[bool] = None,
         days: int = 30,
         page: int = 1,
         page_size: int = 50,
@@ -250,6 +251,12 @@ class DriverInspectionsMixin(_MixinBase):
         the caller may not see and the page numbers pointing at gaps.
         An EMPTY list means "no drivers in your companies" and must
         return nothing — distinct from ``None``, which means unrestricted.
+
+        ``with_defects`` filters on ``defects_count``: True for
+        inspections that found something, False for the clean ones.
+        ``status`` is the lifecycle column (scheduled / in_progress /
+        submitted / reviewed / revision_required) and never carries a
+        pass-or-fail verdict, so it cannot answer that question.
         """
         from datetime import timedelta
         cutoff = (
@@ -267,6 +274,14 @@ class DriverInspectionsMixin(_MixinBase):
         if vehicle_name:
             where.append("LOWER(vehicle_name) = ?")
             params.append(vehicle_name.lower())
+        if with_defects is not None:
+            # "Did anything come back bad?" is a question about DEFECTS,
+            # not about `status` — status is where the inspection is in
+            # its lifecycle (scheduled → submitted → reviewed), and no
+            # value of it means "failed".  Filtering here keeps `total`
+            # and the page numbers honest, which a caller-side filter on
+            # a server-paginated list cannot.
+            where.append("defects_count > 0" if with_defects else "defects_count = 0")
         if user_id:
             where.append("user_id = ?")
             params.append(int(user_id))
