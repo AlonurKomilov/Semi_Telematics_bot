@@ -111,6 +111,21 @@ def _normalize(args: dict) -> dict | None:
         },
         "required": ["vehicle_name"],
     },
+    # The approve endpoint reads writes/risk from HERE — the code
+    # registry is the trust root, never the stored proposal row.  This
+    # tool shipped without them: the executor below was registered, the
+    # card rendered, and every Approve answered 400 "Not an executable
+    # write action", so the feature was dead from its first day.  The
+    # omission also made it invisible to the write-scope guard
+    # (tests/test_ai_write_tool_scope.py filters on `writes`) and to
+    # both write-suppression paths — one missing key, four gates
+    # skipped.  `tests/test_ai_write_tool_contract.py` now pairs every
+    # executor to its declaration so this cannot recur.
+    "writes": True,
+    "risk": "low",
+    # Names ONE truck in `vehicle_name`, so the gate treats it as
+    # vehicle-specific — the same shape as create_maintenance_task.
+    "scope": "vehicle_param",
     # `vehicle_scope: "live"` makes the DISPATCHER refuse this for a
     # retired truck before the tool runs — you do not renew the
     # registration of a tractor you sold, and a fail-closed gate is the

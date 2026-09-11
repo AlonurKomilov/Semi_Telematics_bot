@@ -1772,6 +1772,12 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_drivers_list":         ["can_view_vehicles"],                           # all except driver
     "search_vehicles":          ["can_view_vehicles"],                           # all except driver
     "search_knowledge_base":    None,                                        # all roles
+    # Reads a file the CALLER just attached to their own message — it
+    # reaches no stored record, so there is nothing to gate.  Listed
+    # explicitly because a missing row and a deliberate None are
+    # indistinguishable to the gate, and the guard now requires the
+    # decision to be written down either way.
+    "read_attachment":          None,                                        # the caller's own upload
     "get_parked_vehicles":        ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
     "get_undriven_vehicles":      ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
     "get_driver_hos_status":    ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing

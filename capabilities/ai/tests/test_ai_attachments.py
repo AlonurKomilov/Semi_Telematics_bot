@@ -571,8 +571,18 @@ def test_chat_attachment_cap_counts_bytes_not_chars():
 
 
 def test_read_attachment_is_registered_for_all_roles():
-    """No TOOL_PERMISSIONS row on purpose: the real gate ran at parse time,
-    so the tool is advertised everywhere and is a no-op without grids."""
+    """Needs no permission on purpose: the real gate ran at parse time,
+    so the tool is advertised everywhere and is a no-op without grids.
+
+    The decision is now RECORDED as an explicit ``None`` rather than by
+    the row's absence.  The policy is unchanged — the gate reads
+    ``TOOL_PERMISSIONS.get(name)`` and sees None either way — but an
+    absent row and a deliberate one were indistinguishable, so a tool
+    that simply forgot its row was advertised to every role and looked
+    exactly like this one.  ``tests/test_ai_write_tool_contract.py``
+    requires the decision to be written down; this test pins WHICH
+    decision it is.
+    """
     import capabilities.ai.tools  # noqa: F401 — hub import registers tools
     from capabilities.ai.tools.registry import get_tool_schema
     from capabilities.permissions.roles import TOOL_PERMISSIONS
@@ -580,4 +590,5 @@ def test_read_attachment_is_registered_for_all_roles():
     schema = get_tool_schema("read_attachment")
     assert schema and schema.get("uses_attachments") is True
     assert not schema.get("writes")
-    assert "read_attachment" not in TOOL_PERMISSIONS
+    assert "read_attachment" in TOOL_PERMISSIONS
+    assert TOOL_PERMISSIONS["read_attachment"] is None
