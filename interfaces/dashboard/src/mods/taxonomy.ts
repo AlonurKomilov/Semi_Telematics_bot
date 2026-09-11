@@ -231,7 +231,9 @@ export function resetAxesOf(id: CategoryId): readonly string[] {
 
 /** The caps headings the panel renders for a category, in order. */
 export function headingsOf(id: CategoryId | 'mods'): readonly string[] {
-  if (id === 'mods') return ['Mods'];
+  // "Looks", not "Mods": the service is Mods, and the row inside it
+  // named its own container. Held to the store's shelf by storePage.test.
+  if (id === 'mods') return ['Looks'];
   const cat = TAXONOMY.find((c) => c.id === id);
   if (!cat) return [];
   return [

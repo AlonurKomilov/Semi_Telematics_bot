@@ -1,6 +1,10 @@
 /**
  * The container's own row — which whole look is installed.
  *
+ * Called "Looks", not "Mods": the service is Mods, and a row of that
+ * name inside it named its own container. The store shelf says the same
+ * word, and `storePage.test.tsx` holds the two together.
+ *
  * Not a category: installing a mod writes into every category below it,
  * which is exactly why it sits above them. It owns `applyMod`, the one
  * write in this service that touches seven axes at once, and therefore
@@ -64,7 +68,7 @@ export function ModsRow({ label: groupLabel }: { label: LabelClass }) {
   return (
     <div>
       <p className={`${groupLabel} mb-1.5`}>
-        {t('mods.group_mods', 'Mods')}
+        {t('mods.group_mods', 'Looks')}
       </p>
       <div className="flex flex-wrap gap-1">
         {offered('mods', MOD_OPTIONS, (o) => o.value).map((o) => (

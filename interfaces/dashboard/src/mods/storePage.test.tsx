@@ -92,11 +92,26 @@ import { ModsStorePage } from './store/StorePage';
 import { AXIS_UI } from './store/axes';
 import { PACK_AXES } from './store/packs';
 import { rowsOf } from './store/index';
-import { TAXONOMY } from './taxonomy';
+import { TAXONOMY, headingsOf } from './taxonomy';
 
 describe('every shelf has a home', () => {
   it('the table and the catalogue name the same axes', () => {
     expect(Object.keys(AXIS_UI).sort()).toEqual(PACK_AXES.map((a) => a.axis).sort());
+  });
+
+  it('the looks shelf does not name the service it sits inside', () => {
+    // "Mods" is the service. A shelf of that name inside it made the
+    // page point at itself — and a look is not a mode: it writes seven
+    // axes at once, which is what GX calls a mod.
+    expect(AXIS_UI.mods.label).not.toBe('Mods');
+    const row = readFileSync(join(__dirname, 'panel', 'ModsRow.tsx'), 'utf8');
+    const said = /t\('mods\.group_mods',\s*'([^']+)'\)/.exec(row);
+    expect(said, 'the panel row no longer names itself in one place').not.toBeNull();
+    expect(said![1], 'the panel and the store call the looks shelf different things')
+      .toBe(AXIS_UI.mods.label);
+    // And the taxonomy, which is what the panel's own section guard reads.
+    expect(headingsOf('mods'), 'the taxonomy calls it something else again')
+      .toEqual([AXIS_UI.mods.label]);
   });
 
   it('a shelf is called what the rest of the product calls it', () => {
@@ -183,8 +198,12 @@ describe('a shelf is what this person kept', () => {
 
   it('taking a pack off the shelf records it, by axis', () => {
     render(<ModsStorePage />);
+    undoSpy.mockClear();
     fireEvent.click(within(tileOf('Serif')).getByRole('button', { name: /remove serif/i }));
     expect(setPref).toHaveBeenCalledWith({ font: ['serif'] });
+    // The X sits a thumb from Apply, so the click has to be reversible.
+    expect(undoSpy, 'a shelf emptied by a mis-click says nothing').toHaveBeenCalledTimes(1);
+    expect(undoSpy.mock.calls[0][0].label).toBe('Serif removed');
   });
 
   it('what a shelf falls back to cannot be taken off it', () => {

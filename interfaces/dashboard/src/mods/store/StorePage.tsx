@@ -84,15 +84,21 @@ export function ModsStorePage() {
    * from this — `useApplyMod` owns the undo for the write that touches
    * seven axes, and two banners for one click is worse than none.
    */
-  const apply = (axis: string, id: string, label: string) => {
+  /**
+   * The write itself, and how to put back what it replaced.
+   *
+   * Split from `apply` because removing a pack has to write too — and
+   * has to do it WITHOUT raising a second banner, since the removal
+   * already raises one. Two banners for one click is worse than none.
+   */
+  const write = (axis: string, id: string): (() => void) => {
     const home = AXIS_UI[axis]?.home;
-    if (!home) return;
-    const said = t('mods.store_toast', '{{shelf}} set to {{pack}}',
-      { shelf: AXIS_UI[axis].label, pack: label });
+    if (!home) return () => {};
     if (home.mod) {
       const mod = modById(id);
+      const was = theme.mod ?? '';
       if (mod) applyMod(mod);
-      return;
+      return () => setTheme({ mod: was } as Partial<ModSetting>);
     }
     if (home.pref) {
       const was = prefOf(home.pref);
@@ -109,13 +115,32 @@ export function ModsStorePage() {
           if (pack) playCue(pack.cues.letter, volume, KEY_LIMITS);
         }
       }
-      undoableAction({ label: said, undo: async () => setPref(home.pref!, was) });
-      return;
+      return () => setPref(home.pref!, was);
     }
     const was = Object.fromEntries(
       home.theme!.map((f) => [f, theme[f]])) as Partial<ModSetting>;
     setTheme(Object.fromEntries(home.theme!.map((f) => [f, id])) as Partial<ModSetting>);
-    undoableAction({ label: said, undo: async () => setTheme(was) });
+    return () => setTheme(was);
+  };
+
+  /**
+   * Applying is the preview, so it has to be as cheap to undo as it was
+   * to try — and on four of these shelves (cursor, material, shader, and
+   * a still wallpaper) the change is quiet enough that a person can
+   * click and not be sure anything happened. The banner is both answers
+   * at once: what changed, and the way back. A look is the exception:
+   * `useApplyMod` owns the undo for the write that touches seven axes.
+   */
+  const apply = (axis: string, id: string, label: string) => {
+    const home = AXIS_UI[axis]?.home;
+    if (!home) return;
+    const back = write(axis, id);
+    if (home.mod) return;
+    undoableAction({
+      label: t('mods.store_toast', '{{shelf}} set to {{pack}}',
+        { shelf: AXIS_UI[axis].label, pack: label }),
+      undo: async () => back(),
+    });
   };
 
   /**
@@ -123,16 +148,31 @@ export function ModsStorePage() {
    * app painting something no picker offers and nothing can put back —
    * the same trap `ModsLock` closes when a permission goes away, closed
    * the same way: the removal writes the reset.
+   *
+   * And it is undoable, because the control sits a thumb away from
+   * Apply: a mis-click that quietly empties a shelf and says nothing is
+   * the one way this page can cost somebody something.
    */
   const remove = (axis: string, id: string, label: string) => {
+    const wasWorn = isApplied(axis, id);
     drop(axis, id);
-    if (!isApplied(axis, id)) return;
-    const back = defaultOf(axis);
-    if (back) { apply(axis, back, rowById(axis, back)?.label ?? back); return; }
-    // The looks shelf has no default: stop wearing it, and leave the
-    // axes it wrote alone — a look is a way of writing them, not a
-    // layer over them.
-    setTheme({ mod: '' } as Partial<ModSetting>);
+    if (wasWorn) {
+      const back = defaultOf(axis);
+      if (back) write(axis, back);
+      // The looks shelf has no default: stop wearing it, and leave the
+      // axes it wrote alone — a look is a way of writing them, not a
+      // layer over them.
+      else setTheme({ mod: '' } as Partial<ModSetting>);
+    }
+    undoableAction({
+      label: t('mods.store_removed', '{{pack}} removed', { pack: label }),
+      undo: async () => {
+        keep(axis, id);
+        if (!wasWorn) return;
+        if (AXIS_UI[axis]?.home.mod) setTheme({ mod: id } as Partial<ModSetting>);
+        else write(axis, id);
+      },
+    });
   };
 
   return (

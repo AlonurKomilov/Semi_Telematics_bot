@@ -12,6 +12,16 @@
  * The labels are the words the rest of the product already uses — the
  * taxonomy's own titles, held to them by a test, so a shelf cannot come
  * to be called one thing here and another on /mods.
+ *
+ * `mods` is the exception and the reason this comment is longer than
+ * the table: the SERVICE is called Mods, and a shelf of the same name
+ * inside it read as a page pointing at itself — the first person to see
+ * this page asked whether a "mod" meant dark and light. It does not: a
+ * look writes seven axes at once (Cab sets the accent, the corners, the
+ * scale, the icon weight and the cue set together), which is what GX
+ * calls a mod and what nothing else here is. The shelf is called Looks,
+ * the service stays Mods, and a test holds the panel's own row to the
+ * same word.
  */
 import { MOD_DEFAULT, DEFS, type ModSetting } from '../../preferences/registry';
 
@@ -33,7 +43,7 @@ export interface AxisUI {
 }
 
 export const AXIS_UI: Readonly<Record<string, AxisUI>> = {
-  mods:      { label: 'Mods',              home: { mod: true } },
+  mods:      { label: 'Looks',             home: { mod: true } },
   theme:     { label: 'Color',             home: { theme: ['accent'] } },
   font:      { label: 'Typeface',          home: { theme: ['font'] } },
   icons:     { label: 'Icons',             home: { theme: ['iconPack'] } },
