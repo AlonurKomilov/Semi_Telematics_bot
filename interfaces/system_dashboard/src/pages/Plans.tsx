@@ -534,6 +534,21 @@ export default function PlansPage() {
                     <div className="mt-1 text-[11px] font-normal text-slate-500">
                       <code>{p.tier}</code> · {p.accounts} account{p.accounts === 1 ? '' : 's'}
                     </div>
+                    {/* What a customer sees RIGHT NOW, from the saved row and
+                        not the draft: an operator who has just made a plan
+                        and cannot find it on the Billing page is looking at
+                        this column, not at the small print under the form
+                        they used an hour ago.  Two separate reasons a plan
+                        stays off that page, so the chip says which. */}
+                    {!p.public ? (
+                      <div className="mt-1 text-[11px] font-normal rounded bg-slate-500/15 text-slate-400 px-1.5 py-0.5">
+                        hidden from customers
+                      </div>
+                    ) : p.price_monthly_cents === 0 ? (
+                      <div className="mt-1 text-[11px] font-normal rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">
+                        offered free — no price
+                      </div>
+                    ) : null}
                   </th>
                 ))}
               </tr>
@@ -733,7 +748,7 @@ export default function PlansPage() {
             </button>
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            A new plan starts with everything included, no price, and hidden from customers.
+            A new plan starts with everything included, no price, and hidden from customers — its column will say so.
             Set its price and tick "Offered to customers" above when it is ready; Stripe stays the bill.
           </p>
         </div>
