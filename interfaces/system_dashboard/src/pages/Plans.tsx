@@ -175,7 +175,10 @@ function PaymentWiring({ provider, reloadKey }: { provider: string; reloadKey: n
       </div>
 
       {report && (
-        <p className="px-3 py-2 border-t border-slate-800 text-xs text-slate-500">
+        <p className={`px-3 py-2 border-t border-slate-800 text-xs ${
+          provider === 'stripe' && test ? 'bg-amber-500/10 text-amber-300'
+            : provider === 'stripe' && !report.ok ? 'text-rose-300'
+              : 'text-slate-500'}`}>
           {provider !== 'stripe'
             ? 'Prices below are shown to customers but nothing is charged until BILLING_PROVIDER=stripe.'
             : test
@@ -511,9 +514,13 @@ export default function PlansPage() {
       )}
 
       {data && (
-        <div className="border border-slate-800 rounded-lg overflow-x-auto">
+        // The grid scrolls in its own box (rather than with the page) so
+        // the plan heads can stick: 40-odd rows deep, a tick means
+        // nothing if the column it belongs to has scrolled away.  The
+        // head must be opaque for the same reason — rows pass beneath it.
+        <div className="border border-slate-800 rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="bg-slate-900/60 text-slate-400">
+            <thead className="sticky top-0 z-10 bg-slate-900 text-slate-400">
               <tr>
                 <th className="text-left px-3 py-2 font-medium w-64">Plan</th>
                 {plans.map((p) => (
