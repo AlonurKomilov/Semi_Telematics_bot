@@ -165,9 +165,13 @@ describe('offline page — it must render with the network down', () => {
     // moment a connection was interfered with reads as a redirect, so
     // the product's mark and name sit beside the service's, and the
     // footer says who operates what.
-    expect(html).toContain('ABC Checker');
+    // The company wordmark is set as TYPE, not shipped as an image: the
+    // real logo is black, and a black PNG is invisible on the dark theme
+    // these pages default to.
+    expect(html).toMatch(/class="wordmark">ABC&nbsp;Legacy&nbsp;LLC</);
+    expect(html).toMatch(/class="svc-word">Checker</);
+    expect(html).not.toMatch(/<img[^>]+logo/i);
     expect(html).toMatch(/class="prod"/);
-    expect(html).toMatch(/ABC&nbsp;LEGACY&nbsp;LLC/);
     // Service first, product second — never the other way round. Measured
     // INSIDE the header: the file's opening comment names ABC Checker
     // too, and comparing whole-file offsets made this assertion vacuous
@@ -251,6 +255,28 @@ describe('offline page — it must render with the network down', () => {
   it('recovers by itself instead of asking the customer to keep trying', () => {
     expect(html).toMatch(/location\.reload\(\)/);
     expect(html).toMatch(/addEventListener\('online'/);
+  });
+
+  it('names itself the same way in every sentence', () => {
+    // The lockup may abbreviate; prose may not. "Checker is operated
+    // by…" beside seven "ABC Checker"s is one object under two names.
+    expect(html).toMatch(/ABC&nbsp;Checker is operated by/);
+    expect(html).not.toMatch(/>Checker is operated by/);
+  });
+
+  it('spends its one filled button on the action that ends the problem', () => {
+    // Weight follows value, not position: "Try again" repeats what the
+    // page already does every 10-60s, while copying the message to an
+    // office admin is the move that stops the waiting.
+    expect(html).toMatch(/<button type="button" class="ghost" id="retry">/);
+    expect(html).toMatch(/<button type="button" id="copy-msg">/);
+  });
+
+  it('reserves the outline for things that can be acted on', () => {
+    // An outlined circle beside text reads as a button nobody can press.
+    const ornament = html.match(/\.steps li::before \{[\s\S]*?\}/)![0];
+    expect(ornament).not.toMatch(/border: 1px solid var\(--border\)/);
+    expect(ornament).toMatch(/background: var\(--sunk\)/);
   });
 
   it('keeps machine detail closed, and the human sentence in the open', () => {

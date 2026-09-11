@@ -114,8 +114,25 @@
     border-bottom: 1px solid var(--rule);
   }
   .svc { display: flex; align-items: center; gap: 10px; }
-  .svc .mark { display: block; color: var(--fg); flex: 0 0 auto; }
-  .svc-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  /* ABC LEGACY LLC, set as type rather than shipped as an image: the
+     real logo is a black wordmark, and a black PNG is invisible on the
+     dark theme these pages default to. As text it takes its colour from
+     the theme, costs no request, and survives a cache miss — all three
+     of which an <img> would not. The stack leans geometric to match the
+     mark's own letterforms; swapping in the real SVG later is this one
+     rule and the span it styles. */
+  .wordmark {
+    font-family: Futura, "Century Gothic", "Avenir Next", "Trebuchet MS",
+                 ui-sans-serif, system-ui, sans-serif;
+    font-weight: 300;
+    font-size: 12px;
+    letter-spacing: 0.17em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--fg);
+  }
+  .svc-sep { color: var(--border); font-size: 13px; }
+  .svc-word { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
   .prod {
     display: inline-flex; align-items: center; gap: 7px;
     border: 1px solid var(--border); border-radius: 999px;
@@ -173,11 +190,14 @@
     border-bottom: 1px solid var(--rule);
   }
   .steps li:last-child { border-bottom: 0; }
+  /* A --border outline is this page's shape for "you can act on this".
+     These numbers cannot be acted on, so they take a fill instead — an
+     outlined circle beside text reads as a button nobody can press. */
   .steps li::before {
     content: counter(step);
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; margin-top: 1px;
-    border: 1px solid var(--border); border-radius: 50%;
+    background: var(--sunk); border-radius: 50%;
     font-size: 11px; font-weight: 600; color: var(--muted);
   }
   .steps b { display: block; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
@@ -207,6 +227,11 @@
   }
   button:hover { filter: brightness(1.08); }
   button:disabled { opacity: 0.55; cursor: default; filter: none; }
+  /* Weight follows value, not position. "Try again" repeats what this
+     page already does by itself every ten to sixty seconds, so it is not
+     the primary action even though it is the first one — while copying
+     the message to an office admin is the move that ends the problem
+     rather than waiting it out. */
   .link, button.ghost {
     background: transparent; color: var(--fg); border: 1px solid var(--border);
     font-weight: 500;
@@ -223,7 +248,9 @@
     cursor: pointer; list-style: none;
     font-size: 12px; color: var(--muted);
     display: inline-flex; align-items: center; gap: 6px;
-    min-height: 24px;
+    /* 24px is the WCAG 2.5.8 floor, not a target to sit on — and the
+       nearest control is 20px away, so the padding is free. */
+    min-height: 32px;
   }
   .tech summary::-webkit-details-marker { display: none; }
   .tech summary::before {
@@ -258,15 +285,9 @@
   <main class="shell">
     <header class="topbar">
       <div class="svc">
-        <svg class="mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-          <rect x="0.6" y="0.6" width="22.8" height="22.8" rx="6.4"
-                fill="currentColor" fill-opacity="0.07"
-                stroke="currentColor" stroke-opacity="0.22" stroke-width="1.2" />
-          <text x="12" y="15.4" text-anchor="middle" fill="currentColor"
-                font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
-                font-size="7.6" font-weight="700" letter-spacing="-0.15">ABC</text>
-        </svg>
-        <span class="svc-name">ABC Checker</span>
+        <span class="wordmark">ABC&nbsp;Legacy&nbsp;LLC</span>
+        <span class="svc-sep" aria-hidden="true">/</span>
+        <span class="svc-word">Checker</span>
       </div>
       <div class="prod">
         <img src="/favicon-32.png" alt="" />
@@ -286,7 +307,7 @@
     </p>
 
     <div class="retry-row">
-      <button type="button" id="retry">Try again</button>
+      <button type="button" class="ghost" id="retry">Try again</button>
       <span class="auto" id="auto"></span>
     </div>
 
@@ -334,7 +355,7 @@
          <span data-product>4truck</span> in a minute. Send them this.</p>
       <div class="forward">
         <p class="msg" id="msg"></p>
-        <button type="button" class="ghost" id="copy-msg">Copy message</button>
+        <button type="button" id="copy-msg">Copy message</button>
       </div>
     </section>
 
@@ -345,7 +366,7 @@
       <a class="link" id="status" href="#" rel="noopener">Open the status page</a>
     </section>
 
-    <p class="who">ABC&nbsp;Checker is operated by <b>ABC&nbsp;LEGACY&nbsp;LLC</b>, which builds
+    <p class="who">ABC&nbsp;Checker is operated by <b>ABC&nbsp;Legacy&nbsp;LLC</b>, which builds
        <span data-product>4truck</span>.</p>
 
     <details class="tech">

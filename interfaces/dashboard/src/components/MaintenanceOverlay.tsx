@@ -137,21 +137,15 @@ export default function MaintenanceOverlay() {
         {/* The same identity the other three carry, so a customer who
             has seen one recognises the voice rather than meeting a new
             stranger each time something goes wrong. */}
-        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-          <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
-            <rect
-              x="0.6" y="0.6" width="22.8" height="22.8" rx="6.4"
-              fill="currentColor" fillOpacity="0.07"
-              stroke="currentColor" strokeOpacity="0.22" strokeWidth="1.2"
-            />
-            <text
-              x="12" y="15.4" textAnchor="middle" fill="currentColor"
-              fontSize="7.6" fontWeight="700" letterSpacing="-0.15"
-            >
-              ABC
-            </text>
-          </svg>
-          <span className="font-medium">ABC Checker</span>
+        {/* The same lockup the other three carry — ABC Legacy LLC set as
+            type rather than shipped as an image, so it takes the theme's
+            colour instead of arriving as a black PNG on a dark card. */}
+        <div className="flex items-center justify-center gap-2">
+          <span className="font-light uppercase tracking-[0.17em] text-[12px] text-foreground [font-family:Futura,'Century_Gothic','Avenir_Next','Trebuchet_MS',ui-sans-serif,system-ui,sans-serif]">
+            ABC&nbsp;Legacy&nbsp;LLC
+          </span>
+          <span aria-hidden="true" className="text-border">/</span>
+          <span className="text-[13.5px] font-semibold text-foreground">Checker</span>
         </div>
 
         <Icon

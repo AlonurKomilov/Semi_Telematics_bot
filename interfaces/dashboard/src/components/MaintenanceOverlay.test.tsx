@@ -49,10 +49,13 @@ describe('MaintenanceOverlay', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('speaks as ABC Checker, like the other three', () => {
+  it('carries the same identity lockup as the other three', () => {
     render(<MaintenanceOverlay />);
     announce('updating');
-    expect(screen.getByText('ABC Checker')).toBeTruthy();
+    // The company wordmark, set as type so it follows the theme, plus
+    // the service word. A black logo image would vanish on a dark card.
+    expect(screen.getByText(/ABC.Legacy.LLC/)).toBeTruthy();
+    expect(screen.getByText('Checker')).toBeTruthy();
   });
 
   it('calls a restart an update and a dead connection a dead connection', () => {
