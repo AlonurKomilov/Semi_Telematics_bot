@@ -439,6 +439,39 @@ export interface QuarantinedArticle {
   creator_name: string | null;
 }
 
+/** A knowledge-base article as the platform-review queue sees it.
+ *
+ *  `approved` is the PUBLISHING account's own owner saying yes;
+ *  `platform_approved` is the operator saying yes.  A public article is
+ *  readable by every account and is fed to every account's assistant,
+ *  so it takes both.
+ */
+export interface ReviewArticle {
+  id: number;
+  account_id: number;
+  title: string;
+  description: string;
+  category: string;
+  tags: string;
+  visibility: string;
+  target_role: string;
+  approved: number;
+  platform_approved: number;
+  platform_reviewed_at: string;
+  platform_review_note: string;
+  media_url: string;
+  media_type: string;
+  created_by: number | null;
+  creator_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewList {
+  articles: ReviewArticle[];
+  count: number;
+}
+
 export interface ScansOverview {
   health: ScanHealth;
   stats: ScanStats;

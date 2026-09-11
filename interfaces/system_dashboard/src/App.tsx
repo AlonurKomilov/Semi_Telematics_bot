@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList, ShieldAlert } from 'lucide-react';
+import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList, ShieldAlert, BookOpenCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -19,6 +19,7 @@ import ServiceTaskLibraryPage from './pages/ServiceTaskLibrary';
 import ServiceAssembliesPage from './pages/ServiceAssemblies';
 import MarketIntelPage from './pages/MarketIntel';
 import ScansPage from './pages/Scans';
+import KnowledgePage from './pages/Knowledge';
 import SchedulerPage from './pages/Scheduler';
 import CapacityPage from './pages/Capacity';
 import PlansPage from './pages/Plans';
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="/service-assemblies" element={<ServiceAssembliesPage />} />
             <Route path="/market-intel" element={<MarketIntelPage />} />
             <Route path="/scans" element={<ScansPage />} />
+            <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/scheduler" element={<SchedulerPage />} />
             <Route path="/capacity" element={<CapacityPage />} />
             <Route path="*" element={<NotFound />} />
@@ -120,6 +122,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/ai-feedback', label: 'AI feedback', icon: MessageSquareWarning },
       { to: '/retention', label: 'Retention', icon: DatabaseBackup },
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },
+      { to: '/knowledge', label: 'Knowledge review', icon: BookOpenCheck },
       { to: '/scheduler', label: 'Scheduler', icon: CalendarClock },
     ],
   },
