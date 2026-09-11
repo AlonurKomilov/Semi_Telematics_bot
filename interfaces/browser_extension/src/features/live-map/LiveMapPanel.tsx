@@ -47,6 +47,10 @@ const CARD_BODY_ID = 'live-map-vehicle-detail';
  *  the height the card's own fold was built to save. */
 const INV_OPEN_KEY = 'liveMapInventoryOpen';
 const INV_BODY_ID = 'live-map-vehicle-inventory';
+/* The third fold on this surface, and the only one whose button did
+   not name what it opens: `aria-expanded` alone says a thing is open
+   without saying which thing. */
+const LIST_BODY_ID = 'live-map-vehicle-list';
 /** The filter is a working preference, not a fresh decision every time:
  *  a dispatcher who watches Moving watched it yesterday too. */
 const FILTER_KEY = 'liveMapFilter';
@@ -855,7 +859,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0,
                     flex: listOpen ? '1 1 0' : '0 0 auto',
                     borderTop: '1px solid var(--border)' }}>
-        <button type="button" onClick={toggleList} aria-expanded={listOpen}
+        <button type="button" onClick={toggleList} aria-expanded={listOpen} aria-controls={LIST_BODY_ID}
                 className="row rowbtn"
                 style={{ width: '100%', gap: 6, padding: '6px 10px', background: 'var(--card)' }}>
           {/* The caret LEADS what it opens — the same rule the card
@@ -870,7 +874,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
             Vehicles <span className="muted" style={{ fontWeight: 400 }}>({filtered.length})</span>
           </span>
         </button>
-        <div hidden={!listOpen}
+        <div id={LIST_BODY_ID} hidden={!listOpen}
              style={{ flex: 1, minHeight: LIST_FLOOR_PX, overflowY: 'auto' }}
              role="region" aria-label="Vehicles" tabIndex={0}>
         {filtered.map((f) => {

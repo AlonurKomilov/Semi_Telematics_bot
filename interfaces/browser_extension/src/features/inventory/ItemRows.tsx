@@ -216,7 +216,7 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
               // the press target; Edit is its sibling.
               <div className="row" style={{ gap: 6 }}>
               <button type="button" className="row rowbtn"
-                      aria-expanded={open}
+                      aria-expanded={open} aria-controls={`${it.id}-actions`}
                       title={open ? 'Hide the actions' : 'Verify or flag this item'}
                       onClick={() => {
                         const next = open ? null : it.id;
@@ -291,107 +291,115 @@ export default function ItemRows({ items, maxHeight = ROWS_CEILING_PX, id, onVer
                 {failed.why}
               </p>
             )}
-            {open && editId === it.id && onEdit && (
-              <EditForm item={it} categories={categories ?? []} busy={busy === it.id}
-                        onCancel={() => startEdit(null)}
-                        onSave={(patch) => void act(it.id, async () => {
-                          await onEdit(it.id, patch);
-                          startEdit(null);
-                        }, false)} />
-            )}
-            {open && editId !== it.id && (
-              // TWO explicit lines, not one wrapping row.  Five controls
-              // need ~500px at the panel's 320px floor, so a single row
-              // survived only by accidental wrap — and a 32px .btn sat
-              // on the same line as 24px chips, aligning nothing.  Line
-              // A says what is known and offers the check; line B is the
-              // ladder of what it could be instead.
-              //
-              // Each line is guarded by the prop that fills it: the two
-              // are independent, and a verify-only caller would
-              // otherwise render an empty flex row.
-              <>
-              {onVerify && (
-              // 28px, not 14: this indent is measured to land under the
-              // item's NAME, not under its dot.  The name starts at
-              // 4 (button padding) + 8 (caret) + 6 + 8 (dot) + 6 = 32,
-              // and the block's own 4px padding makes 28 the number
-              // that reaches it.  It was 14 when there was no caret.
-              <div className="row" style={{ gap: 6, padding: '0 0 0 28px' }}>
-                {/* WHAT VERIFY CHANGES, said where Verify is pressed.
-                    ``verify_inventory_item`` stamps the check and leaves
-                    the status alone, so without this the button closed a
-                    strip and altered nothing on screen — and on an item
-                    already flagged missing it recorded a check the row
-                    went on contradicting.  It is here rather than on the
-                    row because a fifth piece ellipsised the item's own
-                    name away at the panel's 320px floor. */}
-                {/* The serial the record was made against.  It lives
-                    here rather than on the row for the same reason the
-                    check age does — a fifth piece ellipsised the item's
-                    own name away at 320px — and it is the thing you
-                    hold the device up against when you press Verify. */}
-                {/* The line's TEXT shrinks; its BUTTONS never do.  At the
-                    panel's 320px floor this line has ~278px, and serial
-                    + age + Verify + Edit measures ~275 with a short
-                    serial — a 17-character one would have pushed Edit
-                    past an `overflow-x: hidden` edge and out of reach.
-                    `.row` is a flex with no wrap, so nothing would have
-                    given: the button would simply have been gone. */}
-                {/* The category, back on the line the open row does have
-                    room for.  Hiding it above buys the NAME its width; not
-                    showing it anywhere would mean collapsing a row to learn
-                    what an item is filed under. */}
-                <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>
-                  {humanize(it.category)}
-                </span>
-                {it.identifier && (
-                  <span className="muted" style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace',
-                                                   minWidth: 0, overflow: 'hidden',
-                                                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={`The serial this record was made against: ${it.identifier}`}>
-                    {it.identifier}
+            {/* ONE box for everything the fold reveals, so the row above can
+                name what it opens.  Always rendered, never conditionally:
+                an `aria-controls` pointing at an id that exists only while
+                open is a dangling reference exactly when it is consulted.
+                `hidden` beats this inline `display` because index.css says
+                so with `!important` — the same reason the map card folds. */}
+            <div id={`${it.id}-actions`} hidden={!open} style={{ display: 'grid', gap: 3 }}>
+              {open && editId === it.id && onEdit && (
+                <EditForm item={it} categories={categories ?? []} busy={busy === it.id}
+                          onCancel={() => startEdit(null)}
+                          onSave={(patch) => void act(it.id, async () => {
+                            await onEdit(it.id, patch);
+                            startEdit(null);
+                          }, false)} />
+              )}
+              {open && editId !== it.id && (
+                // TWO explicit lines, not one wrapping row.  Five controls
+                // need ~500px at the panel's 320px floor, so a single row
+                // survived only by accidental wrap — and a 32px .btn sat
+                // on the same line as 24px chips, aligning nothing.  Line
+                // A says what is known and offers the check; line B is the
+                // ladder of what it could be instead.
+                //
+                // Each line is guarded by the prop that fills it: the two
+                // are independent, and a verify-only caller would
+                // otherwise render an empty flex row.
+                <>
+                {onVerify && (
+                // 28px, not 14: this indent is measured to land under the
+                // item's NAME, not under its dot.  The name starts at
+                // 4 (button padding) + 8 (caret) + 6 + 8 (dot) + 6 = 32,
+                // and the block's own 4px padding makes 28 the number
+                // that reaches it.  It was 14 when there was no caret.
+                <div className="row" style={{ gap: 6, padding: '0 0 0 28px' }}>
+                  {/* WHAT VERIFY CHANGES, said where Verify is pressed.
+                      ``verify_inventory_item`` stamps the check and leaves
+                      the status alone, so without this the button closed a
+                      strip and altered nothing on screen — and on an item
+                      already flagged missing it recorded a check the row
+                      went on contradicting.  It is here rather than on the
+                      row because a fifth piece ellipsised the item's own
+                      name away at the panel's 320px floor. */}
+                  {/* The serial the record was made against.  It lives
+                      here rather than on the row for the same reason the
+                      check age does — a fifth piece ellipsised the item's
+                      own name away at 320px — and it is the thing you
+                      hold the device up against when you press Verify. */}
+                  {/* The line's TEXT shrinks; its BUTTONS never do.  At the
+                      panel's 320px floor this line has ~278px, and serial
+                      + age + Verify + Edit measures ~275 with a short
+                      serial — a 17-character one would have pushed Edit
+                      past an `overflow-x: hidden` edge and out of reach.
+                      `.row` is a flex with no wrap, so nothing would have
+                      given: the button would simply have been gone. */}
+                  {/* The category, back on the line the open row does have
+                      room for.  Hiding it above buys the NAME its width; not
+                      showing it anywhere would mean collapsing a row to learn
+                      what an item is filed under. */}
+                  <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>
+                    {humanize(it.category)}
                   </span>
+                  {it.identifier && (
+                    <span className="muted" style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace',
+                                                     minWidth: 0, overflow: 'hidden',
+                                                     textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={`The serial this record was made against: ${it.identifier}`}>
+                      {it.identifier}
+                    </span>
+                  )}
+                  <span className="muted" style={{ fontSize: 11, minWidth: 0, overflow: 'hidden',
+                                                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={it.last_verified_at ? `Last checked ${it.last_verified_at}` : 'Nobody has checked this yet'}>
+                    {(() => {
+                      const age = ageMs(it.last_verified_at, now);
+                      return age === null ? 'never checked' : `checked ${formatAge(age)} ago`;
+                    })()}
+                  </span>
+                  {/* This line is FACTS now — the serial the record was
+                      made against and how long since anybody looked.  Its
+                      button moved up beside Edit, where the two actions
+                      on an item belong together. */}
+                  {/* Edit is NOT here.  It sits on the ROW itself, one
+                      press from the list.  A second copy in the strip
+                      would be the same control twice — the rule this
+                      panel just finished applying to Follow. */}
+                </div>
                 )}
-                <span className="muted" style={{ fontSize: 11, minWidth: 0, overflow: 'hidden',
-                                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={it.last_verified_at ? `Last checked ${it.last_verified_at}` : 'Nobody has checked this yet'}>
-                  {(() => {
-                    const age = ageMs(it.last_verified_at, now);
-                    return age === null ? 'never checked' : `checked ${formatAge(age)} ago`;
-                  })()}
-                </span>
-                {/* This line is FACTS now — the serial the record was
-                    made against and how long since anybody looked.  Its
-                    button moved up beside Edit, where the two actions
-                    on an item belong together. */}
-                {/* Edit is NOT here.  It sits on the ROW itself, one
-                    press from the list.  A second copy in the strip
-                    would be the same control twice — the rule this
-                    panel just finished applying to Follow. */}
-              </div>
+                {onStatus && (
+                // A grid, not a wrapping flex: with `flex:1 1 auto` a
+                // wrapped last chip stretches into a full-width danger
+                // bar, which is the loudest thing on the card for the
+                // quietest reason.  Equal columns, and they reflow.
+                <div style={{ display: 'grid', gap: 6, padding: '0 0 2px 28px',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))' }}>
+                  {/* Only what it is NOT.  A permanently disabled chip
+                      restating the status written two lines up is a
+                      control that can never be pressed, taking a column
+                      from three that can. */}
+                  {PANEL_STATUSES.filter((st) => st !== it.status).map((st) => (
+                    <button key={st} className="chip" disabled={busy === it.id}
+                            onClick={() => void act(it.id, () => onStatus(it.id, st))}>
+                      {humanize(st)}
+                    </button>
+                  ))}
+                </div>
+                )}
+                </>
               )}
-              {onStatus && (
-              // A grid, not a wrapping flex: with `flex:1 1 auto` a
-              // wrapped last chip stretches into a full-width danger
-              // bar, which is the loudest thing on the card for the
-              // quietest reason.  Equal columns, and they reflow.
-              <div style={{ display: 'grid', gap: 6, padding: '0 0 2px 28px',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))' }}>
-                {/* Only what it is NOT.  A permanently disabled chip
-                    restating the status written two lines up is a
-                    control that can never be pressed, taking a column
-                    from three that can. */}
-                {PANEL_STATUSES.filter((st) => st !== it.status).map((st) => (
-                  <button key={st} className="chip" disabled={busy === it.id}
-                          onClick={() => void act(it.id, () => onStatus(it.id, st))}>
-                    {humanize(st)}
-                  </button>
-                ))}
-              </div>
-              )}
-              </>
-            )}
+            </div>
           </div>
         );
       })}
