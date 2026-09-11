@@ -97,10 +97,64 @@ export async function setChoice(key: string, value: string): Promise<void> {
   }
 }
 
+/**
+ * The same read, but able to say "nothing stored".
+ *
+ * `getChoice` cannot: its fallback is returned both for a value it
+ * refused and for a key nobody ever wrote, and those are different
+ * facts.  The map provider needs the difference — an account that runs
+ * on Google should OPEN on Google, and only a person's own past press
+ * should override that.  With `getChoice` alone the panel drew the free
+ * map for everybody and called it a preference.
+ */
+export async function getStoredChoice<T extends string>(
+  key: string, allowed: readonly T[],
+): Promise<T | null> {
+  try {
+    const got = await chrome.storage.local.get(key);
+    const v = got[key];
+    return (allowed as readonly string[]).includes(v) ? (v as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A remembered SET of words — which map layers are switched on.
+ *
+ * Filtered through `allowed` on the way out for the same reason
+ * `getChoice` is: a layer id that no longer exists would otherwise be
+ * fetched forever, 422 forever, and show an error nobody can dismiss
+ * because there is no row left to switch off.
+ */
+export async function getWords(key: string, allowed: readonly string[]): Promise<string[]> {
+  try {
+    const got = await chrome.storage.local.get(key);
+    const v = got[key];
+    if (!Array.isArray(v)) return [];
+    return v.filter((w): w is string => typeof w === 'string' && allowed.includes(w));
+  } catch {
+    return [];
+  }
+}
+
+export async function setWords(key: string, values: readonly string[]): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [key]: [...values] });
+  } catch { /* the layers come back off next open; nothing else breaks */ }
+}
+
 /** The basemap the panel draws, and whose it is.  Per device, like the
  *  splitter's share: two people sharing an account do not share a screen. */
 export const MAP_TYPE_KEY = 'mapType';
 export const MAP_PROVIDER_KEY = 'mapProvider';
+
+/** Which overlay layers were left switched on.  Remembered because the
+ *  side panel is closed and reopened all day: a driver who works with
+ *  Truck parking on should not switch it on every time the panel shuts.
+ *  Custom layer ids are allowed here too — they are checked against the
+ *  layer list that is actually loaded, not a fixed vocabulary. */
+export const POI_LAYERS_KEY = 'mapPoiLayers';
 
 export const FOLLOW_KEY = 'followGoogleMaps';
 

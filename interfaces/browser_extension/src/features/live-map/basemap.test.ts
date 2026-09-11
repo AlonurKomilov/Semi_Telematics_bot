@@ -14,8 +14,11 @@ vi.mock('../../api/client', () => ({ apiJSON: vi.fn() }));
 const { apiJSON } = await import('../../api/client');
 const mocked = apiJSON as unknown as ReturnType<typeof vi.fn>;
 
+// `as const` and not a bare string: `TileSession.type` is the union,
+// so an inferred `string` here is the one thing in this file tsc
+// rejects — and it did, while the suite stayed green.
 const session = (expiry: number) => ({
-  type: 'roadmap', tile_url: 'https://t/{z}/{x}/{y}', viewport_url: 'https://v',
+  type: 'roadmap' as const, tile_url: 'https://t/{z}/{x}/{y}', viewport_url: 'https://v',
   tile_size: 256, image_format: 'png', expiry, max_zoom: 22,
 });
 

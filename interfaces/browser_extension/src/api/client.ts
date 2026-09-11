@@ -43,7 +43,17 @@ export class UnauthorizedError extends Error {
   constructor() { super('Unauthorized'); this.name = 'UnauthorizedError'; }
 }
 
-export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<Response> {
+/**
+ * @param timeoutMs  How long this ONE call may take.  Thirty seconds is
+ *   right for everything the panel asks of our own database, and wrong
+ *   for the map's POI layers: an Overpass query over a state-sized box
+ *   legitimately runs forty seconds, and clipping it at thirty returned
+ *   an empty layer with no error — the abort is indistinguishable from
+ *   the caller's own.  A caller that knows better says so.
+ */
+export async function apiFetch(
+  path: string, opts: ApiFetchOpts = {}, timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
   const headers: Record<string, string> = { ...(opts.headers as Record<string, string> | undefined) };
   const token = await getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -53,7 +63,17 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
     body = JSON.stringify(body);
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // The caller's signal is FORWARDED, not used: this function needs its
+  // own controller for the timeout, and the spread below would otherwise
+  // silently overwrite whatever the caller passed — which it did, so a
+  // layer switched off mid-flight kept fetching.
+  const caller = opts.signal;
+  const relay = () => controller.abort();
+  if (caller) {
+    if (caller.aborted) controller.abort();
+    else caller.addEventListener('abort', relay, { once: true });
+  }
   try {
     // ``credentials: 'omit'``: the extension has host permission for the
     // API, so the browser WOULD attach the person's .4truck.us dashboard
@@ -72,11 +92,14 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
     return res;
   } finally {
     clearTimeout(timer);
+    caller?.removeEventListener('abort', relay);
   }
 }
 
-export async function apiJSON<T>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
-  const res = await apiFetch(path, opts);
+export async function apiJSON<T>(
+  path: string, opts: ApiFetchOpts = {}, timeoutMs?: number,
+): Promise<T> {
+  const res = await apiFetch(path, opts, timeoutMs);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const detail = (err as { detail?: unknown }).detail;

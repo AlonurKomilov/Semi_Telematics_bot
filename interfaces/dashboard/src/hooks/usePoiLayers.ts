@@ -21,7 +21,7 @@ import { iconPackId, rasterGlyph } from '../lib/icons';
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { apiFetch, apiJSON } from '../api/client';
-import { POI_LAYERS } from '../config/poiLayers';
+import { POI_LAYERS, esc } from '../config/poiLayers';
 import type { PoiLayerDef, PoiFeature, PoiIconSpec } from '../config/poiLayers';
 import { MARKER_GLYPH, MARKER_HALO, MARKER_SHADOW, POI_DEF_BADGE, POPUP } from '../config/mapColors';
 import type L from 'leaflet';
@@ -210,6 +210,13 @@ function poiIconHtml(icon: PoiIconSpec, sizePx: number): string {
  * (name/brand/operator + amenity badges).  A layer whose data is NOT
  * OSM-shaped overrides this via `PoiLayerDef.popup`; exported so tests
  * can pin the fallback contract.
+ *
+ * EVERY interpolation is escaped.  This string becomes innerHTML inside
+ * `bindPopup`, and every value in it is an OpenStreetMap tag — which
+ * anybody in the world can edit.  A station named with a `<img onerror>`
+ * would have run in the dashboard's own origin.  The vendor popup next
+ * door escaped from the day it was written; this one did not, and the
+ * difference was never deliberate.
  */
 export function defaultOsmPopup(f: PoiFeature, def: PoiLayerDef): string {
   const p = f.properties as Record<string, string> | null | undefined;
@@ -225,13 +232,13 @@ export function defaultOsmPopup(f: PoiFeature, def: PoiLayerDef): string {
   if (p?.['fuel:adblue'] === 'yes') amenities.push('🧪 DEF');
   if (p?.shower === 'yes')          amenities.push('🚿 Showers');
   if (p?.toilets === 'yes')         amenities.push('🚻 Restrooms');
-  if (p?.capacity)                  amenities.push(`🅿 ${p.capacity} spots`);
+  if (p?.capacity)                  amenities.push(`🅿 ${esc(p.capacity)} spots`);
   if (p?.fee === 'no')              amenities.push('🆓 Free');
   if (p?.fee === 'yes')             amenities.push('💰 Fee');
 
   const meta: string[] = [];
-  if (p?.opening_hours) meta.push(`🕐 ${p.opening_hours}`);
-  if (p?.phone)         meta.push(`📞 ${p.phone}`);
+  if (p?.opening_hours) meta.push(`🕐 ${esc(p.opening_hours)}`);
+  if (p?.phone)         meta.push(`📞 ${esc(p.phone)}`);
 
   const amenityHtml = amenities.length
     ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${
@@ -243,8 +250,8 @@ export function defaultOsmPopup(f: PoiFeature, def: PoiLayerDef): string {
     : '';
 
   return `<div style="min-width:160px;max-width:240px">`
-    + `<div style="font-weight:600;font-size:13px">${name}</div>`
-    + `<div style="color:${POPUP.muted};font-size:11px">${subtitle}</div>`
+    + `<div style="font-weight:600;font-size:13px">${esc(name)}</div>`
+    + `<div style="color:${POPUP.muted};font-size:11px">${esc(subtitle)}</div>`
     + amenityHtml
     + metaHtml
     + `</div>`;

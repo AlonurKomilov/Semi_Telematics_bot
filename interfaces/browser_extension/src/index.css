@@ -137,3 +137,94 @@ button.link { background:none; border:0; margin:0; padding:2px 0;
    stay at the call site rather than forcing a second class. */
 .eyebrow { font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
 .small { font-size: 12px; }
+
+/* ── Leaflet's own chrome, in the panel's colours ────────────────────
+   Leaflet ships a light theme and injects it at runtime: white zoom
+   buttons with #333 glyphs, white popups, a white attribution strip.
+   On a near-black panel those were the only light surfaces on screen —
+   and the zoom buttons were the first thing anybody saw.
+
+   Every override carries ONE extra ancestor class.  Not for looks: at
+   equal specificity the winner is document order, and which stylesheet
+   lands first differs between `vite build --watch` and the production
+   build.  An override written flat would look fixed in dev and ship
+   broken.  The dashboard learned this the same way. */
+.leaflet-container .leaflet-bar { border:0; box-shadow:0 1px 4px rgba(0,0,0,.45); }
+.leaflet-container .leaflet-bar a,
+.leaflet-container .leaflet-bar a:hover {
+  background: var(--card); color: var(--fg); border-bottom:1px solid var(--border);
+  /* 30px is Leaflet's own, and it is under the 24px floor only in the
+     sense that it clears it — kept at 30 so the two buttons together
+     stay shorter than the truck card they sit beside. */
+  width:30px; height:30px; line-height:30px;
+}
+.leaflet-container .leaflet-bar a:hover { background: rgba(255,255,255,.10); }
+.leaflet-container .leaflet-bar a:last-child { border-bottom:0; }
+.leaflet-container .leaflet-bar a.leaflet-disabled { color: var(--muted); background: var(--card); }
+.leaflet-container .leaflet-bar a:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
+
+.leaflet-container .leaflet-popup-content-wrapper,
+.leaflet-container .leaflet-popup-tip {
+  background: var(--card); color: var(--fg); box-shadow:0 2px 10px rgba(0,0,0,.5);
+}
+.leaflet-container .leaflet-popup-content-wrapper { border:1px solid var(--border); border-radius:8px; }
+.leaflet-container .leaflet-popup-content { margin:8px 10px; font-size:12px; }
+.leaflet-container .leaflet-popup-close-button { color: var(--muted); }
+.leaflet-container .leaflet-popup-close-button:hover { color: var(--fg); }
+
+/* Attribution is a legal line, not a decoration: it stays readable.
+   4.6:1 on the strip, which is over 1.4.3's 4.5 for normal text. */
+.leaflet-container .leaflet-control-attribution {
+  background: rgba(15,17,21,.82); color:#9aa3b5; font-size:10px; padding:0 4px;
+}
+.leaflet-container .leaflet-control-attribution a { color: var(--primary); }
+
+/* ── Floating map controls ───────────────────────────────────────────
+   The panel's version of the dashboard's Map Type card: a header that
+   is the whole control while collapsed, and a body docked under it when
+   open.  Collapsed by default — the map is why the panel is open, and a
+   control parked over it costs map on a 320px column. */
+.mapctl { background: var(--card); border:1px solid var(--border); border-radius:8px;
+          box-shadow:0 2px 10px rgba(0,0,0,.45); overflow:hidden;
+          /* A column that can SHRINK: the card is bounded by the map's
+             box, and without min-height:0 a long layer list would push
+             its own bottom edge off the map instead of scrolling. */
+          display:flex; flex-direction:column; min-height:0; pointer-events:auto; }
+.mapctl-head { display:flex; align-items:center; gap:6px; width:100%;
+               min-height:28px; padding:4px 8px; border:0; background:none;
+               color: var(--fg); font:inherit; font-size:12px; font-weight:600;
+               cursor:pointer; text-align:left; }
+.mapctl-head:hover { background: rgba(255,255,255,.06); }
+.mapctl-body { border-top:1px solid var(--border); padding:8px; display:grid; gap:8px;
+               /* The body sets the open width; collapsed, the header
+                  alone does, so the resting control is a small button
+                  rather than a 196px bar parked over the map. */
+               width:196px; box-sizing:border-box;
+               /* One region absorbs the overflow, and it is this one: a
+                  layer list that grew past the map would push the
+                  control off its own corner. */
+               min-height:0; overflow-y:auto; }
+/* The count on the collapsed header — how many layers are drawing. */
+.mapctl-count { min-width:16px; height:16px; padding:0 4px; border-radius:999px;
+                background: var(--primary-fill); color:#fff; font-size:10px; font-weight:700;
+                display:inline-flex; align-items:center; justify-content:center; line-height:1; }
+/* A layer row: swatch, name, count, switch.  A row, not a button — the
+   whole row is the target, which is the only way to clear 24px in a
+   list this dense. */
+.layer-row { display:flex; align-items:center; gap:6px; width:100%; min-height:26px;
+             padding:2px 4px; border:0; border-radius:6px; background:none;
+             color: var(--fg); font:inherit; font-size:12px; cursor:pointer; text-align:left; }
+.layer-row:hover { background: rgba(255,255,255,.06); }
+.layer-row[aria-pressed="true"] { background: rgba(59,130,246,.14); }
+.layer-dot { width:14px; height:14px; border-radius:50%; flex:none;
+             display:inline-flex; align-items:center; justify-content:center;
+             border:1px solid rgba(255,255,255,.55); }
+/* The map-type preview: a picture OF the tiles, which is why these are
+   literals and not tokens — they are a thumbnail of somewhere else. */
+.maptype { display:flex; flex-direction:column; align-items:center; gap:3px; flex:1 1 0;
+           border:0; background:none; padding:0; cursor:pointer; color: var(--muted); font:inherit; }
+.maptype > i { display:block; width:100%; height:26px; border-radius:6px;
+               border:2px solid transparent; }
+.maptype[aria-checked="true"] { color: var(--fg); }
+.maptype[aria-checked="true"] > i { border-color: var(--primary); }
+.maptype > span { font-size:10px; line-height:1.2; }

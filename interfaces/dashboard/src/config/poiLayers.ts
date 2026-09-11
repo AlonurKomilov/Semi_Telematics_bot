@@ -130,8 +130,12 @@ export const POI_GROUPS: PoiGroupDef[] = [
 
 // ── Vendor-directory popup ───────────────────────────────────────────────────
 
-/** Escape untrusted text for the popup HTML string. */
-function esc(v: unknown): string {
+/** Escape untrusted text for the popup HTML string.
+ *
+ *  Exported because the DEFAULT popup needs it too: its values are OSM
+ *  tags, which the whole world can edit, and it was interpolating them
+ *  raw into innerHTML while this file's vendor popup escaped. */
+export function esc(v: unknown): string {
   return String(v ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

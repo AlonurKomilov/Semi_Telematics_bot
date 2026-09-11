@@ -12,9 +12,11 @@ import { iconSignature, makeIcon } from './icons';
 import { applyFix, faceOf, hasLowLevelWarning, positionAt, shortestAngleDiff, statusColor, vehicleStatus, type Phys } from './physics';
 import { applyBase, type BaseState } from './basemap';
 import { readEngine, type MapEngine } from './engine';
-import { MAP_ENGINES, MAP_TYPES, MAP_TYPE_LABEL, type MapType } from './tiles';
+import { MAP_ENGINES, MAP_TYPES, type MapType } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
+import MapControls from './MapControls';
+import { usePoiLayers } from './usePoiLayers';
 import { linksFor, type ProviderLink } from './links';
 import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Inventory } from '../inventory/data';
 import ItemRows from '../inventory/ItemRows';
@@ -27,7 +29,8 @@ import { DASHBOARD_BASE } from '../../connect';
 import { directionsUrl, followInGoogleMaps, openInGoogleMaps, searchUrl } from './googleMaps';
 // READ, never written here: "Follow in Google Maps" is a preference of
 // the PANEL, and Settings is the only place it is changed.
-import { MAP_PROVIDER_KEY, MAP_TYPE_KEY, getChoice, getFollowPref, setChoice } from '../../prefs';
+import { MAP_PROVIDER_KEY, MAP_TYPE_KEY, getChoice, getFollowPref, getStoredChoice,
+         setChoice } from '../../prefs';
 import EmptyState, { NO_VEHICLES_YET } from '../../shell/EmptyState';
 import Splitter from '../../shell/Splitter';
 import { vehicleLine } from '../../vehicleLabel';
@@ -132,6 +135,10 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   /** What was actually drawn, which is not always what was asked for: a
    *  spent quota or a refused session falls back to the free layer. */
   const [drewGoogle, setDrewGoogle] = useState(false);
+  /** The overlays need a map with bounds before they can ask for
+   *  anything — a bbox read off a map that has not been laid out is the
+   *  whole world, which is one Overpass query nobody wants to make. */
+  const [mapReady, setMapReady] = useState(false);
   const typeRef = useRef<MapType>('standard');
   const providerRef = useRef<MapEngine>('osm');
   const baseRef = useRef<BaseState | null>(null);
@@ -145,14 +152,38 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // still in flight, instead of a flash of the other map.
   useEffect(() => {
     let stopped = false;
-    void Promise.all([
-      getChoice(MAP_TYPE_KEY, 'standard', MAP_TYPES),
-      getChoice(MAP_PROVIDER_KEY, 'osm', MAP_ENGINES),
-    ]).then(([t, pv]) => {
+    void (async () => {
+      const [t, stored] = await Promise.all([
+        getChoice(MAP_TYPE_KEY, 'standard', MAP_TYPES),
+        // `getStoredChoice`, not `getChoice`: the difference between "they
+        // chose the free map" and "nobody has chosen here yet" is the whole
+        // point below, and a fallback answers both the same way.
+        getStoredChoice(MAP_PROVIDER_KEY, MAP_ENGINES),
+      ]);
       if (stopped) return;
-      setMapType(t); setProvider(pv);
-    });
-    void readEngine().then((w) => { if (!stopped) setGoogleAvailable(w.google_available); });
+      setMapType(t);
+      if (stored) setProvider(stored);
+      const w = await readEngine();
+      if (stopped) return;
+      setGoogleAvailable(w.google_available);
+      // Nobody has pressed anything here yet, so follow the ACCOUNT.  The
+      // dashboard has no per-device choice at all — the account's engine
+      // IS its map — so a panel that opened on the free map for an account
+      // running on Google was contradicting the screen beside it, and
+      // calling it a preference nobody had expressed.
+      if (!stored && w.engine !== providerRef.current) {
+        setProvider(w.engine);
+        providerRef.current = w.engine;
+        const m = map.current, base = baseRef.current;
+        // Ordering is the swap's own problem: `applyBase` carries a
+        // sequence number, so this arriving late cannot land on top of a
+        // press the person has since made.
+        if (m && base) {
+          void applyBase(m, L, base, typeRef.current, w.engine)
+            .then((r) => { setDrewGoogle(r.drew === 'google'); viewportRef.current = r.viewportUrl; });
+        }
+      }
+    })();
     return () => { stopped = true; };
   }, []);
 
@@ -170,6 +201,13 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
       viewportRef.current = r.viewportUrl;
     });
   };
+  /** What is drawn ON TOP of the basemap — fuel, DEF, parking, showers,
+   *  weigh stations, rest areas, the repair-shop directory, and whatever
+   *  the account has added.  The same endpoints and the same layer ids
+   *  as the dashboard; see usePoiLayers.ts for the two things that had
+   *  to differ in a 320px column. */
+  const poi = usePoiLayers(map, L, mapReady);
+
   // The selected truck's provider links, fetched once per truck.
   const [links, setLinks] = useState<ProviderLink[]>([]);
   // …and what is aboard it.  null covers three cases that all mean the
@@ -469,6 +507,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     // person took over", with no flag to keep in sync.
     m.on('dragstart', () => { if (keepRef.current) setKeep(false); });
     map.current = m;
+    setMapReady(true);
     void getFollowPref().then((on) => { followRef.current = on; });
     void getFlag(LIST_OPEN_KEY, true).then(setListOpen);
     void getFlag(CARD_OPEN_KEY, true).then(setCardOpen);
@@ -489,6 +528,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
       if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null; }
       physMap.clear(); markerMap.clear(); latestMap.clear();
       keyMap.clear(); arrowMap.clear(); warnMap.clear();
+      setMapReady(false);
       m.remove(); map.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -622,34 +662,18 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
         <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} />
         {/* Over the map, TOP-LEFT: zoom owns the top-right and the
             vehicle card owns the bottom.  A control half behind another
-            control is worse than one further away. */}
-        <div className="row" style={{
-          position: 'absolute', top: 8, left: 8, zIndex: 500,
-          gap: 4, flexWrap: 'wrap', maxWidth: 'calc(100% - 64px)',
-        }}>
-          {MAP_TYPES.map((t) => (
-            <button key={t} type="button" className={`chip ${mapType === t ? 'on' : ''}`}
-                    role="radio" aria-checked={mapType === t}
-                    onClick={() => chooseBasemap(t, provider)}>
-              {MAP_TYPE_LABEL[t]}
-            </button>
-          ))}
-          {/* Offered only when picking it would DO something — the server
-              says whether this account has the engine at all. */}
-          {googleAvailable && (
-            <button type="button" className={`chip ${provider === 'google' ? 'on' : ''}`}
-                    role="switch" aria-checked={provider === 'google'}
-                    title={provider === 'google' && !drewGoogle
-                      ? 'Google could not be drawn — showing the free map'
-                      : 'Draw this map with Google'}
-                    onClick={() => chooseBasemap(mapType, provider === 'google' ? 'osm' : 'google')}>
-              {/* Says what HAPPENED, not what was asked for: a spent quota
-                  or a refused session falls back, and a chip still lit
-                  would be the picker lying about the map underneath. */}
-              Google{provider === 'google' && !drewGoogle ? ' ·\u00a0unavailable' : ''}
-            </button>
-          )}
-        </div>
+            control is worse than one further away.
+
+            A row of chips was the v2 shape, and it did not survive the
+            layers arriving: six more switches would have wrapped across
+            four lines of map.  The dashboard's answer is a collapsed
+            card that opens, and it is the right one here for a harder
+            reason — this column has less map to spend. */}
+        <MapControls
+          mapType={mapType} provider={provider}
+          googleAvailable={googleAvailable} drewGoogle={drewGoogle}
+          onChoose={chooseBasemap} poi={poi}
+        />
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew
           from three lines to seven, and by then it was hiding more of
