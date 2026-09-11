@@ -928,7 +928,10 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
         {/* A filter or a search emptied the list — which is NOT "you have
             no vehicles".  Saying nothing here sent people away believing
             their account was empty, so the constraint is named and the
-            way out is one press. */}
+            way out is one press.  The button is named after what is
+            actually SET: it read "Clear filters" while the line above
+            it listed a search and no filter, so the word and the
+            reason disagreed. */}
         {!filtered.length && !!vehicles.length && (
           <EmptyState
             title="No vehicles match"
@@ -937,7 +940,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
             action={
               <button className="btn" style={{ marginTop: 4 }}
                       onClick={() => { chooseFilter('all'); setSearch(''); }}>
-                Clear filters
+                {filter !== 'all' && search ? 'Clear both'
+                  : filter !== 'all' ? 'Clear the status filter' : 'Clear search'}
               </button>
             } />
         )}
