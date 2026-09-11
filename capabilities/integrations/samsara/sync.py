@@ -873,7 +873,7 @@ async def ingest_vehicle_faults(account_id: int) -> int:
     #
     # ``classify_is_critical`` is the documented single source of truth
     # and reads exactly the ``_lights``/``_dtcs`` the client provides.
-    from features.vehicles.severity import classify_is_critical
+    from capabilities.vehicles.severity import classify_is_critical
     critical_ids = {
         v.get("id") or "" for v in faulted if classify_is_critical(v)
     }
