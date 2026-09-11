@@ -115,14 +115,39 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
         filtered.append(r)
 
     if not filtered:
+        # "No drivers match" and "nothing has ever written this table"
+        # are different answers, and only one of them is safe to say out
+        # loud.  There is NO producer for driver_hos_status anywhere in
+        # the repo — no Samsara HOS client method, no scheduler job — so
+        # on every account this tool can only return an empty list,
+        # while the system prompt advertises it as the hours-of-service
+        # answer.  An empty list reads to the model as "nobody is near
+        # their limit", which on a compliance question is the worst
+        # direction to be wrong in.
+        #
+        # The note above described a sync that does not exist.  Until
+        # the ingest is built, say the source is not connected and hand
+        # the model somewhere real to send the person.
+        if not rows:
+            return {
+                "count": 0,
+                "drivers": [],
+                "hos_unavailable": True,
+                "note": (
+                    "Hours-of-service data is not connected for this "
+                    "account — nothing has been recorded, so this is "
+                    "NOT a statement that every driver has hours "
+                    "remaining. Do not answer HOS or compliance "
+                    "questions from this result. Check the ELD "
+                    "provider directly."
+                ),
+            }
         return {
             "count": 0,
             "drivers": [],
             "note": (
-                "No HOS data found for the requested filter.  Either "
-                "no drivers match, or the HOS sync job hasn't populated "
-                "this account yet — manual ELD entries in Samsara only "
-                "appear here after the next sync run."
+                "No driver matches that filter. HOS data exists for "
+                "this account, so this is a real 'none match'."
             ),
         }
 
