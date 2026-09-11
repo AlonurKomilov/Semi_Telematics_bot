@@ -10,7 +10,7 @@
  *   <MapTypeControl {...{ mapType, showLabels, setMapType, setShowLabels, isReady }} />
  *
  * Tile sources (all free, no API key required):
- *   Standard  → OpenStreetMap
+ *   Standard  → Esri (the free engine; was OpenStreetMap until they blocked us)
  *   Satellite → ESRI World Imagery
  *   Terrain   → OpenTopoMap (shows elevation contours; max zoom 17)
  *   Labels    → ESRI World Boundaries & Places overlay (satellite/terrain only)
@@ -45,7 +45,16 @@ interface MapTypeControlProps {
  *  choosing "Google" is choosing a familiar map, and the copy says so
  *  rather than naming an API. */
 const PROVIDERS: { id: MapProvider; label: string }[] = [
-  { id: 'osm',    label: 'OpenStreetMap' },
+  // "Esri", because that is now whose map it is.  The free engine drew
+  // from OpenStreetMap's volunteer servers until they blocked the
+  // product on 2026-09-11 for app-distributed and bulk use; the tiles
+  // moved and this label did not, which left the picker naming a vendor
+  // the map no longer comes from — worse than a vague label, because the
+  // stated intent here is to say whose map it is.
+  //
+  // The stored id stays `osm`: it is a saved preference, and renaming it
+  // would silently reset every reader's choice to buy nothing.
+  { id: 'osm',    label: 'Esri' },
   { id: 'google', label: 'Google' },
 ];
 

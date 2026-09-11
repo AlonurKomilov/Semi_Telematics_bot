@@ -29,6 +29,12 @@ function open() {
 
 beforeEach(() => { apiJSON.mockReset().mockResolvedValue({}); perms.has.mockReset(); engine.refresh.mockReset(); });
 
+/* The provider is labelled by VENDOR, and the vendor changed: the free
+   engine drew from OpenStreetMap until they blocked the product for
+   app-distributed and bulk use, and the tiles moved to Esri.  The stored
+   id is still `osm` — it is a saved preference, and renaming it would
+   reset every reader's choice to buy nothing — so these look the row up
+   by what it SAYS, which is the thing that had to change. */
 describe('choosing the basemap', () => {
   it('sends the engine as an OBJECT body, the shape apiJSON turns into JSON', async () => {
     perms.has.mockReturnValue(true);
@@ -42,7 +48,7 @@ describe('choosing the basemap', () => {
   it('pressing the one already on sends nothing', () => {
     perms.has.mockReturnValue(true);
     open();
-    fireEvent.click(screen.getByRole('radio', { name: 'OpenStreetMap' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Esri' }));
     expect(apiJSON).not.toHaveBeenCalled();
   });
 
@@ -51,7 +57,7 @@ describe('choosing the basemap', () => {
     open();
     const google = screen.getByRole('radio', { name: 'Google' }) as HTMLButtonElement;
     expect(google.disabled).toBe(true);
-    expect(screen.getByRole('radio', { name: 'OpenStreetMap' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Esri' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('is not drawn at all when the server cannot offer Google', () => {
@@ -64,7 +70,7 @@ describe('choosing the basemap', () => {
 });
 
 describe('before the server has said which map this account uses', () => {
-  it('shows that it is still reading, not OpenStreetMap selected', () => {
+  it('shows that it is still reading, not the free map selected', () => {
     // The hook starts at 'osm'; an account on Google would otherwise be
     // told the wrong thing for as long as the read takes.
     perms.has.mockReturnValue(true);

@@ -8,7 +8,9 @@
  * a surface never has to guess:
  *
  *   loading  — nothing known yet, and it is not an error
- *   'osm'    — OpenStreetMap under Leaflet, the free engine, and what
+ *   'osm'    — the free keyless engine under Leaflet, Esri's tiles
+ *              since OpenStreetMap blocked us; the id keeps the old
+ *              name because it is a stored preference.  What
  *              every failure ends as
  *   'google' — Google's tiles under the SAME Leaflet, through the Map
  *              Tiles API; every overlay stays where it is
@@ -111,7 +113,7 @@ export function useMapEngine(): MapEngineState {
         // The endpoint is part of drawing a map, not of deciding
         // whether to draw one. Unreachable means the free engine.
         settle({ engine: OSM, loading: false, googleAvailable: false, fellBackFrom: null,
-                 reason: 'The map engine could not be read; using OpenStreetMap.' });
+                 reason: 'The map engine could not be read; using the free map.' });
       }
     })();
     return () => { alive.current = false; };
