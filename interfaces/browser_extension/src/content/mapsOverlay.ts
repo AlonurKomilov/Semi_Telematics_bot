@@ -630,7 +630,17 @@ function placeCard(): void {
     card = document.createElement('div');
     card.id = '4truck-maps-card';
     card.style.cssText =
-      'position:absolute;pointer-events:auto;width:' + CARD_W + 'px;box-sizing:border-box;'
+      'position:absolute;pointer-events:auto;width:' + CARD_W + 'px;box-sizing:border-box;' +
+      // The `+` above ends that line ON PURPOSE.  Below this comment it
+      // was invisible to the parser: a string literal cannot follow a
+      // string literal, so ASI closed the assignment at the line above
+      // and everything under here became an expression nobody read.  The
+      // card shipped with position and width and NOTHING else — no
+      // background, no padding, no colour — transparent on somebody
+      // else's map, with Google's own text colour showing through.
+      // tsc cannot see it (a dangling expression is valid JS); the lint
+      // rule that can, no-unused-expressions, is now on.
+      //
       // TWO rings, not a border.  This card sits on somebody else's page and
       // the ground is unknown and varies WITHIN one page — Google's dark land
       // (#212121), its roads (#3c4043), its light theme (#f2efe9).  Computed

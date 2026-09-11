@@ -122,6 +122,88 @@ def test_the_overlay_switch_is_visible_when_it_is_off(map_name: str) -> None:
     assert contrast("#ffffff", track) >= AA_NON_TEXT
 
 
+#: Google paints three grounds under this card within one page.
+GOOGLE_GROUNDS = {"dark land": "#212121", "roads": "#3c4043", "light theme": "#f2efe9"}
+
+
+@pytest.mark.parametrize("ground", list(GOOGLE_GROUNDS))
+def test_the_overlay_card_keeps_an_edge_on_every_google_ground(ground: str) -> None:
+    """The card's boundary is a PAIR of rings, and the pair is the point.
+
+    No single translucent ring clears 3:1 on all three grounds Google
+    paints within one page, so the card wears both: where the page is
+    dark the inner light ring carries the edge, where it is light the
+    outer dark one does.  This asserts at least one of them always does.
+
+    It is checked here rather than trusted because this file has form.
+    A comment once claimed a two-part shadow the edit had never made —
+    and the whole style block, rings included, spent time never
+    rendering at all: a missing `+` let ASI close the cssText assignment
+    early, and the card was transparent on somebody else's map.  The
+    numbers below were first written against a card nobody could see.
+    """
+    src = OVERLAY.read_text(encoding="utf-8")
+    assert "box-shadow:0 0 0 1px rgba(255,255,255,.65),0 0 0 2px rgba(0,0,0,.65)" in src, (
+        "the two-ring boundary is gone or its alphas changed — re-measure"
+    )
+    page = GOOGLE_GROUNDS[ground]
+    inner = _composite("#ffffff", 0.65, page)
+    outer = _composite("#000000", 0.65, page)
+    best = max(contrast(inner, page), contrast(outer, page))
+    assert best >= AA_NON_TEXT, (
+        f"on Google's {ground} neither ring reaches {AA_NON_TEXT}:1 "
+        f"(best {best:.2f}) — the card has no visible boundary there"
+    )
+
+
+def test_every_piece_of_the_card_style_is_joined_to_the_one_above_it() -> None:
+    """The bug that hid all of the above, checked as the chain it is.
+
+    `card.style.cssText` is built from string literals spread over a
+    dozen lines with comments between them.  A continuation line that
+    does not hang off a `+` does not extend the assignment — a string
+    literal cannot follow a string literal, so ASI closes the statement
+    and the rest becomes an expression nobody reads.  That is what
+    shipped: the card rendered with position and width and nothing else,
+    transparent on google.com/maps.
+
+    `no-unused-expressions` in the extension's eslint config is the
+    first guard and points straight at the line.  This is the second,
+    and it states the invariant in the terms this file cares about —
+    the declarations that decide contrast must reach the element.
+
+    (The first attempt at this test split the source on the first
+    ";\\n" and compared strings; it passed in BOTH states, which is no
+    test at all.  Checking the join is what distinguishes them.)
+    """
+    src = OVERLAY.read_text(encoding="utf-8")
+    body = src.split("card.style.cssText =", 1)[1]
+    lines = body.split("\n")
+
+    previous = ""          # the last line that was not a comment
+    pieces = 0
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if previous and line.startswith("'"):
+            # A continuation that opens with a quote must hang off the `+`
+            # of the line before it.  One that opens with `+` already does.
+            assert previous.endswith("+"), (
+                "a piece of the card's style does not hang off a `+`, so it "
+                f"never reaches the element:\n  after: {previous}\n  line:  {line}"
+            )
+        if previous and (line.startswith("'") or line.startswith("+")):
+            pieces += 1
+        previous = line
+        if line.endswith(";"):
+            break
+
+    # Without this the test would pass on a one-line assignment, which is
+    # a state it says nothing about.
+    assert pieces >= 3, "the card style is no longer a multi-line chain — re-read this test"
+
+
 def test_the_separator_stays_a_separator() -> None:
     """--border is deliberately below every floor, and must not be reached for.
 

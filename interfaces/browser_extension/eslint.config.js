@@ -43,6 +43,14 @@ export default [
       'no-redeclare': 'off',
 
       // Real bugs:
+      // A computed value nobody reads.  This is not style: on 2026-09-11 a
+      // missing `+` at the end of a line let ASI close a cssText
+      // assignment early, and the rest of the card's styles — background,
+      // padding, colour, both rings — became a dangling expression.  The
+      // overlay card shipped transparent on google.com/maps for however
+      // long that stood, and tsc cannot see it: a dangling expression is
+      // valid JavaScript.  This rule points straight at the line.
+      'no-unused-expressions': 'error',
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['warn', {
