@@ -157,10 +157,13 @@ class StripeBillingProvider:
         # Get or create Stripe customer
         customer_id = sub.get("provider_customer_id", "")
         if not customer_id:
-            customer = await _off_loop(stripe.Customer.create,
-                email=sub.get("billing_email") or None,
-                metadata={"account_id": str(account_id)},
-            )
+            try:
+                customer = await _off_loop(stripe.Customer.create,
+                    email=sub.get("billing_email") or None,
+                    metadata={"account_id": str(account_id)},
+                )
+            except stripe.error.StripeError as e:
+                raise ProviderError(f"Stripe could not open an account for this customer: {e}") from e
             customer_id = customer["id"]
             await db.update_subscription(
                 account_id,
@@ -197,14 +200,23 @@ class StripeBillingProvider:
             if extras_now > 0:
                 line_items.append({"price": extras_price_id, "quantity": extras_now})
 
-        session = await _off_loop(stripe.checkout.Session.create,
-            customer=customer_id,
-            mode="subscription",
-            line_items=line_items,
-            success_url=success_url,
-            cancel_url=cancel_url,
-            metadata={"account_id": str(account_id), "tier": tier},
-        )
+        try:
+            session = await _off_loop(stripe.checkout.Session.create,
+                customer=customer_id,
+                mode="subscription",
+                line_items=line_items,
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={"account_id": str(account_id), "tier": tier},
+            )
+        except stripe.error.StripeError as e:
+            # A refusal from Stripe is not an internal error, and the
+            # customer is the one reading the answer: a 500 tells them
+            # 4truck is broken, a 502 with this text tells them the
+            # payment provider refused and gives the operator the
+            # sentence to act on. The traceback still reaches the error
+            # centre either way.
+            raise ProviderError(f"Stripe could not start the checkout: {e}") from e
         return {"url": session["url"], "session_id": session["id"]}
 
     async def _switch_plan(self, stripe, db, account_id: int, sub: dict, tier: str,

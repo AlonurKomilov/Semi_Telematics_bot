@@ -389,3 +389,38 @@ async def test_no_extras_line_is_opened_for_an_account_that_owes_none(pg_db, mon
 
     r = await StripeBillingProvider().sync_billing_quantity(acct.id, db)
     assert r["skipped"] == "noop" and r["after"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_stripe_refusal_at_checkout_is_not_an_internal_error(pg_db, monkeypatch):
+    """The customer is the one reading the answer. A 500 says 4truck is
+    broken; a ProviderError becomes a 502 whose text names the provider
+    and what it refused — which is what the operator needs too."""
+    from capabilities.platform.billing.provider import ProviderError
+    from capabilities.platform.billing.stripe_client import StripeBillingProvider
+    monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter_test")
+    monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
+    db = pg_db
+    acct = await db.create_account("RefusedCo")
+    await db.get_or_create_subscription(acct.id, tier="free")
+
+    class _Refusing:
+        class error:
+            StripeError = RuntimeError            # what the SDK raises
+
+        class Customer:
+            @staticmethod
+            def create(**kw): return {"id": "cus_x"}
+
+        class checkout:
+            class Session:
+                @staticmethod
+                def create(**kw):
+                    raise RuntimeError("This value must be greater than or equal to 1.")
+    monkeypatch.setattr(
+        "capabilities.platform.billing.stripe_client._stripe", lambda: _Refusing)
+
+    with pytest.raises(ProviderError) as got:
+        await StripeBillingProvider().create_checkout_session(
+            acct.id, db, "starter", "ok", "cancel")
+    assert "Stripe could not start the checkout" in str(got.value)
