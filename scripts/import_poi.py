@@ -37,9 +37,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 
-from dotenv import load_dotenv
+# Run from anywhere: `python3 scripts/import_poi.py` puts scripts/ on the
+# path, not the repo root, so `features` and `infra` are not importable
+# without this.  Every script here that reaches into the app does the
+# same — mine did not, and the first run said so.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
