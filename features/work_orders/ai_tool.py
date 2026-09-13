@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 
 
 def _parses(service_date: str) -> bool:
@@ -118,6 +119,21 @@ async def get_recent_work_orders(tool_args: dict, samsara_client,
         account_id, status=status, payment_status=pay,
         vehicle_name=vehicle,
     )
+
+    # The caller's own trucks, by the strongest rung the rows carry.
+    #
+    # This tool is in VEHICLE_SPECIFIC_TOOLS, so the dispatcher hands it
+    # `_scope_vehicles` and `_scope_identities` — and the handler read
+    # neither. The only narrowing was SQL `vehicle_name = ?`, which
+    # cannot split same-numbered trucks across companies, so a caller
+    # scoped to one company's unit 234 was shown the other company's
+    # 234 work orders too: their shop, their parts, their money. Filter
+    # BEFORE the totals below, so count and cost describe the caller's
+    # own rows rather than the account's.
+    #
+    # work_orders rows carry vehicle_id, so the default external key is
+    # right here and rung 2 splits the twins even without a registry id.
+    rows = filter_to_scope(rows, tool_args, key="vehicle_name")
 
     # Narrow by service-date window in Python; the storage method
     # doesn't filter dates and a 1-year mechanic-shop dataset is small.

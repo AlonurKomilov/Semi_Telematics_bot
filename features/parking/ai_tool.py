@@ -1,13 +1,14 @@
 """Parking AI tool — long-idle / parked vehicles (wraps the parking tracker).
 
 Co-located with the parking feature.  Account-wide, so it filters its results
-to the caller's Vehicle-Access scope via the shared ``scope_vehicle_set``.
+to the caller's Vehicle-Access scope via the shared ``filter_to_scope``,
+which decides each row by the strongest identity rung it and the scope share.
 """
 
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from capabilities.ai.tools.scope import scope_vehicle_set
+from capabilities.ai.tools.scope import filter_to_scope
 
 
 @register_tool({
@@ -68,10 +69,6 @@ async def get_parked_vehicles(tool_args: dict, samsara_client,
     include_safe = bool(tool_args.get("include_safe") or False)
     company = (tool_args.get("company") or "").strip()
 
-    # Vehicle-Access scope: company/vehicle-restricted callers only see their
-    # own vehicles.  None = unrestricted; empty set = none (fail-closed).
-    scope_set = scope_vehicle_set(tool_args)
-
     # Read through the feature's own contract, not the ACTIVE-only
     # adapter.  The tracker resolves a stop once the truck moves, so the
     # unresolved table only ever holds short stays — in production its
@@ -100,6 +97,19 @@ async def get_parked_vehicles(tool_args: dict, samsara_client,
         from features.parking.service import needs_attention
         events = [ev for ev in events if needs_attention(ev)]
 
+    # Vehicle-Access scope, by the strongest rung the rows carry.
+    #
+    # This compared lowercased vehicle NAMES and dropped the injected
+    # `_scope_identities` on the floor, so a same-numbered truck in
+    # another company walked in and the caller's OWN truck dropped out
+    # the moment the provider renamed it. parking_events rows carry
+    # `vehicle_id` — the provider id, and the column the ladder reads
+    # by default — so rung 2 tells the twins apart.
+    #
+    # filter_to_scope rather than a per-row test inside the loop below:
+    # it builds the caller's scope once for the list.
+    events = filter_to_scope(events, tool_args, key="vehicle_name")
+
     min_hours = min_days * 24.0
     filtered: list[dict] = []
     for ev in events:
@@ -107,10 +117,6 @@ async def get_parked_vehicles(tool_args: dict, samsara_client,
         if dur < min_hours:
             continue
         if company and (ev.get("company_code") or "").upper() != company.upper():
-            continue
-        if scope_set is not None and (
-            (ev.get("vehicle_name") or "").strip().lower() not in scope_set
-        ):
             continue
         filtered.append(ev)
 
