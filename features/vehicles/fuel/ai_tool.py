@@ -6,6 +6,7 @@ import logging
 
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
+from features.vehicles.resolve import resolve_for_tool, rows_for
 from features.vehicles.warehouse.service import get_low_fuel_vehicles as _svc_low_fuel
 
 
@@ -82,8 +83,27 @@ async def get_vehicle_fuel_costs(tool_args: dict, samsara_client,
     days = tool_args.get("days")
     if not db or account_id is None:
         return {"error": "Fuel cost data not available in this context"}
+    # Which "103"? Fuel entries are keyed by name, so this answered with
+    # whichever truck's entries the store returned — the other company's
+    # fuel spend, reported as this truck's.
+    resolved, err = await resolve_for_tool(db, account_id, tool_args)
+    if err:
+        return err
     cutoff = ""
     entries = await db.get_fuel_entries(account_id, vehicle_name=vehicle, limit=200)
+    # The sample rows below belong to the same truck as the totals above.
+    entries = filter_to_scope(entries, tool_args, key="vehicle_name")
+    if resolved is not None:
+        co = (getattr(resolved, "company_code", "") or "").strip().upper()
+        ref = (getattr(resolved, "telematics_ref", "") or "").strip()
+        if ref or co:
+            entries = [
+                e for e in entries
+                if (ref and str(e.get("vehicle_id") or "").strip() == ref)
+                or (not str(e.get("vehicle_id") or "").strip()
+                    and (not co
+                         or (e.get("company_code") or "").strip().upper() == co))
+            ]
     if days and isinstance(days, int) and days > 0:
         # Stored fuel dates are ACCOUNT-local day strings (the bot
         # writes them in the account timezone) — the cutoff must speak
@@ -136,11 +156,24 @@ async def get_vehicle_fuel_costs(tool_args: dict, samsara_client,
     try:
         agg = await db.get_fuel_summary(account_id, start_date=cutoff or None)
         want = (vehicle or "").strip().lower()
-        row = next(
-            (r for r in agg
-             if (r.get("vehicle_name") or "").strip().lower() == want),
-            None,
-        )
+        candidates = [
+            r for r in agg
+            if (r.get("vehicle_name") or "").strip().lower() == want
+        ]
+        # Twins share a unit number, and the summary is grouped by
+        # (name, company) — so picking the first row named "103" is a
+        # coin toss between two companies' fuel spend. The resolver has
+        # already said which truck this is.
+        row = None
+        if resolved is not None and len(candidates) > 1:
+            pinned = rows_for(resolved, candidates) or [
+                r for r in candidates
+                if (r.get("company_code") or "").strip().upper()
+                == (getattr(resolved, "company_code", "") or "").strip().upper()
+            ]
+            row = pinned[0] if pinned else None
+        if row is None:
+            row = candidates[0] if candidates else None
         if row:
             total_gal = float(row.get("total_gallons") or 0)
             total_cost = float(row.get("total_cost") or 0)

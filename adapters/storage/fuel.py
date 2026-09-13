@@ -67,18 +67,28 @@ class FuelMixin:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> list[dict]:
-        """Per-vehicle fuel summary: total gallons, total cost, avg price, entry count."""
-        # ``MIN(company_code)`` keeps the per-vehicle row count
-        # identical to the SQLite-lenient behaviour (one row per
-        # vehicle, with one of its company codes picked
-        # deterministically) while satisfying Postgres' strict
-        # GROUP BY rule.  Edge case where a single vehicle has fuel
-        # entries under multiple companies — rare but possible after
-        # re-org — surfaces the lexicographically earliest code; the
-        # report is by-vehicle anyway, so this matches user intent.
+        """Per-vehicle fuel summary: total gallons, total cost, avg price, entry count.
+
+        Grouped by (vehicle_name, company_code), NOT by name alone.
+
+        Unit numbers are reused across companies, so grouping by name
+        merged two different trucks into one row — their gallons, their
+        cost and their odometer range added together. That is wrong
+        money on its face, and it also merged them BEFORE any caller
+        could separate them, so a company-scoped reader saw the other
+        company's spend inside their own row with nothing to filter on.
+        The old comment called this a rare post-re-org edge case; twins
+        are a standing fact of this data.
+
+        ``MAX(vehicle_id)`` carries the provider id onto the row so the
+        identity ladder can decide it. Entries typed by hand store an
+        empty one, and MAX picks the non-empty value where a truck has
+        both — a truck's rows stay together while the twins split.
+        """
         q = (
             "SELECT vehicle_name,"
-            " MIN(company_code) as company_code,"
+            " company_code,"
+            " MAX(vehicle_id) as vehicle_id,"
             " COUNT(*) as entries,"
             " SUM(gallons) as total_gallons,"
             " SUM(total_cost) as total_cost,"
@@ -94,7 +104,8 @@ class FuelMixin:
         if end_date:
             q += " AND date <= ?"
             params.append(end_date)
-        q += " GROUP BY vehicle_name ORDER BY total_cost DESC"
+        q += (" GROUP BY vehicle_name, company_code"
+              " ORDER BY total_cost DESC")
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
