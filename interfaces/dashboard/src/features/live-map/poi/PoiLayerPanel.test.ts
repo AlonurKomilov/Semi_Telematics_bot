@@ -80,3 +80,18 @@ describe('the panel no longer paints white on a layer colour', () => {
       .toBeGreaterThanOrEqual(grounds);
   });
 });
+
+describe('an empty layer says why it is empty', () => {
+  it('has an empty state at all — it had none', () => {
+    // A ticked row over a blank map, with no badge and no note: "none
+    // here", "your filter is hiding them" and "we could not ask" were
+    // one and the same silence.
+    expect(panel).toContain('None in this view');
+    expect(panel).toContain('None of the chosen brands in this view');
+  });
+
+  it('names the source’s age beside it when the extract is old', () => {
+    expect(panel).toContain('staleSourceAge');
+    expect(panel).toMatch(/OSM data \$\{staleAge\} old/);
+  });
+});

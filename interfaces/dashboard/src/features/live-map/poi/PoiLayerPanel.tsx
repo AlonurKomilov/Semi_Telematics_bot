@@ -11,7 +11,7 @@ import { useState } from 'react';
 import type L from 'leaflet';
 import { Check, ChevronDown, ChevronUp, Download, Map as MapIcon, Pencil, Trash2, TriangleAlert } from '@/lib/icons';
 import { ContextMenu, type MenuAction } from '@/components/ui/context-menu';
-import { POI_GROUPS } from './layers';
+import { POI_GROUPS, staleSourceAge } from './layers';
 import type { PoiLayerDef } from './layers';
 import type { UsePoiLayersResult, PoiFeature } from './usePoiLayers';
 import { useViewPermissions } from '@/hooks/useViewPermissions';
@@ -80,6 +80,10 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
     effectiveLayers, refreshCustomLayers, sourceAsOf,
   } = poiHook;
   const { has } = useViewPermissions();
+  // Said once per render, not once per row: the extract's age is a fact
+  // about the SOURCE, and thirteen rows repeating it would read as
+  // thirteen problems.
+  const staleAge = staleSourceAge(sourceAsOf);
   const canManage = has('can_manage_poi_layers');
 
   // Collapsed by default — the live-map opens cleaner; the user
@@ -350,6 +354,24 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                 {/* Error */}
                 {errMsg && (
                   <p className="text-2xs text-destructive leading-tight pl-7 pb-0.5 flex items-center gap-1"><TriangleAlert className="shrink-0 size-3" /> {errMsg}</p>
+                )}
+
+                {/* A layer that is ON and drew nothing said NOTHING here —
+                    no badge, no note, just a ticked row over an empty map.
+                    That is the shape the owner met in Chicago: "none" and
+                    "we could not tell you" looked identical, and so did
+                    "none" and "your own brand filter is hiding them".
+                    Both halves are named now, and when the extract is
+                    months behind that is named beside them — a truck stop
+                    that opened since simply is not in the data, and only
+                    a date can say so. */}
+                {isOn && !isBusy && !errMsg && count === 0 && (
+                  <p className="text-2xs text-muted-foreground leading-tight pl-7 pb-0.5">
+                    {(allFeatures[def.id]?.length ?? 0) > 0
+                      ? 'None of the chosen brands in this view'
+                      : 'None in this view'}
+                    {staleAge && ` · OSM data ${staleAge} old`}
+                  </p>
                 )}
 
                 {/* ── Brand filter section ── */}

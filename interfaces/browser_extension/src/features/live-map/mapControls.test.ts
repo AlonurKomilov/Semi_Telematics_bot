@@ -80,3 +80,17 @@ describe('the controls are in the dashboard’s corners', () => {
     expect(src).toMatch(/bottom: 8, left: 8/);
   });
 });
+
+describe('an empty layer says why it is empty', () => {
+  it('still separates "none here" from "your own filter is hiding them"', () => {
+    expect(controlsSrc).toContain('None in this view');
+    expect(controlsSrc).toContain('None of the chosen brands in this view');
+  });
+
+  it('names the source’s age beside them when the extract is old', () => {
+    // The third reason, and the only one the panel could never have
+    // guessed at: the data itself is behind.
+    expect(controlsSrc).toContain('staleSourceAge');
+    expect(controlsSrc).toMatch(/OSM data \$\{staleAge\} old/);
+  });
+});

@@ -10,7 +10,10 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { POI_LAYERS, esc, glyphSvg, osmPopup, readableOn, vendorPopup } from './layers';
+import {
+  POI_LAYERS, SOURCE_STALE_DAYS, esc, glyphSvg, osmPopup, readableOn,
+  staleSourceAge, vendorPopup,
+} from './layers';
 
 function ratio(a: string, b: string): number {
   const lum = (hex: string) => {
@@ -107,5 +110,49 @@ describe('a glyph is a string, and an unknown one is empty rather than broken', 
 
   it('returns nothing for a custom layer’s emoji, so the caller draws it as text', () => {
     expect(glyphSvg('🚚', 12)).toBe('');
+  });
+});
+
+/**
+ * "None in this view" is true and incomplete — the sentence the owner
+ * read over Chicago.  There may be nothing there; a brand chip they
+ * pressed may be hiding it; or the OpenStreetMap extract behind the
+ * layer may be months behind, so a truck stop that opened since is
+ * simply not in it.  Measured 2026-09-13, the two mirrors the server
+ * can reach were stamped 2026-06-01 and 2026-07-28.
+ *
+ * This decides WHEN that last one is worth saying: always is noise on
+ * every quiet row, never leaves the reader blaming the panel.
+ */
+describe('when the source’s age is worth saying', () => {
+  const DAY = 86_400_000;
+  const NOW = Date.UTC(2026, 8, 13, 12, 0, 0);
+  const daysAgo = (n: number) => new Date(NOW - n * DAY).toISOString();
+
+  it('says nothing without a date, or with one it cannot read', () => {
+    expect(staleSourceAge(null, NOW)).toBeNull();
+    expect(staleSourceAge(undefined, NOW)).toBeNull();
+    expect(staleSourceAge('not a date', NOW)).toBeNull();   // never "NaNd old"
+  });
+
+  it('stays quiet while the lag is ordinary', () => {
+    expect(staleSourceAge(daysAgo(0), NOW)).toBeNull();
+    expect(staleSourceAge(daysAgo(SOURCE_STALE_DAYS - 1), NOW)).toBeNull();
+  });
+
+  it('speaks from the threshold onward, in whole days', () => {
+    expect(staleSourceAge(daysAgo(SOURCE_STALE_DAYS), NOW)).toBe(`${SOURCE_STALE_DAYS}d`);
+    expect(staleSourceAge(daysAgo(104), NOW)).toBe('104d');
+  });
+
+  it('never reports a negative age when a clock is skewed forward', () => {
+    expect(staleSourceAge(new Date(NOW + 5_000).toISOString(), NOW)).toBeNull();
+  });
+
+  it('agrees with the dashboard on the threshold', () => {
+    // The two panels describe the same mirror.  One calling 30 days
+    // "old" while the other calls it ordinary would have a driver and a
+    // dispatcher reading different explanations for one empty layer.
+    expect(SOURCE_STALE_DAYS).toBe(14);
   });
 });

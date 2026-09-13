@@ -17,7 +17,7 @@ import { useState } from 'react';
 
 import { MAP_TYPES, MAP_TYPE_LABEL, type MapType } from './tiles';
 import type { MapEngine } from './engine';
-import { POI_GROUPS, glyphSvg, readableOn, type PoiLayerDef } from './poi/layers';
+import { POI_GROUPS, glyphSvg, readableOn, staleSourceAge, type PoiLayerDef } from './poi/layers';
 import type { PoiLayersState } from './poi/usePoiLayers';
 import { ageMs, formatAge } from './freshness';
 
@@ -184,6 +184,9 @@ function LayerRow({ def, poi }: { def: PoiLayerDef; poi: PoiLayersState }) {
   const busy = !!poi.loading[def.id];
   const err = poi.errors[def.id];
   const note = poi.notes[def.id];
+  // How far behind the OSM extract is — null unless it is far enough
+  // behind to be a better explanation than "there is nothing here".
+  const staleAge = staleSourceAge(poi.sourceAsOf);
   const count = poi.counts[def.id];
   const here = poi.present[def.id];
   const picked = poi.brands[def.id];
@@ -233,6 +236,11 @@ function LayerRow({ def, poi }: { def: PoiLayerDef; poi: PoiLayersState }) {
       {on && !busy && !err && !note && count?.total === 0 && (
         <p className="rowmsg muted">
           {count.fetched > 0 ? 'None of the chosen brands in this view' : 'None in this view'}
+          {/* And WHY it may be empty, when the reason is one we know: an
+              extract months behind does not have a place that opened
+              since.  Only when it is old enough to be the better
+              explanation — otherwise this is noise on a quiet row. */}
+          {staleAge && ` · OSM data ${staleAge} old`}
         </p>
       )}
       {chips.length > 0 && (

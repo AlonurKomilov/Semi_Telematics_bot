@@ -384,3 +384,28 @@ export const POI_LAYERS: PoiLayerDef[] = [
   },
   // ─── Add new layers above this line ───────────────────────────────────────
 ];
+
+/** Past this many days, the OpenStreetMap extract behind a layer is old
+ *  enough that a place which opened recently could plausibly be missing
+ *  from it — so an empty layer names it beside "none".  Below it the lag
+ *  is ordinary OSM latency, and saying it would be noise on every quiet
+ *  row.
+ *
+ *  Fourteen days because that is roughly how long a new truck stop takes
+ *  to reach OSM at all: under it, "the data is behind" is not yet a
+ *  better explanation than "there is nothing here". */
+export const SOURCE_STALE_DAYS = 14;
+
+/** "104d" when the extract is old enough to be worth saying, else null.
+ *
+ *  Null is the common case and means "say nothing" — NOT "no data", and
+ *  never an age of zero. */
+export function staleSourceAge(
+  sourceAsOf: string | null | undefined, now: number = Date.now(),
+): string | null {
+  if (!sourceAsOf) return null;
+  const t = new Date(sourceAsOf).getTime();
+  if (!Number.isFinite(t)) return null;
+  const days = Math.floor(Math.max(0, now - t) / 86_400_000);
+  return days >= SOURCE_STALE_DAYS ? `${days}d` : null;
+}
