@@ -14,6 +14,7 @@ company gets that company's trucks and nobody else's.
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from adapters.storage.vehicle_documents import VEHICLE_DOC_TYPES
 from capabilities.ai.tools.scope import filter_to_scope
 from features.vehicles.documents.expiration import classify, describe
 
@@ -32,11 +33,17 @@ from features.vehicles.documents.expiration import classify, describe
         "properties": {
             "missing_type": {
                 "type": "string",
+                # Derived from the stored vocabulary, never retyped. The
+                # handler compares this value RAW against the column, so
+                # a near miss — "annual inspection", "cab card" — matched
+                # nothing and every active truck was reported as missing
+                # that document. A fleet-wide compliance failure that did
+                # not exist.
+                "enum": sorted(VEHICLE_DOC_TYPES),
                 "description": (
                     "Optional: report trucks with NO document of this "
-                    "type on file (e.g. 'insurance', 'cab_card'). This "
-                    "is the question the documents page cannot answer "
-                    "by looking."
+                    "type on file. This is the question the documents "
+                    "page cannot answer by looking."
                 ),
             },
             "within_days": {
@@ -64,8 +71,16 @@ async def get_vehicle_documents_status(tool_args: dict, samsara_client,
     # Scope first, then answer — never the other way round: filtering
     # after summarising would leak a count of trucks the caller cannot
     # see, which is the whole shape of a scope leak.
+    # `registry_id` beside `id` is what lights the ladder's STRONGEST
+    # rung — the only one that can split two companies' trucks sharing a
+    # unit number. The row carried the registry id under `id` alone, so
+    # the filter could reach nothing better than the name, and the
+    # documents join below needs `id` to stay exactly what it is
+    # (vehicle_documents.vehicle_id is the REGISTRY id, despite reading
+    # like a provider one).
     live = filter_to_scope(
-        [{"name": v.unit_number, "company": v.company_code, "id": v.id}
+        [{"name": v.unit_number, "company": v.company_code,
+          "id": v.id, "registry_id": v.id}
          for v in vehicles if v.is_active],
         tool_args, key="name",
     )
@@ -73,6 +88,15 @@ async def get_vehicle_documents_status(tool_args: dict, samsara_client,
     rows = [r for r in rows if r.get("vehicle_id") in allowed_ids]
 
     missing_type = str(tool_args.get("missing_type") or "").strip().lower()
+    missing_type = missing_type.replace(" ", "_").replace("-", "_")
+    if missing_type and missing_type not in VEHICLE_DOC_TYPES:
+        from capabilities.ai.tools import tool_error
+        return tool_error(
+            "missing_type must be one of "
+            + ", ".join(sorted(VEHICLE_DOC_TYPES))
+            + ". A value outside this list matches no document, which "
+              "would report every truck as missing it."
+        )
     if missing_type:
         have = {r["vehicle_id"] for r in rows
                 if str(r.get("doc_type") or "") == missing_type}

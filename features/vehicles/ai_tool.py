@@ -410,9 +410,20 @@ async def get_vehicle_history(tool_args: dict, samsara_client,
             ),
         }
 
+    # Which "103"? The adapter resolves a name with
+    # `SELECT vehicle_id ... WHERE vehicle_name = ? LIMIT 1`, so a shared
+    # unit number silently returned whichever row the database listed
+    # first — and then the OTHER company's truck's entire movement
+    # history: every position, every stop, every mile.
+    resolved, err = await resolve_for_tool(db, account_id, tool_args)
+    if err:
+        return err
+    ref = (getattr(resolved, "telematics_ref", "") or "").strip()
     rows = await db.query_vehicle_state_history(
         account_id,
-        vehicle_name=vehicle,
+        # The provider id names one truck; the name names a number.
+        vehicle_id=ref or None,
+        vehicle_name=None if ref else vehicle,
         days=days,
         max_rows=max_rows,
     )
