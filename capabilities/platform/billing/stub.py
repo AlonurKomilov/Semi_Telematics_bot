@@ -80,7 +80,7 @@ class StubBillingProvider:
         """No Stripe here: the row keeps whatever id it has; nothing is created."""
         return {"skipped": "stub"}
 
-    def archive_plan_price(self, price_id: str) -> bool:
+    async def archive_plan_price(self, price_id: str) -> bool:
         return False
 
     async def rollout_preview(self, db, tier: str) -> dict:

@@ -2232,7 +2232,7 @@ async def system_put_plan(
         from capabilities.platform.billing import get_provider
         provider = get_provider()
         if hasattr(provider, "archive_plan_price"):
-            provider.archive_plan_price(archived)
+            await provider.archive_plan_price(archived)
     counts = await platform_db.count_accounts_by_tier()
     await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))
     logger.info("system: plan %s saved by %s (%d account(s))", tier, actor, counts.get(tier, 0))

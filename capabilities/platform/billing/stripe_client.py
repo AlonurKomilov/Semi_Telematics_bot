@@ -10,6 +10,8 @@ Set BILLING_PROVIDER=stub (the default) to disable Stripe entirely.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 import uuid
 import os
@@ -45,6 +47,22 @@ def _tier_price_id(tier: str) -> str:
 def _extra_vehicle_price_id() -> str:
     """The per-extra-vehicle Stripe price id (shared by all tiers)."""
     return os.getenv("STRIPE_PRICE_EXTRA_VEHICLE", "")
+
+
+async def _off_loop(fn, /, *args, **kwargs):
+    """Run one blocking Stripe SDK call without freezing the worker.
+
+    The SDK is synchronous: every call is an HTTPS round trip to
+    Stripe, and inside an ``async def`` that round trip blocks the whole
+    event loop — not just the caller. One operator saving a plan price
+    froze every other request that worker was serving, which is how the
+    console's own wiring check timed out at the same moment as the save
+    that triggered it (2026-09-12).
+
+    Roughly 0.7s per call from this server, three calls in a plan save,
+    and the same shape on every customer checkout.
+    """
+    return await asyncio.to_thread(functools.partial(fn, *args, **kwargs))
 
 
 def _stripe():
@@ -139,7 +157,7 @@ class StripeBillingProvider:
         # Get or create Stripe customer
         customer_id = sub.get("provider_customer_id", "")
         if not customer_id:
-            customer = stripe.Customer.create(
+            customer = await _off_loop(stripe.Customer.create, 
                 email=sub.get("billing_email") or None,
                 metadata={"account_id": str(account_id)},
             )
@@ -161,7 +179,7 @@ class StripeBillingProvider:
         if extras_price_id:
             line_items.append({"price": extras_price_id, "quantity": 0})
 
-        session = stripe.checkout.Session.create(
+        session = await _off_loop(stripe.checkout.Session.create, 
             customer=customer_id,
             mode="subscription",
             line_items=line_items,
@@ -180,7 +198,7 @@ class StripeBillingProvider:
         new plan at once.  Returns the page's own URL: nothing to redirect
         to, the change is done."""
         sub_id = sub["provider_subscription_id"]
-        live = stripe.Subscription.retrieve(sub_id, expand=["items"])
+        live = await _off_loop(stripe.Subscription.retrieve, sub_id, expand=["items"])
         slots = self._extract_items(live)
         base = slots["base"]
         if not base.get("id"):
@@ -190,7 +208,7 @@ class StripeBillingProvider:
         # switch Stripe's cached first response — the row would say B
         # while Stripe still billed A.  A double-click is harmless: the
         # second modify to the same price is a no-op in Stripe.
-        stripe.Subscription.modify(
+        await _off_loop(stripe.Subscription.modify, 
             sub_id,
             items=[{"id": base["id"], "price": base_price_id, "quantity": 1}],
             proration_behavior="create_prorations",
@@ -200,7 +218,7 @@ class StripeBillingProvider:
         # Trust what Stripe HOLDS, not what the modify call returned: a
         # fresh read is never a cached replay.  If the base item is not on
         # the target price now, nothing is written and the customer is told.
-        fresh = stripe.Subscription.retrieve(sub_id, expand=["items"])
+        fresh = await _off_loop(stripe.Subscription.retrieve, sub_id, expand=["items"])
         after = self._extract_items(fresh)
         if (after["base"].get("price_id") or "") != base_price_id:
             raise ProviderError("Stripe did not move the subscription to the new plan; nothing was changed on our side.")
@@ -239,7 +257,7 @@ class StripeBillingProvider:
                 "No Stripe customer ID for account — "
                 "customer must complete checkout before accessing the portal."
             )
-        session = stripe.billing_portal.Session.create(
+        session = await _off_loop(stripe.billing_portal.Session.create, 
             customer=customer_id,
             return_url=return_url,
         )
@@ -323,7 +341,7 @@ class StripeBillingProvider:
             slots: dict = {}
             if sub_id:
                 try:
-                    full_sub = stripe.Subscription.retrieve(sub_id, expand=["items"])
+                    full_sub = await _off_loop(stripe.Subscription.retrieve, sub_id, expand=["items"])
                     slots = self._extract_items(full_sub)
                     base_item_id, extra_item_id = slots["base"]["id"], slots["extra"]["id"]
                 except Exception:
@@ -559,11 +577,14 @@ class StripeBillingProvider:
 
     async def create_plan_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
         from capabilities.platform.billing import rollout as _rollout
-        return _rollout.ensure_plan_price(_stripe(), tier=tier, label=label, cents=cents, before=before)
+        return await _off_loop(
+            _rollout.ensure_plan_price, _stripe(),
+            tier=tier, label=label, cents=cents, before=before,
+        )
 
-    def archive_plan_price(self, price_id: str) -> bool:
+    async def archive_plan_price(self, price_id: str) -> bool:
         from capabilities.platform.billing import rollout as _rollout
-        return _rollout.archive_price(_stripe(), price_id)
+        return await _off_loop(_rollout.archive_price, _stripe(), price_id)
 
     async def rollout_preview(self, db, tier: str) -> dict:
         from capabilities.platform.billing import rollout as _rollout
@@ -595,7 +616,7 @@ class StripeBillingProvider:
             }
         try:
             stripe = _stripe()
-            stripe.Customer.modify(customer_id, email=email)
+            await _off_loop(stripe.Customer.modify, customer_id, email=email)
             return {
                 "account_id": account_id, "email": email,
                 "synced_to_provider": True,
@@ -670,7 +691,7 @@ class StripeBillingProvider:
         target_qty = billing["extras"]
         stripe = _stripe()
         try:
-            current_item = stripe.SubscriptionItem.retrieve(extra_item_id)
+            current_item = await _off_loop(stripe.SubscriptionItem.retrieve, extra_item_id)
             current_qty = int(current_item.get("quantity", 0) or 0)
         except Exception:
             _obs.record_sync_billing_quantity("stripe_error")
@@ -717,7 +738,7 @@ class StripeBillingProvider:
                 "account_id": account_id, **extra,
             }
         try:
-            stripe.SubscriptionItem.modify(
+            await _off_loop(stripe.SubscriptionItem.modify, 
                 extra_item_id,
                 quantity=target_qty,
                 # Stripe pro-rates the difference by default; we keep
