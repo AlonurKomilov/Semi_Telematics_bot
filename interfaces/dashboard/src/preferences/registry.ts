@@ -564,7 +564,7 @@ export const DEFS = {
         const list = (v as Record<string, unknown>)[axis.axis];
         if (!Array.isArray(list)) continue;
         const ids = list.filter((id): id is string =>
-          typeof id === 'string' && axis.packs.some((p) => p.id === id));
+          typeof id === 'string' && axis.items.some((p) => p.id === id));
         if (ids.length) kept[axis.axis] = [...new Set(ids)];
       }
       return kept;

@@ -25,7 +25,7 @@ const packSources = (dir = PACKS): string[] =>
 
 describe('the catalogue is the packs, plus a stamp', () => {
   it('every pack on every axis has exactly one row', () => {
-    const expected = ITEM_AXES.flatMap((a) => a.packs.map((p) => `${a.axis}/${p.id}`)).sort();
+    const expected = ITEM_AXES.flatMap((a) => a.items.map((p) => `${a.axis}/${p.id}`)).sort();
     expect(STORE.map((r) => `${r.axis}/${r.id}`).sort()).toEqual(expected);
     expect(expected.length, 'the store is empty — nothing to keep').toBeGreaterThan(10);
   });

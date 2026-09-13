@@ -286,12 +286,12 @@ describe('every item on every axis carries its meta', () => {
 
   it('id, label, description — present, safe, one line', () => {
     let checked = 0;
-    for (const { axis, packs } of ITEM_AXES) {
-      expect(packs.length, `${axis} lists no packs`).toBeGreaterThan(0);
-      checked += packs.length;
-      expect(metaFaults(axis, packs)).toEqual([]);
+    for (const { axis, items } of ITEM_AXES) {
+      expect(items.length, `${axis} lists no items`).toBeGreaterThan(0);
+      checked += items.length;
+      expect(metaFaults(axis, items)).toEqual([]);
     }
-    expect(checked, 'fewer packs than the folders hold — the sweep skipped some').toBeGreaterThan(25);
+    expect(checked, 'fewer items than the folders hold — the sweep skipped some').toBeGreaterThan(25);
   });
 
   it('and the sweep can fail', () => {

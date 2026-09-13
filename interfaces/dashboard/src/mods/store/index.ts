@@ -43,8 +43,8 @@ export interface ItemRow extends ItemMeta {
   readonly publisher: string;
 }
 
-export const STORE: readonly ItemRow[] = ITEM_AXES.flatMap(({ axis, packs }) =>
-  packs.map((p): ItemRow => ({
+export const STORE: readonly ItemRow[] = ITEM_AXES.flatMap(({ axis, items }) =>
+  items.map((p): ItemRow => ({
     id: p.id, label: p.label, description: p.description, axis, publisher: PUBLISHER,
   })),
 );

@@ -22,18 +22,18 @@ import { ICON_PACKS } from './icons';
 export interface ItemAxis {
   /** The folder under `mods/packs/`, and the noun a tile is filed under. */
   readonly axis: string;
-  readonly packs: readonly ItemMeta[];
+  readonly items: readonly ItemMeta[];
 }
 
 export const ITEM_AXES: readonly ItemAxis[] = [
-  { axis: 'mods',      packs: MODS },
-  { axis: 'theme',     packs: THEME_PACKS },
-  { axis: 'font',      packs: FONT_PACKS },
-  { axis: 'icons',     packs: ICON_PACKS },
-  { axis: 'material',  packs: MATERIAL_PACKS },
-  { axis: 'wallpaper', packs: WALLPAPERS },
-  { axis: 'cursor',    packs: CURSOR_PACKS },
-  { axis: 'shader',    packs: SHADER_PACKS },
-  { axis: 'sound',     packs: SOUND_PACKS },
-  { axis: 'keys',      packs: KEY_PACKS },
+  { axis: 'mods',      items: MODS },
+  { axis: 'theme',     items: THEME_PACKS },
+  { axis: 'font',      items: FONT_PACKS },
+  { axis: 'icons',     items: ICON_PACKS },
+  { axis: 'material',  items: MATERIAL_PACKS },
+  { axis: 'wallpaper', items: WALLPAPERS },
+  { axis: 'cursor',    items: CURSOR_PACKS },
+  { axis: 'shader',    items: SHADER_PACKS },
+  { axis: 'sound',     items: SOUND_PACKS },
+  { axis: 'keys',      items: KEY_PACKS },
 ];
