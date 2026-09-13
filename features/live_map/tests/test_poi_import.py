@@ -164,9 +164,14 @@ async def test_a_dead_source_stops_the_run_instead_of_grinding_through_it(store)
     assert all(r["ok"] is False for r in results)
     assert any("not attempted" in r["note"] for r in results), results
 
-    # It gave up after two dead layers: 2 layers x 3 regions x 3
-    # attempts, and not one request more.
-    assert post.await_count == importer._GIVE_UP_AFTER_DEAD_LAYERS * 3 * importer._ATTEMPTS
+    # It gave up after two dead layers — the rest say so rather than
+    # being silently missing.  Asserting an exact request count here was
+    # the first version and it was wrong to: the number moved the moment
+    # a refused box started being split, and it was never what mattered.
+    # What matters is that the run STOPS and changes nothing.
+    attempted = [r for r in results if "not attempted" not in r["note"]]
+    assert len(attempted) == importer._GIVE_UP_AFTER_DEAD_LAYERS, attempted
+    assert post.await_count > 0
 
     # And nothing was written or dated for any of them.
     assert await store.count_poi_points() == {}
@@ -177,12 +182,65 @@ async def test_a_dead_source_stops_the_run_instead_of_grinding_through_it(store)
 async def test_a_source_that_comes_back_is_not_cut_off(store):
     """The breaker counts CONSECUTIVE dead layers, so one awkward layer
     between two good ones must not end the run."""
-    ok = _reply(_osm(1, 41.8, -87.6))
-    # layer 1 fine (3 regions), layer 2 dead (9 attempts), layer 3 fine…
-    side = [ok, ok, ok] + [RuntimeError("504")] * 9 + [ok, ok, ok] * 4
+    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+    dead_layer = list(POI_OVERPASS_QUERIES)[1]
+
+    async def _one_bad_layer(query, **_kw):
+        # Keyed on the layer's own clause rather than a call count: with
+        # boxes splitting, how MANY calls a layer makes is not fixed.
+        if any(c in query for c in POI_OVERPASS_QUERIES[dead_layer]):
+            raise RuntimeError("Overpass 504")
+        return _reply(_osm(1, 41.8, -87.6))
+
     with patch("features.live_map.poi.overpass._overpass_post",
-               new=AsyncMock(side_effect=side)):
+               new=AsyncMock(side_effect=_one_bad_layer)):
         results = await importer.import_all(store, stamp="2026-09-13T14:00:00Z")
 
     assert [r["ok"] for r in results] == [True, False, True, True, True, True]
     assert not any("not attempted" in r["note"] for r in results)
+
+
+async def test_a_refused_box_is_asked_again_in_quarters(store):
+    """A mirror refuses on ESTIMATED COST, so the answer to "too
+    expensive" is a cheaper question, not a more patient one.
+
+    Watched live on 2026-09-13: the CONUS box for fuel_station was
+    refused on every attempt while the Alaska and Hawaii boxes beside it
+    answered at once.  Size was the whole difference.
+    """
+    seen: list[str] = []
+
+    async def _refuse_the_big_one(query, **_kw):
+        # The bbox is inside the query text the importer built.
+        import re as _re
+        box = _re.search(r"\(([-\d.,]+)\);", query).group(1)
+        seen.append(box)
+        south, west, north, east = (float(x) for x in box.split(","))
+        if (north - south) * (east - west) > 400:      # CONUS whole
+            raise RuntimeError("Overpass 504")
+        return _reply(_osm(len(seen), (south + north) / 2, (west + east) / 2))
+
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=_refuse_the_big_one)):
+        result = await importer.import_layer(store, "fuel_station",
+                                             stamp="2026-09-13T14:30:00Z")
+
+    assert result["ok"] is True, result["note"]
+    # The whole box twice, then its four quarters — each of which fits.
+    assert seen[0] == seen[1], "the first box was not retried before splitting"
+    assert len(seen) >= 6, seen
+    # And the points from every quarter are kept: a missing quarter would
+    # be missing points, and the sweep would then delete them.
+    assert result["points"] >= 4
+
+
+async def test_a_box_that_refuses_even_quartered_still_fails_the_layer(store):
+    """Splitting is not a way to turn a dead source into a good answer —
+    if a piece never arrives, the layer must still fail and sweep
+    nothing."""
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=RuntimeError("Overpass 504"))):
+        result = await importer.import_layer(store, "shower",
+                                             stamp="2026-09-13T14:30:00Z")
+    assert result["ok"] is False
+    assert await store.poi_layer_imported_at("shower") is None

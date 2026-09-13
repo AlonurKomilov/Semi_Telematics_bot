@@ -35,12 +35,33 @@ logger = logging.getLogger(__name__)
 #: outright, so this is deliberately inside the common ceiling.
 _SERVER_TIMEOUT_S = 180
 
-#: Our own patience per attempt, and how many attempts one region gets.
-#: Three tries an hour apart would be a different job; this is three
-#: tries a minute apart, because what is being waited out is a queue.
+#: Our own patience per attempt, and how many attempts one BOX gets
+#: before it is split.  Two rather than three: a box refused twice is
+#: better made smaller than asked a third time — see _MAX_SPLIT_DEPTH.
 _ATTEMPT_S = 200
-_ATTEMPTS = 3
+_ATTEMPTS = 2
 _PAUSE_S = 60
+
+#: How many times a box that keeps refusing may be quartered.
+#:
+#: A public mirror refuses on ESTIMATED COST, so the answer to "too
+#: expensive" is a cheaper question, not a more patient one.  Measured
+#: 2026-09-13, watching the first real import: the CONUS box for
+#: fuel_station — four clauses over 25 by 58 degrees, one of them a brand
+#: regex, the heaviest query this product makes — was refused on all
+#: three attempts, while the Alaska and Hawaii boxes beside it answered
+#: at once.  Size was the whole difference.
+#:
+#: Healthy mirror: one query, as before.  Busy one: four, then sixteen,
+#: each a sixteenth of the work.  Depth 2 because CONUS quartered twice
+#: is about six degrees square — the size the request path already gets
+#: answers for in seconds.
+_MAX_SPLIT_DEPTH = 2
+
+#: One layer's whole wall clock, splitting included.  Without it a
+#: thoroughly dead mirror could keep one layer going for most of an hour;
+#: with it the run moves on and the layer keeps last week's points.
+_LAYER_BUDGET_S = 900
 
 #: Between layers, so one import does not arrive as a burst.  A weekly
 #: job has all the time in the world and the mirrors are volunteers.
@@ -76,10 +97,28 @@ def _region_query(layer: str, bbox: str) -> str:
     )
 
 
-async def _fetch_region(layer: str, bbox: str) -> list[dict]:
-    """One region's points, or raise after the last attempt."""
+def _quarter(box):
+    """Four boxes covering the same ground, each a quarter of the area."""
+    s, w, n, e = box
+    mid_lat, mid_lng = (s + n) / 2, (w + e) / 2
+    return [(s, w, mid_lat, mid_lng), (s, mid_lng, mid_lat, e),
+            (mid_lat, w, n, mid_lng), (mid_lat, mid_lng, n, e)]
+
+
+async def _fetch_box(layer: str, box, deadline: float, depth: int = 0) -> list[dict]:
+    """One box's points — quartered and retried if the mirror refuses it.
+
+    A refusal is usually about SIZE: the mirror estimates a query's cost
+    and declines what it cannot afford right now.  So a box turned down
+    twice is asked again in four smaller pieces rather than a third time
+    unchanged.
+    """
+    loop = asyncio.get_running_loop()
+    bbox = viewport._bbox_to_str(*box)
     last: Exception = RuntimeError("not attempted")
     for attempt in range(_ATTEMPTS):
+        if loop.time() > deadline:
+            raise TimeoutError(f"{layer}: out of time at {bbox}")
         if attempt:
             await asyncio.sleep(_PAUSE_S)
         try:
@@ -93,8 +132,8 @@ async def _fetch_region(layer: str, bbox: str) -> list[dict]:
             )
         except Exception as exc:
             last = exc
-            logger.warning("poi import: %s %s attempt %d/%d: %s",
-                           layer, bbox, attempt + 1, _ATTEMPTS, exc)
+            logger.warning("poi import: %s %s (depth %d) attempt %d/%d: %s",
+                           layer, bbox, depth, attempt + 1, _ATTEMPTS, exc)
             continue
         # Keyed rather than appended: a union query overlaps on purpose
         # (a Pilot tagged fuel:diesel=yes also matches the brand list),
@@ -107,7 +146,19 @@ async def _fetch_region(layer: str, bbox: str) -> list[dict]:
                 continue
             points[(p["osm_type"], int(p["osm_id"]))] = p
         return list(points.values())
-    raise last
+
+    if depth >= _MAX_SPLIT_DEPTH:
+        raise last
+    # Too expensive to answer whole — ask for it in quarters.  ALL four
+    # must come back: a missing quarter is missing points, and the sweep
+    # that follows a successful layer would delete every one of them.
+    logger.info("poi import: %s %s refused — splitting into 4 (depth %d)",
+                layer, bbox, depth + 1)
+    out = {}
+    for quarter in _quarter(box):
+        for p in await _fetch_box(layer, quarter, deadline, depth + 1):
+            out[(p["osm_type"], int(p["osm_id"]))] = p
+    return list(out.values())
 
 
 async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
@@ -121,11 +172,12 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     total = 0
     failures: list[str] = []
+    deadline = asyncio.get_running_loop().time() + _LAYER_BUDGET_S
 
     for region in viewport._USA_REGIONS:
         bbox = viewport._bbox_to_str(*region)
         try:
-            points = await _fetch_region(layer, bbox)
+            points = await _fetch_box(layer, region, deadline)
         except Exception as exc:
             # ONE region short is the whole layer short: sweeping now
             # would delete every point that region was going to supply.
