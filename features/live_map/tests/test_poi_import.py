@@ -141,3 +141,48 @@ async def test_the_query_is_built_from_the_layer_registry(store):
     # No area: the same fault the map path removed, and for the same
     # reason — a mirror without an area index answers nothing, at 200.
     assert "area." not in q
+
+
+async def test_a_dead_source_stops_the_run_instead_of_grinding_through_it(store):
+    """Six layers x three regions x three attempts is most of a working
+    day spent learning one fact, and the first two layers have already
+    established it.
+
+    Measured while the owner watched the first real run: HTTP 504 after
+    eighty seconds, on every attempt.  Stopping is also the honest
+    outcome — a failed layer changes nothing, so an abandoned run leaves
+    exactly what a completed failing one would have, hours earlier.
+    """
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=RuntimeError("Overpass 504"))) as post:
+        results = await importer.import_all(store, stamp="2026-09-13T14:00:00Z")
+
+    # Every layer is accounted for — the ones not attempted say so
+    # rather than going missing from the report.
+    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+    assert [r["layer"] for r in results] == list(POI_OVERPASS_QUERIES)
+    assert all(r["ok"] is False for r in results)
+    assert any("not attempted" in r["note"] for r in results), results
+
+    # It gave up after two dead layers: 2 layers x 3 regions x 3
+    # attempts, and not one request more.
+    assert post.await_count == importer._GIVE_UP_AFTER_DEAD_LAYERS * 3 * importer._ATTEMPTS
+
+    # And nothing was written or dated for any of them.
+    assert await store.count_poi_points() == {}
+    for layer in POI_OVERPASS_QUERIES:
+        assert await store.poi_layer_imported_at(layer) is None
+
+
+async def test_a_source_that_comes_back_is_not_cut_off(store):
+    """The breaker counts CONSECUTIVE dead layers, so one awkward layer
+    between two good ones must not end the run."""
+    ok = _reply(_osm(1, 41.8, -87.6))
+    # layer 1 fine (3 regions), layer 2 dead (9 attempts), layer 3 fine…
+    side = [ok, ok, ok] + [RuntimeError("504")] * 9 + [ok, ok, ok] * 4
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=side)):
+        results = await importer.import_all(store, stamp="2026-09-13T14:00:00Z")
+
+    assert [r["ok"] for r in results] == [True, False, True, True, True, True]
+    assert not any("not attempted" in r["note"] for r in results)

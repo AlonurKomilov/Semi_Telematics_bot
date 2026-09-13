@@ -1,7 +1,9 @@
 """Built-in POI points — PLATFORM-owned map furniture, imported from OSM.
 
-The seven built-in layers (fuel, DEF, truck parking, showers, weigh
-stations, rest areas, repair shops) describe things that DO NOT MOVE.
+The six Overpass-backed layers (fuel, DEF, truck parking, showers, rest
+areas, weigh stations) describe things that DO NOT MOVE.  Repair shops
+are a seventh layer on the map and are NOT here: they come from
+``vendor_directory``, which is already ours.
 A truck stop opened last year is in the same place today, which is why
 asking a live query service for them on every map pan was the wrong
 shape: the panel's layers went blank whenever a volunteer Overpass

@@ -1,7 +1,9 @@
 """Fill ``poi_points`` from OSM — the work the map used to do per pan.
 
-The seven built-in layers describe things that do not move, so they are
-fetched on a schedule and served from our own table.  This is the fetch.
+The six Overpass-backed layers describe things that do not move, so they
+are fetched on a schedule and served from our own table.  This is the
+fetch.  (The map draws seven built-in layers; repair shops are the
+seventh and come from ``vendor_directory``, which was already ours.)
 
 WHAT A JOB MAY DO THAT A REQUEST MAY NOT: wait.  The request path holds
 itself to fifty seconds because nginx answers for it at sixty; nobody is
@@ -43,6 +45,20 @@ _PAUSE_S = 60
 #: Between layers, so one import does not arrive as a burst.  A weekly
 #: job has all the time in the world and the mirrors are volunteers.
 _BETWEEN_LAYERS_S = 30
+
+#: When to stop, because the source is DOWN rather than busy.
+#:
+#: Every region gets three attempts a minute apart, so a layer whose
+#: mirror is refusing costs about half an hour and returns nothing.  Six
+#: of those is most of a working day spent learning one fact, and the
+#: first two layers have already established it.  Measured while the
+#: owner watched the first real run: HTTP 504 after eighty seconds,
+#: every attempt.
+#:
+#: Stopping is also the HONEST outcome — a failed layer changes nothing,
+#: so an abandoned run leaves exactly what a completed failing one would
+#: have, hours earlier.
+_GIVE_UP_AFTER_DEAD_LAYERS = 2
 
 
 def _region_query(layer: str, bbox: str) -> str:
@@ -135,13 +151,30 @@ async def import_all(db, stamp: str | None = None) -> list[dict]:
     """Every built-in layer, one after another with a pause between.
 
     Sequential on purpose: the mirrors are volunteer-run and a weekly
-    job has no reason to arrive as seven simultaneous region scans.
+    job has no reason to arrive as six simultaneous region scans.
     """
     out: list[dict] = []
-    for i, layer in enumerate(POI_OVERPASS_QUERIES):
+    dead = 0
+    layers = list(POI_OVERPASS_QUERIES)
+    for i, layer in enumerate(layers):
         if i:
             await asyncio.sleep(_BETWEEN_LAYERS_S)
-        out.append(await import_layer(db, layer, stamp))
+        result = await import_layer(db, layer, stamp)
+        out.append(result)
+        # A layer that failed AND brought back nothing is the source
+        # being unreachable, not this layer being awkward.
+        dead = dead + 1 if (not result["ok"] and result["points"] == 0) else 0
+        if dead >= _GIVE_UP_AFTER_DEAD_LAYERS:
+            skipped = layers[i + 1:]
+            logger.warning(
+                "poi import: stopping — %d layers in a row got nothing from "
+                "the source.  Not attempted: %s.  Nothing was changed; the "
+                "next run picks up where this left off.",
+                dead, ", ".join(skipped) or "none")
+            for name in skipped:
+                out.append({"layer": name, "points": 0, "ok": False,
+                            "note": "not attempted — the source was not answering"})
+            break
     done = sum(1 for r in out if r["ok"])
     logger.info("poi import: %d/%d layers refreshed", done, len(out))
     return out
