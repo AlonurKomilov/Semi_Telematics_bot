@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
-import { MOD_THEME_FIELDS,
+import { MOD_THEME_FIELDS, VALUE_FIELDS, MOD_MOTIONS, type ValueField,
   MOD_ICONS,
   MOD_FIELD_SECTION, modFootprint,
   PACK_TOKENS, modMatchesAxes, type ModAxes,
@@ -212,10 +212,45 @@ describe('mods are combinations, not new colours', () => {
     }
   });
 
-  it('stays inside what the panel controls can express', () => {
+  /**
+   * What the system offers on each value axis.
+   *
+   * TOTAL over `VALUE_FIELDS`, so a new axis the system owns cannot be
+   * added without somebody saying what its legal answers are — the same
+   * shape as `MOD_FIELD_KIND` itself, one level down.
+   *
+   * `size` is a RANGE, not a set, and is checked on its own below.
+   */
+  const DOMAIN: Record<ValueField, readonly unknown[] | 'range'> = {
+    radius: MOD_RADII,
+    size: 'range',
+    motion: MOD_MOTIONS,
+    icons: MOD_ICONS,
+    entrance: [true, false],
+    wallpaperLive: [true, false],
+  };
+
+  it('picks only values the system offers', () => {
+    // A mod naming a value with no rule behind it does not fail loudly:
+    // the attribute is stamped, nothing matches, and the app paints the
+    // default. That is the same silent failure the accent check above
+    // exists to prevent, and it went unguarded on four of the six axes
+    // the system owns — radius and size were checked, motion, the icon
+    // weight and the two switches were not.
     for (const m of MODS) {
-      if (m.radius !== undefined)
-        expect(MOD_RADII, `mod "${m.id}" radius`).toContain(m.radius);
+      for (const field of VALUE_FIELDS) {
+        const picked = m[field];
+        if (picked === undefined) continue;
+        const domain = DOMAIN[field];
+        if (domain === 'range') continue;
+        expect(domain as unknown[], `mod "${m.id}" picks ${field}="${String(picked)}", which the system does not offer`)
+          .toContain(picked);
+      }
+    }
+  });
+
+  it('stays inside the size the slider can reach', () => {
+    for (const m of MODS) {
       if (m.size === undefined) continue;
       // Floor is 1, not SIZE_MIN. The slider deliberately starts at 100%
       // — everything below waits on the 24px hit-target floor — so a mod

@@ -328,19 +328,30 @@ export const MOD_FIELD_APPLIER: Record<
  * shipping corners would be saying something. It is not a split to
  * make, it is an axis to enhance first.
  */
-export const MOD_FIELD_KIND: Record<
-  keyof Omit<Mod, keyof ItemMeta>, 'item' | 'value'
-> = {
+export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
   shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
   sound: 'item',
   radius: 'value', size: 'value', motion: 'value', icons: 'value',
   entrance: 'value', wallpaperLive: 'value',
-};
+} as const satisfies Record<keyof Omit<Mod, keyof ItemMeta>, 'item' | 'value'>;
 
-/** The axes a pack may never ship — it picks from what the system has. */
+/**
+ * The axes a pack may never ship — it picks from what the system has.
+ *
+ * The type is EXTRACTED from the table rather than written again, so
+ * anything keyed by it — the domain of legal answers per axis, in
+ * `catalogue.test.ts` — is total over exactly these and breaks the
+ * moment a field changes sides. `satisfies` above is what makes that
+ * possible: a plain `Record<…>` annotation erases which key holds which
+ * side, and `filter` does not narrow it back.
+ */
+export type ValueField = {
+  [K in keyof typeof MOD_FIELD_KIND]: (typeof MOD_FIELD_KIND)[K] extends 'value' ? K : never
+}[keyof typeof MOD_FIELD_KIND];
+
 export const VALUE_FIELDS = (Object.keys(MOD_FIELD_KIND) as (keyof typeof MOD_FIELD_KIND)[])
-  .filter((f) => MOD_FIELD_KIND[f] === 'value');
+  .filter((f): f is ValueField => MOD_FIELD_KIND[f] === 'value');
 
 /** The fields `setTheme` installs, under their own names. */
 export const MOD_THEME_FIELDS = (Object.keys(MOD_FIELD_APPLIER) as (keyof typeof MOD_FIELD_APPLIER)[])
