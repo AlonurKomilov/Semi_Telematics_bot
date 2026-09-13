@@ -1,3 +1,4 @@
+import { INPUT_CLS as inputCls } from '../components/ui/Input';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON, ApiError } from '../api/client';
 import { Button } from '../components/ui/Button';
@@ -85,9 +86,6 @@ interface Draft {
   cat: CatalogDraft;
 }
 
-const inputCls =
-  'bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200 ' +
-  'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
 
 // ── Payment wiring ───────────────────────────────────────────────
 //

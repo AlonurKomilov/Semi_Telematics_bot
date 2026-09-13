@@ -27,12 +27,7 @@ BUTTON = CONSOLE / "components" / "ui" / "Button.tsx"
 #: at what existed when the primitive landed.  A ratchet, not a pass:
 #: these may fall to zero, never rise.  (Plans.tsx was the first to
 #: adopt the primitive and is deliberately absent.)
-BTNCLS_BUDGET = {
-    "ServiceTaskLibrary.tsx",
-    "MarketIntel.tsx",
-    "PartsDirectory.tsx",
-    "ServiceAssemblies.tsx",
-}
+BTNCLS_BUDGET: set[str] = set()   # every page now imports the primitive
 
 #: Meaning goes through the four tokens in tailwind.config.js.  Inside
 #: the shared primitive there is no excuse at all.
@@ -72,6 +67,73 @@ def test_the_primitive_takes_colour_from_the_tokens():
 def test_a_visible_focus_ring_survives():
     assert "focus-visible:ring" in BUTTON.read_text(), (
         "an operator who navigates by keyboard loses the button entirely")
+
+
+def test_every_overlay_is_the_dialog_primitive():
+    """A hand-rolled backdrop has no focus trap, no Escape, no aria-modal
+    and no scroll lock — Tab walks out of it and keeps going through the
+    page underneath, which is still there and still focusable."""
+    dialog = CONSOLE / "components" / "ui" / "Dialog.tsx"
+    src = dialog.read_text()
+    for required in ('role="dialog"', 'aria-modal="true"', "'Escape'", "overflow"):
+        assert required in src, f"the Dialog primitive lost {required}"
+    assert "e.key !== 'Tab'" in src, "the focus trap is gone"
+
+    offenders = [
+        p.relative_to(CONSOLE).as_posix()
+        for p in CONSOLE.rglob("*.tsx")
+        if "fixed inset-0" in p.read_text() and p.name != "Dialog.tsx"
+    ]
+    assert not offenders, (
+        "these build their own modal instead of using components/ui/Dialog:\n    "
+        + "\n    ".join(sorted(offenders)))
+
+
+def test_one_input_style_and_one_card():
+    locals_ = {p.name for p in CONSOLE.rglob("*.tsx") if "const inputCls =" in p.read_text()}
+    assert not locals_, f"a page re-declared the input style: {sorted(locals_)}"
+
+
+def test_per_operator_state_goes_through_the_prefs_module():
+    """Raw storage calls scattered through pages is how a key gets renamed
+    by someone who cannot see the other three call sites."""
+    prefs = CONSOLE / "lib" / "prefs.ts"
+    assert prefs.exists(), "the preferences module is gone"
+    offenders = [
+        p.relative_to(CONSOLE).as_posix()
+        for p in CONSOLE.rglob("*.tsx")
+        if re.search(r"\blocalStorage\b|\bsessionStorage\b", p.read_text())
+    ]
+    assert not offenders, (
+        "these touch storage directly instead of lib/prefs.ts:\n    "
+        + "\n    ".join(sorted(offenders)))
+
+
+#: Two categories the audit found and this pass did NOT fix, frozen at
+#: today's counts so they can only fall.  Raw palette classes need a
+#: shade-by-shade judgement on pages nobody has opened in a browser
+#: (a token is one hex, `rose-300` and `rose-500/10` are a contrast
+#: PAIR), and the native tooltips need a themed Tooltip component that
+#: does not exist yet.  A ratchet is not a fix; it is a promise that it
+#: will not get worse while it waits.
+RAW_PALETTE_BUDGET = 154
+TITLE_TOOLTIP_BUDGET = 44
+
+
+def _count(pattern: str) -> int:
+    rx = re.compile(pattern)
+    return sum(len(rx.findall(p.read_text())) for p in CONSOLE.rglob("*.tsx"))
+
+
+def test_raw_palette_and_native_tooltips_only_go_down():
+    raw = _count(r"\b(?:text|bg|border)-(?:rose|emerald|amber|yellow)-\d")
+    tips = _count(r"title=\{|title=\"")
+    assert raw <= RAW_PALETTE_BUDGET, (
+        f"{raw} raw palette classes, budget {RAW_PALETTE_BUDGET} — "
+        "meaning goes through accent/danger/warn/ok (design.md)")
+    assert tips <= TITLE_TOOLTIP_BUDGET, (
+        f"{tips} native title tooltips, budget {TITLE_TOOLTIP_BUDGET} — "
+        "they are unthemed and invisible on touch")
 
 
 def test_no_page_grows_a_new_local_button_class():

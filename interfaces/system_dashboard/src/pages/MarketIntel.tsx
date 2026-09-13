@@ -1,3 +1,4 @@
+import { Button } from '../components/ui/Button';
 import { useCallback, useEffect, useState } from 'react';
 import { apiJSON } from '../api/client';
 
@@ -16,8 +17,6 @@ interface Status {
   computed_at: string | null;
 }
 
-const btnCls =
-  'px-3 py-1.5 rounded text-sm font-medium border transition disabled:opacity-50';
 
 export default function MarketIntelPage() {
   const [st, setSt] = useState<Status | null>(null);
@@ -98,15 +97,15 @@ export default function MarketIntelPage() {
               </p>
             </div>
             {st.enabled ? (
-              <button className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800`}
+              <Button  variant="secondary" size="md"
                 disabled={busy === 'flip' || st.env_override} onClick={() => flip(false)}>
                 Turn off
-              </button>
+              </Button>
             ) : (
-              <button className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+              <Button  variant="secondary" size="md"
                 disabled={busy === 'flip'} onClick={() => flip(true)}>
                 Turn on…
-              </button>
+              </Button>
             )}
           </div>
 
@@ -127,10 +126,10 @@ export default function MarketIntelPage() {
           </div>
 
           <div className="mb-6 flex items-center gap-3">
-            <button className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800`}
+            <Button  variant="primary" size="md"
               disabled={busy === 'run'} onClick={runNow}>
               {busy === 'run' ? 'Computing…' : 'Compute rollups now'}
-            </button>
+            </Button>
             <span className="text-xs text-slate-500">
               {runMsg || 'Safe while dark — cells stay invisible until the switch is on.'}
             </span>

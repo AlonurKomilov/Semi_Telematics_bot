@@ -1,3 +1,5 @@
+import { INPUT_CLS as inputCls } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
 import { useCallback, useEffect, useState } from 'react';
 import { apiJSON } from '../api/client';
 
@@ -48,12 +50,7 @@ const STATUS_BADGE: Record<LibraryEntry['status'], string> = {
   archived: 'bg-slate-700/40 text-slate-500 border-slate-600/40',
 };
 
-const inputCls =
-  'bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200 ' +
-  'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
 
-const btnCls =
-  'px-2.5 py-1 rounded text-xs font-medium border transition disabled:opacity-50';
 
 export default function ServiceTaskLibraryPage() {
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
@@ -183,12 +180,12 @@ export default function ServiceTaskLibraryPage() {
                 <span className="text-xs text-slate-500">
                   {c.account_count} accounts
                 </span>
-                <button
-                  className={`${btnCls} ml-auto border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+                <Button
+                  variant="secondary"
                   onClick={() => setNewForm((f) => ({ ...f, name: c.sample_name }))}
                 >
                   Fill add form
-                </button>
+                </Button>
               </div>
             ))}
             <p className="text-xs text-slate-500">
@@ -256,13 +253,13 @@ export default function ServiceTaskLibraryPage() {
               <option value="truck">Trucks only</option>
               <option value="trailer">Trailers only</option>
             </select>
-            <button
-              className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 whitespace-nowrap`}
+            <Button
+              variant="primary"
               disabled={!newForm.name.trim() || busyKey === 'add'}
               onClick={addEntry}
             >
               {busyKey === 'add' ? 'Adding…' : 'Add + push'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -363,35 +360,35 @@ export default function ServiceTaskLibraryPage() {
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   {editing === e.id ? (
                     <>
-                      <button
-                        className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 mr-1`}
+                      <Button
+                        variant="primary"
                         disabled={busyKey === `edit:${e.id}`}
                         onClick={() => saveEdit(e.id)}
-                      >Save + push</button>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
+                      >Save + push</Button>
+                      <Button
+                        variant="secondary"
                         onClick={() => setEditing(null)}
-                      >Cancel</button>
+                      >Cancel</Button>
                     </>
                   ) : (
                     <>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800 mr-1`}
+                      <Button
+                        variant="secondary"
                         onClick={() => { setEditing(e.id); setDraft(e); }}
-                      >Edit</button>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800 mr-1`}
+                      >Edit</Button>
+                      <Button
+                        variant="secondary"
                         disabled={busyKey === `resync:${e.id}`}
                         title="Re-push to any account missing it"
                         onClick={() => resync(e.id)}
-                      >Resync</button>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
+                      >Resync</Button>
+                      <Button
+                        variant="secondary"
                         disabled={busyKey === `status:${e.id}`}
                         onClick={() => setStatus(
                           e.id, e.status === 'active' ? 'archived' : 'active',
                         )}
-                      >{e.status === 'active' ? 'Archive' : 'Restore'}</button>
+                      >{e.status === 'active' ? 'Archive' : 'Restore'}</Button>
                     </>
                   )}
                 </td>

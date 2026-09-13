@@ -1,3 +1,4 @@
+import { PREF_KEYS, readPref, writePref } from '../lib/prefs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
@@ -52,12 +53,6 @@ const SEVERITY_CHIP: Record<SecuritySeverity, string> = {
   low: 'text-slate-400 border-slate-700',
 };
 
-function safeGet(k: string): string | null {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-function safeSet(k: string, v: string): void {
-  try { localStorage.setItem(k, v); } catch { /* private mode etc. */ }
-}
 
 function when(iso: string | null): string {
   if (!iso) return '—';
@@ -80,10 +75,10 @@ export default function SecurityPage() {
   // Remembered per browser: an operator returns to the same window and
   // account they were reading — small, and the console has no
   // preferences service to reach for.
-  const [hours, setHours] = useState<number>(() => Number(safeGet('sec.hours')) || 24);
-  const [account, setAccount] = useState<number | ''>(() => { const v = safeGet('sec.account'); return v ? Number(v) : ''; });
-  useEffect(() => { safeSet('sec.hours', String(hours)); }, [hours]);
-  useEffect(() => { safeSet('sec.account', account === '' ? '' : String(account)); }, [account]);
+  const [hours, setHours] = useState<number>(() => Number(readPref(PREF_KEYS.securityHours)) || 24);
+  const [account, setAccount] = useState<number | ''>(() => { const v = readPref(PREF_KEYS.securityAccount); return v ? Number(v) : ''; });
+  useEffect(() => { writePref(PREF_KEYS.securityHours, String(hours)); }, [hours]);
+  useEffect(() => { writePref(PREF_KEYS.securityAccount, account === '' ? '' : String(account)); }, [account]);
   const [cls, setCls] = useState<StatusClass>('all');
 
   const [summary, setSummary] = useState<SecuritySummary | null>(null);

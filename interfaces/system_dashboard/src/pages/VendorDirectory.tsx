@@ -1,3 +1,4 @@
+import { INPUT_CLS as inputCls } from '../components/ui/Input';
 import { Fragment, useEffect, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { apiJSON, ApiError } from '../api/client';
@@ -51,9 +52,6 @@ const STATUS_BADGE: Record<DirEntry['status'], string> = {
   rejected: 'bg-slate-700/40 text-slate-500 border-slate-600/40',
 };
 
-const inputCls =
-  'bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200 ' +
-  'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
 
 export default function VendorDirectoryPage() {
   const [entries, setEntries] = useState<DirEntry[]>([]);

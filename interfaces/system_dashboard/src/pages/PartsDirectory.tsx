@@ -1,3 +1,5 @@
+import { INPUT_CLS as inputCls } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
 import { useCallback, useEffect, useState } from 'react';
 import { apiJSON } from '../api/client';
 
@@ -39,12 +41,7 @@ const STATUS_BADGE: Record<PartEntry['status'], string> = {
   archived: 'bg-slate-700/40 text-slate-500 border-slate-600/40',
 };
 
-const inputCls =
-  'bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200 ' +
-  'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
 
-const btnCls =
-  'px-2.5 py-1 rounded text-xs font-medium border transition disabled:opacity-50';
 
 export default function PartsDirectoryPage() {
   const [entries, setEntries] = useState<PartEntry[]>([]);
@@ -207,22 +204,22 @@ export default function PartsDirectoryPage() {
                     <td className="px-3 py-1.5 text-slate-400 tabular-nums">{c.catalog_rows}</td>
                     <td className="px-3 py-1.5 text-slate-400 tabular-nums">{c.usage_count}</td>
                     <td className="px-3 py-1.5 text-right whitespace-nowrap">
-                      <button
-                        className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 mr-2`}
+                      <Button
+                        variant="secondary"
                         onClick={() => {
                           setPromoting(promoting === c.name_key ? null : c.name_key);
                           setPromoteForm({ canonical_name: c.sample_name, category: '', part_number: '' });
                         }}
                       >
                         Promote…
-                      </button>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
+                      </Button>
+                      <Button
+                        variant="secondary"
                         disabled={busyKey === `dismiss:${c.name_key}`}
                         onClick={() => dismiss(c)}
                       >
                         Dismiss
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                   {promoting === c.name_key && (
@@ -238,13 +235,13 @@ export default function PartsDirectoryPage() {
                           <input className={`${inputCls} max-w-[10rem]`} placeholder="Part #"
                             value={promoteForm.part_number}
                             onChange={(e) => setPromoteForm((f) => ({ ...f, part_number: e.target.value }))} />
-                          <button
-                            className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+                          <Button
+                            variant="primary"
                             disabled={!promoteForm.canonical_name.trim() || busyKey === `promote:${c.name_key}`}
                             onClick={() => promote(c)}
                           >
                             {busyKey === `promote:${c.name_key}` ? 'Promoting…' : 'Promote + adopt'}
-                          </button>
+                          </Button>
                           <span className="text-xs text-slate-500">
                             Raw name becomes an alias; every company's matching parts link automatically.
                           </span>
@@ -267,14 +264,14 @@ export default function PartsDirectoryPage() {
           value={newForm.category} onChange={(e) => setNewForm((f) => ({ ...f, category: e.target.value }))} />
         <input className={`${inputCls} max-w-[10rem]`} placeholder="Part #"
           value={newForm.part_number} onChange={(e) => setNewForm((f) => ({ ...f, part_number: e.target.value }))} />
-        <button className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+        <Button  variant="primary"
           disabled={!newForm.name.trim() || busyKey === 'add'} onClick={addEntry}>
           Add entry
-        </button>
-        <button className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800 ml-auto`}
+        </Button>
+        <Button  variant="secondary"
           onClick={() => setImportOpen((o) => !o)}>
           {importOpen ? 'Close import' : 'Bulk import'}
-        </button>
+        </Button>
       </div>
       {importOpen && (
         <div className="mb-4 border border-slate-800 rounded-lg p-3">
@@ -285,10 +282,10 @@ export default function PartsDirectoryPage() {
           <textarea className={`${inputCls} h-32 font-mono`} value={importText}
             onChange={(e) => setImportText(e.target.value)} />
           <div className="mt-2 flex items-center gap-3">
-            <button className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+            <Button  variant="primary"
               disabled={!importText.trim() || busyKey === 'import'} onClick={runImport}>
               {busyKey === 'import' ? 'Importing…' : 'Import rows'}
-            </button>
+            </Button>
             {importResult && <span className="text-xs text-slate-400">{importResult}</span>}
           </div>
         </div>
@@ -357,23 +354,23 @@ export default function PartsDirectoryPage() {
               <td className="px-3 py-1.5 text-right whitespace-nowrap">
                 {editing === e.id ? (
                   <>
-                    <button className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 mr-2`}
-                      disabled={busyKey === `edit:${e.id}`} onClick={() => saveEdit(e.id)}>Save</button>
-                    <button className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
-                      onClick={() => setEditing(null)}>Cancel</button>
+                    <Button  variant="primary"
+                      disabled={busyKey === `edit:${e.id}`} onClick={() => saveEdit(e.id)}>Save</Button>
+                    <Button  variant="secondary"
+                      onClick={() => setEditing(null)}>Cancel</Button>
                   </>
                 ) : (
                   <>
-                    <button className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800 mr-2`}
-                      onClick={() => { setEditing(e.id); setDraft(e); }}>Edit</button>
+                    <Button  variant="secondary"
+                      onClick={() => { setEditing(e.id); setDraft(e); }}>Edit</Button>
                     {e.status === 'active' ? (
-                      <button className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
+                      <Button  variant="danger"
                         disabled={busyKey === `status:${e.id}`}
-                        onClick={() => setStatus(e.id, 'archived')}>Archive</button>
+                        onClick={() => setStatus(e.id, 'archived')}>Archive</Button>
                     ) : (
-                      <button className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+                      <Button  variant="secondary"
                         disabled={busyKey === `status:${e.id}`}
-                        onClick={() => setStatus(e.id, 'active')}>Activate</button>
+                        onClick={() => setStatus(e.id, 'active')}>Activate</Button>
                     )}
                   </>
                 )}
@@ -383,10 +380,10 @@ export default function PartsDirectoryPage() {
         </tbody>
       </table>
       {visible.length > shownCount && (
-        <button className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800 mt-3`}
+        <Button  variant="secondary"
           onClick={() => setShownCount((n) => n + 200)}>
           Show more ({visible.length - shownCount} hidden)
-        </button>
+        </Button>
       )}
     </div>
   );

@@ -230,7 +230,7 @@ function FeedbackRowCard({ row, expanded, onToggle }: RowProps) {
             <div className="text-2xs uppercase tracking-wide text-slate-500 mb-0.5">
               AI answer
             </div>
-            <div className="text-slate-300 whitespace-pre-wrap max-h-64 overflow-y-auto">
+            <div className="text-slate-300 whitespace-pre-wrap max-h-64 overflow-y-auto" tabIndex={0} role="region" aria-label="Scrollable content">
               {row.ai_answer || <em className="text-slate-500">(not found in chat_history)</em>}
             </div>
           </div>

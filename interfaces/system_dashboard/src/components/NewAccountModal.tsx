@@ -1,3 +1,4 @@
+import { Dialog } from './ui/Dialog';
 import { useState } from 'react';
 import { apiJSON } from '../api/client';
 
@@ -76,13 +77,8 @@ export default function NewAccountModal({ onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-         onClick={onClose}>
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-lg p-6 space-y-4"
-      >
+    <Dialog title="Create new account" onClose={onClose} size="lg">
+      <form onSubmit={submit} className="space-y-4">
         <div>
           <h2 className="text-base font-semibold text-slate-100">Create new account</h2>
           <p className="text-xs text-slate-500 mt-1">
@@ -223,7 +219,7 @@ export default function NewAccountModal({ onClose, onCreated }: Props) {
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }
 

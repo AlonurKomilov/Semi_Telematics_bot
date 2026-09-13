@@ -63,11 +63,41 @@ label, and `overscroll-contain`. Its head sticks to the top (which
 column am I in) and its action row sticks to the bottom (what can I do
 about it) — both opaque, because rows pass beneath them.
 
+## Inputs, cards, dialogs
+
+`ui/Input.tsx` exports `INPUT_CLS` and an `Input`; five pages had the
+same string character for character. `ui/Card.tsx` is the titled section
+with an optional action slot.
+
+`ui/Dialog.tsx` is the only modal. Never a bare `fixed inset-0` — that
+is a backdrop, not a dialog: it has no focus trap, so Tab walks out of
+it and keeps going through the page underneath, which is still there and
+still focusable; no Escape; no `aria-modal`, so a screen reader
+announces the page behind it as if the dialog were not there; and no
+scroll lock. The primitive does all four and returns focus to whatever
+opened it.
+
+## Per-operator state
+
+`lib/prefs.ts`, with the keys declared there and FROZEN — renaming one
+throws away that operator's setting silently. Never `localStorage` in a
+component. Anything the server acts on is data, not a preference.
+
 ## What this file does not cover yet
 
-Inputs (five identical `inputCls` copies), `Card` (two implementations),
-dialogs (two hand-rolled fixed-backdrop overlays with no focus trap,
-Escape or `aria-modal`), and the 42 native `title=` tooltips, which are
-unthemed and invisible on touch. Each is a real gap; none of them was in
-the way of the work that produced this file. Write the rule here when
-you close one.
+Two things, both ratcheted in
+[tests/test_console_buttons_come_from_one_place.py](../../tests/test_console_buttons_come_from_one_place.py)
+so they can only shrink:
+
+- **154 raw palette classes** (`text-rose-300`, `bg-emerald-500/15`)
+  where `danger`/`ok`/`warn` exist. Not swept, deliberately: a token is
+  one hex value, while `rose-300` on `rose-500/10` is a contrast PAIR,
+  and collapsing those across twenty pages nobody has opened in a
+  browser trades a naming problem for a legibility one. It wants a
+  tone helper (the customer dashboard has `toneClasses`) and a page at
+  a time.
+- **44 native `title=` tooltips**, unthemed and invisible on touch.
+  They want a themed Tooltip primitive that does not exist yet.
+
+`components/AlertRoutingCard.tsx` still has its own `Card` — it is a
+feature card with a different anatomy, not a second copy of this one.

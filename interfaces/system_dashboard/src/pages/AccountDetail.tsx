@@ -1,3 +1,5 @@
+import { Dialog } from '../components/ui/Dialog';
+import { Card } from '../components/ui/Card';
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
@@ -286,21 +288,6 @@ export default function AccountDetailPage() {
 
 // ── Pieces ─────────────────────────────────────────────────────
 
-function Card({ title, actions, children }: {
-  title: string;
-  actions?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-      <header className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-slate-200">{title}</h2>
-        {actions}
-      </header>
-      {children}
-    </section>
-  );
-}
 
 function Row({ label, value, accent, mono }: {
   label: string; value: string; accent?: string; mono?: boolean;
@@ -424,11 +411,11 @@ function CompForm({ mode, accountId, currentExpiry, onClose, onDone }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <form
-        onSubmit={submit}
-        className="bg-slate-900 border border-slate-700 rounded-lg p-5 w-full max-w-md"
-      >
+    <Dialog
+      title={mode === 'grant' ? 'Grant complimentary access' : 'Renew complimentary access'}
+      onClose={onClose}
+    >
+      <form onSubmit={submit}>
         <h3 className="text-sm font-semibold text-slate-100 mb-4">
           {mode === 'grant' ? 'Grant complimentary access' : 'Renew complimentary access'}
         </h3>
@@ -463,7 +450,7 @@ function CompForm({ mode, accountId, currentExpiry, onClose, onDone }: {
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }
 

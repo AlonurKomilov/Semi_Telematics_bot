@@ -1,3 +1,5 @@
+import { INPUT_CLS as inputCls } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiJSON } from '../api/client';
 
@@ -24,12 +26,7 @@ const STATUS_BADGE: Record<Assembly['status'], string> = {
   archived: 'bg-slate-700/40 text-slate-500 border-slate-600/40',
 };
 
-const inputCls =
-  'bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200 ' +
-  'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
 
-const btnCls =
-  'px-2.5 py-1 rounded text-xs font-medium border transition disabled:opacity-50';
 
 export default function ServiceAssembliesPage() {
   const [rows, setRows] = useState<Assembly[]>([]);
@@ -143,13 +140,13 @@ export default function ServiceAssembliesPage() {
               <option key={s.key} value={s.key}>{s.label}</option>
             ))}
           </select>
-          <button
-            className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+          <Button
+            variant="primary"
             disabled={!newForm.label.trim() || !newForm.system_key || busyKey === 'add'}
             onClick={addEntry}
           >
             {busyKey === 'add' ? 'Adding…' : 'Add assembly'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -199,29 +196,29 @@ export default function ServiceAssembliesPage() {
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   {editing === r.id ? (
                     <>
-                      <button
-                        className={`${btnCls} border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 mr-1`}
+                      <Button
+                        variant="primary"
                         disabled={busyKey === `edit:${r.id}`}
                         onClick={() => saveLabel(r.id)}
-                      >Save</button>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
+                      >Save</Button>
+                      <Button
+                        variant="secondary"
                         onClick={() => setEditing(null)}
-                      >Cancel</button>
+                      >Cancel</Button>
                     </>
                   ) : (
                     <>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-300 hover:bg-slate-800 mr-1`}
+                      <Button
+                        variant="secondary"
                         onClick={() => { setEditing(r.id); setDraftLabel(r.label); }}
-                      >Rename</button>
-                      <button
-                        className={`${btnCls} border-slate-700 text-slate-400 hover:bg-slate-800`}
+                      >Rename</Button>
+                      <Button
+                        variant="secondary"
                         disabled={busyKey === `status:${r.id}`}
                         onClick={() => setStatus(
                           r.id, r.status === 'active' ? 'archived' : 'active',
                         )}
-                      >{r.status === 'active' ? 'Archive' : 'Restore'}</button>
+                      >{r.status === 'active' ? 'Archive' : 'Restore'}</Button>
                     </>
                   )}
                 </td>
