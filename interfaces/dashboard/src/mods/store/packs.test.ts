@@ -6,6 +6,7 @@ import { PACKS, packById, packOf, removable, type Pack } from './packs';
 import { ITEM_AXES } from './items';
 import { PUBLISHER } from './index';
 import { AXIS_UI, defaultOf } from './axes';
+import { MOD_FIELD_KIND, VALUE_FIELDS } from '../catalogue';
 
 const every = ITEM_AXES.flatMap((a) => a.items.map((i) => ({ axis: a.axis, id: i.id })));
 
@@ -76,6 +77,68 @@ describe('the house stamps the pack, as it stamps the item', () => {
       expect(p.id).toMatch(/^[a-z][a-z0-9-]*$/);
       expect(p.label.length).toBeGreaterThan(1);
       expect(p.description.length, `${p.id} says nothing about itself`).toBeGreaterThan(15);
+    }
+  });
+});
+
+describe('a pack brings items and only CHOOSES the system\'s values', () => {
+  /** Every theme field some shelf is the home of. */
+  const homed = Object.values(AXIS_UI)
+    .flatMap((ui) => (ui.home.theme ? [...ui.home.theme] : []));
+
+  it('there are both kinds, or this rule is guarding nothing', () => {
+    expect(VALUE_FIELDS.length, 'nothing is the system\'s any more').toBeGreaterThan(3);
+    expect(Object.values(MOD_FIELD_KIND).filter((k) => k === 'item').length)
+      .toBeGreaterThan(5);
+  });
+
+  it('size stays the system\'s, by name', () => {
+    // The owner's call, and the reason is measurable rather than a
+    // matter of taste: size multiplies every dimension at once, and the
+    // Size control starts at 100% because everything below it meets the
+    // 24px hit-target floor. A pack that could SHIP a size would be able
+    // to leave the app somewhere its own control cannot bring it back
+    // from. Every other value field is arguable — corners most of all,
+    // which is why this pins one name and not the list.
+    expect(MOD_FIELD_KIND.size).toBe('value');
+  });
+
+  it('every shelf is the home of a field a pack may bring', () => {
+    for (const field of homed) {
+      expect(MOD_FIELD_KIND[field as keyof typeof MOD_FIELD_KIND],
+        `a shelf sells "${field}", which is the system's to decide`).toBe('item');
+    }
+  });
+
+  it('and nothing the system owns has a shelf to sell it on', () => {
+    // `size` is the one that matters: it multiplies every dimension at
+    // once, and the Size control starts at 100% because everything below
+    // meets the 24px hit-target floor. A pack that shipped one could put
+    // the app where its own control cannot bring it back from.
+    //
+    // Asked of FIELDS and the shelves that are their home, never of the
+    // axis NAME: "icons" is an axis (which set of glyphs, an item) and
+    // also a field (how heavy they are drawn, the system's). Two nouns,
+    // one word, and the taxonomy is right to file them under one
+    // heading — a person asking about icons means both.
+    for (const field of VALUE_FIELDS) {
+      expect(homed, `"${field}" is a shelf's home — a pack could ship one`)
+        .not.toContain(field);
+    }
+  });
+
+  it('every axis a pack ships on is one the store sells', () => {
+    for (const p of PACKS) {
+      for (const axis of Object.keys(p.items)) {
+        const ui = AXIS_UI[axis];
+        expect(ui, `${p.id} ships "${axis}", which is no shelf`).toBeTruthy();
+        // Its home is a field a pack may bring — the `mods` shelf's home
+        // is the preset identity, which is the pack itself.
+        for (const field of ui.home.theme ?? []) {
+          expect(MOD_FIELD_KIND[field as keyof typeof MOD_FIELD_KIND],
+            `${p.id} ships on "${axis}", whose ${field} is the system's`).toBe('item');
+        }
+      }
     }
   });
 });

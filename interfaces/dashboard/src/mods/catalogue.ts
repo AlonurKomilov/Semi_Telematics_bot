@@ -299,6 +299,49 @@ export const MOD_FIELD_APPLIER: Record<
   size: 'size', sound: 'sound',
 };
 
+/**
+ * What a pack may BRING, and what it may only CHOOSE.
+ *
+ * An `item` field names a shelf: a pack can ship its own wallpaper, its
+ * own cue set, its own accent, and that thing arrives and leaves with
+ * the pack. A `value` field is the SYSTEM's, and a pack may only pick
+ * one of the values the system already offers — it can say "calm
+ * motion", it can never ship a motion.
+ *
+ * The line is drawn by blast radius, not by taste. A wallpaper is one
+ * surface; if it is ugly you change it. `size` multiplies every
+ * dimension in the app at once, and the Size control deliberately
+ * starts at 100% because everything below it runs into the 24px
+ * hit-target floor — a pack that shipped a size could put the app
+ * somewhere its own control cannot bring it back from. `mode` is about
+ * the room the person is sitting in, not about a look. `entrance` and
+ * `wallpaperLive` are switches: on and off is not a thing to design.
+ *
+ * TOTAL over the type, so a new field on `Mod` does not compile until
+ * somebody has decided which side of this line it is on. That is the
+ * whole point — the rule used to live in the ABSENCE of an entry in
+ * `ITEM_AXES`, where nothing states it and nothing asks.
+ *
+ * `radius` sits on the value side TODAY and is the one that could
+ * honestly move: corners are cosmetic, they reach no floor, and the day
+ * `--radius` becomes a set (a card rounder than a control) a pack
+ * shipping corners would be saying something. It is not a split to
+ * make, it is an axis to enhance first.
+ */
+export const MOD_FIELD_KIND: Record<
+  keyof Omit<Mod, keyof ItemMeta>, 'item' | 'value'
+> = {
+  accent: 'item', material: 'item', iconPack: 'item', font: 'item',
+  shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
+  sound: 'item',
+  radius: 'value', size: 'value', motion: 'value', icons: 'value',
+  entrance: 'value', wallpaperLive: 'value',
+};
+
+/** The axes a pack may never ship — it picks from what the system has. */
+export const VALUE_FIELDS = (Object.keys(MOD_FIELD_KIND) as (keyof typeof MOD_FIELD_KIND)[])
+  .filter((f) => MOD_FIELD_KIND[f] === 'value');
+
 /** The fields `setTheme` installs, under their own names. */
 export const MOD_THEME_FIELDS = (Object.keys(MOD_FIELD_APPLIER) as (keyof typeof MOD_FIELD_APPLIER)[])
   .filter((k) => MOD_FIELD_APPLIER[k] === 'theme');
