@@ -547,6 +547,17 @@ _GLOBAL_REGISTRIES = (
     ("capabilities.notifications.channels", "_CHANNELS"),
     ("capabilities.notifications.actions", "_HANDLERS"),
     ("capabilities.notifications.service", "_DIGEST_RENDERERS"),
+    # The AI tool registry, and the two executor maps beside it. Same
+    # shape of leak as the channel map above: a test registers a tool
+    # through the real decorator, never removes it, and a guard in
+    # ANOTHER file that asserts the registry's contents fails — but only
+    # when the two land on the same xdist worker, so it reads as
+    # flakiness rather than as the missing teardown it is.
+    # test_tool_result_envelope.py leaks three (_boom_tool, _count_tool,
+    # _envelope_tool) and broke four separate registry guards this way.
+    ("capabilities.ai.tools.registry", "_TOOL_REGISTRY"),
+    ("capabilities.ai.tools.registry", "_ACTION_EXECUTORS"),
+    ("capabilities.ai.tools.registry", "_UNDO_EXECUTORS"),
 )
 
 
