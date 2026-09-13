@@ -37,7 +37,10 @@ logger = logging.getLogger(__name__)
 DENIAL_STATUSES: frozenset[int] = frozenset({401, 403, 429})
 
 # The account kind whose every request is kept.
-RECORD_ALL_KIND = "monitored"
+# The security axis, not the kind axis: `kind` says whether an
+# account is a customer, which has nothing to do with whether we
+# are recording it. A watched CUSTOMER is real + monitored.
+RECORD_ALL_SECURITY = "monitored"
 
 # Paths whose query string is never stored.
 NO_QUERY_PREFIXES: tuple[str, ...] = ("/api/auth/", "/api/v1/auth/")
@@ -51,15 +54,15 @@ IP_MAX = 64
 # customers to watch a handful of accounts.  Sixty seconds is short
 # enough that flipping an account to monitored takes effect within the
 # minute, and long enough to cost nothing.
-_KIND_TTL_S = 60.0
-_kind_cache: dict[int, tuple[str | None, float]] = {}
+_SECURITY_TTL_S = 60.0
+_security_cache: dict[int, tuple[str | None, float]] = {}
 
 
-def should_record(status: int, kind: str | None) -> bool:
+def should_record(status: int, security: str | None) -> bool:
     """The whole policy, in one line each."""
     if status in DENIAL_STATUSES:
         return True
-    return kind == RECORD_ALL_KIND
+    return security == RECORD_ALL_SECURITY
 
 
 def safe_query(path: str, query: str | None) -> str | None:
@@ -77,7 +80,7 @@ def _clip(value: str | None, n: int) -> str | None:
     return value[:n]
 
 
-async def kind_for_account(account_id: int | None) -> str | None:
+async def security_for_account(account_id: int | None) -> str | None:
     """The account's trust class, cached for a minute; None when unknown.
 
     Fail-quiet: a DB hiccup here must not turn into an exception on the
@@ -86,26 +89,27 @@ async def kind_for_account(account_id: int | None) -> str | None:
     if account_id is None:
         return None
     now = time.monotonic()
-    hit = _kind_cache.get(account_id)
+    hit = _security_cache.get(account_id)
     if hit and hit[1] > now:
         return hit[0]
-    kind: str | None = None
+    security: str | None = None
     try:
         from infra.platform import get_platform_db
         acct = await get_platform_db().get_account(account_id)
-        kind = getattr(acct, "kind", None) if acct else None
+        security = getattr(acct, "security", None) if acct else None
     except Exception as e:  # noqa: BLE001 — observation must never raise
-        logger.debug("kind lookup skipped for account %s: %s", account_id, e)
-    _kind_cache[account_id] = (kind, now + _KIND_TTL_S)
-    return kind
+        logger.debug("security lookup skipped for account %s: %s", account_id, e)
+    _security_cache[account_id] = (security, now + _SECURITY_TTL_S)
+    return security
 
 
-def forget_kind(account_id: int | None = None) -> None:
-    """Drop the cache (one account, or all) — for tests and kind changes."""
+def forget_security(account_id: int | None = None) -> None:
+    """Drop the cache (one account, or all) — for tests, and for the
+    moment an operator changes an account's security standing."""
     if account_id is None:
-        _kind_cache.clear()
+        _security_cache.clear()
     else:
-        _kind_cache.pop(account_id, None)
+        _security_cache.pop(account_id, None)
 
 
 async def record_request(
@@ -124,8 +128,8 @@ async def record_request(
 ) -> bool:
     """Decide, then write.  Returns whether a row was kept.  Never raises."""
     try:
-        kind = await kind_for_account(account_id)
-        if not should_record(int(status), kind):
+        security = await security_for_account(account_id)
+        if not should_record(int(status), security):
             return False
         from infra.platform import get_platform_db
         await get_platform_db().record_security_request(
@@ -135,7 +139,7 @@ async def record_request(
             account_id=account_id,
             user_id=user_id,
             role=role,
-            kind=kind,
+            security=security,
             query=safe_query(path, query),
             duration_ms=duration_ms,
             ip=_clip(ip, IP_MAX),

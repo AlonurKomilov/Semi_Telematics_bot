@@ -27,7 +27,7 @@ class SecurityRequestsMixin:
         account_id: int | None = None,
         user_id: int | None = None,
         role: str | None = None,
-        kind: str | None = None,
+        security: str | None = None,
         query: str | None = None,
         duration_ms: int | None = None,
         ip: str | None = None,
@@ -38,10 +38,10 @@ class SecurityRequestsMixin:
         now = self._now()
         await self._db.execute(
             """INSERT INTO security_requests
-               (created_at, account_id, user_id, role, kind, method, path, query,
+               (created_at, account_id, user_id, role, security, method, path, query,
                 status, duration_ms, ip, ua, request_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (now, account_id, user_id, role, kind, method, path, query,
+            (now, account_id, user_id, role, security, method, path, query,
              int(status), duration_ms, ip, ua, request_id),
         )
         await self._db.commit()
@@ -86,7 +86,7 @@ class SecurityRequestsMixin:
             params.append(cutoff)
         params.append(int(limit))
         sql = ("SELECT r.id, r.created_at, r.account_id, r.user_id, u.display_name AS user_name, "
-               "r.role, r.kind, r.method, r.path, r.query, r.status, r.duration_ms, r.ip, r.ua, "
+               "r.role, r.security, r.method, r.path, r.query, r.status, r.duration_ms, r.ip, r.ua, "
                "r.request_id FROM security_requests r LEFT JOIN users u ON u.id = r.user_id "
                + ("WHERE " + " AND ".join(where) if where else "")
                + " ORDER BY r.created_at DESC, r.id DESC LIMIT ?")
@@ -143,7 +143,7 @@ class SecurityRequestsMixin:
               FROM accounts a
               LEFT JOIN security_requests r
                      ON r.account_id = a.id AND r.created_at >= ?
-             WHERE a.kind = 'monitored'
+             WHERE a.security = 'monitored'
              GROUP BY a.id, a.name, a.kind, a.created_at
              ORDER BY requests DESC, a.name
             """,

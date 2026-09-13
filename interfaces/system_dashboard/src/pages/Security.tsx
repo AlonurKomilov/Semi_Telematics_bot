@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import type {
-  AccountKind, MonitoredAccountRow, SecurityBoard, SecurityCandidate, SecurityEndpointRow,
+  AccountSecurity, MonitoredAccountRow, SecurityBoard, SecurityCandidate, SecurityEndpointRow,
   SecurityRequestRow, SecurityRule, SecuritySeverity, SecuritySummary, SecurityWatching,
 } from '../types';
 
@@ -156,15 +156,15 @@ export default function SecurityPage() {
     // third account has already changed two, and one generic error leaves
     // the operator unable to tell which.
     const results = await Promise.allSettled(ids.map((id) =>
-      apiJSON(`/system/accounts/${id}/type`, {
-        method: 'PATCH', body: { type: 'monitored' as AccountKind },
+      apiJSON(`/system/accounts/${id}/security`, {
+        method: 'PATCH', body: { security: 'monitored' as AccountSecurity },
       })));
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed) {
       const first = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
       const why = first?.reason instanceof Error ? first.reason.message : 'the server refused';
       setErr(ids.length === 1
-        ? `Could not set the account kind — ${why}`
+        ? `Could not change what is being watched — ${why}`
         : `${ids.length - failed} of ${ids.length} set to monitored; ${failed} failed — ${why}. Try again for the rest.`);
     }
     setPromoting(null);
@@ -183,10 +183,10 @@ export default function SecurityPage() {
     setPromoting(`stop:${id}`);
     setErr('');
     try {
-      await apiJSON(`/system/accounts/${id}/type`, { method: 'PATCH', body: { type: 'real' as AccountKind } });
+      await apiJSON(`/system/accounts/${id}/security`, { method: 'PATCH', body: { security: 'normal' as AccountSecurity } });
       if (account === id) setAccount('');
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Could not set the account kind');
+      setErr(e instanceof Error ? e.message : 'Could not stop watching that account');
     } finally {
       setPromoting(null);
       load();
@@ -245,7 +245,7 @@ export default function SecurityPage() {
         <Tile label={`Refused · ${WINDOWS.find((w) => w.hours === hours)?.label.toLowerCase() ?? `${hours}h`}`} value={summary?.refused} hint="401 + 403 — held" tone="text-ok" />
         <Tile label="Throttled" value={summary?.throttled} hint="429" tone="text-warn" />
         <Tile label="Broke" value={summary?.broke} hint="5xx — look here" tone={(summary?.broke ?? 0) > 0 ? 'text-danger' : undefined} />
-        <Tile label="Watching" value={summary?.monitored_accounts} hint="accounts · kind = monitored" tone="text-accent" />
+        <Tile label="Watching" value={summary?.monitored_accounts} hint="accounts · security = monitored" tone="text-accent" />
       </div>
 
       {err && (
@@ -329,7 +329,9 @@ export default function SecurityPage() {
                           <Link to={`/accounts/${c.account_id}`} className="text-slate-100 hover:text-accent">{c.name ?? c.account_id}</Link>
                           <div className="text-xs text-slate-500">
                             {c.account_id}{c.ip ? ` · ${c.ip}` : ''}
-                            {c.kind && c.kind !== 'real' ? <> · <span className="text-accent">{c.kind}</span></> : null}
+                            {c.kind === 'test' ? <> · <span className="text-slate-500">ours</span></> : null}
+                            {c.security && c.security !== 'normal'
+                              ? <> · <span className="text-accent">{c.security}</span></> : null}
                           </div>
                         </>
                       ) : (

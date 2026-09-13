@@ -3,23 +3,30 @@ import { Card } from '../components/ui/Card';
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
-import { usd, KindBadge } from './Accounts';
+import { usd, KindBadge, SecurityBadge } from './Accounts';
 import AlertRoutingCard from '../components/AlertRoutingCard';
 import type {
   AccountDetail, CompHistoryRow,
   SyncQuantityResult, RefreshVehiclesResult, BillingEmailResult,
   OrphanReport, OrphanPurgeResult,
 } from '../types';
-import { ACCOUNT_KINDS, type AccountKind } from '../types';
+import { ACCOUNT_KINDS, ACCOUNT_SECURITY, type AccountKind, type AccountSecurity } from '../types';
 
 /** What choosing a kind actually does — shown beside the select, because
  *  the choice is about a person and takes effect on change.  `quarantined`
  *  is named honestly: nothing enforces it yet. */
 const KIND_HINT: Record<AccountKind, string> = {
-  real: 'a customer — counted, billed, unrestricted',
-  test: 'ours — not counted, unrestricted',
-  monitored: 'behaves exactly like real; not counted; every request is recorded on the Security page',
-  quarantined: 'NOT ENFORCED YET — behaves like real until the request-time gate lands',
+  real: 'a customer — counted on the bot card, billed',
+  test: 'ours — not counted, not billed, and fully functional',
+};
+
+/** The other axis. Note what `normal` does NOT say: nobody has examined
+ *  this account, so any word implying a clearance would be a claim we
+ *  cannot back — and "safe" is one letter from the Safety role. */
+const SECURITY_HINT: Record<AccountSecurity, string> = {
+  normal: 'nothing has been said — not a clearance, nobody has examined it',
+  monitored: 'behaves exactly as before; every request is recorded on the Security page',
+  quarantined: 'NOT ENFORCED YET — behaves as before until the request-time gate lands',
 };
 
 export default function AccountDetailPage() {
@@ -77,6 +84,7 @@ export default function AccountDetailPage() {
         <h1 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
           {data.account.name}
           {data.account.type !== 'real' && <KindBadge kind={data.account.type} />}
+          <SecurityBadge security={data.account.security} />
         </h1>
         <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-4 gap-y-1 items-center">
           <span>id: {data.account.id}</span>
@@ -84,11 +92,10 @@ export default function AccountDetailPage() {
           <span>tz: {data.account.timezone}</span>
           {data.account.bot_username && <span>bot: @{data.account.bot_username}</span>}
           <span>{data.user_count} users</span>
-          {/* KIND is classification, not lifecycle: changing it alters
-              nothing about the account's function — `monitored` in
-              particular must be invisible to the account.  Suspend/
-              delete keep their own guarded card.  Every change is
-              written to the platform audit trail by the API. */}
+          {/* KIND is what the account IS — the axis the bot card counts
+              and billing charges. Changing it alters nothing about the
+              account's function; suspend/delete keep their own guarded
+              card. Every change lands in the platform audit trail. */}
           <label className="flex items-center gap-1">
             <span>kind:</span>
             <select
@@ -108,6 +115,32 @@ export default function AccountDetailPage() {
               {ACCOUNT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
             <span className="text-slate-500">{KIND_HINT[data.account.type]}</span>
+          </label>
+          {/* SECURITY is how it STANDS — its own control because it is its
+              own fact. A watched customer keeps kind=real above and moves
+              only here, which is how they stay counted and billed while
+              being observed. */}
+          <label className="flex items-center gap-1">
+            <span>security:</span>
+            <select
+              value={data.account.security ?? 'normal'}
+              onChange={async (e) => {
+                const next = e.target.value as AccountSecurity;
+                if (next === (data.account.security ?? 'normal')) return;
+                try {
+                  await apiJSON(`/system/accounts/${data.account.id}/security`, {
+                    method: 'PATCH', body: { security: next },
+                  });
+                  load();
+                } catch { /* transient — row keeps its current standing */ }
+              }}
+              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
+            >
+              {ACCOUNT_SECURITY.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <span className="text-slate-500">
+              {SECURITY_HINT[data.account.security ?? 'normal']}
+            </span>
           </label>
           {/* PLAN is what the account may use and what it is charged for.
               The select lists the Plans page's rows; the API refuses an

@@ -80,28 +80,46 @@ class Account:
     # not set → those surfaces use neutral wording rather than falling
     # back to the registered name.
     public_display_name: str = ""
-    # Operator classification — see ACCOUNT_KINDS.  Distinct from
-    # is_active on purpose: a non-customer account stays fully functional
-    # (a test account exists to be logged into; a monitored one must look
-    # exactly like a real one to whoever is being watched).
+    # WHAT this account is — see ACCOUNT_KINDS.  Distinct from is_active
+    # on purpose: a non-customer account stays fully functional, because
+    # a test account exists to be logged into.
     kind: str = "real"
+    # HOW it stands with security — see ACCOUNT_SECURITY.  A separate
+    # column because the two answer different questions and a customer
+    # can be both at once. They shared one column until 2026-09-13, and
+    # marking a customer `monitored` silently took them out of `real` —
+    # which is what the bot card counts and what billing charges. Nobody
+    # had been watched while paying yet, so the bill was never wrong;
+    # the next one would have been.
+    security: str = "normal"
     # Deprecated alias of ``kind == "test"``, kept one release for readers
     # that predate ``kind``.  Storage keeps the two in step on every
     # write; never set one without the other.
     is_test: bool = False
 
 
-# The trust classes an account can be in.  DB value == wire value, so
-# there is one vocabulary from the column to the console select.
-#   real        — a customer; counted, billed, unrestricted.
-#   test        — ours; not counted; unrestricted.
-#   monitored   — behaves EXACTLY like real (no gate may consult this
-#                 value to refuse anything), but is not counted and every
-#                 request is recorded for the security console.  Because
-#                 it restricts nothing, the detector may apply it
+# WHAT an account is.  DB value == wire value, so there is one
+# vocabulary from the column to the console select.
+#   real — a customer; counted on the bot card, billed.
+#   test — ours; not counted, not billed, and fully functional, because
+#          a test account exists to be logged into.
+ACCOUNT_KINDS: tuple[str, ...] = ("real", "test")
+
+# HOW it stands with security — orthogonal to the above, and deliberately
+# so: a paying customer under suspicion is `real` + `monitored`, and
+# stays counted and billed the whole time.
+#
+#   normal      — nothing has been said about it. NOT a clearance: no
+#                 one has examined this account, and a word like "safe"
+#                 would be claiming they had.
+#   monitored   — behaves EXACTLY like normal (no gate may consult this
+#                 value to refuse anything), but every request is
+#                 recorded for the security console. Because it
+#                 restricts nothing, the detector may apply it
 #                 automatically: a false positive costs disk, not access.
 #   quarantined — refused; reserved for when someone must be cut off.
-ACCOUNT_KINDS: tuple[str, ...] = ("real", "test", "monitored", "quarantined")
+#                 NOT ENFORCED YET — no request-time gate reads it.
+ACCOUNT_SECURITY: tuple[str, ...] = ("normal", "monitored", "quarantined")
 
 @dataclass
 class Company:

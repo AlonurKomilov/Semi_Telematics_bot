@@ -200,14 +200,15 @@ async def test_candidates_rank_by_weight_and_carry_the_current_kind(seeded_db):
     loud = await _signup(db, "Loud Co", "203.0.113.20", "loud@guerrillamailblock.com")
     for i in range(D.T_SIGNUPS_PER_IP + 1):
         await _signup(db, f"Filler{i}", "203.0.113.20", f"f{i}@realcompany.com")
-    await db.update_account(loud.id, kind="monitored")
+    await db.update_account(loud.id, security="monitored")
 
     cands = await D.find_candidates(db, hours=24)
     by_id = {c["account_id"]: c for c in cands if c["account_id"]}
     assert loud.id in by_id
     top = by_id[loud.id]
     assert {"signup_burst", "disposable_email"} <= set(top["rules"])
-    assert top["kind"] == "monitored", "an already-watched account is annotated, not hidden"
+    assert top["security"] == "monitored", "an already-watched account is annotated, not hidden"
+    assert top["kind"] == "real", "watching an account must not restate what it IS"
     assert top["name"] == "Loud Co"
     weights = [c["weight"] for c in cands]
     assert weights == sorted(weights, reverse=True), "ranked by weight"
@@ -363,11 +364,13 @@ async def test_our_own_test_accounts_are_never_candidates(seeded_db):
         await _signup(db, f"Pad{i}", "203.0.113.40", f"p{i}@guerrillamailblock.com")
 
     await db.update_account(ours.id, kind="test")
-    await db.update_account(watched.id, kind="monitored")
+    # Ours AND watched — the combination every account watched so far is
+    # in, and the one that a kind-only filter would have dropped.
+    await db.update_account(watched.id, kind="test", security="monitored")
 
     ids = {c["account_id"] for c in await D.find_candidates(db, hours=24)}
-    assert ours.id not in ids, "a test account is ours by definition"
-    assert watched.id in ids, "a watched account must keep surfacing"
+    assert ours.id not in ids, "a test account nobody is watching is ours by definition"
+    assert watched.id in ids, "a watched account must keep surfacing, test or not"
 
 
 # ── the board: how an operator decides ────────────────────────────
@@ -415,7 +418,7 @@ async def test_board_moves_a_watched_account_out_of_new_and_into_watching(seeded
     the rules still say about it belongs beside it in the watching table."""
     db = seeded_db["db"]
     w = await _signup(db, "Watched", "203.0.113.51", "w@guerrillamailblock.com")
-    await db.update_account(w.id, kind="monitored")
+    await db.update_account(w.id, security="monitored")
     b = D.board(await D.find_candidates(db, hours=24))
     assert not any(c["account_id"] == w.id for c in b["new"])
     hit = next(x for x in b["watching"] if x["account_id"] == w.id)
@@ -423,7 +426,8 @@ async def test_board_moves_a_watched_account_out_of_new_and_into_watching(seeded
 
 
 def test_board_ranks_by_severity_before_weight():
-    base = {"account_id": None, "ip": None, "subject": "s", "name": None, "kind": None, "rules": [], "signals": []}
+    base = {"account_id": None, "ip": None, "subject": "s", "name": None,
+            "kind": None, "security": None, "rules": [], "signals": []}
     med_heavy = {**base, "subject": "a", "severity": "med", "weight": 9}
     high_light = {**base, "subject": "b", "severity": "high", "weight": 5}
     assert [c["subject"] for c in D.board([med_heavy, high_light])["new"]] == ["b", "a"]

@@ -221,6 +221,8 @@ async def run_all(conn) -> None:
     await migrate_role_vehicle_scope(conn)
     await migrate_account_test_flag(conn)
     await migrate_account_kind(conn)
+    await migrate_split_kind_and_security(conn)
+    await migrate_ledger_kind_to_security(conn)
     # Vehicle-document expiry needed a personal toggle like every other
     # alert type — without the column its subscriber query returned
     # nobody, so the alert fired into silence.
@@ -239,6 +241,109 @@ async def run_all(conn) -> None:
     await migrate_inventory_own_flags(conn)
     await migrate_driver_trucks_registry_id(conn)
 
+
+
+async def migrate_split_kind_and_security(conn) -> None:
+    """Split the one trust column into the two questions it was answering.
+
+    ``kind`` held real / test / monitored / quarantined, which forced a
+    choice between two facts that are not alternatives: WHAT an account
+    is, and HOW it stands with security. Marking an account monitored
+    therefore erased whether it was a customer — and ``kind = 'real'`` is
+    what the bot card counts and what billing charges, so watching a
+    paying customer would have quietly removed them from both. Every
+    account watched so far was ours, so no bill was ever wrong; the first
+    watched customer would have been.
+
+    After this: ``kind`` is real|test, ``security`` is
+    normal|monitored|quarantined, and a customer under suspicion is both.
+
+    The backfill asserts something, so it was checked first: all 34
+    accounts carrying monitored on 2026-09-13 were created from the
+    office IP or the tester's second address, every one of them with a
+    throwaway owner mailbox, and the single one holding vehicles is a
+    pentest account with four test trucks. They are ours, so they become
+    ``test`` and keep their watch. Nothing infers anything for rows the
+    operator has not classified.
+
+    ADD COLUMN IF NOT EXISTS; no index — the column is read per-row with
+    the primary key, and an index on a new column is what crashes boot on
+    upgrade. Rerunning is a no-op.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS security "
+            "TEXT NOT NULL DEFAULT 'normal'"
+        )
+        await conn.commit()
+    except Exception:
+        logger.exception("accounts.security column add failed")
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        return
+
+    # One statement, so a row can never end up carrying the security
+    # value in `kind` AND in `security` at once.
+    try:
+        await conn.execute(
+            "UPDATE accounts SET security = kind, kind = 'test' "
+            "WHERE kind IN ('monitored', 'quarantined')"
+        )
+        await conn.commit()
+        logger.info("Platform migration: accounts.security split out of kind")
+    except Exception:
+        logger.exception("accounts.security backfill failed")
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_ledger_kind_to_security(conn) -> None:
+    """The ledger column follows the account column it mirrors.
+
+    ``security_requests.kind`` recorded what an account WAS when a row
+    was kept — 'real' or 'monitored', which was coherent only while one
+    column held both facts. Now that ``accounts`` keeps them apart, the
+    ledger's copy is the SECURITY standing: it answers "why was this row
+    kept", and the answer is never "because they are a customer".
+
+    Backfill translates the old kinds: an account that was 'real' or
+    'test' was, by definition, not being watched — its standing was
+    normal, and the row survives only because it was a refusal.
+
+    Guarded both ways so a rerun is a no-op: rename only when `kind`
+    exists and `security` does not.
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'security_requests' "
+            "AND column_name IN ('kind', 'security')"
+        )
+        have = {r[0] for r in await cur.fetchall()}
+    except Exception:
+        logger.exception("ledger column probe failed")
+        return
+    if "security" in have or "kind" not in have:
+        return          # already done, or the table predates both
+
+    try:
+        await conn.execute(
+            "ALTER TABLE security_requests RENAME COLUMN kind TO security")
+        await conn.execute(
+            "UPDATE security_requests SET security = 'normal' "
+            "WHERE security IN ('real', 'test')")
+        await conn.commit()
+        logger.info("Platform migration: security_requests.kind -> security")
+    except Exception:
+        logger.exception("ledger kind -> security migration failed")
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 async def migrate_alert_vehicle_documents_column(conn) -> None:
     """Add ``users.alert_vehicle_documents`` — the per-person toggle

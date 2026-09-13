@@ -1,8 +1,19 @@
-/** The trust class an account is in — mirrors ACCOUNT_KINDS on the API.
- *  `monitored` looks exactly like `real` to the account itself; the
- *  difference is entirely on the operator's side. */
-export type AccountKind = 'real' | 'test' | 'monitored' | 'quarantined';
-export const ACCOUNT_KINDS: AccountKind[] = ['real', 'test', 'monitored', 'quarantined'];
+/** WHAT an account is — mirrors ACCOUNT_KINDS on the API. This is the
+ *  axis the bot card counts and billing charges, and nothing else. */
+export type AccountKind = 'real' | 'test';
+export const ACCOUNT_KINDS: AccountKind[] = ['real', 'test'];
+
+/** HOW it stands with security — mirrors ACCOUNT_SECURITY on the API.
+ *  A separate axis on purpose: a paying customer under suspicion is
+ *  `real` + `monitored` and stays counted and billed throughout. They
+ *  shared one field until 2026-09-13, and marking a customer monitored
+ *  silently removed them from `real`.
+ *
+ *  `normal` is not a clearance — nobody has examined the account. Any
+ *  word suggesting they had ("safe", "clear") would be a claim we
+ *  cannot back, and "safe" is one letter from the Safety role. */
+export type AccountSecurity = 'normal' | 'monitored' | 'quarantined';
+export const ACCOUNT_SECURITY: AccountSecurity[] = ['normal', 'monitored', 'quarantined'];
 
 // Operator-side type definitions.  Mirrors what /api/system/* returns.
 // Kept narrow — the operator UI shows everything, but we still type
@@ -26,8 +37,11 @@ export interface AccountListItem {
   slug: string;
   tier: string;
   is_active: boolean;
-  /** Account TYPE — operator classification, separate from status. */
+  /** WHAT it is — customer or ours. Separate from status, and from
+   *  security: a watched customer is still `real`. */
   type: AccountKind;
+  /** HOW it stands with security. Absent on an older payload = normal. */
+  security?: AccountSecurity;
   created_at: string;
   subscription: SubscriptionSummary;
 }
@@ -104,8 +118,11 @@ export interface AccountDetail {
     slug: string;
     tier: string;
     is_active: boolean;
-    /** Account TYPE — operator classification, separate from status. */
+    /** WHAT it is — customer or ours. Separate from status, and from
+     *  security: a watched customer is still `real`. */
     type: AccountKind;
+    /** HOW it stands with security. Absent on an older payload = normal. */
+    security?: AccountSecurity;
     created_at: string;
     timezone: string;
     bot_username: string;
@@ -549,6 +566,7 @@ export interface SecurityBurstMember {
   account_id: number;
   name: string | null;
   kind: AccountKind | null;
+  security?: AccountSecurity | null;
   rules: string[];
   weight: number;
 }
@@ -561,6 +579,9 @@ export interface SecurityCandidate {
   subject: string | null;
   name: string | null;
   kind: AccountKind | null;
+  /** How it stands with security — what decides whether this subject is
+   *  a candidate for a decision or already being watched. */
+  security: AccountSecurity | null;
   severity: SecuritySeverity;
   weight: number;
   rules: string[];

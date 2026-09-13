@@ -18,17 +18,17 @@ from capabilities.security import recorder
 
 @pytest.fixture(autouse=True)
 def _fresh_cache():
-    recorder.forget_kind()
+    recorder.forget_security()
     yield
-    recorder.forget_kind()
+    recorder.forget_security()
 
 
 # ── should_record ─────────────────────────────────────────────────
 
 @pytest.mark.parametrize("status", [401, 403, 429])
-@pytest.mark.parametrize("kind", [None, "real", "test", "monitored", "quarantined"])
-def test_every_refusal_is_kept_whoever_sent_it(status, kind):
-    assert recorder.should_record(status, kind) is True
+@pytest.mark.parametrize("security", [None, "normal", "monitored", "quarantined"])
+def test_every_refusal_is_kept_whoever_sent_it(status, security):
+    assert recorder.should_record(status, security) is True
 
 
 @pytest.mark.parametrize("status", [200, 201, 204, 400, 404, 422, 500, 502])
@@ -37,10 +37,10 @@ def test_a_monitored_account_is_kept_whatever_the_status(status):
 
 
 @pytest.mark.parametrize("status", [200, 201, 204, 400, 404, 422, 500])
-@pytest.mark.parametrize("kind", [None, "real", "test", "quarantined"])
-def test_nothing_else_is_kept(status, kind):
+@pytest.mark.parametrize("security", [None, "normal", "quarantined"])
+def test_nothing_else_is_kept(status, security):
     """A customer's 200 is their business; a scanner's 404 is noise."""
-    assert recorder.should_record(status, kind) is False
+    assert recorder.should_record(status, security) is False
 
 
 # ── safe_query ────────────────────────────────────────────────────
@@ -73,19 +73,19 @@ def test_the_api_has_no_way_to_pass_a_body():
 # ── record_request against a fake platform db ─────────────────────
 
 class _FakeAccount:
-    def __init__(self, kind): self.kind = kind
+    def __init__(self, security): self.security = security
 
 
 class _FakePlatform:
-    def __init__(self, kinds: dict[int, str | None], fail_write: bool = False):
-        self._kinds = kinds
+    def __init__(self, standings: dict[int, str | None], fail_write: bool = False):
+        self._standings = standings
         self.fail_write = fail_write
         self.rows: list[dict] = []
         self.account_reads = 0
 
     async def get_account(self, account_id):
         self.account_reads += 1
-        k = self._kinds.get(account_id, "missing")
+        k = self._standings.get(account_id, "missing")
         return None if k == "missing" else _FakeAccount(k)
 
     async def record_security_request(self, **row):
@@ -96,13 +96,15 @@ class _FakePlatform:
 
 @pytest.fixture
 def platform(monkeypatch):
-    fake = _FakePlatform({1: "real", 2: "monitored"})
+    # account 1 is unremarkable, account 2 is watched — and either
+    # could be a paying customer, which is the point of the split.
+    fake = _FakePlatform({1: "normal", 2: "monitored"})
     monkeypatch.setattr("infra.platform.get_platform_db", lambda: fake)
     return fake
 
 
 @pytest.mark.asyncio
-async def test_a_monitored_accounts_success_is_written_with_its_kind(platform):
+async def test_a_monitored_accounts_success_is_written_with_its_standing(platform):
     kept = await recorder.record_request(
         method="GET", path="/api/vehicles", status=200, account_id=2,
         user_id=31, role="owner", query="page=2", duration_ms=12,
@@ -110,13 +112,13 @@ async def test_a_monitored_accounts_success_is_written_with_its_kind(platform):
     assert kept is True
     assert platform.rows == [{
         "method": "GET", "path": "/api/vehicles", "status": 200,
-        "account_id": 2, "user_id": 31, "role": "owner", "kind": "monitored",
+        "account_id": 2, "user_id": 31, "role": "owner", "security": "monitored",
         "query": "page=2", "duration_ms": 12, "ip": "87.192.238.227",
         "ua": "curl/8.19.0", "request_id": "r1"}]
 
 
 @pytest.mark.asyncio
-async def test_a_real_accounts_success_is_not_written(platform):
+async def test_an_unwatched_accounts_success_is_not_written(platform):
     kept = await recorder.record_request(
         method="GET", path="/api/vehicles", status=200, account_id=1)
     assert kept is False
@@ -131,7 +133,7 @@ async def test_a_refusal_with_no_account_is_written(platform):
         ip="203.0.114.11")
     assert kept is True
     assert platform.rows[0]["account_id"] is None
-    assert platform.rows[0]["kind"] is None
+    assert platform.rows[0]["security"] is None
 
 
 @pytest.mark.asyncio
@@ -152,7 +154,7 @@ async def test_ip_and_ua_are_bounded(platform):
 
 
 @pytest.mark.asyncio
-async def test_the_kind_lookup_is_cached_for_a_minute(platform, monkeypatch):
+async def test_the_security_lookup_is_cached_for_a_minute(platform, monkeypatch):
     for _ in range(5):
         await recorder.record_request(method="GET", path="/api/x", status=200, account_id=2)
     assert platform.account_reads == 1
@@ -160,7 +162,7 @@ async def test_the_kind_lookup_is_cached_for_a_minute(platform, monkeypatch):
     # time passes past the TTL → one more read, not five
     import time as _t
     real = _t.monotonic()
-    monkeypatch.setattr(recorder.time, "monotonic", lambda: real + recorder._KIND_TTL_S + 1)
+    monkeypatch.setattr(recorder.time, "monotonic", lambda: real + recorder._SECURITY_TTL_S + 1)
     await recorder.record_request(method="GET", path="/api/x", status=200, account_id=2)
     assert platform.account_reads == 2
 
@@ -174,7 +176,7 @@ async def test_a_failing_write_never_raises(platform):
 
 
 @pytest.mark.asyncio
-async def test_a_failing_kind_lookup_never_raises_and_still_keeps_refusals(monkeypatch):
+async def test_a_failing_security_lookup_never_raises_and_still_keeps_refusals(monkeypatch):
     class _Broken:
         async def get_account(self, _):
             raise RuntimeError("db down")

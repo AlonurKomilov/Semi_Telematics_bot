@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import MetricsCard from '../components/MetricsCard';
 import NewAccountModal from '../components/NewAccountModal';
-import type { AccountKind, AccountListItem, SystemStats } from '../types';
+import type { AccountKind, AccountSecurity, AccountListItem, SystemStats } from '../types';
 
 function usd(cents: number): string {
   return '$' + (cents / 100).toFixed(2);
@@ -25,12 +25,24 @@ function statusColor(status: string): string {
  *  operator scans a list for.  Exported for AccountDetail, the way `usd`
  *  already is. */
 export function KindBadge({ kind }: { kind: AccountKind }) {
+  // `real` is the unremarkable case and takes no chip — a badge on every
+  // row is a badge that says nothing.
   if (kind === 'real') return <span className="text-xs text-slate-400">real</span>;
+  return (
+    <span className="text-xs px-2 py-0.5 rounded border bg-warn/15 text-warn border-warn/40">
+      {kind}
+    </span>
+  );
+}
+
+/** The other axis. Its own component because it is its own question:
+ *  a row can carry both, and until 2026-09-13 one badge had to choose. */
+export function SecurityBadge({ security }: { security?: AccountSecurity }) {
+  if (!security || security === 'normal') return null;
   const tone =
-    kind === 'test' ? 'bg-warn/15 text-warn border-warn/40'
-    : kind === 'monitored' ? 'bg-accent/15 text-accent border-accent/40'
+    security === 'monitored' ? 'bg-accent/15 text-accent border-accent/40'
     : 'bg-danger/15 text-danger border-danger/40';
-  return <span className={`text-xs px-2 py-0.5 rounded border ${tone}`}>{kind}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded border ${tone}`}>{security}</span>;
 }
 
 export default function Accounts() {
@@ -44,6 +56,7 @@ export default function Accounts() {
   const [tierFilter, setTierFilter] = useState('');
   const [compFilter, setCompFilter] = useState<'' | 'yes' | 'no'>('');
   const [kindFilter, setKindFilter] = useState<'' | AccountKind>('');
+  const [securityFilter, setSecurityFilter] = useState<'' | AccountSecurity>('');
   const [showNewModal, setShowNewModal] = useState(false);
   const navigate = useNavigate();
 
@@ -56,6 +69,7 @@ export default function Accounts() {
     if (tierFilter)   qs.set('tier',   tierFilter);
     if (compFilter)   qs.set('is_comped', compFilter);
     if (kindFilter)   qs.set('type', kindFilter);
+    if (securityFilter) qs.set('security', securityFilter);
     Promise.all([
       apiJSON<{ items: AccountListItem[]; count: number }>(`/system/accounts?${qs.toString()}`),
       apiJSON<SystemStats>('/system/stats'),
@@ -131,6 +145,15 @@ export default function Accounts() {
           <option value="">Any kind</option>
           <option value="real">Real</option>
           <option value="test">Test</option>
+        </select>
+        {/* Its own control, because it is its own question — and the
+            combination is the useful one: a `real` account that is
+            `monitored` is a customer under observation. */}
+        <select value={securityFilter}
+                onChange={(e) => setSecurityFilter(e.target.value as '' | AccountSecurity)}
+                className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm">
+          <option value="">Any security</option>
+          <option value="normal">Normal</option>
           <option value="monitored">Monitored</option>
           <option value="quarantined">Quarantined</option>
         </select>
@@ -194,7 +217,10 @@ export default function Accounts() {
                 </td>
                 <td className="px-4 py-2 capitalize text-slate-300">{a.tier}</td>
                 <td className="px-4 py-2">
-                  <KindBadge kind={a.type} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <KindBadge kind={a.type} />
+                    <SecurityBadge security={a.security} />
+                  </div>
                 </td>
                 <td className="px-4 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded border ${statusColor(a.subscription.status)}`}>

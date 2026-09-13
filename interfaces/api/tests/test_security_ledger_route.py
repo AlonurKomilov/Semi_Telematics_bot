@@ -27,7 +27,7 @@ async def api(pg_db, monkeypatch):
     import infra.platform as plat
     monkeypatch.setattr(plat, "_db", pg_db, raising=False)
     from capabilities.security import recorder
-    recorder.forget_kind()
+    recorder.forget_security()
     from interfaces.api.app import create_api
     app = create_api()
     probe = APIRouter()

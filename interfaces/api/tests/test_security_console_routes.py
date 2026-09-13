@@ -30,17 +30,22 @@ async def api(pg_db, seeded_db, monkeypatch):
     return app, seeded_db["db"], seeded_db["account"]
 
 
+async def _patch(app, path, body):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        return await c.patch(path, json=body)
+
+
 async def _get(app, path):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         return await c.get(path)
 
 
 async def _seed(db, acct):
-    await db.update_account(acct.id, kind="monitored")
+    await db.update_account(acct.id, security="monitored")
     for st, path in ((200, "/api/vehicles"), (403, "/api/system/accounts"),
                      (429, "/api/auth/login"), (500, "/api/reports/export")):
         await db.record_security_request(method="GET", path=path, status=st, account_id=acct.id,
-                                         kind="monitored", ip="1.2.3.4")
+                                         security="monitored", ip="1.2.3.4")
     # a refusal from nobody — the probe's /system/* attempts looked like this
     await db.record_security_request(method="GET", path="/api/system/stats", status=403, account_id=None)
 
@@ -62,7 +67,11 @@ async def test_monitored_strip(api):
     r = await _get(app, "/api/system/security/monitored?hours=24")
     assert r.status_code == 200
     row = next(x for x in r.json()["items"] if x["account_id"] == acct.id)
-    assert row["kind"] == "monitored"
+    # The strip selects only monitored accounts, so asserting that would
+    # be asserting its own WHERE clause. The useful fact is the OTHER
+    # axis: it tells the operator whether the watched account is a
+    # customer or one of ours.
+    assert row["kind"] == "real"
     assert row["requests"] == 4 and row["refused"] == 1 and row["broke"] == 1
     assert set(row) >= {"account_id", "name", "kind", "created_at", "requests", "refused", "broke", "last_seen"}
 
@@ -172,7 +181,7 @@ async def test_candidates_carry_the_board(api):
             "account_created", account_id=a.id, actor="self-serve",
             details=f"name='Board Co {i}' owner=board{i}@guerrillamailblock.com ip=203.0.113.88")
         ids.append(a.id)
-    await db.update_account(ids[0], kind="monitored")
+    await db.update_account(ids[0], security="monitored")
 
     body = (await _get(app, "/api/system/security/candidates?hours=24")).json()
     assert {"items", "new", "watching", "count", "hours"} <= set(body)
@@ -180,3 +189,51 @@ async def test_candidates_carry_the_board(api):
     assert {m["account_id"] for m in burst["members"]} == set(ids[1:]), "the watched one is out of the burst"
     assert any(w["account_id"] == ids[0] for w in body["watching"])
     assert all(c["account_id"] != ids[0] for c in body["new"])
+
+
+async def test_the_two_axes_have_two_endpoints(api):
+    """One call changes what an account IS, the other how it STANDS —
+    so a request can never half-say what it means."""
+    app, db, acct = api
+
+    r = await _patch(app, f"/api/system/accounts/{acct.id}/security",
+                     {"security": "monitored"})
+    assert r.status_code == 200, r.text
+    fresh = await db.get_account(acct.id)
+    assert fresh.security == "monitored"
+    assert fresh.kind == "real", "watching a customer must leave them a customer"
+
+    # Each endpoint refuses the other's vocabulary.
+    assert (await _patch(app, f"/api/system/accounts/{acct.id}/security",
+                         {"security": "real"})).status_code == 422
+    assert (await _patch(app, f"/api/system/accounts/{acct.id}/type",
+                         {"type": "monitored"})).status_code == 422
+
+
+async def test_the_list_filters_on_each_axis_and_on_both(api):
+    app, db, acct = api
+    await db.update_account(acct.id, security="monitored")
+
+    def ids(body):
+        return {x["id"] for x in body["items"]}
+
+    watched = (await _get(app, "/api/system/accounts?security=monitored")).json()
+    assert acct.id in ids(watched)
+    assert (await _get(app, "/api/system/accounts?security=normal")).json()
+    assert acct.id not in ids((await _get(app, "/api/system/accounts?security=normal")).json())
+    # The combination is the useful one: a customer under observation.
+    both = (await _get(app, "/api/system/accounts?type=real&security=monitored")).json()
+    assert acct.id in ids(both)
+    assert acct.id not in ids((await _get(app, "/api/system/accounts?type=test&security=monitored")).json())
+
+
+async def test_a_security_change_is_written_to_the_audit_trail(api):
+    """Marking someone monitored is a decision about a person."""
+    app, db, acct = api
+    await _patch(app, f"/api/system/accounts/{acct.id}/security", {"security": "monitored"})
+    cur = await db._db.execute(
+        "SELECT event, details FROM platform_audit_log "
+        "WHERE account_id = ? AND event = 'account_security'", (acct.id,))
+    rows = await cur.fetchall()
+    assert rows, "no audit row for a security change"
+    assert "normal -> monitored" in rows[-1]["details"]

@@ -165,7 +165,8 @@ class Candidate:
     ip: str | None
     subject: str | None = None
     name: str | None = None
-    kind: str | None = None
+    kind: str | None = None            # what it is: real | test
+    security: str | None = None        # how it stands: normal | monitored | quarantined
     signals: list[Signal] = field(default_factory=list)
 
     @property
@@ -471,19 +472,25 @@ async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
     if acct_ids:
         placeholders = ",".join("?" * len(acct_ids))
         cur = await handle.execute(
-            f"SELECT id, name, kind FROM accounts WHERE id IN ({placeholders})",
+            f"SELECT id, name, kind, security FROM accounts WHERE id IN ({placeholders})",
             acct_ids)
-        meta = {r["id"]: (r["name"], r["kind"]) for r in await cur.fetchall()}
+        meta = {r["id"]: (r["name"], r["kind"], r["security"] or "normal")
+                for r in await cur.fetchall()}
         for c in cands.values():
             if c.account_id in meta:
-                c.name, c.kind = meta[c.account_id]
+                c.name, c.kind, c.security = meta[c.account_id]
         # An account we have already classified as ours is not a finding:
         # the rules describe our own fixtures exactly as well as they
         # describe a stranger, so without this the page shows the same
-        # test accounts forever and stops being read.  ``monitored``
-        # deliberately STAYS — seeing that a rule still fires on someone
-        # we are watching is the entire point of watching them.
-        cands = {k: c for k, c in cands.items() if c.kind != "test"}
+        # test accounts forever and stops being read.
+        #
+        # Unless we are WATCHING it — seeing that a rule still fires on
+        # someone under observation is the entire point of observing
+        # them, and since the two axes split, "ours" and "watched" are
+        # both true of every account watched so far. Dropping on kind
+        # alone would have emptied the watching table.
+        cands = {k: c for k, c in cands.items()
+                 if not (c.kind == "test" and (c.security or "normal") == "normal")}
 
     ranked = sorted(cands.values(), key=lambda c: (c.weight, len(c.signals)), reverse=True)
     return [_as_dict(c) for c in ranked]
@@ -496,6 +503,7 @@ def _as_dict(c: Candidate) -> dict[str, Any]:
         "subject": c.subject,
         "name": c.name,
         "kind": c.kind,
+        "security": c.security or "normal",
         "severity": c.severity,
         "weight": c.weight,
         "rules": c.rules,
@@ -515,15 +523,17 @@ def board(candidates: list[dict]) -> dict[str, Any]:
     the same fact N times, which is how the page becomes a wall.  A
     burst of one is not a burst and stays a plain row.
 
-    ``watching`` is what the rules still say about accounts already
-    ``monitored`` — the reason to watch someone is to see this — keyed
-    for the watching table to join, not repeated as candidates.
+    ``watching`` is what the rules still say about accounts whose
+    SECURITY standing is monitored — the reason to watch someone is to
+    see this — keyed for the watching table to join, not repeated as
+    candidates. Read off the security axis, never the kind axis: a
+    watched customer is real + monitored.
     """
     watching = [
         {"account_id": c["account_id"], "rules": c["rules"], "severity": c["severity"]}
-        for c in candidates if c.get("kind") == "monitored"
+        for c in candidates if c.get("security") == "monitored"
     ]
-    fresh = [c for c in candidates if c.get("kind") != "monitored"]
+    fresh = [c for c in candidates if c.get("security") != "monitored"]
 
     by_ip: dict[str, list[dict]] = {}
     rest: list[dict] = []
@@ -547,7 +557,8 @@ def board(candidates: list[dict]) -> dict[str, Any]:
                     rules.append(r)
         groups.append({
             "group": "burst",
-            "account_id": None, "ip": ip, "subject": None, "name": None, "kind": None,
+            "account_id": None, "ip": ip, "subject": None, "name": None,
+            "kind": None, "security": None,
             "severity": "high",
             "weight": max(m["weight"] for m in members),
             "rules": rules,
@@ -557,6 +568,7 @@ def board(candidates: list[dict]) -> dict[str, Any]:
             }],
             "members": [
                 {"account_id": m["account_id"], "name": m["name"], "kind": m["kind"],
+                 "security": m.get("security"),
                  "rules": [r for r in m["rules"] if r != "signup_burst"], "weight": m["weight"]}
                 for m in members
             ],

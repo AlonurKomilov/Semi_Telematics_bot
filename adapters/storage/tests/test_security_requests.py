@@ -11,7 +11,7 @@ import pytest
 
 async def _write(db, acct, **kw):
     base = dict(method="GET", path="/api/vehicles", status=200, account_id=acct.id,
-                user_id=1, role="owner", kind="monitored", query=None,
+                user_id=1, role="owner", security="monitored", query=None,
                 duration_ms=5, ip="1.2.3.4", ua="ua", request_id="r")
     base.update(kw)
     await db.record_security_request(**base)
@@ -24,7 +24,7 @@ async def test_round_trip_newest_first(seeded_db):
     await _write(db, acct, path="/api/b", status=403)
     rows = await db.list_security_requests(account_id=acct.id, limit=10)
     assert [r["path"] for r in rows] == ["/api/b", "/api/a"]
-    assert rows[0]["status"] == 403 and rows[0]["kind"] == "monitored"
+    assert rows[0]["status"] == 403 and rows[0]["security"] == "monitored"
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,7 @@ async def test_count_and_prune(seeded_db):
 async def test_monitored_summary_lists_a_watched_account_even_at_zero(seeded_db):
     """Watching started is a fact the operator must SEE, not infer."""
     db, acct = seeded_db["db"], seeded_db["account"]
-    await db.update_account(acct.id, kind="monitored")
+    await db.update_account(acct.id, security="monitored")
 
     rows = {r["account_id"]: r for r in await db.security_monitored_summary(since_hours=24)}
     assert acct.id in rows
@@ -85,7 +85,10 @@ async def test_monitored_summary_lists_a_watched_account_even_at_zero(seeded_db)
     assert rows[acct.id]["refused"] == 0
     assert rows[acct.id]["broke"] == 0
     assert rows[acct.id]["last_seen"] is None
-    assert rows[acct.id]["kind"] == "monitored"
+    # The summary selects only monitored accounts, so repeating that
+    # would assert its own WHERE clause. What it must carry is the OTHER
+    # axis: watching an account does not change whether it is a customer.
+    assert rows[acct.id]["kind"] == "real"
 
 
 @pytest.mark.asyncio
@@ -99,7 +102,7 @@ async def test_monitored_summary_counts_the_window_and_only_monitored_accounts(s
     assert await db.security_monitored_summary(since_hours=24) == [] or all(
         r["account_id"] != acct.id for r in await db.security_monitored_summary(since_hours=24))
 
-    await db.update_account(acct.id, kind="monitored")
+    await db.update_account(acct.id, security="monitored")
     rows = {r["account_id"]: r for r in await db.security_monitored_summary(since_hours=24)}
     assert rows[acct.id]["requests"] == 3
     assert rows[acct.id]["refused"] == 1

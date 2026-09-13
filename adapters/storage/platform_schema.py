@@ -29,6 +29,7 @@ async def create_tables(conn) -> None:
             -- Independent of is_active (a test account stays usable).
             is_test             INTEGER NOT NULL DEFAULT 0,
             kind                TEXT    NOT NULL DEFAULT 'real',
+            security            TEXT    NOT NULL DEFAULT 'normal',
             is_active           INTEGER NOT NULL DEFAULT 1,
             bot_token_encrypted TEXT,
             bot_username        TEXT    NOT NULL DEFAULT '',

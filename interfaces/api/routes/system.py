@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import require_system_owner, get_platform_db
-from adapters.storage.models import ACCOUNT_KINDS
+from adapters.storage.models import ACCOUNT_KINDS, ACCOUNT_SECURITY
 
 logger = logging.getLogger(__name__)
 
@@ -368,9 +368,17 @@ async def list_accounts(
     is_comped: str = Query(default="", description="'yes' | 'no' | '' for all"),
     account_type: str = Query(
         default="", alias="type",
-        description="Account TYPE — 'real' | 'test' | '' for all.  A "
-                    "classification axis, deliberately separate from "
-                    "subscription status and is_active lifecycle.",
+        description="What the account IS — 'real' | 'test' | '' for all. "
+                    "The axis the bot card counts and billing charges, "
+                    "deliberately separate from subscription status, from "
+                    "is_active lifecycle, and from `security`.",
+    ),
+    security: str = Query(
+        default="",
+        description="How it STANDS — 'normal' | 'monitored' | "
+                    "'quarantined' | '' for all. Combine with `type`: a "
+                    "customer under observation is type=real and "
+                    "security=monitored, and stays counted and billed.",
     ),
     limit:  int = Query(default=100, ge=1, le=500),
     _user: dict = Depends(require_system_owner),
@@ -390,6 +398,9 @@ async def list_accounts(
         accounts = [a for a in accounts if a.tier == tier]
     if account_type:
         accounts = [a for a in accounts if a.kind == account_type]
+    if security:
+        accounts = [a for a in accounts
+                    if (getattr(a, "security", "normal") or "normal") == security]
 
     items: list[dict] = []
     for acc in accounts[:limit]:
@@ -408,6 +419,7 @@ async def list_accounts(
             "tier":           acc.tier,
             "is_active":      acc.is_active,
             "type":           acc.kind,
+            "security":       getattr(acc, "security", "normal") or "normal",
             "created_at":     acc.created_at,
             # Subscription fields are shallow — full detail is on the
             # account-detail page; the list view stays cheap.
@@ -443,6 +455,7 @@ async def get_account_detail(
             "tier":         acc.tier,
             "is_active":    acc.is_active,
             "type":         acc.kind,
+            "security":     getattr(acc, "security", "normal") or "normal",
             "created_at":   acc.created_at,
             "timezone":     acc.timezone,
             "bot_username": acc.bot_username,
@@ -1078,6 +1091,13 @@ class AccountTypeBody(BaseModel):
     type: str = Field(..., pattern="^(" + "|".join(ACCOUNT_KINDS) + ")$")
 
 
+class AccountSecurityBody(BaseModel):
+    # The other axis. Separate endpoint rather than a second optional
+    # field, so a request can never half-say what it means: one call
+    # changes what an account IS, the other how it STANDS.
+    security: str = Field(..., pattern="^(" + "|".join(ACCOUNT_SECURITY) + ")$")
+
+
 @router.patch("/accounts/{account_id}/type")
 async def operator_set_account_type(
     account_id: int,
@@ -1085,18 +1105,16 @@ async def operator_set_account_type(
     user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
-    """Set the account's trust class — see ``models.ACCOUNT_KINDS``.
+    """Set WHAT the account is — customer or ours.  See ACCOUNT_KINDS.
 
-    Classification only — nothing about the account's function
-    changes, and ``monitored`` in particular must be invisible to the
-    account itself: no gate reads it to refuse anything.  Deliberately
-    NOT an ``is_active`` write; lifecycle states (suspend/delete) keep
-    their own guarded flows.
+    This is the axis the bot card counts and billing charges, and it is
+    all it is: a watched customer stays ``real`` here and moves on the
+    security axis instead (``PATCH .../security``).  Deliberately NOT an
+    ``is_active`` write; lifecycle states (suspend/delete) keep their own
+    guarded flows.
 
     Every change lands in the platform audit trail: who moved which
-    account from what to what.  Marking someone ``monitored`` is a
-    decision about a person, and the trail is where that decision is
-    accountable.
+    account from what to what.
     """
     acc = await platform_db.get_account(account_id)
     if not acc:
@@ -1117,6 +1135,55 @@ async def operator_set_account_type(
         except Exception:
             logger.exception("platform audit write failed for account %s", account_id)
     return {"id": account_id, "type": body.type}
+
+
+@router.patch("/accounts/{account_id}/security")
+async def operator_set_account_security(
+    account_id: int,
+    body: AccountSecurityBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Set HOW the account stands with security.  See ACCOUNT_SECURITY.
+
+    Independent of what the account IS: a paying customer under
+    suspicion is ``real`` + ``monitored`` and stays counted and billed
+    throughout, which is the whole reason these are two columns.
+
+    ``monitored`` must remain invisible to the account itself — no gate
+    reads it to refuse anything — which is what makes it safe for the
+    detector to apply automatically. ``quarantined`` is NOT ENFORCED
+    YET: nothing at request time consults it.
+
+    Marking someone monitored is a decision about a person, so it lands
+    in the platform audit trail where that decision is accountable.
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    previous = getattr(acc, "security", "normal") or "normal"
+    await platform_db.update_account(account_id, security=body.security)
+    # The recorder caches this for a minute; without the drop, a freshly
+    # watched account is not recorded until the cache expires.
+    try:
+        from capabilities.security.recorder import forget_security
+        forget_security(account_id)
+    except Exception:
+        logger.exception("security cache drop failed for account %s", account_id)
+    logger.info(
+        "system: account security acct=%s %s -> %s operator_tg=%s",
+        account_id, previous, body.security, user.get("sub"),
+    )
+    if previous != body.security:
+        try:
+            await platform_db.add_platform_audit(
+                "account_security", account_id=account_id,
+                actor=f"operator:{user.get('sub')}",
+                details=f"{previous} -> {body.security}",
+            )
+        except Exception:
+            logger.exception("platform audit write failed for account %s", account_id)
+    return {"id": account_id, "security": body.security}
 
 
 @router.patch("/accounts/{account_id}/billing-email")

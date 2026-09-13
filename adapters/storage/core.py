@@ -304,6 +304,11 @@ class _DatabaseCore:
                   else ("test" if "is_test" in row.keys() and row["is_test"] else "real")),
             is_test=(row["kind"] == "test") if "kind" in row.keys() and row["kind"]
                     else (bool(row["is_test"]) if "is_test" in row.keys() else False),
+            # A row read before the column existed (or from a SELECT that
+            # did not ask for it) means "nothing has been said", which is
+            # exactly what `normal` is — never a clearance.
+            security=(row["security"] if "security" in row.keys() and row["security"]
+                      else "normal"),
         )
 
     def _row_to_company(self, row) -> Company:
