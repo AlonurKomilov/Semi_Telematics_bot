@@ -644,18 +644,18 @@ export default function PlansPage() {
               ))}
               <tr className="border-t border-slate-800 bg-slate-900/40">
                 <td className="px-3 py-1.5 text-xs uppercase tracking-wide text-slate-500" colSpan={plans.length + 1}>
-                  Customer Billing page — price, what is included per truck, and whether the plan is offered
+                  Customer Billing page — price, what is included per truck, and whether the plan is shown to every customer
                 </td>
               </tr>
               <tr className="border-t border-slate-800/70">
-                <td className="px-3 py-1.5 text-slate-300">Offered to customers</td>
+                <td className="px-3 py-1.5 text-slate-300">Shown to all customers</td>
                 {plans.map((p) => (
                   <td key={p.tier} className="px-3 py-1.5 text-center">
                     <input
                       type="checkbox"
                       checked={drafts[p.tier]?.cat.pub ?? p.public}
                       onChange={(e) => setDraft(p.tier, (d) => ({ ...d, cat: { ...d.cat, pub: e.target.checked } }))}
-                      aria-label={`Offer ${p.label} on the customer Billing page`}
+                      aria-label={`Show ${p.label} to every customer`}
                     />
                   </td>
                 ))}
@@ -804,7 +804,7 @@ export default function PlansPage() {
           </div>
           <p className="text-xs text-slate-500 mt-2">
             A new plan starts with everything included, no price, and hidden from customers — its column will say so.
-            Set its price and tick "Offered to customers" above when it is ready; Stripe stays the bill.
+            Set its price and tick "Shown to all customers" above when it is ready; Stripe stays the bill.
             A plan for ONE customer stays hidden and is offered to that account from its column.
           </p>
         </div>
