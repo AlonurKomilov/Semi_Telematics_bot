@@ -508,7 +508,7 @@ function fmtBytes(n: number): string {
 function ResourceUsageCard({ accountId }: { accountId: number }) {
   interface Usage {
     days: number;
-    rows: { day: string; account_id: number; requests: number }[];
+    rows: { day: string; account_id: number; requests: number; tiles?: number }[];
     accounts: { account_id: number; name: string; vehicles: number }[];
   }
   const [data, setData] = useState<Usage | null>(null);
@@ -522,6 +522,11 @@ function ResourceUsageCard({ accountId }: { accountId: number }) {
 
   const rows = (data?.rows ?? []).slice().sort((a, b) => a.day.localeCompare(b.day));
   const total = rows.reduce((n, r) => n + r.requests, 0);
+  // Beside the requests, never inside them: a map tile is a picture we
+  // forwarded from Google, priced per request against a per-day
+  // allowance the whole platform shares.  Summing the two would describe
+  // neither, and this is the account-level half of "who spent it".
+  const tiles = rows.reduce((n, r) => n + (r.tiles ?? 0), 0);
   const today = rows.length ? rows[rows.length - 1] : null;
   const barMax = Math.max(...rows.map((r) => r.requests), 1);
   const vehicles = data?.accounts.find((a) => a.account_id === accountId)?.vehicles;
@@ -540,6 +545,12 @@ function ResourceUsageCard({ accountId }: { accountId: number }) {
             <Row label="API requests (30d)" value={total.toLocaleString()} />
             <Row label="Avg / day" value={Math.round(total / rows.length).toLocaleString()} />
             <Row label="Today so far" value={(today?.requests ?? 0).toLocaleString()} />
+            {/* Shown only once there is something to show: a 0 here
+                before the metering existed would read as "this account
+                drew no tiles" when nobody was counting. */}
+            {tiles > 0 && (
+              <Row label="Map tiles (30d)" value={tiles.toLocaleString()} />
+            )}
             {vehicles != null && <Row label="Active vehicles" value={String(vehicles)} />}
           </dl>
           {/* One thin bar per day — shape of the month at a glance. */}

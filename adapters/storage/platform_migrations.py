@@ -237,6 +237,7 @@ async def run_all(conn) -> None:
     await migrate_plans_catalog(conn)
     await migrate_plan_price_rollouts(conn)
     await migrate_subscription_billed_quantity(conn)
+    await migrate_account_usage_tiles(conn)
     await migrate_plan_requests(conn)
     await migrate_plan_offers(conn)
     await migrate_kb_platform_review(conn)
@@ -5425,6 +5426,31 @@ async def migrate_subscription_billed_quantity(conn) -> None:
         # missing column the same as NULL (no baseline), and the error
         # is logged for the operator to act on.
         logger.exception("migrate_subscription_billed_quantity failed")
+
+async def migrate_account_usage_tiles(conn) -> None:
+    """Map tiles, per account, per day — beside the request count and
+    NOT added to it.
+
+    Google prices 2D tiles per request against a PER-DAY allowance that
+    every account draws from together, so when it runs out every map
+    goes grey at once.  The platform total was already metered; who
+    spent it was not, which left the one question an operator asks at
+    that moment unanswerable.
+
+    A column and not a table: account_usage_daily is already "what this
+    account used on this day".  ADD COLUMN IF NOT EXISTS, no index — the
+    rows are read by the primary key.  Idempotent.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE account_usage_daily "
+            "ADD COLUMN IF NOT EXISTS tiles INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        # Boot must not fail for a metric.  Without the column the flush
+        # logs and the console simply shows no tile number; the map keeps
+        # working, which is the part that matters.
+        logger.exception("migrate_account_usage_tiles failed")
+
 
 async def migrate_plan_offers(conn) -> None:
     """A hidden plan opened to one account — the terms agreed after a

@@ -9,6 +9,8 @@ path or the scheduler.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -149,6 +151,76 @@ async def test_metering_is_noop_without_redis():
     await metering.count_request("dash.4truck.us", 42)      # no raise
     assert await metering.requests_last_minute() is None    # unavailable ≠ 0
     assert await metering.account_counts("2026-07-17") == {}
+
+
+# ── Who spent the tile quota ──────────────────────────────────────
+#
+# Google prices 2D tiles per request against a PER-DAY allowance the
+# whole platform draws from together: when it runs out, every account's
+# map goes grey at once.  The platform TOTAL was metered from the start;
+# who spent it was explicitly left out —
+#
+#     if account_id is not None and not tile:
+#
+# — so the one question an operator asks at that moment had no answer on
+# the server.  One customer with a satellite map open all afternoon took
+# everyone else down and stayed anonymous.
+
+def test_a_tile_is_counted_against_its_account_but_not_as_a_request():
+    """Two counters, not one and not none.
+
+    Folding tiles into the request number would hide both (a picture we
+    forwarded is not a call to our database, and averaging them describes
+    neither).  Leaving them out of both is what actually shipped.
+    """
+    import inspect
+    from capabilities.platform.capacity import requests as metering
+
+    src = inspect.getsource(metering.count_request)
+    assert "sysreq:tiles:" in src, "a tile is not counted against its account"
+    assert not re.search(r"if account_id is not None and not tile", src), (
+        "tiles are being dropped from per-account metering again")
+    # And the two are read apart, so neither can be quoted as the other.
+    assert "sysreq:tiles:" in inspect.getsource(metering.account_tile_counts)
+    assert "sysreq:acct:" in inspect.getsource(metering.account_counts)
+
+
+def test_the_tile_path_is_what_counts_as_a_tile():
+    from capabilities.platform.capacity.requests import is_tile_path
+
+    assert is_tile_path("/api/map/tile")
+    assert is_tile_path("/api/map/tile-copyright")
+    assert is_tile_path("/api/v1/map/tile")
+    # Not every map route is a tile — /map/pois is our own database.
+    assert not is_tile_path("/api/map/pois")
+    assert not is_tile_path("/api/map/vehicles/live")
+    assert not is_tile_path("")
+
+
+@pytest.mark.asyncio
+async def test_tiles_flush_beside_requests_and_never_walk_backwards(db):
+    """Same GREATEST shape as the request flush: the Redis hash is
+    cumulative for the day, so a re-flush of a partial day must not
+    lower a count already persisted."""
+    await db.upsert_account_usage_daily("2026-07-15", {10000001: 40})
+    await db.upsert_account_tiles_daily("2026-07-15", {10000001: 900})
+    rows = await db.get_account_usage("2026-07-15")
+    row = next(r for r in rows if r["account_id"] == 10000001)
+    assert row["requests"] == 40
+    assert row["tiles"] == 900
+
+    # A partial re-flush, lower than what is stored.
+    await db.upsert_account_tiles_daily("2026-07-15", {10000001: 12})
+    rows = await db.get_account_usage("2026-07-15")
+    assert next(r for r in rows if r["account_id"] == 10000001)["tiles"] == 900
+
+    # And an account that spent tiles and made no other call still gets a
+    # row — a panel left open on the map is exactly that shape.
+    await db.upsert_account_tiles_daily("2026-07-15", {10000049: 77})
+    rows = await db.get_account_usage("2026-07-15")
+    only_tiles = next(r for r in rows if r["account_id"] == 10000049)
+    assert only_tiles["tiles"] == 77
+    assert only_tiles["requests"] == 0
 
 
 # ── Feature/surface breakdown ─────────────────────────────────────

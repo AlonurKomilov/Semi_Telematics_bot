@@ -184,8 +184,10 @@ async def capacity_accounts(
     # the durable flush).
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     live = await metering.account_counts(today)
+    live_tiles = await metering.account_tile_counts(today)
     if account_id is not None:
         live = {k: v for k, v in live.items() if k == account_id}
+        live_tiles = {k: v for k, v in live_tiles.items() if k == account_id}
     by_key = {(r["day"], r["account_id"]): r for r in rows}
     for acct, req in live.items():
         key = (today, acct)
@@ -193,6 +195,18 @@ async def capacity_accounts(
             by_key[key]["requests"] = max(by_key[key]["requests"], req)
         else:
             rows.append({"day": today, "account_id": acct, "requests": req})
+            by_key[key] = rows[-1]
+    # Tiles merge on their own pass: an account can have spent tiles today
+    # and made no other call (a panel left open on the map does exactly
+    # that), and folding them into the loop above would have dropped it.
+    for acct, tiles in live_tiles.items():
+        key = (today, acct)
+        if key in by_key:
+            by_key[key]["tiles"] = max(by_key[key].get("tiles") or 0, tiles)
+        else:
+            row = {"day": today, "account_id": acct, "requests": 0, "tiles": tiles}
+            rows.append(row)
+            by_key[key] = row
 
     # Name labels + active vehicle counts for the growth table.
     names: dict[int, str] = {}

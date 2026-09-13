@@ -151,6 +151,29 @@ class SystemMetricsMixin(_MixinBase):
         )
         return {str(r[0]): int(r[1]) for r in await cur.fetchall()}
 
+    async def upsert_account_tiles_daily(
+        self, day: str, tiles_by_account: dict[int, int],
+    ) -> int:
+        """Flush one day's per-account MAP TILE counts.
+
+        Same GREATEST shape as the request flush beside it, and for the
+        same reason: the Redis hash is cumulative for the day, so a
+        re-flush after a partial day must never walk a count backwards.
+        Its own statement rather than a second column on that one —
+        the two hashes can be present or absent independently.
+        """
+        n = 0
+        for account_id, tiles in tiles_by_account.items():
+            await self._db.execute(
+                """INSERT INTO account_usage_daily (day, account_id, tiles)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT (day, account_id) DO UPDATE SET
+                     tiles = GREATEST(account_usage_daily.tiles, excluded.tiles)""",
+                (day, int(account_id), int(tiles)),
+            )
+            n += 1
+        return n
+
     async def upsert_account_usage_daily(
         self, day: str, requests_by_account: dict[int, int],
     ) -> int:
@@ -203,7 +226,11 @@ class SystemMetricsMixin(_MixinBase):
             where += " AND account_id = ?"
             params.append(account_id)
         cur = await self._db.execute(
-            f"SELECT day, account_id, requests FROM account_usage_daily "
+            # COALESCE, not a bare column: the migration that adds `tiles`
+            # runs at boot and the rows written before it have NULL there,
+            # which would reach the console as a blank where a count goes.
+            f"SELECT day, account_id, requests, COALESCE(tiles, 0) AS tiles "
+            f"FROM account_usage_daily "
             f"WHERE {where} ORDER BY day, account_id",
             tuple(params),
         )

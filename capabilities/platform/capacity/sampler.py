@@ -177,6 +177,14 @@ async def _flush_account_usage(db, day: str) -> None:
             await db.upsert_account_usage_daily(day, counts)
     except Exception:
         logger.exception("capacity: account-usage flush failed for %s", day)
+    # Its own try: a tile flush that fails must not take the request
+    # numbers with it, and vice versa.
+    try:
+        tiles = await metering.account_tile_counts(day)
+        if tiles:
+            await db.upsert_account_tiles_daily(day, tiles)
+    except Exception:
+        logger.exception("capacity: account-tiles flush failed for %s", day)
     for dim, reader in (("surface", metering.surface_counts),
                         ("feature", metering.feature_counts)):
         try:

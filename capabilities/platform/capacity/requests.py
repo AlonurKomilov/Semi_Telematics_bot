@@ -16,7 +16,8 @@ sampler/flush jobs):
   ``sysreq:min:<YYYY-MM-DDTHH:MM>``  total requests that UTC minute
   ``sysreq:surf:<YYYY-MM-DD>``       hash: interface surface → count
   ``sysreq:feat:<YYYY-MM-DD>``       hash: feature (route family) → count
-  ``sysreq:acct:<YYYY-MM-DD>``       hash: account_id → count
+  ``sysreq:acct:<YYYY-MM-DD>``       hash: account_id → API-call count
+  ``sysreq:tiles:<YYYY-MM-DD>``      hash: account_id → map tiles served
 """
 
 from __future__ import annotations
@@ -109,11 +110,20 @@ async def count_request(host: str, account_id: int | None, path: str = "") -> No
     await cache.hincrby(f"sysreq:surf:{day}", surface_for_host(host), _DAY_TTL)
     await cache.hincrby(
         f"sysreq:feat:{day}", TILE_FEATURE if tile else feature_for_path(path), _DAY_TTL)
-    # Per-account is the API-CALL number.  A tile is a picture we
-    # forwarded, priced by Google per request rather than by our database
-    # — a different resource, and averaging the two hides both.
-    if account_id is not None and not tile:
-        await cache.hincrby(f"sysreq:acct:{day}", str(int(account_id)), _DAY_TTL)
+    # Per-account, on TWO counters rather than one.  A tile is a picture
+    # we forwarded, priced by Google per request rather than by our
+    # database — a different resource, and averaging the two hides both.
+    #
+    # But leaving the tile out of BOTH, which is what this did, hid the
+    # one number the platform can actually run out of: Google's 2D-tile
+    # quota is per DAY and shared by every account.  One customer leaving
+    # a satellite map open all afternoon takes every other customer's map
+    # down with it for the rest of the day — and until now nothing on the
+    # server could say which customer that was.
+    if account_id is not None:
+        await cache.hincrby(
+            f"sysreq:tiles:{day}" if tile else f"sysreq:acct:{day}",
+            str(int(account_id)), _DAY_TTL)
 
 
 async def requests_last_minute(now: datetime | None = None) -> int | None:
@@ -124,9 +134,11 @@ async def requests_last_minute(now: datetime | None = None) -> int | None:
     return await cache.get_int(f"sysreq:min:{minute_key(prev)}")
 
 
-async def account_counts(day: str) -> dict[int, int]:
-    """Per-account request counts for a UTC day (``YYYY-MM-DD``)."""
-    raw = await cache.hgetall_int(f"sysreq:acct:{day}")
+async def _by_account(key: str) -> dict[int, int]:
+    """A day hash keyed by account id.  A key that will not parse is
+    dropped rather than raised on: metering is best-effort, and one
+    malformed field must not cost the operator the whole table."""
+    raw = await cache.hgetall_int(key)
     out: dict[int, int] = {}
     for k, v in raw.items():
         try:
@@ -134,6 +146,25 @@ async def account_counts(day: str) -> dict[int, int]:
         except (TypeError, ValueError):
             continue
     return out
+
+
+async def account_counts(day: str) -> dict[int, int]:
+    """Per-account API-call counts for a UTC day (``YYYY-MM-DD``).
+
+    TILES ARE NOT IN HERE — see ``account_tile_counts``.  They are a
+    different resource with a different price and a different ceiling.
+    """
+    return await _by_account(f"sysreq:acct:{day}")
+
+
+async def account_tile_counts(day: str) -> dict[int, int]:
+    """Per-account MAP TILE counts for a UTC day.
+
+    The number that answers "who spent the quota": Google's 2D-tile
+    allowance is per day and shared across the whole platform, so when
+    it runs out every account's map goes grey together.
+    """
+    return await _by_account(f"sysreq:tiles:{day}")
 
 
 async def surface_counts(day: str) -> dict[str, int]:

@@ -58,7 +58,7 @@ interface Series { window: string; tier: 'minute' | 'hourly'; points: MetricSamp
 
 interface AccountsUsage {
   days: number;
-  rows: { day: string; account_id: number; requests: number }[];
+  rows: { day: string; account_id: number; requests: number; tiles?: number }[];
   accounts: { account_id: number; name: string; vehicles: number }[];
 }
 
@@ -286,13 +286,22 @@ export default function CapacityPage() {
       .filter((p): p is ChartPoint => p !== null);
   }, [series, metric]);
 
-  // Per-account totals over the window (requests summed across days).
+  // Per-account totals over the window, on TWO axes.  Map tiles are
+  // not requests and are deliberately not added to them: Google prices
+  // a tile per request against a per-DAY allowance the whole platform
+  // shares, so when it runs out every account's map goes grey together
+  // — and this column is the only place that says whose afternoon on
+  // the satellite view spent it.
   const accountRows = useMemo(() => {
     if (!usage) return [];
     const total: Record<number, number> = {};
-    for (const r of usage.rows) total[r.account_id] = (total[r.account_id] ?? 0) + r.requests;
+    const tiles: Record<number, number> = {};
+    for (const r of usage.rows) {
+      total[r.account_id] = (total[r.account_id] ?? 0) + r.requests;
+      tiles[r.account_id] = (tiles[r.account_id] ?? 0) + (r.tiles ?? 0);
+    }
     return usage.accounts
-      .map((a) => ({ ...a, requests: total[a.account_id] ?? 0 }))
+      .map((a) => ({ ...a, requests: total[a.account_id] ?? 0, tiles: tiles[a.account_id] ?? 0 }))
       .sort((a, b) => b.requests - a.requests);
   }, [usage]);
 
@@ -423,6 +432,7 @@ export default function CapacityPage() {
                 <th className="font-normal pb-1.5">Account</th>
                 <th className="font-normal pb-1.5 text-right">Vehicles</th>
                 <th className="font-normal pb-1.5 text-right">Requests</th>
+                <th className="font-normal pb-1.5 text-right">Map tiles</th>
               </tr>
             </thead>
             <tbody>
@@ -435,6 +445,13 @@ export default function CapacityPage() {
                   </td>
                   <td className="py-1.5 text-right text-slate-300 tabular-nums">{a.vehicles}</td>
                   <td className="py-1.5 text-right text-slate-300 tabular-nums">{a.requests.toLocaleString()}</td>
+                  {/* A dash, not a 0: before the metering shipped nothing
+                      was recorded, and a zero there would claim this
+                      account drew no tiles when the truth is nobody was
+                      counting. */}
+                  <td className="py-1.5 text-right text-slate-300 tabular-nums">
+                    {a.tiles > 0 ? a.tiles.toLocaleString() : <span className="text-slate-600">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
